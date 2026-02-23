@@ -1,4 +1,4 @@
-import { TextInput, PasswordInput, Button, Paper, Title, Text, Container, Anchor, Stack } from '@mantine/core';
+import { TextInput, PasswordInput, Button, Paper, Title, Text, Container, Anchor, Stack, Image, Group } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useAuth } from '../context/AuthContext';
@@ -19,7 +19,7 @@ export default function Login() {
   const handleSubmit = async (values: typeof form.values) => {
     try {
       await login(values);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: any) {
       notifications.show({
         title: 'Login failed',
@@ -31,7 +31,10 @@ export default function Login() {
 
   return (
     <Container size={420} my={40}>
-      <Title ta="center">MoBilling</Title>
+      <Group justify="center" gap={8}>
+        <Image src="/moinfotech-logo.png" h={40} w="auto" alt="MoBilling" />
+        <Title ta="center">MoBilling</Title>
+      </Group>
       <Text c="dimmed" size="sm" ta="center" mt={5}>
         Sign in to your account
       </Text>

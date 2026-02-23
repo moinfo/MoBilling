@@ -11,6 +11,9 @@ export interface User {
     id: string;
     name: string;
     email: string;
+    phone: string | null;
+    address: string | null;
+    tax_id: string | null;
     currency: string;
   };
 }

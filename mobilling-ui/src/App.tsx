@@ -9,6 +9,7 @@ import AppLayout from './components/Layout/AppShell';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
+import Landing from './pages/Landing';
 import Clients from './pages/Clients';
 import ProductServices from './pages/ProductServices';
 import Quotations from './pages/Quotations';
@@ -30,13 +31,14 @@ const queryClient = new QueryClient({
 
 export default function App() {
   return (
-    <MantineProvider defaultColorScheme="light">
+    <MantineProvider defaultColorScheme="auto">
       <Notifications position="top-right" />
       <ModalsProvider>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <AuthProvider>
               <Routes>
+                <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route
@@ -46,7 +48,7 @@ export default function App() {
                     </ProtectedRoute>
                   }
                 >
-                  <Route path="/" element={<Dashboard />} />
+                  <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/clients" element={<Clients />} />
                   <Route path="/product-services" element={<ProductServices />} />
                   <Route path="/quotations" element={<Quotations />} />

@@ -1,4 +1,4 @@
-import { TextInput, PasswordInput, Button, Paper, Title, Text, Container, Anchor, Stack } from '@mantine/core';
+import { TextInput, PasswordInput, Button, Paper, Title, Text, Container, Anchor, Stack, Image, Group } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useAuth } from '../context/AuthContext';
@@ -30,7 +30,7 @@ export default function Register() {
   const handleSubmit = async (values: typeof form.values) => {
     try {
       await register(values);
-      navigate('/');
+      navigate('/dashboard');
     } catch (err: any) {
       const errors = err.response?.data?.errors;
       if (errors) {
@@ -49,7 +49,10 @@ export default function Register() {
 
   return (
     <Container size={480} my={40}>
-      <Title ta="center">MoBilling</Title>
+      <Group justify="center" gap={8}>
+        <Image src="/moinfotech-logo.png" h={40} w="auto" alt="MoBilling" />
+        <Title ta="center">MoBilling</Title>
+      </Group>
       <Text c="dimmed" size="sm" ta="center" mt={5}>
         Create your account
       </Text>

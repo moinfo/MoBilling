@@ -9,6 +9,7 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\PaymentInController;
 use App\Http\Controllers\PaymentOutController;
 use App\Http\Controllers\ProductServiceController;
+use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
 
 // Auth (Public)
@@ -47,4 +48,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Dashboard
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+
+    // Settings
+    Route::put('/settings/company', [SettingsController::class, 'updateCompany']);
+    Route::put('/settings/profile', [SettingsController::class, 'updateProfile']);
 });

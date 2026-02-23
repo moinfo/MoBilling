@@ -6,7 +6,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
   const { user, loading } = useAuth();
 
   if (loading) return <LoadingOverlay visible />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) return <Navigate to="/" replace />;
 
   return <>{children}</>;
 }

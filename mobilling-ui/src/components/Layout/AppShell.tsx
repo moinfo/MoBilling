@@ -1,9 +1,10 @@
-import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger } from '@mantine/core';
+import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconDashboard, IconUsers, IconPackages,
   IconFileText, IconFileInvoice, IconReceipt,
   IconCalendarDue, IconSettings, IconLogout,
+  IconSun, IconMoon,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -11,6 +12,8 @@ import { useAuth } from '../../context/AuthContext';
 export default function AppLayout() {
   const [opened, { toggle }] = useDisclosure();
   const { user, logout } = useAuth();
+  const { toggleColorScheme } = useMantineColorScheme();
+  const computedColorScheme = useComputedColorScheme('light');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -31,8 +34,13 @@ export default function AppLayout() {
         <Group h="100%" px="md" justify="space-between">
           <Group>
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+            <Image src="/moinfotech-logo.png" h={32} w="auto" alt="MoBilling" />
             <Text size="lg" fw={700}>MoBilling</Text>
           </Group>
+          <Group gap="xs">
+            <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
+              {computedColorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+            </ActionIcon>
           <Menu shadow="md" width={200}>
             <Menu.Target>
               <UnstyledButton>
@@ -53,12 +61,13 @@ export default function AppLayout() {
               </Menu.Item>
             </Menu.Dropdown>
           </Menu>
+          </Group>
         </Group>
       </AppShell.Header>
 
       <AppShell.Navbar p="xs">
         <NavLink label="Dashboard" leftSection={<IconDashboard size={18} />}
-          active={isActive('/')} onClick={() => navigate('/')} />
+          active={isActive('/dashboard')} onClick={() => navigate('/dashboard')} />
 
         <NavLink label="Billing" leftSection={<IconFileText size={18} />} defaultOpened>
           <NavLink label="Clients" leftSection={<IconUsers size={16} />}

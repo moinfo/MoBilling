@@ -10,6 +10,7 @@ Thumbs.db
 
 # Screenshots (dev artifacts)
 *.png
+!mobilling-ui/public/moinfotech-logo.png
 
 # Playwright MCP
 .playwright-mcp/
