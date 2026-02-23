@@ -1,7 +1,7 @@
 import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
-  IconDashboard, IconUsers, IconPackages,
+  IconDashboard, IconUsers, IconUsersGroup, IconPackages,
   IconFileText, IconFileInvoice, IconReceipt,
   IconCalendarDue, IconSettings, IconLogout,
   IconSun, IconMoon,
@@ -88,6 +88,9 @@ export default function AppLayout() {
           <NavLink label="Payment History" leftSection={<IconReceipt size={16} />}
             active={isActive('/payments-out')} onClick={() => navigate('/payments-out')} />
         </NavLink>
+
+        <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
+          active={isActive('/users')} onClick={() => navigate('/users')} />
 
         <NavLink label="Settings" leftSection={<IconSettings size={18} />}
           active={isActive('/settings')} onClick={() => navigate('/settings')} />

@@ -18,6 +18,7 @@ import Invoices from './pages/Invoices';
 import Bills from './pages/Bills';
 import PaymentsOut from './pages/PaymentsOut';
 import Settings from './pages/Settings';
+import Users from './pages/Users';
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -56,6 +57,7 @@ export default function App() {
                   <Route path="/invoices" element={<Invoices />} />
                   <Route path="/bills" element={<Bills />} />
                   <Route path="/payments-out" element={<PaymentsOut />} />
+                  <Route path="/users" element={<Users />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />

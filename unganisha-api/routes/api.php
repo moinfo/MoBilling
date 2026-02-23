@@ -10,6 +10,7 @@ use App\Http\Controllers\PaymentInController;
 use App\Http\Controllers\PaymentOutController;
 use App\Http\Controllers\ProductServiceController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Auth (Public)
@@ -48,6 +49,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Dashboard
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);
+
+    // Users (Team)
+    Route::apiResource('users', UserController::class)->except(['destroy', 'show']);
+    Route::patch('/users/{user}/toggle-active', [UserController::class, 'toggleActive']);
 
     // Settings
     Route::put('/settings/company', [SettingsController::class, 'updateCompany']);
