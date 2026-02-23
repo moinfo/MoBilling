@@ -1,0 +1,34 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Screenshots (dev artifacts)
+*.png
+
+# Playwright MCP
+.playwright-mcp/
+
+# Claude
+.claude/
+
+# Backend (Laravel)
+unganisha-api/vendor/
+unganisha-api/.env
+unganisha-api/storage/*.key
+unganisha-api/storage/logs/
+unganisha-api/storage/framework/cache/data/
+unganisha-api/storage/framework/sessions/
+unganisha-api/storage/framework/views/
+unganisha-api/bootstrap/cache/
+
+# Frontend (Vite + React)
+mobilling-ui/node_modules/
+mobilling-ui/dist/
+mobilling-ui/.env
+mobilling-ui/.env.local
