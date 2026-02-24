@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Title, Table, Badge, ActionIcon, Modal, Stack, TextInput, Switch,
   Button, Group, Text, Loader, Center, Paper, NumberInput, PasswordInput,
@@ -7,6 +7,7 @@ import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { IconSettings, IconSearch } from '@tabler/icons-react';
 import {
   getTenants, getTenantSmsSettings, updateTenantSmsSettings,
@@ -16,6 +17,7 @@ import {
 
 export default function SmsSettings() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [selectedTenant, setSelectedTenant] = useState<Tenant | null>(null);
@@ -26,6 +28,18 @@ export default function SmsSettings() {
   });
 
   const tenants: Tenant[] = data?.data?.data || [];
+
+  // Auto-open config modal when ?tenant=<id> is in URL (e.g. from notification click)
+  useEffect(() => {
+    const tenantId = searchParams.get('tenant');
+    if (tenantId && tenants.length > 0 && !selectedTenant) {
+      const match = tenants.find((t) => t.id === tenantId);
+      if (match) {
+        setSelectedTenant(match);
+        setSearchParams({}, { replace: true });
+      }
+    }
+  }, [tenants, searchParams, selectedTenant, setSearchParams]);
 
   return (
     <>

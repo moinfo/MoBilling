@@ -5,10 +5,11 @@ import { useAuth } from '../../context/AuthContext';
 interface Props {
   children: React.ReactNode;
   requiredRole?: 'super_admin' | 'admin' | 'user';
+  allowExpired?: boolean;
 }
 
-export default function ProtectedRoute({ children, requiredRole }: Props) {
-  const { user, loading } = useAuth();
+export default function ProtectedRoute({ children, requiredRole, allowExpired }: Props) {
+  const { user, loading, hasAccess } = useAuth();
   const location = useLocation();
 
   if (loading) return <LoadingOverlay visible />;
@@ -27,6 +28,16 @@ export default function ProtectedRoute({ children, requiredRole }: Props) {
   // Regular users cannot access /admin/* paths
   if (user.role !== 'super_admin' && location.pathname.startsWith('/admin')) {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  // Subscription check for non-admin users (skip if allowExpired or on subscription paths)
+  if (
+    !allowExpired &&
+    user.role !== 'super_admin' &&
+    !hasAccess &&
+    !location.pathname.startsWith('/subscription')
+  ) {
+    return <Navigate to="/subscription/expired" replace />;
   }
 
   return <>{children}</>;

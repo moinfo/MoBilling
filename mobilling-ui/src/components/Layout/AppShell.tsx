@@ -1,17 +1,18 @@
-import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button } from '@mantine/core';
+import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button, Badge, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconDashboard, IconUsers, IconUsersGroup, IconPackages,
   IconFileText, IconFileInvoice, IconReceipt,
   IconCalendarDue, IconSettings, IconLogout,
-  IconSun, IconMoon, IconMessage, IconArrowBack,
+  IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 export default function AppLayout() {
   const [opened, { toggle }] = useDisclosure();
-  const { user, logout, isImpersonating, exitImpersonation } = useAuth();
+  const { user, logout, isImpersonating, exitImpersonation, subscriptionStatus, daysRemaining } = useAuth();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const navigate = useNavigate();
@@ -29,13 +30,28 @@ export default function AppLayout() {
     navigate('/admin/tenants');
   };
 
+  const showSubscriptionBanner = !isImpersonating && subscriptionStatus === 'trial' && daysRemaining <= 5;
+  const headerHeight = (isImpersonating ? 96 : 60) + (showSubscriptionBanner ? 36 : 0);
+
   return (
     <AppShell
       navbar={{ width: 250, breakpoint: 'sm', collapsed: { mobile: !opened } }}
-      header={{ height: isImpersonating ? 96 : 60 }}
+      header={{ height: headerHeight }}
       padding="md"
     >
       <AppShell.Header>
+        {showSubscriptionBanner && (
+          <Group h={36} px="md" justify="space-between" bg="yellow.6" style={{ color: 'white', cursor: 'pointer' }} onClick={() => navigate('/subscription')}>
+            <Text size="sm" fw={600}>
+              {daysRemaining > 0
+                ? `Free trial ends in ${daysRemaining} day(s) — Subscribe now to keep access`
+                : 'Your free trial has expired — Subscribe now'}
+            </Text>
+            <Button size="compact-sm" variant="white" color="yellow">
+              View Plans
+            </Button>
+          </Group>
+        )}
         {isImpersonating && (
           <Group h={36} px="md" justify="space-between" bg="orange.6" style={{ color: 'white' }}>
             <Text size="sm" fw={600}>Viewing as: {user?.tenant?.name}</Text>
@@ -56,7 +72,13 @@ export default function AppLayout() {
             <Image src="/moinfotech-logo.png" h={32} w="auto" alt="MoBilling" />
             <Text size="lg" fw={700}>MoBilling</Text>
           </Group>
-          <Group gap="xs">
+          <Group gap="sm">
+            <SubscriptionBadge
+              status={subscriptionStatus}
+              daysRemaining={daysRemaining}
+              onClick={() => navigate('/subscription')}
+            />
+            <NotificationBell />
             <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
               {computedColorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
             </ActionIcon>
@@ -116,6 +138,9 @@ export default function AppLayout() {
         <NavLink label="SMS" leftSection={<IconMessage size={18} />}
           active={isActive('/sms')} onClick={() => navigate('/sms')} />
 
+        <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
+          active={isActive('/subscription')} onClick={() => navigate('/subscription')} />
+
         <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
           active={isActive('/users')} onClick={() => navigate('/users')} />
 
@@ -127,5 +152,43 @@ export default function AppLayout() {
         <Outlet />
       </AppShell.Main>
     </AppShell>
+  );
+}
+
+function SubscriptionBadge({
+  status,
+  daysRemaining,
+  onClick,
+}: {
+  status: string | null;
+  daysRemaining: number;
+  onClick: () => void;
+}) {
+  if (!status) return null;
+
+  const color = daysRemaining <= 0 ? 'red' : daysRemaining <= 7 ? 'orange'
+    : status === 'trial' ? 'blue' : status === 'subscribed' ? 'green'
+    : status === 'expired' ? 'red' : 'gray';
+
+  let label: string;
+  if (status === 'expired' || status === 'deactivated') {
+    label = status === 'expired' ? 'Expired' : 'Deactivated';
+  } else {
+    const prefix = status === 'trial' ? 'Trial' : 'Plan';
+    label = `${prefix} \u00B7 ${daysRemaining}d left`;
+  }
+
+  return (
+    <Tooltip label="Manage subscription">
+      <Badge
+        color={color}
+        variant="light"
+        size="lg"
+        style={{ cursor: 'pointer' }}
+        onClick={onClick}
+      >
+        {label}
+      </Badge>
+    </Tooltip>
   );
 }

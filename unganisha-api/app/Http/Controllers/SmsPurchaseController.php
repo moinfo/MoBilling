@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\SmsPackage;
 use App\Models\SmsPurchase;
+use App\Models\User;
+use App\Notifications\SmsActivationRequestNotification;
 use App\Services\PesapalService;
 use App\Services\ResellerService;
+use App\Services\SmsPurchasePdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -154,5 +157,94 @@ class SmsPurchaseController extends Controller
         $purchases = SmsPurchase::latest()->paginate(20);
 
         return response()->json($purchases);
+    }
+
+    public function requestActivation()
+    {
+        $tenant = auth()->user()->tenant;
+
+        if ($tenant->sms_enabled && $tenant->sms_authorization) {
+            return response()->json(['message' => 'SMS is already configured for your account.'], 422);
+        }
+
+        $superAdmins = User::where('role', 'super_admin')->get();
+
+        foreach ($superAdmins as $admin) {
+            $admin->notify(new SmsActivationRequestNotification($tenant));
+        }
+
+        return response()->json(['message' => 'Your request has been sent to the administrator.']);
+    }
+
+    public function retryPayment(SmsPurchase $smsPurchase)
+    {
+        if ($smsPurchase->status === 'completed') {
+            return response()->json(['message' => 'This purchase is already completed.'], 422);
+        }
+
+        // If a redirect URL already exists, return it
+        if ($smsPurchase->pesapal_redirect_url) {
+            return response()->json([
+                'data' => ['redirect_url' => $smsPurchase->pesapal_redirect_url],
+            ]);
+        }
+
+        // Re-submit to Pesapal
+        $user = auth()->user();
+        $merchantRef = 'MOBILL-' . Str::upper(Str::random(8));
+
+        try {
+            $pesapal = new PesapalService();
+            $result = $pesapal->submitOrder(
+                $merchantRef,
+                $smsPurchase->total_amount,
+                "MoBilling: {$smsPurchase->sms_quantity} SMS credits",
+                [
+                    'email' => $user->email,
+                    'phone' => $user->phone ?? '',
+                    'first_name' => explode(' ', $user->name)[0] ?? '',
+                    'last_name' => explode(' ', $user->name)[1] ?? '',
+                ],
+            );
+
+            $smsPurchase->update([
+                'status' => 'pending',
+                'order_tracking_id' => $result['order_tracking_id'] ?? null,
+                'pesapal_redirect_url' => $result['redirect_url'] ?? null,
+            ]);
+
+            return response()->json([
+                'data' => ['redirect_url' => $result['redirect_url'] ?? null],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Pesapal retry failed', [
+                'purchase_id' => $smsPurchase->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to initiate payment. Please try again.',
+            ], 500);
+        }
+    }
+
+    public function downloadReceipt(SmsPurchase $smsPurchase)
+    {
+        if ($smsPurchase->status !== 'completed') {
+            return response()->json(['message' => 'Receipt is only available for completed purchases.'], 422);
+        }
+
+        $pdfService = new SmsPurchasePdfService();
+        $pdf = $pdfService->generateReceipt($smsPurchase);
+
+        return $pdf->download("sms-receipt-{$smsPurchase->receipt_number}.pdf");
+    }
+
+    public function downloadInvoice(SmsPurchase $smsPurchase)
+    {
+        $pdfService = new SmsPurchasePdfService();
+        $pdf = $pdfService->generateInvoice($smsPurchase);
+
+        return $pdf->download("sms-invoice-{$smsPurchase->id}.pdf");
     }
 }

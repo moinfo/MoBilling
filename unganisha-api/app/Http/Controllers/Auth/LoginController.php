@@ -31,7 +31,7 @@ class LoginController extends Controller
             ]);
         }
 
-        // Check tenant is active (skip for super_admin who has no tenant)
+        // Check tenant is admin-deactivated (skip for super_admin who has no tenant)
         if (!$user->isSuperAdmin() && $user->tenant && !$user->tenant->is_active) {
             throw ValidationException::withMessages([
                 'email' => ['Your organization has been deactivated.'],
@@ -45,10 +45,18 @@ class LoginController extends Controller
             $user->load('tenant');
         }
 
-        return response()->json([
+        $response = [
             'user' => $user,
             'token' => $token,
-        ]);
+        ];
+
+        // Append subscription info for tenant users
+        if ($user->tenant_id && $user->tenant) {
+            $response['subscription_status'] = $user->tenant->subscriptionStatus();
+            $response['days_remaining'] = $user->tenant->daysRemaining();
+        }
+
+        return response()->json($response);
     }
 
     public function logout(Request $request)
@@ -66,8 +74,16 @@ class LoginController extends Controller
             $user->load('tenant');
         }
 
-        return response()->json([
+        $response = [
             'user' => $user,
-        ]);
+        ];
+
+        // Append subscription info for tenant users
+        if ($user->tenant_id && $user->tenant) {
+            $response['subscription_status'] = $user->tenant->subscriptionStatus();
+            $response['days_remaining'] = $user->tenant->daysRemaining();
+        }
+
+        return response()->json($response);
     }
 }

@@ -152,6 +152,9 @@ class DocumentController extends Controller
         $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
         $document->update(['status' => 'sent']);
 
+        // Confirm to the sending user via in-app notification
+        $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
+
         return response()->json(['message' => 'Document sent successfully']);
     }
 }

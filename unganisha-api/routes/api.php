@@ -1,14 +1,21 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminUserController;
+use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
 use App\Http\Controllers\Admin\EmailSettingsController as AdminEmailSettingsController;
 use App\Http\Controllers\Admin\SmsPackageController;
 use App\Http\Controllers\Admin\SmsPurchaseController as AdminSmsPurchaseController;
 use App\Http\Controllers\Admin\SmsSettingsController;
+use App\Http\Controllers\Admin\PlatformSettingsController;
+use App\Http\Controllers\Admin\SubscriptionPlanController;
+use App\Http\Controllers\Admin\TemplatesController as AdminTemplatesController;
 use App\Http\Controllers\Admin\TenantController;
+use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\EmailSettingsController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BillController;
 use App\Http\Controllers\ClientController;
@@ -20,12 +27,15 @@ use App\Http\Controllers\PesapalWebhookController;
 use App\Http\Controllers\ProductServiceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SmsPurchaseController;
+use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
 // Auth (Public)
 Route::post('/auth/register', [RegisterController::class, 'register']);
 Route::post('/auth/login', [LoginController::class, 'login']);
+Route::post('/auth/forgot-password', [PasswordResetController::class, 'forgotPassword']);
+Route::post('/auth/reset-password', [PasswordResetController::class, 'resetPassword']);
 
 // Pesapal webhooks (public, no auth)
 Route::match(['get', 'post'], '/pesapal/ipn', [PesapalWebhookController::class, 'ipn']);
@@ -35,6 +45,24 @@ Route::get('/pesapal/callback', [PesapalWebhookController::class, 'callback']);
 Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/auth/logout', [LoginController::class, 'logout']);
     Route::get('/auth/me', [LoginController::class, 'me']);
+
+    // Notifications (available to all authenticated users — tenant + admin)
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
+    Route::patch('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+
+    // Active currencies (for dropdowns — available to all authenticated users)
+    Route::get('/currencies', [CurrencyController::class, 'active']);
+
+    // Subscription (no tenant middleware — expired tenants must access)
+    Route::get('/subscription/plans', [SubscriptionController::class, 'plans']);
+    Route::get('/subscription/current', [SubscriptionController::class, 'current']);
+    Route::post('/subscription/checkout', [SubscriptionController::class, 'checkout']);
+    Route::get('/subscription/history', [SubscriptionController::class, 'history']);
+    Route::get('/subscription/{tenantSubscription}/status', [SubscriptionController::class, 'status']);
+    Route::get('/subscription/{tenantSubscription}/invoice', [SubscriptionController::class, 'downloadInvoice']);
+    Route::post('/subscription/{tenantSubscription}/proof', [SubscriptionController::class, 'uploadProof']);
 });
 
 // Super Admin routes (no tenant middleware)
@@ -54,6 +82,10 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::put('/tenants/{tenant}/email-settings', [AdminEmailSettingsController::class, 'update']);
     Route::post('/tenants/{tenant}/email-settings/test', [AdminEmailSettingsController::class, 'test']);
 
+    // Tenant email templates (super admin)
+    Route::get('/tenants/{tenant}/templates', [AdminTemplatesController::class, 'show']);
+    Route::put('/tenants/{tenant}/templates', [AdminTemplatesController::class, 'update']);
+
     // Impersonate tenant
     Route::post('/tenants/{tenant}/impersonate', [TenantController::class, 'impersonate']);
 
@@ -68,6 +100,23 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 
     // SMS purchases (super admin view)
     Route::get('/sms-purchases', [AdminSmsPurchaseController::class, 'index']);
+
+    // Currencies (super admin CRUD)
+    Route::apiResource('currencies', CurrencyController::class)->except(['show']);
+
+    // Subscription plans (super admin)
+    Route::apiResource('subscription-plans', SubscriptionPlanController::class)->except(['show']);
+
+    // Tenant subscriptions (super admin)
+    Route::get('/tenants/{tenant}/subscriptions', [TenantSubscriptionController::class, 'index']);
+    Route::post('/tenants/{tenant}/subscriptions/extend', [TenantSubscriptionController::class, 'extend']);
+
+    // Confirm bank transfer payment (super admin)
+    Route::post('/subscriptions/{tenantSubscription}/confirm-payment', [TenantController::class, 'confirmSubscriptionPayment']);
+
+    // Platform settings (super admin)
+    Route::get('/platform-settings', [PlatformSettingsController::class, 'index']);
+    Route::put('/platform-settings', [PlatformSettingsController::class, 'update']);
 });
 
 // Tenant-scoped routes
@@ -105,7 +154,12 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Settings
     Route::put('/settings/company', [SettingsController::class, 'updateCompany']);
+    Route::post('/settings/logo', [SettingsController::class, 'uploadLogo']);
     Route::put('/settings/profile', [SettingsController::class, 'updateProfile']);
+    Route::get('/settings/reminders', [SettingsController::class, 'getReminderSettings']);
+    Route::put('/settings/reminders', [SettingsController::class, 'updateReminderSettings']);
+    Route::get('/settings/templates', [SettingsController::class, 'getTemplates']);
+    Route::put('/settings/templates', [SettingsController::class, 'updateTemplates']);
 
     // Email settings (tenant admin)
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);
@@ -118,4 +172,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/sms/checkout', [SmsPurchaseController::class, 'checkout']);
     Route::get('/sms/purchases/{smsPurchase}/status', [SmsPurchaseController::class, 'checkStatus']);
     Route::get('/sms/purchases', [SmsPurchaseController::class, 'history']);
+    Route::post('/sms/purchases/{smsPurchase}/retry', [SmsPurchaseController::class, 'retryPayment']);
+    Route::get('/sms/purchases/{smsPurchase}/receipt', [SmsPurchaseController::class, 'downloadReceipt']);
+    Route::get('/sms/purchases/{smsPurchase}/invoice', [SmsPurchaseController::class, 'downloadInvoice']);
+    Route::post('/sms/request-activation', [SmsPurchaseController::class, 'requestActivation']);
 });

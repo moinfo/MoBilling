@@ -1,8 +1,9 @@
 import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconMessage, IconPackage, IconReceipt } from '@tabler/icons-react';
+import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconTemplate, IconMessage, IconPackage, IconReceipt, IconCreditCard, IconCoin, IconBuildingBank } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import NotificationBell from './NotificationBell';
 
 export default function AdminShell() {
   const [opened, { toggle }] = useDisclosure();
@@ -31,6 +32,7 @@ export default function AdminShell() {
             <Text size="lg" fw={700}>MoBilling Admin</Text>
           </Group>
           <Group gap="xs">
+            <NotificationBell />
             <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
               {computedColorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
             </ActionIcon>
@@ -75,6 +77,12 @@ export default function AdminShell() {
           onClick={() => navigate('/admin/email-settings')}
         />
         <NavLink
+          label="Email Templates"
+          leftSection={<IconTemplate size={18} />}
+          active={location.pathname === '/admin/email-templates'}
+          onClick={() => navigate('/admin/email-templates')}
+        />
+        <NavLink
           label="SMS Settings"
           leftSection={<IconMessage size={18} />}
           active={location.pathname === '/admin/sms-settings'}
@@ -91,6 +99,24 @@ export default function AdminShell() {
           leftSection={<IconReceipt size={18} />}
           active={location.pathname === '/admin/sms-purchases'}
           onClick={() => navigate('/admin/sms-purchases')}
+        />
+        <NavLink
+          label="Subscription Plans"
+          leftSection={<IconCreditCard size={18} />}
+          active={location.pathname === '/admin/subscription-plans'}
+          onClick={() => navigate('/admin/subscription-plans')}
+        />
+        <NavLink
+          label="Currencies"
+          leftSection={<IconCoin size={18} />}
+          active={location.pathname === '/admin/currencies'}
+          onClick={() => navigate('/admin/currencies')}
+        />
+        <NavLink
+          label="Platform Settings"
+          leftSection={<IconBuildingBank size={18} />}
+          active={location.pathname === '/admin/platform-settings'}
+          onClick={() => navigate('/admin/platform-settings')}
         />
       </AppShell.Navbar>
 

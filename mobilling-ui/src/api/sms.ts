@@ -22,8 +22,10 @@ export interface SmsPurchase {
   price_per_sms: string;
   total_amount: string;
   package_name: string;
+  receipt_number: string | null;
   status: 'pending' | 'completed' | 'failed';
   order_tracking_id: string | null;
+  pesapal_redirect_url: string | null;
   confirmation_code: string | null;
   payment_method_used: string | null;
   completed_at: string | null;
@@ -50,3 +52,15 @@ export const checkPurchaseStatus = (purchaseId: string) =>
 
 export const getSmsPurchaseHistory = (params?: { page?: number }) =>
   api.get('/sms/purchases', { params });
+
+export const requestSmsActivation = () =>
+  api.post<{ message: string }>('/sms/request-activation');
+
+export const retrySmsPurchase = (purchaseId: string) =>
+  api.post<{ data: { redirect_url: string | null } }>(`/sms/purchases/${purchaseId}/retry`);
+
+export const downloadSmsReceipt = (purchaseId: string) =>
+  api.get(`/sms/purchases/${purchaseId}/receipt`, { responseType: 'blob' });
+
+export const downloadSmsInvoice = (purchaseId: string) =>
+  api.get(`/sms/purchases/${purchaseId}/invoice`, { responseType: 'blob' });

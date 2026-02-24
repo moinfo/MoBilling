@@ -9,6 +9,8 @@ import AppLayout from './components/Layout/AppShell';
 import AdminShell from './components/Layout/AdminShell';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ForgotPassword from './pages/ForgotPassword';
+import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
 import Clients from './pages/Clients';
@@ -27,7 +29,14 @@ import EmailSettings from './pages/admin/EmailSettings';
 import SmsSettingsAdmin from './pages/admin/SmsSettings';
 import SmsPackagesAdmin from './pages/admin/SmsPackages';
 import SmsPurchasesAdmin from './pages/admin/SmsPurchases';
+import SubscriptionPlansAdmin from './pages/admin/SubscriptionPlans';
+import TenantProfile from './pages/admin/TenantProfile';
+import CurrenciesAdmin from './pages/admin/Currencies';
+import PlatformSettingsAdmin from './pages/admin/PlatformSettings';
+import TemplatesAdmin from './pages/admin/Templates';
 import Sms from './pages/Sms';
+import Subscription from './pages/Subscription';
+import SubscriptionExpired from './pages/SubscriptionExpired';
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -51,6 +60,18 @@ export default function App() {
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/forgot-password" element={<ForgotPassword />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
+
+                {/* Subscription expired (standalone, no sidebar) */}
+                <Route
+                  path="/subscription/expired"
+                  element={
+                    <ProtectedRoute allowExpired>
+                      <SubscriptionExpired />
+                    </ProtectedRoute>
+                  }
+                />
 
                 {/* Super Admin routes */}
                 <Route
@@ -62,11 +83,16 @@ export default function App() {
                 >
                   <Route path="/admin/dashboard" element={<AdminDashboard />} />
                   <Route path="/admin/tenants" element={<Tenants />} />
+                  <Route path="/admin/tenants/:tenantId" element={<TenantProfile />} />
                   <Route path="/admin/tenants/:tenantId/users" element={<TenantUsers />} />
                   <Route path="/admin/email-settings" element={<EmailSettings />} />
+                  <Route path="/admin/email-templates" element={<TemplatesAdmin />} />
                   <Route path="/admin/sms-settings" element={<SmsSettingsAdmin />} />
                   <Route path="/admin/sms-packages" element={<SmsPackagesAdmin />} />
                   <Route path="/admin/sms-purchases" element={<SmsPurchasesAdmin />} />
+                  <Route path="/admin/subscription-plans" element={<SubscriptionPlansAdmin />} />
+                  <Route path="/admin/currencies" element={<CurrenciesAdmin />} />
+                  <Route path="/admin/platform-settings" element={<PlatformSettingsAdmin />} />
                 </Route>
 
                 {/* Tenant user routes */}
@@ -87,6 +113,7 @@ export default function App() {
                   <Route path="/payments-out" element={<PaymentsOut />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/sms" element={<Sms />} />
+                  <Route path="/subscription" element={<Subscription />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />

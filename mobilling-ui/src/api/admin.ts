@@ -9,6 +9,10 @@ export interface Tenant {
   tax_id: string | null;
   currency: string;
   is_active: boolean;
+  trial_ends_at: string | null;
+  subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+  days_remaining?: number;
+  expires_at?: string | null;
   email_enabled: boolean;
   smtp_host: string | null;
   users_count: number;
@@ -58,6 +62,9 @@ export const getAdminDashboard = () =>
 export const getTenants = (params?: { search?: string; page?: number; per_page?: number }) =>
   api.get('/admin/tenants', { params });
 
+export const getTenant = (id: string) =>
+  api.get<{ data: Tenant }>(`/admin/tenants/${id}`);
+
 export const createTenant = (data: CreateTenantData) =>
   api.post('/admin/tenants', data);
 
@@ -68,7 +75,12 @@ export const toggleTenantActive = (id: string) =>
   api.patch(`/admin/tenants/${id}/toggle-active`);
 
 export const impersonateTenant = (tenantId: string) =>
-  api.post<{ user: import('./auth').User; token: string }>(`/admin/tenants/${tenantId}/impersonate`);
+  api.post<{
+    user: import('./auth').User;
+    token: string;
+    subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+    days_remaining?: number;
+  }>(`/admin/tenants/${tenantId}/impersonate`);
 
 // --- Tenant User Management ---
 
@@ -151,6 +163,26 @@ export const rechargeTenantSms = (tenantId: string, sms_count: number) =>
 export const deductTenantSms = (tenantId: string, sms_count: number) =>
   api.post(`/admin/tenants/${tenantId}/sms-deduct`, { sms_count });
 
+// --- Tenant Templates (Super Admin) ---
+
+export interface TenantTemplates {
+  reminder_email_subject: string | null;
+  reminder_email_body: string | null;
+  overdue_email_subject: string | null;
+  overdue_email_body: string | null;
+  reminder_sms_body: string | null;
+  overdue_sms_body: string | null;
+  invoice_email_subject: string | null;
+  invoice_email_body: string | null;
+  email_footer_text: string | null;
+}
+
+export const getTenantTemplates = (tenantId: string) =>
+  api.get<{ data: TenantTemplates }>(`/admin/tenants/${tenantId}/templates`);
+
+export const updateTenantTemplates = (tenantId: string, data: Partial<TenantTemplates>) =>
+  api.put<{ data: TenantTemplates; message: string }>(`/admin/tenants/${tenantId}/templates`, data);
+
 // --- SMS Packages (Super Admin) ---
 
 export interface SmsPackage {
@@ -185,6 +217,77 @@ export const updateSmsPackage = (id: string, data: SmsPackageFormData) =>
 export const deleteSmsPackage = (id: string) =>
   api.delete(`/admin/sms-packages/${id}`);
 
+// --- Subscription Plans (Super Admin) ---
+
+export interface SubscriptionPlanAdmin {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  price: string;
+  billing_cycle_days: number;
+  features: string[] | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface SubscriptionPlanFormData {
+  name: string;
+  slug: string;
+  description: string;
+  price: number | string;
+  billing_cycle_days: number | string;
+  features: string[];
+  is_active: boolean;
+  sort_order: number | string;
+}
+
+export const getAdminSubscriptionPlans = () =>
+  api.get<{ data: SubscriptionPlanAdmin[] }>('/admin/subscription-plans');
+
+export const createSubscriptionPlan = (data: SubscriptionPlanFormData) =>
+  api.post<{ data: SubscriptionPlanAdmin }>('/admin/subscription-plans', data);
+
+export const updateSubscriptionPlan = (id: string, data: SubscriptionPlanFormData) =>
+  api.put<{ data: SubscriptionPlanAdmin }>(`/admin/subscription-plans/${id}`, data);
+
+export const deleteSubscriptionPlan = (id: string) =>
+  api.delete(`/admin/subscription-plans/${id}`);
+
+// --- Tenant Subscriptions (Super Admin) ---
+
+export interface TenantSubscription {
+  id: string;
+  tenant_id: string;
+  subscription_plan_id: string;
+  user_id: string;
+  status: string;
+  starts_at: string;
+  ends_at: string;
+  amount_paid: string;
+  payment_status_description: string | null;
+  confirmation_code: string | null;
+  payment_method_used: string | null;
+  paid_at: string | null;
+  created_at: string;
+  plan?: { id: string; name: string; price: string; billing_cycle_days: number };
+  user?: { id: string; name: string; email: string };
+  invoice_number?: string | null;
+  payment_method?: 'pesapal' | 'bank_transfer' | null;
+  invoice_due_date?: string | null;
+  payment_proof_path?: string | null;
+  payment_confirmed_at?: string | null;
+  payment_confirmed_by?: string | null;
+  payment_reference?: string | null;
+}
+
+export const getTenantSubscriptions = (tenantId: string, params?: { page?: number }) =>
+  api.get(`/admin/tenants/${tenantId}/subscriptions`, { params });
+
+export const extendTenantSubscription = (tenantId: string, data: { plan_id: string; days: number }) =>
+  api.post(`/admin/tenants/${tenantId}/subscriptions/extend`, data);
+
 // --- SMS Purchases (Super Admin) ---
 
 export interface SmsPurchase {
@@ -207,3 +310,71 @@ export interface SmsPurchase {
 
 export const getAdminSmsPurchases = (params?: { status?: string; tenant_id?: string; page?: number }) =>
   api.get('/admin/sms-purchases', { params });
+
+// --- Currencies (Super Admin) ---
+
+export interface Currency {
+  id: string;
+  code: string;
+  name: string;
+  symbol: string | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+}
+
+export interface CurrencyFormData {
+  code: string;
+  name: string;
+  symbol: string;
+  is_active: boolean;
+  sort_order: number | string;
+}
+
+export const getAdminCurrencies = () =>
+  api.get<{ data: Currency[] }>('/admin/currencies');
+
+export const createCurrency = (data: CurrencyFormData) =>
+  api.post<{ data: Currency }>('/admin/currencies', data);
+
+export const updateCurrency = (id: string, data: CurrencyFormData) =>
+  api.put<{ data: Currency }>(`/admin/currencies/${id}`, data);
+
+export const deleteCurrency = (id: string) =>
+  api.delete(`/admin/currencies/${id}`);
+
+// Public: active currencies for dropdowns
+export const getActiveCurrencies = () =>
+  api.get<{ data: Currency[] }>('/currencies');
+
+// --- Confirm Subscription Payment (Super Admin) ---
+
+export const confirmSubscriptionPayment = (subscriptionId: string, paymentReference?: string) =>
+  api.post(`/admin/subscriptions/${subscriptionId}/confirm-payment`, {
+    payment_reference: paymentReference || null,
+  });
+
+// --- Platform Settings (Super Admin) ---
+
+export interface PlatformSettings {
+  platform_bank_name: string;
+  platform_bank_account_name: string;
+  platform_bank_account_number: string;
+  platform_bank_branch: string;
+  platform_payment_instructions: string;
+  // Email templates
+  welcome_email_subject: string;
+  welcome_email_body: string;
+  reset_password_email_subject: string;
+  reset_password_email_body: string;
+  new_tenant_email_subject: string;
+  new_tenant_email_body: string;
+  sms_activation_email_subject: string;
+  sms_activation_email_body: string;
+}
+
+export const getPlatformSettings = () =>
+  api.get<{ data: PlatformSettings }>('/admin/platform-settings');
+
+export const updatePlatformSettings = (data: Partial<PlatformSettings>) =>
+  api.put<{ message: string; data: PlatformSettings }>('/admin/platform-settings', data);

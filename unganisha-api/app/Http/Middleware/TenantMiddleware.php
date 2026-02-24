@@ -25,9 +25,20 @@ class TenantMiddleware
             return response()->json(['message' => 'Tenant not found'], 403);
         }
 
-        // Block access if tenant is deactivated
-        if ($user->tenant && !$user->tenant->is_active) {
-            return response()->json(['message' => 'Your organization has been deactivated'], 403);
+        $tenant = $user->tenant;
+
+        // Block access if tenant is admin-deactivated
+        if (!$tenant->is_active) {
+            return response()->json(['message' => 'Your organization has been deactivated.'], 403);
+        }
+
+        // Block access if subscription/trial expired (402 Payment Required)
+        if (!$tenant->hasAccess()) {
+            return response()->json([
+                'message' => 'Your subscription has expired. Please renew to continue.',
+                'code' => 'SUBSCRIPTION_EXPIRED',
+                'subscription_status' => $tenant->subscriptionStatus(),
+            ], 402);
         }
 
         return $next($request);

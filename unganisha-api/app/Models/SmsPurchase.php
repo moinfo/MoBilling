@@ -13,7 +13,7 @@ class SmsPurchase extends Model
 
     protected $fillable = [
         'tenant_id', 'user_id', 'sms_quantity', 'price_per_sms',
-        'total_amount', 'package_name', 'status',
+        'total_amount', 'package_name', 'receipt_number', 'status',
         'order_tracking_id', 'pesapal_redirect_url',
         'payment_status_description', 'confirmation_code',
         'payment_method_used', 'gateway_response', 'completed_at',

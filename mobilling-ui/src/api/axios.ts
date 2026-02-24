@@ -18,6 +18,14 @@ api.interceptors.response.use(
       localStorage.removeItem('token');
       window.location.href = '/login';
     }
+
+    // Subscription expired — redirect to payment page
+    if (error.response?.status === 402) {
+      if (!window.location.pathname.startsWith('/subscription')) {
+        window.location.href = '/subscription/expired';
+      }
+    }
+
     return Promise.reject(error);
   }
 );

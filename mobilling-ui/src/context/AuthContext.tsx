@@ -1,15 +1,21 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, getMe, login as apiLogin, register as apiRegister, logout as apiLogout, LoginData, RegisterData } from '../api/auth';
+import { setTenantCurrency } from '../utils/formatCurrency';
+
+type SubscriptionStatus = 'trial' | 'subscribed' | 'expired' | 'deactivated' | null;
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isImpersonating: boolean;
+  subscriptionStatus: SubscriptionStatus;
+  daysRemaining: number;
+  hasAccess: boolean;
   login: (data: LoginData) => Promise<User>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  impersonate: (user: User, token: string) => void;
+  impersonate: (user: User, token: string, subStatus?: SubscriptionStatus, subDays?: number) => void;
   exitImpersonation: () => void;
 }
 
@@ -19,12 +25,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isImpersonating, setIsImpersonating] = useState(() => !!localStorage.getItem('admin_token'));
+  const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>(null);
+  const [daysRemaining, setDaysRemaining] = useState(0);
+
+  const hasAccess = subscriptionStatus === 'trial' || subscriptionStatus === 'subscribed';
+
+  const updateUser = (u: User | null) => {
+    setUser(u);
+    if (u?.tenant?.currency) setTenantCurrency(u.tenant.currency);
+  };
 
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (token) {
       getMe()
-        .then((res) => setUser(res.data.user))
+        .then((res) => {
+          updateUser(res.data.user);
+          setSubscriptionStatus(res.data.subscription_status ?? null);
+          setDaysRemaining(res.data.days_remaining ?? 0);
+        })
         .catch(() => localStorage.removeItem('token'))
         .finally(() => setLoading(false));
     } else {
@@ -35,30 +54,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (data: LoginData): Promise<User> => {
     const res = await apiLogin(data);
     localStorage.setItem('token', res.data.token);
-    setUser(res.data.user);
+    updateUser(res.data.user);
+    setSubscriptionStatus(res.data.subscription_status ?? null);
+    setDaysRemaining(res.data.days_remaining ?? 0);
     return res.data.user;
   };
 
   const register = async (data: RegisterData) => {
     const res = await apiRegister(data);
     localStorage.setItem('token', res.data.token);
-    setUser(res.data.user);
+    updateUser(res.data.user);
+    setSubscriptionStatus(res.data.subscription_status ?? null);
+    setDaysRemaining(res.data.days_remaining ?? 0);
   };
 
   const logout = async () => {
     await apiLogout();
     localStorage.removeItem('token');
     localStorage.removeItem('admin_token');
-    setUser(null);
+    updateUser(null);
     setIsImpersonating(false);
+    setSubscriptionStatus(null);
+    setDaysRemaining(0);
   };
 
   const refreshUser = async () => {
     const res = await getMe();
     setUser(res.data.user);
+    setSubscriptionStatus(res.data.subscription_status ?? null);
+    setDaysRemaining(res.data.days_remaining ?? 0);
   };
 
-  const impersonate = (impersonatedUser: User, token: string) => {
+  const impersonate = (impersonatedUser: User, token: string, subStatus?: SubscriptionStatus, subDays?: number) => {
     // Save the super admin token
     const adminToken = localStorage.getItem('token');
     if (adminToken) {
@@ -66,8 +93,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     // Switch to impersonated user
     localStorage.setItem('token', token);
-    setUser(impersonatedUser);
+    updateUser(impersonatedUser);
     setIsImpersonating(true);
+    // Set subscription state from impersonated tenant
+    if (subStatus !== undefined) {
+      setSubscriptionStatus(subStatus);
+      setDaysRemaining(subDays ?? 0);
+    }
   };
 
   const exitImpersonation = () => {
@@ -77,12 +109,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem('admin_token');
       setIsImpersonating(false);
       // Reload to get the admin user back
-      getMe().then((res) => setUser(res.data.user));
+      getMe().then((res) => {
+        updateUser(res.data.user);
+        setSubscriptionStatus(res.data.subscription_status ?? null);
+        setDaysRemaining(res.data.days_remaining ?? 0);
+      });
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isImpersonating, login, register, logout, refreshUser, impersonate, exitImpersonation }}>
+    <AuthContext.Provider value={{
+      user, loading, isImpersonating,
+      subscriptionStatus, daysRemaining, hasAccess,
+      login, register, logout, refreshUser, impersonate, exitImpersonation,
+    }}>
       {children}
     </AuthContext.Provider>
   );

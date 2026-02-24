@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\SmsPurchase;
 use App\Models\Tenant;
+use App\Models\TenantSubscription;
 use App\Services\PesapalService;
 use App\Services\ResellerService;
+use App\Services\SubscriptionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -33,12 +35,20 @@ class PesapalWebhookController extends Controller
             ], 400);
         }
 
+        // Dual-lookup: try SmsPurchase first, then TenantSubscription
         $purchase = SmsPurchase::withoutGlobalScopes()
             ->where('order_tracking_id', $orderTrackingId)
             ->first();
 
+        $subscription = null;
         if (!$purchase) {
-            Log::warning('Pesapal IPN: no matching purchase', ['order_tracking_id' => $orderTrackingId]);
+            $subscription = TenantSubscription::withoutGlobalScopes()
+                ->where('order_tracking_id', $orderTrackingId)
+                ->first();
+        }
+
+        if (!$purchase && !$subscription) {
+            Log::warning('Pesapal IPN: no matching record', ['order_tracking_id' => $orderTrackingId]);
             return response()->json([
                 'orderNotificationType' => $orderNotificationType,
                 'orderTrackingId' => $orderTrackingId,
@@ -67,23 +77,43 @@ class PesapalWebhookController extends Controller
         $statusCode = $status['status_code'] ?? null;
         $description = $status['payment_status_description'] ?? '';
 
-        $purchase->update([
-            'payment_status_description' => $description,
-            'confirmation_code' => $status['confirmation_code'] ?? null,
-            'payment_method_used' => $status['payment_method'] ?? null,
-        ]);
+        if ($purchase) {
+            $purchase->update([
+                'payment_status_description' => $description,
+                'confirmation_code' => $status['confirmation_code'] ?? null,
+                'payment_method_used' => $status['payment_method'] ?? null,
+            ]);
 
-        Log::info('Pesapal IPN: status retrieved', [
-            'purchase_id' => $purchase->id,
-            'status_code' => $statusCode,
-            'description' => $description,
-        ]);
+            Log::info('Pesapal IPN: SMS purchase status', [
+                'purchase_id' => $purchase->id,
+                'status_code' => $statusCode,
+            ]);
 
-        // status_code: 0=INVALID, 1=COMPLETED, 2=FAILED, 3=REVERSED
-        if ($statusCode === 1 && $description === 'Completed') {
-            $this->processCompleted($purchase);
-        } elseif (in_array($statusCode, [0, 2, 3])) {
-            $this->processFailed($purchase, $description);
+            if ($statusCode === 1 && $description === 'Completed') {
+                $this->processSmsCompleted($purchase);
+            } elseif (in_array($statusCode, [0, 2, 3])) {
+                $this->processSmsFailed($purchase, $description);
+            }
+        } else {
+            $subscription->update([
+                'payment_status_description' => $description,
+                'confirmation_code' => $status['confirmation_code'] ?? null,
+                'payment_method_used' => $status['payment_method'] ?? null,
+                'gateway_response' => $status,
+            ]);
+
+            Log::info('Pesapal IPN: subscription status', [
+                'subscription_id' => $subscription->id,
+                'status_code' => $statusCode,
+            ]);
+
+            $subService = new SubscriptionService();
+
+            if ($statusCode === 1 && $description === 'Completed') {
+                $subService->processPaymentCompleted($subscription);
+            } elseif (in_array($statusCode, [0, 2, 3])) {
+                $subService->processPaymentFailed($subscription);
+            }
         }
 
         return response()->json([
@@ -98,43 +128,57 @@ class PesapalWebhookController extends Controller
     {
         $orderTrackingId = $request->input('OrderTrackingId');
 
-        $purchase = null;
+        $type = null;
+        $record = null;
         $status = 'unknown';
 
         if ($orderTrackingId) {
-            $purchase = SmsPurchase::withoutGlobalScopes()
+            // Try SMS purchase first
+            $record = SmsPurchase::withoutGlobalScopes()
                 ->where('order_tracking_id', $orderTrackingId)
                 ->first();
 
-            if ($purchase) {
-                $status = $purchase->status;
+            if ($record) {
+                $type = 'sms_purchase';
+                $status = $record->status;
+            } else {
+                // Try subscription
+                $record = TenantSubscription::withoutGlobalScopes()
+                    ->where('order_tracking_id', $orderTrackingId)
+                    ->first();
 
-                if ($status === 'pending') {
-                    try {
-                        $pesapal = new PesapalService();
-                        $result = $pesapal->getTransactionStatus($orderTrackingId);
-                        $statusCode = $result['status_code'] ?? null;
+                if ($record) {
+                    $type = 'subscription';
+                    $status = $record->status;
+                }
+            }
 
-                        if ($statusCode === 1) {
-                            $status = 'completed';
-                        } elseif (in_array($statusCode, [0, 2, 3])) {
-                            $status = 'failed';
-                        }
-                    } catch (\Throwable $e) {
-                        Log::error('Pesapal callback: status check failed', ['error' => $e->getMessage()]);
+            if ($record && $status === 'pending') {
+                try {
+                    $pesapal = new PesapalService();
+                    $result = $pesapal->getTransactionStatus($orderTrackingId);
+                    $statusCode = $result['status_code'] ?? null;
+
+                    if ($statusCode === 1) {
+                        $status = 'completed';
+                    } elseif (in_array($statusCode, [0, 2, 3])) {
+                        $status = 'failed';
                     }
+                } catch (\Throwable $e) {
+                    Log::error('Pesapal callback: status check failed', ['error' => $e->getMessage()]);
                 }
             }
         }
 
         return response()->json([
+            'type' => $type,
             'status' => $status,
-            'purchase_id' => $purchase?->id,
+            'record_id' => $record?->id,
             'order_tracking_id' => $orderTrackingId,
         ]);
     }
 
-    private function processCompleted(SmsPurchase $purchase): void
+    private function processSmsCompleted(SmsPurchase $purchase): void
     {
         if ($purchase->status !== 'pending') {
             Log::info('Pesapal: purchase already processed, skipping', ['purchase_id' => $purchase->id]);
@@ -166,8 +210,15 @@ class PesapalWebhookController extends Controller
             return;
         }
 
+        $datePrefix = 'SMS-REC-' . now()->format('Ymd') . '-';
+        $count = SmsPurchase::withoutGlobalScopes()
+            ->where('receipt_number', 'LIKE', $datePrefix . '%')
+            ->count();
+        $receiptNumber = $datePrefix . str_pad($count + 1, 4, '0', STR_PAD_LEFT);
+
         $purchase->update([
             'status' => 'completed',
+            'receipt_number' => $receiptNumber,
             'gateway_response' => $gatewayResponse,
             'completed_at' => now(),
         ]);
@@ -179,7 +230,7 @@ class PesapalWebhookController extends Controller
         ]);
     }
 
-    private function processFailed(SmsPurchase $purchase, string $statusDescription): void
+    private function processSmsFailed(SmsPurchase $purchase, string $statusDescription): void
     {
         if ($purchase->status !== 'pending') {
             return;

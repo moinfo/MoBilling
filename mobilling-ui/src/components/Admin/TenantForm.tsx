@@ -1,6 +1,7 @@
 import { TextInput, Textarea, Button, Group, Stack, Select, PasswordInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { TenantFormData, CreateTenantData } from '../../api/admin';
+import { useQuery } from '@tanstack/react-query';
+import { TenantFormData, CreateTenantData, getActiveCurrencies } from '../../api/admin';
 
 interface Props {
   initialValues?: TenantFormData;
@@ -9,16 +10,17 @@ interface Props {
   isEdit?: boolean;
 }
 
-const CURRENCIES = [
-  { value: 'KES', label: 'KES — Kenyan Shilling' },
-  { value: 'USD', label: 'USD — US Dollar' },
-  { value: 'EUR', label: 'EUR — Euro' },
-  { value: 'GBP', label: 'GBP — British Pound' },
-  { value: 'TZS', label: 'TZS — Tanzanian Shilling' },
-  { value: 'UGX', label: 'UGX — Ugandan Shilling' },
-];
-
 export default function TenantForm({ initialValues, onSubmit, loading, isEdit }: Props) {
+  const { data: currencyData } = useQuery({
+    queryKey: ['active-currencies'],
+    queryFn: getActiveCurrencies,
+  });
+
+  const currencyOptions = (currencyData?.data?.data || []).map((c) => ({
+    value: c.code,
+    label: `${c.code} — ${c.name}`,
+  }));
+
   const form = useForm({
     initialValues: initialValues
       ? { ...initialValues, admin_name: '', admin_email: '', admin_password: '' }
@@ -28,7 +30,7 @@ export default function TenantForm({ initialValues, onSubmit, loading, isEdit }:
           phone: '',
           address: '',
           tax_id: '',
-          currency: 'KES',
+          currency: 'TZS',
           admin_name: '',
           admin_email: '',
           admin_password: '',
@@ -36,9 +38,9 @@ export default function TenantForm({ initialValues, onSubmit, loading, isEdit }:
     validate: {
       name: (v) => (v.length > 0 ? null : 'Company name is required'),
       email: (v) => (/^\S+@\S+$/.test(v) ? null : 'Valid email is required'),
-      admin_name: (v, values) => (!isEdit && !v ? 'Admin name is required' : null),
-      admin_email: (v, values) => (!isEdit && !/^\S+@\S+$/.test(v) ? 'Valid admin email is required' : null),
-      admin_password: (v, values) => (!isEdit && v.length < 8 ? 'Password must be at least 8 characters' : null),
+      admin_name: (v) => (!isEdit && !v ? 'Admin name is required' : null),
+      admin_email: (v) => (!isEdit && !/^\S+@\S+$/.test(v) ? 'Valid admin email is required' : null),
+      admin_password: (v) => (!isEdit && v.length < 8 ? 'Password must be at least 8 characters' : null),
     },
   });
 
@@ -56,12 +58,13 @@ export default function TenantForm({ initialValues, onSubmit, loading, isEdit }:
       <Stack>
         <TextInput label="Company Name" placeholder="Acme Ltd" required {...form.getInputProps('name')} />
         <TextInput label="Company Email" placeholder="info@acme.com" required {...form.getInputProps('email')} />
-        <TextInput label="Phone" placeholder="+254 7xx xxx xxx" {...form.getInputProps('phone')} />
+        <TextInput label="Phone" placeholder="+255 7xx xxx xxx" {...form.getInputProps('phone')} />
         <Textarea label="Address" placeholder="Company address" {...form.getInputProps('address')} />
-        <TextInput label="Tax ID / KRA PIN" placeholder="e.g., A123456789B" {...form.getInputProps('tax_id')} />
+        <TextInput label="Tax ID / TIN" placeholder="e.g., 123-456-789" {...form.getInputProps('tax_id')} />
         <Select
           label="Currency"
-          data={CURRENCIES}
+          data={currencyOptions}
+          searchable
           {...form.getInputProps('currency')}
         />
 

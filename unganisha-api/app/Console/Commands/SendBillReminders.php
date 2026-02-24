@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Bill;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Notifications\BillDueReminderNotification;
 use App\Notifications\BillOverdueNotification;
@@ -23,9 +24,12 @@ class SendBillReminders extends Command
             ->get();
 
         foreach ($upcomingBills as $bill) {
+            $tenant = Tenant::find($bill->tenant_id);
+            if (!$tenant) continue;
+
             $users = User::where('tenant_id', $bill->tenant_id)->get();
             foreach ($users as $user) {
-                $user->notify(new BillDueReminderNotification($bill));
+                $user->notify(new BillDueReminderNotification($bill, $tenant));
             }
         }
 
@@ -36,9 +40,12 @@ class SendBillReminders extends Command
             ->get();
 
         foreach ($overdueBills as $bill) {
+            $tenant = Tenant::find($bill->tenant_id);
+            if (!$tenant) continue;
+
             $users = User::where('tenant_id', $bill->tenant_id)->get();
             foreach ($users as $user) {
-                $user->notify(new BillOverdueNotification($bill));
+                $user->notify(new BillOverdueNotification($bill, $tenant));
             }
         }
 

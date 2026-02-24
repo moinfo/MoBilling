@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Tenant;
+use App\Models\TenantSubscription;
 use App\Models\User;
+use App\Services\SubscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
@@ -31,7 +33,16 @@ class TenantController extends Controller
             });
         }
 
-        return response()->json($query->latest()->paginate($request->input('per_page', 15)));
+        $paginated = $query->latest()->paginate($request->input('per_page', 15));
+
+        $paginated->getCollection()->transform(function ($tenant) {
+            $tenant->subscription_status = $tenant->subscriptionStatus();
+            $tenant->days_remaining = $tenant->daysRemaining();
+            $tenant->expires_at = $this->getExpiresAt($tenant);
+            return $tenant;
+        });
+
+        return response()->json($paginated);
     }
 
     public function store(Request $request)
@@ -58,6 +69,7 @@ class TenantController extends Controller
                 'address' => $request->address,
                 'tax_id' => $request->tax_id,
                 'currency' => $request->currency ?? 'KES',
+                'trial_ends_at' => now()->addDays(7),
             ]);
 
             User::create([
@@ -79,6 +91,9 @@ class TenantController extends Controller
         $this->authorize();
 
         $tenant->loadCount('users');
+        $tenant->subscription_status = $tenant->subscriptionStatus();
+        $tenant->days_remaining = $tenant->daysRemaining();
+        $tenant->expires_at = $this->getExpiresAt($tenant);
 
         return response()->json(['data' => $tenant]);
     }
@@ -121,6 +136,8 @@ class TenantController extends Controller
         return response()->json([
             'user' => $adminUser,
             'token' => $token,
+            'subscription_status' => $tenant->subscriptionStatus(),
+            'days_remaining' => $tenant->daysRemaining(),
         ]);
     }
 
@@ -132,5 +149,46 @@ class TenantController extends Controller
         $tenant->loadCount('users');
 
         return response()->json(['data' => $tenant]);
+    }
+
+    public function confirmSubscriptionPayment(Request $request, TenantSubscription $tenantSubscription)
+    {
+        $this->authorize();
+
+        $request->validate([
+            'payment_reference' => 'nullable|string|max:255',
+        ]);
+
+        if ($tenantSubscription->status !== 'pending') {
+            return response()->json(['message' => 'This subscription is not pending payment.'], 422);
+        }
+
+        $service = new SubscriptionService();
+        $service->confirmPayment(
+            $tenantSubscription,
+            auth()->user(),
+            $request->input('payment_reference'),
+        );
+
+        $tenantSubscription->refresh()->load('plan');
+
+        return response()->json([
+            'message' => 'Payment confirmed and subscription activated.',
+            'data' => $tenantSubscription,
+        ]);
+    }
+
+    private function getExpiresAt(Tenant $tenant): ?string
+    {
+        if ($tenant->hasActiveSubscription()) {
+            $sub = $tenant->activeSubscription;
+            return $sub?->ends_at?->toISOString();
+        }
+
+        if ($tenant->isOnTrial()) {
+            return $tenant->trial_ends_at?->toISOString();
+        }
+
+        return null;
     }
 }

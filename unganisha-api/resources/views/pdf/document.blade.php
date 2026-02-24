@@ -11,6 +11,7 @@
         h1 { font-size: 24px; margin: 0 0 5px; color: #2563eb; text-transform: uppercase; }
         .doc-number { font-size: 14px; color: #666; }
         .company-name { font-size: 18px; font-weight: bold; margin: 0 0 5px; }
+        .company-logo { max-height: 60px; max-width: 200px; margin-bottom: 8px; }
         .info-table { display: table; width: 100%; margin-bottom: 20px; }
         .info-left, .info-right { display: table-cell; width: 50%; vertical-align: top; }
         .info-box { background: #f8f9fa; padding: 12px; border-radius: 4px; }
@@ -25,6 +26,11 @@
         .totals td { padding: 4px 8px; }
         .totals .grand-total { font-size: 16px; font-weight: bold; border-top: 2px solid #333; }
         .notes { clear: both; margin-top: 30px; padding: 12px; background: #f8f9fa; border-radius: 4px; }
+        .bank-details { clear: both; margin-top: 20px; padding: 12px; background: #f0f7ff; border-radius: 4px; border-left: 3px solid #2563eb; }
+        .bank-details h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; color: #2563eb; }
+        .bank-details p { margin: 2px 0; }
+        .payment-instructions { clear: both; margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 4px; }
+        .payment-instructions h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; color: #666; }
         .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 10px; }
         .badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; color: white; }
         .badge-product { background: #3b82f6; }
@@ -35,10 +41,15 @@
 <body>
     <div class="header">
         <div class="header-left">
+            @if($tenant->logo_path)
+                <img class="company-logo" src="{{ storage_path('app/public/' . $tenant->logo_path) }}" alt="{{ $tenant->name }}">
+                <br>
+            @endif
             <p class="company-name">{{ $tenant->name }}</p>
             @if($tenant->address)<p>{{ $tenant->address }}</p>@endif
             @if($tenant->email)<p>{{ $tenant->email }}</p>@endif
             @if($tenant->phone)<p>{{ $tenant->phone }}</p>@endif
+            @if($tenant->website)<p>{{ $tenant->website }}</p>@endif
             @if($tenant->tax_id)<p>KRA PIN: {{ $tenant->tax_id }}</p>@endif
         </div>
         <div class="header-right">
@@ -116,6 +127,23 @@
     <div class="notes">
         <strong>Notes:</strong><br>
         {{ $document->notes }}
+    </div>
+    @endif
+
+    @if($tenant->bank_name || $tenant->bank_account_number)
+    <div class="bank-details">
+        <h3>Bank Details</h3>
+        @if($tenant->bank_name)<p><strong>Bank:</strong> {{ $tenant->bank_name }}</p>@endif
+        @if($tenant->bank_account_name)<p><strong>Account Name:</strong> {{ $tenant->bank_account_name }}</p>@endif
+        @if($tenant->bank_account_number)<p><strong>Account Number:</strong> {{ $tenant->bank_account_number }}</p>@endif
+        @if($tenant->bank_branch)<p><strong>Branch:</strong> {{ $tenant->bank_branch }}</p>@endif
+    </div>
+    @endif
+
+    @if($tenant->payment_instructions)
+    <div class="payment-instructions">
+        <h3>Payment Instructions</h3>
+        <p>{{ $tenant->payment_instructions }}</p>
     </div>
     @endif
 

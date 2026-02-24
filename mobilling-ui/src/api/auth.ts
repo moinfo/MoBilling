@@ -15,7 +15,29 @@ export interface User {
     address: string | null;
     tax_id: string | null;
     currency: string;
+    trial_ends_at: string | null;
+    website: string | null;
+    logo_url: string | null;
+    logo_path: string | null;
+    bank_name: string | null;
+    bank_account_name: string | null;
+    bank_account_number: string | null;
+    bank_branch: string | null;
+    payment_instructions: string | null;
   };
+}
+
+export interface AuthResponse {
+  user: User;
+  token: string;
+  subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+  days_remaining?: number;
+}
+
+export interface MeResponse {
+  user: User;
+  subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+  days_remaining?: number;
 }
 
 export interface LoginData {
@@ -33,12 +55,22 @@ export interface RegisterData {
 }
 
 export const login = (data: LoginData) =>
-  api.post<{ user: User; token: string }>('/auth/login', data);
+  api.post<AuthResponse>('/auth/login', data);
 
 export const register = (data: RegisterData) =>
-  api.post<{ user: User; token: string }>('/auth/register', data);
+  api.post<AuthResponse>('/auth/register', data);
 
 export const logout = () => api.post('/auth/logout');
 
 export const getMe = () =>
-  api.get<{ user: User }>('/auth/me');
+  api.get<MeResponse>('/auth/me');
+
+export const forgotPassword = (email: string) =>
+  api.post<{ message: string }>('/auth/forgot-password', { email });
+
+export const resetPassword = (data: {
+  token: string;
+  email: string;
+  password: string;
+  password_confirmation: string;
+}) => api.post<{ message: string }>('/auth/reset-password', data);

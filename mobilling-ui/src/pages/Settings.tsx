@@ -1,24 +1,24 @@
 import { useState } from 'react';
 import {
   Title, Tabs, TextInput, Textarea, PasswordInput, Select, Button,
-  Stack, Divider, Paper, Group, Alert, NumberInput, Switch, Loader, Center, Overlay, Box,
+  Stack, Divider, Paper, Group, Alert, NumberInput, Switch, Loader, Center, Box,
+  FileButton, Image, Text, Badge,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
-import { updateCompany, updateProfile, CompanyData, ProfileData, getEmailSettings, updateEmailSettings, testEmailSettings, EmailSettings as EmailSettingsType, EmailSettingsFormData } from '../api/settings';
+import {
+  updateCompany, updateProfile, uploadLogo,
+  CompanyData, ProfileData,
+  getEmailSettings, updateEmailSettings, testEmailSettings,
+  EmailSettings as EmailSettingsType, EmailSettingsFormData,
+  getReminderSettings, updateReminderSettings, ReminderSettings,
+  getTemplates, updateTemplates, TemplateSettings,
+} from '../api/settings';
+import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
-
-const CURRENCIES = [
-  { value: 'KES', label: 'KES - Kenya Shilling' },
-  { value: 'USD', label: 'USD - US Dollar' },
-  { value: 'EUR', label: 'EUR - Euro' },
-  { value: 'GBP', label: 'GBP - British Pound' },
-  { value: 'TZS', label: 'TZS - Tanzania Shilling' },
-  { value: 'UGX', label: 'UGX - Uganda Shilling' },
-];
 
 export default function Settings() {
   const { user, refreshUser } = useAuth();
@@ -38,6 +38,12 @@ export default function Settings() {
           <Tabs.Tab value="email" leftSection={<IconMail size={16} />}>
             Email
           </Tabs.Tab>
+          <Tabs.Tab value="reminders" leftSection={<IconBell size={16} />}>
+            Reminders
+          </Tabs.Tab>
+          <Tabs.Tab value="templates" leftSection={<IconTemplate size={16} />}>
+            Templates
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="company">
@@ -48,6 +54,12 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="email">
           <EmailTab isAdmin={isAdmin} />
+        </Tabs.Panel>
+        <Tabs.Panel value="reminders">
+          <RemindersTab isAdmin={isAdmin} />
+        </Tabs.Panel>
+        <Tabs.Panel value="templates">
+          <TemplatesTab isAdmin={isAdmin} />
         </Tabs.Panel>
       </Tabs>
     </>
@@ -60,15 +72,31 @@ function CompanyTab({ user, isAdmin, refreshUser }: {
   refreshUser: () => Promise<void>;
 }) {
   const [loading, setLoading] = useState(false);
+  const [logoUploading, setLogoUploading] = useState(false);
+
+  const { data: currencyData } = useQuery({
+    queryKey: ['active-currencies'],
+    queryFn: getActiveCurrencies,
+  });
+  const currencyOptions = (currencyData?.data?.data || []).map((c) => ({
+    value: c.code,
+    label: `${c.code} - ${c.name}`,
+  }));
 
   const form = useForm<CompanyData>({
     initialValues: {
-      name: user?.tenant.name || '',
-      email: user?.tenant.email || '',
-      phone: user?.tenant.phone || '',
-      address: user?.tenant.address || '',
-      tax_id: user?.tenant.tax_id || '',
-      currency: user?.tenant.currency || 'KES',
+      name: user?.tenant?.name || '',
+      email: user?.tenant?.email || '',
+      phone: user?.tenant?.phone || '',
+      address: user?.tenant?.address || '',
+      tax_id: user?.tenant?.tax_id || '',
+      currency: user?.tenant?.currency || 'TZS',
+      website: user?.tenant?.website || '',
+      bank_name: user?.tenant?.bank_name || '',
+      bank_account_name: user?.tenant?.bank_account_name || '',
+      bank_account_number: user?.tenant?.bank_account_number || '',
+      bank_branch: user?.tenant?.bank_branch || '',
+      payment_instructions: user?.tenant?.payment_instructions || '',
     },
     validate: {
       name: (v) => (v.trim() ? null : 'Company name is required'),
@@ -94,6 +122,20 @@ function CompanyTab({ user, isAdmin, refreshUser }: {
     }
   };
 
+  const handleLogoUpload = async (file: File | null) => {
+    if (!file) return;
+    setLogoUploading(true);
+    try {
+      await uploadLogo(file);
+      await refreshUser();
+      notifications.show({ title: 'Success', message: 'Logo uploaded successfully', color: 'green' });
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to upload logo', color: 'red' });
+    } finally {
+      setLogoUploading(false);
+    }
+  };
+
   return (
     <Paper p="lg" withBorder maw={600}>
       {!isAdmin && (
@@ -101,14 +143,52 @@ function CompanyTab({ user, isAdmin, refreshUser }: {
           Only admins can edit company settings.
         </Alert>
       )}
+
+      {/* Logo Upload */}
+      <Stack mb="md">
+        <Text fw={500} size="sm">Company Logo</Text>
+        {user?.tenant?.logo_url && (
+          <Image src={user.tenant.logo_url} alt="Company logo" maw={200} mah={80} fit="contain" />
+        )}
+        {isAdmin && (
+          <FileButton onChange={handleLogoUpload} accept="image/jpeg,image/png,image/webp">
+            {(props) => (
+              <Button variant="outline" size="xs" loading={logoUploading} {...props}>
+                {user?.tenant?.logo_url ? 'Change Logo' : 'Upload Logo'}
+              </Button>
+            )}
+          </FileButton>
+        )}
+        <Text size="xs" c="dimmed">JPEG, PNG or WebP, max 2MB</Text>
+      </Stack>
+
+      <Divider mb="md" />
+
       <form onSubmit={form.onSubmit(handleSubmit)}>
         <Stack>
           <TextInput label="Company Name" required disabled={!isAdmin} {...form.getInputProps('name')} />
           <TextInput label="Email" required disabled={!isAdmin} {...form.getInputProps('email')} />
           <TextInput label="Phone" disabled={!isAdmin} {...form.getInputProps('phone')} />
+          <TextInput label="Website" placeholder="https://example.com" disabled={!isAdmin} {...form.getInputProps('website')} />
           <Textarea label="Address" autosize minRows={2} disabled={!isAdmin} {...form.getInputProps('address')} />
           <TextInput label="KRA PIN / Tax ID" disabled={!isAdmin} {...form.getInputProps('tax_id')} />
-          <Select label="Currency" required data={CURRENCIES} disabled={!isAdmin} {...form.getInputProps('currency')} />
+          <Select label="Currency" required data={currencyOptions} searchable disabled={!isAdmin} {...form.getInputProps('currency')} />
+
+          <Divider label="Bank Details" labelPosition="left" mt="sm" />
+
+          <TextInput label="Bank Name" placeholder="e.g. Equity Bank" disabled={!isAdmin} {...form.getInputProps('bank_name')} />
+          <TextInput label="Account Name" disabled={!isAdmin} {...form.getInputProps('bank_account_name')} />
+          <TextInput label="Account Number" disabled={!isAdmin} {...form.getInputProps('bank_account_number')} />
+          <TextInput label="Branch" disabled={!isAdmin} {...form.getInputProps('bank_branch')} />
+          <Textarea
+            label="Payment Instructions"
+            placeholder="e.g. M-Pesa Paybill 123456, Account: Invoice Number"
+            autosize
+            minRows={2}
+            disabled={!isAdmin}
+            {...form.getInputProps('payment_instructions')}
+          />
+
           {isAdmin && (
             <Group justify="flex-end">
               <Button type="submit" loading={loading}>Save Company</Button>
@@ -278,15 +358,14 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
     return <Center py="xl"><Loader /></Center>;
   }
 
+  const fieldsDisabled = emailDisabled || !isAdmin;
+
   return (
-    <Paper p="lg" withBorder maw={600} pos="relative">
+    <Paper p="lg" withBorder maw={600}>
       {emailDisabled && (
-        <Box pos="absolute" top={0} left={0} right={0} bottom={0} style={{ zIndex: 10 }}>
-          <Overlay color="#000" backgroundOpacity={0.03} blur={1} />
-          <Alert icon={<IconAlertCircle size={16} />} color="orange" m="md" style={{ position: 'relative', zIndex: 11 }}>
-            Email has been disabled by the administrator. Contact your platform admin to enable email delivery.
-          </Alert>
-        </Box>
+        <Alert icon={<IconAlertCircle size={16} />} color="orange" mb="md">
+          Email has been disabled by the administrator. Contact your platform admin to enable email delivery.
+        </Alert>
       )}
 
       {!isAdmin && !emailDisabled && (
@@ -296,39 +375,336 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       <form onSubmit={form.onSubmit((values) => saveMutation.mutate(values))}>
-        <Stack>
-          <TextInput label="SMTP Host" placeholder="smtp.gmail.com" disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_host')} />
-          <NumberInput label="SMTP Port" placeholder="587" min={1} max={65535} disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_port')} />
-          <TextInput label="SMTP Username" placeholder="user@example.com" disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_username')} />
-          <PasswordInput
-            label="SMTP Password"
-            placeholder={settings?.has_password ? '••••••• (unchanged)' : 'Enter password'}
-            disabled={emailDisabled || !isAdmin}
-            {...form.getInputProps('smtp_password')}
-          />
-          <Select
-            label="Encryption"
-            data={[
-              { value: 'tls', label: 'TLS' },
-              { value: 'ssl', label: 'SSL' },
-              { value: 'none', label: 'None' },
-            ]}
-            disabled={emailDisabled || !isAdmin}
-            {...form.getInputProps('smtp_encryption')}
-          />
-          <TextInput label="From Email" placeholder="noreply@company.com" disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_from_email')} />
-          <TextInput label="From Name" placeholder="Company Name" disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_from_name')} />
+        <fieldset disabled={fieldsDisabled} style={{ border: 'none', padding: 0, margin: 0, opacity: fieldsDisabled ? 0.6 : 1 }}>
+          <Stack>
+            <TextInput label="SMTP Host" placeholder="smtp.gmail.com" {...form.getInputProps('smtp_host')} />
+            <NumberInput label="SMTP Port" placeholder="587" min={1} max={65535} {...form.getInputProps('smtp_port')} />
+            <TextInput label="SMTP Username" placeholder="user@example.com" {...form.getInputProps('smtp_username')} />
+            <PasswordInput
+              label="SMTP Password"
+              placeholder={settings?.has_password ? '••••••• (unchanged)' : 'Enter password'}
+              {...form.getInputProps('smtp_password')}
+            />
+            <Select
+              label="Encryption"
+              data={[
+                { value: 'tls', label: 'TLS' },
+                { value: 'ssl', label: 'SSL' },
+                { value: 'none', label: 'None' },
+              ]}
+              {...form.getInputProps('smtp_encryption')}
+            />
+            <TextInput label="From Email" placeholder="noreply@company.com" {...form.getInputProps('smtp_from_email')} />
+            <TextInput label="From Name" placeholder="Company Name" {...form.getInputProps('smtp_from_name')} />
 
-          {isAdmin && !emailDisabled && (
+            {isAdmin && !emailDisabled && (
+              <Group justify="flex-end">
+                <Button
+                  variant="outline"
+                  loading={testMutation.isPending}
+                  onClick={() => testMutation.mutate()}
+                >
+                  Send Test Email
+                </Button>
+                <Button type="submit" loading={saveMutation.isPending}>Save Settings</Button>
+              </Group>
+            )}
+          </Stack>
+        </fieldset>
+      </form>
+    </Paper>
+  );
+}
+
+function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['reminder-settings'],
+    queryFn: getReminderSettings,
+  });
+
+  const settings: ReminderSettings | undefined = data?.data?.data;
+
+  const form = useForm<ReminderSettings>({
+    initialValues: { reminder_sms_enabled: false, reminder_email_enabled: true },
+  });
+
+  const [initialized, setInitialized] = useState(false);
+  if (settings && !initialized) {
+    form.setValues({
+      reminder_sms_enabled: settings.reminder_sms_enabled,
+      reminder_email_enabled: settings.reminder_email_enabled,
+    });
+    setInitialized(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: (values: ReminderSettings) => updateReminderSettings(values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['reminder-settings'] });
+      notifications.show({ title: 'Success', message: 'Reminder settings updated', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to update reminder settings',
+        color: 'red',
+      });
+    },
+  });
+
+  if (isLoading) {
+    return <Center py="xl"><Loader /></Center>;
+  }
+
+  return (
+    <Paper p="lg" withBorder maw={600}>
+      {!isAdmin && (
+        <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+          Only admins can edit reminder settings.
+        </Alert>
+      )}
+
+      <form onSubmit={form.onSubmit((values) => saveMutation.mutate(values))}>
+        <Stack>
+          <Switch
+            label="Email reminders enabled"
+            description="Send email reminders for upcoming and overdue bills"
+            disabled={!isAdmin}
+            checked={form.values.reminder_email_enabled}
+            onChange={(e) => form.setFieldValue('reminder_email_enabled', e.currentTarget.checked)}
+          />
+          <Switch
+            label="SMS reminders enabled"
+            description="Send SMS reminders for upcoming and overdue bills"
+            disabled={!isAdmin}
+            checked={form.values.reminder_sms_enabled}
+            onChange={(e) => form.setFieldValue('reminder_sms_enabled', e.currentTarget.checked)}
+          />
+
+          <Alert variant="light" color="blue" icon={<IconAlertCircle size={16} />}>
+            <Text size="sm">Edit message templates in the <strong>Templates</strong> tab.</Text>
+          </Alert>
+
+          {isAdmin && (
             <Group justify="flex-end">
-              <Button
-                variant="outline"
-                loading={testMutation.isPending}
-                onClick={() => testMutation.mutate()}
-              >
-                Send Test Email
+              <Button type="submit" loading={saveMutation.isPending}>Save Reminders</Button>
+            </Group>
+          )}
+        </Stack>
+      </form>
+    </Paper>
+  );
+}
+
+// --- Templates Tab ---
+
+const DEFAULT_REMINDER_TEMPLATES = {
+  reminder_email_subject: 'Reminder: {bill_name} due on {due_date}',
+  reminder_email_body: '{bill_name} of {currency} {amount} is due on {due_date}. Please pay on time.',
+  overdue_email_subject: 'OVERDUE: {bill_name} — {company_name}',
+  overdue_email_body: '{bill_name} of {currency} {amount} was due on {due_date}. This bill is now overdue. Please pay immediately.',
+  reminder_sms_body: '{bill_name} of {currency} {amount} is due on {due_date}. Please pay on time.',
+  overdue_sms_body: 'OVERDUE: {bill_name} of {currency} {amount} was due {due_date}. Pay immediately.',
+};
+
+const DEFAULT_INVOICE_TEMPLATES = {
+  invoice_email_subject: '{doc_type} {doc_number} — {company_name}',
+  invoice_email_body: 'Hello {client_name},\n\nPlease find attached your {doc_type}.\n\nAmount: {currency} {amount}\nDue date: {due_date}\n\nThank you for your business.',
+};
+
+const DEFAULT_TEMPLATES: TemplateSettings = {
+  ...DEFAULT_REMINDER_TEMPLATES,
+  ...DEFAULT_INVOICE_TEMPLATES,
+  email_footer_text: null,
+};
+
+function TemplatesTab({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['template-settings'],
+    queryFn: getTemplates,
+  });
+
+  const settings: TemplateSettings | undefined = data?.data?.data;
+
+  const form = useForm<TemplateSettings>({
+    initialValues: { ...DEFAULT_TEMPLATES },
+  });
+
+  const [initialized, setInitialized] = useState(false);
+  if (settings && !initialized) {
+    form.setValues({
+      invoice_email_subject: settings.invoice_email_subject ?? DEFAULT_TEMPLATES.invoice_email_subject,
+      invoice_email_body: settings.invoice_email_body ?? DEFAULT_TEMPLATES.invoice_email_body,
+      reminder_email_subject: settings.reminder_email_subject ?? DEFAULT_TEMPLATES.reminder_email_subject,
+      reminder_email_body: settings.reminder_email_body ?? DEFAULT_TEMPLATES.reminder_email_body,
+      overdue_email_subject: settings.overdue_email_subject ?? DEFAULT_TEMPLATES.overdue_email_subject,
+      overdue_email_body: settings.overdue_email_body ?? DEFAULT_TEMPLATES.overdue_email_body,
+      reminder_sms_body: settings.reminder_sms_body ?? DEFAULT_TEMPLATES.reminder_sms_body,
+      overdue_sms_body: settings.overdue_sms_body ?? DEFAULT_TEMPLATES.overdue_sms_body,
+      email_footer_text: settings.email_footer_text ?? DEFAULT_TEMPLATES.email_footer_text,
+    });
+    setInitialized(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: (values: TemplateSettings) => updateTemplates(values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['template-settings'] });
+      notifications.show({ title: 'Success', message: 'Templates updated', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to update templates',
+        color: 'red',
+      });
+    },
+  });
+
+  const handleResetDefaults = () => {
+    form.setValues({ ...DEFAULT_TEMPLATES });
+  };
+
+  if (isLoading) {
+    return <Center py="xl"><Loader /></Center>;
+  }
+
+  return (
+    <Paper p="lg" withBorder maw={700}>
+      {!isAdmin && (
+        <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+          Only admins can edit templates.
+        </Alert>
+      )}
+
+      <form onSubmit={form.onSubmit((values) => saveMutation.mutate(values))}>
+        <Stack>
+          {/* Section 0: Email Branding */}
+          <Divider label="Email Branding" labelPosition="left" />
+
+          <Alert variant="light" color="gray" icon={<IconAlertCircle size={16} />}>
+            <Text size="sm">
+              Your company logo and name appear in the email header automatically.
+              Customize the footer text below, or leave blank for the default: "© {new Date().getFullYear()} Your Company. All rights reserved."
+            </Text>
+          </Alert>
+
+          <Textarea
+            label="Email Footer Text"
+            placeholder="e.g. 123 Business St, Nairobi · +254 700 123456 · info@company.com"
+            autosize
+            minRows={2}
+            maxLength={500}
+            disabled={!isAdmin}
+            {...form.getInputProps('email_footer_text')}
+          />
+
+          {/* Section 1: Invoice / Quote Email */}
+          <Divider label="Invoice / Quote Email" labelPosition="left" mt="md" />
+
+          <Alert variant="light" color="blue" icon={<IconAlertCircle size={16} />}>
+            <Text size="sm">
+              Placeholders: <Badge size="xs" variant="light">{'{doc_type}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{doc_number}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{client_name}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{amount}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{currency}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{due_date}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{company_name}'}</Badge>
+            </Text>
+          </Alert>
+
+          <TextInput
+            label="Subject"
+            disabled={!isAdmin}
+            {...form.getInputProps('invoice_email_subject')}
+          />
+          <Textarea
+            label="Body"
+            autosize
+            minRows={4}
+            disabled={!isAdmin}
+            {...form.getInputProps('invoice_email_body')}
+          />
+
+          {/* Section 2: Bill Reminder Email & SMS */}
+          <Divider label="Bill Reminder Email & SMS" labelPosition="left" mt="md" />
+
+          <Alert variant="light" color="blue" icon={<IconAlertCircle size={16} />}>
+            <Text size="sm">
+              Placeholders: <Badge size="xs" variant="light">{'{bill_name}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{amount}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{currency}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{due_date}'}</Badge>{' '}
+              <Badge size="xs" variant="light">{'{company_name}'}</Badge>
+            </Text>
+          </Alert>
+
+          <TextInput
+            label="Due Reminder — Subject"
+            disabled={!isAdmin}
+            {...form.getInputProps('reminder_email_subject')}
+          />
+          <Textarea
+            label="Due Reminder — Body"
+            autosize
+            minRows={3}
+            disabled={!isAdmin}
+            {...form.getInputProps('reminder_email_body')}
+          />
+          <TextInput
+            label="Overdue — Subject"
+            disabled={!isAdmin}
+            {...form.getInputProps('overdue_email_subject')}
+          />
+          <Textarea
+            label="Overdue — Body"
+            autosize
+            minRows={3}
+            disabled={!isAdmin}
+            {...form.getInputProps('overdue_email_body')}
+          />
+
+          <Divider label="SMS Templates" labelPosition="left" />
+
+          <Box>
+            <Textarea
+              label="Due Reminder SMS"
+              autosize
+              minRows={2}
+              maxLength={160}
+              disabled={!isAdmin}
+              {...form.getInputProps('reminder_sms_body')}
+            />
+            <Text size="xs" c="dimmed" ta="right">
+              {(form.values.reminder_sms_body || '').length}/160
+            </Text>
+          </Box>
+
+          <Box>
+            <Textarea
+              label="Overdue SMS"
+              autosize
+              minRows={2}
+              maxLength={160}
+              disabled={!isAdmin}
+              {...form.getInputProps('overdue_sms_body')}
+            />
+            <Text size="xs" c="dimmed" ta="right">
+              {(form.values.overdue_sms_body || '').length}/160
+            </Text>
+          </Box>
+
+          {isAdmin && (
+            <Group justify="space-between">
+              <Button variant="subtle" color="gray" onClick={handleResetDefaults}>
+                Reset to Defaults
               </Button>
-              <Button type="submit" loading={saveMutation.isPending}>Save Settings</Button>
+              <Button type="submit" loading={saveMutation.isPending}>Save Templates</Button>
             </Group>
           )}
         </Stack>

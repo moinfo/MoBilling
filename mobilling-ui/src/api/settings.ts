@@ -8,6 +8,12 @@ export interface CompanyData {
   address?: string | null;
   tax_id?: string | null;
   currency: string;
+  website?: string | null;
+  bank_name?: string | null;
+  bank_account_name?: string | null;
+  bank_account_number?: string | null;
+  bank_branch?: string | null;
+  payment_instructions?: string | null;
 }
 
 export interface ProfileData {
@@ -24,6 +30,14 @@ export const updateCompany = (data: CompanyData) =>
 
 export const updateProfile = (data: ProfileData) =>
   api.put<{ user: User }>('/settings/profile', data);
+
+export const uploadLogo = (file: File) => {
+  const formData = new FormData();
+  formData.append('logo', file);
+  return api.post<{ logo_url: string; message: string }>('/settings/logo', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
 
 // --- Email Settings ---
 
@@ -56,3 +70,36 @@ export const updateEmailSettings = (data: Partial<EmailSettingsFormData>) =>
 
 export const testEmailSettings = () =>
   api.post<{ message: string }>('/settings/email/test');
+
+// --- Reminder Settings (switches only) ---
+
+export interface ReminderSettings {
+  reminder_sms_enabled: boolean;
+  reminder_email_enabled: boolean;
+}
+
+export const getReminderSettings = () =>
+  api.get<{ data: ReminderSettings }>('/settings/reminders');
+
+export const updateReminderSettings = (data: ReminderSettings) =>
+  api.put<{ data: ReminderSettings; message: string }>('/settings/reminders', data);
+
+// --- Template Settings ---
+
+export interface TemplateSettings {
+  reminder_email_subject: string | null;
+  reminder_email_body: string | null;
+  overdue_email_subject: string | null;
+  overdue_email_body: string | null;
+  reminder_sms_body: string | null;
+  overdue_sms_body: string | null;
+  invoice_email_subject: string | null;
+  invoice_email_body: string | null;
+  email_footer_text: string | null;
+}
+
+export const getTemplates = () =>
+  api.get<{ data: TemplateSettings }>('/settings/templates');
+
+export const updateTemplates = (data: Partial<TemplateSettings>) =>
+  api.put<{ data: TemplateSettings; message: string }>('/settings/templates', data);

@@ -64,7 +64,7 @@ export default function Tenants() {
   const impersonateMutation = useMutation({
     mutationFn: (tenantId: string) => impersonateTenant(tenantId),
     onSuccess: (res) => {
-      impersonate(res.data.user, res.data.token);
+      impersonate(res.data.user, res.data.token, res.data.subscription_status, res.data.days_remaining);
       navigate('/dashboard');
     },
     onError: (err: any) => notifications.show({
