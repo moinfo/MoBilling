@@ -1,59 +1,91 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# MoBilling API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Backend API for **MoBilling** — a multi-tenant billing and statutory management platform built with Laravel 12.
 
-## About Laravel
+## Tech Stack
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- **PHP** 8.3+ / **Laravel** 12
+- **MySQL** 8.0+
+- **Sanctum** token-based authentication
+- **UUID** primary keys on all tables
+- Multi-tenant architecture (shared DB with `tenant_id` scoping)
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Features
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+### Billing
+- Client management
+- Products & Services catalog
+- Document lifecycle: Quotation -> Proforma -> Invoice
+- Payments In (with receipt uploads, email/SMS notifications)
+- Client subscriptions with recurring billing (Next Bills)
 
-## Learning Laravel
+### Statutory
+- **Statutory Obligations** — register recurring obligations (monthly, quarterly, semi-annual, yearly, or one-time)
+- **Automatic bill generation** — first bill created on registration, next bill auto-created when current is fully paid
+- **Bill Categories** — hierarchical parent/child category system
+- **Payments Out** — track payments against statutory bills with receipt uploads
+- **Schedule dashboard** — stat cards, status tracking, days countdown
+- **Safety-net cron** — `bills:generate-recurring` catches missed bill generations daily
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+### Platform
+- Super Admin panel (tenant management, subscription plans, SMS packages, currencies)
+- SMS integration (reseller gateway)
+- Pesapal payment gateway for subscription payments
+- Email notifications with customizable templates
+- Dashboard with charts and analytics
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Database Tables
 
-## Laravel Sponsors
+`tenants`, `users`, `clients`, `product_services`, `documents`, `document_items`, `payments_in`, `bills`, `payments_out`, `bill_categories`, `statutories`, `client_subscriptions`, `tenant_subscriptions`, `subscription_plans`, `sms_packages`, `sms_purchases`, `currencies`, `notifications`
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Key API Endpoints
 
-### Premium Partners
+### Auth
+- `POST /api/auth/register` — Register tenant
+- `POST /api/auth/login` — Login
+- `GET /api/auth/me` — Current user
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+### Statutory (tenant-scoped)
+- `GET|POST /api/statutories` — List/create obligations
+- `GET|PUT|DELETE /api/statutories/{id}` — Show/update/delete
+- `GET /api/statutory-schedule` — Schedule dashboard (stat cards + status data)
+- `GET|POST /api/bills` — List/create bills
+- `POST /api/payments-out` — Record payment (auto-generates next bill if statutory is fully paid)
 
-## Contributing
+### Billing (tenant-scoped)
+- `CRUD /api/clients`
+- `CRUD /api/product-services`
+- `CRUD /api/documents` + convert/PDF/send
+- `CRUD /api/payments-in`
+- `CRUD /api/client-subscriptions`
+- `GET /api/dashboard/summary`
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Scheduled Commands
 
-## Code of Conduct
+| Command | Schedule | Purpose |
+|---------|----------|---------|
+| `bills:generate-recurring` | Daily 09:00 | Safety-net: generate bills for overdue statutory obligations |
+| `bills:send-reminders` | Daily 08:00 | Email/SMS reminders for upcoming bills |
+| `invoices:process-recurring` | Daily 07:00 | Generate recurring invoices from client subscriptions |
+| `subscriptions:expire` | Hourly | Expire overdue tenant subscriptions |
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Local Development
 
-## Security Vulnerabilities
+```bash
+# Install dependencies
+composer install
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+# Configure environment
+cp .env.example .env   # Then edit DB credentials
+php artisan key:generate
 
-## License
+# Run migrations
+php artisan migrate
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+# Start development server
+php artisan serve
+```
+
+## Environment Variables
+
+See `DEPLOYMENT.md` for the full environment configuration reference.

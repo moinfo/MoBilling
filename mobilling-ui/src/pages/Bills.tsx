@@ -62,7 +62,7 @@ export default function Bills() {
       queryClient.invalidateQueries({ queryKey: ['bills'] });
       queryClient.invalidateQueries({ queryKey: ['payments-out'] });
       setPayingBill(null);
-      notifications.show({ title: 'Success', message: 'Payment recorded, due date advanced', color: 'green' });
+      notifications.show({ title: 'Success', message: 'Payment recorded', color: 'green' });
     },
     onError: () => notifications.show({ title: 'Error', message: 'Payment failed', color: 'red' }),
   });
@@ -128,7 +128,8 @@ export default function Bills() {
         <BillForm
           initialValues={editing ? {
             name: editing.name,
-            category: editing.category,
+            bill_category_id: editing.bill_category_id || null,
+            issue_date: editing.issue_date ? new Date(editing.issue_date) : null,
             amount: parseFloat(editing.amount),
             cycle: editing.cycle,
             due_date: new Date(editing.due_date),
@@ -150,6 +151,7 @@ export default function Bills() {
         {payingBill && (
           <PaymentOutForm
             billAmount={parseFloat(payingBill.amount)}
+            paidAmount={payingBill.payments?.reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0}
             onCancel={() => setPayingBill(null)}
             onSubmit={(values) => payMutation.mutate({ ...values, bill_id: payingBill.id })}
             loading={payMutation.isPending}

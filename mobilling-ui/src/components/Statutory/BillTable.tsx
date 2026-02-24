@@ -17,6 +17,9 @@ export default function BillTable({ bills, onEdit, onDelete, onMarkPaid }: Props
   }
 
   const getDueStatus = (bill: Bill) => {
+    if (bill.paid_at) return { color: 'blue', label: 'Paid' };
+    const paidAmount = bill.payments?.reduce((sum, p) => sum + parseFloat(p.amount), 0) || 0;
+    if (paidAmount > 0) return { color: 'cyan', label: 'Partial' };
     if (bill.is_overdue) return { color: 'red', label: 'Overdue' };
     const daysUntil = Math.ceil((new Date(bill.due_date).getTime() - Date.now()) / 86400000);
     if (daysUntil <= bill.remind_days_before) return { color: 'orange', label: 'Due Soon' };
@@ -41,8 +44,17 @@ export default function BillTable({ bills, onEdit, onDelete, onMarkPaid }: Props
           const status = getDueStatus(bill);
           return (
             <Table.Tr key={bill.id}>
-              <Table.Td fw={500}>{bill.name}</Table.Td>
-              <Table.Td>{bill.category}</Table.Td>
+              <Table.Td fw={500}>
+                {bill.name}
+                {bill.statutory_id && (
+                  <Badge size="xs" variant="light" color="violet" ml={6}>Auto</Badge>
+                )}
+              </Table.Td>
+              <Table.Td>
+                {bill.bill_category
+                  ? `${bill.bill_category.parent_name ? bill.bill_category.parent_name + ' › ' : ''}${bill.bill_category.name}`
+                  : bill.category || '—'}
+              </Table.Td>
               <Table.Td>{formatCurrency(bill.amount)}</Table.Td>
               <Table.Td>{bill.cycle.replace('_', ' ')}</Table.Td>
               <Table.Td>{formatDate(bill.due_date)}</Table.Td>
@@ -51,9 +63,11 @@ export default function BillTable({ bills, onEdit, onDelete, onMarkPaid }: Props
               </Table.Td>
               <Table.Td>
                 <Group gap="xs">
-                  <ActionIcon variant="light" color="green" onClick={() => onMarkPaid(bill)} title="Mark Paid">
-                    <IconCash size={16} />
-                  </ActionIcon>
+                  {!bill.paid_at && (
+                    <ActionIcon variant="light" color="green" onClick={() => onMarkPaid(bill)} title="Mark Paid">
+                      <IconCash size={16} />
+                    </ActionIcon>
+                  )}
                   <ActionIcon variant="light" onClick={() => onEdit(bill)}>
                     <IconEdit size={16} />
                   </ActionIcon>

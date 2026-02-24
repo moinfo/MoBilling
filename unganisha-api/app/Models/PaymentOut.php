@@ -15,7 +15,8 @@ class PaymentOut extends Model
 
     protected $fillable = [
         'tenant_id', 'bill_id', 'amount', 'payment_date',
-        'payment_method', 'reference', 'notes',
+        'payment_method', 'control_number', 'reference',
+        'notes', 'receipt_path',
     ];
 
     protected $casts = [

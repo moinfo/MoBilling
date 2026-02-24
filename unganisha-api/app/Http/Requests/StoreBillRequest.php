@@ -16,6 +16,8 @@ class StoreBillRequest extends FormRequest
         return [
             'name' => 'required|string|max:255',
             'category' => 'nullable|string|max:100',
+            'bill_category_id' => 'nullable|uuid|exists:bill_categories,id',
+            'issue_date' => 'nullable|date',
             'amount' => 'required|numeric|min:0',
             'cycle' => 'required|in:once,monthly,quarterly,half_yearly,yearly',
             'due_date' => 'required|date',

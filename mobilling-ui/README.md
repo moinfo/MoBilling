@@ -1,73 +1,87 @@
-# React + TypeScript + Vite
+# MoBilling UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend for **MoBilling** — a multi-tenant billing and statutory management platform built with React, Vite, and Mantine.
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React** 19 + **TypeScript**
+- **Vite** 7 (build tool)
+- **Mantine** v8 (UI components)
+- **React Query** (server state management)
+- **React Router** v7 (routing)
+- **Tabler Icons** (icon library)
+- **Day.js** (date handling)
+- **Recharts** (dashboard charts)
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Billing Module
+- Client management (CRUD)
+- Products & Services catalog
+- Document workflow: Quotations -> Proforma Invoices -> Invoices
+- Payments In (recording, receipts, email/SMS notifications)
+- Client subscriptions with next-bill scheduling
 
-## Expanding the ESLint configuration
+### Statutory Module
+- **Obligations** — register and manage recurring statutory obligations
+- **Schedule** — dashboard with stat cards (total, overdue, due soon, paid), filter tabs, progress bars
+- **Bills** — auto-generated from obligations, manual creation also supported
+- **Categories** — hierarchical bill category management
+- **Payment History** — track all payments out
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+### Platform
+- Dashboard with revenue charts, invoice breakdown, top clients, subscription stats
+- Urgent obligations widget on dashboard
+- Team management
+- Company settings and email templates
+- SMS package purchasing
+- Tenant subscription management
+- Super Admin panel (tenants, plans, currencies, SMS, platform settings)
+- Dark/light mode toggle
+- Responsive sidebar navigation
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Project Structure
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+  api/            # API client functions and TypeScript interfaces
+  components/     # Reusable components organized by feature
+    Dashboard/    # Dashboard widgets (charts, stats, tables)
+    Layout/       # AppShell, AdminShell, ProtectedRoute
+    Statutory/    # BillForm, BillTable, PaymentOutForm, StatutoryForm
+  context/        # AuthContext (Sanctum auth + tenant state)
+  pages/          # Route-level page components
+    admin/        # Super Admin pages
+  utils/          # Helpers (formatCurrency, formatDate)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Local Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+# Install dependencies
+npm install
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# Start dev server (connects to API at localhost:8000)
+npm run dev
+
+# Type check
+npx tsc --noEmit
+
+# Production build
+npm run build
 ```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_API_URL` | `http://localhost:8000/api` | Backend API base URL |
+
+Create `.env` file for production:
+```
+VITE_API_URL=https://api.yourdomain.com/api
+```
+
+## Build Output
+
+Production build outputs to `dist/` directory, ready for static hosting (Nginx, Apache, Vercel, etc.).

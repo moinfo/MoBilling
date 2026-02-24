@@ -18,6 +18,7 @@ import ProductServices from './pages/ProductServices';
 import Quotations from './pages/Quotations';
 import Proformas from './pages/Proformas';
 import Invoices from './pages/Invoices';
+import BillCategories from './pages/BillCategories';
 import Bills from './pages/Bills';
 import PaymentsIn from './pages/PaymentsIn';
 import NextBills from './pages/NextBills';
@@ -37,6 +38,10 @@ import TenantProfile from './pages/admin/TenantProfile';
 import CurrenciesAdmin from './pages/admin/Currencies';
 import PlatformSettingsAdmin from './pages/admin/PlatformSettings';
 import TemplatesAdmin from './pages/admin/Templates';
+import ExpenseCategories from './pages/ExpenseCategories';
+import Expenses from './pages/Expenses';
+import Statutories from './pages/Statutories';
+import StatutorySchedule from './pages/StatutorySchedule';
 import Sms from './pages/Sms';
 import Subscription from './pages/Subscription';
 import SubscriptionExpired from './pages/SubscriptionExpired';
@@ -115,8 +120,13 @@ export default function App() {
                   <Route path="/payments-in" element={<PaymentsIn />} />
                   <Route path="/client-subscriptions" element={<ClientSubscriptions />} />
                   <Route path="/next-bills" element={<NextBills />} />
+                  <Route path="/statutories" element={<Statutories />} />
+                  <Route path="/statutory-schedule" element={<StatutorySchedule />} />
                   <Route path="/bills" element={<Bills />} />
+                  <Route path="/bill-categories" element={<BillCategories />} />
                   <Route path="/payments-out" element={<PaymentsOut />} />
+                  <Route path="/expense-categories" element={<ExpenseCategories />} />
+                  <Route path="/expenses" element={<Expenses />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/sms" element={<Sms />} />
                   <Route path="/subscription" element={<Subscription />} />

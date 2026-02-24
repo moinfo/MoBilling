@@ -11,7 +11,7 @@ class BillController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Bill::with('payments');
+        $query = Bill::with(['payments', 'billCategory.parent']);
 
         if ($request->has('search')) {
             $query->where('name', 'LIKE', "%{$request->search}%");
@@ -38,7 +38,7 @@ class BillController extends Controller
 
     public function show(Bill $bill)
     {
-        return new BillResource($bill->load('payments'));
+        return new BillResource($bill->load(['payments', 'billCategory.parent']));
     }
 
     public function update(StoreBillRequest $request, Bill $bill)

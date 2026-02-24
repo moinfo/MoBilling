@@ -13,10 +13,13 @@ use App\Http\Controllers\Admin\TemplatesController as AdminTemplatesController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\EmailSettingsController;
+use App\Http\Controllers\ExpenseCategoryController;
+use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
+use App\Http\Controllers\BillCategoryController;
 use App\Http\Controllers\BillController;
 use App\Http\Controllers\ClientController;
 use App\Http\Controllers\ClientSubscriptionController;
@@ -29,6 +32,7 @@ use App\Http\Controllers\PesapalWebhookController;
 use App\Http\Controllers\ProductServiceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SmsPurchaseController;
+use App\Http\Controllers\StatutoryController;
 use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
@@ -148,11 +152,24 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/next-bills', [NextBillController::class, 'index']);
     Route::post('/payments-in/{payments_in}/resend-receipt', [PaymentInController::class, 'resendReceipt']);
 
+    // Bill Categories
+    Route::apiResource('bill-categories', BillCategoryController::class);
+
+    // Statutory Obligations
+    Route::apiResource('statutories', StatutoryController::class);
+    Route::get('/statutory-schedule', [StatutoryController::class, 'schedule']);
+
     // Bills (Statutory)
     Route::apiResource('bills', BillController::class);
 
     // Payments Out
-    Route::apiResource('payments-out', PaymentOutController::class)->only(['index', 'store', 'show']);
+    Route::apiResource('payments-out', PaymentOutController::class);
+
+    // Expense Categories
+    Route::apiResource('expense-categories', ExpenseCategoryController::class);
+
+    // Expenses
+    Route::apiResource('expenses', ExpenseController::class);
 
     // Dashboard
     Route::get('/dashboard/summary', [DashboardController::class, 'summary']);

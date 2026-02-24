@@ -33,6 +33,7 @@ export interface TenantSubscription {
   payment_proof_path?: string | null;
   payment_confirmed_at?: string | null;
   payment_reference?: string | null;
+  pesapal_redirect_url?: string | null;
 }
 
 export interface SubscriptionStatus {

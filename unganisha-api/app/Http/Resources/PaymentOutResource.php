@@ -15,8 +15,10 @@ class PaymentOutResource extends JsonResource
             'amount' => $this->amount,
             'payment_date' => $this->payment_date?->format('Y-m-d'),
             'payment_method' => $this->payment_method,
+            'control_number' => $this->control_number,
             'reference' => $this->reference,
             'notes' => $this->notes,
+            'receipt_url' => $this->receipt_path ? asset('storage/' . $this->receipt_path) : null,
             'bill' => new BillResource($this->whenLoaded('bill')),
             'created_at' => $this->created_at,
         ];

@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconCreditCard, IconCheck, IconCrown, IconCalendar, IconClock,
   IconBuildingBank, IconDownload, IconUpload, IconAlertCircle, IconFileInvoice,
+  IconRepeat, IconReceipt,
 } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
 import {
@@ -482,16 +483,41 @@ function SubscriptionHistory() {
                 </Table.Td>
                 <Table.Td>{new Date(sub.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Table.Td>
                 <Table.Td>
-                  {sub.invoice_number && (
-                    <Button
-                      size="compact-xs"
-                      variant="subtle"
-                      leftSection={<IconDownload size={14} />}
-                      onClick={() => handleDownloadInvoice(sub)}
-                    >
-                      Invoice
-                    </Button>
-                  )}
+                  <Group gap={4} wrap="nowrap">
+                    {sub.status === 'pending' && sub.pesapal_redirect_url && (
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        color="blue"
+                        leftSection={<IconRepeat size={14} />}
+                        component="a"
+                        href={sub.pesapal_redirect_url}
+                      >
+                        Pay Again
+                      </Button>
+                    )}
+                    {sub.status === 'active' && sub.invoice_number && (
+                      <Button
+                        size="compact-xs"
+                        variant="light"
+                        color="green"
+                        leftSection={<IconReceipt size={14} />}
+                        onClick={() => handleDownloadInvoice(sub)}
+                      >
+                        Receipt
+                      </Button>
+                    )}
+                    {sub.invoice_number && (
+                      <Button
+                        size="compact-xs"
+                        variant="subtle"
+                        leftSection={<IconDownload size={14} />}
+                        onClick={() => handleDownloadInvoice(sub)}
+                      >
+                        Invoice
+                      </Button>
+                    )}
+                  </Group>
                 </Table.Td>
               </Table.Tr>
             ))}

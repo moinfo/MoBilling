@@ -2,9 +2,11 @@ import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, A
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconDashboard, IconUsers, IconUsersGroup, IconPackages,
-  IconFileText, IconFileInvoice, IconReceipt,
+  IconFileText, IconFileInvoice, IconReceipt, IconFileDescription, IconFileCheck,
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
+  IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
+  IconWallet, IconCategory2, IconReceipt2,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -120,9 +122,9 @@ export default function AppLayout() {
             active={isActive('/clients')} onClick={() => navigate('/clients')} />
           <NavLink label="Products & Services" leftSection={<IconPackages size={16} />}
             active={isActive('/product-services')} onClick={() => navigate('/product-services')} />
-          <NavLink label="Quotations"
+          <NavLink label="Quotations" leftSection={<IconFileDescription size={16} />}
             active={isActive('/quotations')} onClick={() => navigate('/quotations')} />
-          <NavLink label="Proforma Invoices"
+          <NavLink label="Proforma Invoices" leftSection={<IconFileCheck size={16} />}
             active={isActive('/proformas')} onClick={() => navigate('/proformas')} />
           <NavLink label="Invoices" leftSection={<IconFileInvoice size={16} />}
             active={isActive('/invoices')} onClick={() => navigate('/invoices')} />
@@ -135,10 +137,23 @@ export default function AppLayout() {
         </NavLink>
 
         <NavLink label="Statutory" leftSection={<IconCalendarDue size={18} />} defaultOpened>
-          <NavLink label="Bills"
+          <NavLink label="Obligations" leftSection={<IconClipboardList size={16} />}
+            active={isActive('/statutories')} onClick={() => navigate('/statutories')} />
+          <NavLink label="Schedule" leftSection={<IconCalendarEvent size={16} />}
+            active={isActive('/statutory-schedule')} onClick={() => navigate('/statutory-schedule')} />
+          <NavLink label="Bills" leftSection={<IconFileSpreadsheet size={16} />}
             active={isActive('/bills')} onClick={() => navigate('/bills')} />
+          <NavLink label="Categories" leftSection={<IconCategory size={16} />}
+            active={isActive('/bill-categories')} onClick={() => navigate('/bill-categories')} />
           <NavLink label="Payment History" leftSection={<IconReceipt size={16} />}
             active={isActive('/payments-out')} onClick={() => navigate('/payments-out')} />
+        </NavLink>
+
+        <NavLink label="Expenses" leftSection={<IconWallet size={18} />} defaultOpened>
+          <NavLink label="Categories" leftSection={<IconCategory2 size={16} />}
+            active={isActive('/expense-categories')} onClick={() => navigate('/expense-categories')} />
+          <NavLink label="Expenses" leftSection={<IconReceipt2 size={16} />}
+            active={isActive('/expenses')} onClick={() => navigate('/expenses')} />
         </NavLink>
 
         <NavLink label="SMS" leftSection={<IconMessage size={18} />}

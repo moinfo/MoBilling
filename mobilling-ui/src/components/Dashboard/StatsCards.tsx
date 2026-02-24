@@ -1,8 +1,9 @@
 import { SimpleGrid, Card, Text, Group } from '@mantine/core';
-import { IconCash, IconReceipt, IconAlertTriangle, IconUsers, IconFileText, IconMessage } from '@tabler/icons-react';
+import { IconCash, IconReceipt, IconAlertTriangle, IconUsers, IconFileText, IconMessage, IconCalendarDue, IconWallet } from '@tabler/icons-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 
 interface Props {
+  totalExpenses: number;
   totalReceivable: number;
   totalReceived: number;
   outstanding: number;
@@ -12,6 +13,8 @@ interface Props {
   totalDocuments: number;
   smsBalance?: number | null;
   smsEnabled?: boolean;
+  statutoryOverdue?: number;
+  statutoryDueSoon?: number;
 }
 
 export default function StatsCards(props: Props) {
@@ -19,10 +22,13 @@ export default function StatsCards(props: Props) {
     { title: 'Total Receivable', value: formatCurrency(props.totalReceivable), icon: IconReceipt, color: 'blue' },
     { title: 'Total Received', value: formatCurrency(props.totalReceived), icon: IconCash, color: 'green' },
     { title: 'Outstanding', value: formatCurrency(props.outstanding), icon: IconAlertTriangle, color: 'orange' },
+    { title: 'Expenses (This Month)', value: formatCurrency(props.totalExpenses), icon: IconWallet, color: 'grape' },
     { title: 'Overdue Invoices', value: String(props.overdueInvoices), icon: IconAlertTriangle, color: 'red' },
     { title: 'Overdue Bills', value: String(props.overdueBills), icon: IconAlertTriangle, color: 'red' },
     { title: 'Total Clients', value: String(props.totalClients), icon: IconUsers, color: 'teal' },
     { title: 'Total Documents', value: String(props.totalDocuments), icon: IconFileText, color: 'violet' },
+    { title: 'Overdue Obligations', value: String(props.statutoryOverdue ?? 0), icon: IconCalendarDue, color: 'red' },
+    { title: 'Due Soon Obligations', value: String(props.statutoryDueSoon ?? 0), icon: IconCalendarDue, color: 'orange' },
     ...(props.smsEnabled ? [{ title: 'SMS Balance', value: props.smsBalance != null ? props.smsBalance.toLocaleString() : '—', icon: IconMessage, color: 'cyan' }] : []),
   ];
 
