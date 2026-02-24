@@ -42,7 +42,7 @@ export default function InvoiceStatusChart({ data }: Props) {
                 <Cell key={index} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number) => [value, 'Invoices']} />
+            <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Invoices']} />
             <Legend />
           </PieChart>
         </ResponsiveContainer>

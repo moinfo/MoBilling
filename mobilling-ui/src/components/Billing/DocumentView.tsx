@@ -21,7 +21,7 @@ const statusColors: Record<string, string> = {
   paid: 'green', overdue: 'orange', partial: 'yellow',
 };
 
-export default function DocumentView({ document: doc, onRefresh, onClose }: Props) {
+export default function DocumentView({ document: doc, onRefresh, onClose: _onClose }: Props) {
   const [showPayment, setShowPayment] = useState(false);
   const [loading, setLoading] = useState('');
 

@@ -8,14 +8,14 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconCreditCard, IconCheck, IconCrown, IconCalendar, IconClock,
-  IconBuildingBank, IconDownload, IconUpload, IconAlertCircle, IconFileInvoice,
+  IconDownload, IconUpload, IconAlertCircle, IconFileInvoice,
   IconRepeat, IconReceipt,
 } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
 import {
   getSubscriptionPlans, getSubscriptionCurrent, subscriptionCheckout,
   getSubscriptionHistory, downloadSubscriptionInvoice, uploadPaymentProof,
-  SubscriptionPlan, TenantSubscription, CheckoutResponse, BankDetails,
+  SubscriptionPlan, TenantSubscription, CheckoutResponse,
 } from '../api/subscription';
 
 const statusColors: Record<string, string> = {

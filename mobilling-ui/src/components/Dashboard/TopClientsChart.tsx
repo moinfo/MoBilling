@@ -19,7 +19,7 @@ export default function TopClientsChart({ data }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--mantine-color-default-border)" />
             <XAxis type="number" tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
             <YAxis type="category" dataKey="name" tick={{ fontSize: 12 }} width={80} />
-            <Tooltip formatter={(value: number, name: string) => [formatCurrency(value), name === 'total' ? 'Invoiced' : 'Paid']} />
+            <Tooltip formatter={((value: any, name: any) => [formatCurrency(value ?? 0), name === 'total' ? 'Invoiced' : 'Paid']) as any} />
             <Legend />
             <Bar dataKey="total" name="Invoiced" fill="#339af0" radius={[0, 4, 4, 0]} barSize={14} />
             <Bar dataKey="paid" name="Paid" fill="#40c057" radius={[0, 4, 4, 0]} barSize={14} />

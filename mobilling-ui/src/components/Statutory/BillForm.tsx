@@ -144,7 +144,7 @@ export default function BillForm({ initialValues, onSubmit, loading }: Props) {
           />
         )}
         <Group grow>
-          <DateInput label="Issue Date" value={form.values.issue_date} onChange={handleIssueDateChange} />
+          <DateInput label="Issue Date" value={form.values.issue_date as any} onChange={handleIssueDateChange as any} />
           <TextInput label="Bill Name" placeholder="e.g., Electricity" required {...form.getInputProps('name')} />
         </Group>
         <Group grow>

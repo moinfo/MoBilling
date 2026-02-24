@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   IconArrowLeft, IconCalendar, IconMessage, IconCreditCard,
-  IconCheck, IconFileInvoice, IconPhoto,
+  IconCheck, IconPhoto,
 } from '@tabler/icons-react';
 import {
   getTenant, getTenantSubscriptions, getAdminSmsPurchases, extendTenantSubscription,

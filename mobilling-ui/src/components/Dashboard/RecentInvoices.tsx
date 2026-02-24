@@ -1,6 +1,6 @@
 import { Card, Table, Text, Badge } from '@mantine/core';
 import { formatCurrency } from '../../utils/formatCurrency';
-import { formatDate } from '../../utils/formatDate';
+
 
 interface Invoice {
   id: string;

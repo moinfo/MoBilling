@@ -1,4 +1,4 @@
-import { Table, Badge, ActionIcon, Group, Text, Menu } from '@mantine/core';
+import { Table, Badge, ActionIcon, Text, Menu } from '@mantine/core';
 import { IconEye, IconEdit, IconTrash, IconDots } from '@tabler/icons-react';
 import { Document } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';

@@ -32,7 +32,7 @@ export default function PaymentMethodChart({ data }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="var(--mantine-color-default-border)" />
             <XAxis dataKey="name" tick={{ fontSize: 12 }} />
             <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-            <Tooltip formatter={(value: number) => [formatCurrency(value), 'Amount']} />
+            <Tooltip formatter={(value: number | undefined) => [formatCurrency(value ?? 0), 'Amount']} />
             <Bar dataKey="amount" fill="#7c3aed" radius={[6, 6, 0, 0]} barSize={40} />
           </BarChart>
         </ResponsiveContainer>

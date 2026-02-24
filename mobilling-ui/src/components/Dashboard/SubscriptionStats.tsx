@@ -7,7 +7,6 @@ interface Props {
 
 export default function SubscriptionStats({ data }: Props) {
   const total = data.active + data.pending + data.cancelled;
-  const activePercent = total > 0 ? Math.round((data.active / total) * 100) : 0;
 
   return (
     <Card withBorder padding="lg" radius="md" h="100%">

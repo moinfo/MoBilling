@@ -17,7 +17,7 @@ export default function Clients() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data } = useQuery({
     queryKey: ['clients', debouncedSearch, page],
     queryFn: () => getClients({ search: debouncedSearch || undefined, page }),
   });

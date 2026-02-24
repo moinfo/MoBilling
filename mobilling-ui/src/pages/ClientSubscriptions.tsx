@@ -309,7 +309,7 @@ function SubscriptionForm({
           placeholder="When does billing start?"
           required
           value={form.values.start_date ? new Date(form.values.start_date) : null}
-          onChange={(date) => form.setFieldValue('start_date', date ? date.toISOString().split('T')[0] : '')}
+          onChange={(date: any) => form.setFieldValue('start_date', date ? new Date(date).toISOString().split('T')[0] : '')}
           error={form.errors.start_date}
         />
         {isEditing && (

@@ -28,7 +28,7 @@ export interface ProductServiceFormData {
   is_active: boolean;
 }
 
-export const getProductServices = (params?: { search?: string; type?: string; page?: number; active_only?: boolean }) =>
+export const getProductServices = (params?: { search?: string; type?: string; page?: number; active_only?: boolean; per_page?: number }) =>
   api.get('/product-services', { params });
 
 export const getProductService = (id: string) =>

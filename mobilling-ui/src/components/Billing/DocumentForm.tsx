@@ -4,7 +4,6 @@ import { useForm } from '@mantine/form';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
 import { Client } from '../../api/clients';
 import { ProductService } from '../../api/productServices';
-import { DocumentItem } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';
 import dayjs from 'dayjs';
 

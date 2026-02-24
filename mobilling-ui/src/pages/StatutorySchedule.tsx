@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Title, Group, Paper, Text, SimpleGrid, Table, Badge, Progress, SegmentedControl } from '@mantine/core';
+import { Title, Paper, Text, SimpleGrid, Table, Badge, Progress, SegmentedControl } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { getStatutorySchedule, Statutory } from '../api/statutories';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -29,8 +29,6 @@ export default function StatutorySchedule() {
     return 'green';
   };
 
-  const cycleLabel = (cycle: string) =>
-    ({ once: 'Once', monthly: 'Monthly', quarterly: 'Quarterly', half_yearly: 'Semi-Annual', yearly: 'Annually' }[cycle] || cycle);
 
   return (
     <>
