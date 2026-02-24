@@ -65,6 +65,9 @@ export interface CheckoutResponse {
 export const getSubscriptionPlans = () =>
   api.get<{ data: SubscriptionPlan[] }>('/subscription/plans');
 
+export const getPublicPlans = () =>
+  api.get<{ data: SubscriptionPlan[] }>('/plans');
+
 export const getSubscriptionCurrent = () =>
   api.get<{ data: SubscriptionStatus }>('/subscription/current');
 

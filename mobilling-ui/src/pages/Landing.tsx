@@ -1,16 +1,21 @@
 import {
   Container, Title, Text, Button, Group, SimpleGrid, Paper, Box, Image,
-  ThemeIcon, ActionIcon, Badge, Stack, Divider,
+  ThemeIcon, ActionIcon, Badge, Stack, Divider, Card, List, rem, Anchor,
+  Loader, Center,
   useMantineColorScheme, useComputedColorScheme, useMantineTheme,
 } from '@mantine/core';
 import {
   IconFileInvoice, IconFileText, IconCalendarDue,
   IconCash, IconUsers, IconBuildingCommunity,
   IconSun, IconMoon, IconArrowRight, IconShieldCheck,
-  IconDeviceMobile, IconChartBar,
+  IconDeviceMobile, IconChartBar, IconCheck,
+  IconMail, IconPhone, IconMapPin, IconBrandWhatsapp,
+  IconWorld,
 } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
+import { getPublicPlans, SubscriptionPlan } from '../api/subscription';
 
 const features = [
   { icon: IconFileInvoice, color: 'blue', title: 'Invoicing', description: 'Professional invoices with automatic numbering, tax calculations, and real-time payment status.' },
@@ -27,6 +32,8 @@ const stats = [
   { icon: IconChartBar, label: 'Real-time Reports' },
 ];
 
+const planColors = ['blue', 'teal', 'violet', 'orange'];
+
 export default function Landing() {
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
@@ -35,6 +42,30 @@ export default function Landing() {
 
   return (
     <Box style={{ overflow: 'hidden' }}>
+      {/* ── Top Contact Bar ── */}
+      <Box
+        py={6}
+        bg={dark ? theme.colors.dark[8] : theme.colors.blue[6]}
+        style={{ color: 'white' }}
+        visibleFrom="sm"
+      >
+        <Container size="lg">
+          <Group justify="space-between">
+            <Group gap="lg">
+              <Anchor href="mailto:info@moinfo.co.tz" size="xs" c="white" underline="never">
+                <Group gap={4}><IconMail size={13} /> info@moinfo.co.tz</Group>
+              </Anchor>
+              <Anchor href="tel:+255689011111" size="xs" c="white" underline="never">
+                <Group gap={4}><IconPhone size={13} /> +255 689 011 111</Group>
+              </Anchor>
+            </Group>
+            <Anchor href="https://wa.me/255689011111" target="_blank" size="xs" c="white" underline="never">
+              <Group gap={4}><IconBrandWhatsapp size={13} /> WhatsApp</Group>
+            </Anchor>
+          </Group>
+        </Container>
+      </Box>
+
       {/* ── Header ── */}
       <Paper
         component="header"
@@ -101,7 +132,7 @@ export default function Landing() {
               gradient={{ from: 'blue', to: 'cyan' }}
               mb="lg"
             >
-              Built for Kenyan Businesses
+              Built for East African Businesses
             </Badge>
 
             <Title
@@ -210,6 +241,9 @@ export default function Landing() {
         </SimpleGrid>
       </Container>
 
+      {/* ── Pricing ── */}
+      <PricingSection dark={dark} theme={theme} />
+
       {/* ── Footer CTA ── */}
       <Box
         py={80}
@@ -245,15 +279,241 @@ export default function Landing() {
         </Container>
       </Box>
 
+      {/* ── Contact ── */}
+      <Container size="lg" py={80}>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <Stack align="center" mb={48}>
+            <Badge variant="light" size="lg">Contact</Badge>
+            <Title order={2} ta="center">Get in touch</Title>
+            <Text c="dimmed" ta="center" maw={500}>
+              Have questions or need help getting started? Reach out to our team.
+            </Text>
+          </Stack>
+        </motion.div>
+
+        <SimpleGrid cols={{ base: 1, sm: 2, md: 4 }} spacing="xl">
+          {[
+            {
+              icon: IconMail,
+              color: 'blue',
+              title: 'Email',
+              value: 'info@moinfo.co.tz',
+              href: 'mailto:info@moinfo.co.tz',
+            },
+            {
+              icon: IconPhone,
+              color: 'green',
+              title: 'Phone',
+              value: '+255 689 011 111',
+              href: 'tel:+255689011111',
+            },
+            {
+              icon: IconBrandWhatsapp,
+              color: 'teal',
+              title: 'WhatsApp',
+              value: '+255 689 011 111',
+              href: 'https://wa.me/255689011111',
+            },
+            {
+              icon: IconMapPin,
+              color: 'orange',
+              title: 'Location',
+              value: 'Njuweni Hotel, 1st Floor, Room 134, Kibaha, Tanzania',
+              href: undefined,
+            },
+          ].map((c) => (
+            <motion.div
+              key={c.title}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.4 }}
+            >
+              <Paper withBorder p="xl" radius="md" ta="center" h="100%">
+                <ThemeIcon size={48} radius="xl" variant="light" color={c.color} mx="auto">
+                  <c.icon size={24} />
+                </ThemeIcon>
+                <Text fw={600} mt="md">{c.title}</Text>
+                {c.href ? (
+                  <Anchor href={c.href} target={c.href.startsWith('http') ? '_blank' : undefined} size="sm" mt={4}>
+                    {c.value}
+                  </Anchor>
+                ) : (
+                  <Text size="sm" c="dimmed" mt={4}>{c.value}</Text>
+                )}
+              </Paper>
+            </motion.div>
+          ))}
+        </SimpleGrid>
+      </Container>
+
       {/* ── Footer ── */}
       <Divider />
-      <Container size="lg" py="md">
-        <Group justify="space-between">
-          <Text size="sm" c="dimmed">
-            &copy; {new Date().getFullYear()} MoBilling. All rights reserved.
-          </Text>
-          <Text size="sm" c="dimmed">Billing & Statutory Compliance</Text>
-        </Group>
+      <Box py="xl" bg={dark ? theme.colors.dark[7] : theme.colors.gray[0]}>
+        <Container size="lg">
+          <Group justify="space-between" align="flex-start" wrap="wrap" gap="xl">
+            <Stack gap={6}>
+              <Group gap={8}>
+                <Image src="/moinfotech-logo.png" h={28} w="auto" alt="MoBilling" />
+                <Text fw={700}>MoBilling</Text>
+              </Group>
+              <Text size="sm" c="dimmed" maw={280}>
+                Billing & Statutory Compliance platform for East African businesses.
+              </Text>
+            </Stack>
+
+            <Stack gap={4}>
+              <Text size="sm" fw={600} mb={4}>Quick Links</Text>
+              <Anchor component={Link} to="/login" size="sm" c="dimmed">Sign In</Anchor>
+              <Anchor component={Link} to="/register" size="sm" c="dimmed">Create Account</Anchor>
+            </Stack>
+
+            <Stack gap={4}>
+              <Text size="sm" fw={600} mb={4}>Contact</Text>
+              <Group gap={6}>
+                <IconMail size={14} color="var(--mantine-color-dimmed)" />
+                <Anchor href="mailto:info@moinfo.co.tz" size="sm" c="dimmed">info@moinfo.co.tz</Anchor>
+              </Group>
+              <Group gap={6}>
+                <IconPhone size={14} color="var(--mantine-color-dimmed)" />
+                <Anchor href="tel:+255689011111" size="sm" c="dimmed">+255 689 011 111</Anchor>
+              </Group>
+              <Group gap={6}>
+                <IconMapPin size={14} color="var(--mantine-color-dimmed)" />
+                <Text size="sm" c="dimmed">Kibaha, Tanzania</Text>
+              </Group>
+            </Stack>
+          </Group>
+
+          <Divider my="lg" />
+
+          <Group justify="space-between" wrap="wrap">
+            <Text size="xs" c="dimmed">
+              &copy; {new Date().getFullYear()} MoBilling. All rights reserved.
+            </Text>
+            <Group gap={6}>
+              <Text size="xs" c="dimmed">Powered by</Text>
+              <Anchor href="https://moinfotech.co.tz" target="_blank" size="xs" fw={600}>
+                <Group gap={4}>
+                  <IconWorld size={14} />
+                  Moinfotech
+                </Group>
+              </Anchor>
+            </Group>
+          </Group>
+        </Container>
+      </Box>
+    </Box>
+  );
+}
+
+function PricingSection({ dark, theme }: { dark: boolean; theme: any }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['public-plans'],
+    queryFn: getPublicPlans,
+  });
+
+  const plans: SubscriptionPlan[] = data?.data?.data || [];
+
+  if (isLoading) {
+    return (
+      <Box py={80} bg={dark ? theme.colors.dark[7] : theme.colors.gray[0]}>
+        <Center><Loader /></Center>
+      </Box>
+    );
+  }
+
+  if (plans.length === 0) return null;
+
+  return (
+    <Box py={80} bg={dark ? theme.colors.dark[7] : theme.colors.gray[0]}>
+      <Container size="lg">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.5 }}
+        >
+          <Stack align="center" mb={48}>
+            <Badge variant="light" size="lg">Pricing</Badge>
+            <Title order={2} ta="center">Simple, transparent pricing</Title>
+            <Text c="dimmed" ta="center" maw={500}>
+              Start with a free trial. Choose a plan that fits your business when you're ready.
+            </Text>
+          </Stack>
+        </motion.div>
+
+        <SimpleGrid cols={{ base: 1, sm: 2, md: plans.length >= 4 ? 4 : plans.length }}>
+          {plans.map((plan, i) => {
+            const color = planColors[i % planColors.length];
+            return (
+              <motion.div
+                key={plan.id}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-40px' }}
+                transition={{ duration: 0.4, delay: i * 0.1 }}
+              >
+                <Card
+                  withBorder
+                  padding="xl"
+                  radius="md"
+                  h="100%"
+                  style={{ borderTop: `3px solid var(--mantine-color-${color}-6)` }}
+                >
+                  <Stack gap="md" justify="space-between" h="100%">
+                    <div>
+                      <Text fw={700} size="lg">{plan.name}</Text>
+                      {plan.description && (
+                        <Text size="sm" c="dimmed" mt={4}>{plan.description}</Text>
+                      )}
+
+                      <Group gap={4} align="baseline" mt="md">
+                        <Text size={rem(32)} fw={800} lh={1}>
+                          TZS {Number(plan.price).toLocaleString()}
+                        </Text>
+                      </Group>
+                      <Text size="sm" c="dimmed">
+                        per {plan.billing_cycle_days} days
+                      </Text>
+
+                      {plan.features && plan.features.length > 0 && (
+                        <List
+                          spacing={6}
+                          size="sm"
+                          mt="md"
+                          icon={
+                            <ThemeIcon size={18} radius="xl" color={color} variant="light">
+                              <IconCheck size={11} />
+                            </ThemeIcon>
+                          }
+                        >
+                          {plan.features.map((f, fi) => <List.Item key={fi}>{f}</List.Item>)}
+                        </List>
+                      )}
+                    </div>
+
+                    <Button
+                      fullWidth
+                      size="md"
+                      color={color}
+                      component={Link}
+                      to="/register"
+                      rightSection={<IconArrowRight size={16} />}
+                    >
+                      Get Started
+                    </Button>
+                  </Stack>
+                </Card>
+              </motion.div>
+            );
+          })}
+        </SimpleGrid>
       </Container>
     </Box>
   );
