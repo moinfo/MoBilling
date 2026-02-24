@@ -19,6 +19,9 @@ import Quotations from './pages/Quotations';
 import Proformas from './pages/Proformas';
 import Invoices from './pages/Invoices';
 import Bills from './pages/Bills';
+import PaymentsIn from './pages/PaymentsIn';
+import NextBills from './pages/NextBills';
+import ClientSubscriptions from './pages/ClientSubscriptions';
 import PaymentsOut from './pages/PaymentsOut';
 import Settings from './pages/Settings';
 import Users from './pages/Users';
@@ -109,6 +112,9 @@ export default function App() {
                   <Route path="/quotations" element={<Quotations />} />
                   <Route path="/proformas" element={<Proformas />} />
                   <Route path="/invoices" element={<Invoices />} />
+                  <Route path="/payments-in" element={<PaymentsIn />} />
+                  <Route path="/client-subscriptions" element={<ClientSubscriptions />} />
+                  <Route path="/next-bills" element={<NextBills />} />
                   <Route path="/bills" element={<Bills />} />
                   <Route path="/payments-out" element={<PaymentsOut />} />
                   <Route path="/users" element={<Users />} />

@@ -16,6 +16,8 @@ class DocumentItemResource extends JsonResource
             'description' => $this->description,
             'quantity' => $this->quantity,
             'price' => $this->price,
+            'discount_type' => $this->discount_type,
+            'discount_value' => $this->discount_value,
             'tax_percent' => $this->tax_percent,
             'tax_amount' => $this->tax_amount,
             'total' => $this->total,

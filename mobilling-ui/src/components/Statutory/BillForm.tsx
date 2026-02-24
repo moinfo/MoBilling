@@ -1,13 +1,23 @@
 import { TextInput, NumberInput, Select, Textarea, Button, Group, Switch, Stack } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
+import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
+import { getProductServices, ProductService } from '../../api/productServices';
 
 interface Props {
   initialValues?: any;
   onSubmit: (values: any) => void;
   loading?: boolean;
 }
+
+const cycleOptions = [
+  { value: 'once', label: 'Once' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'half_yearly', label: 'Semi-Annual' },
+  { value: 'yearly', label: 'Annually' },
+];
 
 export default function BillForm({ initialValues, onSubmit, loading }: Props) {
   const form = useForm({
@@ -27,6 +37,33 @@ export default function BillForm({ initialValues, onSubmit, loading }: Props) {
     },
   });
 
+  const { data: psData } = useQuery({
+    queryKey: ['product-services', { active_only: true }],
+    queryFn: () => getProductServices({ active_only: true }),
+  });
+
+  const productServices: ProductService[] = psData?.data?.data || [];
+
+  const psOptions = [
+    { value: '', label: '— Manual entry —' },
+    ...productServices.map((ps) => ({
+      value: ps.id,
+      label: `${ps.name}${ps.billing_cycle ? ` (${cycleOptions.find(c => c.value === ps.billing_cycle)?.label || ps.billing_cycle})` : ''}`,
+    })),
+  ];
+
+  const handleProductSelect = (value: string | null) => {
+    if (!value) return;
+    const ps = productServices.find((p) => p.id === value);
+    if (!ps) return;
+    form.setValues({
+      name: ps.name,
+      amount: parseFloat(ps.price),
+      category: ps.category || 'other',
+      ...(ps.billing_cycle ? { cycle: ps.billing_cycle } : {}),
+    });
+  };
+
   const handleSubmit = (values: any) => {
     onSubmit({
       ...values,
@@ -37,6 +74,16 @@ export default function BillForm({ initialValues, onSubmit, loading }: Props) {
   return (
     <form onSubmit={form.onSubmit(handleSubmit)}>
       <Stack>
+        {!initialValues && (
+          <Select
+            label="From Product / Service"
+            description="Select to auto-fill name, amount, and cycle"
+            data={psOptions}
+            searchable
+            clearable
+            onChange={handleProductSelect}
+          />
+        )}
         <TextInput label="Bill Name" placeholder="e.g., Electricity" required {...form.getInputProps('name')} />
         <Group grow>
           <Select label="Category" data={[
@@ -50,12 +97,7 @@ export default function BillForm({ initialValues, onSubmit, loading }: Props) {
           <NumberInput label="Amount" min={0} decimalScale={2} required {...form.getInputProps('amount')} />
         </Group>
         <Group grow>
-          <Select label="Billing Cycle" data={[
-            { value: 'monthly', label: 'Monthly' },
-            { value: 'quarterly', label: 'Quarterly' },
-            { value: 'half_yearly', label: 'Half Yearly' },
-            { value: 'yearly', label: 'Yearly' },
-          ]} {...form.getInputProps('cycle')} />
+          <Select label="Billing Cycle" data={cycleOptions} {...form.getInputProps('cycle')} />
           <DateInput label="Next Due Date" required {...form.getInputProps('due_date')} />
         </Group>
         <Group grow>

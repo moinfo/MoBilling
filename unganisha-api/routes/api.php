@@ -19,8 +19,10 @@ use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
 use App\Http\Controllers\BillController;
 use App\Http\Controllers\ClientController;
+use App\Http\Controllers\ClientSubscriptionController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\NextBillController;
 use App\Http\Controllers\PaymentInController;
 use App\Http\Controllers\PaymentOutController;
 use App\Http\Controllers\PesapalWebhookController;
@@ -125,6 +127,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // Clients
     Route::apiResource('clients', ClientController::class);
 
+    // Client Subscriptions
+    Route::apiResource('client-subscriptions', ClientSubscriptionController::class);
+
     // Products & Services
     Route::apiResource('product-services', ProductServiceController::class);
     Route::get('/products', [ProductServiceController::class, 'products']);
@@ -137,7 +142,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/documents/{document}/send', [DocumentController::class, 'send']);
 
     // Payments In
-    Route::apiResource('payments-in', PaymentInController::class)->only(['index', 'store', 'show']);
+    Route::apiResource('payments-in', PaymentInController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
+
+    // Next Bill Schedule
+    Route::get('/next-bills', [NextBillController::class, 'index']);
+    Route::post('/payments-in/{payments_in}/resend-receipt', [PaymentInController::class, 'resendReceipt']);
 
     // Bills (Statutory)
     Route::apiResource('bills', BillController::class);

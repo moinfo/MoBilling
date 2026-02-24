@@ -25,6 +25,8 @@ class StoreDocumentRequest extends FormRequest
             'items.*.description' => 'required|string|max:500',
             'items.*.quantity' => 'required|numeric|min:0.01',
             'items.*.price' => 'required|numeric|min:0',
+            'items.*.discount_type' => 'nullable|in:percent,flat',
+            'items.*.discount_value' => 'nullable|numeric|min:0',
             'items.*.tax_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.unit' => 'nullable|string|max:20',
         ];

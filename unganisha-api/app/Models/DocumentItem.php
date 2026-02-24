@@ -14,13 +14,14 @@ class DocumentItem extends Model
 
     protected $fillable = [
         'document_id', 'product_service_id', 'item_type',
-        'description', 'quantity', 'price', 'tax_percent',
-        'tax_amount', 'total', 'unit',
+        'description', 'quantity', 'price', 'discount_type',
+        'discount_value', 'tax_percent', 'tax_amount', 'total', 'unit',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:2',
         'price' => 'decimal:2',
+        'discount_value' => 'decimal:2',
         'tax_percent' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'total' => 'decimal:2',

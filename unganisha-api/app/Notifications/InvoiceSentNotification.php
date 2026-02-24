@@ -2,6 +2,7 @@
 
 namespace App\Notifications;
 
+use App\Channels\SmsChannel;
 use App\Models\Document;
 use App\Notifications\Concerns\HasTenantBranding;
 use App\Services\PdfService;
@@ -19,7 +20,29 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        return ['mail'];
+        $channels = ['mail'];
+
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $tenant = $this->document->tenant;
+
+        if ($tenant->sms_enabled && $tenant->reminder_sms_enabled) {
+            $channels[] = SmsChannel::class;
+        }
+
+        return $channels;
+    }
+
+    public function toSms($notifiable): ?string
+    {
+        $this->document->loadMissing('client');
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $tenant = $this->document->tenant;
+        $typeName = ucfirst($this->document->type);
+
+        return "{$typeName} {$this->document->document_number} for {$tenant->currency} "
+            . number_format($this->document->total, 2)
+            . ($this->document->due_date ? " due {$this->document->due_date->format('d M Y')}" : '')
+            . ". — {$tenant->name}";
     }
 
     public function toMail($notifiable): MailMessage

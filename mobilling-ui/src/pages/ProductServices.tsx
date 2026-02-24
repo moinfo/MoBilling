@@ -133,6 +133,7 @@ export default function ProductServices() {
             tax_percent: parseFloat(editing.tax_percent),
             unit: editing.unit,
             category: editing.category || '',
+            billing_cycle: editing.billing_cycle || '',
             is_active: editing.is_active,
           } : undefined}
           onSubmit={handleSubmit}

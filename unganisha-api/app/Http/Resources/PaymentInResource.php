@@ -17,6 +17,15 @@ class PaymentInResource extends JsonResource
             'payment_method' => $this->payment_method,
             'reference' => $this->reference,
             'notes' => $this->notes,
+            'document' => $this->whenLoaded('document', fn () => [
+                'document_number' => $this->document->document_number,
+                'type' => $this->document->type,
+                'total' => $this->document->total,
+                'client' => $this->document->client ? [
+                    'name' => $this->document->client->name,
+                    'email' => $this->document->client->email,
+                ] : null,
+            ]),
             'created_at' => $this->created_at,
         ];
     }

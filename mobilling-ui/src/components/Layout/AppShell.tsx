@@ -3,8 +3,8 @@ import { useDisclosure } from '@mantine/hooks';
 import {
   IconDashboard, IconUsers, IconUsersGroup, IconPackages,
   IconFileText, IconFileInvoice, IconReceipt,
-  IconCalendarDue, IconSettings, IconLogout,
-  IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard,
+  IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
+  IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -126,6 +126,12 @@ export default function AppLayout() {
             active={isActive('/proformas')} onClick={() => navigate('/proformas')} />
           <NavLink label="Invoices" leftSection={<IconFileInvoice size={16} />}
             active={isActive('/invoices')} onClick={() => navigate('/invoices')} />
+          <NavLink label="Payments" leftSection={<IconReceipt size={16} />}
+            active={isActive('/payments-in')} onClick={() => navigate('/payments-in')} />
+          <NavLink label="Subscriptions" leftSection={<IconLink size={16} />}
+            active={isActive('/client-subscriptions')} onClick={() => navigate('/client-subscriptions')} />
+          <NavLink label="Next Bills" leftSection={<IconCalendarRepeat size={16} />}
+            active={isActive('/next-bills')} onClick={() => navigate('/next-bills')} />
         </NavLink>
 
         <NavLink label="Statutory" leftSection={<IconCalendarDue size={18} />} defaultOpened>

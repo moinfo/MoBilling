@@ -42,14 +42,24 @@ class DocumentController extends Controller
         return DB::transaction(function () use ($request) {
             $items = $request->items;
             $subtotal = 0;
+            $discountTotal = 0;
             $taxAmount = 0;
 
             foreach ($items as &$item) {
-                $lineTotal = $item['quantity'] * $item['price'];
-                $lineTax = $lineTotal * (($item['tax_percent'] ?? 0) / 100);
+                $lineBase = $item['quantity'] * $item['price'];
+                $discountType = $item['discount_type'] ?? 'percent';
+                $discountValue = $item['discount_value'] ?? 0;
+                $lineDiscount = $discountType === 'flat'
+                    ? min($discountValue, $lineBase)
+                    : $lineBase * ($discountValue / 100);
+                $lineAfterDiscount = $lineBase - $lineDiscount;
+                $lineTax = $lineAfterDiscount * (($item['tax_percent'] ?? 0) / 100);
+                $item['discount_type'] = $discountType;
+                $item['discount_value'] = $discountValue;
                 $item['tax_amount'] = round($lineTax, 2);
-                $item['total'] = round($lineTotal + $lineTax, 2);
-                $subtotal += $lineTotal;
+                $item['total'] = round($lineAfterDiscount + $lineTax, 2);
+                $subtotal += $lineBase;
+                $discountTotal += $lineDiscount;
                 $taxAmount += $lineTax;
             }
 
@@ -61,8 +71,9 @@ class DocumentController extends Controller
                 'date' => $request->date,
                 'due_date' => $request->due_date,
                 'subtotal' => round($subtotal, 2),
+                'discount_amount' => round($discountTotal, 2),
                 'tax_amount' => round($taxAmount, 2),
-                'total' => round($subtotal + $taxAmount, 2),
+                'total' => round($subtotal - $discountTotal + $taxAmount, 2),
                 'notes' => $request->notes,
                 'status' => 'draft',
                 'created_by' => auth()->id(),
@@ -86,14 +97,24 @@ class DocumentController extends Controller
         return DB::transaction(function () use ($request, $document) {
             $items = $request->items;
             $subtotal = 0;
+            $discountTotal = 0;
             $taxAmount = 0;
 
             foreach ($items as &$item) {
-                $lineTotal = $item['quantity'] * $item['price'];
-                $lineTax = $lineTotal * (($item['tax_percent'] ?? 0) / 100);
+                $lineBase = $item['quantity'] * $item['price'];
+                $discountType = $item['discount_type'] ?? 'percent';
+                $discountValue = $item['discount_value'] ?? 0;
+                $lineDiscount = $discountType === 'flat'
+                    ? min($discountValue, $lineBase)
+                    : $lineBase * ($discountValue / 100);
+                $lineAfterDiscount = $lineBase - $lineDiscount;
+                $lineTax = $lineAfterDiscount * (($item['tax_percent'] ?? 0) / 100);
+                $item['discount_type'] = $discountType;
+                $item['discount_value'] = $discountValue;
                 $item['tax_amount'] = round($lineTax, 2);
-                $item['total'] = round($lineTotal + $lineTax, 2);
-                $subtotal += $lineTotal;
+                $item['total'] = round($lineAfterDiscount + $lineTax, 2);
+                $subtotal += $lineBase;
+                $discountTotal += $lineDiscount;
                 $taxAmount += $lineTax;
             }
 
@@ -102,8 +123,9 @@ class DocumentController extends Controller
                 'date' => $request->date,
                 'due_date' => $request->due_date,
                 'subtotal' => round($subtotal, 2),
+                'discount_amount' => round($discountTotal, 2),
                 'tax_amount' => round($taxAmount, 2),
-                'total' => round($subtotal + $taxAmount, 2),
+                'total' => round($subtotal - $discountTotal + $taxAmount, 2),
                 'notes' => $request->notes,
             ]);
 

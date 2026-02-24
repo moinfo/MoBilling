@@ -16,7 +16,7 @@ class ProductService extends Model
 
     protected $fillable = [
         'tenant_id', 'type', 'name', 'code', 'description',
-        'price', 'tax_percent', 'unit', 'category', 'is_active',
+        'price', 'tax_percent', 'unit', 'category', 'billing_cycle', 'is_active',
     ];
 
     protected $casts = [

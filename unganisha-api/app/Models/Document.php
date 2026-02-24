@@ -14,14 +14,15 @@ class Document extends Model
 
     protected $fillable = [
         'tenant_id', 'client_id', 'type', 'document_number',
-        'parent_id', 'date', 'due_date', 'subtotal', 'tax_amount',
-        'total', 'notes', 'status', 'created_by',
+        'parent_id', 'date', 'due_date', 'subtotal', 'discount_amount',
+        'tax_amount', 'total', 'notes', 'status', 'created_by',
     ];
 
     protected $casts = [
         'date' => 'date',
         'due_date' => 'date',
         'subtotal' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'total' => 'decimal:2',
     ];

@@ -22,6 +22,7 @@ class StoreProductServiceRequest extends FormRequest
             'tax_percent' => 'nullable|numeric|min:0|max:100',
             'unit' => 'nullable|string|max:20',
             'category' => 'nullable|string|max:100',
+            'billing_cycle' => 'nullable|in:once,monthly,quarterly,half_yearly,yearly',
             'is_active' => 'nullable|boolean',
         ];
     }

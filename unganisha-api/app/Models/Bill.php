@@ -32,6 +32,7 @@ class Bill extends Model
     public function getNextDueDateAttribute()
     {
         return match ($this->cycle) {
+            'once' => null,
             'monthly' => $this->due_date->addMonth(),
             'quarterly' => $this->due_date->addMonths(3),
             'half_yearly' => $this->due_date->addMonths(6),

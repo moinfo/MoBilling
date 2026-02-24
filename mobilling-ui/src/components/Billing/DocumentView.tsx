@@ -148,6 +148,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose }: Prop
               <Table.Th>Description</Table.Th>
               <Table.Th>Qty</Table.Th>
               <Table.Th>Price</Table.Th>
+              <Table.Th>Disc %</Table.Th>
               <Table.Th>Tax</Table.Th>
               <Table.Th>Total</Table.Th>
             </Table.Tr>
@@ -163,6 +164,13 @@ export default function DocumentView({ document: doc, onRefresh, onClose }: Prop
                 </Table.Td>
                 <Table.Td>{item.quantity} {item.unit}</Table.Td>
                 <Table.Td>{formatCurrency(item.price)}</Table.Td>
+                <Table.Td>
+                  {item.discount_value > 0
+                    ? item.discount_type === 'flat'
+                      ? formatCurrency(item.discount_value)
+                      : `${item.discount_value}%`
+                    : '—'}
+                </Table.Td>
                 <Table.Td>{item.tax_percent}%</Table.Td>
                 <Table.Td fw={500}>{formatCurrency(item.total || 0)}</Table.Td>
               </Table.Tr>
@@ -175,6 +183,9 @@ export default function DocumentView({ document: doc, onRefresh, onClose }: Prop
         <Group justify="flex-end">
           <Stack gap={4} align="flex-end">
             <Text size="sm">Subtotal: {formatCurrency(doc.subtotal)}</Text>
+            {parseFloat(doc.discount_amount) > 0 && (
+              <Text size="sm">Discount: -{formatCurrency(doc.discount_amount)}</Text>
+            )}
             <Text size="sm">Tax: {formatCurrency(doc.tax_amount)}</Text>
             <Text size="lg" fw={700}>Total: {formatCurrency(doc.total)}</Text>
             {isInvoice && (

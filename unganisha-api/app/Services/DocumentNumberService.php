@@ -15,15 +15,20 @@ class DocumentNumberService
         };
 
         $year = now()->format('Y');
+        $pattern = "{$prefix}-{$year}-";
 
         $lastNumber = Document::withoutGlobalScopes()
-            ->where('tenant_id', $tenantId)
-            ->where('type', $type)
-            ->whereYear('created_at', $year)
-            ->count();
+            ->withTrashed()
+            ->where('document_number', 'LIKE', "{$pattern}%")
+            ->orderByDesc('document_number')
+            ->value('document_number');
 
-        $sequence = str_pad($lastNumber + 1, 4, '0', STR_PAD_LEFT);
+        $sequence = 1;
+        if ($lastNumber) {
+            $lastSeq = (int) substr($lastNumber, strlen($pattern));
+            $sequence = $lastSeq + 1;
+        }
 
-        return "{$prefix}-{$year}-{$sequence}";
+        return $pattern . str_pad($sequence, 4, '0', STR_PAD_LEFT);
     }
 }

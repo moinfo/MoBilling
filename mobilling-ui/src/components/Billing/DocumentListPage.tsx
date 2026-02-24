@@ -122,7 +122,7 @@ export default function DocumentListPage({ type, title }: Props) {
         opened={formOpen}
         onClose={() => setFormOpen(false)}
         title={`New ${title.slice(0, -1)}`}
-        size="xl"
+        size={900}
         position="right"
       >
         <DocumentForm

@@ -27,11 +27,13 @@ class PaymentOutController extends Controller
     {
         $payment = PaymentOut::create($request->validated());
 
-        // Advance bill due date to next cycle
+        // Advance bill due date to next cycle (or deactivate if one-time)
         $bill = Bill::find($request->bill_id);
-        $bill->update([
-            'due_date' => $bill->next_due_date,
-        ]);
+        if ($bill->cycle === 'once') {
+            $bill->update(['is_active' => false]);
+        } else {
+            $bill->update(['due_date' => $bill->next_due_date]);
+        }
 
         return new PaymentOutResource($payment->load('bill'));
     }

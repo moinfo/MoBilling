@@ -86,6 +86,7 @@
                 <th>Qty</th>
                 <th>Unit</th>
                 <th class="text-right">Price</th>
+                <th class="text-right">Disc %</th>
                 <th class="text-right">Tax</th>
                 <th class="text-right">Total</th>
             </tr>
@@ -99,6 +100,13 @@
                 <td>{{ number_format($item->quantity, 2) }}</td>
                 <td>{{ $item->unit }}</td>
                 <td class="text-right">{{ number_format($item->price, 2) }}</td>
+                <td class="text-right">
+                    @if($item->discount_value > 0)
+                        {{ $item->discount_type === 'flat' ? number_format($item->discount_value, 2) : number_format($item->discount_value, 2) . '%' }}
+                    @else
+                        —
+                    @endif
+                </td>
                 <td class="text-right">{{ number_format($item->tax_amount, 2) }}</td>
                 <td class="text-right">{{ number_format($item->total, 2) }}</td>
             </tr>
@@ -112,6 +120,12 @@
                 <td>Subtotal:</td>
                 <td class="text-right">{{ $tenant->currency }} {{ number_format($document->subtotal, 2) }}</td>
             </tr>
+            @if($document->discount_amount > 0)
+            <tr>
+                <td>Discount:</td>
+                <td class="text-right">- {{ $tenant->currency }} {{ number_format($document->discount_amount, 2) }}</td>
+            </tr>
+            @endif
             <tr>
                 <td>Tax:</td>
                 <td class="text-right">{{ $tenant->currency }} {{ number_format($document->tax_amount, 2) }}</td>

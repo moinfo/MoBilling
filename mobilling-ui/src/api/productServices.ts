@@ -10,6 +10,7 @@ export interface ProductService {
   tax_percent: string;
   unit: string;
   category: string | null;
+  billing_cycle: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -23,6 +24,7 @@ export interface ProductServiceFormData {
   tax_percent: number;
   unit: string;
   category: string;
+  billing_cycle: string;
   is_active: boolean;
 }
 

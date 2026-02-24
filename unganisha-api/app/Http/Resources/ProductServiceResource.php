@@ -19,6 +19,7 @@ class ProductServiceResource extends JsonResource
             'tax_percent' => $this->tax_percent,
             'unit' => $this->unit,
             'category' => $this->category,
+            'billing_cycle' => $this->billing_cycle,
             'is_active' => $this->is_active,
             'created_at' => $this->created_at,
         ];

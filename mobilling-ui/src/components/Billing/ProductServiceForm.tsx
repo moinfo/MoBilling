@@ -27,6 +27,15 @@ const serviceUnits = [
   { value: 'session', label: 'Session' },
 ];
 
+const billingCycleOptions = [
+  { value: '', label: 'None' },
+  { value: 'once', label: 'Once' },
+  { value: 'monthly', label: 'Monthly' },
+  { value: 'quarterly', label: 'Quarterly' },
+  { value: 'half_yearly', label: 'Semi-Annual' },
+  { value: 'yearly', label: 'Annually' },
+];
+
 export default function ProductServiceForm({ initialValues, onSubmit, loading }: Props) {
   const form = useForm<ProductServiceFormData>({
     initialValues: initialValues || {
@@ -38,6 +47,7 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
       tax_percent: 0,
       unit: 'pcs',
       category: '',
+      billing_cycle: '',
       is_active: true,
     },
     validate: {
@@ -67,9 +77,16 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
           <NumberInput label="Tax %" min={0} max={100} decimalScale={2} {...form.getInputProps('tax_percent')} />
         </Group>
         <Group grow>
-          <Select label="Unit" data={unitOptions} {...form.getInputProps('unit')} />
+          <Select label="Unit" data={unitOptions} clearable {...form.getInputProps('unit')} />
           <TextInput label="Category" placeholder="e.g., Electronics, IT Services" {...form.getInputProps('category')} />
         </Group>
+        <Select
+          label="Billing Cycle"
+          description="Optional — used to auto-fill when creating bills"
+          data={billingCycleOptions}
+          clearable
+          {...form.getInputProps('billing_cycle')}
+        />
         <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
         <Group justify="flex-end">
           <Button type="submit" loading={loading}>Save</Button>

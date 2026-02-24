@@ -8,6 +8,8 @@ export interface DocumentItem {
   description: string;
   quantity: number;
   price: number;
+  discount_type: 'percent' | 'flat';
+  discount_value: number;
   tax_percent: number;
   tax_amount?: number;
   total?: number;
@@ -24,6 +26,7 @@ export interface Document {
   date: string;
   due_date: string | null;
   subtotal: string;
+  discount_amount: string;
   tax_amount: string;
   total: string;
   notes: string | null;
@@ -80,6 +83,9 @@ export const sendDocument = (id: string) =>
   api.post(`/documents/${id}/send`);
 
 // Payments In
+export const getPaymentsIn = (params?: { document_id?: string; page?: number; per_page?: number }) =>
+  api.get('/payments-in', { params });
+
 export const createPaymentIn = (data: {
   document_id: string;
   amount: number;
@@ -88,3 +94,38 @@ export const createPaymentIn = (data: {
   reference?: string;
   notes?: string;
 }) => api.post('/payments-in', data);
+
+export const updatePaymentIn = (id: string, data: {
+  document_id: string;
+  amount: number;
+  payment_date: string;
+  payment_method: string;
+  reference?: string;
+  notes?: string;
+}) => api.put(`/payments-in/${id}`, data);
+
+export const deletePaymentIn = (id: string) =>
+  api.delete(`/payments-in/${id}`);
+
+export const resendReceipt = (id: string) =>
+  api.post(`/payments-in/${id}/resend-receipt`);
+
+export const resendInvoice = (documentId: string) =>
+  api.post(`/documents/${documentId}/send`);
+
+// Next Bills
+export interface NextBillItem {
+  client_id: string;
+  client_name: string;
+  client_email: string;
+  product_service_id: string;
+  product_service_name: string;
+  billing_cycle: string;
+  price: string;
+  last_billed: string;
+  next_bill: string | null;
+  is_overdue: boolean;
+}
+
+export const getNextBills = () =>
+  api.get<{ data: NextBillItem[] }>('/next-bills');

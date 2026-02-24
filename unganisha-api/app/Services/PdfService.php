@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Document;
+use App\Models\PaymentIn;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 class PdfService
@@ -16,6 +17,23 @@ class PdfService
             'tenant' => $document->tenant,
             'client' => $document->client,
             'items' => $document->items,
+        ])->setPaper('a4');
+    }
+
+    public function generateReceipt(PaymentIn $payment, Document $document)
+    {
+        $document->load('client', 'tenant');
+
+        $totalPaid = $document->payments()->sum('amount');
+        $balanceDue = $document->total - $totalPaid;
+
+        return Pdf::loadView('pdf.receipt', [
+            'document' => $document,
+            'payment' => $payment,
+            'tenant' => $document->tenant,
+            'client' => $document->client,
+            'totalPaid' => $totalPaid,
+            'balanceDue' => $balanceDue,
         ])->setPaper('a4');
     }
 }

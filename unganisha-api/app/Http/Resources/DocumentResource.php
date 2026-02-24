@@ -19,6 +19,7 @@ class DocumentResource extends JsonResource
             'date' => $this->date?->format('Y-m-d'),
             'due_date' => $this->due_date?->format('Y-m-d'),
             'subtotal' => $this->subtotal,
+            'discount_amount' => $this->discount_amount,
             'tax_amount' => $this->tax_amount,
             'total' => $this->total,
             'notes' => $this->notes,
