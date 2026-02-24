@@ -37,6 +37,9 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
+// Public
+Route::get('/plans', [SubscriptionController::class, 'plans']);
+
 // Auth (Public)
 Route::post('/auth/register', [RegisterController::class, 'register']);
 Route::post('/auth/login', [LoginController::class, 'login']);

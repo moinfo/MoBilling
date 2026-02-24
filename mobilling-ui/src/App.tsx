@@ -45,6 +45,7 @@ import StatutorySchedule from './pages/StatutorySchedule';
 import Sms from './pages/Sms';
 import Subscription from './pages/Subscription';
 import SubscriptionExpired from './pages/SubscriptionExpired';
+import PesapalCallback from './pages/PesapalCallback';
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -70,6 +71,7 @@ export default function App() {
                 <Route path="/register" element={<Register />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/pesapal/callback" element={<PesapalCallback />} />
 
                 {/* Subscription expired (standalone, no sidebar) */}
                 <Route
