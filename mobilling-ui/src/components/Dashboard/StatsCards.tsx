@@ -1,5 +1,5 @@
 import { SimpleGrid, Card, Text, Group } from '@mantine/core';
-import { IconCash, IconReceipt, IconAlertTriangle, IconUsers, IconFileText } from '@tabler/icons-react';
+import { IconCash, IconReceipt, IconAlertTriangle, IconUsers, IconFileText, IconMessage } from '@tabler/icons-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 
 interface Props {
@@ -10,6 +10,8 @@ interface Props {
   overdueBills: number;
   totalClients: number;
   totalDocuments: number;
+  smsBalance?: number | null;
+  smsEnabled?: boolean;
 }
 
 export default function StatsCards(props: Props) {
@@ -21,6 +23,7 @@ export default function StatsCards(props: Props) {
     { title: 'Overdue Bills', value: String(props.overdueBills), icon: IconAlertTriangle, color: 'red' },
     { title: 'Total Clients', value: String(props.totalClients), icon: IconUsers, color: 'teal' },
     { title: 'Total Documents', value: String(props.totalDocuments), icon: IconFileText, color: 'violet' },
+    ...(props.smsEnabled ? [{ title: 'SMS Balance', value: props.smsBalance != null ? props.smsBalance.toLocaleString() : '—', icon: IconMessage, color: 'cyan' }] : []),
   ];
 
   return (

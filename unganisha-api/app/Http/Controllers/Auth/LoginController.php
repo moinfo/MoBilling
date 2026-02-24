@@ -31,10 +31,22 @@ class LoginController extends Controller
             ]);
         }
 
+        // Check tenant is active (skip for super_admin who has no tenant)
+        if (!$user->isSuperAdmin() && $user->tenant && !$user->tenant->is_active) {
+            throw ValidationException::withMessages([
+                'email' => ['Your organization has been deactivated.'],
+            ]);
+        }
+
         $token = $user->createToken('auth-token')->plainTextToken;
 
+        // Only load tenant if user has one
+        if ($user->tenant_id) {
+            $user->load('tenant');
+        }
+
         return response()->json([
-            'user' => $user->load('tenant'),
+            'user' => $user,
             'token' => $token,
         ]);
     }
@@ -48,8 +60,14 @@ class LoginController extends Controller
 
     public function me(Request $request)
     {
+        $user = $request->user();
+
+        if ($user->tenant_id) {
+            $user->load('tenant');
+        }
+
         return response()->json([
-            'user' => $request->user()->load('tenant'),
+            'user' => $user,
         ]);
     }
 }

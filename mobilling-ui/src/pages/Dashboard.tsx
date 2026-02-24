@@ -29,6 +29,8 @@ export default function Dashboard() {
             overdueBills={summary.overdue_bills}
             totalClients={summary.total_clients}
             totalDocuments={summary.total_documents}
+            smsBalance={summary.sms_balance}
+            smsEnabled={summary.sms_enabled}
           />
 
           <SimpleGrid cols={{ base: 1, md: 2 }}>

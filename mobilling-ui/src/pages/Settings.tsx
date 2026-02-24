@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import {
   Title, Tabs, TextInput, Textarea, PasswordInput, Select, Button,
-  Stack, Divider, Paper, Group, Alert,
+  Stack, Divider, Paper, Group, Alert, NumberInput, Switch, Loader, Center, Overlay, Box,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { IconBuilding, IconUser, IconAlertCircle } from '@tabler/icons-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
-import { updateCompany, updateProfile, CompanyData, ProfileData } from '../api/settings';
+import { updateCompany, updateProfile, CompanyData, ProfileData, getEmailSettings, updateEmailSettings, testEmailSettings, EmailSettings as EmailSettingsType, EmailSettingsFormData } from '../api/settings';
 import axios from 'axios';
 
 const CURRENCIES = [
@@ -34,6 +35,9 @@ export default function Settings() {
           <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
             My Profile
           </Tabs.Tab>
+          <Tabs.Tab value="email" leftSection={<IconMail size={16} />}>
+            Email
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="company">
@@ -41,6 +45,9 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="profile">
           <ProfileTab user={user} refreshUser={refreshUser} />
+        </Tabs.Panel>
+        <Tabs.Panel value="email">
+          <EmailTab isAdmin={isAdmin} />
         </Tabs.Panel>
       </Tabs>
     </>
@@ -194,6 +201,136 @@ function ProfileTab({ user, refreshUser }: {
           <Group justify="flex-end">
             <Button type="submit" loading={loading}>Save Profile</Button>
           </Group>
+        </Stack>
+      </form>
+    </Paper>
+  );
+}
+
+function EmailTab({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['email-settings'],
+    queryFn: getEmailSettings,
+  });
+
+  const settings: EmailSettingsType | undefined = data?.data?.data;
+  const emailDisabled = settings ? !settings.email_enabled : true;
+
+  const form = useForm<EmailSettingsFormData>({
+    initialValues: {
+      smtp_host: settings?.smtp_host ?? '',
+      smtp_port: settings?.smtp_port ?? 587,
+      smtp_username: settings?.smtp_username ?? '',
+      smtp_password: '',
+      smtp_encryption: settings?.smtp_encryption ?? 'tls',
+      smtp_from_email: settings?.smtp_from_email ?? '',
+      smtp_from_name: settings?.smtp_from_name ?? '',
+    },
+  });
+
+  // Re-initialize when data loads
+  const [initialized, setInitialized] = useState(false);
+  if (settings && !initialized) {
+    form.setValues({
+      smtp_host: settings.smtp_host ?? '',
+      smtp_port: settings.smtp_port ?? 587,
+      smtp_username: settings.smtp_username ?? '',
+      smtp_password: '',
+      smtp_encryption: settings.smtp_encryption ?? 'tls',
+      smtp_from_email: settings.smtp_from_email ?? '',
+      smtp_from_name: settings.smtp_from_name ?? '',
+    });
+    setInitialized(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: (values: EmailSettingsFormData) => updateEmailSettings(values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['email-settings'] });
+      notifications.show({ title: 'Success', message: 'Email settings updated', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to update email settings',
+        color: 'red',
+      });
+    },
+  });
+
+  const testMutation = useMutation({
+    mutationFn: testEmailSettings,
+    onSuccess: (res) => {
+      notifications.show({ title: 'Success', message: res.data.message, color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Test Failed',
+        message: err.response?.data?.message || 'Failed to send test email',
+        color: 'red',
+      });
+    },
+  });
+
+  if (isLoading) {
+    return <Center py="xl"><Loader /></Center>;
+  }
+
+  return (
+    <Paper p="lg" withBorder maw={600} pos="relative">
+      {emailDisabled && (
+        <Box pos="absolute" top={0} left={0} right={0} bottom={0} style={{ zIndex: 10 }}>
+          <Overlay color="#000" backgroundOpacity={0.03} blur={1} />
+          <Alert icon={<IconAlertCircle size={16} />} color="orange" m="md" style={{ position: 'relative', zIndex: 11 }}>
+            Email has been disabled by the administrator. Contact your platform admin to enable email delivery.
+          </Alert>
+        </Box>
+      )}
+
+      {!isAdmin && !emailDisabled && (
+        <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+          Only admins can edit email settings.
+        </Alert>
+      )}
+
+      <form onSubmit={form.onSubmit((values) => saveMutation.mutate(values))}>
+        <Stack>
+          <TextInput label="SMTP Host" placeholder="smtp.gmail.com" disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_host')} />
+          <NumberInput label="SMTP Port" placeholder="587" min={1} max={65535} disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_port')} />
+          <TextInput label="SMTP Username" placeholder="user@example.com" disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_username')} />
+          <PasswordInput
+            label="SMTP Password"
+            placeholder={settings?.has_password ? '••••••• (unchanged)' : 'Enter password'}
+            disabled={emailDisabled || !isAdmin}
+            {...form.getInputProps('smtp_password')}
+          />
+          <Select
+            label="Encryption"
+            data={[
+              { value: 'tls', label: 'TLS' },
+              { value: 'ssl', label: 'SSL' },
+              { value: 'none', label: 'None' },
+            ]}
+            disabled={emailDisabled || !isAdmin}
+            {...form.getInputProps('smtp_encryption')}
+          />
+          <TextInput label="From Email" placeholder="noreply@company.com" disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_from_email')} />
+          <TextInput label="From Name" placeholder="Company Name" disabled={emailDisabled || !isAdmin} {...form.getInputProps('smtp_from_name')} />
+
+          {isAdmin && !emailDisabled && (
+            <Group justify="flex-end">
+              <Button
+                variant="outline"
+                loading={testMutation.isPending}
+                onClick={() => testMutation.mutate()}
+              >
+                Send Test Email
+              </Button>
+              <Button type="submit" loading={saveMutation.isPending}>Save Settings</Button>
+            </Group>
+          )}
         </Stack>
       </form>
     </Paper>

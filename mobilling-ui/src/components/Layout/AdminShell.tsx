@@ -1,0 +1,102 @@
+import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconMessage, IconPackage, IconReceipt } from '@tabler/icons-react';
+import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../../context/AuthContext';
+
+export default function AdminShell() {
+  const [opened, { toggle }] = useDisclosure();
+  const { user, logout } = useAuth();
+  const { toggleColorScheme } = useMantineColorScheme();
+  const computedColorScheme = useComputedColorScheme('light');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const handleLogout = async () => {
+    await logout();
+    navigate('/login');
+  };
+
+  return (
+    <AppShell
+      navbar={{ width: 250, breakpoint: 'sm', collapsed: { mobile: !opened } }}
+      header={{ height: 60 }}
+      padding="md"
+    >
+      <AppShell.Header>
+        <Group h="100%" px="md" justify="space-between">
+          <Group>
+            <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
+            <Image src="/moinfotech-logo.png" h={32} w="auto" alt="MoBilling" />
+            <Text size="lg" fw={700}>MoBilling Admin</Text>
+          </Group>
+          <Group gap="xs">
+            <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
+              {computedColorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
+            </ActionIcon>
+            <Menu shadow="md" width={200}>
+              <Menu.Target>
+                <UnstyledButton>
+                  <Group gap="xs">
+                    <Avatar radius="xl" size="sm" color="violet">{user?.name?.[0]}</Avatar>
+                    <Text size="sm" visibleFrom="sm">{user?.name}</Text>
+                  </Group>
+                </UnstyledButton>
+              </Menu.Target>
+              <Menu.Dropdown>
+                <Menu.Label>Super Admin</Menu.Label>
+                <Menu.Divider />
+                <Menu.Item color="red" leftSection={<IconLogout size={14} />} onClick={handleLogout}>
+                  Logout
+                </Menu.Item>
+              </Menu.Dropdown>
+            </Menu>
+          </Group>
+        </Group>
+      </AppShell.Header>
+
+      <AppShell.Navbar p="xs">
+        <NavLink
+          label="Dashboard"
+          leftSection={<IconDashboard size={18} />}
+          active={location.pathname === '/admin/dashboard'}
+          onClick={() => navigate('/admin/dashboard')}
+        />
+        <NavLink
+          label="Tenants"
+          leftSection={<IconBuilding size={18} />}
+          active={location.pathname === '/admin/tenants'}
+          onClick={() => navigate('/admin/tenants')}
+        />
+        <NavLink
+          label="Email Settings"
+          leftSection={<IconMail size={18} />}
+          active={location.pathname === '/admin/email-settings'}
+          onClick={() => navigate('/admin/email-settings')}
+        />
+        <NavLink
+          label="SMS Settings"
+          leftSection={<IconMessage size={18} />}
+          active={location.pathname === '/admin/sms-settings'}
+          onClick={() => navigate('/admin/sms-settings')}
+        />
+        <NavLink
+          label="SMS Packages"
+          leftSection={<IconPackage size={18} />}
+          active={location.pathname === '/admin/sms-packages'}
+          onClick={() => navigate('/admin/sms-packages')}
+        />
+        <NavLink
+          label="SMS Purchases"
+          leftSection={<IconReceipt size={18} />}
+          active={location.pathname === '/admin/sms-purchases'}
+          onClick={() => navigate('/admin/sms-purchases')}
+        />
+      </AppShell.Navbar>
+
+      <AppShell.Main>
+        <Outlet />
+      </AppShell.Main>
+    </AppShell>
+  );
+}

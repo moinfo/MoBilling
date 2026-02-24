@@ -5,9 +5,9 @@ export interface User {
   name: string;
   email: string;
   phone: string | null;
-  role: 'admin' | 'user';
+  role: 'super_admin' | 'admin' | 'user';
   is_active: boolean;
-  tenant: {
+  tenant?: {
     id: string;
     name: string;
     email: string;

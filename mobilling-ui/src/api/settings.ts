@@ -24,3 +24,35 @@ export const updateCompany = (data: CompanyData) =>
 
 export const updateProfile = (data: ProfileData) =>
   api.put<{ user: User }>('/settings/profile', data);
+
+// --- Email Settings ---
+
+export interface EmailSettings {
+  email_enabled: boolean;
+  smtp_host: string | null;
+  smtp_port: number | null;
+  smtp_username: string | null;
+  smtp_encryption: string | null;
+  smtp_from_email: string | null;
+  smtp_from_name: string | null;
+  has_password: boolean;
+}
+
+export interface EmailSettingsFormData {
+  smtp_host: string;
+  smtp_port: number | string;
+  smtp_username: string;
+  smtp_password: string;
+  smtp_encryption: string;
+  smtp_from_email: string;
+  smtp_from_name: string;
+}
+
+export const getEmailSettings = () =>
+  api.get<{ data: EmailSettings }>('/settings/email');
+
+export const updateEmailSettings = (data: Partial<EmailSettingsFormData>) =>
+  api.put<{ data: EmailSettings }>('/settings/email', data);
+
+export const testEmailSettings = () =>
+  api.post<{ message: string }>('/settings/email/test');

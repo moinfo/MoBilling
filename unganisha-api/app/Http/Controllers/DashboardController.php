@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Bill;
 use App\Models\Document;
 use App\Models\PaymentIn;
+use App\Services\ResellerService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
@@ -61,6 +63,19 @@ class DashboardController extends Controller
         $totalClients = \App\Models\Client::count();
         $totalDocuments = Document::count();
 
+        // SMS balance
+        $smsBalance = null;
+        $tenant = auth()->user()->tenant;
+        if ($tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
+            try {
+                $reseller = new ResellerService();
+                $balanceResult = $reseller->getBalance($tenant);
+                $smsBalance = $balanceResult['data']['sms_balance'] ?? $balanceResult['sms_balance'] ?? null;
+            } catch (\Throwable $e) {
+                Log::warning('Dashboard: failed to fetch SMS balance', ['error' => $e->getMessage()]);
+            }
+        }
+
         return response()->json([
             'total_receivable' => round($totalReceivable, 2),
             'total_received' => round($totalReceived, 2),
@@ -69,6 +84,8 @@ class DashboardController extends Controller
             'overdue_bills' => $overdueBills,
             'total_clients' => $totalClients,
             'total_documents' => $totalDocuments,
+            'sms_balance' => $smsBalance,
+            'sms_enabled' => $tenant?->sms_enabled ?? false,
             'recent_invoices' => $recentInvoices,
             'upcoming_bills' => $upcomingBills,
         ]);

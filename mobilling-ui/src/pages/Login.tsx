@@ -18,8 +18,9 @@ export default function Login() {
 
   const handleSubmit = async (values: typeof form.values) => {
     try {
-      await login(values);
-      navigate('/dashboard');
+      const user = await login(values);
+      // Role-based redirect: super_admin goes to admin panel
+      navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
     } catch (err: any) {
       notifications.show({
         title: 'Login failed',

@@ -1,17 +1,17 @@
-import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme } from '@mantine/core';
+import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import {
   IconDashboard, IconUsers, IconUsersGroup, IconPackages,
   IconFileText, IconFileInvoice, IconReceipt,
   IconCalendarDue, IconSettings, IconLogout,
-  IconSun, IconMoon,
+  IconSun, IconMoon, IconMessage, IconArrowBack,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 
 export default function AppLayout() {
   const [opened, { toggle }] = useDisclosure();
-  const { user, logout } = useAuth();
+  const { user, logout, isImpersonating, exitImpersonation } = useAuth();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const navigate = useNavigate();
@@ -24,14 +24,33 @@ export default function AppLayout() {
     navigate('/login');
   };
 
+  const handleExitImpersonation = () => {
+    exitImpersonation();
+    navigate('/admin/tenants');
+  };
+
   return (
     <AppShell
       navbar={{ width: 250, breakpoint: 'sm', collapsed: { mobile: !opened } }}
-      header={{ height: 60 }}
+      header={{ height: isImpersonating ? 96 : 60 }}
       padding="md"
     >
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
+        {isImpersonating && (
+          <Group h={36} px="md" justify="space-between" bg="orange.6" style={{ color: 'white' }}>
+            <Text size="sm" fw={600}>Viewing as: {user?.tenant?.name}</Text>
+            <Button
+              size="compact-sm"
+              variant="white"
+              color="orange"
+              leftSection={<IconArrowBack size={14} />}
+              onClick={handleExitImpersonation}
+            >
+              Back to Admin
+            </Button>
+          </Group>
+        )}
+        <Group h={60} px="md" justify="space-between">
           <Group>
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             <Image src="/moinfotech-logo.png" h={32} w="auto" alt="MoBilling" />
@@ -52,6 +71,11 @@ export default function AppLayout() {
             </Menu.Target>
             <Menu.Dropdown>
               <Menu.Label>{user?.tenant?.name}</Menu.Label>
+              {isImpersonating && (
+                <Menu.Item leftSection={<IconArrowBack size={14} />} onClick={handleExitImpersonation}>
+                  Back to Admin
+                </Menu.Item>
+              )}
               <Menu.Item leftSection={<IconSettings size={14} />} onClick={() => navigate('/settings')}>
                 Settings
               </Menu.Item>
@@ -88,6 +112,9 @@ export default function AppLayout() {
           <NavLink label="Payment History" leftSection={<IconReceipt size={16} />}
             active={isActive('/payments-out')} onClick={() => navigate('/payments-out')} />
         </NavLink>
+
+        <NavLink label="SMS" leftSection={<IconMessage size={18} />}
+          active={isActive('/sms')} onClick={() => navigate('/sms')} />
 
         <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
           active={isActive('/users')} onClick={() => navigate('/users')} />
