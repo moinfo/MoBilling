@@ -252,20 +252,21 @@ function SubscriptionHistoryTab({ tenantId }: { tenantId: string }) {
 
   return (
     <Paper withBorder>
-      <Table striped highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Plan</Table.Th>
-            <Table.Th>Invoice</Table.Th>
-            <Table.Th>Status</Table.Th>
-            <Table.Th>Method</Table.Th>
-            <Table.Th>Starts</Table.Th>
-            <Table.Th>Ends</Table.Th>
-            <Table.Th>Amount</Table.Th>
-            <Table.Th>By</Table.Th>
-            <Table.Th>Actions</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
+      <Table.ScrollContainer minWidth={900}>
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Plan</Table.Th>
+              <Table.Th>Invoice</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th>Method</Table.Th>
+              <Table.Th>Starts</Table.Th>
+              <Table.Th>Ends</Table.Th>
+              <Table.Th>Amount</Table.Th>
+              <Table.Th>By</Table.Th>
+              <Table.Th>Actions</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
         <Table.Tbody>
           {subscriptions.map((sub) => {
             const isPendingBankTransfer = sub.status === 'pending' && sub.payment_method === 'bank_transfer';
@@ -368,7 +369,8 @@ function SubscriptionHistoryTab({ tenantId }: { tenantId: string }) {
             );
           })}
         </Table.Tbody>
-      </Table>
+        </Table>
+      </Table.ScrollContainer>
       {meta && meta.last_page > 1 && (
         <Group justify="center" p="md">
           <Pagination total={meta.last_page} value={page} onChange={setPage} />
@@ -403,38 +405,40 @@ function SmsPurchaseHistoryTab({ tenantId }: { tenantId: string }) {
 
   return (
     <Paper withBorder>
-      <Table striped highlightOnHover>
-        <Table.Thead>
-          <Table.Tr>
-            <Table.Th>Package</Table.Th>
-            <Table.Th>Quantity</Table.Th>
-            <Table.Th>Amount</Table.Th>
-            <Table.Th>Status</Table.Th>
-            <Table.Th>Payment Method</Table.Th>
-            <Table.Th>By</Table.Th>
-            <Table.Th>Date</Table.Th>
-          </Table.Tr>
-        </Table.Thead>
-        <Table.Tbody>
-          {purchases.map((purchase) => (
-            <Table.Tr key={purchase.id}>
-              <Table.Td>{purchase.package_name}</Table.Td>
-              <Table.Td>{purchase.sms_quantity.toLocaleString()}</Table.Td>
-              <Table.Td>TZS {Number(purchase.total_amount).toLocaleString()}</Table.Td>
-              <Table.Td>
-                <Badge color={statusColors[purchase.status] || 'gray'} variant="light" size="sm">
-                  {purchase.status}
-                </Badge>
-              </Table.Td>
-              <Table.Td>{purchase.payment_method_used || '—'}</Table.Td>
-              <Table.Td>
-                <Text size="xs">{purchase.user?.name || '—'}</Text>
-              </Table.Td>
-              <Table.Td>{new Date(purchase.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Table.Td>
+      <Table.ScrollContainer minWidth={700}>
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Package</Table.Th>
+              <Table.Th>Quantity</Table.Th>
+              <Table.Th>Amount</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th>Payment Method</Table.Th>
+              <Table.Th>By</Table.Th>
+              <Table.Th>Date</Table.Th>
             </Table.Tr>
-          ))}
-        </Table.Tbody>
-      </Table>
+          </Table.Thead>
+          <Table.Tbody>
+            {purchases.map((purchase) => (
+              <Table.Tr key={purchase.id}>
+                <Table.Td>{purchase.package_name}</Table.Td>
+                <Table.Td>{purchase.sms_quantity.toLocaleString()}</Table.Td>
+                <Table.Td>TZS {Number(purchase.total_amount).toLocaleString()}</Table.Td>
+                <Table.Td>
+                  <Badge color={statusColors[purchase.status] || 'gray'} variant="light" size="sm">
+                    {purchase.status}
+                  </Badge>
+                </Table.Td>
+                <Table.Td>{purchase.payment_method_used || '—'}</Table.Td>
+                <Table.Td>
+                  <Text size="xs">{purchase.user?.name || '—'}</Text>
+                </Table.Td>
+                <Table.Td>{new Date(purchase.created_at).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Table.ScrollContainer>
       {meta && meta.last_page > 1 && (
         <Group justify="center" p="md">
           <Pagination total={meta.last_page} value={page} onChange={setPage} />

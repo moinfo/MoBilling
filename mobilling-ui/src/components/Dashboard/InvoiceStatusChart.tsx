@@ -1,6 +1,7 @@
-import { Card, Text, Center } from '@mantine/core';
+import { Card, Text, Center, useComputedColorScheme } from '@mantine/core';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import type { InvoiceStatusItem } from '../../api/dashboard';
+import { chartTooltipStyle } from './chartTheme';
 
 const STATUS_COLORS: Record<string, string> = {
   paid: '#40c057',
@@ -15,6 +16,8 @@ interface Props {
 }
 
 export default function InvoiceStatusChart({ data }: Props) {
+  const dark = useComputedColorScheme('light') === 'dark';
+
   const chartData = data.map((item) => ({
     name: item.status.charAt(0).toUpperCase() + item.status.slice(1),
     value: item.count,
@@ -42,8 +45,11 @@ export default function InvoiceStatusChart({ data }: Props) {
                 <Cell key={index} fill={entry.color} />
               ))}
             </Pie>
-            <Tooltip formatter={(value: number | undefined) => [value ?? 0, 'Invoices']} />
-            <Legend />
+            <Tooltip
+              formatter={(value: number) => [value, 'Invoices']}
+              contentStyle={chartTooltipStyle(dark)}
+            />
+            <Legend wrapperStyle={{ color: dark ? '#c1c2c5' : '#495057' }} />
           </PieChart>
         </ResponsiveContainer>
       )}

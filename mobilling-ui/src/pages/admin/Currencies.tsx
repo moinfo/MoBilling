@@ -41,7 +41,7 @@ export default function Currencies() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <div>
           <Title order={2}>Currencies</Title>
           <Text c="dimmed">Manage currencies available for tenants.</Text>
@@ -55,17 +55,18 @@ export default function Currencies() {
         <Center py="xl"><Loader /></Center>
       ) : (
         <Paper withBorder>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Code</Table.Th>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Symbol</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Order</Table.Th>
-                <Table.Th w={100}>Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
+          <Table.ScrollContainer minWidth={550}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Code</Table.Th>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Symbol</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Order</Table.Th>
+                  <Table.Th w={100}>Actions</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
             <Table.Tbody>
               {currencies.map((c) => (
                 <Table.Tr key={c.id}>
@@ -105,7 +106,8 @@ export default function Currencies() {
                 </Table.Tr>
               )}
             </Table.Tbody>
-          </Table>
+            </Table>
+          </Table.ScrollContainer>
         </Paper>
       )}
 

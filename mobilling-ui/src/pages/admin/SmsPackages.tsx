@@ -41,7 +41,7 @@ export default function SmsPackages() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <div>
           <Title order={2}>SMS Packages</Title>
           <Text c="dimmed">Manage SMS pricing tiers for tenant purchases.</Text>
@@ -55,18 +55,19 @@ export default function SmsPackages() {
         <Center py="xl"><Loader /></Center>
       ) : (
         <Paper withBorder>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Price/SMS (TZS)</Table.Th>
-                <Table.Th>Min Qty</Table.Th>
-                <Table.Th>Max Qty</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Order</Table.Th>
-                <Table.Th w={100}>Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
+          <Table.ScrollContainer minWidth={650}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Price/SMS (TZS)</Table.Th>
+                  <Table.Th>Min Qty</Table.Th>
+                  <Table.Th>Max Qty</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Order</Table.Th>
+                  <Table.Th w={100}>Actions</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
             <Table.Tbody>
               {packages.map((pkg) => (
                 <Table.Tr key={pkg.id}>
@@ -107,7 +108,8 @@ export default function SmsPackages() {
                 </Table.Tr>
               )}
             </Table.Tbody>
-          </Table>
+            </Table>
+          </Table.ScrollContainer>
         </Paper>
       )}
 

@@ -1,7 +1,8 @@
-import { Card, Text, Center } from '@mantine/core';
+import { Card, Text, Center, useComputedColorScheme } from '@mantine/core';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { PaymentMethodItem } from '../../api/dashboard';
 import { formatCurrency } from '../../utils/formatCurrency';
+import { chartTooltipStyle, chartTickStyle } from './chartTheme';
 
 const METHOD_LABELS: Record<string, string> = {
   mpesa: 'M-Pesa',
@@ -16,6 +17,9 @@ interface Props {
 }
 
 export default function PaymentMethodChart({ data }: Props) {
+  const dark = useComputedColorScheme('light') === 'dark';
+  const tick = chartTickStyle(dark);
+
   const chartData = data.map((item) => ({
     name: METHOD_LABELS[item.method] || item.method,
     amount: item.amount,
@@ -29,10 +33,13 @@ export default function PaymentMethodChart({ data }: Props) {
       ) : (
         <ResponsiveContainer width="100%" height={250}>
           <BarChart data={chartData} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--mantine-color-default-border)" />
-            <XAxis dataKey="name" tick={{ fontSize: 12 }} />
-            <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-            <Tooltip formatter={(value: number | undefined) => [formatCurrency(value ?? 0), 'Amount']} />
+            <CartesianGrid strokeDasharray="3 3" stroke={dark ? '#404040' : '#e9ecef'} />
+            <XAxis dataKey="name" tick={tick} />
+            <YAxis tick={tick} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+            <Tooltip
+              formatter={(value: number) => [formatCurrency(value), 'Amount']}
+              contentStyle={chartTooltipStyle(dark)}
+            />
             <Bar dataKey="amount" fill="#7c3aed" radius={[6, 6, 0, 0]} barSize={40} />
           </BarChart>
         </ResponsiveContainer>

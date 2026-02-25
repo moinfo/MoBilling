@@ -27,18 +27,19 @@ export default function BillTable({ bills, onEdit, onDelete, onMarkPaid }: Props
   };
 
   return (
-    <Table striped highlightOnHover>
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Name</Table.Th>
-          <Table.Th>Category</Table.Th>
-          <Table.Th>Amount</Table.Th>
-          <Table.Th>Cycle</Table.Th>
-          <Table.Th>Due Date</Table.Th>
-          <Table.Th>Status</Table.Th>
-          <Table.Th w={120}>Actions</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
+    <Table.ScrollContainer minWidth={750}>
+      <Table striped highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Name</Table.Th>
+            <Table.Th>Category</Table.Th>
+            <Table.Th>Amount</Table.Th>
+            <Table.Th>Cycle</Table.Th>
+            <Table.Th>Due Date</Table.Th>
+            <Table.Th>Status</Table.Th>
+            <Table.Th w={120}>Actions</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
       <Table.Tbody>
         {bills.map((bill) => {
           const status = getDueStatus(bill);
@@ -80,6 +81,7 @@ export default function BillTable({ bills, onEdit, onDelete, onMarkPaid }: Props
           );
         })}
       </Table.Tbody>
-    </Table>
+      </Table>
+    </Table.ScrollContainer>
   );
 }

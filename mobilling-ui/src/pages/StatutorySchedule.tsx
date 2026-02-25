@@ -57,20 +57,21 @@ export default function StatutorySchedule() {
       {filtered.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No obligations match this filter</Text>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              <Table.Th>Category</Table.Th>
-              <Table.Th>Amount</Table.Th>
-              <Table.Th>Paid</Table.Th>
-              <Table.Th>Remaining</Table.Th>
-              <Table.Th>Due Date</Table.Th>
-              <Table.Th>Days Left</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th w={140}>Progress</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Table.ScrollContainer minWidth={900}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Category</Table.Th>
+                <Table.Th>Amount</Table.Th>
+                <Table.Th>Paid</Table.Th>
+                <Table.Th>Remaining</Table.Th>
+                <Table.Th>Due Date</Table.Th>
+                <Table.Th>Days Left</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th w={140}>Progress</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
           <Table.Tbody>
             {filtered.map((s) => (
               <Table.Tr key={s.id}>
@@ -108,8 +109,9 @@ export default function StatutorySchedule() {
                 </Table.Td>
               </Table.Tr>
             ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
     </>
   );

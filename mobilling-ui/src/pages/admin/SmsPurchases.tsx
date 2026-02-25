@@ -42,7 +42,7 @@ export default function SmsPurchases() {
             { value: 'completed', label: 'Completed' },
             { value: 'failed', label: 'Failed' },
           ]}
-          w={200}
+          maw={200}
         />
       </Group>
 
@@ -50,8 +50,9 @@ export default function SmsPurchases() {
         <Center py="xl"><Loader /></Center>
       ) : (
         <Paper withBorder>
-          <Table striped highlightOnHover>
-            <Table.Thead>
+          <Table.ScrollContainer minWidth={700}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
               <Table.Tr>
                 <Table.Th>Tenant</Table.Th>
                 <Table.Th>User</Table.Th>
@@ -86,7 +87,8 @@ export default function SmsPurchases() {
                 </Table.Tr>
               )}
             </Table.Tbody>
-          </Table>
+            </Table>
+          </Table.ScrollContainer>
         </Paper>
       )}
 

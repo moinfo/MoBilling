@@ -41,7 +41,7 @@ export default function SubscriptionPlans() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <div>
           <Title order={2}>Subscription Plans</Title>
           <Text c="dimmed">Manage tenant subscription plans and pricing.</Text>
@@ -55,19 +55,20 @@ export default function SubscriptionPlans() {
         <Center py="xl"><Loader /></Center>
       ) : (
         <Paper withBorder>
-          <Table striped highlightOnHover>
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Name</Table.Th>
-                <Table.Th>Slug</Table.Th>
-                <Table.Th>Price (TZS)</Table.Th>
-                <Table.Th>Cycle (days)</Table.Th>
-                <Table.Th>Features</Table.Th>
-                <Table.Th>Status</Table.Th>
-                <Table.Th>Order</Table.Th>
-                <Table.Th w={100}>Actions</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
+          <Table.ScrollContainer minWidth={750}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Slug</Table.Th>
+                  <Table.Th>Price (TZS)</Table.Th>
+                  <Table.Th>Cycle (days)</Table.Th>
+                  <Table.Th>Features</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th>Order</Table.Th>
+                  <Table.Th w={100}>Actions</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
             <Table.Tbody>
               {plans.map((plan) => (
                 <Table.Tr key={plan.id}>
@@ -113,7 +114,8 @@ export default function SubscriptionPlans() {
                 </Table.Tr>
               )}
             </Table.Tbody>
-          </Table>
+            </Table>
+          </Table.ScrollContainer>
         </Paper>
       )}
 

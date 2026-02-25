@@ -118,7 +118,7 @@ export default function ClientSubscriptions() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Client Subscriptions</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
           Add Subscription
@@ -131,7 +131,7 @@ export default function ClientSubscriptions() {
         value={search}
         onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
         mb="md"
-        w={350}
+        maw={350}
       />
 
       {items.length === 0 ? (
@@ -139,20 +139,21 @@ export default function ClientSubscriptions() {
           No subscriptions yet. Add a subscription to track what each client is subscribed to (e.g., domains, hosting).
         </Text>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Client</Table.Th>
-              <Table.Th>Product / Service</Table.Th>
-              <Table.Th>Label</Table.Th>
-              <Table.Th>Cycle</Table.Th>
-              <Table.Th>Qty</Table.Th>
-              <Table.Th>Price</Table.Th>
-              <Table.Th>Start Date</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th w={90}>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Table.ScrollContainer minWidth={900}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Client</Table.Th>
+                <Table.Th>Product / Service</Table.Th>
+                <Table.Th>Label</Table.Th>
+                <Table.Th>Cycle</Table.Th>
+                <Table.Th>Qty</Table.Th>
+                <Table.Th>Price</Table.Th>
+                <Table.Th>Start Date</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th w={90}>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
           <Table.Tbody>
             {items.map((sub) => (
               <Table.Tr key={sub.id}>
@@ -192,8 +193,9 @@ export default function ClientSubscriptions() {
                 </Table.Td>
               </Table.Tr>
             ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {meta && meta.last_page > 1 && (
@@ -250,7 +252,7 @@ function SubscriptionForm({
       label: '',
       quantity: 1,
       start_date: new Date().toISOString().split('T')[0],
-      status: 'active',
+      status: 'pending',
     },
     validate: {
       client_id: (v) => (v ? null : 'Client is required'),
@@ -312,18 +314,23 @@ function SubscriptionForm({
           onChange={(date: any) => form.setFieldValue('start_date', date ? new Date(date).toISOString().split('T')[0] : '')}
           error={form.errors.start_date}
         />
-        {isEditing && (
-          <Select
-            label="Status"
-            data={[
-              { value: 'pending', label: 'Pending Payment' },
-              { value: 'active', label: 'Active' },
-              { value: 'suspended', label: 'Suspended' },
-              { value: 'cancelled', label: 'Cancelled' },
-            ]}
-            {...form.getInputProps('status')}
-          />
-        )}
+        <Select
+          label="Status"
+          description={!isEditing ? 'Active = no invoice created. Pending = invoice will be sent to client.' : undefined}
+          data={isEditing
+            ? [
+                { value: 'pending', label: 'Pending Payment' },
+                { value: 'active', label: 'Active' },
+                { value: 'suspended', label: 'Suspended' },
+                { value: 'cancelled', label: 'Cancelled' },
+              ]
+            : [
+                { value: 'pending', label: 'Pending Payment' },
+                { value: 'active', label: 'Active' },
+              ]
+          }
+          {...form.getInputProps('status')}
+        />
         <Group justify="flex-end">
           <Button type="submit" loading={loading}>
             {isEditing ? 'Update Subscription' : 'Create Subscription'}

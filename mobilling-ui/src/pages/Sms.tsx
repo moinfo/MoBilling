@@ -314,18 +314,19 @@ function PurchaseHistory() {
       {isLoading ? (
         <Center py="xl"><Loader /></Center>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Package</Table.Th>
-              <Table.Th>Quantity</Table.Th>
-              <Table.Th>Amount (TZS)</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th>Payment Method</Table.Th>
-              <Table.Th>Date</Table.Th>
-              <Table.Th>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Table.ScrollContainer minWidth={750}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Package</Table.Th>
+                <Table.Th>Quantity</Table.Th>
+                <Table.Th>Amount (TZS)</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Payment Method</Table.Th>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
           <Table.Tbody>
             {purchases.map((p) => (
               <Table.Tr key={p.id}>
@@ -386,8 +387,9 @@ function PurchaseHistory() {
                 </Table.Td>
               </Table.Tr>
             )}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {lastPage > 1 && (

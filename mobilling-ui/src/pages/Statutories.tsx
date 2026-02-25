@@ -80,7 +80,7 @@ export default function Statutories() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Statutory Obligations</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setFormOpen(true); }}>
           Register Obligation
@@ -93,25 +93,26 @@ export default function Statutories() {
         value={search}
         onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
         mb="md"
-        w={300}
+        maw={300}
       />
 
       {statutories.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No statutory obligations found</Text>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              <Table.Th>Category</Table.Th>
-              <Table.Th>Amount</Table.Th>
-              <Table.Th>Cycle</Table.Th>
-              <Table.Th>Next Due</Table.Th>
-              <Table.Th>Days</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th w={100}>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Table.ScrollContainer minWidth={800}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Category</Table.Th>
+                <Table.Th>Amount</Table.Th>
+                <Table.Th>Cycle</Table.Th>
+                <Table.Th>Next Due</Table.Th>
+                <Table.Th>Days</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th w={100}>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
           <Table.Tbody>
             {statutories.map((s) => {
               const days = s.days_remaining ?? 0;
@@ -156,8 +157,9 @@ export default function Statutories() {
                 </Table.Tr>
               );
             })}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {meta && meta.last_page > 1 && (

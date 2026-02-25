@@ -445,19 +445,20 @@ function SubscriptionHistory() {
       {isLoading ? (
         <Center py="xl"><Loader /></Center>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Plan</Table.Th>
-              <Table.Th>Invoice</Table.Th>
-              <Table.Th>Amount (TZS)</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th>Period</Table.Th>
-              <Table.Th>Payment Method</Table.Th>
-              <Table.Th>Date</Table.Th>
-              <Table.Th></Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Table.ScrollContainer minWidth={900}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Plan</Table.Th>
+                <Table.Th>Invoice</Table.Th>
+                <Table.Th>Amount (TZS)</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Period</Table.Th>
+                <Table.Th>Payment Method</Table.Th>
+                <Table.Th>Date</Table.Th>
+                <Table.Th></Table.Th>
+              </Table.Tr>
+            </Table.Thead>
           <Table.Tbody>
             {subscriptions.map((sub) => (
               <Table.Tr key={sub.id}>
@@ -528,8 +529,9 @@ function SubscriptionHistory() {
                 </Table.Td>
               </Table.Tr>
             )}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
       {lastPage > 1 && (
         <Group justify="center" mt="md">

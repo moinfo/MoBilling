@@ -119,24 +119,25 @@ export default function PaymentsIn() {
         value={search}
         onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
         mb="md"
-        w={300}
+        maw={300}
       />
 
       {payments.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No payments recorded yet</Text>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Date</Table.Th>
-              <Table.Th>Invoice</Table.Th>
-              <Table.Th>Client</Table.Th>
-              <Table.Th>Amount</Table.Th>
-              <Table.Th>Method</Table.Th>
-              <Table.Th>Reference</Table.Th>
-              <Table.Th w={140}>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Table.ScrollContainer minWidth={750}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Invoice</Table.Th>
+                <Table.Th>Client</Table.Th>
+                <Table.Th>Amount</Table.Th>
+                <Table.Th>Method</Table.Th>
+                <Table.Th>Reference</Table.Th>
+                <Table.Th w={140}>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
           <Table.Tbody>
             {payments.map((p) => (
               <Table.Tr key={p.id}>
@@ -176,8 +177,9 @@ export default function PaymentsIn() {
                 </Table.Td>
               </Table.Tr>
             ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {meta && meta.last_page > 1 && (

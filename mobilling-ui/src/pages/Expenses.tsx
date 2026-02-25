@@ -105,15 +105,15 @@ export default function Expenses() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Expenses</Title>
-        <Group>
+        <Group wrap="wrap">
           <TextInput
             placeholder="Search expenses..."
             leftSection={<IconSearch size={16} />}
             value={search}
             onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
-            style={{ width: 250 }}
+            maw={250}
           />
           <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
             Add Expense
@@ -124,8 +124,9 @@ export default function Expenses() {
       {expenses.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No expenses found</Text>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
+        <Table.ScrollContainer minWidth={900}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
             <Table.Tr>
               <Table.Th>Description</Table.Th>
               <Table.Th>Category</Table.Th>
@@ -169,8 +170,9 @@ export default function Expenses() {
                 </Table.Td>
               </Table.Tr>
             ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {meta && meta.last_page > 1 && (

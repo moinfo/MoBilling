@@ -109,7 +109,7 @@ export default function BillCategories() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Bill Categories</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={openNewCategory}>
           Add Category
