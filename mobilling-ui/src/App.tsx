@@ -14,6 +14,7 @@ import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
 import Clients from './pages/Clients';
+import ClientProfile from './pages/ClientProfile';
 import ProductServices from './pages/ProductServices';
 import Quotations from './pages/Quotations';
 import Proformas from './pages/Proformas';
@@ -115,6 +116,7 @@ export default function App() {
                 >
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/clients" element={<Clients />} />
+                  <Route path="/clients/:clientId" element={<ClientProfile />} />
                   <Route path="/product-services" element={<ProductServices />} />
                   <Route path="/quotations" element={<Quotations />} />
                   <Route path="/proformas" element={<Proformas />} />

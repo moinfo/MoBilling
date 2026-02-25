@@ -5,6 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreClientRequest;
 use App\Http\Resources\ClientResource;
 use App\Models\Client;
+use App\Models\ClientSubscription;
+use App\Models\Document;
+use App\Models\PaymentIn;
+use App\Models\RecurringInvoiceLog;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class ClientController extends Controller
@@ -48,5 +53,110 @@ class ClientController extends Controller
     {
         $client->delete();
         return response()->json(['message' => 'Client deleted successfully']);
+    }
+
+    public function profile(Client $client)
+    {
+        $cycleIntervals = [
+            'monthly' => '1 month',
+            'quarterly' => '3 months',
+            'half_yearly' => '6 months',
+            'yearly' => '1 year',
+        ];
+
+        $today = Carbon::today();
+
+        // Subscriptions with next bill calculation
+        $subscriptions = ClientSubscription::where('client_id', $client->id)
+            ->with('productService')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($sub) use ($cycleIntervals, $today) {
+                $product = $sub->productService;
+                $interval = $cycleIntervals[$product->billing_cycle ?? ''] ?? null;
+                $nextBill = null;
+
+                if ($sub->status === 'active' && $interval) {
+                    $date = $sub->start_date->copy();
+                    while ($date->lt($today)) {
+                        $date->add($interval);
+                    }
+                    $nextBill = $date->format('Y-m-d');
+                }
+
+                return [
+                    'id' => $sub->id,
+                    'product_service_name' => $product->name,
+                    'label' => $sub->label,
+                    'billing_cycle' => $product->billing_cycle,
+                    'quantity' => $sub->quantity,
+                    'price' => $product->price,
+                    'start_date' => $sub->start_date->format('Y-m-d'),
+                    'status' => $sub->status,
+                    'next_bill' => $nextBill,
+                ];
+            });
+
+        // Invoices (documents of type invoice)
+        $invoices = Document::where('client_id', $client->id)
+            ->where('type', 'invoice')
+            ->with('items')
+            ->orderByDesc('date')
+            ->limit(50)
+            ->get()
+            ->map(fn ($doc) => [
+                'id' => $doc->id,
+                'document_number' => $doc->document_number,
+                'date' => $doc->date?->format('Y-m-d'),
+                'due_date' => $doc->due_date?->format('Y-m-d'),
+                'total' => $doc->total,
+                'status' => $doc->status,
+            ]);
+
+        // Payments
+        $payments = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $client->id))
+            ->with('document')
+            ->orderByDesc('payment_date')
+            ->limit(50)
+            ->get()
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'amount' => $p->amount,
+                'payment_date' => $p->payment_date?->format('Y-m-d'),
+                'payment_method' => $p->payment_method,
+                'reference' => $p->reference,
+                'document_number' => $p->document?->document_number,
+            ]);
+
+        // Summary stats
+        $totalInvoiced = Document::where('client_id', $client->id)
+            ->where('type', 'invoice')
+            ->sum('total');
+        $totalPaid = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $client->id))
+            ->sum('amount');
+        $activeSubscriptions = $subscriptions->where('status', 'active')->count();
+
+        return response()->json([
+            'data' => [
+                'client' => [
+                    'id' => $client->id,
+                    'name' => $client->name,
+                    'email' => $client->email,
+                    'phone' => $client->phone,
+                    'address' => $client->address,
+                    'tax_id' => $client->tax_id,
+                    'created_at' => $client->created_at,
+                ],
+                'summary' => [
+                    'total_invoiced' => round((float) $totalInvoiced, 2),
+                    'total_paid' => round((float) $totalPaid, 2),
+                    'balance' => round((float) $totalInvoiced - (float) $totalPaid, 2),
+                    'active_subscriptions' => $activeSubscriptions,
+                ],
+                'subscriptions' => $subscriptions->values(),
+                'invoices' => $invoices->values(),
+                'payments' => $payments->values(),
+            ],
+        ]);
     }
 }

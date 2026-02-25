@@ -133,6 +133,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Clients
     Route::apiResource('clients', ClientController::class);
+    Route::get('/clients/{client}/profile', [ClientController::class, 'profile']);
 
     // Client Subscriptions
     Route::apiResource('client-subscriptions', ClientSubscriptionController::class);

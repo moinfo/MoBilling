@@ -1,5 +1,6 @@
-import { Table, ActionIcon, Group, Text } from '@mantine/core';
-import { IconEdit, IconTrash } from '@tabler/icons-react';
+import { Table, ActionIcon, Group, Text, Anchor } from '@mantine/core';
+import { IconEdit, IconTrash, IconEye } from '@tabler/icons-react';
+import { useNavigate } from 'react-router-dom';
 import { Client } from '../../api/clients';
 
 interface Props {
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export default function ClientTable({ clients, onEdit, onDelete }: Props) {
+  const navigate = useNavigate();
+
   if (clients.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No clients found</Text>;
   }
@@ -22,18 +25,25 @@ export default function ClientTable({ clients, onEdit, onDelete }: Props) {
             <Table.Th>Email</Table.Th>
             <Table.Th>Phone</Table.Th>
             <Table.Th>Tax ID</Table.Th>
-            <Table.Th w={100}>Actions</Table.Th>
+            <Table.Th w={120}>Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
           {clients.map((client) => (
             <Table.Tr key={client.id}>
-              <Table.Td>{client.name}</Table.Td>
+              <Table.Td>
+                <Anchor size="sm" fw={500} onClick={() => navigate(`/clients/${client.id}`)}>
+                  {client.name}
+                </Anchor>
+              </Table.Td>
               <Table.Td>{client.email || '—'}</Table.Td>
               <Table.Td>{client.phone || '—'}</Table.Td>
               <Table.Td>{client.tax_id || '—'}</Table.Td>
               <Table.Td>
                 <Group gap="xs">
+                  <ActionIcon variant="light" color="gray" onClick={() => navigate(`/clients/${client.id}`)}>
+                    <IconEye size={16} />
+                  </ActionIcon>
                   <ActionIcon variant="light" onClick={() => onEdit(client)}>
                     <IconEdit size={16} />
                   </ActionIcon>
