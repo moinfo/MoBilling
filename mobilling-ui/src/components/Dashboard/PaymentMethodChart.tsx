@@ -37,7 +37,7 @@ export default function PaymentMethodChart({ data }: Props) {
             <XAxis dataKey="name" tick={tick} />
             <YAxis tick={tick} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
             <Tooltip
-              formatter={(value: number) => [formatCurrency(value), 'Amount']}
+              formatter={((value: any) => [formatCurrency(value ?? 0), 'Amount']) as any}
               contentStyle={chartTooltipStyle(dark)}
             />
             <Bar dataKey="amount" fill="#7c3aed" radius={[6, 6, 0, 0]} barSize={40} />

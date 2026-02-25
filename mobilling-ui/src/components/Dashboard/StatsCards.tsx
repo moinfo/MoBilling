@@ -35,7 +35,7 @@ export default function StatsCards(props: Props) {
   return (
     <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }}>
       {cards.map((card) => (
-        <Card key={card.title} withBorder padding={{ base: 'sm', sm: 'lg' }} radius="md">
+        <Card key={card.title} withBorder padding="md" radius="md">
           <Group justify="space-between" wrap="nowrap" gap="xs">
             <div style={{ minWidth: 0 }}>
               <Text size="xs" c="dimmed" tt="uppercase" fw={700} truncate>{card.title}</Text>

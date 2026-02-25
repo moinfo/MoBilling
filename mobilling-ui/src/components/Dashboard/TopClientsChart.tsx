@@ -24,7 +24,7 @@ export default function TopClientsChart({ data }: Props) {
             <XAxis type="number" tick={tick} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
             <YAxis type="category" dataKey="name" tick={tick} width={80} />
             <Tooltip
-              formatter={(value: number, name: string) => [formatCurrency(value), name === 'total' ? 'Invoiced' : 'Paid']}
+              formatter={((value: any, name: any) => [formatCurrency(value ?? 0), name === 'total' ? 'Invoiced' : 'Paid']) as any}
               contentStyle={chartTooltipStyle(dark)}
             />
             <Legend wrapperStyle={{ color: dark ? '#c1c2c5' : '#495057' }} />
