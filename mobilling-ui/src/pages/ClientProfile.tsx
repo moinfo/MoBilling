@@ -82,11 +82,12 @@ export default function ClientProfile() {
       </Group>
 
       {/* Summary Cards */}
-      <SimpleGrid cols={{ base: 2, sm: 4 }}>
+      <SimpleGrid cols={{ base: 2, sm: 5 }}>
         <SummaryCard icon={<IconFileInvoice size={20} />} label="Total Invoiced" value={formatCurrency(summary.total_invoiced)} color="blue" />
         <SummaryCard icon={<IconCash size={20} />} label="Total Paid" value={formatCurrency(summary.total_paid)} color="green" />
         <SummaryCard icon={<IconCalendarDue size={20} />} label="Balance Due" value={formatCurrency(summary.balance)} color={summary.balance > 0 ? 'red' : 'green'} />
         <SummaryCard icon={<IconRepeat size={20} />} label="Active Subscriptions" value={String(summary.active_subscriptions)} color="violet" />
+        <SummaryCard icon={<IconRepeat size={20} />} label="Subscription Value" value={formatCurrency(summary.total_subscription_value)} color="cyan" />
       </SimpleGrid>
 
       {/* Subscriptions */}

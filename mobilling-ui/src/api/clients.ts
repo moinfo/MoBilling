@@ -40,6 +40,7 @@ export interface ClientProfile {
     total_paid: number;
     balance: number;
     active_subscriptions: number;
+    total_subscription_value: number;
   };
   subscriptions: {
     id: string;

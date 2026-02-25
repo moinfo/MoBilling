@@ -40,7 +40,7 @@ export default function ClientTable({ clients, onEdit, onDelete }: Props) {
               <Table.Td>{client.phone || '—'}</Table.Td>
               <Table.Td>{client.tax_id || '—'}</Table.Td>
               <Table.Td>
-                <Group gap="xs">
+                <Group gap="xs" wrap="nowrap">
                   <ActionIcon variant="light" color="gray" onClick={() => navigate(`/clients/${client.id}`)}>
                     <IconEye size={16} />
                   </ActionIcon>

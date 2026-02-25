@@ -136,6 +136,11 @@ class ClientController extends Controller
             ->sum('amount');
         $activeSubscriptions = $subscriptions->where('status', 'active')->count();
 
+        // Total subscription value = sum of (price * quantity) for active subs
+        $totalSubscriptionValue = $subscriptions
+            ->where('status', 'active')
+            ->sum(fn ($s) => (float) $s['price'] * (int) $s['quantity']);
+
         return response()->json([
             'data' => [
                 'client' => [
@@ -152,6 +157,7 @@ class ClientController extends Controller
                     'total_paid' => round((float) $totalPaid, 2),
                     'balance' => round((float) $totalInvoiced - (float) $totalPaid, 2),
                     'active_subscriptions' => $activeSubscriptions,
+                    'total_subscription_value' => round($totalSubscriptionValue, 2),
                 ],
                 'subscriptions' => $subscriptions->values(),
                 'invoices' => $invoices->values(),
