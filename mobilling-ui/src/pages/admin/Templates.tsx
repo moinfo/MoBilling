@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Table, ActionIcon, Modal, Stack, TextInput, Textarea, Button,
-  Group, Text, Loader, Center, Paper, Badge, Divider, Box, Alert,
+  Group, Text, Loader, Center, Badge, Divider, Box, Alert,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';

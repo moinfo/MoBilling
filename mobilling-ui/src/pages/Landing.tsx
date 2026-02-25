@@ -1,6 +1,6 @@
 import {
   Container, Title, Text, Button, Group, SimpleGrid, Paper, Box, Image,
-  ThemeIcon, ActionIcon, Badge, Stack, Divider, Card, List, rem, Anchor,
+  ThemeIcon, ActionIcon, Badge, Stack, Divider, Card, List, Anchor,
   Loader, Center, Burger, Drawer,
   useMantineColorScheme, useComputedColorScheme, useMantineTheme,
 } from '@mantine/core';
@@ -209,7 +209,7 @@ export default function Landing() {
             </Group>
 
             {/* Trust badges */}
-            <Group justify="center" mt={{ base: 32, sm: 48 }} gap={{ base: 'md', sm: 'xl' }} wrap="wrap">
+            <Group justify="center" mt={40} gap="lg" wrap="wrap">
               {stats.map((s) => (
                 <Group key={s.label} gap={6}>
                   <s.icon size={18} color={theme.colors.blue[5]} />
@@ -427,8 +427,8 @@ export default function Landing() {
 
           <Divider my="lg" />
 
-          <Stack gap={4} align={{ base: 'center', sm: 'stretch' }}>
-            <Group justify={{ base: 'center', sm: 'space-between' }} wrap="wrap" gap="xs">
+          <Stack gap={4} align="stretch">
+            <Group justify="space-between" wrap="wrap" gap="xs">
               <Text size="xs" c="dimmed">
                 &copy; {new Date().getFullYear()} MoBilling. All rights reserved.
               </Text>

@@ -37,7 +37,7 @@ export default function RevenueChart({ data }: Props) {
           <XAxis dataKey="month" tick={tick} />
           <YAxis tick={tick} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
           <Tooltip
-            formatter={(value: number, name: string) => [formatCurrency(value), name]}
+            formatter={((value: any, name: any) => [formatCurrency(value ?? 0), name]) as any}
             contentStyle={chartTooltipStyle(dark)}
           />
           <Legend wrapperStyle={{ color: dark ? '#c1c2c5' : '#495057' }} />

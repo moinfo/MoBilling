@@ -2,7 +2,6 @@ import { useState } from 'react';
 import {
   Title, Table, Badge, ActionIcon, Modal, Stack, TextInput, NumberInput,
   Select, Switch, Button, Group, PasswordInput, Text, Loader, Center,
-  Paper,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';

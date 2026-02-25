@@ -46,7 +46,7 @@ export default function InvoiceStatusChart({ data }: Props) {
               ))}
             </Pie>
             <Tooltip
-              formatter={(value: number) => [value, 'Invoices']}
+              formatter={((value: any) => [value ?? 0, 'Invoices']) as any}
               contentStyle={chartTooltipStyle(dark)}
             />
             <Legend wrapperStyle={{ color: dark ? '#c1c2c5' : '#495057' }} />
