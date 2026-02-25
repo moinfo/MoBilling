@@ -1,5 +1,6 @@
-import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button, Badge, Tooltip } from '@mantine/core';
+import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button, Badge, Tooltip, Box, ScrollArea } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import { useState, useCallback } from 'react';
 import {
   IconDashboard, IconUsers, IconUsersGroup, IconPackages,
   IconFileText, IconFileInvoice, IconReceipt, IconFileDescription, IconFileCheck,
@@ -13,7 +14,7 @@ import { useAuth } from '../../context/AuthContext';
 import NotificationBell from './NotificationBell';
 
 export default function AppLayout() {
-  const [opened, { toggle }] = useDisclosure();
+  const [opened, { toggle, close }] = useDisclosure();
   const { user, logout, isImpersonating, exitImpersonation, subscriptionStatus, daysRemaining } = useAuth();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
@@ -21,6 +22,29 @@ export default function AppLayout() {
   const location = useLocation();
 
   const isActive = (path: string) => location.pathname === path;
+
+  // Determine which section the current route belongs to
+  const billingPaths = ['/clients', '/product-services', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
+  const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
+  const expensePaths = ['/expense-categories', '/expenses'];
+
+  const getActiveSection = () => {
+    if (billingPaths.some((p) => location.pathname === p)) return 'billing';
+    if (statutoryPaths.some((p) => location.pathname === p)) return 'statutory';
+    if (expensePaths.some((p) => location.pathname === p)) return 'expenses';
+    return null;
+  };
+
+  const [openSection, setOpenSection] = useState<string | null>(getActiveSection);
+
+  const toggleSection = useCallback((section: string) => {
+    setOpenSection((prev) => (prev === section ? null : section));
+  }, []);
+
+  const navigateAndClose = useCallback((path: string) => {
+    navigate(path);
+    close(); // close mobile drawer
+  }, [navigate, close]);
 
   const handleLogout = async () => {
     await logout();
@@ -43,28 +67,29 @@ export default function AppLayout() {
     >
       <AppShell.Header>
         {showSubscriptionBanner && (
-          <Group h={36} px="md" justify="space-between" bg="yellow.6" style={{ color: 'white', cursor: 'pointer' }} onClick={() => navigate('/subscription')}>
-            <Text size="sm" fw={600}>
+          <Group h={36} px="md" justify="space-between" bg="yellow.6" style={{ color: 'white', cursor: 'pointer' }} wrap="nowrap" onClick={() => navigate('/subscription')}>
+            <Text size="xs" fw={600} truncate>
               {daysRemaining > 0
-                ? `Free trial ends in ${daysRemaining} day(s) — Subscribe now to keep access`
-                : 'Your free trial has expired — Subscribe now'}
+                ? `Trial ends in ${daysRemaining}d — Subscribe now`
+                : 'Trial expired — Subscribe now'}
             </Text>
-            <Button size="compact-sm" variant="white" color="yellow">
-              View Plans
+            <Button size="compact-xs" variant="white" color="yellow" style={{ flexShrink: 0 }}>
+              Plans
             </Button>
           </Group>
         )}
         {isImpersonating && (
-          <Group h={36} px="md" justify="space-between" bg="orange.6" style={{ color: 'white' }}>
-            <Text size="sm" fw={600}>Viewing as: {user?.tenant?.name}</Text>
+          <Group h={36} px="md" justify="space-between" bg="orange.6" style={{ color: 'white' }} wrap="nowrap">
+            <Text size="xs" fw={600} truncate>Viewing: {user?.tenant?.name}</Text>
             <Button
-              size="compact-sm"
+              size="compact-xs"
               variant="white"
               color="orange"
               leftSection={<IconArrowBack size={14} />}
               onClick={handleExitImpersonation}
+              style={{ flexShrink: 0 }}
             >
-              Back to Admin
+              Exit
             </Button>
           </Group>
         )}
@@ -79,6 +104,7 @@ export default function AppLayout() {
               status={subscriptionStatus}
               daysRemaining={daysRemaining}
               onClick={() => navigate('/subscription')}
+              visibleFrom="sm"
             />
             <NotificationBell />
             <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
@@ -114,59 +140,64 @@ export default function AppLayout() {
       </AppShell.Header>
 
       <AppShell.Navbar p="xs">
-        <NavLink label="Dashboard" leftSection={<IconDashboard size={18} />}
-          active={isActive('/dashboard')} onClick={() => navigate('/dashboard')} />
+        <AppShell.Section grow component={ScrollArea} type="scroll">
+          <NavLink label="Dashboard" leftSection={<IconDashboard size={18} />}
+            active={isActive('/dashboard')} onClick={() => navigateAndClose('/dashboard')} />
 
-        <NavLink label="Billing" leftSection={<IconFileText size={18} />} defaultOpened>
-          <NavLink label="Clients" leftSection={<IconUsers size={16} />}
-            active={isActive('/clients')} onClick={() => navigate('/clients')} />
-          <NavLink label="Products & Services" leftSection={<IconPackages size={16} />}
-            active={isActive('/product-services')} onClick={() => navigate('/product-services')} />
-          <NavLink label="Quotations" leftSection={<IconFileDescription size={16} />}
-            active={isActive('/quotations')} onClick={() => navigate('/quotations')} />
-          <NavLink label="Proforma Invoices" leftSection={<IconFileCheck size={16} />}
-            active={isActive('/proformas')} onClick={() => navigate('/proformas')} />
-          <NavLink label="Invoices" leftSection={<IconFileInvoice size={16} />}
-            active={isActive('/invoices')} onClick={() => navigate('/invoices')} />
-          <NavLink label="Payments" leftSection={<IconReceipt size={16} />}
-            active={isActive('/payments-in')} onClick={() => navigate('/payments-in')} />
-          <NavLink label="Subscriptions" leftSection={<IconLink size={16} />}
-            active={isActive('/client-subscriptions')} onClick={() => navigate('/client-subscriptions')} />
-          <NavLink label="Next Bills" leftSection={<IconCalendarRepeat size={16} />}
-            active={isActive('/next-bills')} onClick={() => navigate('/next-bills')} />
-        </NavLink>
+          <NavLink label="Billing" leftSection={<IconFileText size={18} />}
+            opened={openSection === 'billing'} onChange={() => toggleSection('billing')}>
+            <NavLink label="Clients" leftSection={<IconUsers size={16} />}
+              active={isActive('/clients')} onClick={() => navigateAndClose('/clients')} />
+            <NavLink label="Products & Services" leftSection={<IconPackages size={16} />}
+              active={isActive('/product-services')} onClick={() => navigateAndClose('/product-services')} />
+            <NavLink label="Quotations" leftSection={<IconFileDescription size={16} />}
+              active={isActive('/quotations')} onClick={() => navigateAndClose('/quotations')} />
+            <NavLink label="Proforma Invoices" leftSection={<IconFileCheck size={16} />}
+              active={isActive('/proformas')} onClick={() => navigateAndClose('/proformas')} />
+            <NavLink label="Invoices" leftSection={<IconFileInvoice size={16} />}
+              active={isActive('/invoices')} onClick={() => navigateAndClose('/invoices')} />
+            <NavLink label="Payments" leftSection={<IconReceipt size={16} />}
+              active={isActive('/payments-in')} onClick={() => navigateAndClose('/payments-in')} />
+            <NavLink label="Subscriptions" leftSection={<IconLink size={16} />}
+              active={isActive('/client-subscriptions')} onClick={() => navigateAndClose('/client-subscriptions')} />
+            <NavLink label="Next Bills" leftSection={<IconCalendarRepeat size={16} />}
+              active={isActive('/next-bills')} onClick={() => navigateAndClose('/next-bills')} />
+          </NavLink>
 
-        <NavLink label="Statutory" leftSection={<IconCalendarDue size={18} />} defaultOpened>
-          <NavLink label="Obligations" leftSection={<IconClipboardList size={16} />}
-            active={isActive('/statutories')} onClick={() => navigate('/statutories')} />
-          <NavLink label="Schedule" leftSection={<IconCalendarEvent size={16} />}
-            active={isActive('/statutory-schedule')} onClick={() => navigate('/statutory-schedule')} />
-          <NavLink label="Bills" leftSection={<IconFileSpreadsheet size={16} />}
-            active={isActive('/bills')} onClick={() => navigate('/bills')} />
-          <NavLink label="Categories" leftSection={<IconCategory size={16} />}
-            active={isActive('/bill-categories')} onClick={() => navigate('/bill-categories')} />
-          <NavLink label="Payment History" leftSection={<IconReceipt size={16} />}
-            active={isActive('/payments-out')} onClick={() => navigate('/payments-out')} />
-        </NavLink>
+          <NavLink label="Statutory" leftSection={<IconCalendarDue size={18} />}
+            opened={openSection === 'statutory'} onChange={() => toggleSection('statutory')}>
+            <NavLink label="Obligations" leftSection={<IconClipboardList size={16} />}
+              active={isActive('/statutories')} onClick={() => navigateAndClose('/statutories')} />
+            <NavLink label="Schedule" leftSection={<IconCalendarEvent size={16} />}
+              active={isActive('/statutory-schedule')} onClick={() => navigateAndClose('/statutory-schedule')} />
+            <NavLink label="Bills" leftSection={<IconFileSpreadsheet size={16} />}
+              active={isActive('/bills')} onClick={() => navigateAndClose('/bills')} />
+            <NavLink label="Categories" leftSection={<IconCategory size={16} />}
+              active={isActive('/bill-categories')} onClick={() => navigateAndClose('/bill-categories')} />
+            <NavLink label="Payment History" leftSection={<IconReceipt size={16} />}
+              active={isActive('/payments-out')} onClick={() => navigateAndClose('/payments-out')} />
+          </NavLink>
 
-        <NavLink label="Expenses" leftSection={<IconWallet size={18} />} defaultOpened>
-          <NavLink label="Categories" leftSection={<IconCategory2 size={16} />}
-            active={isActive('/expense-categories')} onClick={() => navigate('/expense-categories')} />
-          <NavLink label="Expenses" leftSection={<IconReceipt2 size={16} />}
-            active={isActive('/expenses')} onClick={() => navigate('/expenses')} />
-        </NavLink>
+          <NavLink label="Expenses" leftSection={<IconWallet size={18} />}
+            opened={openSection === 'expenses'} onChange={() => toggleSection('expenses')}>
+            <NavLink label="Categories" leftSection={<IconCategory2 size={16} />}
+              active={isActive('/expense-categories')} onClick={() => navigateAndClose('/expense-categories')} />
+            <NavLink label="Expenses" leftSection={<IconReceipt2 size={16} />}
+              active={isActive('/expenses')} onClick={() => navigateAndClose('/expenses')} />
+          </NavLink>
 
-        <NavLink label="SMS" leftSection={<IconMessage size={18} />}
-          active={isActive('/sms')} onClick={() => navigate('/sms')} />
+          <NavLink label="SMS" leftSection={<IconMessage size={18} />}
+            active={isActive('/sms')} onClick={() => navigateAndClose('/sms')} />
 
-        <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
-          active={isActive('/subscription')} onClick={() => navigate('/subscription')} />
+          <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
+            active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
 
-        <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
-          active={isActive('/users')} onClick={() => navigate('/users')} />
+          <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
+            active={isActive('/users')} onClick={() => navigateAndClose('/users')} />
 
-        <NavLink label="Settings" leftSection={<IconSettings size={18} />}
-          active={isActive('/settings')} onClick={() => navigate('/settings')} />
+          <NavLink label="Settings" leftSection={<IconSettings size={18} />}
+            active={isActive('/settings')} onClick={() => navigateAndClose('/settings')} />
+        </AppShell.Section>
       </AppShell.Navbar>
 
       <AppShell.Main>
@@ -180,10 +211,12 @@ function SubscriptionBadge({
   status,
   daysRemaining,
   onClick,
+  visibleFrom,
 }: {
   status: string | null;
   daysRemaining: number;
   onClick: () => void;
+  visibleFrom?: string;
 }) {
   if (!status) return null;
 
@@ -200,16 +233,18 @@ function SubscriptionBadge({
   }
 
   return (
-    <Tooltip label="Manage subscription">
-      <Badge
-        color={color}
-        variant="light"
-        size="lg"
-        style={{ cursor: 'pointer' }}
-        onClick={onClick}
-      >
-        {label}
-      </Badge>
-    </Tooltip>
+    <Box visibleFrom={visibleFrom as any}>
+      <Tooltip label="Manage subscription">
+        <Badge
+          color={color}
+          variant="light"
+          size="lg"
+          style={{ cursor: 'pointer' }}
+          onClick={onClick}
+        >
+          {label}
+        </Badge>
+      </Tooltip>
+    </Box>
   );
 }

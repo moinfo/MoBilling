@@ -41,21 +41,22 @@ export default function TenantTable({ tenants, onEdit, onToggleActive, onImperso
   }
 
   return (
-    <Table striped highlightOnHover>
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Company Name</Table.Th>
-          <Table.Th>Email</Table.Th>
-          <Table.Th>Currency</Table.Th>
-          <Table.Th>Users</Table.Th>
-          <Table.Th>Subscription</Table.Th>
-          <Table.Th>Expires</Table.Th>
-          <Table.Th>Status</Table.Th>
-          <Table.Th w={190}>Actions</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {tenants.map((tenant) => (
+    <Table.ScrollContainer minWidth={800}>
+      <Table striped highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Company Name</Table.Th>
+            <Table.Th>Email</Table.Th>
+            <Table.Th>Currency</Table.Th>
+            <Table.Th>Users</Table.Th>
+            <Table.Th>Subscription</Table.Th>
+            <Table.Th>Expires</Table.Th>
+            <Table.Th>Status</Table.Th>
+            <Table.Th w={190}>Actions</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {tenants.map((tenant) => (
           <Table.Tr key={tenant.id}>
             <Table.Td>{tenant.name}</Table.Td>
             <Table.Td>{tenant.email}</Table.Td>
@@ -118,6 +119,7 @@ export default function TenantTable({ tenants, onEdit, onToggleActive, onImperso
           </Table.Tr>
         ))}
       </Table.Tbody>
-    </Table>
+      </Table>
+    </Table.ScrollContainer>
   );
 }

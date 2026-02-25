@@ -1,10 +1,11 @@
-import { Card, Text, useMantineTheme } from '@mantine/core';
+import { Card, Text, useMantineTheme, useComputedColorScheme } from '@mantine/core';
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend,
 } from 'recharts';
 import type { MonthlyRevenue } from '../../api/dashboard';
 import { formatCurrency } from '../../utils/formatCurrency';
+import { chartTooltipStyle, chartTickStyle } from './chartTheme';
 
 interface Props {
   data: MonthlyRevenue[];
@@ -12,8 +13,10 @@ interface Props {
 
 export default function RevenueChart({ data }: Props) {
   const theme = useMantineTheme();
+  const dark = useComputedColorScheme('light') === 'dark';
   const invoicedColor = theme.colors.blue[6];
   const collectedColor = theme.colors.green[6];
+  const tick = chartTickStyle(dark);
 
   return (
     <Card withBorder padding="lg" radius="md">
@@ -30,14 +33,14 @@ export default function RevenueChart({ data }: Props) {
               <stop offset="95%" stopColor={collectedColor} stopOpacity={0} />
             </linearGradient>
           </defs>
-          <CartesianGrid strokeDasharray="3 3" stroke="var(--mantine-color-default-border)" />
-          <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-          <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+          <CartesianGrid strokeDasharray="3 3" stroke={dark ? '#404040' : '#e9ecef'} />
+          <XAxis dataKey="month" tick={tick} />
+          <YAxis tick={tick} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
           <Tooltip
             formatter={(value: number, name: string) => [formatCurrency(value), name]}
-            contentStyle={{ borderRadius: 8, border: '1px solid var(--mantine-color-default-border)' }}
+            contentStyle={chartTooltipStyle(dark)}
           />
-          <Legend />
+          <Legend wrapperStyle={{ color: dark ? '#c1c2c5' : '#495057' }} />
           <Area
             type="monotone"
             dataKey="invoiced"

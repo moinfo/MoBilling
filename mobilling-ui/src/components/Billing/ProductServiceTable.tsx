@@ -15,19 +15,20 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
   }
 
   return (
-    <Table striped highlightOnHover>
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Type</Table.Th>
-          <Table.Th>Code</Table.Th>
-          <Table.Th>Name</Table.Th>
-          <Table.Th>Price</Table.Th>
-          <Table.Th>Tax %</Table.Th>
-          <Table.Th>Unit</Table.Th>
-          <Table.Th>Active</Table.Th>
-          <Table.Th w={100}>Actions</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
+    <Table.ScrollContainer minWidth={800}>
+      <Table striped highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Type</Table.Th>
+            <Table.Th>Code</Table.Th>
+            <Table.Th>Name</Table.Th>
+            <Table.Th>Price</Table.Th>
+            <Table.Th>Tax %</Table.Th>
+            <Table.Th>Unit</Table.Th>
+            <Table.Th>Active</Table.Th>
+            <Table.Th w={100}>Actions</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
       <Table.Tbody>
         {items.map((item) => (
           <Table.Tr key={item.id}>
@@ -55,6 +56,7 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
           </Table.Tr>
         ))}
       </Table.Tbody>
-    </Table>
+      </Table>
+    </Table.ScrollContainer>
   );
 }

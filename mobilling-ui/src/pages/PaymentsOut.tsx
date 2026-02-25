@@ -62,19 +62,20 @@ export default function PaymentsOut() {
       {payments.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No payment history</Text>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Date</Table.Th>
-              <Table.Th>Bill</Table.Th>
-              <Table.Th>Amount</Table.Th>
-              <Table.Th>Method</Table.Th>
-              <Table.Th>Control No.</Table.Th>
-              <Table.Th>Reference</Table.Th>
-              <Table.Th>Receipt</Table.Th>
-              <Table.Th w={100}>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Table.ScrollContainer minWidth={800}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Bill</Table.Th>
+                <Table.Th>Amount</Table.Th>
+                <Table.Th>Method</Table.Th>
+                <Table.Th>Control No.</Table.Th>
+                <Table.Th>Reference</Table.Th>
+                <Table.Th>Receipt</Table.Th>
+                <Table.Th w={100}>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
           <Table.Tbody>
             {payments.map((p) => (
               <Table.Tr key={p.id}>
@@ -105,8 +106,9 @@ export default function PaymentsOut() {
                 </Table.Td>
               </Table.Tr>
             ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
 
       {meta && meta.last_page > 1 && (

@@ -38,13 +38,13 @@ export default function EmailSettings() {
         value={search}
         onChange={(e) => setSearch(e.currentTarget.value)}
         mb="md"
-        w={300}
+        maw={300}
       />
 
       {isLoading ? (
         <Center py="xl"><Loader /></Center>
       ) : (
-        <Paper withBorder>
+        <Table.ScrollContainer minWidth={650}>
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
@@ -80,9 +80,9 @@ export default function EmailSettings() {
                   </Table.Td>
                 </Table.Tr>
               )}
-            </Table.Tbody>
+              </Table.Tbody>
           </Table>
-        </Paper>
+        </Table.ScrollContainer>
       )}
 
       <Modal

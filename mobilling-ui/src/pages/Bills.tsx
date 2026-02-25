@@ -89,7 +89,7 @@ export default function Bills() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Bills</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setFormOpen(true); }}>
           Add Bill
@@ -102,7 +102,7 @@ export default function Bills() {
         value={search}
         onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
         mb="md"
-        w={300}
+        maw={300}
       />
 
       <BillTable

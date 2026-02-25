@@ -16,6 +16,7 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
   }
 
   return (
+    <Table.ScrollContainer minWidth={600}>
     <Table striped highlightOnHover>
       <Table.Thead>
         <Table.Tr>
@@ -65,5 +66,6 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
         ))}
       </Table.Tbody>
     </Table>
+    </Table.ScrollContainer>
   );
 }

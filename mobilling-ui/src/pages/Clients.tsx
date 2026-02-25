@@ -79,7 +79,7 @@ export default function Clients() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Clients</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
           Add Client
@@ -92,7 +92,7 @@ export default function Clients() {
         value={search}
         onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
         mb="md"
-        w={300}
+        maw={300}
       />
 
       <ClientTable clients={clients} onEdit={handleEdit} onDelete={handleDelete} />

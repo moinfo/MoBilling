@@ -75,41 +75,43 @@ export default function Dashboard() {
           <Text fw={600}>Recent SMS Purchases</Text>
         </Group>
 
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Tenant</Table.Th>
-              <Table.Th>User</Table.Th>
-              <Table.Th>Quantity</Table.Th>
-              <Table.Th>Amount (TZS)</Table.Th>
-              <Table.Th>Status</Table.Th>
-              <Table.Th>Date</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {stats?.recent_purchases?.map((p) => (
-              <Table.Tr key={p.id}>
-                <Table.Td fw={500}>{p.tenant_name || '—'}</Table.Td>
-                <Table.Td>{p.user_name || '—'}</Table.Td>
-                <Table.Td>{p.sms_quantity.toLocaleString()}</Table.Td>
-                <Table.Td>{Number(p.total_amount).toLocaleString()}</Table.Td>
-                <Table.Td>
-                  <Badge color={statusColors[p.status] || 'gray'} variant="light">
-                    {p.status}
-                  </Badge>
-                </Table.Td>
-                <Table.Td>{p.created_at}</Table.Td>
-              </Table.Tr>
-            ))}
-            {(!stats?.recent_purchases || stats.recent_purchases.length === 0) && (
+        <Table.ScrollContainer minWidth={600}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
               <Table.Tr>
-                <Table.Td colSpan={6}>
-                  <Text ta="center" c="dimmed" py="md">No purchases yet</Text>
-                </Table.Td>
+                <Table.Th>Tenant</Table.Th>
+                <Table.Th>User</Table.Th>
+                <Table.Th>Quantity</Table.Th>
+                <Table.Th>Amount (TZS)</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Date</Table.Th>
               </Table.Tr>
-            )}
-          </Table.Tbody>
-        </Table>
+            </Table.Thead>
+            <Table.Tbody>
+              {stats?.recent_purchases?.map((p) => (
+                <Table.Tr key={p.id}>
+                  <Table.Td fw={500}>{p.tenant_name || '—'}</Table.Td>
+                  <Table.Td>{p.user_name || '—'}</Table.Td>
+                  <Table.Td>{p.sms_quantity.toLocaleString()}</Table.Td>
+                  <Table.Td>{Number(p.total_amount).toLocaleString()}</Table.Td>
+                  <Table.Td>
+                    <Badge color={statusColors[p.status] || 'gray'} variant="light">
+                      {p.status}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>{p.created_at}</Table.Td>
+                </Table.Tr>
+              ))}
+              {(!stats?.recent_purchases || stats.recent_purchases.length === 0) && (
+                <Table.Tr>
+                  <Table.Td colSpan={6}>
+                    <Text ta="center" c="dimmed" py="md">No purchases yet</Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       </Paper>
     </>
   );

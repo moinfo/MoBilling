@@ -79,7 +79,7 @@ export default function Users() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Team</Title>
         {isAdmin && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
@@ -94,7 +94,7 @@ export default function Users() {
         value={search}
         onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
         mb="md"
-        w={300}
+        maw={300}
       />
 
       <UserTable

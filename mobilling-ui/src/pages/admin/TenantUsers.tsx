@@ -93,8 +93,8 @@ export default function TenantUsers() {
         <IconArrowLeft size={14} /> Back to Tenants
       </Anchor>
 
-      <Group justify="space-between" mb="md">
-        <Group gap="xs">
+      <Group justify="space-between" mb="md" wrap="wrap">
+        <Group gap="xs" wrap="wrap">
           <Title order={2}>Users</Title>
           {tenantName && <Text c="dimmed" size="lg">— {tenantName}</Text>}
         </Group>
@@ -109,7 +109,7 @@ export default function TenantUsers() {
         value={search}
         onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
         mb="md"
-        w={300}
+        maw={300}
       />
 
       <UserTable

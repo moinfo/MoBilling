@@ -113,7 +113,7 @@ export default function ExpenseCategories() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Expense Categories</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={openNewCategory}>
           Add Category
@@ -152,8 +152,9 @@ export default function ExpenseCategories() {
                 </Group>
 
                 {cat.sub_categories && cat.sub_categories.length > 0 ? (
-                  <Table striped highlightOnHover>
-                    <Table.Thead>
+                  <Table.ScrollContainer minWidth={450}>
+                    <Table striped highlightOnHover>
+                      <Table.Thead>
                       <Table.Tr>
                         <Table.Th>Subcategory</Table.Th>
                         <Table.Th>Status</Table.Th>
@@ -181,8 +182,9 @@ export default function ExpenseCategories() {
                           </Table.Td>
                         </Table.Tr>
                       ))}
-                    </Table.Tbody>
-                  </Table>
+                      </Table.Tbody>
+                    </Table>
+                  </Table.ScrollContainer>
                 ) : (
                   <Text c="dimmed" size="sm" fs="italic">No subcategories yet</Text>
                 )}

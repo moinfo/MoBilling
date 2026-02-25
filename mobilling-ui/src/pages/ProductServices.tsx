@@ -85,7 +85,7 @@ export default function ProductServices() {
 
   return (
     <>
-      <Group justify="space-between" mb="md">
+      <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Products & Services</Title>
         <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
           Add New
@@ -98,7 +98,7 @@ export default function ProductServices() {
           leftSection={<IconSearch size={16} />}
           value={search}
           onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
-          w={300}
+          maw={300}
         />
         <Tabs value={typeFilter} onChange={(v) => { setTypeFilter(v); setPage(1); }}>
           <Tabs.List>

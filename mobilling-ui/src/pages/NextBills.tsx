@@ -28,18 +28,19 @@ export default function NextBills() {
       {items.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No recurring billing schedules found. Invoice clients with products that have a billing cycle to see upcoming bills here.</Text>
       ) : (
-        <Table striped highlightOnHover>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Client</Table.Th>
-              <Table.Th>Product / Service</Table.Th>
-              <Table.Th>Cycle</Table.Th>
-              <Table.Th>Price</Table.Th>
-              <Table.Th>Last Billed</Table.Th>
-              <Table.Th>Next Bill</Table.Th>
-              <Table.Th>Status</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
+        <Table.ScrollContainer minWidth={700}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Client</Table.Th>
+                <Table.Th>Product / Service</Table.Th>
+                <Table.Th>Cycle</Table.Th>
+                <Table.Th>Price</Table.Th>
+                <Table.Th>Last Billed</Table.Th>
+                <Table.Th>Next Bill</Table.Th>
+                <Table.Th>Status</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
           <Table.Tbody>
             {items.map((item, i) => (
               <Table.Tr key={i}>
@@ -65,8 +66,9 @@ export default function NextBills() {
                 </Table.Td>
               </Table.Tr>
             ))}
-          </Table.Tbody>
-        </Table>
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
     </>
   );

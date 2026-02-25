@@ -50,15 +50,16 @@ export default function BillCategoryTree({ categories, onAddSubcategory, onEdit,
           </Group>
 
           {cat.children && cat.children.length > 0 ? (
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Subcategory</Table.Th>
-                  <Table.Th>Billing Cycle</Table.Th>
-                  <Table.Th>Status</Table.Th>
-                  <Table.Th w={100}>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
+            <Table.ScrollContainer minWidth={500}>
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Subcategory</Table.Th>
+                    <Table.Th>Billing Cycle</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th w={100}>Actions</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
               <Table.Tbody>
                 {cat.children.map((sub) => (
                   <Table.Tr key={sub.id}>
@@ -84,7 +85,8 @@ export default function BillCategoryTree({ categories, onAddSubcategory, onEdit,
                   </Table.Tr>
                 ))}
               </Table.Tbody>
-            </Table>
+              </Table>
+            </Table.ScrollContainer>
           ) : (
             <Text c="dimmed" size="sm" fs="italic">No subcategories yet</Text>
           )}

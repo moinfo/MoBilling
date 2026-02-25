@@ -27,17 +27,18 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete }: P
   }
 
   return (
-    <Table striped highlightOnHover>
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Number</Table.Th>
-          <Table.Th>Client</Table.Th>
-          <Table.Th>Date</Table.Th>
-          <Table.Th>Total</Table.Th>
-          <Table.Th>Status</Table.Th>
-          <Table.Th w={80}>Actions</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
+    <Table.ScrollContainer minWidth={650}>
+      <Table striped highlightOnHover>
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Number</Table.Th>
+            <Table.Th>Client</Table.Th>
+            <Table.Th>Date</Table.Th>
+            <Table.Th>Total</Table.Th>
+            <Table.Th>Status</Table.Th>
+            <Table.Th w={80}>Actions</Table.Th>
+          </Table.Tr>
+        </Table.Thead>
       <Table.Tbody>
         {documents.map((doc) => (
           <Table.Tr key={doc.id} style={{ cursor: 'pointer' }} onClick={() => onView(doc)}>
@@ -65,6 +66,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete }: P
           </Table.Tr>
         ))}
       </Table.Tbody>
-    </Table>
+      </Table>
+    </Table.ScrollContainer>
   );
 }

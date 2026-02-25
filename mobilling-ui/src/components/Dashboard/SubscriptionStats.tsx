@@ -34,10 +34,10 @@ export default function SubscriptionStats({ data }: Props) {
               { value: total > 0 ? (data.cancelled / total) * 100 : 0, color: 'red' },
             ]}
           />
-          <Group gap="md">
-            <Badge color="green" variant="light" size="lg">{data.active} Active</Badge>
-            <Badge color="yellow" variant="light" size="lg">{data.pending} Pending</Badge>
-            <Badge color="red" variant="light" size="lg">{data.cancelled} Cancelled</Badge>
+          <Group gap="xs" justify="center" wrap="wrap">
+            <Badge color="green" variant="light">{data.active} Active</Badge>
+            <Badge color="yellow" variant="light">{data.pending} Pending</Badge>
+            <Badge color="red" variant="light">{data.cancelled} Cancelled</Badge>
           </Group>
         </Stack>
       )}

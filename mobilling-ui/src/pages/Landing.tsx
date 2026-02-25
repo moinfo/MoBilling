@@ -1,9 +1,10 @@
 import {
   Container, Title, Text, Button, Group, SimpleGrid, Paper, Box, Image,
   ThemeIcon, ActionIcon, Badge, Stack, Divider, Card, List, rem, Anchor,
-  Loader, Center,
+  Loader, Center, Burger, Drawer,
   useMantineColorScheme, useComputedColorScheme, useMantineTheme,
 } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import {
   IconFileInvoice, IconFileText, IconCalendarDue,
   IconCash, IconUsers, IconBuildingCommunity,
@@ -39,6 +40,7 @@ export default function Landing() {
   const computedColorScheme = useComputedColorScheme('light');
   const theme = useMantineTheme();
   const dark = computedColorScheme === 'dark';
+  const [drawerOpened, { toggle: toggleDrawer, close: closeDrawer }] = useDisclosure(false);
 
   return (
     <Box style={{ overflow: 'hidden' }}>
@@ -85,10 +87,12 @@ export default function Landing() {
         <Container size="lg">
           <Group justify="space-between">
             <Group gap={8}>
-              <Image src="/moinfotech-logo.png" h={36} w="auto" alt="MoBilling" />
-              <Text size="xl" fw={800}>MoBilling</Text>
+              <Image src="/moinfotech-logo.png" h={32} w="auto" alt="MoBilling" />
+              <Text size="lg" fw={800}>MoBilling</Text>
             </Group>
-            <Group gap="xs">
+
+            {/* Desktop nav */}
+            <Group gap="xs" visibleFrom="sm">
               <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
                 {dark ? <IconSun size={18} /> : <IconMoon size={18} />}
               </ActionIcon>
@@ -97,13 +101,44 @@ export default function Landing() {
                 Get Started
               </Button>
             </Group>
+
+            {/* Mobile burger */}
+            <Group gap="xs" hiddenFrom="sm">
+              <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
+                {dark ? <IconSun size={18} /> : <IconMoon size={18} />}
+              </ActionIcon>
+              <Burger opened={drawerOpened} onClick={toggleDrawer} size="sm" />
+            </Group>
           </Group>
         </Container>
       </Paper>
 
+      {/* Mobile navigation drawer */}
+      <Drawer opened={drawerOpened} onClose={closeDrawer} size="xs" title="MoBilling" zIndex={200} padding="md">
+        <Stack gap="sm">
+          <Button fullWidth variant="subtle" component={Link} to="/login" onClick={closeDrawer}>Sign In</Button>
+          <Button fullWidth variant="gradient" gradient={{ from: 'blue', to: 'cyan' }} component={Link} to="/register" onClick={closeDrawer}>
+            Get Started
+          </Button>
+          <Divider my="xs" />
+          <Group gap={6}>
+            <IconMail size={14} />
+            <Anchor href="mailto:info@moinfo.co.tz" size="sm">info@moinfo.co.tz</Anchor>
+          </Group>
+          <Group gap={6}>
+            <IconPhone size={14} />
+            <Anchor href="tel:+255689011111" size="sm">+255 689 011 111</Anchor>
+          </Group>
+          <Group gap={6}>
+            <IconBrandWhatsapp size={14} />
+            <Anchor href="https://wa.me/255689011111" target="_blank" size="sm">WhatsApp</Anchor>
+          </Group>
+        </Stack>
+      </Drawer>
+
       {/* ── Hero ── */}
       <Box
-        py={100}
+        py={{ base: 48, sm: 100 }}
         style={{
           background: dark
             ? `radial-gradient(ellipse at 50% 0%, ${theme.colors.blue[9]}22 0%, transparent 70%)`
@@ -119,7 +154,7 @@ export default function Landing() {
           >
             <Image
               src="/moinfotech-logo.png"
-              h={80}
+              h={{ base: 56, sm: 80 }}
               w="auto"
               mx="auto"
               mb="lg"
@@ -152,12 +187,12 @@ export default function Landing() {
               , Simplified
             </Title>
 
-            <Text size="xl" c="dimmed" maw={560} mx="auto" mt="lg" lh={1.6}>
+            <Text size="lg" c="dimmed" maw={560} mx="auto" mt="lg" lh={1.6}>
               Invoices, quotations, statutory bills, and payment tracking — all in one
               place. Stay compliant, get paid faster.
             </Text>
 
-            <Group justify="center" mt={36}>
+            <Group justify="center" mt={{ base: 24, sm: 36 }} wrap="wrap">
               <Button
                 size="lg"
                 variant="gradient"
@@ -174,11 +209,11 @@ export default function Landing() {
             </Group>
 
             {/* Trust badges */}
-            <Group justify="center" mt={48} gap="xl">
+            <Group justify="center" mt={{ base: 32, sm: 48 }} gap={{ base: 'md', sm: 'xl' }} wrap="wrap">
               {stats.map((s) => (
-                <Group key={s.label} gap={8}>
-                  <s.icon size={20} color={theme.colors.blue[5]} />
-                  <Text size="sm" fw={500} c="dimmed">{s.label}</Text>
+                <Group key={s.label} gap={6}>
+                  <s.icon size={18} color={theme.colors.blue[5]} />
+                  <Text size="xs" fw={500} c="dimmed">{s.label}</Text>
                 </Group>
               ))}
             </Group>
@@ -187,7 +222,7 @@ export default function Landing() {
       </Box>
 
       {/* ── Features ── */}
-      <Container size="lg" py={80}>
+      <Container size="lg" py={{ base: 48, sm: 80 }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -246,7 +281,7 @@ export default function Landing() {
 
       {/* ── Footer CTA ── */}
       <Box
-        py={80}
+        py={{ base: 48, sm: 80 }}
         style={{
           background: dark
             ? `linear-gradient(135deg, ${theme.colors.blue[9]}33 0%, ${theme.colors.cyan[9]}22 100%)`
@@ -260,7 +295,7 @@ export default function Landing() {
             viewport={{ once: true }}
             transition={{ duration: 0.5 }}
           >
-            <Title order={2} size="2rem">Ready to simplify your billing?</Title>
+            <Title order={2} style={{ fontSize: 'clamp(1.4rem, 3vw, 2rem)' }}>Ready to simplify your billing?</Title>
             <Text c="dimmed" mt="sm" size="lg">
               Create a free account and start managing invoices, payments, and compliance in minutes.
             </Text>
@@ -280,7 +315,7 @@ export default function Landing() {
       </Box>
 
       {/* ── Contact ── */}
-      <Container size="lg" py={80}>
+      <Container size="lg" py={{ base: 48, sm: 80 }}>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -356,7 +391,7 @@ export default function Landing() {
       <Divider />
       <Box py="xl" bg={dark ? theme.colors.dark[7] : theme.colors.gray[0]}>
         <Container size="lg">
-          <Group justify="space-between" align="flex-start" wrap="wrap" gap="xl">
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xl">
             <Stack gap={6}>
               <Group gap={8}>
                 <Image src="/moinfotech-logo.png" h={28} w="auto" alt="MoBilling" />
@@ -388,24 +423,26 @@ export default function Landing() {
                 <Text size="sm" c="dimmed">Kibaha, Tanzania</Text>
               </Group>
             </Stack>
-          </Group>
+          </SimpleGrid>
 
           <Divider my="lg" />
 
-          <Group justify="space-between" wrap="wrap">
-            <Text size="xs" c="dimmed">
-              &copy; {new Date().getFullYear()} MoBilling. All rights reserved.
-            </Text>
-            <Group gap={6}>
-              <Text size="xs" c="dimmed">Powered by</Text>
-              <Anchor href="https://moinfotech.co.tz" target="_blank" size="xs" fw={600}>
-                <Group gap={4}>
-                  <IconWorld size={14} />
-                  Moinfotech
-                </Group>
-              </Anchor>
+          <Stack gap={4} align={{ base: 'center', sm: 'stretch' }}>
+            <Group justify={{ base: 'center', sm: 'space-between' }} wrap="wrap" gap="xs">
+              <Text size="xs" c="dimmed">
+                &copy; {new Date().getFullYear()} MoBilling. All rights reserved.
+              </Text>
+              <Group gap={6}>
+                <Text size="xs" c="dimmed">Powered by</Text>
+                <Anchor href="https://moinfotech.co.tz" target="_blank" size="xs" fw={600}>
+                  <Group gap={4}>
+                    <IconWorld size={14} />
+                    Moinfotech
+                  </Group>
+                </Anchor>
+              </Group>
             </Group>
-          </Group>
+          </Stack>
         </Container>
       </Box>
     </Box>
@@ -422,7 +459,7 @@ function PricingSection({ dark, theme }: { dark: boolean; theme: any }) {
 
   if (isLoading) {
     return (
-      <Box py={80} bg={dark ? theme.colors.dark[7] : theme.colors.gray[0]}>
+      <Box py={{ base: 48, sm: 80 }} bg={dark ? theme.colors.dark[7] : theme.colors.gray[0]}>
         <Center><Loader /></Center>
       </Box>
     );
@@ -431,7 +468,7 @@ function PricingSection({ dark, theme }: { dark: boolean; theme: any }) {
   if (plans.length === 0) return null;
 
   return (
-    <Box py={80} bg={dark ? theme.colors.dark[7] : theme.colors.gray[0]}>
+    <Box py={{ base: 48, sm: 80 }} bg={dark ? theme.colors.dark[7] : theme.colors.gray[0]}>
       <Container size="lg">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -474,7 +511,7 @@ function PricingSection({ dark, theme }: { dark: boolean; theme: any }) {
                       )}
 
                       <Group gap={4} align="baseline" mt="md">
-                        <Text size={rem(32)} fw={800} lh={1}>
+                        <Text style={{ fontSize: 'clamp(1.4rem, 4vw, 2rem)' }} fw={800} lh={1}>
                           TZS {Number(plan.price).toLocaleString()}
                         </Text>
                       </Group>
