@@ -8,6 +8,7 @@ use App\Models\BillCategory;
 
 class BillCategoryController extends Controller
 {
+
     public function index()
     {
         $categories = BillCategory::whereNull('parent_id')
