@@ -252,7 +252,7 @@ function SubscriptionForm({
       label: '',
       quantity: 1,
       start_date: new Date().toISOString().split('T')[0],
-      status: 'active',
+      status: 'pending',
     },
     validate: {
       client_id: (v) => (v ? null : 'Client is required'),
@@ -314,18 +314,23 @@ function SubscriptionForm({
           onChange={(date) => form.setFieldValue('start_date', date ? date.toISOString().split('T')[0] : '')}
           error={form.errors.start_date}
         />
-        {isEditing && (
-          <Select
-            label="Status"
-            data={[
-              { value: 'pending', label: 'Pending Payment' },
-              { value: 'active', label: 'Active' },
-              { value: 'suspended', label: 'Suspended' },
-              { value: 'cancelled', label: 'Cancelled' },
-            ]}
-            {...form.getInputProps('status')}
-          />
-        )}
+        <Select
+          label="Status"
+          description={!isEditing ? 'Active = no invoice created. Pending = invoice will be sent to client.' : undefined}
+          data={isEditing
+            ? [
+                { value: 'pending', label: 'Pending Payment' },
+                { value: 'active', label: 'Active' },
+                { value: 'suspended', label: 'Suspended' },
+                { value: 'cancelled', label: 'Cancelled' },
+              ]
+            : [
+                { value: 'pending', label: 'Pending Payment' },
+                { value: 'active', label: 'Active' },
+              ]
+          }
+          {...form.getInputProps('status')}
+        />
         <Group justify="flex-end">
           <Button type="submit" loading={loading}>
             {isEditing ? 'Update Subscription' : 'Create Subscription'}

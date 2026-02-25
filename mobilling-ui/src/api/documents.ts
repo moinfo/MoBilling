@@ -115,6 +115,7 @@ export const resendInvoice = (documentId: string) =>
 
 // Next Bills
 export interface NextBillItem {
+  subscription_id: string;
   client_id: string;
   client_name: string;
   client_email: string;
@@ -122,7 +123,8 @@ export interface NextBillItem {
   product_service_name: string;
   billing_cycle: string;
   price: string;
-  last_billed: string;
+  quantity: number;
+  last_billed: string | null;
   next_bill: string | null;
   is_overdue: boolean;
 }

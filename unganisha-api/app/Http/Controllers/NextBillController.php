@@ -2,71 +2,81 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\DocumentItem;
+use App\Models\ClientSubscription;
+use App\Models\RecurringInvoiceLog;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 
 class NextBillController extends Controller
 {
+    private const CYCLE_INTERVALS = [
+        'monthly' => '1 month',
+        'quarterly' => '3 months',
+        'half_yearly' => '6 months',
+        'yearly' => '1 year',
+    ];
+
     public function index(Request $request)
     {
-        $cycleIntervals = [
-            'once' => null,
-            'monthly' => '1 month',
-            'quarterly' => '3 months',
-            'half_yearly' => '6 months',
-            'yearly' => '1 year',
-        ];
+        $today = Carbon::today();
 
-        $rows = DocumentItem::query()
-            ->join('documents', 'document_items.document_id', '=', 'documents.id')
-            ->join('product_services', 'document_items.product_service_id', '=', 'product_services.id')
-            ->join('clients', 'documents.client_id', '=', 'clients.id')
-            ->where('documents.type', 'invoice')
-            ->whereNotNull('product_services.billing_cycle')
-            ->where('product_services.billing_cycle', '!=', 'once')
-            ->where('product_services.is_active', true)
-            ->whereNull('documents.deleted_at')
-            ->whereNull('clients.deleted_at')
-            ->whereNull('product_services.deleted_at')
-            ->where('documents.tenant_id', $request->user()->tenant_id)
-            ->select([
-                'clients.id as client_id',
-                'clients.name as client_name',
-                'clients.email as client_email',
-                'product_services.id as product_service_id',
-                'product_services.name as product_service_name',
-                'product_services.billing_cycle',
-                'product_services.price',
-                DB::raw('MAX(documents.date) as last_billed'),
-            ])
-            ->groupBy(
-                'clients.id', 'clients.name', 'clients.email',
-                'product_services.id', 'product_services.name',
-                'product_services.billing_cycle', 'product_services.price'
+        $subscriptions = ClientSubscription::query()
+            ->where('status', 'active')
+            ->with(['client', 'productService'])
+            ->whereHas('productService', fn ($q) => $q
+                ->where('is_active', true)
+                ->whereNotNull('billing_cycle')
+                ->where('billing_cycle', '!=', 'once')
             )
-            ->orderBy('clients.name')
             ->get();
 
-        $data = $rows->map(function ($row) use ($cycleIntervals) {
-            $interval = $cycleIntervals[$row->billing_cycle] ?? null;
-            $lastBilled = \Carbon\Carbon::parse($row->last_billed);
-            $nextBill = $interval ? $lastBilled->copy()->add($interval) : null;
+        $data = $subscriptions->map(function ($sub) use ($today) {
+            $product = $sub->productService;
+            $interval = self::CYCLE_INTERVALS[$product->billing_cycle] ?? null;
+            if (!$interval) {
+                return null;
+            }
+
+            $nextBillDate = $this->calculateNextBillDate($sub->start_date, $interval, $today);
+
+            // Find last invoice date from recurring log
+            $lastLog = RecurringInvoiceLog::where('client_id', $sub->client_id)
+                ->where('product_service_id', $sub->product_service_id)
+                ->orderByDesc('invoice_created_at')
+                ->first();
+
+            $description = $product->name;
+            if ($sub->label) {
+                $description .= " — {$sub->label}";
+            }
 
             return [
-                'client_id' => $row->client_id,
-                'client_name' => $row->client_name,
-                'client_email' => $row->client_email,
-                'product_service_id' => $row->product_service_id,
-                'product_service_name' => $row->product_service_name,
-                'billing_cycle' => $row->billing_cycle,
-                'price' => $row->price,
-                'last_billed' => $lastBilled->format('Y-m-d'),
-                'next_bill' => $nextBill?->format('Y-m-d'),
-                'is_overdue' => $nextBill && $nextBill->isPast(),
+                'subscription_id' => $sub->id,
+                'client_id' => $sub->client_id,
+                'client_name' => $sub->client->name,
+                'client_email' => $sub->client->email,
+                'product_service_id' => $product->id,
+                'product_service_name' => $description,
+                'billing_cycle' => $product->billing_cycle,
+                'price' => $product->price,
+                'quantity' => $sub->quantity,
+                'last_billed' => $lastLog?->invoice_created_at?->format('Y-m-d'),
+                'next_bill' => $nextBillDate?->format('Y-m-d'),
+                'is_overdue' => $nextBillDate && $nextBillDate->lt($today),
             ];
-        });
+        })->filter()->sortBy('next_bill')->values();
 
         return response()->json(['data' => $data]);
+    }
+
+    private function calculateNextBillDate(Carbon $startDate, string $interval, Carbon $today): Carbon
+    {
+        $date = $startDate->copy();
+
+        while ($date->lt($today)) {
+            $date->add($interval);
+        }
+
+        return $date;
     }
 }
