@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Tabs, TextInput, Textarea, PasswordInput, Select, Button,
   Stack, Divider, Paper, Group, Alert, NumberInput, Switch, Loader, Center, Box,
-  FileButton, Image, Text, Badge, ActionIcon,
+  FileButton, Image, Text, Badge, ActionIcon, Accordion, ThemeIcon, Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -16,7 +16,7 @@ import {
   EmailSettings as EmailSettingsType, EmailSettingsFormData,
   getReminderSettings, updateReminderSettings, ReminderSettings,
   getTemplates, updateTemplates, TemplateSettings,
-  getPaymentMethods, updatePaymentMethods, PaymentMethod,
+  getPaymentMethods, updatePaymentMethods, PaymentMethod, PaymentMethodDetail,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
@@ -723,14 +723,6 @@ function TemplatesTab({ isAdmin }: { isAdmin: boolean }) {
 
 // --- Payment Methods Tab ---
 
-const DEFAULT_METHODS: PaymentMethod[] = [
-  { value: 'bank', label: 'Bank Transfer' },
-  { value: 'mpesa', label: 'M-Pesa' },
-  { value: 'cash', label: 'Cash' },
-  { value: 'card', label: 'Card' },
-  { value: 'cheque', label: 'Cheque' },
-];
-
 function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
   const queryClient = useQueryClient();
   const [methods, setMethods] = useState<PaymentMethod[]>([]);
@@ -762,27 +754,49 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
   });
 
   const addMethod = () => {
-    setMethods([...methods, { value: '', label: '' }]);
+    setMethods([...methods, { value: '', label: '', details: [] }]);
   };
 
   const removeMethod = (index: number) => {
     setMethods(methods.filter((_, i) => i !== index));
   };
 
-  const updateMethod = (index: number, field: 'value' | 'label', val: string) => {
+  const updateMethodField = (index: number, field: 'value' | 'label', val: string) => {
     const updated = [...methods];
     updated[index] = { ...updated[index], [field]: val };
     if (field === 'label') {
       const autoValue = val.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
-      if (!methods[index]?.value || methods[index].value === methods[index].label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')) {
+      const oldAuto = methods[index]?.label
+        ? methods[index].label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')
+        : '';
+      if (!methods[index]?.value || methods[index].value === oldAuto) {
         updated[index].value = autoValue;
       }
     }
     setMethods(updated);
   };
 
-  const handleResetDefaults = () => {
-    setMethods([...DEFAULT_METHODS]);
+  // Details management
+  const addDetail = (methodIndex: number) => {
+    const updated = [...methods];
+    const details = [...(updated[methodIndex].details || []), { key: '', value: '' }];
+    updated[methodIndex] = { ...updated[methodIndex], details };
+    setMethods(updated);
+  };
+
+  const removeDetail = (methodIndex: number, detailIndex: number) => {
+    const updated = [...methods];
+    const details = (updated[methodIndex].details || []).filter((_, i) => i !== detailIndex);
+    updated[methodIndex] = { ...updated[methodIndex], details };
+    setMethods(updated);
+  };
+
+  const updateDetail = (methodIndex: number, detailIndex: number, field: 'key' | 'value', val: string) => {
+    const updated = [...methods];
+    const details = [...(updated[methodIndex].details || [])];
+    details[detailIndex] = { ...details[detailIndex], [field]: val };
+    updated[methodIndex] = { ...updated[methodIndex], details };
+    setMethods(updated);
   };
 
   const canSave = methods.length > 0 && methods.every((m) => m.value.trim() && m.label.trim());
@@ -792,7 +806,7 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
   }
 
   return (
-    <Paper p="lg" withBorder maw={600}>
+    <Paper p="lg" withBorder maw={700}>
       {!isAdmin && (
         <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
           Only admins can edit payment methods.
@@ -800,51 +814,114 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       <Text size="sm" c="dimmed" mb="md">
-        Configure the payment methods available when recording payments across the system (invoices, expenses, bills).
+        Configure payment methods and their details. Details (like bank account info or M-Pesa paybill) will appear on invoices.
       </Text>
 
-      <Stack gap="xs">
-        {methods.map((method, index) => (
-          <Group key={index} gap="xs">
-            <IconGripVertical size={16} style={{ color: 'var(--mantine-color-dimmed)', flexShrink: 0 }} />
-            <TextInput
-              placeholder="Label (e.g. M-Pesa)"
-              value={method.label}
-              onChange={(e) => updateMethod(index, 'label', e.currentTarget.value)}
-              disabled={!isAdmin}
-              style={{ flex: 1 }}
-            />
-            <TextInput
-              placeholder="Value (e.g. mpesa)"
-              value={method.value}
-              onChange={(e) => updateMethod(index, 'value', e.currentTarget.value)}
-              disabled={!isAdmin}
-              style={{ flex: 1 }}
-            />
-            {isAdmin && (
-              <ActionIcon
-                variant="subtle"
-                color="red"
-                onClick={() => removeMethod(index)}
-                disabled={methods.length <= 1}
-              >
-                <IconTrash size={16} />
-              </ActionIcon>
-            )}
-          </Group>
+      <Accordion variant="separated" multiple>
+        {methods.map((method, mIdx) => (
+          <Accordion.Item key={mIdx} value={String(mIdx)}>
+            <Accordion.Control>
+              <Group gap="sm">
+                <ThemeIcon variant="light" color="blue" size="sm" radius="xl">
+                  <IconCreditCard size={14} />
+                </ThemeIcon>
+                <Text fw={500} size="sm">
+                  {method.label || 'New Method'}
+                </Text>
+                {(method.details?.filter((d) => d.value.trim()).length ?? 0) > 0 && (
+                  <Badge size="xs" variant="light" color="green">
+                    {method.details!.filter((d) => d.value.trim()).length} detail(s)
+                  </Badge>
+                )}
+              </Group>
+            </Accordion.Control>
+            <Accordion.Panel>
+              <Stack gap="sm">
+                {/* Method name and value */}
+                <Group gap="xs">
+                  <TextInput
+                    label="Display Name"
+                    placeholder="e.g. M-Pesa"
+                    value={method.label}
+                    onChange={(e) => updateMethodField(mIdx, 'label', e.currentTarget.value)}
+                    disabled={!isAdmin}
+                    style={{ flex: 1 }}
+                  />
+                  <TextInput
+                    label="Key"
+                    placeholder="e.g. mpesa"
+                    value={method.value}
+                    onChange={(e) => updateMethodField(mIdx, 'value', e.currentTarget.value)}
+                    disabled={!isAdmin}
+                    style={{ flex: 1 }}
+                  />
+                  {isAdmin && (
+                    <Tooltip label="Remove this method">
+                      <ActionIcon
+                        variant="subtle"
+                        color="red"
+                        onClick={() => removeMethod(mIdx)}
+                        disabled={methods.length <= 1}
+                        mt={24}
+                      >
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </Group>
+
+                {/* Method details */}
+                <Divider label="Payment Details" labelPosition="left" />
+                <Text size="xs" c="dimmed">
+                  Add account numbers, paybill numbers, or other info clients need to pay you via this method.
+                </Text>
+
+                {(method.details || []).map((detail, dIdx) => (
+                  <Group key={dIdx} gap="xs">
+                    <TextInput
+                      placeholder="Field name (e.g. Account Number)"
+                      value={detail.key}
+                      onChange={(e) => updateDetail(mIdx, dIdx, 'key', e.currentTarget.value)}
+                      disabled={!isAdmin}
+                      style={{ flex: 1 }}
+                    />
+                    <TextInput
+                      placeholder="Value (e.g. 21208100521)"
+                      value={detail.value}
+                      onChange={(e) => updateDetail(mIdx, dIdx, 'value', e.currentTarget.value)}
+                      disabled={!isAdmin}
+                      style={{ flex: 1 }}
+                    />
+                    {isAdmin && (
+                      <ActionIcon variant="subtle" color="red" onClick={() => removeDetail(mIdx, dIdx)}>
+                        <IconTrash size={14} />
+                      </ActionIcon>
+                    )}
+                  </Group>
+                ))}
+
+                {isAdmin && (
+                  <Button
+                    variant="subtle"
+                    size="xs"
+                    leftSection={<IconPlus size={14} />}
+                    onClick={() => addDetail(mIdx)}
+                    w="fit-content"
+                  >
+                    Add Detail
+                  </Button>
+                )}
+              </Stack>
+            </Accordion.Panel>
+          </Accordion.Item>
         ))}
-      </Stack>
+      </Accordion>
 
       {isAdmin && (
         <Group justify="space-between" mt="md">
-          <Group>
-            <Button variant="light" leftSection={<IconPlus size={16} />} onClick={addMethod} size="sm">
-              Add Method
-            </Button>
-            <Button variant="subtle" color="gray" onClick={handleResetDefaults} size="sm">
-              Reset to Defaults
-            </Button>
-          </Group>
+          <Button variant="light" leftSection={<IconPlus size={16} />} onClick={addMethod} size="sm">
+            Add Payment Method
+          </Button>
           <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending} disabled={!canSave}>
             Save Payment Methods
           </Button>

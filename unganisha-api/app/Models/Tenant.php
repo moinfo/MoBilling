@@ -24,7 +24,7 @@ class Tenant extends Model
         // Branding
         'website', 'logo_path',
         'bank_name', 'bank_account_name', 'bank_account_number', 'bank_branch',
-        'payment_instructions',
+        'payment_instructions', 'payment_methods',
         // Reminder templates
         'reminder_email_subject', 'reminder_email_body',
         'overdue_email_subject', 'overdue_email_body',
@@ -50,6 +50,7 @@ class Tenant extends Model
         'trial_ends_at' => 'datetime',
         'reminder_sms_enabled' => 'boolean',
         'reminder_email_enabled' => 'boolean',
+        'payment_methods' => 'array',
     ];
 
     protected $appends = ['logo_url'];

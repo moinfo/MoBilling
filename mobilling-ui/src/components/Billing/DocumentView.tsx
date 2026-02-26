@@ -1,4 +1,4 @@
-import { Card, Group, Text, Badge, Table, Divider, Button, Stack, NumberInput, Select, TextInput, Textarea } from '@mantine/core';
+import { Card, Group, Text, Badge, Table, Divider, Button, Stack, NumberInput, Select, TextInput, Textarea, Alert } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
@@ -6,6 +6,7 @@ import { notifications } from '@mantine/notifications';
 import { IconFileDownload, IconSend, IconArrowRight, IconCash } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn } from '../../api/documents';
+import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
 import dayjs from 'dayjs';
@@ -22,6 +23,7 @@ const statusColors: Record<string, string> = {
 };
 
 export default function DocumentView({ document: doc, onRefresh, onClose: _onClose }: Props) {
+  const { methods: paymentMethods, getMethodDetails } = usePaymentMethods();
   const [showPayment, setShowPayment] = useState(false);
   const [loading, setLoading] = useState('');
 
@@ -203,6 +205,29 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
             <Text size="sm" c="dimmed">Notes: {doc.notes}</Text>
           </>
         )}
+
+        {/* Payment Information */}
+        {paymentMethods.some((m) => m.details?.some((d) => d.value.trim())) && (
+          <>
+            <Divider my="md" label="Payment Information" labelPosition="left" />
+            <Group align="flex-start" gap="xl">
+              {paymentMethods
+                .filter((m) => m.details?.some((d) => d.value.trim()))
+                .map((m) => (
+                  <Stack key={m.value} gap={2}>
+                    <Text size="sm" fw={600}>{m.label}</Text>
+                    {m.details!
+                      .filter((d) => d.value.trim())
+                      .map((d, i) => (
+                        <Text key={i} size="xs" c="dimmed">
+                          {d.key}: <Text span fw={500} c="dark">{d.value}</Text>
+                        </Text>
+                      ))}
+                  </Stack>
+                ))}
+            </Group>
+          </>
+        )}
       </Card>
 
       {/* Action Buttons */}
@@ -240,15 +265,16 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
                 <DateInput label="Payment Date" required {...paymentForm.getInputProps('payment_date')} />
               </Group>
               <Group grow>
-                <Select label="Method" data={[
-                  { value: 'bank', label: 'Bank Transfer' },
-                  { value: 'mpesa', label: 'M-Pesa' },
-                  { value: 'cash', label: 'Cash' },
-                  { value: 'card', label: 'Card' },
-                  { value: 'other', label: 'Other' },
-                ]} {...paymentForm.getInputProps('payment_method')} />
+                <Select label="Method" data={paymentMethods} {...paymentForm.getInputProps('payment_method')} />
                 <TextInput label="Reference" placeholder="Transaction ref" {...paymentForm.getInputProps('reference')} />
               </Group>
+              {getMethodDetails(paymentForm.values.payment_method).length > 0 && (
+                <Alert variant="light" color="blue" p="xs">
+                  {getMethodDetails(paymentForm.values.payment_method).map((d, i) => (
+                    <Text key={i} size="xs"><Text span fw={600}>{d.key}:</Text> {d.value}</Text>
+                  ))}
+                </Alert>
+              )}
               <Textarea label="Notes" {...paymentForm.getInputProps('notes')} />
               <Group justify="flex-end">
                 <Button variant="light" onClick={() => setShowPayment(false)}>Cancel</Button>

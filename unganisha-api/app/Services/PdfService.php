@@ -12,11 +12,15 @@ class PdfService
     {
         $document->load('items', 'client', 'tenant');
 
+        $tenant = $document->tenant;
+        $paymentMethods = $tenant->payment_methods ?? [];
+
         return Pdf::loadView('pdf.document', [
             'document' => $document,
-            'tenant' => $document->tenant,
+            'tenant' => $tenant,
             'client' => $document->client,
             'items' => $document->items,
+            'paymentMethods' => $paymentMethods,
         ])->setPaper('a4');
     }
 

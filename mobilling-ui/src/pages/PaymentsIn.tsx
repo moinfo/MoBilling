@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconSearch, IconEdit, IconTrash, IconReceipt, IconFileInvoice } from '@tabler/icons-react';
 import { getPaymentsIn, updatePaymentIn, deletePaymentIn, resendReceipt, resendInvoice, Payment } from '../api/documents';
+import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import dayjs from 'dayjs';
@@ -20,6 +21,8 @@ export default function PaymentsIn() {
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [editPayment, setEditPayment] = useState<PaymentWithDoc | null>(null);
+
+  const { methods: paymentMethods } = usePaymentMethods();
 
   const { data } = useQuery({
     queryKey: ['payments-in', page, debouncedSearch],
@@ -199,13 +202,7 @@ export default function PaymentsIn() {
           <Stack>
             <NumberInput label="Amount" min={0.01} decimalScale={2} required {...editForm.getInputProps('amount')} />
             <DateInput label="Payment Date" required {...editForm.getInputProps('payment_date')} />
-            <Select label="Method" data={[
-              { value: 'bank', label: 'Bank Transfer' },
-              { value: 'mpesa', label: 'M-Pesa' },
-              { value: 'cash', label: 'Cash' },
-              { value: 'card', label: 'Card' },
-              { value: 'other', label: 'Other' },
-            ]} {...editForm.getInputProps('payment_method')} />
+            <Select label="Method" data={paymentMethods} {...editForm.getInputProps('payment_method')} />
             <TextInput label="Reference" placeholder="Transaction ref" {...editForm.getInputProps('reference')} />
             <Textarea label="Notes" {...editForm.getInputProps('notes')} />
             <Group justify="flex-end">

@@ -144,7 +144,30 @@
     </div>
     @endif
 
-    @if($tenant->bank_name || $tenant->bank_account_number)
+    @php
+        $methodsWithDetails = collect($paymentMethods ?? [])->filter(fn($m) =>
+            !empty($m['details']) && collect($m['details'])->contains(fn($d) => !empty(trim($d['value'] ?? '')))
+        );
+    @endphp
+
+    @if($methodsWithDetails->isNotEmpty())
+    <div class="bank-details">
+        <h3>Payment Information</h3>
+        <div style="display: table; width: 100%;">
+            @foreach($methodsWithDetails as $method)
+            <div style="display: table-cell; vertical-align: top; padding-right: 20px;">
+                <p style="margin: 0 0 4px; font-weight: bold; color: #2563eb;">{{ $method['label'] }}</p>
+                @foreach($method['details'] as $detail)
+                    @if(!empty(trim($detail['value'] ?? '')))
+                    <p style="margin: 1px 0;"><strong>{{ $detail['key'] }}:</strong> {{ $detail['value'] }}</p>
+                    @endif
+                @endforeach
+            </div>
+            @endforeach
+        </div>
+    </div>
+    @elseif($tenant->bank_name || $tenant->bank_account_number)
+    {{-- Fallback to old bank details if no payment methods configured --}}
     <div class="bank-details">
         <h3>Bank Details</h3>
         @if($tenant->bank_name)<p><strong>Bank:</strong> {{ $tenant->bank_name }}</p>@endif

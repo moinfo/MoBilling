@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconEdit, IconTrash, IconDownload } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { getPaymentsOut, updatePaymentOut, deletePaymentOut, PaymentOut } from '../api/bills';
+import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 
@@ -136,6 +137,7 @@ function EditPaymentForm({ payment, onSubmit, loading }: {
   onSubmit: (values: any) => void;
   loading?: boolean;
 }) {
+  const { methods: paymentMethods } = usePaymentMethods();
   const form = useForm({
     initialValues: {
       amount: parseFloat(payment.amount),
@@ -162,13 +164,7 @@ function EditPaymentForm({ payment, onSubmit, loading }: {
           <DateInput label="Payment Date" required {...form.getInputProps('payment_date')} />
         </Group>
         <Group grow>
-          <Select label="Method" data={[
-            { value: 'bank', label: 'Bank Transfer' },
-            { value: 'mpesa', label: 'M-Pesa' },
-            { value: 'cash', label: 'Cash' },
-            { value: 'card', label: 'Card' },
-            { value: 'other', label: 'Other' },
-          ]} {...form.getInputProps('payment_method')} />
+          <Select label="Method" data={paymentMethods} {...form.getInputProps('payment_method')} />
           <TextInput label="Control Number" placeholder="e.g., 991234567890" {...form.getInputProps('control_number')} />
         </Group>
         <TextInput label="Reference" placeholder="Transaction ref" {...form.getInputProps('reference')} />

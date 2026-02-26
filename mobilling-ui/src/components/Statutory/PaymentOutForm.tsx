@@ -3,6 +3,7 @@ import { NumberInput, Select, TextInput, Textarea, Button, Group, Stack, FileInp
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { IconUpload } from '@tabler/icons-react';
+import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import dayjs from 'dayjs';
 
 interface Props {
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function PaymentOutForm({ billAmount, paidAmount = 0, onSubmit, onCancel, loading }: Props) {
+  const { methods: paymentMethods } = usePaymentMethods();
   const [receipt, setReceipt] = useState<File | null>(null);
   const remaining = Math.max(0, billAmount - paidAmount);
 
@@ -59,13 +61,7 @@ export default function PaymentOutForm({ billAmount, paidAmount = 0, onSubmit, o
           <DateInput label="Payment Date" required {...form.getInputProps('payment_date')} />
         </Group>
         <Group grow>
-          <Select label="Method" data={[
-            { value: 'bank', label: 'Bank Transfer' },
-            { value: 'mpesa', label: 'M-Pesa' },
-            { value: 'cash', label: 'Cash' },
-            { value: 'card', label: 'Card' },
-            { value: 'other', label: 'Other' },
-          ]} {...form.getInputProps('payment_method')} />
+          <Select label="Method" data={paymentMethods} {...form.getInputProps('payment_method')} />
           <TextInput label="Control Number" placeholder="e.g., 991234567890" {...form.getInputProps('control_number')} />
         </Group>
         <TextInput label="Reference" placeholder="Transaction ref" {...form.getInputProps('reference')} />

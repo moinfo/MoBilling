@@ -127,6 +127,69 @@ class SettingsController extends Controller
         ]);
     }
 
+    private const DEFAULT_PAYMENT_METHODS = [
+        ['value' => 'bank', 'label' => 'Bank Transfer', 'details' => [
+            ['key' => 'Bank Name', 'value' => ''],
+            ['key' => 'Account Name', 'value' => ''],
+            ['key' => 'Account Number', 'value' => ''],
+            ['key' => 'Branch', 'value' => ''],
+        ]],
+        ['value' => 'mpesa', 'label' => 'M-Pesa', 'details' => [
+            ['key' => 'Paybill / Till Number', 'value' => ''],
+            ['key' => 'Account Name', 'value' => ''],
+        ]],
+        ['value' => 'cash', 'label' => 'Cash', 'details' => []],
+        ['value' => 'card', 'label' => 'Card', 'details' => []],
+        ['value' => 'cheque', 'label' => 'Cheque', 'details' => []],
+    ];
+
+    public function getPaymentMethods(Request $request)
+    {
+        $tenant = $request->user()->tenant;
+
+        if ($tenant->payment_methods) {
+            return response()->json(['data' => $tenant->payment_methods]);
+        }
+
+        // First time: seed defaults from existing bank details on the tenant
+        $defaults = self::DEFAULT_PAYMENT_METHODS;
+        if ($tenant->bank_name || $tenant->bank_account_number) {
+            $defaults[0]['details'] = array_filter([
+                $tenant->bank_name ? ['key' => 'Bank Name', 'value' => $tenant->bank_name] : null,
+                $tenant->bank_account_name ? ['key' => 'Account Name', 'value' => $tenant->bank_account_name] : null,
+                $tenant->bank_account_number ? ['key' => 'Account Number', 'value' => $tenant->bank_account_number] : null,
+                $tenant->bank_branch ? ['key' => 'Branch', 'value' => $tenant->bank_branch] : null,
+            ]);
+            $defaults[0]['details'] = array_values($defaults[0]['details']);
+        }
+
+        return response()->json(['data' => $defaults]);
+    }
+
+    public function updatePaymentMethods(Request $request)
+    {
+        if ($request->user()->role !== 'admin') {
+            return response()->json(['message' => 'Only admins can update payment methods.'], 403);
+        }
+
+        $validated = $request->validate([
+            'payment_methods' => 'required|array|min:1',
+            'payment_methods.*.value' => 'required|string|max:50',
+            'payment_methods.*.label' => 'required|string|max:100',
+            'payment_methods.*.details' => 'nullable|array',
+            'payment_methods.*.details.*.key' => 'required|string|max:100',
+            'payment_methods.*.details.*.value' => 'required|string|max:500',
+        ]);
+
+        $tenant = $request->user()->tenant;
+        $tenant->update(['payment_methods' => $validated['payment_methods']]);
+
+        return response()->json([
+            'data' => $tenant->fresh()->payment_methods,
+            'message' => 'Payment methods updated.',
+        ]);
+    }
+
     private const TEMPLATE_FIELDS = [
         'reminder_email_subject', 'reminder_email_body',
         'overdue_email_subject', 'overdue_email_body',

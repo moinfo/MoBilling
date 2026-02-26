@@ -103,3 +103,24 @@ export const getTemplates = () =>
 
 export const updateTemplates = (data: Partial<TemplateSettings>) =>
   api.put<{ data: TemplateSettings; message: string }>('/settings/templates', data);
+
+// --- Payment Methods ---
+
+export interface PaymentMethodDetail {
+  key: string;
+  value: string;
+}
+
+export interface PaymentMethod {
+  value: string;
+  label: string;
+  details?: PaymentMethodDetail[];
+}
+
+export const getPaymentMethods = () =>
+  api.get<{ data: PaymentMethod[] }>('/settings/payment-methods');
+
+export const updatePaymentMethods = (methods: PaymentMethod[]) =>
+  api.put<{ data: PaymentMethod[]; message: string }>('/settings/payment-methods', {
+    payment_methods: methods,
+  });

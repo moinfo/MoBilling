@@ -2,6 +2,7 @@ import { Button, Group, NumberInput, Select, Stack, TextInput, Textarea, Anchor,
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { IconUpload } from '@tabler/icons-react';
+import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import dayjs from 'dayjs';
 import { Expense } from '../../api/expenses';
 import { ExpenseCategory } from '../../api/expenseCategories';
@@ -14,6 +15,7 @@ interface Props {
 }
 
 export default function ExpenseForm({ expense, categories, onSubmit, loading }: Props) {
+  const { methods: paymentMethods } = usePaymentMethods();
   const form = useForm({
     initialValues: {
       description: expense?.description || '',
@@ -72,13 +74,7 @@ export default function ExpenseForm({ expense, categories, onSubmit, loading }: 
           <Select
             label="Payment Method"
             required
-            data={[
-              { value: 'cash', label: 'Cash' },
-              { value: 'bank', label: 'Bank Transfer' },
-              { value: 'mpesa', label: 'M-Pesa' },
-              { value: 'card', label: 'Card' },
-              { value: 'other', label: 'Other' },
-            ]}
+            data={paymentMethods}
             {...form.getInputProps('payment_method')}
           />
           <TextInput label="Control Number" placeholder="e.g., 991234567890" {...form.getInputProps('control_number')} />
