@@ -47,6 +47,7 @@ import Sms from './pages/Sms';
 import Subscription from './pages/Subscription';
 import Automation from './pages/Automation';
 import Collection from './pages/Collection';
+import Followups from './pages/Followups';
 import SubscriptionExpired from './pages/SubscriptionExpired';
 import PesapalCallback from './pages/PesapalCallback';
 
@@ -137,6 +138,7 @@ export default function App() {
                   <Route path="/sms" element={<Sms />} />
                   <Route path="/subscription" element={<Subscription />} />
                   <Route path="/collection" element={<Collection />} />
+                  <Route path="/followups" element={<Followups />} />
                   <Route path="/automation" element={<Automation />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>

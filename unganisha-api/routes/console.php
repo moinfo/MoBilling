@@ -7,3 +7,4 @@ Schedule::command('bills:send-reminders')->dailyAt('08:00');
 Schedule::command('invoices:process-recurring')->dailyAt('07:00');
 Schedule::command('invoices:process-overdue')->dailyAt('08:30');
 Schedule::command('subscriptions:expire')->hourly();
+Schedule::command('followups:process')->dailyAt('07:30');

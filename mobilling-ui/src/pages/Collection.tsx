@@ -1,20 +1,30 @@
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
-  Loader, Center, ThemeIcon, Progress, RingProgress,
+  Loader, Center, ThemeIcon, Progress, RingProgress, Button,
+  ActionIcon, Tooltip,
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   IconCash, IconCalendarDue, IconAlertTriangle, IconTrendingUp,
-  IconReceipt, IconArrowUpRight, IconClock,
+  IconReceipt, IconClock, IconPhoneCall, IconArrowRight,
 } from '@tabler/icons-react';
 import { getCollectionDashboard } from '../api/collection';
+import { getFollowupDashboard } from '../api/followups';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 
 export default function Collection() {
+  const navigate = useNavigate();
+
   const { data, isLoading } = useQuery({
     queryKey: ['collection-dashboard'],
     queryFn: getCollectionDashboard,
+  });
+
+  const { data: followupData } = useQuery({
+    queryKey: ['followup-dashboard'],
+    queryFn: getFollowupDashboard,
   });
 
   if (isLoading) {
@@ -25,6 +35,8 @@ export default function Collection() {
   if (!dashboard) {
     return <Text c="dimmed" ta="center" py="xl">No data available.</Text>;
   }
+
+  const followups = followupData?.data?.data;
 
   const { summary } = dashboard;
   const monthProgress = summary.month_target > 0
@@ -102,6 +114,63 @@ export default function Collection() {
           </Text>
         </Paper>
       </SimpleGrid>
+
+      {/* Calls Due Today — prominent at the top */}
+      {(followups?.due_today.length ?? 0) + (followups?.overdue_followups.length ?? 0) > 0 && (
+        <Paper withBorder p="md" radius="md" style={{ borderColor: 'var(--mantine-color-orange-4)' }}>
+          <Group justify="space-between" mb="sm">
+            <Group gap="sm">
+              <IconPhoneCall size={20} color="var(--mantine-color-orange-6)" />
+              <Title order={4}>Calls to Make</Title>
+              <Badge color="orange" variant="filled" size="sm">
+                {(followups?.due_today.length ?? 0) + (followups?.overdue_followups.length ?? 0)}
+              </Badge>
+            </Group>
+            <Button
+              variant="light"
+              size="xs"
+              rightSection={<IconArrowRight size={14} />}
+              onClick={() => navigate('/followups')}
+            >
+              View All
+            </Button>
+          </Group>
+          <Table.ScrollContainer minWidth={500}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Client</Table.Th>
+                  <Table.Th>Phone</Table.Th>
+                  <Table.Th>Invoice</Table.Th>
+                  <Table.Th>Balance</Table.Th>
+                  <Table.Th>Calls</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {[...(followups?.due_today ?? []), ...(followups?.overdue_followups ?? [])].slice(0, 10).map((f) => (
+                  <Table.Tr key={f.id} onClick={() => navigate('/followups')} style={{ cursor: 'pointer' }}>
+                    <Table.Td fw={500}>{f.client_name}</Table.Td>
+                    <Table.Td>{f.client_phone || '—'}</Table.Td>
+                    <Table.Td>{f.document_number}</Table.Td>
+                    <Table.Td fw={600} c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
+                    <Table.Td>
+                      <Badge color={f.call_count! >= 3 ? 'red' : 'gray'} variant="light" size="sm">
+                        {f.call_count}/3
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge color={f.status === 'broken' ? 'red' : 'orange'} size="sm">
+                        {f.status === 'broken' ? 'broken promise' : f.status}
+                      </Badge>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
 
       {/* Month Overview Ring */}
       <SimpleGrid cols={{ base: 1, md: 2 }}>

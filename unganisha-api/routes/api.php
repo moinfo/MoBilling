@@ -18,6 +18,7 @@ use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\CollectionController;
+use App\Http\Controllers\FollowupController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
@@ -193,6 +194,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/settings/reminders', [SettingsController::class, 'updateReminderSettings']);
     Route::get('/settings/templates', [SettingsController::class, 'getTemplates']);
     Route::put('/settings/templates', [SettingsController::class, 'updateTemplates']);
+    Route::get('/settings/payment-methods', [SettingsController::class, 'getPaymentMethods']);
+    Route::put('/settings/payment-methods', [SettingsController::class, 'updatePaymentMethods']);
 
     // Email settings (tenant admin)
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);
@@ -201,6 +204,14 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Collection
     Route::get('/collection/dashboard', [CollectionController::class, 'dashboard']);
+
+    // Follow-ups
+    Route::get('/followups/dashboard', [FollowupController::class, 'dashboard']);
+    Route::get('/followups', [FollowupController::class, 'index']);
+    Route::post('/followups', [FollowupController::class, 'store']);
+    Route::post('/followups/{followup}/log-call', [FollowupController::class, 'logCall']);
+    Route::patch('/followups/{followup}/cancel', [FollowupController::class, 'cancel']);
+    Route::get('/followups/client/{clientId}', [FollowupController::class, 'clientHistory']);
 
     // Automation
     Route::prefix('automation')->group(function () {

@@ -7,9 +7,10 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import {
   IconArrowLeft, IconMail, IconPhone, IconMapPin, IconId,
-  IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend,
+  IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend, IconPhoneCall,
 } from '@tabler/icons-react';
 import { getClientProfile, ClientProfile as ClientProfileType, ClientCommunicationLog } from '../api/clients';
+import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 
@@ -41,6 +42,14 @@ export default function ClientProfile() {
     queryFn: () => getClientProfile(clientId!),
     enabled: !!clientId,
   });
+
+  const { data: followupData } = useQuery({
+    queryKey: ['client-followups', clientId],
+    queryFn: () => getClientFollowups(clientId!),
+    enabled: !!clientId,
+  });
+
+  const clientFollowups: FollowupEntry[] = followupData?.data?.data ?? [];
 
   if (isLoading) {
     return <Center py="xl"><Loader /></Center>;
@@ -196,6 +205,72 @@ export default function ClientProfile() {
                     <Table.Td>{p.payment_method || '—'}</Table.Td>
                     <Table.Td>{p.reference || '—'}</Table.Td>
                     <Table.Td>{p.document_number || '—'}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Paper>
+
+      {/* Follow-up History */}
+      <Paper withBorder p="md" radius="md">
+        <Group gap="sm" mb="sm">
+          <IconPhoneCall size={20} />
+          <Title order={4}>Follow-up Calls</Title>
+          {clientFollowups.length > 0 && (
+            <Badge variant="light" size="sm">{clientFollowups.length}</Badge>
+          )}
+        </Group>
+        {clientFollowups.length === 0 ? (
+          <Text c="dimmed" size="sm">No follow-up calls recorded for this client.</Text>
+        ) : (
+          <Table.ScrollContainer minWidth={600}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th>Invoice</Table.Th>
+                  <Table.Th>Called By</Table.Th>
+                  <Table.Th>Outcome</Table.Th>
+                  <Table.Th>Promise</Table.Th>
+                  <Table.Th>Notes</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {clientFollowups.map((f) => (
+                  <Table.Tr key={f.id}>
+                    <Table.Td>{f.call_date ? new Date(f.call_date).toLocaleDateString() : '—'}</Table.Td>
+                    <Table.Td fw={500}>{f.document_number || '—'}</Table.Td>
+                    <Table.Td>{f.assigned_to || '—'}</Table.Td>
+                    <Table.Td>
+                      {f.outcome ? (
+                        <Badge
+                          color={f.outcome === 'promised' ? 'blue' : f.outcome === 'declined' ? 'red' : f.outcome === 'no_answer' ? 'gray' : 'orange'}
+                          size="sm"
+                          variant="light"
+                        >
+                          {f.outcome.replace('_', ' ')}
+                        </Badge>
+                      ) : '—'}
+                    </Table.Td>
+                    <Table.Td>
+                      {f.promise_date ? (
+                        <Text size="xs">{formatDate(f.promise_date)}</Text>
+                      ) : '—'}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" truncate maw={200}>{f.notes || '—'}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge
+                        color={f.status === 'fulfilled' ? 'green' : f.status === 'broken' ? 'red' : f.status === 'escalated' ? 'orange' : 'gray'}
+                        size="sm"
+                      >
+                        {f.status}
+                      </Badge>
+                    </Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>
