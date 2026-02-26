@@ -15,7 +15,7 @@ class Document extends Model
     protected $fillable = [
         'tenant_id', 'client_id', 'type', 'document_number',
         'parent_id', 'date', 'due_date', 'subtotal', 'discount_amount',
-        'tax_amount', 'total', 'notes', 'status', 'created_by',
+        'tax_amount', 'total', 'notes', 'status', 'overdue_stage', 'created_by',
     ];
 
     protected $casts = [
@@ -55,6 +55,12 @@ class Document extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function communicationLogs()
+    {
+        return $this->hasMany(CommunicationLog::class, 'client_id', 'client_id')
+            ->whereRaw("JSON_EXTRACT(metadata, '$.document_id') = ?", [$this->id]);
     }
 
     public function getPaidAmountAttribute()

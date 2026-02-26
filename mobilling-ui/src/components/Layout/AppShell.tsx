@@ -7,7 +7,7 @@ import {
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
   IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
-  IconWallet, IconCategory2, IconReceipt2,
+  IconWallet, IconCategory2, IconReceipt2, IconRobot,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -191,6 +191,9 @@ export default function AppLayout() {
 
           <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
             active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
+
+          <NavLink label="Automation" leftSection={<IconRobot size={18} />}
+            active={isActive('/automation')} onClick={() => navigateAndClose('/automation')} />
 
           <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
             active={isActive('/users')} onClick={() => navigateAndClose('/users')} />

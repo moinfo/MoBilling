@@ -45,6 +45,7 @@ import Statutories from './pages/Statutories';
 import StatutorySchedule from './pages/StatutorySchedule';
 import Sms from './pages/Sms';
 import Subscription from './pages/Subscription';
+import Automation from './pages/Automation';
 import SubscriptionExpired from './pages/SubscriptionExpired';
 import PesapalCallback from './pages/PesapalCallback';
 
@@ -134,6 +135,7 @@ export default function App() {
                   <Route path="/users" element={<Users />} />
                   <Route path="/sms" element={<Sms />} />
                   <Route path="/subscription" element={<Subscription />} />
+                  <Route path="/automation" element={<Automation />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />

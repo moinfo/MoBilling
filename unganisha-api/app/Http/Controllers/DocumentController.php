@@ -4,9 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreDocumentRequest;
 use App\Http\Resources\DocumentResource;
+use App\Models\CommunicationLog;
 use App\Models\Document;
+use App\Models\Tenant;
+use App\Notifications\RecurringInvoiceReminderNotification;
 use App\Services\DocumentConversionService;
 use App\Services\DocumentNumberService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -21,7 +25,13 @@ class DocumentController extends Controller
         }
 
         if ($request->has('status')) {
-            $query->where('status', $request->status);
+            $status = $request->status;
+            if ($status === 'sent') {
+                // "Unpaid" = sent, overdue, or partially paid
+                $query->whereIn('status', ['sent', 'overdue', 'partial']);
+            } else {
+                $query->where('status', $status);
+            }
         }
 
         if ($request->has('search')) {
@@ -30,6 +40,16 @@ class DocumentController extends Controller
                 $q->where('document_number', 'LIKE', "%{$search}%")
                   ->orWhereHas('client', fn ($cq) => $cq->where('name', 'LIKE', "%{$search}%"));
             });
+        }
+
+        // Add reminder count for invoices (count from communication_logs by document_id in metadata)
+        if ($request->type === 'invoice') {
+            $query->addSelect([
+                'reminder_count' => CommunicationLog::selectRaw('COUNT(*)')
+                    ->withoutGlobalScopes()
+                    ->whereColumn('communication_logs.client_id', 'documents.client_id')
+                    ->whereRaw("JSON_UNQUOTE(JSON_EXTRACT(communication_logs.metadata, '$.document_id')) = documents.id"),
+            ]);
         }
 
         return DocumentResource::collection(
@@ -178,5 +198,82 @@ class DocumentController extends Controller
         $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
 
         return response()->json(['message' => 'Document sent successfully']);
+    }
+
+    public function remindUnpaid(Request $request)
+    {
+        $request->validate([
+            'document_ids' => 'required|array|min:1',
+            'document_ids.*' => 'uuid',
+            'channel' => 'required|in:email,sms,both',
+        ]);
+
+        $tenant = Tenant::find(auth()->user()->tenant_id);
+        $documents = Document::whereIn('id', $request->document_ids)
+            ->where('type', 'invoice')
+            ->whereNotIn('status', ['paid', 'draft'])
+            ->with('client')
+            ->get();
+
+        $sent = 0;
+        $failed = 0;
+        $skipped = 0;
+        $errors = [];
+
+        foreach ($documents as $document) {
+            $client = $document->client;
+            if (!$client) {
+                $skipped++;
+                continue;
+            }
+
+            // Need email or phone depending on channel
+            if ($request->channel === 'email' && !$client->email) {
+                $skipped++;
+                continue;
+            }
+            if ($request->channel === 'sms' && !$client->phone) {
+                $skipped++;
+                continue;
+            }
+
+            $daysRemaining = $document->due_date
+                ? (int) Carbon::today()->diffInDays($document->due_date, false)
+                : 0;
+
+            $notification = new RecurringInvoiceReminderNotification(
+                $document,
+                $tenant,
+                max($daysRemaining, 0),
+            );
+
+            // Override channels based on user selection
+            $notification->forceChannels = $request->channel;
+
+            try {
+                // Send immediately (not queued) for instant feedback
+                $client->notifyNow($notification);
+                $sent++;
+            } catch (\Throwable $e) {
+                $failed++;
+                $errors[] = $client->name . ': ' . $e->getMessage();
+            }
+        }
+
+        $message = "Reminder sent to {$sent} client(s)";
+        if ($failed) {
+            $message .= ", {$failed} failed";
+        }
+        if ($skipped) {
+            $message .= ", {$skipped} skipped (missing contact)";
+        }
+
+        return response()->json([
+            'message' => $message,
+            'sent' => $sent,
+            'failed' => $failed,
+            'skipped' => $skipped,
+            'errors' => $errors,
+        ], $sent > 0 ? 200 : ($failed > 0 ? 422 : 200));
     }
 }

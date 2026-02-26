@@ -24,6 +24,8 @@ class DocumentResource extends JsonResource
             'total' => $this->total,
             'notes' => $this->notes,
             'status' => $this->status,
+            'overdue_stage' => $this->overdue_stage,
+            'reminder_count' => (int) ($this->reminder_count ?? 0),
             'paid_amount' => $this->paid_amount,
             'balance_due' => $this->balance_due,
             'items' => DocumentItemResource::collection($this->whenLoaded('items')),

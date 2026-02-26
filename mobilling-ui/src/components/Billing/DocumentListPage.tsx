@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Pagination, Drawer } from '@mantine/core';
-import { useDebouncedValue } from '@mantine/hooks';
+import {
+  Title, Group, Button, TextInput, Pagination, Drawer,
+  SegmentedControl, Menu, Modal, Stack, Text, Radio,
+} from '@mantine/core';
+import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch } from '@tabler/icons-react';
-import { getDocuments, getDocument, createDocument, deleteDocument, Document, DocumentFormData } from '../../api/documents';
+import { IconPlus, IconSearch, IconBell, IconMail, IconMessage, IconSend } from '@tabler/icons-react';
+import { getDocuments, getDocument, createDocument, deleteDocument, remindUnpaid, Document, DocumentFormData } from '../../api/documents';
 import { getClients, Client } from '../../api/clients';
 import { getProductServices, ProductService } from '../../api/productServices';
 import DocumentTable from './DocumentTable';
@@ -22,12 +25,26 @@ export default function DocumentListPage({ type, title }: Props) {
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('all');
   const [formOpen, setFormOpen] = useState(false);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
 
+  // Remind modal state
+  const [remindOpened, { open: openRemind, close: closeRemind }] = useDisclosure(false);
+  const [remindIds, setRemindIds] = useState<string[]>([]);
+  const [remindChannel, setRemindChannel] = useState<'email' | 'sms' | 'both'>('email');
+  const [remindLabel, setRemindLabel] = useState('');
+
+  const isInvoice = type === 'invoice';
+
+  // Map filter to API status param
+  const statusParam = statusFilter === 'all' ? undefined
+    : statusFilter === 'unpaid' ? 'sent' // sent = unpaid invoices
+    : statusFilter; // 'paid', 'overdue', 'draft'
+
   const { data: docsData } = useQuery({
-    queryKey: ['documents', type, debouncedSearch, page],
-    queryFn: () => getDocuments({ type, search: debouncedSearch || undefined, page }),
+    queryKey: ['documents', type, debouncedSearch, page, statusParam],
+    queryFn: () => getDocuments({ type, search: debouncedSearch || undefined, page, status: statusParam }),
   });
 
   const { data: clientsData } = useQuery({
@@ -45,6 +62,9 @@ export default function DocumentListPage({ type, title }: Props) {
   const clients: Client[] = clientsData?.data?.data || [];
   const productServices: ProductService[] = psData?.data?.data || [];
 
+  // Unpaid invoices for "Remind All"
+  const unpaidDocs = documents.filter((d: Document) => d.status !== 'paid' && d.status !== 'draft');
+
   const createMutation = useMutation({
     mutationFn: (values: DocumentFormData) => createDocument(values),
     onSuccess: () => {
@@ -61,6 +81,16 @@ export default function DocumentListPage({ type, title }: Props) {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       notifications.show({ title: 'Success', message: 'Document deleted', color: 'green' });
     },
+  });
+
+  const remindMutation = useMutation({
+    mutationFn: ({ ids, channel }: { ids: string[]; channel: 'email' | 'sms' | 'both' }) =>
+      remindUnpaid(ids, channel),
+    onSuccess: (res) => {
+      closeRemind();
+      notifications.show({ title: 'Reminders Sent', message: res.data.message, color: 'green' });
+    },
+    onError: () => notifications.show({ title: 'Error', message: 'Failed to send reminders', color: 'red' }),
   });
 
   const handleView = async (doc: Document) => {
@@ -86,6 +116,20 @@ export default function DocumentListPage({ type, title }: Props) {
     queryClient.invalidateQueries({ queryKey: ['documents'] });
   };
 
+  const openRemindSingle = (doc: Document) => {
+    setRemindIds([doc.id]);
+    setRemindLabel(doc.document_number);
+    setRemindChannel('email');
+    openRemind();
+  };
+
+  const openRemindAll = () => {
+    setRemindIds(unpaidDocs.map((d: Document) => d.id));
+    setRemindLabel(`${unpaidDocs.length} unpaid invoice(s)`);
+    setRemindChannel('email');
+    openRemind();
+  };
+
   return (
     <>
       <Group justify="space-between" mb="md">
@@ -95,20 +139,48 @@ export default function DocumentListPage({ type, title }: Props) {
         </Button>
       </Group>
 
-      <TextInput
-        placeholder="Search by number or client..."
-        leftSection={<IconSearch size={16} />}
-        value={search}
-        onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
-        mb="md"
-        w={300}
-      />
+      <Group mb="md" justify="space-between" wrap="wrap">
+        <Group gap="sm">
+          <TextInput
+            placeholder="Search by number or client..."
+            leftSection={<IconSearch size={16} />}
+            value={search}
+            onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
+            w={300}
+          />
+          {isInvoice && (
+            <SegmentedControl
+              size="sm"
+              value={statusFilter}
+              onChange={(v) => { setStatusFilter(v); setPage(1); }}
+              data={[
+                { label: 'All', value: 'all' },
+                { label: 'Unpaid', value: 'unpaid' },
+                { label: 'Paid', value: 'paid' },
+                { label: 'Overdue', value: 'overdue' },
+                { label: 'Draft', value: 'draft' },
+              ]}
+            />
+          )}
+        </Group>
+        {isInvoice && statusFilter === 'unpaid' && unpaidDocs.length > 0 && (
+          <Button
+            variant="light"
+            color="orange"
+            leftSection={<IconBell size={16} />}
+            onClick={openRemindAll}
+          >
+            Remind All ({unpaidDocs.length})
+          </Button>
+        )}
+      </Group>
 
       <DocumentTable
         documents={documents}
         onView={handleView}
         onEdit={() => {}}
         onDelete={handleDelete}
+        onRemind={isInvoice ? openRemindSingle : undefined}
       />
 
       {meta && meta.last_page > 1 && (
@@ -150,6 +222,39 @@ export default function DocumentListPage({ type, title }: Props) {
           />
         )}
       </Drawer>
+
+      {/* Remind Modal */}
+      <Modal opened={remindOpened} onClose={closeRemind} title="Send Payment Reminder" size="sm">
+        <Stack gap="md">
+          <Text size="sm">
+            Send reminder for <Text span fw={600}>{remindLabel}</Text>
+          </Text>
+
+          <Radio.Group
+            label="Send via"
+            value={remindChannel}
+            onChange={(v) => setRemindChannel(v as 'email' | 'sms' | 'both')}
+          >
+            <Stack gap="xs" mt="xs">
+              <Radio value="email" label="Email" icon={({ ...rest }) => <IconMail size={14} {...rest} />} />
+              <Radio value="sms" label="SMS" icon={({ ...rest }) => <IconMessage size={14} {...rest} />} />
+              <Radio value="both" label="Both (Email + SMS)" icon={({ ...rest }) => <IconSend size={14} {...rest} />} />
+            </Stack>
+          </Radio.Group>
+
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeRemind}>Cancel</Button>
+            <Button
+              color="orange"
+              leftSection={<IconBell size={16} />}
+              loading={remindMutation.isPending}
+              onClick={() => remindMutation.mutate({ ids: remindIds, channel: remindChannel })}
+            >
+              Send Reminder
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </>
   );
 }

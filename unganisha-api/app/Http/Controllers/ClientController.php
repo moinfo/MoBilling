@@ -6,6 +6,7 @@ use App\Http\Requests\StoreClientRequest;
 use App\Http\Resources\ClientResource;
 use App\Models\Client;
 use App\Models\ClientSubscription;
+use App\Models\CommunicationLog;
 use App\Models\Document;
 use App\Models\PaymentIn;
 use App\Models\RecurringInvoiceLog;
@@ -16,7 +17,18 @@ class ClientController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Client::query();
+        $query = Client::query()
+            ->withCount(['subscriptions as active_subscriptions_count' => function ($q) {
+                $q->where('status', 'active');
+            }])
+            ->addSelect(['subscription_total' => ClientSubscription::selectRaw(
+                    'COALESCE(SUM(client_subscriptions.quantity * product_services.price), 0)'
+                )
+                ->join('product_services', 'client_subscriptions.product_service_id', '=', 'product_services.id')
+                ->whereColumn('client_subscriptions.client_id', 'clients.id')
+                ->where('client_subscriptions.status', 'active')
+                ->whereNull('client_subscriptions.deleted_at')
+            ]);
 
         if ($request->has('search')) {
             $search = $request->search;
@@ -128,6 +140,23 @@ class ClientController extends Controller
                 'document_number' => $p->document?->document_number,
             ]);
 
+        // Communication logs
+        $communicationLogs = CommunicationLog::where('client_id', $client->id)
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get()
+            ->map(fn ($log) => [
+                'id' => $log->id,
+                'channel' => $log->channel,
+                'type' => $log->type,
+                'recipient' => $log->recipient,
+                'subject' => $log->subject,
+                'message' => $log->message,
+                'status' => $log->status,
+                'error' => $log->error,
+                'created_at' => $log->created_at?->toISOString(),
+            ]);
+
         // Summary stats
         $totalInvoiced = Document::where('client_id', $client->id)
             ->where('type', 'invoice')
@@ -162,6 +191,7 @@ class ClientController extends Controller
                 'subscriptions' => $subscriptions->values(),
                 'invoices' => $invoices->values(),
                 'payments' => $payments->values(),
+                'communication_logs' => $communicationLogs->values(),
             ],
         ]);
     }

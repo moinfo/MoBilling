@@ -16,6 +16,7 @@ use App\Http\Controllers\EmailSettingsController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\NotificationController;
+use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
@@ -148,6 +149,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/documents/{document}/convert', [DocumentController::class, 'convert']);
     Route::get('/documents/{document}/pdf', [DocumentController::class, 'downloadPdf']);
     Route::post('/documents/{document}/send', [DocumentController::class, 'send']);
+    Route::post('/documents/remind-unpaid', [DocumentController::class, 'remindUnpaid']);
 
     // Payments In
     Route::apiResource('payments-in', PaymentInController::class)->only(['index', 'store', 'show', 'update', 'destroy']);
@@ -195,6 +197,13 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);
     Route::put('/settings/email', [EmailSettingsController::class, 'update']);
     Route::post('/settings/email/test', [EmailSettingsController::class, 'test']);
+
+    // Automation
+    Route::prefix('automation')->group(function () {
+        Route::get('/summary', [AutomationController::class, 'summary']);
+        Route::get('/cron-logs', [AutomationController::class, 'cronLogs']);
+        Route::get('/communication-logs', [AutomationController::class, 'communicationLogs']);
+    });
 
     // SMS (tenant)
     Route::get('/sms/packages', [SmsPurchaseController::class, 'packages']);

@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\CronLog;
 use App\Services\RecurringInvoiceService;
 use Illuminate\Console\Command;
 
@@ -13,13 +14,39 @@ class ProcessRecurringInvoices extends Command
 
     public function handle(RecurringInvoiceService $service): int
     {
+        $startedAt = now();
         $this->info('Processing recurring invoices...');
 
-        $result = $service->processAll();
+        try {
+            $result = $service->processAll();
 
-        $this->info("Invoices created: {$result['invoices_created']}");
-        $this->info("Reminders sent: {$result['reminders_sent']}");
+            $this->info("Invoices created: {$result['invoices_created']}");
+            $this->info("Reminders sent: {$result['reminders_sent']}");
 
-        return self::SUCCESS;
+            CronLog::create([
+                'tenant_id' => null,
+                'command' => $this->signature,
+                'description' => "Created {$result['invoices_created']} invoices, sent {$result['reminders_sent']} reminders",
+                'results' => $result,
+                'status' => 'success',
+                'started_at' => $startedAt,
+                'finished_at' => now(),
+            ]);
+
+            return self::SUCCESS;
+        } catch (\Throwable $e) {
+            CronLog::create([
+                'tenant_id' => null,
+                'command' => $this->signature,
+                'description' => 'Failed to process recurring invoices',
+                'status' => 'failed',
+                'error' => $e->getMessage(),
+                'started_at' => $startedAt,
+                'finished_at' => now(),
+            ]);
+
+            $this->error($e->getMessage());
+            return self::FAILURE;
+        }
     }
 }

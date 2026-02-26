@@ -31,6 +31,8 @@ export interface Document {
   total: string;
   notes: string | null;
   status: string;
+  overdue_stage: string | null;
+  reminder_count: number;
   paid_amount: number;
   balance_due: number;
   items: DocumentItem[];
@@ -112,6 +114,9 @@ export const resendReceipt = (id: string) =>
 
 export const resendInvoice = (documentId: string) =>
   api.post(`/documents/${documentId}/send`);
+
+export const remindUnpaid = (documentIds: string[], channel: 'email' | 'sms' | 'both') =>
+  api.post('/documents/remind-unpaid', { document_ids: documentIds, channel });
 
 // Next Bills
 export interface NextBillItem {

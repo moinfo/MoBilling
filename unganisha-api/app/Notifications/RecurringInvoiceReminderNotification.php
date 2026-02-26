@@ -17,6 +17,8 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
 {
     use Queueable, HasTenantBranding;
 
+    public ?string $forceChannels = null;
+
     public function __construct(
         public Document $document,
         public Tenant $tenant,
@@ -25,6 +27,17 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
 
     public function via($notifiable): array
     {
+        // Manual reminder — use the specified channel(s)
+        if ($this->forceChannels) {
+            return match ($this->forceChannels) {
+                'email' => ['mail'],
+                'sms' => [SmsChannel::class],
+                'both' => ['mail', SmsChannel::class],
+                default => ['mail'],
+            };
+        }
+
+        // Automated — respect tenant settings
         $channels = [];
 
         if ($this->tenant->reminder_email_enabled) {

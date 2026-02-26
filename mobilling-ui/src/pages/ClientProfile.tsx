@@ -6,7 +6,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import {
   IconArrowLeft, IconMail, IconPhone, IconMapPin, IconId,
-  IconFileInvoice, IconCash, IconCalendarDue, IconRepeat,
+  IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend,
 } from '@tabler/icons-react';
 import { getClientProfile, ClientProfile as ClientProfileType } from '../api/clients';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -50,7 +50,7 @@ export default function ClientProfile() {
     return <Text c="dimmed" ta="center" py="xl">Client not found.</Text>;
   }
 
-  const { client, summary, subscriptions, invoices, payments } = profile;
+  const { client, summary, subscriptions, invoices, payments, communication_logs } = profile;
 
   return (
     <Stack gap="lg">
@@ -194,6 +194,55 @@ export default function ClientProfile() {
                     <Table.Td>{p.payment_method || '—'}</Table.Td>
                     <Table.Td>{p.reference || '—'}</Table.Td>
                     <Table.Td>{p.document_number || '—'}</Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Paper>
+
+      {/* Communication Log */}
+      <Paper withBorder p="md" radius="md">
+        <Group gap="sm" mb="sm">
+          <IconSend size={20} />
+          <Title order={4}>Communications</Title>
+        </Group>
+        {communication_logs.length === 0 ? (
+          <Text c="dimmed" size="sm">No communications sent to this client.</Text>
+        ) : (
+          <Table.ScrollContainer minWidth={500}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th>Channel</Table.Th>
+                  <Table.Th>Type</Table.Th>
+                  <Table.Th>Recipient</Table.Th>
+                  <Table.Th>Subject / Message</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {communication_logs.map((log) => (
+                  <Table.Tr key={log.id}>
+                    <Table.Td>{formatDate(log.created_at)}</Table.Td>
+                    <Table.Td>
+                      <Badge variant="light" color={log.channel === 'email' ? 'blue' : 'green'} size="sm">
+                        {log.channel}
+                      </Badge>
+                    </Table.Td>
+                    <Table.Td>{log.type.replace(/_/g, ' ')}</Table.Td>
+                    <Table.Td>{log.recipient}</Table.Td>
+                    <Table.Td>
+                      <Text size="sm" truncate maw={200}>{log.subject || log.message || '—'}</Text>
+                      {log.error && <Text size="xs" c="red">{log.error}</Text>}
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge color={log.status === 'sent' ? 'green' : 'red'} size="sm">
+                        {log.status}
+                      </Badge>
+                    </Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>

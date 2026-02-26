@@ -4,7 +4,6 @@ namespace App\Channels;
 
 use App\Services\SmsService;
 use Illuminate\Notifications\Notification;
-use Illuminate\Support\Facades\Log;
 
 class SmsChannel
 {
@@ -31,13 +30,7 @@ class SmsChannel
             return;
         }
 
-        try {
-            $this->smsService->send($tenant, $recipient, $message);
-        } catch (\Throwable $e) {
-            Log::error('SmsChannel failed', [
-                'user_id' => $notifiable->id ?? null,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        // Let exceptions propagate so Laravel fires NotificationFailed (not NotificationSent)
+        $this->smsService->send($tenant, $recipient, $message);
     }
 }

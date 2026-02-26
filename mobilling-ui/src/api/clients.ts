@@ -7,6 +7,8 @@ export interface Client {
   phone: string | null;
   address: string | null;
   tax_id: string | null;
+  active_subscriptions_count?: number;
+  subscription_total?: number;
   created_at: string;
 }
 
@@ -32,6 +34,18 @@ export const updateClient = (id: string, data: ClientFormData) =>
 
 export const deleteClient = (id: string) =>
   api.delete(`/clients/${id}`);
+
+export interface ClientCommunicationLog {
+  id: string;
+  channel: 'email' | 'sms';
+  type: string;
+  recipient: string;
+  subject: string | null;
+  message: string | null;
+  status: 'sent' | 'failed';
+  error: string | null;
+  created_at: string;
+}
 
 export interface ClientProfile {
   client: Client;
@@ -69,6 +83,7 @@ export interface ClientProfile {
     reference: string | null;
     document_number: string | null;
   }[];
+  communication_logs: ClientCommunicationLog[];
 }
 
 export const getClientProfile = (id: string) =>
