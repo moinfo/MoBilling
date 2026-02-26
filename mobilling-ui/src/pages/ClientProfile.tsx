@@ -1,14 +1,15 @@
 import { useParams, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
-  Anchor, Loader, Center, ThemeIcon,
+  Anchor, Loader, Center, ThemeIcon, Modal,
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import {
   IconArrowLeft, IconMail, IconPhone, IconMapPin, IconId,
   IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend,
 } from '@tabler/icons-react';
-import { getClientProfile, ClientProfile as ClientProfileType } from '../api/clients';
+import { getClientProfile, ClientProfile as ClientProfileType, ClientCommunicationLog } from '../api/clients';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 
@@ -51,6 +52,7 @@ export default function ClientProfile() {
   }
 
   const { client, summary, subscriptions, invoices, payments, communication_logs } = profile;
+  const [selectedLog, setSelectedLog] = useState<ClientCommunicationLog | null>(null);
 
   return (
     <Stack gap="lg">
@@ -225,7 +227,7 @@ export default function ClientProfile() {
               </Table.Thead>
               <Table.Tbody>
                 {communication_logs.map((log) => (
-                  <Table.Tr key={log.id}>
+                  <Table.Tr key={log.id} onClick={() => setSelectedLog(log)} style={{ cursor: 'pointer' }}>
                     <Table.Td>{formatDate(log.created_at)}</Table.Td>
                     <Table.Td>
                       <Badge variant="light" color={log.channel === 'email' ? 'blue' : 'green'} size="sm">
@@ -250,6 +252,66 @@ export default function ClientProfile() {
           </Table.ScrollContainer>
         )}
       </Paper>
+
+      {/* Communication Detail Modal */}
+      <Modal
+        opened={!!selectedLog}
+        onClose={() => setSelectedLog(null)}
+        title={
+          <Group gap="sm">
+            <Badge variant="light" color={selectedLog?.channel === 'email' ? 'blue' : 'green'}>
+              {selectedLog?.channel}
+            </Badge>
+            <Text fw={600}>{selectedLog?.type.replace(/_/g, ' ')}</Text>
+            <Badge color={selectedLog?.status === 'sent' ? 'green' : 'red'} size="sm">
+              {selectedLog?.status}
+            </Badge>
+          </Group>
+        }
+        size="lg"
+      >
+        {selectedLog && (
+          <Stack gap="md">
+            <Group gap="lg">
+              <div>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Recipient</Text>
+                <Text size="sm">{selectedLog.recipient}</Text>
+              </div>
+              <div>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Date</Text>
+                <Text size="sm">{new Date(selectedLog.created_at).toLocaleString()}</Text>
+              </div>
+            </Group>
+
+            {selectedLog.subject && (
+              <div>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Subject</Text>
+                <Paper p="sm" radius="sm" bg="var(--mantine-color-default)">
+                  <Text size="sm">{selectedLog.subject}</Text>
+                </Paper>
+              </div>
+            )}
+
+            {selectedLog.message && (
+              <div>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Message</Text>
+                <Paper p="sm" radius="sm" bg="var(--mantine-color-default)">
+                  <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{selectedLog.message}</Text>
+                </Paper>
+              </div>
+            )}
+
+            {selectedLog.error && (
+              <div>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Error</Text>
+                <Paper p="sm" radius="sm" bg="var(--mantine-color-red-light)">
+                  <Text size="sm" c="red">{selectedLog.error}</Text>
+                </Paper>
+              </div>
+            )}
+          </Stack>
+        )}
+      </Modal>
     </Stack>
   );
 }

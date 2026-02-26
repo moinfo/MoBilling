@@ -17,6 +17,7 @@ use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
+use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
@@ -197,6 +198,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);
     Route::put('/settings/email', [EmailSettingsController::class, 'update']);
     Route::post('/settings/email/test', [EmailSettingsController::class, 'test']);
+
+    // Collection
+    Route::get('/collection/dashboard', [CollectionController::class, 'dashboard']);
 
     // Automation
     Route::prefix('automation')->group(function () {

@@ -7,7 +7,7 @@ import {
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
   IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
-  IconWallet, IconCategory2, IconReceipt2, IconRobot,
+  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -143,6 +143,9 @@ export default function AppLayout() {
         <AppShell.Section grow component={ScrollArea} type="scroll">
           <NavLink label="Dashboard" leftSection={<IconDashboard size={18} />}
             active={isActive('/dashboard')} onClick={() => navigateAndClose('/dashboard')} />
+
+          <NavLink label="Collection" leftSection={<IconTargetArrow size={18} />}
+            active={isActive('/collection')} onClick={() => navigateAndClose('/collection')} />
 
           <NavLink label="Billing" leftSection={<IconFileText size={18} />}
             opened={openSection === 'billing'} onChange={() => toggleSection('billing')}>
