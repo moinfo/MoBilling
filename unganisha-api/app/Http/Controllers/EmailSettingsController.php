@@ -29,10 +29,6 @@ class EmailSettingsController extends Controller
     {
         $tenant = $request->user()->tenant;
 
-        if (!$tenant->email_enabled) {
-            return response()->json(['message' => 'Email has been disabled by the administrator.'], 403);
-        }
-
         if ($request->user()->role !== 'admin') {
             return response()->json(['message' => 'Only admins can update email settings.'], 403);
         }
@@ -72,12 +68,8 @@ class EmailSettingsController extends Controller
     {
         $tenant = $request->user()->tenant;
 
-        if (!$tenant->email_enabled) {
-            return response()->json(['message' => 'Email has been disabled by the administrator.'], 403);
-        }
-
         if (!$tenant->smtp_host || !$tenant->smtp_port) {
-            return response()->json(['message' => 'SMTP settings are not configured.'], 422);
+            return response()->json(['message' => 'SMTP settings are not configured. Emails will use the platform default.'], 422);
         }
 
         try {

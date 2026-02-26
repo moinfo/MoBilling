@@ -2,12 +2,12 @@ import { useState } from 'react';
 import {
   Title, Tabs, TextInput, Textarea, PasswordInput, Select, Button,
   Stack, Divider, Paper, Group, Alert, NumberInput, Switch, Loader, Center, Box,
-  FileButton, Image, Text, Badge,
+  FileButton, Image, Text, Badge, ActionIcon,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconGripVertical } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
 import {
   updateCompany, updateProfile, uploadLogo,
@@ -16,6 +16,7 @@ import {
   EmailSettings as EmailSettingsType, EmailSettingsFormData,
   getReminderSettings, updateReminderSettings, ReminderSettings,
   getTemplates, updateTemplates, TemplateSettings,
+  getPaymentMethods, updatePaymentMethods, PaymentMethod,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
@@ -44,6 +45,9 @@ export default function Settings() {
           <Tabs.Tab value="templates" leftSection={<IconTemplate size={16} />}>
             Templates
           </Tabs.Tab>
+          <Tabs.Tab value="payment-methods" leftSection={<IconCreditCard size={16} />}>
+            Payment Methods
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="company">
@@ -60,6 +64,9 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="templates">
           <TemplatesTab isAdmin={isAdmin} />
+        </Tabs.Panel>
+        <Tabs.Panel value="payment-methods">
+          <PaymentMethodsTab isAdmin={isAdmin} />
         </Tabs.Panel>
       </Tabs>
     </>
@@ -296,7 +303,7 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
   });
 
   const settings: EmailSettingsType | undefined = data?.data?.data;
-  const emailDisabled = settings ? !settings.email_enabled : true;
+  const hasCustomSmtp = !!(settings?.smtp_host);
 
   const form = useForm<EmailSettingsFormData>({
     initialValues: {
@@ -358,17 +365,17 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
     return <Center py="xl"><Loader /></Center>;
   }
 
-  const fieldsDisabled = emailDisabled || !isAdmin;
+  const fieldsDisabled = !isAdmin;
 
   return (
     <Paper p="lg" withBorder maw={600}>
-      {emailDisabled && (
-        <Alert icon={<IconAlertCircle size={16} />} color="orange" mb="md">
-          Email has been disabled by the administrator. Contact your platform admin to enable email delivery.
-        </Alert>
-      )}
+      <Alert icon={<IconAlertCircle size={16} />} color={hasCustomSmtp ? 'green' : 'blue'} mb="md" variant="light">
+        {hasCustomSmtp
+          ? 'Using your custom SMTP configuration for sending emails.'
+          : 'Leave blank to use the platform default email. Configure your own SMTP to send emails from your domain.'}
+      </Alert>
 
-      {!isAdmin && !emailDisabled && (
+      {!isAdmin && (
         <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
           Only admins can edit email settings.
         </Alert>
@@ -397,12 +404,13 @@ function EmailTab({ isAdmin }: { isAdmin: boolean }) {
             <TextInput label="From Email" placeholder="noreply@company.com" {...form.getInputProps('smtp_from_email')} />
             <TextInput label="From Name" placeholder="Company Name" {...form.getInputProps('smtp_from_name')} />
 
-            {isAdmin && !emailDisabled && (
+            {isAdmin && (
               <Group justify="flex-end">
                 <Button
                   variant="outline"
                   loading={testMutation.isPending}
                   onClick={() => testMutation.mutate()}
+                  disabled={!hasCustomSmtp}
                 >
                   Send Test Email
                 </Button>
@@ -709,6 +717,139 @@ function TemplatesTab({ isAdmin }: { isAdmin: boolean }) {
           )}
         </Stack>
       </form>
+    </Paper>
+  );
+}
+
+// --- Payment Methods Tab ---
+
+const DEFAULT_METHODS: PaymentMethod[] = [
+  { value: 'bank', label: 'Bank Transfer' },
+  { value: 'mpesa', label: 'M-Pesa' },
+  { value: 'cash', label: 'Cash' },
+  { value: 'card', label: 'Card' },
+  { value: 'cheque', label: 'Cheque' },
+];
+
+function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+  const [methods, setMethods] = useState<PaymentMethod[]>([]);
+  const [initialized, setInitialized] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['payment-methods'],
+    queryFn: getPaymentMethods,
+  });
+
+  if (data?.data?.data && !initialized) {
+    setMethods(data.data.data);
+    setInitialized(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () => updatePaymentMethods(methods),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payment-methods'] });
+      notifications.show({ title: 'Success', message: 'Payment methods updated', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to update payment methods',
+        color: 'red',
+      });
+    },
+  });
+
+  const addMethod = () => {
+    setMethods([...methods, { value: '', label: '' }]);
+  };
+
+  const removeMethod = (index: number) => {
+    setMethods(methods.filter((_, i) => i !== index));
+  };
+
+  const updateMethod = (index: number, field: 'value' | 'label', val: string) => {
+    const updated = [...methods];
+    updated[index] = { ...updated[index], [field]: val };
+    if (field === 'label') {
+      const autoValue = val.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+      if (!methods[index]?.value || methods[index].value === methods[index].label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '')) {
+        updated[index].value = autoValue;
+      }
+    }
+    setMethods(updated);
+  };
+
+  const handleResetDefaults = () => {
+    setMethods([...DEFAULT_METHODS]);
+  };
+
+  const canSave = methods.length > 0 && methods.every((m) => m.value.trim() && m.label.trim());
+
+  if (isLoading) {
+    return <Center py="xl"><Loader /></Center>;
+  }
+
+  return (
+    <Paper p="lg" withBorder maw={600}>
+      {!isAdmin && (
+        <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+          Only admins can edit payment methods.
+        </Alert>
+      )}
+
+      <Text size="sm" c="dimmed" mb="md">
+        Configure the payment methods available when recording payments across the system (invoices, expenses, bills).
+      </Text>
+
+      <Stack gap="xs">
+        {methods.map((method, index) => (
+          <Group key={index} gap="xs">
+            <IconGripVertical size={16} style={{ color: 'var(--mantine-color-dimmed)', flexShrink: 0 }} />
+            <TextInput
+              placeholder="Label (e.g. M-Pesa)"
+              value={method.label}
+              onChange={(e) => updateMethod(index, 'label', e.currentTarget.value)}
+              disabled={!isAdmin}
+              style={{ flex: 1 }}
+            />
+            <TextInput
+              placeholder="Value (e.g. mpesa)"
+              value={method.value}
+              onChange={(e) => updateMethod(index, 'value', e.currentTarget.value)}
+              disabled={!isAdmin}
+              style={{ flex: 1 }}
+            />
+            {isAdmin && (
+              <ActionIcon
+                variant="subtle"
+                color="red"
+                onClick={() => removeMethod(index)}
+                disabled={methods.length <= 1}
+              >
+                <IconTrash size={16} />
+              </ActionIcon>
+            )}
+          </Group>
+        ))}
+      </Stack>
+
+      {isAdmin && (
+        <Group justify="space-between" mt="md">
+          <Group>
+            <Button variant="light" leftSection={<IconPlus size={16} />} onClick={addMethod} size="sm">
+              Add Method
+            </Button>
+            <Button variant="subtle" color="gray" onClick={handleResetDefaults} size="sm">
+              Reset to Defaults
+            </Button>
+          </Group>
+          <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending} disabled={!canSave}>
+            Save Payment Methods
+          </Button>
+        </Group>
+      )}
     </Paper>
   );
 }
