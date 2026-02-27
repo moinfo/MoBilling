@@ -17,11 +17,13 @@ class FollowupController extends Controller
         $today = Carbon::today();
 
         $dueToday = Followup::with(['client', 'document', 'user'])
+            ->whereHas('document')
             ->dueToday()
             ->orderBy('next_followup')
             ->get();
 
         $overdueFollowups = Followup::with(['client', 'document', 'user'])
+            ->whereHas('document')
             ->overdue()
             ->orderBy('next_followup')
             ->get();
@@ -58,7 +60,7 @@ class FollowupController extends Controller
                 'stats' => [
                     'due_today' => $dueToday->count(),
                     'overdue' => $overdueFollowups->count(),
-                    'total_active' => Followup::active()->count(),
+                    'total_active' => Followup::active()->whereHas('document')->count(),
                 ],
             ],
         ]);

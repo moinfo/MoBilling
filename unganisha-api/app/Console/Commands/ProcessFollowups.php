@@ -96,7 +96,22 @@ class ProcessFollowups extends Command
                 }
             }
 
-            $this->info("Created: {$created}, Broken promises: {$broken}, Fulfilled: {$fulfilledCount}");
+            // 4. Cancel followups whose document was soft-deleted or missing
+            $orphanedFollowups = Followup::withoutGlobalScopes()
+                ->whereIn('status', ['pending', 'open', 'broken'])
+                ->whereNotNull('document_id')
+                ->get();
+
+            $orphaned = 0;
+            foreach ($orphanedFollowups as $f) {
+                $docExists = Document::withoutGlobalScopes()->withTrashed()->find($f->document_id);
+                if (!$docExists || $docExists->trashed()) {
+                    $f->update(['status' => 'cancelled']);
+                    $orphaned++;
+                }
+            }
+
+            $this->info("Created: {$created}, Broken promises: {$broken}, Fulfilled: {$fulfilledCount}, Orphaned cancelled: {$orphaned}");
 
             CronLog::create([
                 'tenant_id' => null,
