@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Group, Paper, Stack, SegmentedControl, TextInput, Textarea,
-  MultiSelect, Button, Table, Badge, Text, Pagination, Loader,
+  MultiSelect, Button, Table, Badge, Text, Pagination, Loader, Select,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -10,6 +10,42 @@ import { IconSend } from '@tabler/icons-react';
 import { getBroadcasts, sendBroadcast, type Broadcast as BroadcastType, type SendBroadcastPayload } from '../api/broadcasts';
 import { getClients } from '../api/clients';
 import { formatDate } from '../utils/formatDate';
+
+const TEMPLATES: Record<string, { subject: string; body: string; sms_body: string }> = {
+  maintenance: {
+    subject: 'Scheduled Maintenance Notice',
+    body: 'Dear Client,\n\nWe will be performing scheduled maintenance on [date] from [start time] to [end time].\n\nDuring this period, our services may be temporarily unavailable. We apologise for any inconvenience.\n\nThank you for your patience.',
+    sms_body: 'Maintenance on [date] [start]-[end]. Services may be briefly unavailable. We apologise for any inconvenience.',
+  },
+  service_update: {
+    subject: 'Service Update',
+    body: 'Dear Client,\n\nWe are pleased to inform you about an important update to our services.\n\n[Describe the update here]\n\nIf you have any questions, please do not hesitate to contact us.\n\nBest regards.',
+    sms_body: 'Service update: [brief description]. Contact us for details.',
+  },
+  unavailability: {
+    subject: 'Service Unavailability Notice',
+    body: 'Dear Client,\n\nWe regret to inform you that our services will be unavailable on [date] due to [reason].\n\nWe expect to resume normal operations by [time/date]. We apologise for any inconvenience caused.\n\nThank you for your understanding.',
+    sms_body: 'Our services will be unavailable on [date] due to [reason]. Normal operations resume by [time].',
+  },
+  holiday: {
+    subject: 'Holiday Notice',
+    body: 'Dear Client,\n\nPlease note that our offices will be closed on [date(s)] for [holiday name].\n\nWe will resume normal business hours on [return date].\n\nWishing you a wonderful holiday!',
+    sms_body: 'Our offices will be closed [date(s)] for [holiday]. We resume on [return date].',
+  },
+  general: {
+    subject: 'Important Announcement',
+    body: 'Dear Client,\n\nWe would like to bring the following to your attention:\n\n[Your announcement here]\n\nPlease feel free to reach out if you have any questions.\n\nBest regards.',
+    sms_body: '[Your announcement here]. Contact us for more info.',
+  },
+};
+
+const templateOptions = [
+  { value: 'maintenance', label: 'Scheduled Maintenance' },
+  { value: 'service_update', label: 'Service Update' },
+  { value: 'unavailability', label: 'Service Unavailability' },
+  { value: 'holiday', label: 'Holiday Notice' },
+  { value: 'general', label: 'General Announcement' },
+];
 
 export default function Broadcast() {
   const queryClient = useQueryClient();
@@ -110,6 +146,19 @@ export default function Broadcast() {
                 { label: 'Both', value: 'both' },
               ]}
               {...form.getInputProps('channel')}
+            />
+
+            <Select
+              label="Template"
+              placeholder="Start from a template (optional)"
+              data={templateOptions}
+              clearable
+              onChange={(value) => {
+                if (value && TEMPLATES[value]) {
+                  const t = TEMPLATES[value];
+                  form.setValues({ subject: t.subject, body: t.body, sms_body: t.sms_body });
+                }
+              }}
             />
 
             {showEmail && (
