@@ -145,6 +145,14 @@ class SubscriptionService
             'paid_at' => now(),
         ]);
 
+        // Sync plan permissions to tenant's allowed permissions
+        if ($tenant) {
+            $planPermissionIds = $plan->permissions()->pluck('permissions.id')->toArray();
+            if (!empty($planPermissionIds)) {
+                $tenant->allowedPermissions()->syncWithoutDetaching($planPermissionIds);
+            }
+        }
+
         Log::info('Subscription activated', [
             'subscription_id' => $subscription->id,
             'tenant' => $tenant?->name,

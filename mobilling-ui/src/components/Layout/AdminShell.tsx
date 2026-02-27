@@ -1,6 +1,6 @@
 import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, ScrollArea } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconTemplate, IconMessage, IconPackage, IconReceipt, IconCreditCard, IconCoin, IconBuildingBank } from '@tabler/icons-react';
+import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconTemplate, IconMessage, IconPackage, IconReceipt, IconCreditCard, IconCoin, IconBuildingBank, IconShieldLock, IconShieldCheck } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -75,6 +75,18 @@ export default function AdminShell() {
             leftSection={<IconBuilding size={18} />}
             active={location.pathname === '/admin/tenants'}
             onClick={() => navigateAndClose('/admin/tenants')}
+          />
+          <NavLink
+            label="Permissions"
+            leftSection={<IconShieldLock size={18} />}
+            active={location.pathname === '/admin/permissions'}
+            onClick={() => navigateAndClose('/admin/permissions')}
+          />
+          <NavLink
+            label="Roles"
+            leftSection={<IconShieldCheck size={18} />}
+            active={location.pathname === '/admin/roles'}
+            onClick={() => navigateAndClose('/admin/roles')}
           />
           <NavLink
             label="Email Settings"

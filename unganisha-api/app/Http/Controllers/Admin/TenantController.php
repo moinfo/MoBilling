@@ -24,7 +24,7 @@ class TenantController extends Controller
     {
         $this->authorize();
 
-        $query = Tenant::withCount('users');
+        $query = Tenant::withCount(['users', 'allowedPermissions']);
 
         if ($search = $request->input('search')) {
             $query->where(function ($q) use ($search) {

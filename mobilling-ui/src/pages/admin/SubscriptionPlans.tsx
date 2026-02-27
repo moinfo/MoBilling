@@ -2,15 +2,18 @@ import { useState } from 'react';
 import {
   Title, Table, Badge, ActionIcon, Modal, Stack, TextInput, NumberInput,
   Switch, Button, Group, Text, Loader, Center, Paper, Textarea, TagsInput,
+  Checkbox, Accordion,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconShieldLock } from '@tabler/icons-react';
 import {
   getAdminSubscriptionPlans, createSubscriptionPlan, updateSubscriptionPlan,
   deleteSubscriptionPlan, SubscriptionPlanAdmin, SubscriptionPlanFormData,
 } from '../../api/admin';
+import { getAllPermissions } from '../../api/permissions';
+import type { Permission, GroupedPermissions } from '../../api/roles';
 
 export default function SubscriptionPlans() {
   const queryClient = useQueryClient();
@@ -64,6 +67,7 @@ export default function SubscriptionPlans() {
                   <Table.Th>Price (TZS)</Table.Th>
                   <Table.Th>Cycle (days)</Table.Th>
                   <Table.Th>Features</Table.Th>
+                  <Table.Th>Permissions</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Order</Table.Th>
                   <Table.Th w={100}>Actions</Table.Th>
@@ -80,6 +84,16 @@ export default function SubscriptionPlans() {
                     {plan.features?.length
                       ? <Text size="sm" lineClamp={1}>{plan.features.join(', ')}</Text>
                       : <Text size="sm" c="dimmed">—</Text>}
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge
+                      leftSection={<IconShieldLock size={12} />}
+                      color={plan.permissions_count ? 'violet' : 'gray'}
+                      variant="light"
+                      size="sm"
+                    >
+                      {plan.permissions_count ?? 0}
+                    </Badge>
                   </Table.Td>
                   <Table.Td>
                     <Badge color={plan.is_active ? 'green' : 'gray'} variant="light">
@@ -108,7 +122,7 @@ export default function SubscriptionPlans() {
               ))}
               {plans.length === 0 && (
                 <Table.Tr>
-                  <Table.Td colSpan={8}>
+                  <Table.Td colSpan={9}>
                     <Text ta="center" c="dimmed" py="md">No subscription plans yet</Text>
                   </Table.Td>
                 </Table.Tr>
@@ -119,7 +133,7 @@ export default function SubscriptionPlans() {
         </Paper>
       )}
 
-      <Modal opened={createOpen} onClose={() => setCreateOpen(false)} title="Add Subscription Plan" size="lg">
+      <Modal opened={createOpen} onClose={() => setCreateOpen(false)} title="Add Subscription Plan" size="xl">
         <PlanForm
           onSaved={() => {
             queryClient.invalidateQueries({ queryKey: ['admin-subscription-plans'] });
@@ -128,7 +142,7 @@ export default function SubscriptionPlans() {
         />
       </Modal>
 
-      <Modal opened={!!editPlan} onClose={() => setEditPlan(null)} title={`Edit — ${editPlan?.name}`} size="lg">
+      <Modal opened={!!editPlan} onClose={() => setEditPlan(null)} title={`Edit — ${editPlan?.name}`} size="xl">
         {editPlan && (
           <PlanForm
             existing={editPlan}
@@ -144,6 +158,8 @@ export default function SubscriptionPlans() {
 }
 
 function PlanForm({ existing, onSaved }: { existing?: SubscriptionPlanAdmin; onSaved: () => void }) {
+  const existingPermIds = existing?.permissions?.map((p) => p.id) ?? [];
+
   const form = useForm<SubscriptionPlanFormData>({
     initialValues: {
       name: existing?.name ?? '',
@@ -154,8 +170,16 @@ function PlanForm({ existing, onSaved }: { existing?: SubscriptionPlanAdmin; onS
       features: existing?.features ?? [],
       is_active: existing?.is_active ?? true,
       sort_order: existing?.sort_order ?? 0,
+      permission_ids: existingPermIds,
     },
   });
+
+  const { data: permsData } = useQuery({
+    queryKey: ['admin-all-permissions'],
+    queryFn: () => getAllPermissions(),
+  });
+
+  const grouped: GroupedPermissions = permsData?.data?.data || {};
 
   const mutation = useMutation({
     mutationFn: (values: SubscriptionPlanFormData) =>
@@ -177,12 +201,50 @@ function PlanForm({ existing, onSaved }: { existing?: SubscriptionPlanAdmin; onS
     },
   });
 
-  // Auto-generate slug from name
   const handleNameChange = (name: string) => {
     form.setFieldValue('name', name);
     if (!existing) {
       form.setFieldValue('slug', name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, ''));
     }
+  };
+
+  const selectedSet = new Set(form.values.permission_ids);
+  const totalPerms = Object.values(grouped).flatMap((g) => Object.values(g).flat()).length;
+
+  const togglePerm = (id: string) => {
+    const current = form.values.permission_ids;
+    if (current.includes(id)) {
+      form.setFieldValue('permission_ids', current.filter((x) => x !== id));
+    } else {
+      form.setFieldValue('permission_ids', [...current, id]);
+    }
+  };
+
+  const toggleGroup = (perms: Permission[]) => {
+    const ids = perms.map((p) => p.id);
+    const allOn = ids.every((id) => selectedSet.has(id));
+    if (allOn) {
+      form.setFieldValue('permission_ids', form.values.permission_ids.filter((id) => !ids.includes(id)));
+    } else {
+      const merged = new Set([...form.values.permission_ids, ...ids]);
+      form.setFieldValue('permission_ids', Array.from(merged));
+    }
+  };
+
+  const selectAllPerms = () => {
+    const all = Object.values(grouped).flatMap((g) => Object.values(g).flat()).map((p) => p.id);
+    form.setFieldValue('permission_ids', all);
+  };
+
+  const deselectAllPerms = () => {
+    form.setFieldValue('permission_ids', []);
+  };
+
+  const categoryLabels: Record<string, string> = {
+    menu: 'Menu Access',
+    crud: 'Data Operations',
+    settings: 'Settings',
+    reports: 'Reports',
   };
 
   return (
@@ -208,6 +270,84 @@ function PlanForm({ existing, onSaved }: { existing?: SubscriptionPlanAdmin; onS
         />
         <NumberInput label="Sort Order" min={0} {...form.getInputProps('sort_order')} />
         <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
+
+        {/* Permissions section */}
+        <div>
+          <Group justify="space-between" mb="xs">
+            <Group gap={6}>
+              <IconShieldLock size={18} />
+              <Text fw={600} size="sm">Plan Permissions</Text>
+              <Badge size="sm" variant="light" color="violet">
+                {form.values.permission_ids.length} / {totalPerms}
+              </Badge>
+            </Group>
+            <Group gap="xs">
+              <Button variant="subtle" size="compact-xs" onClick={selectAllPerms}>All</Button>
+              <Button variant="subtle" size="compact-xs" color="gray" onClick={deselectAllPerms}>None</Button>
+            </Group>
+          </Group>
+          <Text size="xs" c="dimmed" mb="xs">
+            Tenants subscribing to this plan will automatically receive these permissions.
+          </Text>
+
+          <Accordion variant="separated" radius="sm">
+            {Object.entries(grouped).map(([category, groups]) => {
+              const catPerms = Object.values(groups).flat();
+              const catEnabled = catPerms.filter((p) => selectedSet.has(p.id)).length;
+
+              return (
+                <Accordion.Item key={category} value={category}>
+                  <Accordion.Control>
+                    <Group justify="space-between" pr="sm">
+                      <Text size="sm" fw={500}>{categoryLabels[category] || category}</Text>
+                      <Badge size="sm" variant="light" color={catEnabled === catPerms.length ? 'green' : catEnabled > 0 ? 'yellow' : 'gray'}>
+                        {catEnabled} / {catPerms.length}
+                      </Badge>
+                    </Group>
+                  </Accordion.Control>
+                  <Accordion.Panel>
+                    <Stack gap="xs">
+                      {Object.entries(groups).map(([groupName, perms]: [string, Permission[]]) => {
+                        const ids = perms.map((p) => p.id);
+                        const allOn = ids.every((id) => selectedSet.has(id));
+                        const someOn = ids.some((id) => selectedSet.has(id));
+
+                        return (
+                          <Paper key={groupName} p="xs" bg="var(--mantine-color-default-hover)" radius="sm">
+                            <Group gap="xs" mb={4}>
+                              <Checkbox
+                                size="xs"
+                                checked={allOn}
+                                indeterminate={someOn && !allOn}
+                                onChange={() => toggleGroup(perms)}
+                                label={<Text size="sm" fw={500}>{groupName}</Text>}
+                              />
+                            </Group>
+                            <Group gap={6} ml={24}>
+                              {perms.map((perm) => (
+                                <Badge
+                                  key={perm.id}
+                                  variant={selectedSet.has(perm.id) ? 'filled' : 'outline'}
+                                  color={selectedSet.has(perm.id) ? 'violet' : 'gray'}
+                                  style={{ cursor: 'pointer' }}
+                                  onClick={() => togglePerm(perm.id)}
+                                  size="xs"
+                                >
+                                  {perm.label}
+                                </Badge>
+                              ))}
+                            </Group>
+                          </Paper>
+                        );
+                      })}
+                    </Stack>
+                  </Accordion.Panel>
+                </Accordion.Item>
+              );
+            })}
+          </Accordion>
+        </div>
+
         <Group justify="flex-end">
           <Button type="submit" loading={mutation.isPending}>
             {existing ? 'Update' : 'Create'}

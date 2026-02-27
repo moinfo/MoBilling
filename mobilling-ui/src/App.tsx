@@ -39,6 +39,8 @@ import SubscriptionPlansAdmin from './pages/admin/SubscriptionPlans';
 import TenantProfile from './pages/admin/TenantProfile';
 import CurrenciesAdmin from './pages/admin/Currencies';
 import PlatformSettingsAdmin from './pages/admin/PlatformSettings';
+import PermissionsAdmin from './pages/admin/Permissions';
+import RolesAdmin from './pages/admin/Roles';
 import TemplatesAdmin from './pages/admin/Templates';
 import ExpenseCategories from './pages/ExpenseCategories';
 import Expenses from './pages/Expenses';
@@ -118,6 +120,8 @@ export default function App() {
                   <Route path="/admin/sms-purchases" element={<SmsPurchasesAdmin />} />
                   <Route path="/admin/subscription-plans" element={<SubscriptionPlansAdmin />} />
                   <Route path="/admin/currencies" element={<CurrenciesAdmin />} />
+                  <Route path="/admin/permissions" element={<PermissionsAdmin />} />
+                  <Route path="/admin/roles" element={<RolesAdmin />} />
                   <Route path="/admin/platform-settings" element={<PlatformSettingsAdmin />} />
                 </Route>
 

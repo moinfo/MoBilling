@@ -16,6 +16,7 @@ export interface Tenant {
   email_enabled: boolean;
   smtp_host: string | null;
   users_count: number;
+  allowed_permissions_count?: number;
   created_at: string;
 }
 
@@ -229,6 +230,8 @@ export interface SubscriptionPlanAdmin {
   features: string[] | null;
   is_active: boolean;
   sort_order: number;
+  permissions_count?: number;
+  permissions?: { id: string }[];
   created_at: string;
 }
 
@@ -241,6 +244,7 @@ export interface SubscriptionPlanFormData {
   features: string[];
   is_active: boolean;
   sort_order: number | string;
+  permission_ids: string[];
 }
 
 export const getAdminSubscriptionPlans = () =>

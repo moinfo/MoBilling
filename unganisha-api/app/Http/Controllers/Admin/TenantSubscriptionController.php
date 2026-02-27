@@ -65,6 +65,12 @@ class TenantSubscriptionController extends Controller
             'payment_status_description' => 'Admin-granted extension',
         ]);
 
+        // Sync plan permissions to tenant's allowed permissions
+        $planPermissionIds = $plan->permissions()->pluck('permissions.id')->toArray();
+        if (!empty($planPermissionIds)) {
+            $tenant->allowedPermissions()->syncWithoutDetaching($planPermissionIds);
+        }
+
         $subscription->load('plan');
 
         return response()->json([

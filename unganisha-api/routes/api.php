@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\PlatformSettingsController;
 use App\Http\Controllers\Admin\SubscriptionPlanController;
 use App\Http\Controllers\Admin\TemplatesController as AdminTemplatesController;
 use App\Http\Controllers\Admin\TenantController;
+use App\Http\Controllers\Admin\RoleTemplateController;
 use App\Http\Controllers\Admin\TenantPermissionController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\RoleController;
@@ -134,8 +135,15 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('/platform-settings', [PlatformSettingsController::class, 'index']);
     Route::put('/platform-settings', [PlatformSettingsController::class, 'update']);
 
+    // Role templates (super admin)
+    Route::get('/role-templates', [RoleTemplateController::class, 'index']);
+    Route::get('/role-templates/{type}', [RoleTemplateController::class, 'show']);
+    Route::put('/role-templates/{type}', [RoleTemplateController::class, 'update']);
+
     // Permissions management (super admin)
     Route::get('/permissions', [TenantPermissionController::class, 'allPermissions']);
+    Route::get('/permissions/{permission}/tenants', [TenantPermissionController::class, 'permissionTenants']);
+    Route::put('/permissions/{permission}/tenants', [TenantPermissionController::class, 'updatePermissionTenants']);
     Route::get('/tenants/{tenant}/permissions', [TenantPermissionController::class, 'tenantPermissions']);
     Route::put('/tenants/{tenant}/permissions', [TenantPermissionController::class, 'updateTenantPermissions']);
 });

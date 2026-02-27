@@ -5,7 +5,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconArrowLeft, IconCalendar, IconMessage, IconCreditCard,
   IconCheck, IconPhoto, IconShieldLock,
@@ -30,7 +30,9 @@ const subscriptionStatusColors: Record<string, string> = {
 export default function TenantProfile() {
   const { tenantId } = useParams<{ tenantId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const initialTab = searchParams.get('tab') || 'subscriptions';
 
   const { data: tenantData, isLoading: tenantLoading } = useQuery({
     queryKey: ['admin-tenant', tenantId],
@@ -66,7 +68,7 @@ export default function TenantProfile() {
         <SubscriptionCard tenant={tenant} queryClient={queryClient} />
       </SimpleGrid>
 
-      <Tabs defaultValue="subscriptions">
+      <Tabs defaultValue={initialTab}>
         <Tabs.List mb="md">
           <Tabs.Tab value="subscriptions" leftSection={<IconCreditCard size={16} />}>
             Subscription History

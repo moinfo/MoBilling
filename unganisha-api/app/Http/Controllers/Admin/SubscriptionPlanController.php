@@ -20,8 +20,13 @@ class SubscriptionPlanController extends Controller
     {
         $this->authorize();
 
+        $plans = SubscriptionPlan::ordered()
+            ->withCount('permissions')
+            ->with('permissions:id')
+            ->get();
+
         return response()->json([
-            'data' => SubscriptionPlan::ordered()->get(),
+            'data' => $plans,
         ]);
     }
 
@@ -38,9 +43,16 @@ class SubscriptionPlanController extends Controller
             'features' => 'nullable|array',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
+            'permission_ids' => 'nullable|array',
+            'permission_ids.*' => 'uuid|exists:permissions,id',
         ]);
 
+        $permissionIds = $validated['permission_ids'] ?? [];
+        unset($validated['permission_ids']);
+
         $plan = SubscriptionPlan::create($validated);
+        $plan->permissions()->sync($permissionIds);
+        $plan->loadCount('permissions')->load('permissions:id');
 
         return response()->json(['data' => $plan], 201);
     }
@@ -58,9 +70,16 @@ class SubscriptionPlanController extends Controller
             'features' => 'nullable|array',
             'is_active' => 'boolean',
             'sort_order' => 'integer',
+            'permission_ids' => 'nullable|array',
+            'permission_ids.*' => 'uuid|exists:permissions,id',
         ]);
 
+        $permissionIds = $validated['permission_ids'] ?? [];
+        unset($validated['permission_ids']);
+
         $subscriptionPlan->update($validated);
+        $subscriptionPlan->permissions()->sync($permissionIds);
+        $subscriptionPlan->loadCount('permissions')->load('permissions:id');
 
         return response()->json(['data' => $subscriptionPlan]);
     }

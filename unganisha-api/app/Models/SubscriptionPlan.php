@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class SubscriptionPlan extends Model
 {
@@ -20,6 +21,11 @@ class SubscriptionPlan extends Model
         'features' => 'array',
         'is_active' => 'boolean',
     ];
+
+    public function permissions(): BelongsToMany
+    {
+        return $this->belongsToMany(Permission::class, 'subscription_plan_permissions');
+    }
 
     public function scopeActive(Builder $query): Builder
     {
