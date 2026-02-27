@@ -60,14 +60,41 @@ Backend API for **MoBilling** — a multi-tenant billing and statutory managemen
 - `CRUD /api/client-subscriptions`
 - `GET /api/dashboard/summary`
 
-## Scheduled Commands
+## Scheduled Commands (Cron Jobs)
 
-| Command | Schedule | Purpose |
-|---------|----------|---------|
-| `bills:generate-recurring` | Daily 09:00 | Safety-net: generate bills for overdue statutory obligations |
-| `bills:send-reminders` | Daily 08:00 | Email/SMS reminders for upcoming bills |
-| `invoices:process-recurring` | Daily 07:00 | Generate recurring invoices from client subscriptions |
-| `subscriptions:expire` | Hourly | Expire overdue tenant subscriptions |
+All commands run **once per day** with `withoutOverlapping()` to prevent duplicate execution.
+
+| Time | Command | Purpose |
+|------|---------|---------|
+| 06:00 | `subscriptions:expire` | Expire tenant subscriptions past their end date |
+| 07:00 | `invoices:process-recurring` | Auto-create invoices from client subscriptions (30 days ahead) and send reminders at 21, 14, 7, 3, 1 days before due |
+| 07:30 | `followups:process` | Auto-create follow-ups for 3+ day overdue invoices, mark broken promises, fulfill paid invoices, cancel orphaned follow-ups |
+| 08:00 | `bills:send-reminders` | Email/SMS reminders for upcoming and overdue statutory bills (once per bill per day via `last_reminder_sent_at` guard) |
+| 08:30 | `invoices:process-overdue` | Staged overdue processing: late fee (day 1) → 7-day reminder → 14-day termination warning |
+| 09:00 | `bills:generate-recurring` | Safety-net: generate bills for overdue statutory obligations with no current bill |
+
+### Idempotency Guards
+
+Each command prevents duplicate notifications/processing:
+
+| Command | Guard Mechanism |
+|---------|----------------|
+| `bills:send-reminders` | `last_reminder_sent_at` column — skips bills already reminded today |
+| `invoices:process-overdue` | `overdue_stage` column — each stage (late_fee → reminder_7d → termination_warning) runs once |
+| `invoices:process-recurring` | `recurring_invoice_logs` table — tracks created invoices; `reminders_sent` JSON array tracks sent reminder days |
+| `bills:generate-recurring` | `whereDoesntHave('currentBill')` — only generates if no unpaid bill exists |
+| `followups:process` | Checks existing follow-ups before creating; uses status transitions |
+| `subscriptions:expire` | Status transition from `active` → `expired` (one-time) |
+
+### Server Setup
+
+Add this single crontab entry — Laravel's scheduler handles the rest:
+
+```
+* * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
+```
+
+All cron executions are logged in the `cron_logs` table (viewable in the admin panel).
 
 ## Local Development
 

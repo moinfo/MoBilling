@@ -16,6 +16,7 @@ class Bill extends Model
         'tenant_id', 'statutory_id', 'name', 'category', 'bill_category_id',
         'issue_date', 'amount', 'cycle', 'due_date',
         'remind_days_before', 'is_active', 'paid_at', 'notes',
+        'last_reminder_sent_at',
     ];
 
     protected $casts = [
@@ -24,6 +25,7 @@ class Bill extends Model
         'amount' => 'decimal:2',
         'is_active' => 'boolean',
         'paid_at' => 'datetime',
+        'last_reminder_sent_at' => 'datetime',
     ];
 
     public function statutory()
