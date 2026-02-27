@@ -46,8 +46,19 @@ import StatutorySchedule from './pages/StatutorySchedule';
 import Sms from './pages/Sms';
 import Subscription from './pages/Subscription';
 import Automation from './pages/Automation';
+import Broadcast from './pages/Broadcast';
 import Collection from './pages/Collection';
 import Followups from './pages/Followups';
+import RevenueSummary from './pages/reports/RevenueSummary';
+import OutstandingAging from './pages/reports/OutstandingAging';
+import ClientStatementReport from './pages/reports/ClientStatementReport';
+import PaymentCollectionReport from './pages/reports/PaymentCollectionReport';
+import ExpenseReportPage from './pages/reports/ExpenseReportPage';
+import ProfitLossReport from './pages/reports/ProfitLossReport';
+import StatutoryComplianceReport from './pages/reports/StatutoryComplianceReport';
+import SubscriptionReportPage from './pages/reports/SubscriptionReportPage';
+import CollectionEffectivenessReport from './pages/reports/CollectionEffectivenessReport';
+import CommunicationLogReport from './pages/reports/CommunicationLogReport';
 import SubscriptionExpired from './pages/SubscriptionExpired';
 import PesapalCallback from './pages/PesapalCallback';
 
@@ -140,6 +151,17 @@ export default function App() {
                   <Route path="/collection" element={<Collection />} />
                   <Route path="/followups" element={<Followups />} />
                   <Route path="/automation" element={<Automation />} />
+                  <Route path="/broadcast" element={<Broadcast />} />
+                  <Route path="/reports/revenue" element={<RevenueSummary />} />
+                  <Route path="/reports/aging" element={<OutstandingAging />} />
+                  <Route path="/reports/client-statement" element={<ClientStatementReport />} />
+                  <Route path="/reports/payment-collection" element={<PaymentCollectionReport />} />
+                  <Route path="/reports/expenses" element={<ExpenseReportPage />} />
+                  <Route path="/reports/profit-loss" element={<ProfitLossReport />} />
+                  <Route path="/reports/statutory" element={<StatutoryComplianceReport />} />
+                  <Route path="/reports/subscriptions" element={<SubscriptionReportPage />} />
+                  <Route path="/reports/collection-effectiveness" element={<CollectionEffectivenessReport />} />
+                  <Route path="/reports/communication-log" element={<CommunicationLogReport />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />

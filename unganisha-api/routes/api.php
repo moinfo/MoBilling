@@ -12,7 +12,9 @@ use App\Http\Controllers\Admin\SubscriptionPlanController;
 use App\Http\Controllers\Admin\TemplatesController as AdminTemplatesController;
 use App\Http\Controllers\Admin\TenantController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
+use App\Http\Controllers\BroadcastController;
 use App\Http\Controllers\EmailSettingsController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\NotificationController;
@@ -219,6 +221,24 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/cron-logs', [AutomationController::class, 'cronLogs']);
         Route::get('/communication-logs', [AutomationController::class, 'communicationLogs']);
     });
+
+    // Reports
+    Route::prefix('reports')->group(function () {
+        Route::get('/revenue-summary', [ReportController::class, 'revenueSummary']);
+        Route::get('/outstanding-aging', [ReportController::class, 'outstandingAging']);
+        Route::get('/client-statement', [ReportController::class, 'clientStatement']);
+        Route::get('/payment-collection', [ReportController::class, 'paymentCollection']);
+        Route::get('/expense-report', [ReportController::class, 'expenseReport']);
+        Route::get('/profit-loss', [ReportController::class, 'profitLoss']);
+        Route::get('/statutory-compliance', [ReportController::class, 'statutoryCompliance']);
+        Route::get('/subscription-report', [ReportController::class, 'subscriptionReport']);
+        Route::get('/collection-effectiveness', [ReportController::class, 'collectionEffectiveness']);
+        Route::get('/communication-log', [ReportController::class, 'communicationLog']);
+    });
+
+    // Broadcasts
+    Route::get('/broadcasts', [BroadcastController::class, 'index']);
+    Route::post('/broadcasts', [BroadcastController::class, 'send']);
 
     // SMS (tenant)
     Route::get('/sms/packages', [SmsPurchaseController::class, 'packages']);

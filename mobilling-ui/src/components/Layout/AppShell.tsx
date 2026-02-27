@@ -8,6 +8,9 @@ import {
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
   IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
   IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall,
+  IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
+  IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
+  IconChartBar, IconMail, IconSpeakerphone,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -27,11 +30,13 @@ export default function AppLayout() {
   const billingPaths = ['/clients', '/product-services', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses'];
+  const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/communication-log'];
 
   const getActiveSection = () => {
     if (billingPaths.some((p) => location.pathname === p)) return 'billing';
     if (statutoryPaths.some((p) => location.pathname === p)) return 'statutory';
     if (expensePaths.some((p) => location.pathname === p)) return 'expenses';
+    if (reportPaths.some((p) => location.pathname === p)) return 'reports';
     return null;
   };
 
@@ -192,8 +197,35 @@ export default function AppLayout() {
               active={isActive('/expenses')} onClick={() => navigateAndClose('/expenses')} />
           </NavLink>
 
+          <NavLink label="Reports" leftSection={<IconReportAnalytics size={18} />}
+            opened={openSection === 'reports'} onChange={() => toggleSection('reports')}>
+            <NavLink label="Revenue Summary" leftSection={<IconCash size={16} />}
+              active={isActive('/reports/revenue')} onClick={() => navigateAndClose('/reports/revenue')} />
+            <NavLink label="Outstanding & Aging" leftSection={<IconClock size={16} />}
+              active={isActive('/reports/aging')} onClick={() => navigateAndClose('/reports/aging')} />
+            <NavLink label="Client Statement" leftSection={<IconFileAnalytics size={16} />}
+              active={isActive('/reports/client-statement')} onClick={() => navigateAndClose('/reports/client-statement')} />
+            <NavLink label="Payment Collection" leftSection={<IconCreditCardReport size={16} />}
+              active={isActive('/reports/payment-collection')} onClick={() => navigateAndClose('/reports/payment-collection')} />
+            <NavLink label="Expense Report" leftSection={<IconWalletReport size={16} />}
+              active={isActive('/reports/expenses')} onClick={() => navigateAndClose('/reports/expenses')} />
+            <NavLink label="Profit & Loss" leftSection={<IconScale size={16} />}
+              active={isActive('/reports/profit-loss')} onClick={() => navigateAndClose('/reports/profit-loss')} />
+            <NavLink label="Statutory Compliance" leftSection={<IconShieldCheck size={16} />}
+              active={isActive('/reports/statutory')} onClick={() => navigateAndClose('/reports/statutory')} />
+            <NavLink label="Subscriptions" leftSection={<IconLinkReport size={16} />}
+              active={isActive('/reports/subscriptions')} onClick={() => navigateAndClose('/reports/subscriptions')} />
+            <NavLink label="Collection Effectiveness" leftSection={<IconChartBar size={16} />}
+              active={isActive('/reports/collection-effectiveness')} onClick={() => navigateAndClose('/reports/collection-effectiveness')} />
+            <NavLink label="Communication Log" leftSection={<IconMail size={16} />}
+              active={isActive('/reports/communication-log')} onClick={() => navigateAndClose('/reports/communication-log')} />
+          </NavLink>
+
           <NavLink label="SMS" leftSection={<IconMessage size={18} />}
             active={isActive('/sms')} onClick={() => navigateAndClose('/sms')} />
+
+          <NavLink label="Broadcast" leftSection={<IconSpeakerphone size={18} />}
+            active={isActive('/broadcast')} onClick={() => navigateAndClose('/broadcast')} />
 
           <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
             active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
