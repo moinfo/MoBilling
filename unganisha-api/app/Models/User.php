@@ -18,7 +18,7 @@ class User extends Authenticatable implements CanResetPasswordContract
 
     protected $fillable = [
         'tenant_id', 'name', 'email', 'password',
-        'phone', 'role', 'is_active',
+        'phone', 'role', 'role_id', 'is_active',
     ];
 
     protected $hidden = [
@@ -43,6 +43,65 @@ class User extends Authenticatable implements CanResetPasswordContract
     {
         return $this->belongsTo(Tenant::class);
     }
+
+    public function role()
+    {
+        return $this->belongsTo(Role::class);
+    }
+
+    /**
+     * Check if the user has a specific permission via their role.
+     * Super admins bypass all permission checks.
+     */
+    public function hasPermission(string $name): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        return in_array($name, $this->getPermissionNames());
+    }
+
+    /**
+     * Check if the user has any of the given permissions.
+     */
+    public function hasAnyPermission(array $names): bool
+    {
+        if ($this->isSuperAdmin()) {
+            return true;
+        }
+
+        $userPerms = $this->getPermissionNames();
+
+        foreach ($names as $name) {
+            if (in_array($name, $userPerms)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Get cached list of permission names for this user's role.
+     */
+    public function getPermissionNames(): array
+    {
+        if ($this->isSuperAdmin()) {
+            return [];
+        }
+
+        // Cache per request using a property
+        if (!isset($this->cachedPermissionNames)) {
+            $this->cachedPermissionNames = $this->role_id
+                ? $this->role()->with('permissions')->first()?->permissions->pluck('name')->toArray() ?? []
+                : [];
+        }
+
+        return $this->cachedPermissionNames;
+    }
+
+    private $cachedPermissionNames;
 
     public function sendPasswordResetNotification($token): void
     {

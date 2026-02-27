@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 
 class EmailSettingsController extends Controller
 {
+    use AuthorizesPermissions;
     public function show(Request $request)
     {
         $tenant = $request->user()->tenant;
@@ -29,9 +31,7 @@ class EmailSettingsController extends Controller
     {
         $tenant = $request->user()->tenant;
 
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['message' => 'Only admins can update email settings.'], 403);
-        }
+        $this->authorizePermission('settings.email');
 
         $validated = $request->validate([
             'smtp_host'       => 'nullable|string|max:255',

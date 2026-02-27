@@ -27,6 +27,7 @@ import ClientSubscriptions from './pages/ClientSubscriptions';
 import PaymentsOut from './pages/PaymentsOut';
 import Settings from './pages/Settings';
 import Users from './pages/Users';
+import Roles from './pages/Roles';
 import AdminDashboard from './pages/admin/Dashboard';
 import Tenants from './pages/admin/Tenants';
 import TenantUsers from './pages/admin/TenantUsers';
@@ -146,6 +147,7 @@ export default function App() {
                   <Route path="/expense-categories" element={<ExpenseCategories />} />
                   <Route path="/expenses" element={<Expenses />} />
                   <Route path="/users" element={<Users />} />
+                  <Route path="/roles" element={<Roles />} />
                   <Route path="/sms" element={<Sms />} />
                   <Route path="/subscription" element={<Subscription />} />
                   <Route path="/collection" element={<Collection />} />

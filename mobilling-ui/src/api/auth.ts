@@ -6,6 +6,7 @@ export interface User {
   email: string;
   phone: string | null;
   role: 'super_admin' | 'admin' | 'user';
+  role_id: string | null;
   is_active: boolean;
   tenant?: {
     id: string;
@@ -30,12 +31,14 @@ export interface User {
 export interface AuthResponse {
   user: User;
   token: string;
+  permissions: string[];
   subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
   days_remaining?: number;
 }
 
 export interface MeResponse {
   user: User;
+  permissions: string[];
   subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
   days_remaining?: number;
 }

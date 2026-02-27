@@ -8,13 +8,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
   IconArrowLeft, IconCalendar, IconMessage, IconCreditCard,
-  IconCheck, IconPhoto,
+  IconCheck, IconPhoto, IconShieldLock,
 } from '@tabler/icons-react';
 import {
   getTenant, getTenantSubscriptions, getAdminSmsPurchases, extendTenantSubscription,
   getAdminSubscriptionPlans, confirmSubscriptionPayment,
   Tenant, TenantSubscription, SmsPurchase, SubscriptionPlanAdmin,
 } from '../../api/admin';
+import {
+  getAllPermissions, getTenantPermissions, updateTenantPermissions,
+} from '../../api/permissions';
+import type { GroupedPermissions, Permission } from '../../api/roles';
 
 const subscriptionStatusColors: Record<string, string> = {
   trial: 'blue',
@@ -70,6 +74,9 @@ export default function TenantProfile() {
           <Tabs.Tab value="sms" leftSection={<IconMessage size={16} />}>
             SMS Purchase History
           </Tabs.Tab>
+          <Tabs.Tab value="permissions" leftSection={<IconShieldLock size={16} />}>
+            Permissions
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="subscriptions">
@@ -77,6 +84,9 @@ export default function TenantProfile() {
         </Tabs.Panel>
         <Tabs.Panel value="sms">
           <SmsPurchaseHistoryTab tenantId={tenant.id} />
+        </Tabs.Panel>
+        <Tabs.Panel value="permissions">
+          <TenantPermissionsTab tenantId={tenant.id} />
         </Tabs.Panel>
       </Tabs>
     </>
@@ -444,6 +454,143 @@ function SmsPurchaseHistoryTab({ tenantId }: { tenantId: string }) {
           <Pagination total={meta.last_page} value={page} onChange={setPage} />
         </Group>
       )}
+    </Paper>
+  );
+}
+
+function TenantPermissionsTab({ tenantId }: { tenantId: string }) {
+  const queryClient = useQueryClient();
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [initialized, setInitialized] = useState(false);
+
+  const { data: allPermsData, isLoading: permsLoading } = useQuery({
+    queryKey: ['admin-all-permissions'],
+    queryFn: () => getAllPermissions(),
+  });
+
+  const { data: tenantPermsData, isLoading: tenantPermsLoading } = useQuery({
+    queryKey: ['admin-tenant-permissions', tenantId],
+    queryFn: () => getTenantPermissions(tenantId),
+  });
+
+  const groupedPermissions: GroupedPermissions = allPermsData?.data?.data || {};
+  const enabledIds: string[] = tenantPermsData?.data?.data || [];
+
+  if (enabledIds.length > 0 && !initialized) {
+    setSelected(new Set(enabledIds));
+    setInitialized(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () => updateTenantPermissions(tenantId, Array.from(selected)),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-tenant-permissions', tenantId] });
+      notifications.show({ title: 'Success', message: 'Tenant permissions updated', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err?.response?.data?.message || 'Failed to update permissions',
+        color: 'red',
+      });
+    },
+  });
+
+  const togglePerm = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = (perms: Permission[]) => {
+    const ids = perms.map((p) => p.id);
+    const allOn = ids.every((id) => selected.has(id));
+    setSelected((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => allOn ? next.delete(id) : next.add(id));
+      return next;
+    });
+  };
+
+  const selectAll = () => {
+    const all = Object.values(groupedPermissions).flatMap((groups) =>
+      Object.values(groups).flat()
+    );
+    setSelected(new Set(all.map((p: Permission) => p.id)));
+  };
+
+  const deselectAll = () => setSelected(new Set());
+
+  if (permsLoading || tenantPermsLoading) return <Center py="xl"><Loader /></Center>;
+
+  const totalPerms = Object.values(groupedPermissions).flatMap((g) => Object.values(g).flat()).length;
+
+  const categoryLabels: Record<string, string> = {
+    menu: 'Menu Access',
+    crud: 'Data Operations',
+    settings: 'Settings',
+    reports: 'Reports',
+  };
+
+  return (
+    <Paper p="lg" withBorder>
+      <Group justify="space-between" mb="md">
+        <Text fw={600}>
+          Enabled: {selected.size} / {totalPerms}
+        </Text>
+        <Group gap="xs">
+          <Button variant="subtle" size="xs" onClick={selectAll}>Select All</Button>
+          <Button variant="subtle" size="xs" color="gray" onClick={deselectAll}>Deselect All</Button>
+          <Button size="sm" loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+            Save Permissions
+          </Button>
+        </Group>
+      </Group>
+
+      {Object.entries(groupedPermissions).map(([category, groups]) => (
+        <div key={category} style={{ marginBottom: 16 }}>
+          <Text fw={600} size="sm" mb="xs" tt="uppercase" c="dimmed">
+            {categoryLabels[category] || category}
+          </Text>
+          {Object.entries(groups).map(([groupName, perms]: [string, Permission[]]) => {
+            const ids = perms.map((p) => p.id);
+            const allOn = ids.every((id) => selected.has(id));
+            const someOn = ids.some((id) => selected.has(id));
+
+            return (
+              <Paper key={groupName} withBorder p="xs" mb="xs">
+                <Group gap="xs" mb="xs">
+                  <input
+                    type="checkbox"
+                    checked={allOn}
+                    ref={(el) => { if (el) el.indeterminate = someOn && !allOn; }}
+                    onChange={() => toggleAll(perms)}
+                  />
+                  <Text fw={500} size="sm">{groupName}</Text>
+                  <Badge size="xs" variant="light">{ids.filter((id) => selected.has(id)).length}/{ids.length}</Badge>
+                </Group>
+                <Group gap="xs" ml="lg">
+                  {perms.map((perm) => (
+                    <Badge
+                      key={perm.id}
+                      variant={selected.has(perm.id) ? 'filled' : 'outline'}
+                      color={selected.has(perm.id) ? 'blue' : 'gray'}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => togglePerm(perm.id)}
+                      size="sm"
+                    >
+                      {perm.label}
+                    </Badge>
+                  ))}
+                </Group>
+              </Paper>
+            );
+          })}
+        </div>
+      ))}
     </Paper>
   );
 }

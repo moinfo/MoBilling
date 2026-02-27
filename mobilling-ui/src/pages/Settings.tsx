@@ -9,6 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconGripVertical } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   updateCompany, updateProfile, uploadLogo,
   CompanyData, ProfileData,
@@ -23,7 +24,13 @@ import axios from 'axios';
 
 export default function Settings() {
   const { user, refreshUser } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const { can } = usePermissions();
+
+  const canCompany = can('settings.company');
+  const canEmail = can('settings.email');
+  const canReminders = can('settings.reminders');
+  const canTemplates = can('settings.templates');
+  const canPaymentMethods = can('settings.payment_methods');
 
   return (
     <>
@@ -51,22 +58,22 @@ export default function Settings() {
         </Tabs.List>
 
         <Tabs.Panel value="company">
-          <CompanyTab user={user} isAdmin={isAdmin} refreshUser={refreshUser} />
+          <CompanyTab user={user} isAdmin={canCompany} refreshUser={refreshUser} />
         </Tabs.Panel>
         <Tabs.Panel value="profile">
           <ProfileTab user={user} refreshUser={refreshUser} />
         </Tabs.Panel>
         <Tabs.Panel value="email">
-          <EmailTab isAdmin={isAdmin} />
+          <EmailTab isAdmin={canEmail} />
         </Tabs.Panel>
         <Tabs.Panel value="reminders">
-          <RemindersTab isAdmin={isAdmin} />
+          <RemindersTab isAdmin={canReminders} />
         </Tabs.Panel>
         <Tabs.Panel value="templates">
-          <TemplatesTab isAdmin={isAdmin} />
+          <TemplatesTab isAdmin={canTemplates} />
         </Tabs.Panel>
         <Tabs.Panel value="payment-methods">
-          <PaymentMethodsTab isAdmin={isAdmin} />
+          <PaymentMethodsTab isAdmin={canPaymentMethods} />
         </Tabs.Panel>
       </Tabs>
     </>

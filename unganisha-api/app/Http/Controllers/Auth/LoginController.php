@@ -45,9 +45,15 @@ class LoginController extends Controller
             $user->load('tenant');
         }
 
+        // Load role with permissions for tenant users
+        if ($user->role_id) {
+            $user->load('role.permissions');
+        }
+
         $response = [
             'user' => $user,
             'token' => $token,
+            'permissions' => $user->isSuperAdmin() ? ['*'] : $user->getPermissionNames(),
         ];
 
         // Append subscription info for tenant users
@@ -74,8 +80,13 @@ class LoginController extends Controller
             $user->load('tenant');
         }
 
+        if ($user->role_id) {
+            $user->load('role.permissions');
+        }
+
         $response = [
             'user' => $user,
+            'permissions' => $user->isSuperAdmin() ? ['*'] : $user->getPermissionNames(),
         ];
 
         // Append subscription info for tenant users

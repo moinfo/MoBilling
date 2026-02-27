@@ -138,7 +138,7 @@ export default function TenantUsers() {
             email: editing.email,
             password: '',
             phone: editing.phone || '',
-            role: editing.role,
+            role_id: editing.role_id || '',
           } : undefined}
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}

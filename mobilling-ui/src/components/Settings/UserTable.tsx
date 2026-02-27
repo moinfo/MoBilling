@@ -36,7 +36,7 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
             <Table.Td>{user.phone || '—'}</Table.Td>
             <Table.Td>
               <Badge color={user.role === 'admin' ? 'blue' : 'gray'} variant="light">
-                {user.role}
+                {user.role_name || user.role}
               </Badge>
             </Table.Td>
             <Table.Td>

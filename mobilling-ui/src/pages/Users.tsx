@@ -7,12 +7,14 @@ import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { getUsers, createUser, updateUser, toggleUserActive, TenantUser, UserFormData } from '../api/users';
 import UserTable from '../components/Settings/UserTable';
 import UserForm from '../components/Settings/UserForm';
+import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
 
 export default function Users() {
   const queryClient = useQueryClient();
   const { user: currentUser } = useAuth();
-  const isAdmin = currentUser?.role === 'admin';
+  const { can } = usePermissions();
+  const canManageUsers = can('settings.users');
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
@@ -81,7 +83,7 @@ export default function Users() {
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Team</Title>
-        {isAdmin && (
+        {canManageUsers && (
           <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
             Add User
           </Button>
@@ -99,7 +101,7 @@ export default function Users() {
 
       <UserTable
         users={users}
-        isAdmin={isAdmin}
+        isAdmin={canManageUsers}
         currentUserId={currentUser?.id || ''}
         onEdit={handleEdit}
         onToggleActive={handleToggleActive}
@@ -122,7 +124,7 @@ export default function Users() {
             name: editing.name,
             email: editing.email,
             phone: editing.phone || '',
-            role: editing.role,
+            role_id: editing.role_id || '',
           } : undefined}
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}

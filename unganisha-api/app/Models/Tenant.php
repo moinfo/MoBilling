@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -63,6 +64,16 @@ class Tenant extends Model
     public function users()
     {
         return $this->hasMany(User::class);
+    }
+
+    public function roles(): HasMany
+    {
+        return $this->hasMany(Role::class);
+    }
+
+    public function allowedPermissions(): BelongsToMany
+    {
+        return $this->belongsToMany(Permission::class, 'tenant_permissions');
     }
 
     public function subscriptions(): HasMany

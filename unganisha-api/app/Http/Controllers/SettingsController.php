@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
@@ -9,11 +10,10 @@ use Illuminate\Validation\ValidationException;
 
 class SettingsController extends Controller
 {
+    use AuthorizesPermissions;
     public function updateCompany(Request $request)
     {
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['message' => 'Only admins can update company settings.'], 403);
-        }
+        $this->authorizePermission('settings.company');
 
         $validated = $request->validate([
             'name'                 => 'required|string|max:255',
@@ -38,9 +38,7 @@ class SettingsController extends Controller
 
     public function uploadLogo(Request $request)
     {
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['message' => 'Only admins can upload the logo.'], 403);
-        }
+        $this->authorizePermission('settings.company');
 
         $request->validate([
             'logo' => 'required|image|mimes:jpeg,png,webp|max:2048',
@@ -107,9 +105,7 @@ class SettingsController extends Controller
 
     public function updateReminderSettings(Request $request)
     {
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['message' => 'Only admins can update reminder settings.'], 403);
-        }
+        $this->authorizePermission('settings.reminders');
 
         $validated = $request->validate([
             'reminder_sms_enabled'   => 'boolean',
@@ -168,9 +164,7 @@ class SettingsController extends Controller
 
     public function updatePaymentMethods(Request $request)
     {
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['message' => 'Only admins can update payment methods.'], 403);
-        }
+        $this->authorizePermission('settings.payment_methods');
 
         $validated = $request->validate([
             'payment_methods' => 'required|array|min:1',
@@ -209,9 +203,7 @@ class SettingsController extends Controller
 
     public function updateTemplates(Request $request)
     {
-        if ($request->user()->role !== 'admin') {
-            return response()->json(['message' => 'Only admins can update templates.'], 403);
-        }
+        $this->authorizePermission('settings.templates');
 
         $validated = $request->validate([
             'reminder_email_subject' => 'nullable|string|max:255',

@@ -1,6 +1,8 @@
 import { TextInput, Select, Button, Group, Stack, PasswordInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { useQuery } from '@tanstack/react-query';
 import { UserFormData } from '../../api/users';
+import { getRoles, Role } from '../../api/roles';
 
 interface Props {
   initialValues?: UserFormData;
@@ -11,17 +13,26 @@ interface Props {
 export default function UserForm({ initialValues, onSubmit, loading }: Props) {
   const isEditing = !!initialValues;
 
+  const { data: rolesData } = useQuery({
+    queryKey: ['roles'],
+    queryFn: () => getRoles(),
+  });
+
+  const roles: Role[] = rolesData?.data?.data || [];
+  const roleOptions = roles.map((r) => ({ value: r.id, label: r.label }));
+
   const form = useForm<UserFormData>({
     initialValues: initialValues || {
       name: '',
       email: '',
       password: '',
       phone: '',
-      role: 'user',
+      role_id: '',
     },
     validate: {
       name: (v) => (v.length > 0 ? null : 'Name is required'),
       email: (v) => (/^\S+@\S+$/.test(v) ? null : 'Valid email is required'),
+      role_id: (v) => (v ? null : 'Role is required'),
       password: (v) => {
         if (!isEditing && (!v || v.length < 8)) return 'Password must be at least 8 characters';
         if (isEditing && v && v.length > 0 && v.length < 8) return 'Password must be at least 8 characters';
@@ -44,12 +55,10 @@ export default function UserForm({ initialValues, onSubmit, loading }: Props) {
         <TextInput label="Phone" placeholder="+254 7xx xxx xxx" {...form.getInputProps('phone')} />
         <Select
           label="Role"
-          data={[
-            { value: 'admin', label: 'Admin' },
-            { value: 'user', label: 'User' },
-          ]}
+          data={roleOptions}
           required
-          {...form.getInputProps('role')}
+          placeholder="Select a role"
+          {...form.getInputProps('role_id')}
         />
         <Group justify="flex-end">
           <Button type="submit" loading={loading}>

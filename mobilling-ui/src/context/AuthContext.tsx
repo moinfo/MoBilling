@@ -8,6 +8,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isImpersonating: boolean;
+  permissions: string[];
   subscriptionStatus: SubscriptionStatus;
   daysRemaining: number;
   hasAccess: boolean;
@@ -25,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isImpersonating, setIsImpersonating] = useState(() => !!localStorage.getItem('admin_token'));
+  const [permissions, setPermissions] = useState<string[]>([]);
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>(null);
   const [daysRemaining, setDaysRemaining] = useState(0);
 
@@ -41,6 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       getMe()
         .then((res) => {
           updateUser(res.data.user);
+          setPermissions(res.data.permissions ?? []);
           setSubscriptionStatus(res.data.subscription_status ?? null);
           setDaysRemaining(res.data.days_remaining ?? 0);
         })
@@ -55,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await apiLogin(data);
     localStorage.setItem('token', res.data.token);
     updateUser(res.data.user);
+    setPermissions(res.data.permissions ?? []);
     setSubscriptionStatus(res.data.subscription_status ?? null);
     setDaysRemaining(res.data.days_remaining ?? 0);
     return res.data.user;
@@ -64,6 +68,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const res = await apiRegister(data);
     localStorage.setItem('token', res.data.token);
     updateUser(res.data.user);
+    setPermissions(res.data.permissions ?? []);
     setSubscriptionStatus(res.data.subscription_status ?? null);
     setDaysRemaining(res.data.days_remaining ?? 0);
   };
@@ -73,6 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('token');
     localStorage.removeItem('admin_token');
     updateUser(null);
+    setPermissions([]);
     setIsImpersonating(false);
     setSubscriptionStatus(null);
     setDaysRemaining(0);
@@ -81,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const refreshUser = async () => {
     const res = await getMe();
     setUser(res.data.user);
+    setPermissions(res.data.permissions ?? []);
     setSubscriptionStatus(res.data.subscription_status ?? null);
     setDaysRemaining(res.data.days_remaining ?? 0);
   };
@@ -100,6 +107,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscriptionStatus(subStatus);
       setDaysRemaining(subDays ?? 0);
     }
+    // Refresh permissions for the impersonated user
+    getMe().then((res) => {
+      setPermissions(res.data.permissions ?? []);
+    });
   };
 
   const exitImpersonation = () => {
@@ -111,6 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Reload to get the admin user back
       getMe().then((res) => {
         updateUser(res.data.user);
+        setPermissions(res.data.permissions ?? []);
         setSubscriptionStatus(res.data.subscription_status ?? null);
         setDaysRemaining(res.data.days_remaining ?? 0);
       });
@@ -119,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider value={{
-      user, loading, isImpersonating,
+      user, loading, isImpersonating, permissions,
       subscriptionStatus, daysRemaining, hasAccess,
       login, register, logout, refreshUser, impersonate, exitImpersonation,
     }}>

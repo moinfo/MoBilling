@@ -6,6 +6,8 @@ export interface TenantUser {
   email: string;
   phone: string | null;
   role: 'admin' | 'user';
+  role_id: string | null;
+  role_name: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -15,7 +17,7 @@ export interface UserFormData {
   email: string;
   password?: string;
   phone: string;
-  role: 'admin' | 'user';
+  role_id: string;
 }
 
 export const getUsers = (params?: { search?: string; page?: number; per_page?: number }) =>

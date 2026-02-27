@@ -10,15 +10,17 @@ import {
   IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall,
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
-  IconChartBar, IconMail, IconSpeakerphone,
+  IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import NotificationBell from './NotificationBell';
 
 export default function AppLayout() {
   const [opened, { toggle, close }] = useDisclosure();
   const { user, logout, isImpersonating, exitImpersonation, subscriptionStatus, daysRemaining } = useAuth();
+  const { can, canAny } = usePermissions();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const navigate = useNavigate();
@@ -63,6 +65,12 @@ export default function AppLayout() {
 
   const showSubscriptionBanner = !isImpersonating && subscriptionStatus === 'trial' && daysRemaining <= 5;
   const headerHeight = (isImpersonating ? 96 : 60) + (showSubscriptionBanner ? 36 : 0);
+
+  // Check if any billing sub-items are visible
+  const showBilling = canAny(['menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills']);
+  const showStatutory = canAny(['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out']);
+  const showExpenses = canAny(['menu.expense_categories', 'menu.expenses']);
+  const showReports = can('menu.reports');
 
   return (
     <AppShell
@@ -146,83 +154,129 @@ export default function AppLayout() {
 
       <AppShell.Navbar p="xs">
         <AppShell.Section grow component={ScrollArea} type="scroll">
-          <NavLink label="Dashboard" leftSection={<IconDashboard size={18} />}
-            active={isActive('/dashboard')} onClick={() => navigateAndClose('/dashboard')} />
+          {can('menu.dashboard') && (
+            <NavLink label="Dashboard" leftSection={<IconDashboard size={18} />}
+              active={isActive('/dashboard')} onClick={() => navigateAndClose('/dashboard')} />
+          )}
 
-          <NavLink label="Collection" leftSection={<IconTargetArrow size={18} />}
-            active={isActive('/collection')} onClick={() => navigateAndClose('/collection')} />
+          {can('menu.collection') && (
+            <NavLink label="Collection" leftSection={<IconTargetArrow size={18} />}
+              active={isActive('/collection')} onClick={() => navigateAndClose('/collection')} />
+          )}
 
-          <NavLink label="Follow-ups" leftSection={<IconPhoneCall size={18} />}
-            active={isActive('/followups')} onClick={() => navigateAndClose('/followups')} />
+          {can('menu.followups') && (
+            <NavLink label="Follow-ups" leftSection={<IconPhoneCall size={18} />}
+              active={isActive('/followups')} onClick={() => navigateAndClose('/followups')} />
+          )}
 
-          <NavLink label="Billing" leftSection={<IconFileText size={18} />}
-            opened={openSection === 'billing'} onChange={() => toggleSection('billing')}>
-            <NavLink label="Clients" leftSection={<IconUsers size={16} />}
-              active={isActive('/clients')} onClick={() => navigateAndClose('/clients')} />
-            <NavLink label="Products & Services" leftSection={<IconPackages size={16} />}
-              active={isActive('/product-services')} onClick={() => navigateAndClose('/product-services')} />
-            <NavLink label="Quotations" leftSection={<IconFileDescription size={16} />}
-              active={isActive('/quotations')} onClick={() => navigateAndClose('/quotations')} />
-            <NavLink label="Proforma Invoices" leftSection={<IconFileCheck size={16} />}
-              active={isActive('/proformas')} onClick={() => navigateAndClose('/proformas')} />
-            <NavLink label="Invoices" leftSection={<IconFileInvoice size={16} />}
-              active={isActive('/invoices')} onClick={() => navigateAndClose('/invoices')} />
-            <NavLink label="Payments" leftSection={<IconReceipt size={16} />}
-              active={isActive('/payments-in')} onClick={() => navigateAndClose('/payments-in')} />
-            <NavLink label="Subscriptions" leftSection={<IconLink size={16} />}
-              active={isActive('/client-subscriptions')} onClick={() => navigateAndClose('/client-subscriptions')} />
-            <NavLink label="Next Bills" leftSection={<IconCalendarRepeat size={16} />}
-              active={isActive('/next-bills')} onClick={() => navigateAndClose('/next-bills')} />
-          </NavLink>
+          {showBilling && (
+            <NavLink label="Billing" leftSection={<IconFileText size={18} />}
+              opened={openSection === 'billing'} onChange={() => toggleSection('billing')}>
+              {can('menu.clients') && (
+                <NavLink label="Clients" leftSection={<IconUsers size={16} />}
+                  active={isActive('/clients')} onClick={() => navigateAndClose('/clients')} />
+              )}
+              {can('menu.products') && (
+                <NavLink label="Products & Services" leftSection={<IconPackages size={16} />}
+                  active={isActive('/product-services')} onClick={() => navigateAndClose('/product-services')} />
+              )}
+              {can('menu.quotations') && (
+                <NavLink label="Quotations" leftSection={<IconFileDescription size={16} />}
+                  active={isActive('/quotations')} onClick={() => navigateAndClose('/quotations')} />
+              )}
+              {can('menu.proformas') && (
+                <NavLink label="Proforma Invoices" leftSection={<IconFileCheck size={16} />}
+                  active={isActive('/proformas')} onClick={() => navigateAndClose('/proformas')} />
+              )}
+              {can('menu.invoices') && (
+                <NavLink label="Invoices" leftSection={<IconFileInvoice size={16} />}
+                  active={isActive('/invoices')} onClick={() => navigateAndClose('/invoices')} />
+              )}
+              {can('menu.payments_in') && (
+                <NavLink label="Payments" leftSection={<IconReceipt size={16} />}
+                  active={isActive('/payments-in')} onClick={() => navigateAndClose('/payments-in')} />
+              )}
+              {can('menu.client_subscriptions') && (
+                <NavLink label="Subscriptions" leftSection={<IconLink size={16} />}
+                  active={isActive('/client-subscriptions')} onClick={() => navigateAndClose('/client-subscriptions')} />
+              )}
+              {can('menu.next_bills') && (
+                <NavLink label="Next Bills" leftSection={<IconCalendarRepeat size={16} />}
+                  active={isActive('/next-bills')} onClick={() => navigateAndClose('/next-bills')} />
+              )}
+            </NavLink>
+          )}
 
-          <NavLink label="Statutory" leftSection={<IconCalendarDue size={18} />}
-            opened={openSection === 'statutory'} onChange={() => toggleSection('statutory')}>
-            <NavLink label="Obligations" leftSection={<IconClipboardList size={16} />}
-              active={isActive('/statutories')} onClick={() => navigateAndClose('/statutories')} />
-            <NavLink label="Schedule" leftSection={<IconCalendarEvent size={16} />}
-              active={isActive('/statutory-schedule')} onClick={() => navigateAndClose('/statutory-schedule')} />
-            <NavLink label="Bills" leftSection={<IconFileSpreadsheet size={16} />}
-              active={isActive('/bills')} onClick={() => navigateAndClose('/bills')} />
-            <NavLink label="Categories" leftSection={<IconCategory size={16} />}
-              active={isActive('/bill-categories')} onClick={() => navigateAndClose('/bill-categories')} />
-            <NavLink label="Payment History" leftSection={<IconReceipt size={16} />}
-              active={isActive('/payments-out')} onClick={() => navigateAndClose('/payments-out')} />
-          </NavLink>
+          {showStatutory && (
+            <NavLink label="Statutory" leftSection={<IconCalendarDue size={18} />}
+              opened={openSection === 'statutory'} onChange={() => toggleSection('statutory')}>
+              {can('menu.statutories') && (
+                <NavLink label="Obligations" leftSection={<IconClipboardList size={16} />}
+                  active={isActive('/statutories')} onClick={() => navigateAndClose('/statutories')} />
+              )}
+              {can('menu.statutories') && (
+                <NavLink label="Schedule" leftSection={<IconCalendarEvent size={16} />}
+                  active={isActive('/statutory-schedule')} onClick={() => navigateAndClose('/statutory-schedule')} />
+              )}
+              {can('menu.statutory_bills') && (
+                <NavLink label="Bills" leftSection={<IconFileSpreadsheet size={16} />}
+                  active={isActive('/bills')} onClick={() => navigateAndClose('/bills')} />
+              )}
+              {can('menu.bill_categories') && (
+                <NavLink label="Categories" leftSection={<IconCategory size={16} />}
+                  active={isActive('/bill-categories')} onClick={() => navigateAndClose('/bill-categories')} />
+              )}
+              {can('menu.payments_out') && (
+                <NavLink label="Payment History" leftSection={<IconReceipt size={16} />}
+                  active={isActive('/payments-out')} onClick={() => navigateAndClose('/payments-out')} />
+              )}
+            </NavLink>
+          )}
 
-          <NavLink label="Expenses" leftSection={<IconWallet size={18} />}
-            opened={openSection === 'expenses'} onChange={() => toggleSection('expenses')}>
-            <NavLink label="Categories" leftSection={<IconCategory2 size={16} />}
-              active={isActive('/expense-categories')} onClick={() => navigateAndClose('/expense-categories')} />
-            <NavLink label="Expenses" leftSection={<IconReceipt2 size={16} />}
-              active={isActive('/expenses')} onClick={() => navigateAndClose('/expenses')} />
-          </NavLink>
+          {showExpenses && (
+            <NavLink label="Expenses" leftSection={<IconWallet size={18} />}
+              opened={openSection === 'expenses'} onChange={() => toggleSection('expenses')}>
+              {can('menu.expense_categories') && (
+                <NavLink label="Categories" leftSection={<IconCategory2 size={16} />}
+                  active={isActive('/expense-categories')} onClick={() => navigateAndClose('/expense-categories')} />
+              )}
+              {can('menu.expenses') && (
+                <NavLink label="Expenses" leftSection={<IconReceipt2 size={16} />}
+                  active={isActive('/expenses')} onClick={() => navigateAndClose('/expenses')} />
+              )}
+            </NavLink>
+          )}
 
-          <NavLink label="Reports" leftSection={<IconReportAnalytics size={18} />}
-            opened={openSection === 'reports'} onChange={() => toggleSection('reports')}>
-            <NavLink label="Revenue Summary" leftSection={<IconCash size={16} />}
-              active={isActive('/reports/revenue')} onClick={() => navigateAndClose('/reports/revenue')} />
-            <NavLink label="Outstanding & Aging" leftSection={<IconClock size={16} />}
-              active={isActive('/reports/aging')} onClick={() => navigateAndClose('/reports/aging')} />
-            <NavLink label="Client Statement" leftSection={<IconFileAnalytics size={16} />}
-              active={isActive('/reports/client-statement')} onClick={() => navigateAndClose('/reports/client-statement')} />
-            <NavLink label="Payment Collection" leftSection={<IconCreditCardReport size={16} />}
-              active={isActive('/reports/payment-collection')} onClick={() => navigateAndClose('/reports/payment-collection')} />
-            <NavLink label="Expense Report" leftSection={<IconWalletReport size={16} />}
-              active={isActive('/reports/expenses')} onClick={() => navigateAndClose('/reports/expenses')} />
-            <NavLink label="Profit & Loss" leftSection={<IconScale size={16} />}
-              active={isActive('/reports/profit-loss')} onClick={() => navigateAndClose('/reports/profit-loss')} />
-            <NavLink label="Statutory Compliance" leftSection={<IconShieldCheck size={16} />}
-              active={isActive('/reports/statutory')} onClick={() => navigateAndClose('/reports/statutory')} />
-            <NavLink label="Subscriptions" leftSection={<IconLinkReport size={16} />}
-              active={isActive('/reports/subscriptions')} onClick={() => navigateAndClose('/reports/subscriptions')} />
-            <NavLink label="Collection Effectiveness" leftSection={<IconChartBar size={16} />}
-              active={isActive('/reports/collection-effectiveness')} onClick={() => navigateAndClose('/reports/collection-effectiveness')} />
-            <NavLink label="Communication Log" leftSection={<IconMail size={16} />}
-              active={isActive('/reports/communication-log')} onClick={() => navigateAndClose('/reports/communication-log')} />
-          </NavLink>
+          {showReports && (
+            <NavLink label="Reports" leftSection={<IconReportAnalytics size={18} />}
+              opened={openSection === 'reports'} onChange={() => toggleSection('reports')}>
+              <NavLink label="Revenue Summary" leftSection={<IconCash size={16} />}
+                active={isActive('/reports/revenue')} onClick={() => navigateAndClose('/reports/revenue')} />
+              <NavLink label="Outstanding & Aging" leftSection={<IconClock size={16} />}
+                active={isActive('/reports/aging')} onClick={() => navigateAndClose('/reports/aging')} />
+              <NavLink label="Client Statement" leftSection={<IconFileAnalytics size={16} />}
+                active={isActive('/reports/client-statement')} onClick={() => navigateAndClose('/reports/client-statement')} />
+              <NavLink label="Payment Collection" leftSection={<IconCreditCardReport size={16} />}
+                active={isActive('/reports/payment-collection')} onClick={() => navigateAndClose('/reports/payment-collection')} />
+              <NavLink label="Expense Report" leftSection={<IconWalletReport size={16} />}
+                active={isActive('/reports/expenses')} onClick={() => navigateAndClose('/reports/expenses')} />
+              <NavLink label="Profit & Loss" leftSection={<IconScale size={16} />}
+                active={isActive('/reports/profit-loss')} onClick={() => navigateAndClose('/reports/profit-loss')} />
+              <NavLink label="Statutory Compliance" leftSection={<IconShieldCheck size={16} />}
+                active={isActive('/reports/statutory')} onClick={() => navigateAndClose('/reports/statutory')} />
+              <NavLink label="Subscriptions" leftSection={<IconLinkReport size={16} />}
+                active={isActive('/reports/subscriptions')} onClick={() => navigateAndClose('/reports/subscriptions')} />
+              <NavLink label="Collection Effectiveness" leftSection={<IconChartBar size={16} />}
+                active={isActive('/reports/collection-effectiveness')} onClick={() => navigateAndClose('/reports/collection-effectiveness')} />
+              <NavLink label="Communication Log" leftSection={<IconMail size={16} />}
+                active={isActive('/reports/communication-log')} onClick={() => navigateAndClose('/reports/communication-log')} />
+            </NavLink>
+          )}
 
-          <NavLink label="SMS" leftSection={<IconMessage size={18} />}
-            active={isActive('/sms')} onClick={() => navigateAndClose('/sms')} />
+          {can('menu.sms') && (
+            <NavLink label="SMS" leftSection={<IconMessage size={18} />}
+              active={isActive('/sms')} onClick={() => navigateAndClose('/sms')} />
+          )}
 
           <NavLink label="Broadcast" leftSection={<IconSpeakerphone size={18} />}
             active={isActive('/broadcast')} onClick={() => navigateAndClose('/broadcast')} />
@@ -230,11 +284,20 @@ export default function AppLayout() {
           <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
             active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
 
-          <NavLink label="Automation" leftSection={<IconRobot size={18} />}
-            active={isActive('/automation')} onClick={() => navigateAndClose('/automation')} />
+          {can('menu.automation') && (
+            <NavLink label="Automation" leftSection={<IconRobot size={18} />}
+              active={isActive('/automation')} onClick={() => navigateAndClose('/automation')} />
+          )}
 
-          <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
-            active={isActive('/users')} onClick={() => navigateAndClose('/users')} />
+          {can('menu.users') && (
+            <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
+              active={isActive('/users')} onClick={() => navigateAndClose('/users')} />
+          )}
+
+          {can('settings.users') && (
+            <NavLink label="Roles" leftSection={<IconShieldLock size={18} />}
+              active={isActive('/roles')} onClick={() => navigateAndClose('/roles')} />
+          )}
 
           <NavLink label="Settings" leftSection={<IconSettings size={18} />}
             active={isActive('/settings')} onClick={() => navigateAndClose('/settings')} />
