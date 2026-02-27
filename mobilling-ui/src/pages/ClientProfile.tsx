@@ -50,6 +50,7 @@ export default function ClientProfile() {
   });
 
   const clientFollowups: FollowupEntry[] = followupData?.data?.data ?? [];
+  const [selectedLog, setSelectedLog] = useState<ClientCommunicationLog | null>(null);
 
   if (isLoading) {
     return <Center py="xl"><Loader /></Center>;
@@ -61,7 +62,6 @@ export default function ClientProfile() {
   }
 
   const { client, summary, subscriptions, invoices, payments, communication_logs } = profile;
-  const [selectedLog, setSelectedLog] = useState<ClientCommunicationLog | null>(null);
 
   return (
     <Stack gap="lg">
