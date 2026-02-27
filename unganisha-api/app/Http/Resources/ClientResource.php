@@ -16,6 +16,8 @@ class ClientResource extends JsonResource
             'phone' => $this->phone,
             'address' => $this->address,
             'tax_id' => $this->tax_id,
+            'active_subscriptions_count' => $this->when(isset($this->active_subscriptions_count), $this->active_subscriptions_count ?? 0),
+            'subscription_total' => $this->when(isset($this->subscription_total), round((float) ($this->subscription_total ?? 0), 2)),
             'created_at' => $this->created_at,
         ];
     }
