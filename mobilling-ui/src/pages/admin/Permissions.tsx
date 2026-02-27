@@ -16,9 +16,6 @@ function flattenPermissions(grouped: GroupedPermissions): Permission[] {
   return Object.values(grouped).flatMap((g) => Object.values(g).flat());
 }
 
-function countTotal(grouped: GroupedPermissions): number {
-  return flattenPermissions(grouped).length;
-}
 
 export default function PermissionsAdmin() {
   const queryClient = useQueryClient();

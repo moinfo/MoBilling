@@ -325,7 +325,7 @@ function RoleFormPage({
           const allCategoryIds = Object.values(groups).flat().map((p: Permission) => p.id);
           const selectedInCategory = allCategoryIds.filter((id) => form.values.permissions.includes(id)).length;
           const allCategorySelected = selectedInCategory === allCategoryIds.length;
-          const someCategorySelected = selectedInCategory > 0;
+
 
           return (
             <Card key={category} withBorder radius="md" padding={0}>

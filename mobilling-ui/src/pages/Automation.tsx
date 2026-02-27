@@ -21,7 +21,7 @@ import {
 import dayjs from 'dayjs';
 
 export default function Automation() {
-  const [date, setDate] = useState<Date | null>(new Date());
+  const [date, setDate] = useState<string | null>(new Date().toISOString().slice(0, 10));
   const [cronPage, setCronPage] = useState(1);
   const [commPage, setCommPage] = useState(1);
   const [channelFilter, setChannelFilter] = useState<string | null>(null);

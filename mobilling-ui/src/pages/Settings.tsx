@@ -7,7 +7,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconGripVertical } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import {
@@ -17,7 +17,7 @@ import {
   EmailSettings as EmailSettingsType, EmailSettingsFormData,
   getReminderSettings, updateReminderSettings, ReminderSettings,
   getTemplates, updateTemplates, TemplateSettings,
-  getPaymentMethods, updatePaymentMethods, PaymentMethod, PaymentMethodDetail,
+  getPaymentMethods, updatePaymentMethods, PaymentMethod,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';

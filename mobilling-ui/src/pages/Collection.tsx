@@ -1,7 +1,6 @@
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
   Loader, Center, ThemeIcon, Progress, RingProgress, Button,
-  ActionIcon, Tooltip,
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';

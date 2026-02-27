@@ -31,7 +31,7 @@ php-mbstring php-xml php-curl php-mysql php-zip php-gd php-bcmath php-uuid
 
 ```bash
 sudo adduser mobilling
-sudo mkdir -p /var/www/mobilling/api
+sudo mkdir -p /var/www/html/MoBilling/unganisha-api
 sudo mkdir -p /var/www/mobilling/frontend
 sudo chown -R mobilling:www-data /var/www/mobilling
 ```
@@ -43,7 +43,7 @@ sudo chown -R mobilling:www-data /var/www/mobilling
 ### 2.1 Clone and install
 
 ```bash
-cd /var/www/mobilling/api
+cd /var/www/html/MoBilling/unganisha-api
 git clone <your-repo-url> .
 composer install --no-dev --optimize-autoloader
 ```
@@ -131,7 +131,7 @@ php artisan storage:link
 ### 2.5 Set permissions
 
 ```bash
-sudo chown -R mobilling:www-data /var/www/mobilling/api
+sudo chown -R mobilling:www-data /var/www/html/MoBilling/unganisha-api
 sudo chmod -R 775 storage bootstrap/cache
 ```
 
@@ -183,7 +183,7 @@ server {
     ssl_certificate /etc/letsencrypt/live/api.yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/api.yourdomain.com/privkey.pem;
 
-    root /var/www/mobilling/api/public;
+    root /var/www/html/MoBilling/unganisha-api/public;
     index index.php;
 
     client_max_body_size 20M;
@@ -275,17 +275,19 @@ sudo crontab -u mobilling -e
 Add:
 
 ```
-* * * * * cd /var/www/mobilling/api && php artisan schedule:run >> /dev/null 2>&1
+* * * * * cd /var/www/html/MoBilling/unganisha-api && php artisan schedule:run >> /dev/null 2>&1
 ```
 
 This runs the following scheduled tasks:
 
 | Time | Command | Purpose |
 |------|---------|---------|
+| 06:00 | `subscriptions:expire` | Expire overdue tenant subscriptions |
 | 07:00 | `invoices:process-recurring` | Generate recurring invoices |
+| 07:30 | `followups:process` | Auto-create follow-ups, detect broken promises |
 | 08:00 | `bills:send-reminders` | Send bill reminders (email/SMS) |
+| 08:30 | `invoices:process-overdue` | Apply late fees, send overdue/termination warnings |
 | 09:00 | `bills:generate-recurring` | Generate statutory bills (safety net) |
-| Hourly | `subscriptions:expire` | Expire overdue tenant subscriptions |
 
 ---
 
@@ -302,7 +304,7 @@ sudo nano /etc/supervisor/conf.d/mobilling-worker.conf
 ```ini
 [program:mobilling-worker]
 process_name=%(program_name)s_%(process_num)02d
-command=php /var/www/mobilling/api/artisan queue:work --sleep=3 --tries=3 --max-time=3600
+command=php /var/www/html/MoBilling/unganisha-api/artisan queue:work --sleep=3 --tries=3 --max-time=3600
 autostart=true
 autorestart=true
 stopasgroup=true
@@ -310,7 +312,7 @@ killasgroup=true
 user=mobilling
 numprocs=2
 redirect_stderr=true
-stdout_logfile=/var/www/mobilling/api/storage/logs/worker.log
+stdout_logfile=/var/www/html/MoBilling/unganisha-api/storage/logs/worker.log
 stopwaitsecs=3600
 ```
 
@@ -339,7 +341,7 @@ For production, consider using S3 or similar object storage by updating `FILESYS
 ### Backend
 
 ```bash
-cd /var/www/mobilling/api
+cd /var/www/html/MoBilling/unganisha-api
 git pull
 composer install --no-dev --optimize-autoloader
 php artisan migrate --force
@@ -368,14 +370,14 @@ No server restart needed for frontend — Nginx serves the new static files imme
 
 ```bash
 # Laravel logs
-tail -f /var/www/mobilling/api/storage/logs/laravel.log
+tail -f /var/www/html/MoBilling/unganisha-api/storage/logs/laravel.log
 
 # Nginx access/error logs
 tail -f /var/log/nginx/access.log
 tail -f /var/log/nginx/error.log
 
 # Queue worker logs
-tail -f /var/www/mobilling/api/storage/logs/worker.log
+tail -f /var/www/html/MoBilling/unganisha-api/storage/logs/worker.log
 ```
 
 ### Health checks
@@ -406,7 +408,7 @@ php artisan schedule:list
 
 ```bash
 # Uploaded files
-0 3 * * * tar czf /var/backups/mobilling/uploads-$(date +\%Y\%m\%d).tar.gz /var/www/mobilling/api/storage/app/public/
+0 3 * * * tar czf /var/backups/mobilling/uploads-$(date +\%Y\%m\%d).tar.gz /var/www/html/MoBilling/unganisha-api/storage/app/public/
 ```
 
 ### Retention (keep 30 days)

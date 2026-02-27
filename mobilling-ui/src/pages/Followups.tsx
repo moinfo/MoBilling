@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, Stack, Select,
-  Loader, Center, Modal, Button, Textarea, TextInput, NumberInput,
+  Loader, Center, Modal, Button, Textarea, NumberInput,
   SimpleGrid, ThemeIcon, ActionIcon, Tooltip, Pagination,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconPhone, IconPhoneCall, IconAlertTriangle, IconCheck,
-  IconX, IconClock, IconArrowUp, IconPlayerPlay,
+  IconX, IconPlayerPlay,
 } from '@tabler/icons-react';
 import {
   getFollowupDashboard, getFollowups, logCall, cancelFollowup,
@@ -46,9 +46,9 @@ export default function Followups() {
   // Log call form state
   const [outcome, setOutcome] = useState<string>('');
   const [notes, setNotes] = useState('');
-  const [promiseDate, setPromiseDate] = useState<Date | null>(null);
+  const [promiseDate, setPromiseDate] = useState<string | null>(null);
   const [promiseAmount, setPromiseAmount] = useState<number | undefined>(undefined);
-  const [nextOverride, setNextOverride] = useState<Date | null>(null);
+  const [nextOverride, setNextOverride] = useState<string | null>(null);
 
   const { data: dashData, isLoading: dashLoading } = useQuery({
     queryKey: ['followup-dashboard'],
@@ -115,9 +115,9 @@ export default function Followups() {
       data: {
         outcome,
         notes,
-        promise_date: promiseDate ? promiseDate.toISOString().split('T')[0] : undefined,
+        promise_date: promiseDate || undefined,
         promise_amount: promiseAmount,
-        next_followup_override: nextOverride ? nextOverride.toISOString().split('T')[0] : undefined,
+        next_followup_override: nextOverride || undefined,
       },
     });
   };
