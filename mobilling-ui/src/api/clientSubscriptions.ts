@@ -29,6 +29,8 @@ export const getClientSubscriptions = (params?: {
   search?: string;
   client_id?: string;
   status?: string;
+  sort_by?: string;
+  sort_dir?: 'asc' | 'desc';
   page?: number;
   per_page?: number;
 }) => api.get('/client-subscriptions', { params });

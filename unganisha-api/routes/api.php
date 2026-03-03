@@ -270,6 +270,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/settings/templates', [SettingsController::class, 'updateTemplates']);
     Route::get('/settings/payment-methods', [SettingsController::class, 'getPaymentMethods']);
     Route::put('/settings/payment-methods', [SettingsController::class, 'updatePaymentMethods']);
+    Route::get('/settings/subscriptions', [SettingsController::class, 'getSubscriptionSettings']);
+    Route::put('/settings/subscriptions', [SettingsController::class, 'updateSubscriptionSettings']);
 
     // Email settings (tenant admin)
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);

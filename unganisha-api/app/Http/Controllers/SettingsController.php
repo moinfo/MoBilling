@@ -184,6 +184,32 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function getSubscriptionSettings(Request $request)
+    {
+        $tenant = $request->user()->tenant;
+
+        return response()->json([
+            'data' => $tenant->only(['subscription_grace_days']),
+        ]);
+    }
+
+    public function updateSubscriptionSettings(Request $request)
+    {
+        $this->authorizePermission('settings.reminders');
+
+        $validated = $request->validate([
+            'subscription_grace_days' => 'required|integer|min:1|max:90',
+        ]);
+
+        $tenant = $request->user()->tenant;
+        $tenant->update($validated);
+
+        return response()->json([
+            'data'    => $tenant->fresh()->only(['subscription_grace_days']),
+            'message' => 'Subscription settings updated.',
+        ]);
+    }
+
     private const TEMPLATE_FIELDS = [
         'reminder_email_subject', 'reminder_email_body',
         'overdue_email_subject', 'overdue_email_body',

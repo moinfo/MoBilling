@@ -119,7 +119,7 @@ class PaymentInController extends Controller
 
         ClientSubscription::where('client_id', $document->client_id)
             ->whereIn('product_service_id', $productIds)
-            ->where('status', 'pending')
+            ->whereIn('status', ['pending', 'suspended'])
             ->update(['status' => 'active']);
     }
 }

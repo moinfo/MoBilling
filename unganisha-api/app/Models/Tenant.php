@@ -35,6 +35,8 @@ class Tenant extends Model
         'invoice_email_subject', 'invoice_email_body',
         // Email branding
         'email_footer_text',
+        // Subscription settings
+        'subscription_grace_days',
     ];
 
     protected $hidden = [
@@ -52,6 +54,7 @@ class Tenant extends Model
         'reminder_sms_enabled' => 'boolean',
         'reminder_email_enabled' => 'boolean',
         'payment_methods' => 'array',
+        'subscription_grace_days' => 'integer',
     ];
 
     protected $appends = ['logo_url'];

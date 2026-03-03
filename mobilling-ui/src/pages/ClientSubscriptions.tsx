@@ -9,7 +9,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch, IconEdit, IconTrash } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/icons-react';
 import {
   getClientSubscriptions, createClientSubscription, updateClientSubscription,
   deleteClientSubscription, ClientSubscription, ClientSubscriptionFormData,
@@ -38,12 +38,24 @@ export default function ClientSubscriptions() {
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState<string | undefined>(undefined);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ClientSubscription | null>(null);
 
+  const toggleSort = (column: string) => {
+    if (sortBy === column) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(column);
+      setSortDir('asc');
+    }
+    setPage(1);
+  };
+
   const { data } = useQuery({
-    queryKey: ['client-subscriptions', debouncedSearch, page],
-    queryFn: () => getClientSubscriptions({ search: debouncedSearch || undefined, page }),
+    queryKey: ['client-subscriptions', debouncedSearch, page, sortBy, sortDir],
+    queryFn: () => getClientSubscriptions({ search: debouncedSearch || undefined, page, sort_by: sortBy, sort_dir: sortDir }),
   });
 
   const items: ClientSubscription[] = data?.data?.data || [];
@@ -149,8 +161,8 @@ export default function ClientSubscriptions() {
                 <Table.Th>Cycle</Table.Th>
                 <Table.Th>Qty</Table.Th>
                 <Table.Th>Price</Table.Th>
-                <Table.Th>Start Date</Table.Th>
-                <Table.Th>Status</Table.Th>
+                <SortableHeader column="start_date" label="Start Date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
+                <SortableHeader column="status" label="Status" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
                 <Table.Th w={90}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -227,6 +239,29 @@ export default function ClientSubscriptions() {
         />
       </Modal>
     </>
+  );
+}
+
+function SortableHeader({ column, label, sortBy, sortDir, onSort }: {
+  column: string;
+  label: string;
+  sortBy: string | undefined;
+  sortDir: 'asc' | 'desc';
+  onSort: (column: string) => void;
+}) {
+  const icon = sortBy !== column
+    ? <IconArrowsSort size={14} style={{ opacity: 0.4 }} />
+    : sortDir === 'asc'
+      ? <IconArrowUp size={14} />
+      : <IconArrowDown size={14} />;
+
+  return (
+    <Table.Th style={{ cursor: 'pointer', userSelect: 'none' }} onClick={() => onSort(column)}>
+      <Group gap={4} wrap="nowrap">
+        {label}
+        {icon}
+      </Group>
+    </Table.Th>
   );
 }
 

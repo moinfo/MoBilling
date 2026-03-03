@@ -124,3 +124,15 @@ export const updatePaymentMethods = (methods: PaymentMethod[]) =>
   api.put<{ data: PaymentMethod[]; message: string }>('/settings/payment-methods', {
     payment_methods: methods,
   });
+
+// --- Subscription Settings ---
+
+export interface SubscriptionSettings {
+  subscription_grace_days: number;
+}
+
+export const getSubscriptionSettings = () =>
+  api.get<{ data: SubscriptionSettings }>('/settings/subscriptions');
+
+export const updateSubscriptionSettings = (data: SubscriptionSettings) =>
+  api.put<{ data: SubscriptionSettings; message: string }>('/settings/subscriptions', data);

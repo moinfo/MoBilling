@@ -17,7 +17,8 @@ import {
   EmailSettings as EmailSettingsType, EmailSettingsFormData,
   getReminderSettings, updateReminderSettings, ReminderSettings,
   getTemplates, updateTemplates, TemplateSettings,
-  getPaymentMethods, updatePaymentMethods, PaymentMethod,
+  getPaymentMethods, updatePaymentMethods, PaymentMethod, PaymentMethodDetail,
+  getSubscriptionSettings, updateSubscriptionSettings, SubscriptionSettings,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
@@ -469,7 +470,37 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
     },
   });
 
-  if (isLoading) {
+  // --- Subscription auto-suspension settings ---
+  const { data: subData, isLoading: subLoading } = useQuery({
+    queryKey: ['subscription-settings'],
+    queryFn: getSubscriptionSettings,
+  });
+
+  const subSettings: SubscriptionSettings | undefined = subData?.data?.data;
+  const [graceDays, setGraceDays] = useState<number | string>(7);
+  const [subInitialized, setSubInitialized] = useState(false);
+
+  if (subSettings && !subInitialized) {
+    setGraceDays(subSettings.subscription_grace_days);
+    setSubInitialized(true);
+  }
+
+  const subSaveMutation = useMutation({
+    mutationFn: (data: SubscriptionSettings) => updateSubscriptionSettings(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subscription-settings'] });
+      notifications.show({ title: 'Success', message: 'Subscription settings updated', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to update subscription settings',
+        color: 'red',
+      });
+    },
+  });
+
+  if (isLoading || subLoading) {
     return <Center py="xl"><Loader /></Center>;
   }
 
@@ -509,6 +540,37 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
           )}
         </Stack>
       </form>
+
+      <Divider my="lg" label="Subscription Auto-Suspension" labelPosition="left" />
+
+      <Stack>
+        <Text size="sm" c="dimmed">
+          Automatically suspend client subscriptions when their invoice remains unpaid past the grace period.
+          Subscriptions are reactivated automatically when the invoice is paid.
+        </Text>
+
+        <NumberInput
+          label="Grace period (days)"
+          description="Number of days after invoice due date before the subscription is suspended"
+          min={1}
+          max={90}
+          value={graceDays}
+          onChange={(val) => setGraceDays(val)}
+          disabled={!isAdmin}
+          maw={200}
+        />
+
+        {isAdmin && (
+          <Group justify="flex-end">
+            <Button
+              loading={subSaveMutation.isPending}
+              onClick={() => subSaveMutation.mutate({ subscription_grace_days: Number(graceDays) || 7 })}
+            >
+              Save Subscription Settings
+            </Button>
+          </Group>
+        )}
+      </Stack>
     </Paper>
   );
 }

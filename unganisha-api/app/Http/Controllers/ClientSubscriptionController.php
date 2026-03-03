@@ -35,8 +35,13 @@ class ClientSubscriptionController extends Controller
             });
         }
 
+        // Sorting
+        $sortable = ['status', 'start_date', 'created_at', 'label', 'quantity'];
+        $sortBy = in_array($request->sort_by, $sortable) ? $request->sort_by : 'created_at';
+        $sortDir = $request->sort_dir === 'asc' ? 'asc' : 'desc';
+
         return ClientSubscriptionResource::collection(
-            $query->orderByDesc('created_at')->paginate($request->per_page ?? 20)
+            $query->orderBy($sortBy, $sortDir)->paginate($request->per_page ?? 20)
         );
     }
 
