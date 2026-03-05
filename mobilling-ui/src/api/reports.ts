@@ -302,7 +302,51 @@ export interface CollectionEffectiveness {
 export const getCollectionEffectiveness = (params: DateRange) =>
   api.get<CollectionEffectiveness>('/reports/collection-effectiveness', { params });
 
-// ─── 10. Communication Log ──────────────────────────────────
+// ─── 10. Satisfaction Report ────────────────────────────────
+
+export interface SatisfactionMonthly {
+  month: string;
+  calls_made: number;
+  total_scheduled: number;
+  avg_rating: number | null;
+}
+
+export interface SatisfactionOutcome {
+  outcome: string;
+  count: number;
+  avg_rating: number | null;
+}
+
+export interface SatisfactionCallDetail {
+  id: string;
+  scheduled_date: string;
+  client_name: string | null;
+  assigned_to: string | null;
+  outcome: string | null;
+  rating: number | null;
+  feedback: string | null;
+  status: string;
+  month_key: string;
+}
+
+export interface SatisfactionReport {
+  stats: {
+    total_scheduled: number;
+    total_completed: number;
+    completion_rate: number;
+    avg_rating: number | null;
+    satisfaction_rate: number;
+    complaint_rate: number;
+  };
+  monthly: SatisfactionMonthly[];
+  by_outcome: SatisfactionOutcome[];
+  calls: SatisfactionCallDetail[];
+}
+
+export const getSatisfactionReport = (params: DateRange) =>
+  api.get<SatisfactionReport>('/reports/satisfaction-calls', { params });
+
+// ─── 11. Communication Log ──────────────────────────────────
 
 export interface ChannelStat {
   channel: string;

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\SatisfactionCall;
+use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class SatisfactionCallController extends Controller
 {
@@ -165,6 +167,30 @@ class SatisfactionCallController extends Controller
         $satisfactionCall->update(['status' => 'cancelled']);
 
         return response()->json(['message' => 'Satisfaction call cancelled.']);
+    }
+
+    /**
+     * Assign a call to a user.
+     */
+    public function assign(Request $request, SatisfactionCall $satisfactionCall)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'user_id' => [
+                'required',
+                Rule::exists('users', 'id')->where('tenant_id', $tenantId)->where('is_active', true),
+            ],
+        ]);
+
+        $satisfactionCall->update(['user_id' => $data['user_id']]);
+
+        $user = User::find($data['user_id']);
+
+        return response()->json([
+            'data' => $satisfactionCall->fresh(),
+            'message' => "Call assigned to {$user->name}.",
+        ]);
     }
 
     /**

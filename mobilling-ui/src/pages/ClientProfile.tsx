@@ -8,9 +8,12 @@ import { useQuery } from '@tanstack/react-query';
 import {
   IconArrowLeft, IconMail, IconPhone, IconMapPin, IconId,
   IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend, IconPhoneCall,
+  IconHeartHandshake,
 } from '@tabler/icons-react';
+import { Rating } from '@mantine/core';
 import { getClientProfile, ClientProfile as ClientProfileType, ClientCommunicationLog } from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
+import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 
@@ -31,6 +34,27 @@ const statusColors: Record<string, string> = {
   overdue: 'red',
   draft: 'gray',
   partially_paid: 'yellow',
+  scheduled: 'blue',
+  completed: 'green',
+  missed: 'red',
+};
+
+const outcomeColors: Record<string, string> = {
+  satisfied: 'green',
+  needs_improvement: 'orange',
+  complaint: 'red',
+  suggestion: 'blue',
+  no_answer: 'gray',
+  unreachable: 'dark',
+};
+
+const outcomeLabels: Record<string, string> = {
+  satisfied: 'Satisfied',
+  needs_improvement: 'Needs Improvement',
+  complaint: 'Complaint',
+  suggestion: 'Suggestion',
+  no_answer: 'No Answer',
+  unreachable: 'Unreachable',
 };
 
 export default function ClientProfile() {
@@ -49,7 +73,14 @@ export default function ClientProfile() {
     enabled: !!clientId,
   });
 
+  const { data: satisfactionData } = useQuery({
+    queryKey: ['client-satisfaction-history', clientId],
+    queryFn: () => getClientSatisfactionHistory(clientId!),
+    enabled: !!clientId,
+  });
+
   const clientFollowups: FollowupEntry[] = followupData?.data?.data ?? [];
+  const clientSatisfaction: SatisfactionCallEntry[] = satisfactionData?.data?.data ?? [];
   const [selectedLog, setSelectedLog] = useState<ClientCommunicationLog | null>(null);
 
   if (isLoading) {
@@ -270,6 +301,59 @@ export default function ClientProfile() {
                       >
                         {f.status}
                       </Badge>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        )}
+      </Paper>
+
+      {/* Satisfaction Calls */}
+      <Paper withBorder p="md" radius="md">
+        <Group gap="sm" mb="sm">
+          <IconHeartHandshake size={20} />
+          <Title order={4}>Satisfaction Calls</Title>
+          {clientSatisfaction.length > 0 && (
+            <Badge variant="light" size="sm">{clientSatisfaction.length}</Badge>
+          )}
+        </Group>
+        {clientSatisfaction.length === 0 ? (
+          <Text c="dimmed" size="sm">No satisfaction calls recorded for this client.</Text>
+        ) : (
+          <Table.ScrollContainer minWidth={700}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Month</Table.Th>
+                  <Table.Th>Outcome</Table.Th>
+                  <Table.Th>Rating</Table.Th>
+                  <Table.Th>Feedback</Table.Th>
+                  <Table.Th>Called By</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {clientSatisfaction.map((s) => (
+                  <Table.Tr key={s.id}>
+                    <Table.Td fw={500}>{s.month_key}</Table.Td>
+                    <Table.Td>
+                      {s.outcome ? (
+                        <Badge color={outcomeColors[s.outcome] || 'gray'} size="sm" variant="light">
+                          {outcomeLabels[s.outcome] || s.outcome}
+                        </Badge>
+                      ) : '—'}
+                    </Table.Td>
+                    <Table.Td>
+                      {s.rating ? <Rating value={s.rating} readOnly size="xs" /> : '—'}
+                    </Table.Td>
+                    <Table.Td>
+                      <Text size="xs" truncate maw={200}>{s.feedback || '—'}</Text>
+                    </Table.Td>
+                    <Table.Td>{s.assigned_to || '—'}</Table.Td>
+                    <Table.Td>
+                      <Badge color={statusColors[s.status] || 'gray'} size="sm">{s.status}</Badge>
                     </Table.Td>
                   </Table.Tr>
                 ))}

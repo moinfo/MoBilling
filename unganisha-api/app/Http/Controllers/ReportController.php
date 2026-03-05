@@ -11,6 +11,7 @@ use App\Models\Expense;
 use App\Models\Followup;
 use App\Models\PaymentIn;
 use App\Models\PaymentOut;
+use App\Models\SatisfactionCall;
 use App\Models\Statutory;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -660,7 +661,84 @@ class ReportController extends Controller
         ]);
     }
 
-    // ─── 10. Communication Log ───────────────────────────────────
+    // ─── 10. Satisfaction Report ────────────────────────────────
+
+    public function satisfactionReport(Request $request): JsonResponse
+    {
+        [$start, $end] = $this->dateRange($request);
+
+        $calls = SatisfactionCall::with(['client', 'user'])
+            ->whereBetween('scheduled_date', [$start, $end])
+            ->get();
+
+        $completed = $calls->where('status', 'completed');
+
+        // Monthly breakdown
+        $monthly = $calls->groupBy(fn ($c) => $c->scheduled_date->format('Y-m'))
+            ->sortKeys()
+            ->map(function ($group, $month) {
+                $done = $group->where('status', 'completed');
+                return [
+                    'month' => Carbon::parse($month . '-01')->format('M Y'),
+                    'calls_made' => $done->count(),
+                    'total_scheduled' => $group->count(),
+                    'avg_rating' => $done->whereNotNull('rating')->avg('rating')
+                        ? round((float) $done->whereNotNull('rating')->avg('rating'), 1)
+                        : null,
+                ];
+            })->values();
+
+        // Outcome distribution
+        $byOutcome = $completed->groupBy('outcome')->map(fn ($g, $outcome) => [
+            'outcome' => $outcome,
+            'count' => $g->count(),
+            'avg_rating' => $g->whereNotNull('rating')->avg('rating')
+                ? round((float) $g->whereNotNull('rating')->avg('rating'), 1)
+                : null,
+        ])->values();
+
+        // Stats
+        $totalCalls = $calls->count();
+        $totalCompleted = $completed->count();
+        $avgRating = $completed->whereNotNull('rating')->avg('rating');
+        $satisfiedCount = $completed->where('outcome', 'satisfied')->count();
+        $complaintCount = $completed->where('outcome', 'complaint')->count();
+
+        $stats = [
+            'total_scheduled' => $totalCalls,
+            'total_completed' => $totalCompleted,
+            'completion_rate' => $totalCalls > 0 ? round(($totalCompleted / $totalCalls) * 100, 1) : 0,
+            'avg_rating' => $avgRating ? round((float) $avgRating, 1) : null,
+            'satisfaction_rate' => $totalCompleted > 0
+                ? round(($satisfiedCount / $totalCompleted) * 100, 1)
+                : 0,
+            'complaint_rate' => $totalCompleted > 0
+                ? round(($complaintCount / $totalCompleted) * 100, 1)
+                : 0,
+        ];
+
+        // Detail list
+        $details = $calls->sortByDesc('scheduled_date')->values()->map(fn ($c) => [
+            'id' => $c->id,
+            'scheduled_date' => $c->scheduled_date->format('Y-m-d'),
+            'client_name' => $c->client?->name,
+            'assigned_to' => $c->user?->name,
+            'outcome' => $c->outcome,
+            'rating' => $c->rating,
+            'feedback' => $c->feedback,
+            'status' => $c->status,
+            'month_key' => $c->month_key,
+        ]);
+
+        return response()->json([
+            'stats' => $stats,
+            'monthly' => $monthly,
+            'by_outcome' => $byOutcome,
+            'calls' => $details,
+        ]);
+    }
+
+    // ─── 11. Communication Log ───────────────────────────────────
 
     public function communicationLog(Request $request): JsonResponse
     {

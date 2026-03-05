@@ -15,10 +15,11 @@ import {
 } from '@tabler/icons-react';
 import {
   getSatisfactionDashboard, getSatisfactionCalls, logSatisfactionCall,
-  rescheduleSatisfactionCall, cancelSatisfactionCall,
+  rescheduleSatisfactionCall, cancelSatisfactionCall, assignSatisfactionCall,
   getClientSatisfactionHistory, SatisfactionCallEntry,
 } from '../api/satisfactionCalls';
 import { getClientProfile, ClientProfile } from '../api/clients';
+import { getUsers, TenantUser } from '../api/users';
 import { formatDate } from '../utils/formatDate';
 import { formatCurrency } from '../utils/formatCurrency';
 
@@ -54,7 +55,12 @@ export default function SatisfactionCalls() {
   const [selectedCall, setSelectedCall] = useState<SatisfactionCallEntry | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterOutcome, setFilterOutcome] = useState<string>('all');
+  const [filterMonth, setFilterMonth] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+
+  // Assign modal state
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [assignUserId, setAssignUserId] = useState<string>('');
 
   // Client drawer state
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -74,11 +80,17 @@ export default function SatisfactionCalls() {
     queryFn: getSatisfactionDashboard,
   });
 
+  const { data: usersData } = useQuery({
+    queryKey: ['users-list'],
+    queryFn: () => getUsers({ per_page: 100 }),
+  });
+
   const { data: historyData, isLoading: histLoading } = useQuery({
-    queryKey: ['satisfaction-calls', filterStatus, filterOutcome, page],
+    queryKey: ['satisfaction-calls', filterStatus, filterOutcome, filterMonth, page],
     queryFn: () => getSatisfactionCalls({
       status: filterStatus,
       outcome: filterOutcome,
+      ...(filterMonth ? { month: filterMonth } : {}),
       page: String(page),
       per_page: '15',
     }),
@@ -140,11 +152,53 @@ export default function SatisfactionCalls() {
     },
   });
 
+  const assignMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: { user_id: string } }) =>
+      assignSatisfactionCall(id, data),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Assigned', message: res.data.message, color: 'blue' });
+      invalidateAll();
+      closeAssignModal();
+    },
+    onError: () => {
+      notifications.show({ title: 'Error', message: 'Failed to assign call.', color: 'red' });
+    },
+  });
+
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ['satisfaction-dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['satisfaction-calls'] });
     queryClient.invalidateQueries({ queryKey: ['client-satisfaction-history'] });
   };
+
+  const openAssignModal = (c: SatisfactionCallEntry) => {
+    setSelectedCall(c);
+    setAssignUserId(c.user_id || '');
+    setAssignModalOpen(true);
+  };
+
+  const closeAssignModal = () => {
+    setAssignModalOpen(false);
+    setSelectedCall(null);
+    setAssignUserId('');
+  };
+
+  const handleAssign = () => {
+    if (!selectedCall || !assignUserId) return;
+    assignMutation.mutate({ id: selectedCall.id, data: { user_id: assignUserId } });
+  };
+
+  const users: TenantUser[] = usersData?.data?.data ?? [];
+  const userSelectData = users.filter((u) => u.is_active).map((u) => ({ value: u.id, label: u.name }));
+
+  // Generate last 12 months for filter
+  const monthOptions = Array.from({ length: 12 }, (_, i) => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - i);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+    return { value: key, label };
+  });
 
   const openClientDrawer = (clientId: string) => {
     setDrawerClientId(clientId);
@@ -298,6 +352,7 @@ export default function SatisfactionCalls() {
                 <Table.Tr>
                   <Table.Th>Client</Table.Th>
                   <Table.Th>Phone</Table.Th>
+                  <Table.Th>Assigned To</Table.Th>
                   <Table.Th>Scheduled</Table.Th>
                   <Table.Th>Action</Table.Th>
                 </Table.Tr>
@@ -307,12 +362,24 @@ export default function SatisfactionCalls() {
                   <Table.Tr key={c.id}>
                     <Table.Td><ClientLink call={c} /></Table.Td>
                     <Table.Td>{c.client_phone || '—'}</Table.Td>
+                    <Table.Td>
+                      {c.assigned_to ? (
+                        <Badge variant="light" size="sm">{c.assigned_to}</Badge>
+                      ) : (
+                        <Text size="xs" c="dimmed">Unassigned</Text>
+                      )}
+                    </Table.Td>
                     <Table.Td>{formatDate(c.scheduled_date)}</Table.Td>
                     <Table.Td>
                       <Group gap="xs">
                         <Tooltip label="Log Call">
                           <ActionIcon color="green" variant="light" onClick={() => openLogModal(c)}>
                             <IconCheck size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Assign">
+                          <ActionIcon color="violet" variant="light" onClick={() => openAssignModal(c)}>
+                            <IconUser size={16} />
                           </ActionIcon>
                         </Tooltip>
                         <Tooltip label="Reschedule">
@@ -349,6 +416,7 @@ export default function SatisfactionCalls() {
                 <Table.Tr>
                   <Table.Th>Client</Table.Th>
                   <Table.Th>Phone</Table.Th>
+                  <Table.Th>Assigned To</Table.Th>
                   <Table.Th>Was Scheduled</Table.Th>
                   <Table.Th>Action</Table.Th>
                 </Table.Tr>
@@ -359,6 +427,13 @@ export default function SatisfactionCalls() {
                     <Table.Td><ClientLink call={c} /></Table.Td>
                     <Table.Td>{c.client_phone || '—'}</Table.Td>
                     <Table.Td>
+                      {c.assigned_to ? (
+                        <Badge variant="light" size="sm">{c.assigned_to}</Badge>
+                      ) : (
+                        <Text size="xs" c="dimmed">Unassigned</Text>
+                      )}
+                    </Table.Td>
+                    <Table.Td>
                       <Badge color="red" variant="light" size="sm">
                         {formatDate(c.scheduled_date)}
                       </Badge>
@@ -368,6 +443,11 @@ export default function SatisfactionCalls() {
                         <Tooltip label="Log Call">
                           <ActionIcon color="green" variant="light" onClick={() => openLogModal(c)}>
                             <IconCheck size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                        <Tooltip label="Assign">
+                          <ActionIcon color="violet" variant="light" onClick={() => openAssignModal(c)}>
+                            <IconUser size={16} />
                           </ActionIcon>
                         </Tooltip>
                         <Tooltip label="Reschedule">
@@ -417,6 +497,15 @@ export default function SatisfactionCalls() {
                 { value: 'no_answer', label: 'No Answer' },
                 { value: 'unreachable', label: 'Unreachable' },
               ]}
+            />
+            <Select
+              size="xs"
+              w={170}
+              placeholder="All Months"
+              value={filterMonth}
+              onChange={(v) => { setFilterMonth(v); setPage(1); }}
+              data={monthOptions}
+              clearable
             />
           </Group>
         </Group>
@@ -731,6 +820,46 @@ export default function SatisfactionCalls() {
                 disabled={!outcome}
               >
                 Log Call
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Modal>
+
+      {/* Assign Modal */}
+      <Modal
+        opened={assignModalOpen}
+        onClose={closeAssignModal}
+        title={
+          <Group gap="sm">
+            <IconUser size={20} />
+            <Text fw={600}>Assign Call</Text>
+          </Group>
+        }
+      >
+        {selectedCall && (
+          <Stack gap="md">
+            <Text size="sm">
+              Assign satisfaction call for <Text span fw={600}>{selectedCall.client_name}</Text> to a team member.
+            </Text>
+            <Select
+              label="Assign To"
+              placeholder="Select team member"
+              required
+              value={assignUserId}
+              onChange={(v) => setAssignUserId(v || '')}
+              data={userSelectData}
+              searchable
+            />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={closeAssignModal}>Cancel</Button>
+              <Button
+                color="violet"
+                onClick={handleAssign}
+                loading={assignMutation.isPending}
+                disabled={!assignUserId}
+              >
+                Assign
               </Button>
             </Group>
           </Stack>

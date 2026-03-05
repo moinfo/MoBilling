@@ -63,6 +63,7 @@ import StatutoryComplianceReport from './pages/reports/StatutoryComplianceReport
 import SubscriptionReportPage from './pages/reports/SubscriptionReportPage';
 import CollectionEffectivenessReport from './pages/reports/CollectionEffectivenessReport';
 import CommunicationLogReport from './pages/reports/CommunicationLogReport';
+import SatisfactionReportPage from './pages/reports/SatisfactionReport';
 import SubscriptionExpired from './pages/SubscriptionExpired';
 import PesapalCallback from './pages/PesapalCallback';
 
@@ -169,6 +170,7 @@ export default function App() {
                   <Route path="/reports/statutory" element={<StatutoryComplianceReport />} />
                   <Route path="/reports/subscriptions" element={<SubscriptionReportPage />} />
                   <Route path="/reports/collection-effectiveness" element={<CollectionEffectivenessReport />} />
+                  <Route path="/reports/satisfaction-calls" element={<SatisfactionReportPage />} />
                   <Route path="/reports/communication-log" element={<CommunicationLogReport />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>

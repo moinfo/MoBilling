@@ -54,5 +54,8 @@ export const rescheduleSatisfactionCall = (
 export const cancelSatisfactionCall = (id: string) =>
   api.patch(`/satisfaction-calls/${id}/cancel`);
 
+export const assignSatisfactionCall = (id: string, data: { user_id: string }) =>
+  api.patch(`/satisfaction-calls/${id}/assign`, data);
+
 export const getClientSatisfactionHistory = (clientId: string) =>
   api.get(`/satisfaction-calls/client/${clientId}`);

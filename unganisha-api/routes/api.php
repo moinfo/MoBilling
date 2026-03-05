@@ -299,6 +299,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/satisfaction-calls/{satisfactionCall}/log-call', [SatisfactionCallController::class, 'logCall']);
         Route::patch('/satisfaction-calls/{satisfactionCall}/reschedule', [SatisfactionCallController::class, 'reschedule']);
         Route::patch('/satisfaction-calls/{satisfactionCall}/cancel', [SatisfactionCallController::class, 'cancel']);
+        Route::patch('/satisfaction-calls/{satisfactionCall}/assign', [SatisfactionCallController::class, 'assign']);
         Route::get('/satisfaction-calls/client/{clientId}', [SatisfactionCallController::class, 'clientHistory']);
     });
 
@@ -320,6 +321,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::middleware('permission:reports.statutory')->get('/statutory-compliance', [ReportController::class, 'statutoryCompliance']);
         Route::middleware('permission:reports.subscription')->get('/subscription-report', [ReportController::class, 'subscriptionReport']);
         Route::middleware('permission:reports.collection')->get('/collection-effectiveness', [ReportController::class, 'collectionEffectiveness']);
+        Route::middleware('permission:reports.satisfaction')->get('/satisfaction-calls', [ReportController::class, 'satisfactionReport']);
         Route::middleware('permission:reports.communication')->get('/communication-log', [ReportController::class, 'communicationLog']);
     });
 
