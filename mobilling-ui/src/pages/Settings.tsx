@@ -17,7 +17,7 @@ import {
   EmailSettings as EmailSettingsType, EmailSettingsFormData,
   getReminderSettings, updateReminderSettings, ReminderSettings,
   getTemplates, updateTemplates, TemplateSettings,
-  getPaymentMethods, updatePaymentMethods, PaymentMethod, PaymentMethodDetail,
+  getPaymentMethods, updatePaymentMethods, PaymentMethod,
   getSubscriptionSettings, updateSubscriptionSettings, SubscriptionSettings,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';

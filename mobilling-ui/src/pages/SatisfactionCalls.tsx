@@ -73,7 +73,7 @@ export default function SatisfactionCalls() {
   const [internalNotes, setInternalNotes] = useState('');
 
   // Reschedule state
-  const [rescheduleDate, setRescheduleDate] = useState<Date | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<string | null>(null);
 
   const { data: dashData, isLoading: dashLoading } = useQuery({
     queryKey: ['satisfaction-dashboard'],
@@ -247,7 +247,7 @@ export default function SatisfactionCalls() {
     if (!selectedCall || !rescheduleDate) return;
     rescheduleMutation.mutate({
       id: selectedCall.id,
-      data: { scheduled_date: rescheduleDate.toISOString().split('T')[0] },
+      data: { scheduled_date: rescheduleDate },
     });
   };
 
@@ -701,7 +701,7 @@ export default function SatisfactionCalls() {
                   {clientCallHistory.map((call) => (
                     <Timeline.Item
                       key={call.id}
-                      bullet={call.rating ? <Text size={10} fw={700}>{call.rating}</Text> : <IconPhone size={12} />}
+                      bullet={call.rating ? <Text size="xs" fw={700}>{call.rating}</Text> : <IconPhone size={12} />}
                       title={
                         <Group gap="xs">
                           <Text size="sm" fw={500}>{call.month_key}</Text>

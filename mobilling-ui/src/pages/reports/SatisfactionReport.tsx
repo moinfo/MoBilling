@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Stack, SimpleGrid, Paper, Text, Table, Badge, LoadingOverlay, Rating } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Line, ComposedChart,
 } from 'recharts';
 import { IconHeartHandshake, IconStar, IconMoodHappy, IconAlertTriangle } from '@tabler/icons-react';

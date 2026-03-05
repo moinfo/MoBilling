@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
   Loader, Center, ThemeIcon, Progress, RingProgress, Button,
-  ActionIcon, Tooltip, Drawer,
+  Drawer,
 } from '@mantine/core';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -245,7 +245,6 @@ export default function Collection() {
             {Object.entries(dashboard.call_plan).map(([date, entries]) => {
               const isToday = date === new Date().toISOString().split('T')[0];
               const isPast = date < new Date().toISOString().split('T')[0];
-              const dayNum = new Date(date + 'T00:00:00').getDate();
               const dayName = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
               const monthDay = new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
 
