@@ -31,7 +31,7 @@ class ProcessOverdueInvoices extends Command
             // Get all unpaid invoices that are past due
             $overdueInvoices = Document::withoutGlobalScopes()
                 ->where('type', 'invoice')
-                ->whereNotIn('status', ['paid', 'draft'])
+                ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
                 ->whereNotNull('due_date')
                 ->where('due_date', '<', $today->toDateString())
                 ->with('client')

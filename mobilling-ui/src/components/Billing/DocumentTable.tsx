@@ -1,5 +1,5 @@
 import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip } from '@mantine/core';
-import { IconEye, IconEdit, IconTrash, IconDots, IconBell } from '@tabler/icons-react';
+import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX } from '@tabler/icons-react';
 import { Document } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
@@ -10,6 +10,7 @@ interface Props {
   onEdit: (doc: Document) => void;
   onDelete: (doc: Document) => void;
   onRemind?: (doc: Document) => void;
+  onCancel?: (doc: Document) => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -20,6 +21,7 @@ const statusColors: Record<string, string> = {
   paid: 'green',
   overdue: 'orange',
   partial: 'yellow',
+  cancelled: 'red',
 };
 
 const stageLabels: Record<string, string> = {
@@ -28,7 +30,7 @@ const stageLabels: Record<string, string> = {
   termination_warning: 'Termination warning sent',
 };
 
-export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind }: Props) {
+export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel }: Props) {
   if (documents.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No documents found</Text>;
   }
@@ -84,6 +86,15 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                         onClick={() => onRemind(doc)}
                       >
                         Send Reminder
+                      </Menu.Item>
+                    )}
+                    {onCancel && isUnpaid && (
+                      <Menu.Item
+                        leftSection={<IconX size={14} />}
+                        color="red"
+                        onClick={() => onCancel(doc)}
+                      >
+                        Cancel
                       </Menu.Item>
                     )}
                     <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => onDelete(doc)}>Delete</Menu.Item>

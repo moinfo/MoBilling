@@ -186,6 +186,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:documents.download')->get('/documents/{document}/pdf', [DocumentController::class, 'downloadPdf']);
     Route::middleware('permission:documents.send')->post('/documents/{document}/send', [DocumentController::class, 'send']);
     Route::middleware('permission:documents.send')->post('/documents/remind-unpaid', [DocumentController::class, 'remindUnpaid']);
+    Route::middleware('permission:documents.update')->patch('/documents/{document}/cancel', [DocumentController::class, 'cancel']);
 
     // Payments In
     Route::middleware('permission:payments_in.read')->get('/payments-in', [PaymentInController::class, 'index']);

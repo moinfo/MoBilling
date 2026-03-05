@@ -200,6 +200,31 @@ class DocumentController extends Controller
         return response()->json(['message' => 'Document sent successfully']);
     }
 
+    public function cancel(Document $document)
+    {
+        if ($document->status === 'paid') {
+            return response()->json(['message' => 'Cannot cancel a fully paid document.'], 422);
+        }
+
+        if ($document->status === 'cancelled') {
+            return response()->json(['message' => 'Document is already cancelled.'], 422);
+        }
+
+        // Prevent cancellation if there are partial payments
+        if ((float) $document->paid_amount > 0) {
+            return response()->json([
+                'message' => 'Cannot cancel a document with existing payments. Remove payments first.',
+            ], 422);
+        }
+
+        $document->update(['status' => 'cancelled']);
+
+        return response()->json([
+            'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+            'message' => "{$document->document_number} has been cancelled.",
+        ]);
+    }
+
     public function remindUnpaid(Request $request)
     {
         $request->validate([
@@ -211,7 +236,7 @@ class DocumentController extends Controller
         $tenant = Tenant::find(auth()->user()->tenant_id);
         $documents = Document::whereIn('id', $request->document_ids)
             ->where('type', 'invoice')
-            ->whereNotIn('status', ['paid', 'draft'])
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
             ->with('client')
             ->get();
 

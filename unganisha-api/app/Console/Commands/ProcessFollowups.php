@@ -26,7 +26,7 @@ class ProcessFollowups extends Command
             // 1. Auto-create first follow-up for invoices 3+ days overdue with no existing follow-up
             $overdueInvoices = Document::withoutGlobalScopes()
                 ->where('type', 'invoice')
-                ->whereNotIn('status', ['paid', 'draft'])
+                ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
                 ->whereDate('due_date', '<=', $today->copy()->subDays(3))
                 ->get();
 

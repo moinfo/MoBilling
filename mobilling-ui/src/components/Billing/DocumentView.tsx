@@ -3,9 +3,9 @@ import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn } from '../../api/documents';
+import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument } from '../../api/documents';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
@@ -19,7 +19,7 @@ interface Props {
 
 const statusColors: Record<string, string> = {
   draft: 'gray', sent: 'blue', accepted: 'teal', rejected: 'red',
-  paid: 'green', overdue: 'orange', partial: 'yellow',
+  paid: 'green', overdue: 'orange', partial: 'yellow', cancelled: 'red',
 };
 
 export default function DocumentView({ document: doc, onRefresh, onClose: _onClose }: Props) {
@@ -116,8 +116,30 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     }
   };
 
+  const handleCancel = () => {
+    modals.openConfirmModal({
+      title: 'Cancel Invoice',
+      children: `Cancel ${doc.document_number}? This will stop all reminders and collection actions.`,
+      labels: { confirm: 'Cancel Invoice', cancel: 'Keep' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          setLoading('cancel');
+          await cancelDocument(doc.id);
+          notifications.show({ title: 'Cancelled', message: `${doc.document_number} has been cancelled`, color: 'green' });
+          onRefresh();
+        } catch (err: any) {
+          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Cancel failed', color: 'red' });
+        } finally {
+          setLoading('');
+        }
+      },
+    });
+  };
+
   const canConvert = (doc.type === 'quotation' || doc.type === 'proforma') && doc.status !== 'accepted';
   const isInvoice = doc.type === 'invoice';
+  const canCancel = isInvoice && !['paid', 'cancelled', 'draft'].includes(doc.status) && doc.paid_amount <= 0;
 
   return (
     <Stack>
@@ -250,6 +272,12 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           <Button color="green" leftSection={<IconCash size={16} />}
             onClick={() => setShowPayment(true)}>
             Record Payment
+          </Button>
+        )}
+        {canCancel && (
+          <Button variant="light" color="red" leftSection={<IconX size={16} />}
+            onClick={handleCancel} loading={loading === 'cancel'}>
+            Cancel Invoice
           </Button>
         )}
       </Group>
