@@ -3,9 +3,9 @@ import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument } from '../../api/documents';
+import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument } from '../../api/documents';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
@@ -137,9 +137,31 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     });
   };
 
+  const handleUncancel = () => {
+    modals.openConfirmModal({
+      title: 'Restore Invoice',
+      children: `Restore ${doc.document_number}? This will reactivate the invoice and resume reminders.`,
+      labels: { confirm: 'Restore', cancel: 'Keep Cancelled' },
+      confirmProps: { color: 'green' },
+      onConfirm: async () => {
+        try {
+          setLoading('uncancel');
+          await uncancelDocument(doc.id);
+          notifications.show({ title: 'Restored', message: `${doc.document_number} has been restored`, color: 'green' });
+          onRefresh();
+        } catch (err: any) {
+          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Restore failed', color: 'red' });
+        } finally {
+          setLoading('');
+        }
+      },
+    });
+  };
+
   const canConvert = (doc.type === 'quotation' || doc.type === 'proforma') && doc.status !== 'accepted';
   const isInvoice = doc.type === 'invoice';
   const canCancel = isInvoice && !['paid', 'cancelled', 'draft'].includes(doc.status) && doc.paid_amount <= 0;
+  const canUncancel = isInvoice && doc.status === 'cancelled';
 
   return (
     <Stack>
@@ -278,6 +300,12 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           <Button variant="light" color="red" leftSection={<IconX size={16} />}
             onClick={handleCancel} loading={loading === 'cancel'}>
             Cancel Invoice
+          </Button>
+        )}
+        {canUncancel && (
+          <Button variant="light" color="green" leftSection={<IconRefresh size={16} />}
+            onClick={handleUncancel} loading={loading === 'uncancel'}>
+            Restore Invoice
           </Button>
         )}
       </Group>

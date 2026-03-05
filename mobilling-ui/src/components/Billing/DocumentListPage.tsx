@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconBell, IconMail, IconMessage, IconSend } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
-import { getDocuments, getDocument, createDocument, deleteDocument, cancelDocument, remindUnpaid, Document, DocumentFormData } from '../../api/documents';
+import { getDocuments, getDocument, createDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, Document, DocumentFormData } from '../../api/documents';
 import { getClients, Client } from '../../api/clients';
 import { getProductServices, ProductService } from '../../api/productServices';
 import DocumentTable from './DocumentTable';
@@ -108,6 +108,19 @@ export default function DocumentListPage({ type, title }: Props) {
     }),
   });
 
+  const uncancelMutation = useMutation({
+    mutationFn: (id: string) => uncancelDocument(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      notifications.show({ title: 'Restored', message: res.data.message, color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to restore',
+      color: 'red',
+    }),
+  });
+
   const remindMutation = useMutation({
     mutationFn: ({ ids, channel }: { ids: string[]; channel: 'email' | 'sms' | 'both' }) =>
       remindUnpaid(ids, channel),
@@ -140,6 +153,16 @@ export default function DocumentListPage({ type, title }: Props) {
       labels: { confirm: 'Cancel Invoice', cancel: 'Keep' },
       confirmProps: { color: 'red' },
       onConfirm: () => cancelMutation.mutate(doc.id),
+    });
+  };
+
+  const handleUncancel = (doc: Document) => {
+    modals.openConfirmModal({
+      title: 'Restore Invoice',
+      children: `Restore ${doc.document_number}? This will reactivate the invoice and resume reminders.`,
+      labels: { confirm: 'Restore', cancel: 'Keep Cancelled' },
+      confirmProps: { color: 'green' },
+      onConfirm: () => uncancelMutation.mutate(doc.id),
     });
   };
 
@@ -218,6 +241,7 @@ export default function DocumentListPage({ type, title }: Props) {
         onDelete={handleDelete}
         onRemind={isInvoice ? openRemindSingle : undefined}
         onCancel={isInvoice ? handleCancel : undefined}
+        onUncancel={isInvoice ? handleUncancel : undefined}
       />
 
       {meta && meta.last_page > 1 && (

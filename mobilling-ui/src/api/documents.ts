@@ -121,6 +121,9 @@ export const remindUnpaid = (documentIds: string[], channel: 'email' | 'sms' | '
 export const cancelDocument = (id: string) =>
   api.patch(`/documents/${id}/cancel`);
 
+export const uncancelDocument = (id: string) =>
+  api.patch(`/documents/${id}/uncancel`);
+
 // Next Bills
 export interface NextBillItem {
   subscription_id: string;

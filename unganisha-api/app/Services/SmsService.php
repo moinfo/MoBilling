@@ -34,12 +34,10 @@ class SmsService
                 'Accept' => 'application/json',
                 'Content-Type' => 'application/json',
             ])
-            ->post('/api/sms/v1/send', [
-                'source' => $tenant->sender_id,
-                'message' => $message,
-                'destinations' => [
-                    ['recipient' => $recipient],
-                ],
+            ->post('/api/sms/v1/text/single', [
+                'from' => $tenant->sender_id,
+                'text' => $message,
+                'to' => $recipient,
             ]);
 
         if (!$response->successful()) {

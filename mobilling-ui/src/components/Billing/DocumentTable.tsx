@@ -1,5 +1,5 @@
 import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip } from '@mantine/core';
-import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX } from '@tabler/icons-react';
+import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX, IconRefresh } from '@tabler/icons-react';
 import { Document } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
@@ -11,6 +11,7 @@ interface Props {
   onDelete: (doc: Document) => void;
   onRemind?: (doc: Document) => void;
   onCancel?: (doc: Document) => void;
+  onUncancel?: (doc: Document) => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -30,7 +31,7 @@ const stageLabels: Record<string, string> = {
   termination_warning: 'Termination warning sent',
 };
 
-export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel }: Props) {
+export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel }: Props) {
   if (documents.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No documents found</Text>;
   }
@@ -50,13 +51,14 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
         </Table.Thead>
       <Table.Tbody>
         {documents.map((doc) => {
-          const isUnpaid = doc.status !== 'paid' && doc.status !== 'draft';
+          const isCancelled = doc.status === 'cancelled';
+          const isUnpaid = !isCancelled && doc.status !== 'paid' && doc.status !== 'draft';
           return (
-            <Table.Tr key={doc.id} style={{ cursor: 'pointer' }} onClick={() => onView(doc)}>
-              <Table.Td fw={500}>{doc.document_number}</Table.Td>
-              <Table.Td>{doc.client?.name || '—'}</Table.Td>
+            <Table.Tr key={doc.id} style={{ cursor: 'pointer', opacity: isCancelled ? 0.5 : 1 }} onClick={() => onView(doc)}>
+              <Table.Td fw={500} td={isCancelled ? 'line-through' : undefined}>{doc.document_number}</Table.Td>
+              <Table.Td td={isCancelled ? 'line-through' : undefined}>{doc.client?.name || '—'}</Table.Td>
               <Table.Td>{formatDate(doc.date)}</Table.Td>
-              <Table.Td>{formatCurrency(doc.total)}</Table.Td>
+              <Table.Td td={isCancelled ? 'line-through' : undefined}>{formatCurrency(doc.total)}</Table.Td>
               <Table.Td>
                 <Group gap={6}>
                   <Badge color={statusColors[doc.status] || 'gray'} size="sm">
@@ -95,6 +97,15 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                         onClick={() => onCancel(doc)}
                       >
                         Cancel
+                      </Menu.Item>
+                    )}
+                    {onUncancel && isCancelled && (
+                      <Menu.Item
+                        leftSection={<IconRefresh size={14} />}
+                        color="green"
+                        onClick={() => onUncancel(doc)}
+                      >
+                        Restore
                       </Menu.Item>
                     )}
                     <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => onDelete(doc)}>Delete</Menu.Item>

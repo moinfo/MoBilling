@@ -219,9 +219,31 @@ class DocumentController extends Controller
 
         $document->update(['status' => 'cancelled']);
 
+        // Notify client about cancellation via email/SMS
+        $document->load('client');
+        if ($document->client) {
+            $document->client->notify(new \App\Notifications\InvoiceCancelledNotification($document));
+        }
+
         return response()->json([
             'data' => new DocumentResource($document->fresh()->load('items', 'client')),
             'message' => "{$document->document_number} has been cancelled.",
+        ]);
+    }
+
+    public function uncancel(Document $document)
+    {
+        if ($document->status !== 'cancelled') {
+            return response()->json(['message' => 'Only cancelled documents can be restored.'], 422);
+        }
+
+        // Restore to 'sent' — if overdue, the cron will update it automatically
+        $newStatus = $document->due_date && $document->due_date->lt(now()) ? 'overdue' : 'sent';
+        $document->update(['status' => $newStatus]);
+
+        return response()->json([
+            'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+            'message' => "{$document->document_number} has been restored.",
         ]);
     }
 
