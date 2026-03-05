@@ -5,6 +5,7 @@ import { IconLink, IconCash, IconCalendarRepeat, IconChartPie, IconPlayerPause }
 import { getSubscriptionReport, ProductBreakdown, SubscriptionReport } from '../../api/reports';
 import ReportHeader from '../../components/Reports/ReportHeader';
 import StatCard from '../../components/Reports/StatCard';
+import { formatCurrency } from '../../utils/formatCurrency';
 import { useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 
@@ -278,7 +279,7 @@ export default function SubscriptionReportPage() {
                               <Text span c="green">{p.active_count}</Text>
                               {p.suspended_count > 0 && <Text span c="orange"> / {p.suspended_count} susp</Text>}
                             </Text>
-                            <Text fw={600}>KES {fmt(p.total_revenue)}</Text>
+                            <Text fw={600}>{formatCurrency(p.total_revenue)}</Text>
                           </Group>
                         </Group>
                       </Accordion.Control>
