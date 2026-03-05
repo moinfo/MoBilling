@@ -64,7 +64,7 @@ class PaymentOutController extends Controller
         $validated = $request->validate([
             'amount' => 'sometimes|numeric|min:0.01',
             'payment_date' => 'sometimes|date',
-            'payment_method' => 'sometimes|in:cash,bank,mpesa,card,other',
+            'payment_method' => ['sometimes', 'string', \Illuminate\Validation\Rule::in($this->allowedPaymentMethods())],
             'control_number' => 'nullable|string|max:255',
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:1000',
@@ -90,5 +90,15 @@ class PaymentOutController extends Controller
         $bill->update(['paid_at' => $totalPaid >= $bill->amount ? $bill->paid_at : null]);
 
         return response()->json(['message' => 'Payment deleted']);
+    }
+
+    private function allowedPaymentMethods(): array
+    {
+        $tenant = auth()->user()?->tenant;
+        if ($tenant && !empty($tenant->payment_methods)) {
+            return collect($tenant->payment_methods)->pluck('value')->all();
+        }
+
+        return ['cash', 'bank', 'mpesa', 'card', 'other'];
     }
 }

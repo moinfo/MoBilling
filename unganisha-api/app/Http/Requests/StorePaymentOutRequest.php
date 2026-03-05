@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Bill;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StorePaymentOutRequest extends FormRequest
 {
@@ -14,16 +15,28 @@ class StorePaymentOutRequest extends FormRequest
 
     public function rules(): array
     {
+        $methods = $this->allowedPaymentMethods();
+
         return [
             'bill_id' => 'required|uuid|exists:bills,id',
             'amount' => 'required|numeric|min:0.01',
             'payment_date' => 'required|date',
-            'payment_method' => 'required|in:cash,bank,mpesa,card,other',
+            'payment_method' => ['required', 'string', Rule::in($methods)],
             'control_number' => 'nullable|string|max:255',
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:1000',
             'receipt' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ];
+    }
+
+    private function allowedPaymentMethods(): array
+    {
+        $tenant = auth()->user()?->tenant;
+        if ($tenant && !empty($tenant->payment_methods)) {
+            return collect($tenant->payment_methods)->pluck('value')->all();
+        }
+
+        return ['cash', 'bank', 'mpesa', 'card', 'other'];
     }
 
     public function withValidator($validator): void
