@@ -1,9 +1,9 @@
-import { Card, Group, Text, Badge, Table, Divider, Button, Stack, NumberInput, Select, TextInput, Textarea, Alert } from '@mantine/core';
+import { Card, Group, Text, Badge, Checkbox, Table, Divider, Button, Stack, NumberInput, Select, TextInput, Textarea, Alert } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconCreditCard } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument } from '../../api/documents';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
@@ -26,16 +26,46 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
   const { methods: paymentMethods, getMethodDetails } = usePaymentMethods();
   const [showPayment, setShowPayment] = useState(false);
   const [loading, setLoading] = useState('');
+  const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
   const paymentForm = useForm({
     initialValues: {
       amount: doc.balance_due,
       payment_date: new Date(),
-      payment_method: 'bank',
+      payment_method: paymentMethods[0]?.value || 'bank',
       reference: '',
       notes: '',
     },
   });
+
+  const toggleItem = (itemId: string) => {
+    setSelectedItems((prev) => {
+      const next = prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId];
+      // Auto-calculate amount from selected items
+      const total = (doc.items || [])
+        .filter((item) => next.includes(item.id || ''))
+        .reduce((sum, item) => sum + (item.total || 0), 0);
+      paymentForm.setFieldValue('amount', total > 0 ? total : doc.balance_due);
+      // Auto-fill notes with selected item descriptions
+      if (next.length > 0 && next.length < (doc.items?.length || 0)) {
+        const descriptions = (doc.items || [])
+          .filter((item) => next.includes(item.id || ''))
+          .map((item) => item.description)
+          .join(', ');
+        paymentForm.setFieldValue('notes', `Payment for: ${descriptions}`);
+      } else {
+        paymentForm.setFieldValue('notes', '');
+      }
+      return next;
+    });
+  };
+
+  const selectAllItems = () => {
+    const allIds = (doc.items || []).map((item) => item.id || '').filter(Boolean);
+    setSelectedItems(allIds);
+    paymentForm.setFieldValue('amount', doc.balance_due);
+    paymentForm.setFieldValue('notes', '');
+  };
 
   const handleConvert = () => {
     const target = doc.type === 'quotation' ? 'proforma' : 'invoice';
@@ -318,7 +348,44 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
       {/* Payment Form */}
       {showPayment && (
         <Card withBorder>
-          <Text fw={600} mb="md">Record Payment</Text>
+          <Group justify="space-between" mb="md">
+            <Text fw={600}>Record Payment</Text>
+            <Button variant="subtle" size="xs" onClick={selectAllItems}>Select All Items</Button>
+          </Group>
+
+          {/* Item selection for partial payment */}
+          {doc.items && doc.items.length > 1 && (
+            <Stack gap="xs" mb="md">
+              <Text size="sm" c="dimmed">Select items the client is paying for:</Text>
+              {doc.items.map((item) => (
+                <Group
+                  key={item.id}
+                  gap="sm"
+                  p="xs"
+                  style={{
+                    borderRadius: 6,
+                    background: selectedItems.includes(item.id || '') ? 'var(--mantine-color-green-light)' : 'var(--mantine-color-gray-light)',
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => toggleItem(item.id || '')}
+                >
+                  <Checkbox
+                    checked={selectedItems.includes(item.id || '')}
+                    onChange={() => {}}
+                    size="sm"
+                  />
+                  <div style={{ flex: 1 }}>
+                    <Text size="sm">{item.description}</Text>
+                    {item.service_from && item.service_to && (
+                      <Text size="xs" c="dimmed">{formatDate(item.service_from)} — {formatDate(item.service_to)}</Text>
+                    )}
+                  </div>
+                  <Text size="sm" fw={600}>{formatCurrency(item.total || 0)}</Text>
+                </Group>
+              ))}
+            </Stack>
+          )}
+
           <form onSubmit={paymentForm.onSubmit(handlePayment)}>
             <Stack>
               <Group grow>
