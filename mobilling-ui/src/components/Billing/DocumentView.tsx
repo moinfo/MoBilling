@@ -3,9 +3,9 @@ import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument } from '../../api/documents';
+import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem } from '../../api/documents';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
@@ -65,6 +65,29 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     setSelectedItems(allIds);
     paymentForm.setFieldValue('amount', doc.balance_due);
     paymentForm.setFieldValue('notes', '');
+  };
+
+  const canModifyItems = isInvoice && doc.status !== 'paid' && doc.status !== 'cancelled' && (doc.items?.length || 0) > 1;
+
+  const handleRemoveItem = (itemId: string, description: string) => {
+    modals.openConfirmModal({
+      title: 'Remove Item',
+      children: `Remove "${description}" from this invoice? The invoice total will be recalculated.`,
+      labels: { confirm: 'Remove', cancel: 'Keep' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          setLoading('removeItem');
+          await removeDocumentItem(doc.id, itemId);
+          notifications.show({ title: 'Item removed', message: 'Invoice total updated.', color: 'green' });
+          onRefresh();
+        } catch (e: any) {
+          notifications.show({ title: 'Error', message: e.response?.data?.message || 'Failed to remove item', color: 'red' });
+        } finally {
+          setLoading('');
+        }
+      },
+    });
   };
 
   const handleConvert = () => {
@@ -227,6 +250,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
               <Table.Th>Disc %</Table.Th>
               <Table.Th>Tax</Table.Th>
               <Table.Th>Total</Table.Th>
+              {canModifyItems && <Table.Th w={50}></Table.Th>}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -254,6 +278,19 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
                 </Table.Td>
                 <Table.Td>{item.tax_percent}%</Table.Td>
                 <Table.Td fw={500}>{formatCurrency(item.total || 0)}</Table.Td>
+                {canModifyItems && (
+                  <Table.Td>
+                    <Button
+                      variant="subtle"
+                      color="red"
+                      size="compact-xs"
+                      loading={loading === 'removeItem'}
+                      onClick={() => handleRemoveItem(item.id || '', item.description)}
+                    >
+                      <IconTrash size={14} />
+                    </Button>
+                  </Table.Td>
+                )}
               </Table.Tr>
             ))}
           </Table.Tbody>

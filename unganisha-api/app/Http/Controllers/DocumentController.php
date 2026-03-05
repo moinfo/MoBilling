@@ -6,6 +6,7 @@ use App\Http\Requests\StoreDocumentRequest;
 use App\Http\Resources\DocumentResource;
 use App\Models\CommunicationLog;
 use App\Models\Document;
+use App\Models\DocumentItem;
 use App\Models\Tenant;
 use App\Notifications\RecurringInvoiceReminderNotification;
 use App\Services\DocumentConversionService;
@@ -245,6 +246,57 @@ class DocumentController extends Controller
             'data' => new DocumentResource($document->fresh()->load('items', 'client')),
             'message' => "{$document->document_number} has been restored.",
         ]);
+    }
+
+    public function removeItem(Document $document, DocumentItem $item)
+    {
+        if ($document->status === 'paid') {
+            return response()->json(['message' => 'Cannot modify a paid document.'], 422);
+        }
+
+        if ($document->status === 'cancelled') {
+            return response()->json(['message' => 'Cannot modify a cancelled document.'], 422);
+        }
+
+        if ($item->document_id !== $document->id) {
+            return response()->json(['message' => 'Item does not belong to this document.'], 422);
+        }
+
+        $remainingItems = $document->items()->where('id', '!=', $item->id)->count();
+        if ($remainingItems === 0) {
+            return response()->json(['message' => 'Cannot remove the last item. Cancel the invoice instead.'], 422);
+        }
+
+        return DB::transaction(function () use ($document, $item) {
+            $item->delete();
+
+            // Recalculate totals from remaining items
+            $subtotal = 0;
+            $discountTotal = 0;
+            $taxAmount = 0;
+
+            foreach ($document->items()->get() as $remaining) {
+                $lineBase = $remaining->quantity * $remaining->price;
+                $lineDiscount = $remaining->discount_type === 'flat'
+                    ? min($remaining->discount_value, $lineBase)
+                    : $lineBase * ($remaining->discount_value / 100);
+                $subtotal += $lineBase;
+                $discountTotal += $lineDiscount;
+                $taxAmount += $remaining->tax_amount;
+            }
+
+            $document->update([
+                'subtotal' => round($subtotal, 2),
+                'discount_amount' => round($discountTotal, 2),
+                'tax_amount' => round($taxAmount, 2),
+                'total' => round($subtotal - $discountTotal + $taxAmount, 2),
+            ]);
+
+            return response()->json([
+                'data' => new DocumentResource($document->fresh()->load('items', 'client', 'payments')),
+                'message' => "Item removed. Invoice total updated.",
+            ]);
+        });
     }
 
     public function remindUnpaid(Request $request)

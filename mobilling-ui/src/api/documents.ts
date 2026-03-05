@@ -126,6 +126,9 @@ export const cancelDocument = (id: string) =>
 export const uncancelDocument = (id: string) =>
   api.patch(`/documents/${id}/uncancel`);
 
+export const removeDocumentItem = (documentId: string, itemId: string) =>
+  api.delete(`/documents/${documentId}/items/${itemId}`);
+
 // Next Bills
 export interface NextBillItem {
   subscription_id: string;
