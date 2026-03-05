@@ -3,7 +3,7 @@ import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconCreditCard } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument } from '../../api/documents';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
