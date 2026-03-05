@@ -24,7 +24,11 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
 
     public function via($notifiable): array
     {
-        $channels = ['mail'];
+        $channels = [];
+
+        if ($this->tenant->email_enabled) {
+            $channels[] = 'mail';
+        }
 
         if ($this->tenant->sms_enabled && $this->tenant->reminder_sms_enabled) {
             $channels[] = SmsChannel::class;

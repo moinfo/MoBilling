@@ -27,7 +27,7 @@ class BillDueReminderNotification extends Notification implements ShouldQueue
 
         $channels[] = 'database';
 
-        if ($this->tenant->reminder_email_enabled) {
+        if ($this->tenant->email_enabled && $this->tenant->reminder_email_enabled) {
             $channels[] = 'mail';
         }
 

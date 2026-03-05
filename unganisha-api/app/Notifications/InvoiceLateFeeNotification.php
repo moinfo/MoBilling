@@ -25,7 +25,11 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        $channels = ['mail'];
+        $channels = [];
+
+        if ($this->tenant->email_enabled) {
+            $channels[] = 'mail';
+        }
 
         if ($this->tenant->sms_enabled && $this->tenant->reminder_sms_enabled) {
             $channels[] = SmsChannel::class;

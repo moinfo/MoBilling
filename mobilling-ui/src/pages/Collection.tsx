@@ -1,20 +1,44 @@
+import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
   Loader, Center, ThemeIcon, Progress, RingProgress, Button,
+  ActionIcon, Tooltip, Drawer,
 } from '@mantine/core';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   IconCash, IconCalendarDue, IconAlertTriangle, IconTrendingUp,
-  IconReceipt, IconClock, IconPhoneCall, IconArrowRight,
+  IconReceipt, IconClock, IconPhoneCall, IconArrowRight, IconFileInvoice,
+  IconCalendar,
 } from '@tabler/icons-react';
-import { getCollectionDashboard } from '../api/collection';
+import { getCollectionDashboard, CallPlanEntry } from '../api/collection';
+import { getDocument, Document } from '../api/documents';
 import { getFollowupDashboard } from '../api/followups';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
+import DocumentView from '../components/Billing/DocumentView';
 
 export default function Collection() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [viewDoc, setViewDoc] = useState<Document | null>(null);
+
+  const openPreview = async (docId: string) => {
+    try {
+      const res = await getDocument(docId);
+      setViewDoc(res.data.data);
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (viewDoc) {
+      const res = await getDocument(viewDoc.id);
+      setViewDoc(res.data.data);
+    }
+    queryClient.invalidateQueries({ queryKey: ['collection-dashboard'] });
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['collection-dashboard'],
@@ -48,6 +72,41 @@ export default function Collection() {
   return (
     <Stack gap="lg">
       <Title order={2}>Collection</Title>
+
+      {/* Total Outstanding — prominent */}
+      <Paper withBorder p="lg" radius="md" style={{ borderColor: 'var(--mantine-color-blue-4)', borderWidth: 2 }}>
+        <Group justify="space-between" wrap="wrap">
+          <Group gap="md">
+            <ThemeIcon variant="light" color="blue" size="xl" radius="md">
+              <IconFileInvoice size={28} />
+            </ThemeIcon>
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Total to Collect</Text>
+              <Text size="xl" fw={700}>{formatCurrency(summary.total_outstanding)}</Text>
+              <Text size="xs" c="dimmed">
+                {summary.unpaid_count} unpaid invoice(s) &middot; {formatCurrency(summary.total_partial_paid)} partially paid
+              </Text>
+            </div>
+          </Group>
+
+          {/* Aging mini-bars */}
+          <Stack gap={4} style={{ minWidth: 220 }}>
+            <Text size="xs" fw={600} c="dimmed" tt="uppercase">Aging</Text>
+            {[
+              { label: 'Current', value: dashboard.aging.current, color: 'green' },
+              { label: '1–30 days', value: dashboard.aging['1_30'], color: 'yellow' },
+              { label: '31–60 days', value: dashboard.aging['31_60'], color: 'orange' },
+              { label: '61–90 days', value: dashboard.aging['61_90'], color: 'red' },
+              { label: '90+ days', value: dashboard.aging.over_90, color: 'dark' },
+            ].filter(a => a.value > 0).map((a) => (
+              <Group key={a.label} justify="space-between" gap="xs">
+                <Badge variant="light" color={a.color} size="sm" style={{ minWidth: 80 }}>{a.label}</Badge>
+                <Text size="sm" fw={600}>{formatCurrency(a.value)}</Text>
+              </Group>
+            ))}
+          </Stack>
+        </Group>
+      </Paper>
 
       {/* Summary Cards */}
       <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }}>
@@ -103,7 +162,7 @@ export default function Collection() {
               <IconTrendingUp size={20} />
             </ThemeIcon>
             <div>
-              <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Month Target</Text>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={600}>This Month + Overdue</Text>
               <Text size="lg" fw={700}>{formatCurrency(summary.month_target)}</Text>
             </div>
           </Group>
@@ -168,6 +227,101 @@ export default function Collection() {
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+        </Paper>
+      )}
+
+      {/* Call Plan Calendar */}
+      {dashboard.call_plan && Object.keys(dashboard.call_plan).length > 0 && (
+        <Paper withBorder p="md" radius="md">
+          <Group gap="sm" mb="md">
+            <IconCalendar size={20} color="var(--mantine-color-blue-6)" />
+            <Title order={4}>Call Plan — This Month</Title>
+            <Badge color="blue" variant="light" size="sm">
+              {Object.values(dashboard.call_plan).reduce((s, entries) => s + entries.length, 0)} calls
+            </Badge>
+          </Group>
+
+          <SimpleGrid cols={{ base: 1, sm: 2, lg: 3, xl: 4 }} spacing="sm">
+            {Object.entries(dashboard.call_plan).map(([date, entries]) => {
+              const isToday = date === new Date().toISOString().split('T')[0];
+              const isPast = date < new Date().toISOString().split('T')[0];
+              const dayNum = new Date(date + 'T00:00:00').getDate();
+              const dayName = new Date(date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'short' });
+              const monthDay = new Date(date + 'T00:00:00').toLocaleDateString('en-GB', { day: '2-digit', month: 'short' });
+
+              return (
+                <Paper
+                  key={date}
+                  withBorder
+                  p="xs"
+                  radius="sm"
+                  style={{
+                    borderColor: isToday
+                      ? 'var(--mantine-color-blue-5)'
+                      : isPast
+                      ? 'var(--mantine-color-dark-4)'
+                      : undefined,
+                    borderWidth: isToday ? 2 : 1,
+                    opacity: isPast ? 0.6 : 1,
+                  }}
+                >
+                  <Group justify="space-between" mb={4}>
+                    <Group gap={4}>
+                      <Text fw={700} size="sm">{dayName}</Text>
+                      <Text fw={700} size="sm" c={isToday ? 'blue' : undefined}>{monthDay}</Text>
+                    </Group>
+                    {isToday && <Badge size="xs" color="blue">Today</Badge>}
+                  </Group>
+
+                  <Stack gap={4}>
+                    {(entries as CallPlanEntry[]).map((entry, i) => (
+                      <Paper
+                        key={i}
+                        p={6}
+                        radius="sm"
+                        onClick={() => openPreview(entry.document_id)}
+                        style={{
+                          cursor: 'pointer',
+                          backgroundColor:
+                            entry.type === 'overdue_urgent' ? 'var(--mantine-color-red-light)' :
+                            entry.type === 'overdue_followup' ? 'var(--mantine-color-orange-light)' :
+                            entry.type === 'due_date' ? 'var(--mantine-color-blue-light)' :
+                            entry.type === 'followup' ? 'var(--mantine-color-teal-light)' :
+                            'var(--mantine-color-default-hover)',
+                        }}
+                      >
+                        <Group justify="space-between" gap={4} wrap="nowrap">
+                          <Text size="xs" fw={600} truncate>{entry.client_name}</Text>
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color={
+                              entry.type === 'overdue_urgent' ? 'red' :
+                              entry.type === 'overdue_followup' ? 'orange' :
+                              entry.type === 'due_date' ? 'blue' :
+                              entry.type === 'followup' ? 'teal' :
+                              'gray'
+                            }
+                          >
+                            {entry.label}
+                          </Badge>
+                        </Group>
+                        <Group justify="space-between" gap={4} mt={2}>
+                          <Text size="xs" c="dimmed">{entry.document_number}</Text>
+                          <Text size="xs" fw={600} c="red">{formatCurrency(entry.balance)}</Text>
+                        </Group>
+                        {entry.client_phone && (
+                          <Text size="xs" c="dimmed" mt={2}>
+                            <IconPhoneCall size={10} style={{ verticalAlign: 'middle' }} /> {entry.client_phone}
+                          </Text>
+                        )}
+                      </Paper>
+                    ))}
+                  </Stack>
+                </Paper>
+              );
+            })}
+          </SimpleGrid>
         </Paper>
       )}
 
@@ -260,7 +414,7 @@ export default function Collection() {
               </Table.Thead>
               <Table.Tbody>
                 {dashboard.today_due.map((inv) => (
-                  <Table.Tr key={inv.id}>
+                  <Table.Tr key={inv.id} onClick={() => openPreview(inv.id)} style={{ cursor: 'pointer' }}>
                     <Table.Td fw={500}>{inv.document_number}</Table.Td>
                     <Table.Td>{inv.client_name}</Table.Td>
                     <Table.Td>{formatCurrency(inv.total)}</Table.Td>
@@ -341,7 +495,7 @@ export default function Collection() {
               </Table.Thead>
               <Table.Tbody>
                 {dashboard.overdue.map((inv) => (
-                  <Table.Tr key={inv.id}>
+                  <Table.Tr key={inv.id} onClick={() => openPreview(inv.id)} style={{ cursor: 'pointer' }}>
                     <Table.Td fw={500}>{inv.document_number}</Table.Td>
                     <Table.Td>{inv.client_name}</Table.Td>
                     <Table.Td>{inv.due_date ? formatDate(inv.due_date) : '—'}</Table.Td>
@@ -385,7 +539,7 @@ export default function Collection() {
               </Table.Thead>
               <Table.Tbody>
                 {dashboard.upcoming.map((inv) => (
-                  <Table.Tr key={inv.id}>
+                  <Table.Tr key={inv.id} onClick={() => openPreview(inv.id)} style={{ cursor: 'pointer' }}>
                     <Table.Td fw={500}>{inv.document_number}</Table.Td>
                     <Table.Td>{inv.client_name}</Table.Td>
                     <Table.Td>{inv.due_date ? formatDate(inv.due_date) : '—'}</Table.Td>
@@ -407,6 +561,22 @@ export default function Collection() {
           </Table.ScrollContainer>
         )}
       </Paper>
+      {/* Invoice Preview Drawer */}
+      <Drawer
+        opened={!!viewDoc}
+        onClose={() => setViewDoc(null)}
+        title="Invoice Preview"
+        size="xl"
+        position="right"
+      >
+        {viewDoc && (
+          <DocumentView
+            document={viewDoc}
+            onRefresh={handleRefresh}
+            onClose={() => setViewDoc(null)}
+          />
+        )}
+      </Drawer>
     </Stack>
   );
 }

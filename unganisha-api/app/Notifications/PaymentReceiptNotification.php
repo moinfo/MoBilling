@@ -22,6 +22,13 @@ class PaymentReceiptNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $tenant = $this->document->tenant;
+
+        if ($tenant && !$tenant->email_enabled) {
+            return [];
+        }
+
         return ['mail'];
     }
 

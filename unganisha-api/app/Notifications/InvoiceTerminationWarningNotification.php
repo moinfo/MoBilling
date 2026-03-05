@@ -23,8 +23,11 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
 
     public function via($notifiable): array
     {
-        // Always send via BOTH channels for termination warnings
-        $channels = ['mail'];
+        $channels = [];
+
+        if ($this->tenant->email_enabled) {
+            $channels[] = 'mail';
+        }
 
         if ($this->tenant->sms_enabled) {
             $channels[] = SmsChannel::class;

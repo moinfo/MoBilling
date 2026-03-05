@@ -98,6 +98,7 @@ class SettingsController extends Controller
 
         return response()->json([
             'data' => $tenant->only([
+                'email_enabled', 'sms_enabled',
                 'reminder_sms_enabled', 'reminder_email_enabled',
             ]),
         ]);
@@ -108,6 +109,8 @@ class SettingsController extends Controller
         $this->authorizePermission('settings.reminders');
 
         $validated = $request->validate([
+            'email_enabled'          => 'boolean',
+            'sms_enabled'            => 'boolean',
             'reminder_sms_enabled'   => 'boolean',
             'reminder_email_enabled' => 'boolean',
         ]);
@@ -117,6 +120,7 @@ class SettingsController extends Controller
 
         return response()->json([
             'data'    => $tenant->fresh()->only([
+                'email_enabled', 'sms_enabled',
                 'reminder_sms_enabled', 'reminder_email_enabled',
             ]),
             'message' => 'Reminder settings updated.',

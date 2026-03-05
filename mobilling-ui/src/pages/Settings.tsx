@@ -443,12 +443,14 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
   const settings: ReminderSettings | undefined = data?.data?.data;
 
   const form = useForm<ReminderSettings>({
-    initialValues: { reminder_sms_enabled: false, reminder_email_enabled: true },
+    initialValues: { email_enabled: true, sms_enabled: false, reminder_sms_enabled: false, reminder_email_enabled: true },
   });
 
   const [initialized, setInitialized] = useState(false);
   if (settings && !initialized) {
     form.setValues({
+      email_enabled: settings.email_enabled,
+      sms_enabled: settings.sms_enabled,
       reminder_sms_enabled: settings.reminder_sms_enabled,
       reminder_email_enabled: settings.reminder_email_enabled,
     });
@@ -514,17 +516,38 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
       <form onSubmit={form.onSubmit((values) => saveMutation.mutate(values))}>
         <Stack>
+          <Text fw={600} size="sm">System-wide Notifications</Text>
+          <Text size="xs" c="dimmed">
+            Master switches — when off, no emails or SMS are sent to customers at all (invoices, reminders, receipts, etc.)
+          </Text>
+          <Switch
+            label="Email notifications enabled"
+            description="Send emails to customers (invoices, reminders, receipts, warnings)"
+            disabled={!isAdmin}
+            checked={form.values.email_enabled}
+            onChange={(e) => form.setFieldValue('email_enabled', e.currentTarget.checked)}
+          />
+          <Switch
+            label="SMS notifications enabled"
+            description="Send SMS to customers (invoices, reminders, warnings)"
+            disabled={!isAdmin}
+            checked={form.values.sms_enabled}
+            onChange={(e) => form.setFieldValue('sms_enabled', e.currentTarget.checked)}
+          />
+
+          <Divider my="xs" label="Automatic Reminders" labelPosition="left" />
+
           <Switch
             label="Email reminders enabled"
             description="Send email reminders for upcoming and overdue bills"
-            disabled={!isAdmin}
+            disabled={!isAdmin || !form.values.email_enabled}
             checked={form.values.reminder_email_enabled}
             onChange={(e) => form.setFieldValue('reminder_email_enabled', e.currentTarget.checked)}
           />
           <Switch
             label="SMS reminders enabled"
             description="Send SMS reminders for upcoming and overdue bills"
-            disabled={!isAdmin}
+            disabled={!isAdmin || !form.values.sms_enabled}
             checked={form.values.reminder_sms_enabled}
             onChange={(e) => form.setFieldValue('reminder_sms_enabled', e.currentTarget.checked)}
           />
@@ -535,7 +558,7 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
           {isAdmin && (
             <Group justify="flex-end">
-              <Button type="submit" loading={saveMutation.isPending}>Save Reminders</Button>
+              <Button type="submit" loading={saveMutation.isPending}>Save Settings</Button>
             </Group>
           )}
         </Stack>

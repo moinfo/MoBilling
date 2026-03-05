@@ -74,6 +74,8 @@ export const testEmailSettings = () =>
 // --- Reminder Settings (switches only) ---
 
 export interface ReminderSettings {
+  email_enabled: boolean;
+  sms_enabled: boolean;
   reminder_sms_enabled: boolean;
   reminder_email_enabled: boolean;
 }

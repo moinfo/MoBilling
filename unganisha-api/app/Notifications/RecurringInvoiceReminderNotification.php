@@ -27,20 +27,22 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
 
     public function via($notifiable): array
     {
-        // Manual reminder — use the specified channel(s)
+        // Manual reminder — use the specified channel(s), but still respect master switches
         if ($this->forceChannels) {
-            return match ($this->forceChannels) {
-                'email' => ['mail'],
-                'sms' => [SmsChannel::class],
-                'both' => ['mail', SmsChannel::class],
-                default => ['mail'],
-            };
+            $channels = [];
+            if (in_array($this->forceChannels, ['email', 'both']) && $this->tenant->email_enabled) {
+                $channels[] = 'mail';
+            }
+            if (in_array($this->forceChannels, ['sms', 'both']) && $this->tenant->sms_enabled) {
+                $channels[] = SmsChannel::class;
+            }
+            return $channels;
         }
 
         // Automated — respect tenant settings
         $channels = [];
 
-        if ($this->tenant->reminder_email_enabled) {
+        if ($this->tenant->email_enabled && $this->tenant->reminder_email_enabled) {
             $channels[] = 'mail';
         }
 

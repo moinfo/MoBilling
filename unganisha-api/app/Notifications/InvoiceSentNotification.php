@@ -20,10 +20,14 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        $channels = ['mail'];
-
         $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
         $tenant = $this->document->tenant;
+
+        $channels = [];
+
+        if ($tenant->email_enabled) {
+            $channels[] = 'mail';
+        }
 
         if ($tenant->sms_enabled && $tenant->reminder_sms_enabled) {
             $channels[] = SmsChannel::class;

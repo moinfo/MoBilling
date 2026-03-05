@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Title, Group, Button, TextInput, Pagination, Drawer,
   SegmentedControl, Modal, Stack, Text, Radio,
@@ -8,6 +8,7 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconBell, IconMail, IconMessage, IconSend } from '@tabler/icons-react';
+import { useSearchParams } from 'react-router-dom';
 import { getDocuments, getDocument, createDocument, deleteDocument, remindUnpaid, Document, DocumentFormData } from '../../api/documents';
 import { getClients, Client } from '../../api/clients';
 import { getProductServices, ProductService } from '../../api/productServices';
@@ -22,12 +23,23 @@ interface Props {
 
 export default function DocumentListPage({ type, title }: Props) {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('all');
   const [formOpen, setFormOpen] = useState(false);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
+
+  // Auto-open preview from URL query param (?preview=documentId)
+  useEffect(() => {
+    const previewId = searchParams.get('preview');
+    if (previewId) {
+      getDocument(previewId).then((res) => setViewDoc(res.data.data)).catch(() => {});
+      searchParams.delete('preview');
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Remind modal state
   const [remindOpened, { open: openRemind, close: closeRemind }] = useDisclosure(false);
