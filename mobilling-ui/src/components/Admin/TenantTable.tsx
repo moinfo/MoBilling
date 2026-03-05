@@ -1,5 +1,5 @@
 import { Table, ActionIcon, Group, Text, Badge, Tooltip } from '@mantine/core';
-import { IconEdit, IconPlayerPlay, IconPlayerPause, IconUsers, IconEye, IconId } from '@tabler/icons-react';
+import { IconEdit, IconPlayerPlay, IconPlayerPause, IconUsers, IconEye, IconId, IconCalendarPlus } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { Tenant } from '../../api/admin';
 
@@ -15,6 +15,7 @@ interface Props {
   onEdit: (tenant: Tenant) => void;
   onToggleActive: (tenant: Tenant) => void;
   onImpersonate?: (tenant: Tenant) => void;
+  onExtend?: (tenant: Tenant) => void;
 }
 
 function formatExpiry(tenant: Tenant): string {
@@ -33,7 +34,7 @@ function expiryColor(tenant: Tenant): string {
   return 'dimmed';
 }
 
-export default function TenantTable({ tenants, onEdit, onToggleActive, onImpersonate }: Props) {
+export default function TenantTable({ tenants, onEdit, onToggleActive, onImpersonate, onExtend }: Props) {
   const navigate = useNavigate();
 
   if (tenants.length === 0) {
@@ -88,6 +89,13 @@ export default function TenantTable({ tenants, onEdit, onToggleActive, onImperso
                     <IconId size={16} />
                   </ActionIcon>
                 </Tooltip>
+                {onExtend && (
+                  <Tooltip label="Extend subscription">
+                    <ActionIcon variant="light" color="cyan" onClick={() => onExtend(tenant)}>
+                      <IconCalendarPlus size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
                 {onImpersonate && tenant.is_active && (
                   <Tooltip label="View as tenant">
                     <ActionIcon variant="light" color="teal" onClick={() => onImpersonate(tenant)}>

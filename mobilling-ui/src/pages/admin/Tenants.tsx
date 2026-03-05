@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Pagination } from '@mantine/core';
+import { Title, Group, Button, TextInput, Modal, Pagination, Select, NumberInput, Stack, Text } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { getTenants, createTenant, updateTenant, toggleTenantActive, impersonateTenant, Tenant, TenantFormData, CreateTenantData } from '../../api/admin';
+import { getTenants, createTenant, updateTenant, toggleTenantActive, impersonateTenant, extendTenantSubscription, getAdminSubscriptionPlans, Tenant, TenantFormData, CreateTenantData } from '../../api/admin';
 import { useAuth } from '../../context/AuthContext';
 import TenantTable from '../../components/Admin/TenantTable';
 import TenantForm from '../../components/Admin/TenantForm';
@@ -19,6 +19,9 @@ export default function Tenants() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Tenant | null>(null);
+  const [extendTarget, setExtendTarget] = useState<Tenant | null>(null);
+  const [extendPlanId, setExtendPlanId] = useState<string | null>(null);
+  const [extendDays, setExtendDays] = useState<number | string>(30);
 
   const { data } = useQuery({
     queryKey: ['admin-tenants', debouncedSearch, page],
@@ -27,6 +30,13 @@ export default function Tenants() {
 
   const tenants = data?.data?.data || [];
   const meta = data?.data?.meta;
+
+  const { data: plansData } = useQuery({
+    queryKey: ['admin-subscription-plans'],
+    queryFn: getAdminSubscriptionPlans,
+    enabled: !!extendTarget,
+  });
+  const plans = (plansData?.data?.data || []).filter((p) => p.is_active);
 
   const createMutation = useMutation({
     mutationFn: (values: CreateTenantData) => createTenant(values),
@@ -74,6 +84,34 @@ export default function Tenants() {
     }),
   });
 
+  const extendMutation = useMutation({
+    mutationFn: ({ tenantId, plan_id, days }: { tenantId: string; plan_id: string; days: number }) =>
+      extendTenantSubscription(tenantId, { plan_id, days }),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
+      setExtendTarget(null);
+      setExtendPlanId(null);
+      setExtendDays(30);
+      notifications.show({ title: 'Success', message: res.data?.message || 'Subscription extended', color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to extend subscription',
+      color: 'red',
+    }),
+  });
+
+  const handleExtend = (tenant: Tenant) => {
+    setExtendTarget(tenant);
+    setExtendPlanId(null);
+    setExtendDays(30);
+  };
+
+  const handleExtendSubmit = () => {
+    if (!extendTarget || !extendPlanId || !extendDays) return;
+    extendMutation.mutate({ tenantId: extendTarget.id, plan_id: extendPlanId, days: Number(extendDays) });
+  };
+
   const handleEdit = (tenant: Tenant) => {
     setEditing(tenant);
     setModalOpen(true);
@@ -118,6 +156,7 @@ export default function Tenants() {
         onEdit={handleEdit}
         onToggleActive={handleToggleActive}
         onImpersonate={handleImpersonate}
+        onExtend={handleExtend}
       />
 
       {meta && meta.last_page > 1 && (
@@ -145,6 +184,40 @@ export default function Tenants() {
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}
         />
+      </Modal>
+
+      <Modal
+        opened={!!extendTarget}
+        onClose={() => setExtendTarget(null)}
+        title={`Extend Subscription — ${extendTarget?.name || ''}`}
+        size="sm"
+      >
+        <Stack>
+          <Text size="sm" c="dimmed">
+            Grant a free subscription extension. No payment required.
+          </Text>
+          <Select
+            label="Subscription Plan"
+            placeholder="Select a plan"
+            data={plans.map((p) => ({ value: p.id, label: `${p.name} (${p.billing_cycle_days} days)` }))}
+            value={extendPlanId}
+            onChange={setExtendPlanId}
+          />
+          <NumberInput
+            label="Days"
+            min={1}
+            max={365}
+            value={extendDays}
+            onChange={setExtendDays}
+          />
+          <Button
+            onClick={handleExtendSubmit}
+            loading={extendMutation.isPending}
+            disabled={!extendPlanId || !extendDays}
+          >
+            Extend Subscription
+          </Button>
+        </Stack>
       </Modal>
     </>
   );

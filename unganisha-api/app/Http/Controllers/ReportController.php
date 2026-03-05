@@ -543,9 +543,38 @@ class ReportController extends Controller
         // Monthly forecast (sum of active subscription values)
         $monthlyForecast = round($activeRevenue, 2);
 
+        // Product breakdown
+        $byProduct = $subscriptions->groupBy('product_service_id')
+            ->map(function ($group) {
+                $product = $group->first()->productService;
+                $unitPrice = (float) ($product?->price ?? 0);
+
+                return [
+                    'product_name' => $product?->name ?? 'Unknown',
+                    'billing_cycle' => $product?->billing_cycle ?? 'monthly',
+                    'unit_price' => round($unitPrice, 2),
+                    'total_subscriptions' => $group->count(),
+                    'active_count' => $group->where('status', 'active')->count(),
+                    'suspended_count' => $group->where('status', 'suspended')->count(),
+                    'pending_count' => $group->where('status', 'pending')->count(),
+                    'total_revenue' => round($group->sum(fn ($sub) => $unitPrice * (int) ($sub->quantity ?? 1)), 2),
+                    'clients' => $group->map(fn ($sub) => [
+                        'client_name' => $sub->client?->name ?? 'Unknown',
+                        'label' => $sub->label,
+                        'quantity' => (int) ($sub->quantity ?? 1),
+                        'status' => $sub->status,
+                        'start_date' => $sub->start_date?->format('Y-m-d'),
+                        'line_total' => round($unitPrice * (int) ($sub->quantity ?? 1), 2),
+                    ])->values(),
+                ];
+            })
+            ->sortByDesc('total_subscriptions')
+            ->values();
+
         return response()->json([
             'by_status' => [
                 'active' => (int) ($byStatus['active'] ?? 0),
+                'suspended' => (int) ($byStatus['suspended'] ?? 0),
                 'pending' => (int) ($byStatus['pending'] ?? 0),
                 'cancelled' => (int) ($byStatus['cancelled'] ?? 0),
             ],
@@ -553,6 +582,7 @@ class ReportController extends Controller
             'active_monthly_revenue' => round($activeRevenue, 2),
             'monthly_forecast' => $monthlyForecast,
             'upcoming_renewals' => $renewals,
+            'by_product' => $byProduct,
         ]);
     }
 

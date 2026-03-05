@@ -53,7 +53,7 @@ class TenantSubscriptionController extends Controller
         $startsAt = $existingActive ? $existingActive->ends_at : now();
         $endsAt = $startsAt->copy()->addDays($request->days);
 
-        $subscription = TenantSubscription::withoutGlobalScopes()->create([
+        $subscription = new TenantSubscription([
             'tenant_id' => $tenant->id,
             'subscription_plan_id' => $plan->id,
             'user_id' => auth()->id(),
@@ -64,6 +64,8 @@ class TenantSubscriptionController extends Controller
             'paid_at' => now(),
             'payment_status_description' => 'Admin-granted extension',
         ]);
+        $subscription->tenant_id = $tenant->id;
+        $subscription->saveQuietly();
 
         // Sync plan permissions to tenant's allowed permissions
         $planPermissionIds = $plan->permissions()->pluck('permissions.id')->toArray();

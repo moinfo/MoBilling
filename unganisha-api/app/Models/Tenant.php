@@ -81,12 +81,13 @@ class Tenant extends Model
 
     public function subscriptions(): HasMany
     {
-        return $this->hasMany(TenantSubscription::class);
+        return $this->hasMany(TenantSubscription::class)->withoutGlobalScopes();
     }
 
     public function activeSubscription(): HasOne
     {
         return $this->hasOne(TenantSubscription::class)
+            ->withoutGlobalScopes()
             ->where('status', 'active')
             ->where('ends_at', '>', now())
             ->latest('ends_at');

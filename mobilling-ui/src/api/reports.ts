@@ -233,12 +233,34 @@ export interface UpcomingRenewal {
   days_until: number;
 }
 
+export interface ProductSubscriptionDetail {
+  client_name: string;
+  label: string | null;
+  quantity: number;
+  status: string;
+  start_date: string | null;
+  line_total: number;
+}
+
+export interface ProductBreakdown {
+  product_name: string;
+  billing_cycle: string;
+  unit_price: number;
+  total_subscriptions: number;
+  active_count: number;
+  suspended_count: number;
+  pending_count: number;
+  total_revenue: number;
+  clients: ProductSubscriptionDetail[];
+}
+
 export interface SubscriptionReport {
-  by_status: { active: number; pending: number; cancelled: number };
+  by_status: { active: number; suspended: number; pending: number; cancelled: number };
   total_subscriptions: number;
   active_monthly_revenue: number;
   monthly_forecast: number;
   upcoming_renewals: UpcomingRenewal[];
+  by_product: ProductBreakdown[];
 }
 
 export const getSubscriptionReport = () =>
