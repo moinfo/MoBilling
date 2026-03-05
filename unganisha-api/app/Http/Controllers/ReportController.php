@@ -502,10 +502,19 @@ class ReportController extends Controller
 
         $byStatus = $subscriptions->groupBy('status')->map(fn ($g) => $g->count());
 
-        $activeRevenue = $subscriptions->where('status', 'active')->sum(function ($sub) {
+        $cycleMonths = [
+            'monthly' => 1,
+            'quarterly' => 3,
+            'half_yearly' => 6,
+            'yearly' => 12,
+        ];
+
+        $activeRevenue = $subscriptions->where('status', 'active')->sum(function ($sub) use ($cycleMonths) {
             $price = (float) ($sub->productService?->price ?? 0);
             $qty = (int) ($sub->quantity ?? 1);
-            return $price * $qty;
+            $cycle = $sub->productService?->billing_cycle ?? 'monthly';
+            $months = $cycleMonths[$cycle] ?? 1;
+            return ($price * $qty) / $months;
         });
 
         // Upcoming renewals (next 30 days)

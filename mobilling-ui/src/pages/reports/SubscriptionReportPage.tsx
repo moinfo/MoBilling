@@ -218,27 +218,34 @@ export default function SubscriptionReportPage() {
             </Paper>
 
             <Paper withBorder p="md">
-              <Text fw={600} mb="md">Upcoming Renewals</Text>
-              <Table.ScrollContainer minWidth={400}>
+              <Group justify="space-between" mb="md">
+                <Text fw={600}>Upcoming Renewals</Text>
+                {r.upcoming_renewals.length > 0 && (
+                  <Badge variant="light" size="sm">{r.upcoming_renewals.length} total</Badge>
+                )}
+              </Group>
+              <div style={{ maxHeight: 280, overflowY: 'auto' }}>
                 <Table striped highlightOnHover>
-                  <Table.Thead>
+                  <Table.Thead style={{ position: 'sticky', top: 0, background: 'var(--mantine-color-body)', zIndex: 1 }}>
                     <Table.Tr>
                       <Table.Th>Client</Table.Th>
                       <Table.Th>Product</Table.Th>
                       <Table.Th ta="right">Price</Table.Th>
-                      <Table.Th>Next Bill</Table.Th>
                       <Table.Th>In</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
                     {r.upcoming_renewals.map((s, i) => (
                       <Table.Tr key={i}>
-                        <Table.Td>{s.client_name}</Table.Td>
-                        <Table.Td>{s.product_name}{s.label ? ` (${s.label})` : ''}</Table.Td>
-                        <Table.Td ta="right">{fmt(s.price)}</Table.Td>
-                        <Table.Td>{s.next_bill_date}</Table.Td>
                         <Table.Td>
-                          <Badge color={s.days_until <= 7 ? 'orange' : 'blue'} variant="light">
+                          <Text size="sm" truncate maw={120}>{s.client_name}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" truncate maw={100}>{s.product_name}</Text>
+                        </Table.Td>
+                        <Table.Td ta="right">{fmt(s.price)}</Table.Td>
+                        <Table.Td>
+                          <Badge color={s.days_until <= 3 ? 'red' : s.days_until <= 7 ? 'orange' : 'blue'} variant="light" size="sm">
                             {s.days_until}d
                           </Badge>
                         </Table.Td>
@@ -246,7 +253,7 @@ export default function SubscriptionReportPage() {
                     ))}
                   </Table.Tbody>
                 </Table>
-              </Table.ScrollContainer>
+              </div>
             </Paper>
           </SimpleGrid>
 
