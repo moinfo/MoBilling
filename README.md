@@ -27,7 +27,7 @@ billing/
 │       ├── hooks/         # Custom React hooks
 │       └── pages/         # Route pages
 │           ├── admin/     # Super admin pages
-│           └── reports/   # 10 report pages
+│           └── reports/   # 11 report pages
 ├── unganisha-api/         # Laravel backend
 │   ├── app/Http/Controllers/
 │   ├── app/Models/
@@ -52,13 +52,14 @@ billing/
 - **Expense Management** — Track expenses by category and sub-category with payment methods
 - **Bill Categories** — Organize statutory obligations by type
 
-### Collection & Automation
-- **Collection Dashboard** — Real-time view of today's due, overdue, and upcoming invoices
+### Collection & Customer Success
+- **Collection Dashboard** — Total outstanding banner, aging breakdown, call plan with invoice preview drawer
 - **Follow-up Tracking** — Log calls, record outcomes (promised, paid, no answer), track promise fulfillment
-- **Automation** — Automated overdue reminders, cron job logs, and communication history
+- **Satisfaction Calls** — Monthly auto-scheduled calls with round-robin user assignment, outcome/rating tracking, daily reminders per user, client history integration
+- **Automation** — Automated overdue reminders, auto-suspend unpaid subscriptions (configurable grace period), cron job logs, communication history
 - **Broadcast Messaging** — Send announcements to all or selected clients via email/SMS/both with preset templates and delivery tracking
 
-### Reports (10 Reports)
+### Reports (11 Reports)
 - **Revenue Summary** — Monthly invoiced vs collected with growth trends
 - **Outstanding & Aging** — Overdue invoices by age bands (1-30, 31-60, 61-90, 90+ days)
 - **Client Statement** — Per-client ledger with running balance
@@ -68,6 +69,7 @@ billing/
 - **Statutory Compliance** — Obligation status (on track, due soon, overdue)
 - **Subscription Report** — Active subscriptions, renewals, and revenue forecast
 - **Collection Effectiveness** — Follow-up outcomes and promise fulfillment rate
+- **Satisfaction Report** — Monthly call volume, avg rating, satisfaction/complaint rates, outcome distribution, dual-axis chart
 - **Communication Log** — Email/SMS delivery rates by channel and type
 
 All reports include stat cards, interactive charts (Recharts), detail tables, date range filtering with presets, and CSV export.
@@ -136,6 +138,7 @@ Or register a new account at `/register`.
 | `/dashboard` | Protected | Dashboard overview |
 | `/collection` | Protected | Collection dashboard |
 | `/followups` | Protected | Follow-up call tracking |
+| `/satisfaction-calls` | Protected | Satisfaction call management |
 | `/clients` | Protected | Client management |
 | `/clients/:id` | Protected | Client profile |
 | `/product-services` | Protected | Products & services |
@@ -152,7 +155,7 @@ Or register a new account at `/register`.
 | `/payments-out` | Protected | Outgoing payments |
 | `/expense-categories` | Protected | Expense categories |
 | `/expenses` | Protected | Expense records |
-| `/reports/*` | Protected | 10 report pages (see Reports section) |
+| `/reports/*` | Protected | 11 report pages (see Reports section) |
 | `/broadcast` | Protected | Broadcast messaging |
 | `/automation` | Protected | Automation dashboard |
 | `/sms` | Protected | SMS credit management |
@@ -185,6 +188,13 @@ All API routes are prefixed with `/api` and require Sanctum authentication (exce
 | GET | `/dashboard/summary` | Dashboard stats |
 | GET | `/collection/dashboard` | Collection dashboard |
 | GET/POST | `/followups` | Follow-up management |
+| GET | `/satisfaction-calls` | Satisfaction call list (filterable) |
+| GET | `/satisfaction-calls/dashboard` | Satisfaction call dashboard |
+| POST | `/satisfaction-calls/{id}/log-call` | Log a satisfaction call |
+| PATCH | `/satisfaction-calls/{id}/assign` | Assign call to user |
+| PATCH | `/satisfaction-calls/{id}/reschedule` | Reschedule a call |
+| PATCH | `/satisfaction-calls/{id}/cancel` | Cancel a call |
+| GET | `/satisfaction-calls/client/{clientId}` | Client satisfaction history |
 | GET/POST | `/broadcasts` | Broadcast messaging (list history / send) |
 | GET | `/automation/summary` | Automation dashboard |
 | GET | `/reports/revenue-summary` | Revenue report |
@@ -196,11 +206,25 @@ All API routes are prefixed with `/api` and require Sanctum authentication (exce
 | GET | `/reports/statutory-compliance` | Statutory compliance report |
 | GET | `/reports/subscription-report` | Subscription report |
 | GET | `/reports/collection-effectiveness` | Collection effectiveness report |
+| GET | `/reports/satisfaction-calls` | Satisfaction report |
 | GET | `/reports/communication-log` | Communication log report |
 | CRUD | `/roles` | Role management |
 | GET | `/available-permissions` | Available permissions list |
 | PUT | `/settings/company` | Update company profile |
 | PUT | `/settings/profile` | Update user profile |
+
+## Scheduled Commands (Cron)
+
+| Time | Command | Description |
+|------|---------|-------------|
+| 06:00 | `subscriptions:expire` | Expire ended subscriptions |
+| 07:00 | `invoices:process-recurring` | Generate recurring invoices |
+| 07:15 | `satisfaction-calls:schedule` | Schedule monthly satisfaction calls, assign users round-robin, send daily reminders |
+| 07:30 | `followups:process` | Process follow-up call queue |
+| 08:00 | `bills:send-reminders` | Send bill due/overdue reminders (email + SMS) |
+| 08:30 | `invoices:process-overdue` | Mark overdue invoices, send reminders |
+| 09:00 | `bills:generate-recurring` | Auto-generate recurring statutory bills |
+| 09:30 | `subscriptions:suspend-unpaid` | Auto-suspend subscriptions past grace period |
 
 ## Architecture Notes
 
