@@ -67,7 +67,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     paymentForm.setFieldValue('notes', '');
   };
 
-  const canModifyItems = isInvoice && doc.status !== 'paid' && doc.status !== 'cancelled' && (doc.items?.length || 0) > 1;
+  const canModifyItems = doc.type === 'invoice' && doc.status !== 'paid' && doc.status !== 'cancelled' && (doc.items?.length || 0) > 1;
 
   const handleRemoveItem = (itemId: string, description: string) => {
     modals.openConfirmModal({
