@@ -44,7 +44,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
       // Auto-calculate amount from selected items
       const total = (doc.items || [])
         .filter((item) => next.includes(item.id || ''))
-        .reduce((sum, item) => sum + (item.total || 0), 0);
+        .reduce((sum, item) => sum + parseFloat(String(item.total || 0)), 0);
       paymentForm.setFieldValue('amount', total > 0 ? total : doc.balance_due);
       // Auto-fill notes with selected item descriptions
       if (next.length > 0 && next.length < (doc.items?.length || 0)) {
