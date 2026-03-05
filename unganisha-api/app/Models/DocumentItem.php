@@ -16,6 +16,7 @@ class DocumentItem extends Model
         'document_id', 'product_service_id', 'item_type',
         'description', 'quantity', 'price', 'discount_type',
         'discount_value', 'tax_percent', 'tax_amount', 'total', 'unit',
+        'service_from', 'service_to',
     ];
 
     protected $casts = [

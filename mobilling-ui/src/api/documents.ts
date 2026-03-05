@@ -14,6 +14,8 @@ export interface DocumentItem {
   tax_amount?: number;
   total?: number;
   unit: string;
+  service_from?: string | null;
+  service_to?: string | null;
 }
 
 export interface Document {

@@ -22,6 +22,8 @@ class DocumentItemResource extends JsonResource
             'tax_amount' => $this->tax_amount,
             'total' => $this->total,
             'unit' => $this->unit,
+            'service_from' => $this->service_from,
+            'service_to' => $this->service_to,
         ];
     }
 }

@@ -29,6 +29,8 @@ class StoreDocumentRequest extends FormRequest
             'items.*.discount_value' => 'nullable|numeric|min:0',
             'items.*.tax_percent' => 'nullable|numeric|min:0|max:100',
             'items.*.unit' => 'nullable|string|max:20',
+            'items.*.service_from' => 'nullable|date',
+            'items.*.service_to' => 'nullable|date',
         ];
     }
 }

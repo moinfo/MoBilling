@@ -81,9 +81,16 @@ class RecurringInvoiceService
                 continue;
             }
 
+            // Calculate service period: from previous bill date to day before next bill date
+            $interval = self::CYCLE_INTERVALS[$sub->productService->billing_cycle];
+            $serviceFrom = $nextBillDate->copy()->sub($interval);
+            $serviceTo = $nextBillDate->copy()->subDay();
+
             $dueSubscriptions[] = [
                 'subscription' => $sub,
                 'next_bill_date' => $nextBillDate,
+                'service_from' => $serviceFrom,
+                'service_to' => $serviceTo,
             ];
         }
 
@@ -191,6 +198,8 @@ class RecurringInvoiceService
                     'tax_amount' => round($lineTax, 2),
                     'total' => round($lineTotal, 2),
                     'unit' => $product->unit,
+                    'service_from' => $item['service_from']->format('Y-m-d'),
+                    'service_to' => $item['service_to']->format('Y-m-d'),
                 ];
 
                 $subtotal += $lineBase;

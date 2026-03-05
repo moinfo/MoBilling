@@ -205,7 +205,12 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
                 <Table.Td>
                   <Group gap="xs">
                     <Badge color={item.item_type === 'product' ? 'blue' : 'green'} size="xs">{item.item_type}</Badge>
-                    {item.description}
+                    <div>
+                      {item.description}
+                      {item.service_from && item.service_to && (
+                        <Text size="xs" c="dimmed">{formatDate(item.service_from)} — {formatDate(item.service_to)}</Text>
+                      )}
+                    </div>
                   </Group>
                 </Table.Td>
                 <Table.Td>{item.quantity} {item.unit}</Table.Td>

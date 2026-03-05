@@ -95,7 +95,12 @@
             @foreach($items as $i => $item)
             <tr>
                 <td>{{ $i + 1 }}</td>
-                <td>{{ $item->description }}</td>
+                <td>
+                    {{ $item->description }}
+                    @if($item->service_from && $item->service_to)
+                        <br><span style="font-size: 9px; color: #888;">{{ \Carbon\Carbon::parse($item->service_from)->format('d M Y') }} — {{ \Carbon\Carbon::parse($item->service_to)->format('d M Y') }}</span>
+                    @endif
+                </td>
                 <td><span class="badge badge-{{ $item->item_type }}">{{ ucfirst($item->item_type) }}</span></td>
                 <td>{{ number_format($item->quantity, 2) }}</td>
                 <td>{{ $item->unit }}</td>
