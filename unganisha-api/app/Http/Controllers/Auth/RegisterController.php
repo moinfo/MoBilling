@@ -63,6 +63,7 @@ class RegisterController extends Controller
                 'menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out',
                 'menu.expense_categories', 'menu.expenses',
                 'menu.automation', 'menu.reports', 'menu.sms',
+                'menu.satisfaction_calls',
                 'clients.read', 'products.read', 'documents.read',
                 'payments_in.read', 'client_subscriptions.read',
                 'statutories.read', 'bills.read', 'payments_out.read',
@@ -74,7 +75,7 @@ class RegisterController extends Controller
                 'reports.revenue', 'reports.aging', 'reports.client_statement',
                 'reports.payment_collection', 'reports.expense', 'reports.profit_loss',
                 'reports.statutory', 'reports.subscription', 'reports.collection',
-                'reports.communication',
+                'reports.satisfaction', 'reports.communication',
             ];
             $userPermIds = Permission::whereIn('name', $userPermNames)->pluck('id');
             $userRole->permissions()->sync($userPermIds);

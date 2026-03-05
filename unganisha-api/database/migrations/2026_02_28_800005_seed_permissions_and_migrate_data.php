@@ -140,6 +140,7 @@ return new class extends Migration
             ['name' => 'menu.reports', 'label' => 'Reports', 'category' => 'menu', 'group_name' => 'Navigation'],
             ['name' => 'menu.sms', 'label' => 'SMS', 'category' => 'menu', 'group_name' => 'Navigation'],
             ['name' => 'menu.users', 'label' => 'Team / Users', 'category' => 'menu', 'group_name' => 'Navigation'],
+            ['name' => 'menu.satisfaction_calls', 'label' => 'Satisfaction Calls', 'category' => 'menu', 'group_name' => 'satisfaction_calls'],
 
             // CRUD permissions (44)
             ['name' => 'clients.create', 'label' => 'Create Clients', 'category' => 'crud', 'group_name' => 'Clients'],
@@ -205,7 +206,7 @@ return new class extends Migration
             ['name' => 'settings.profile', 'label' => 'My Profile', 'category' => 'settings', 'group_name' => 'Settings'],
             ['name' => 'settings.users', 'label' => 'Manage Users & Roles', 'category' => 'settings', 'group_name' => 'Settings'],
 
-            // REPORTS permissions (10)
+            // REPORTS permissions (11)
             ['name' => 'reports.revenue', 'label' => 'Revenue Report', 'category' => 'reports', 'group_name' => 'Reports'],
             ['name' => 'reports.aging', 'label' => 'Aging Report', 'category' => 'reports', 'group_name' => 'Reports'],
             ['name' => 'reports.client_statement', 'label' => 'Client Statement', 'category' => 'reports', 'group_name' => 'Reports'],
@@ -215,6 +216,7 @@ return new class extends Migration
             ['name' => 'reports.statutory', 'label' => 'Statutory Report', 'category' => 'reports', 'group_name' => 'Reports'],
             ['name' => 'reports.subscription', 'label' => 'Subscription Report', 'category' => 'reports', 'group_name' => 'Reports'],
             ['name' => 'reports.collection', 'label' => 'Collection Report', 'category' => 'reports', 'group_name' => 'Reports'],
+            ['name' => 'reports.satisfaction', 'label' => 'Satisfaction Report', 'category' => 'reports', 'group_name' => 'Reports'],
             ['name' => 'reports.communication', 'label' => 'Communication Log', 'category' => 'reports', 'group_name' => 'Reports'],
         ];
     }
@@ -230,6 +232,7 @@ return new class extends Migration
             'menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out',
             'menu.expense_categories', 'menu.expenses',
             'menu.automation', 'menu.reports', 'menu.sms',
+            'menu.satisfaction_calls',
 
             // Read all
             'clients.read', 'products.read', 'documents.read',
@@ -249,7 +252,7 @@ return new class extends Migration
             'reports.revenue', 'reports.aging', 'reports.client_statement',
             'reports.payment_collection', 'reports.expense', 'reports.profit_loss',
             'reports.statutory', 'reports.subscription', 'reports.collection',
-            'reports.communication',
+            'reports.satisfaction', 'reports.communication',
         ];
     }
 };
