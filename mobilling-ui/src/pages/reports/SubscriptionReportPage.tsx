@@ -345,12 +345,12 @@ export default function SubscriptionReportPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                   <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => (v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v)} />
-                  <Tooltip formatter={(value: number) => [fmt(value), 'Expected']} />
+                  <Tooltip formatter={(value) => [fmt(Number(value)), 'Expected']} />
                   <Bar
                     dataKey="amount"
                     fill="#228be6"
                     radius={[4, 4, 0, 0]}
-                    label={{ position: 'top', fontSize: 10, formatter: (v: number) => v > 0 ? (v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${(v / 1000).toFixed(0)}K`) : '' }}
+                    label={{ position: 'top', fontSize: 10, formatter: (v) => { const n = Number(v); return n > 0 ? (n >= 1000000 ? `${(n / 1000000).toFixed(1)}M` : `${(n / 1000).toFixed(0)}K`) : ''; } }}
                   />
                 </BarChart>
               </ResponsiveContainer>
