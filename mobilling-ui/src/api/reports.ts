@@ -254,6 +254,12 @@ export interface ProductBreakdown {
   clients: ProductSubscriptionDetail[];
 }
 
+export interface YearlyForecastMonth {
+  month: string;
+  month_num: number;
+  amount: number;
+}
+
 export interface SubscriptionReport {
   by_status: { active: number; suspended: number; pending: number; cancelled: number };
   total_subscriptions: number;
@@ -261,6 +267,8 @@ export interface SubscriptionReport {
   monthly_forecast: number;
   upcoming_renewals: UpcomingRenewal[];
   by_product: ProductBreakdown[];
+  yearly_forecast: YearlyForecastMonth[];
+  yearly_total: number;
 }
 
 export const getSubscriptionReport = () =>

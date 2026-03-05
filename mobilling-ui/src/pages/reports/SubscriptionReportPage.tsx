@@ -1,7 +1,7 @@
-import { Stack, SimpleGrid, Paper, Text, Table, Badge, LoadingOverlay, Accordion, Group, Select } from '@mantine/core';
+import { Stack, SimpleGrid, Paper, Text, Table, Badge, LoadingOverlay, Accordion, Group, Select, ThemeIcon } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { IconLink, IconCash, IconCalendarRepeat, IconChartPie, IconPlayerPause } from '@tabler/icons-react';
+import { PieChart, Pie, Cell, Tooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
+import { IconLink, IconCash, IconCalendarRepeat, IconChartPie, IconPlayerPause, IconCalendar } from '@tabler/icons-react';
 import { getSubscriptionReport, ProductBreakdown, SubscriptionReport } from '../../api/reports';
 import ReportHeader from '../../components/Reports/ReportHeader';
 import StatCard from '../../components/Reports/StatCard';
@@ -318,6 +318,67 @@ export default function SubscriptionReportPage() {
                     </Accordion.Item>
                   ))}
               </Accordion>
+            </Paper>
+          )}
+
+          {/* Yearly Collection Forecast */}
+          {r.yearly_forecast && r.yearly_forecast.length > 0 && (
+            <Paper withBorder p="md" radius="md">
+              <Group justify="space-between" mb="md">
+                <Group gap="sm">
+                  <ThemeIcon variant="light" color="blue" size="lg" radius="md">
+                    <IconCalendar size={20} />
+                  </ThemeIcon>
+                  <div>
+                    <Text fw={600}>Yearly Collection Forecast ({new Date().getFullYear()})</Text>
+                    <Text size="xs" c="dimmed">Expected collections per month based on active subscriptions</Text>
+                  </div>
+                </Group>
+                <div style={{ textAlign: 'right' }}>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Total Year</Text>
+                  <Text fw={700} size="xl" c="blue">{formatCurrency(r.yearly_total)}</Text>
+                </div>
+              </Group>
+
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={r.yearly_forecast}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
+                  <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => (v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : v >= 1000 ? `${(v / 1000).toFixed(0)}K` : v)} />
+                  <Tooltip formatter={(value: number) => [fmt(value), 'Expected']} />
+                  <Bar
+                    dataKey="amount"
+                    fill="#228be6"
+                    radius={[4, 4, 0, 0]}
+                    label={{ position: 'top', fontSize: 10, formatter: (v: number) => v > 0 ? (v >= 1000000 ? `${(v / 1000000).toFixed(1)}M` : `${(v / 1000).toFixed(0)}K`) : '' }}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+
+              <Table striped highlightOnHover mt="md">
+                <Table.Thead>
+                  <Table.Tr>
+                    {r.yearly_forecast.map((m) => (
+                      <Table.Th key={m.month_num} ta="center" style={{ fontSize: 12 }}>
+                        {m.month}
+                      </Table.Th>
+                    ))}
+                    <Table.Th ta="center" fw={700} style={{ fontSize: 12 }}>Total</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  <Table.Tr>
+                    {r.yearly_forecast.map((m) => (
+                      <Table.Td key={m.month_num} ta="right" style={{ fontSize: 12 }}>
+                        {fmt(m.amount)}
+                      </Table.Td>
+                    ))}
+                    <Table.Td ta="right" fw={700} style={{ fontSize: 12 }}>
+                      {fmt(r.yearly_total)}
+                    </Table.Td>
+                  </Table.Tr>
+                </Table.Tbody>
+              </Table>
             </Paper>
           )}
         </>

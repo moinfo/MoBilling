@@ -581,6 +581,60 @@ class ReportController extends Controller
             ->sortByDesc('total_subscriptions')
             ->values();
 
+        // Yearly collection forecast — which months each subscription actually bills
+        $year = Carbon::now()->year;
+        $yearStart = Carbon::create($year, 1, 1);
+        $yearEnd = Carbon::create($year, 12, 31);
+        $monthlyCollection = array_fill(1, 12, 0.0);
+
+        foreach ($subscriptions->where('status', 'active') as $sub) {
+            $cycle = $sub->productService?->billing_cycle;
+            $startDate = $sub->start_date;
+            if (!$startDate || !$cycle) continue;
+
+            $price = (float) ($sub->productService?->price ?? 0);
+            $qty = (int) ($sub->quantity ?? 1);
+            $amount = $price * $qty;
+
+            // Walk billing dates through the year
+            $billDate = Carbon::parse($startDate);
+
+            // Advance to the first billing date in or after year start
+            while ($billDate->lt($yearStart)) {
+                $billDate = match ($cycle) {
+                    'weekly' => $billDate->copy()->addWeek(),
+                    'monthly' => $billDate->copy()->addMonth(),
+                    'quarterly' => $billDate->copy()->addMonths(3),
+                    'half_yearly', 'semi_annual' => $billDate->copy()->addMonths(6),
+                    'annual', 'yearly' => $billDate->copy()->addYear(),
+                    default => $billDate->copy()->addMonth(),
+                };
+            }
+
+            // Collect all billing months within the year
+            while ($billDate->lte($yearEnd)) {
+                $monthlyCollection[$billDate->month] += $amount;
+                $billDate = match ($cycle) {
+                    'weekly' => $billDate->copy()->addWeek(),
+                    'monthly' => $billDate->copy()->addMonth(),
+                    'quarterly' => $billDate->copy()->addMonths(3),
+                    'half_yearly', 'semi_annual' => $billDate->copy()->addMonths(6),
+                    'annual', 'yearly' => $billDate->copy()->addYear(),
+                    default => $billDate->copy()->addMonth(),
+                };
+            }
+        }
+
+        $yearlyForecast = collect($monthlyCollection)->map(function ($total, $month) use ($year) {
+            return [
+                'month' => Carbon::create($year, $month, 1)->format('M'),
+                'month_num' => $month,
+                'amount' => round($total, 2),
+            ];
+        })->values();
+
+        $yearlyTotal = round(array_sum($monthlyCollection), 2);
+
         return response()->json([
             'by_status' => [
                 'active' => (int) ($byStatus['active'] ?? 0),
@@ -593,6 +647,8 @@ class ReportController extends Controller
             'monthly_forecast' => $monthlyForecast,
             'upcoming_renewals' => $renewals,
             'by_product' => $byProduct,
+            'yearly_forecast' => $yearlyForecast,
+            'yearly_total' => $yearlyTotal,
         ]);
     }
 
