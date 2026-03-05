@@ -11,6 +11,7 @@ import {
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
+  IconHeartHandshake,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -167,6 +168,11 @@ export default function AppLayout() {
           {can('menu.followups') && (
             <NavLink label="Follow-ups" leftSection={<IconPhoneCall size={18} />}
               active={isActive('/followups')} onClick={() => navigateAndClose('/followups')} />
+          )}
+
+          {can('menu.satisfaction_calls') && (
+            <NavLink label="Satisfaction Calls" leftSection={<IconHeartHandshake size={18} />}
+              active={isActive('/satisfaction-calls')} onClick={() => navigateAndClose('/satisfaction-calls')} />
           )}
 
           {showBilling && (

@@ -24,6 +24,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\FollowupController;
+use App\Http\Controllers\SatisfactionCallController;
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\Auth\PasswordResetController;
 use App\Http\Controllers\Auth\RegisterController;
@@ -289,6 +290,16 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/followups/{followup}/log-call', [FollowupController::class, 'logCall']);
         Route::patch('/followups/{followup}/cancel', [FollowupController::class, 'cancel']);
         Route::get('/followups/client/{clientId}', [FollowupController::class, 'clientHistory']);
+    });
+
+    // Satisfaction Calls
+    Route::middleware('permission:menu.satisfaction_calls')->group(function () {
+        Route::get('/satisfaction-calls/dashboard', [SatisfactionCallController::class, 'dashboard']);
+        Route::get('/satisfaction-calls', [SatisfactionCallController::class, 'index']);
+        Route::post('/satisfaction-calls/{satisfactionCall}/log-call', [SatisfactionCallController::class, 'logCall']);
+        Route::patch('/satisfaction-calls/{satisfactionCall}/reschedule', [SatisfactionCallController::class, 'reschedule']);
+        Route::patch('/satisfaction-calls/{satisfactionCall}/cancel', [SatisfactionCallController::class, 'cancel']);
+        Route::get('/satisfaction-calls/client/{clientId}', [SatisfactionCallController::class, 'clientHistory']);
     });
 
     // Automation

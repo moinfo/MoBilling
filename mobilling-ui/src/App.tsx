@@ -52,6 +52,7 @@ import Automation from './pages/Automation';
 import Broadcast from './pages/Broadcast';
 import Collection from './pages/Collection';
 import Followups from './pages/Followups';
+import SatisfactionCalls from './pages/SatisfactionCalls';
 import RevenueSummary from './pages/reports/RevenueSummary';
 import OutstandingAging from './pages/reports/OutstandingAging';
 import ClientStatementReport from './pages/reports/ClientStatementReport';
@@ -156,6 +157,7 @@ export default function App() {
                   <Route path="/subscription" element={<Subscription />} />
                   <Route path="/collection" element={<Collection />} />
                   <Route path="/followups" element={<Followups />} />
+                  <Route path="/satisfaction-calls" element={<SatisfactionCalls />} />
                   <Route path="/automation" element={<Automation />} />
                   <Route path="/broadcast" element={<Broadcast />} />
                   <Route path="/reports/revenue" element={<RevenueSummary />} />
