@@ -46,3 +46,6 @@ export const updateClientSubscription = (id: string, data: ClientSubscriptionFor
 
 export const deleteClientSubscription = (id: string) =>
   api.delete(`/client-subscriptions/${id}`);
+
+export const generateInvoiceFromSubscription = (id: string) =>
+  api.post<{ message: string; data: { document_id: string; document_number: string } }>(`/client-subscriptions/${id}/generate-invoice`);

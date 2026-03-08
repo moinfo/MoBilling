@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Group, Button, TextInput, Modal, Table, Text, Badge, Pagination,
-  Stack, NumberInput, Select, ActionIcon,
+  Stack, NumberInput, Select, ActionIcon, Tooltip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -9,10 +9,10 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch, IconEdit, IconTrash, IconArrowUp, IconArrowDown, IconArrowsSort } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconEdit, IconTrash, IconArrowUp, IconArrowDown, IconArrowsSort, IconFileInvoice } from '@tabler/icons-react';
 import {
   getClientSubscriptions, createClientSubscription, updateClientSubscription,
-  deleteClientSubscription, ClientSubscription, ClientSubscriptionFormData,
+  deleteClientSubscription, generateInvoiceFromSubscription, ClientSubscription, ClientSubscriptionFormData,
 } from '../api/clientSubscriptions';
 import { getClients, Client } from '../api/clients';
 import { getProductServices, ProductService } from '../api/productServices';
@@ -105,6 +105,23 @@ export default function ClientSubscriptions() {
     },
   });
 
+  const invoiceMutation = useMutation({
+    mutationFn: (id: string) => generateInvoiceFromSubscription(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      notifications.show({
+        title: 'Invoice Created',
+        message: res.data.message,
+        color: 'green',
+      });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to generate invoice',
+      color: 'red',
+    }),
+  });
+
   const handleEdit = (sub: ClientSubscription) => {
     setEditing(sub);
     setModalOpen(true);
@@ -155,6 +172,7 @@ export default function ClientSubscriptions() {
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
+                <Table.Th w={50}>#</Table.Th>
                 <Table.Th>Client</Table.Th>
                 <Table.Th>Product / Service</Table.Th>
                 <Table.Th>Label</Table.Th>
@@ -163,12 +181,13 @@ export default function ClientSubscriptions() {
                 <Table.Th>Price</Table.Th>
                 <SortableHeader column="start_date" label="Start Date" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
                 <SortableHeader column="status" label="Status" sortBy={sortBy} sortDir={sortDir} onSort={toggleSort} />
-                <Table.Th w={90}>Actions</Table.Th>
+                <Table.Th w={120}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
           <Table.Tbody>
-            {items.map((sub) => (
+            {items.map((sub, index) => (
               <Table.Tr key={sub.id}>
+                <Table.Td><Text size="sm" c="dimmed">{((meta?.current_page ?? 1) - 1) * (meta?.per_page ?? 20) + index + 1}</Text></Table.Td>
                 <Table.Td>
                   <Text fw={500} size="sm">{sub.client_name}</Text>
                 </Table.Td>
@@ -194,7 +213,17 @@ export default function ClientSubscriptions() {
                   </Badge>
                 </Table.Td>
                 <Table.Td>
-                  <Group gap={4}>
+                  <Group gap={4} wrap="nowrap">
+                    <Tooltip label="Create Invoice">
+                      <ActionIcon
+                        variant="light"
+                        color="green"
+                        onClick={() => invoiceMutation.mutate(sub.id)}
+                        loading={invoiceMutation.isPending}
+                      >
+                        <IconFileInvoice size={16} />
+                      </ActionIcon>
+                    </Tooltip>
                     <ActionIcon variant="light" onClick={() => handleEdit(sub)}>
                       <IconEdit size={16} />
                     </ActionIcon>

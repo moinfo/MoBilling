@@ -165,6 +165,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:client_subscriptions.read')->get('/client-subscriptions/{client_subscription}', [ClientSubscriptionController::class, 'show']);
     Route::middleware('permission:client_subscriptions.create')->post('/client-subscriptions', [ClientSubscriptionController::class, 'store']);
     Route::middleware('permission:client_subscriptions.update')->put('/client-subscriptions/{client_subscription}', [ClientSubscriptionController::class, 'update']);
+    Route::middleware('permission:client_subscriptions.create')->post('/client-subscriptions/{client_subscription}/generate-invoice', [ClientSubscriptionController::class, 'generateInvoice']);
     Route::middleware('permission:client_subscriptions.delete')->delete('/client-subscriptions/{client_subscription}', [ClientSubscriptionController::class, 'destroy']);
 
     // Products & Services

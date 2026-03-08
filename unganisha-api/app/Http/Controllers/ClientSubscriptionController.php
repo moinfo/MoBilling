@@ -140,6 +140,81 @@ class ClientSubscriptionController extends Controller
         );
     }
 
+    public function generateInvoice(ClientSubscription $clientSubscription)
+    {
+        $clientSubscription->load('client', 'productService');
+        $client = $clientSubscription->client;
+        $product = $clientSubscription->productService;
+
+        if (!$client || !$product) {
+            return response()->json(['message' => 'Subscription is missing client or product data.'], 422);
+        }
+
+        return DB::transaction(function () use ($clientSubscription, $client, $product) {
+            $tenant = auth()->user()->tenant;
+            $qty = $clientSubscription->quantity;
+
+            $lineBase = $qty * (float) $product->price;
+            $lineTax = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
+            $lineTotal = $lineBase + $lineTax;
+
+            $description = $product->name;
+            if ($clientSubscription->label) {
+                $description .= " — {$clientSubscription->label}";
+            }
+
+            $document = Document::create([
+                'client_id' => $client->id,
+                'type' => 'invoice',
+                'document_number' => app(DocumentNumberService::class)
+                    ->generate('invoice', $tenant->id),
+                'date' => now()->format('Y-m-d'),
+                'due_date' => now()->addDays(14)->format('Y-m-d'),
+                'subtotal' => round($lineBase, 2),
+                'discount_amount' => 0,
+                'tax_amount' => round($lineTax, 2),
+                'total' => round($lineTotal, 2),
+                'notes' => "Invoice from subscription: {$clientSubscription->label}",
+                'status' => 'sent',
+                'created_by' => auth()->id(),
+            ]);
+
+            $document->items()->create([
+                'product_service_id' => $product->id,
+                'item_type' => $product->type,
+                'description' => $description,
+                'quantity' => $qty,
+                'price' => $product->price,
+                'discount_type' => 'percent',
+                'discount_value' => 0,
+                'tax_percent' => $product->tax_percent ?? 0,
+                'tax_amount' => round($lineTax, 2),
+                'total' => round($lineTotal, 2),
+                'unit' => $product->unit,
+            ]);
+
+            RecurringInvoiceLog::create([
+                'client_id' => $client->id,
+                'product_service_id' => $product->id,
+                'document_id' => $document->id,
+                'next_bill_date' => now(),
+                'invoice_created_at' => now(),
+                'reminders_sent' => [],
+            ]);
+
+            $document->load('items', 'client');
+            $client->notify(new InvoiceSentNotification($document));
+
+            return response()->json([
+                'message' => "Invoice {$document->document_number} created and sent to {$client->name}.",
+                'data' => [
+                    'document_id' => $document->id,
+                    'document_number' => $document->document_number,
+                ],
+            ]);
+        });
+    }
+
     public function destroy(ClientSubscription $clientSubscription)
     {
         $clientSubscription->delete();

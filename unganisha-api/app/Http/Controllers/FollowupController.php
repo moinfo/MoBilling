@@ -72,6 +72,7 @@ class FollowupController extends Controller
     public function index(Request $request)
     {
         $query = Followup::with(['client', 'document', 'user'])
+            ->whereHas('document')
             ->orderByDesc('created_at');
 
         if ($request->has('status') && $request->status !== 'all') {
