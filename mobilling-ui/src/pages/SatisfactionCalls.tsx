@@ -253,25 +253,6 @@ export default function SatisfactionCalls() {
     setSelectedCall(null);
   };
 
-  const formatLocalDate = (d: Date | null): string | undefined => {
-    if (!d) return undefined;
-    try {
-      const year = d.getFullYear();
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${year}-${month}-${day}`;
-    } catch {
-      // Fallback if d is not a Date object (e.g. string from DateInput)
-      const str = String(d);
-      if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
-      const parsed = new Date(str);
-      if (!isNaN(parsed.getTime())) {
-        return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
-      }
-      return undefined;
-    }
-  };
-
   const handleLogCall = () => {
     if (!selectedCall || !outcome) return;
     logMutation.mutate({
