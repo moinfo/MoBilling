@@ -769,6 +769,11 @@ class ReportController extends Controller
         $satisfiedCount = $completed->where('outcome', 'satisfied')->count();
         $complaintCount = $completed->where('outcome', 'complaint')->count();
 
+        $appointmentRequested = $completed->where('appointment_requested', true);
+        $appointmentCount = $appointmentRequested->count();
+        $appointmentPending = $appointmentRequested->where('appointment_status', 'pending')->count();
+        $appointmentCompleted = $appointmentRequested->where('appointment_status', 'completed')->count();
+
         $stats = [
             'total_scheduled' => $totalCalls,
             'total_completed' => $totalCompleted,
@@ -780,6 +785,9 @@ class ReportController extends Controller
             'complaint_rate' => $totalCompleted > 0
                 ? round(($complaintCount / $totalCompleted) * 100, 1)
                 : 0,
+            'appointments_total' => $appointmentCount,
+            'appointments_pending' => $appointmentPending,
+            'appointments_completed' => $appointmentCompleted,
         ];
 
         // Detail list
@@ -793,6 +801,10 @@ class ReportController extends Controller
             'feedback' => $c->feedback,
             'status' => $c->status,
             'month_key' => $c->month_key,
+            'appointment_requested' => $c->appointment_requested,
+            'appointment_date' => $c->appointment_date?->format('Y-m-d'),
+            'appointment_notes' => $c->appointment_notes,
+            'appointment_status' => $c->appointment_status,
         ]);
 
         return response()->json([

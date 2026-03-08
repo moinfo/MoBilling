@@ -1,18 +1,25 @@
-import { Table, ActionIcon, Group, Text, Anchor, Badge } from '@mantine/core';
+import { Table, ActionIcon, Group, Text, Anchor, Badge, Loader, Center } from '@mantine/core';
 import { IconEdit, IconTrash, IconEye } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { Client } from '../../api/clients';
 import { formatCurrency } from '../../utils/formatCurrency';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface Props {
   clients: Client[];
   onEdit: (client: Client) => void;
   onDelete: (client: Client) => void;
+  startIndex?: number;
+  loading?: boolean;
 }
 
-export default function ClientTable({ clients, onEdit, onDelete }: Props) {
+export default function ClientTable({ clients, onEdit, onDelete, startIndex = 1, loading }: Props) {
   const navigate = useNavigate();
+  const { can } = usePermissions();
 
+  if (loading) {
+    return <Center py="xl"><Loader /></Center>;
+  }
   if (clients.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No clients found</Text>;
   }
@@ -22,6 +29,7 @@ export default function ClientTable({ clients, onEdit, onDelete }: Props) {
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
+            <Table.Th w={50}>#</Table.Th>
             <Table.Th>Name</Table.Th>
             <Table.Th>Email</Table.Th>
             <Table.Th>Phone</Table.Th>
@@ -31,10 +39,13 @@ export default function ClientTable({ clients, onEdit, onDelete }: Props) {
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
-          {clients.map((client) => (
+          {clients.map((client, index) => (
             <Table.Tr key={client.id}>
               <Table.Td>
-                <Anchor size="sm" fw={500} onClick={() => navigate(`/clients/${client.id}`)}>
+                <Text size="sm" c="dimmed">{startIndex + index}</Text>
+              </Table.Td>
+              <Table.Td>
+                <Anchor size="sm" fw={500} onClick={() => navigate(`/clients/${client.id}`)} style={{ textTransform: 'uppercase' }}>
                   {client.name}
                 </Anchor>
               </Table.Td>
@@ -59,12 +70,16 @@ export default function ClientTable({ clients, onEdit, onDelete }: Props) {
                   <ActionIcon variant="light" color="gray" onClick={() => navigate(`/clients/${client.id}`)}>
                     <IconEye size={16} />
                   </ActionIcon>
-                  <ActionIcon variant="light" onClick={() => onEdit(client)}>
-                    <IconEdit size={16} />
-                  </ActionIcon>
-                  <ActionIcon variant="light" color="red" onClick={() => onDelete(client)}>
-                    <IconTrash size={16} />
-                  </ActionIcon>
+                  {can('clients.update') && (
+                    <ActionIcon variant="light" onClick={() => onEdit(client)}>
+                      <IconEdit size={16} />
+                    </ActionIcon>
+                  )}
+                  {can('clients.delete') && (
+                    <ActionIcon variant="light" color="red" onClick={() => onDelete(client)}>
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  )}
                 </Group>
               </Table.Td>
             </Table.Tr>

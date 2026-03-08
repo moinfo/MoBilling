@@ -1,4 +1,4 @@
-import { Title, Table, Text, Group, Pagination, Badge, TextInput, ActionIcon, Drawer, Stack, NumberInput, Select, Textarea, Button, Tooltip } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, TextInput, ActionIcon, Drawer, Stack, NumberInput, Select, Textarea, Button, Tooltip, Loader, Center } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconSearch, IconEdit, IconTrash, IconReceipt, IconFileInvoice } from '@tabler/icons-react';
 import { getPaymentsIn, updatePaymentIn, deletePaymentIn, resendReceipt, resendInvoice, Payment } from '../api/documents';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
+import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import dayjs from 'dayjs';
@@ -17,6 +18,7 @@ type PaymentWithDoc = Payment & { document?: { document_number: string; type: st
 
 export default function PaymentsIn() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
@@ -24,7 +26,7 @@ export default function PaymentsIn() {
 
   const { methods: paymentMethods } = usePaymentMethods();
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['payments-in', page, debouncedSearch],
     queryFn: () => getPaymentsIn({ page, search: debouncedSearch || undefined } as any),
   });
@@ -125,13 +127,16 @@ export default function PaymentsIn() {
         maw={300}
       />
 
-      {payments.length === 0 ? (
+      {isLoading ? (
+        <Center py="xl"><Loader /></Center>
+      ) : payments.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No payments recorded yet</Text>
       ) : (
         <Table.ScrollContainer minWidth={750}>
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
+                <Table.Th w={50}>#</Table.Th>
                 <Table.Th>Date</Table.Th>
                 <Table.Th>Invoice</Table.Th>
                 <Table.Th>Client</Table.Th>
@@ -142,8 +147,9 @@ export default function PaymentsIn() {
               </Table.Tr>
             </Table.Thead>
           <Table.Tbody>
-            {payments.map((p) => (
+            {payments.map((p, index) => (
               <Table.Tr key={p.id}>
+                <Table.Td><Text size="sm" c="dimmed">{(meta ? (meta.current_page - 1) * meta.per_page : 0) + index + 1}</Text></Table.Td>
                 <Table.Td>{formatDate(p.payment_date)}</Table.Td>
                 <Table.Td fw={500}>{p.document?.document_number || '—'}</Table.Td>
                 <Table.Td>{p.document?.client?.name || '—'}</Table.Td>
@@ -156,26 +162,34 @@ export default function PaymentsIn() {
                 <Table.Td>{p.reference || '—'}</Table.Td>
                 <Table.Td>
                   <Group gap={4}>
-                    <Tooltip label="Resend Receipt">
-                      <ActionIcon variant="subtle" color="green" size="sm" onClick={() => handleResendReceipt(p)}>
-                        <IconReceipt size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Resend Invoice">
-                      <ActionIcon variant="subtle" color="cyan" size="sm" onClick={() => handleResendInvoice(p)}>
-                        <IconFileInvoice size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Edit">
-                      <ActionIcon variant="subtle" color="blue" size="sm" onClick={() => handleEdit(p)}>
-                        <IconEdit size={16} />
-                      </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Delete">
-                      <ActionIcon variant="subtle" color="red" size="sm" onClick={() => handleDelete(p)}>
-                        <IconTrash size={16} />
-                      </ActionIcon>
-                    </Tooltip>
+                    {can('payments_in.resend_receipt') && (
+                      <Tooltip label="Resend Receipt">
+                        <ActionIcon variant="subtle" color="green" size="sm" onClick={() => handleResendReceipt(p)}>
+                          <IconReceipt size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                    {can('documents.send') && (
+                      <Tooltip label="Resend Invoice">
+                        <ActionIcon variant="subtle" color="cyan" size="sm" onClick={() => handleResendInvoice(p)}>
+                          <IconFileInvoice size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                    {can('payments_in.update') && (
+                      <Tooltip label="Edit">
+                        <ActionIcon variant="subtle" color="blue" size="sm" onClick={() => handleEdit(p)}>
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                    {can('payments_in.delete') && (
+                      <Tooltip label="Delete">
+                        <ActionIcon variant="subtle" color="red" size="sm" onClick={() => handleDelete(p)}>
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
                   </Group>
                 </Table.Td>
               </Table.Tr>

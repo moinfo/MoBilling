@@ -15,6 +15,11 @@ export interface SatisfactionCallEntry {
   internal_notes: string | null;
   status: 'scheduled' | 'completed' | 'missed' | 'cancelled';
   month_key: string;
+  is_follow_up?: boolean;
+  appointment_requested?: boolean;
+  appointment_date?: string | null;
+  appointment_notes?: string | null;
+  appointment_status?: 'pending' | 'confirmed' | 'completed' | 'cancelled' | null;
   created_at?: string;
 }
 
@@ -43,6 +48,9 @@ export const logSatisfactionCall = (
     rating?: number;
     feedback?: string;
     internal_notes?: string;
+    appointment_requested?: boolean;
+    appointment_date?: string;
+    appointment_notes?: string;
   },
 ) => api.post(`/satisfaction-calls/${id}/log-call`, data);
 

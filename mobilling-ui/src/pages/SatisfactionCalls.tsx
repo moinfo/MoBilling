@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
-  Title, Text, Group, Badge, Table, Paper, Stack, Select,
-  Loader, Center, Modal, Button, Textarea,
+  Title, Text, Group, Badge, Table, Paper, Stack, Select, Switch,
+  Loader, Center, Modal, Button, Textarea, TextInput,
   SimpleGrid, ThemeIcon, ActionIcon, Tooltip, Pagination,
   RingProgress, Rating, Drawer, Divider, Anchor, Timeline,
 } from '@mantine/core';
@@ -11,7 +11,8 @@ import { notifications } from '@mantine/notifications';
 import {
   IconHeartHandshake, IconAlertTriangle, IconCheck,
   IconX, IconCalendarEvent, IconStar, IconPhone,
-  IconUser, IconPackages, IconFileInvoice, IconMessage,
+  IconUser, IconPackages, IconFileInvoice, IconMessage, IconRepeat, IconMapPin,
+  IconScript,
 } from '@tabler/icons-react';
 import {
   getSatisfactionDashboard, getSatisfactionCalls, logSatisfactionCall,
@@ -22,6 +23,9 @@ import { getClientProfile, ClientProfile } from '../api/clients';
 import { getUsers, TenantUser } from '../api/users';
 import { formatDate } from '../utils/formatDate';
 import { formatCurrency } from '../utils/formatCurrency';
+import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
+import CallScriptDrawer from '../components/CallScriptDrawer';
 
 const outcomeColors: Record<string, string> = {
   satisfied: 'green',
@@ -50,6 +54,10 @@ const statusColors: Record<string, string> = {
 
 export default function SatisfactionCalls() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const { user } = useAuth();
+  const agentName = user?.name || 'Agent';
+  const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [rescheduleModalOpen, setRescheduleModalOpen] = useState(false);
   const [selectedCall, setSelectedCall] = useState<SatisfactionCallEntry | null>(null);
@@ -71,6 +79,11 @@ export default function SatisfactionCalls() {
   const [rating, setRating] = useState<number>(0);
   const [feedback, setFeedback] = useState('');
   const [internalNotes, setInternalNotes] = useState('');
+
+  // Appointment state
+  const [appointmentRequested, setAppointmentRequested] = useState(false);
+  const [appointmentDate, setAppointmentDate] = useState<Date | null>(null);
+  const [appointmentNotes, setAppointmentNotes] = useState('');
 
   // Reschedule state
   const [rescheduleDate, setRescheduleDate] = useState<string | null>(null);
@@ -115,15 +128,22 @@ export default function SatisfactionCalls() {
       logSatisfactionCall(id, data),
     onSuccess: (res) => {
       notifications.show({
-        title: 'Call Logged',
+        title: res.data.follow_up ? 'Call Logged — Follow-up Scheduled' : 'Call Logged',
         message: res.data.message,
-        color: 'green',
+        color: res.data.follow_up ? 'orange' : 'green',
+        autoClose: res.data.follow_up ? 8000 : 4000,
       });
       invalidateAll();
       closeLogModal();
     },
-    onError: () => {
-      notifications.show({ title: 'Error', message: 'Failed to log call.', color: 'red' });
+    onError: (err: any) => {
+      let msg = 'Failed to log call.';
+      if (err?.response?.data?.errors) {
+        msg = Object.values(err.response.data.errors as Record<string, string[]>).flat().join(', ');
+      } else if (err?.response?.data?.message) {
+        msg = err.response.data.message;
+      }
+      notifications.show({ title: 'Error', message: msg, color: 'red' });
     },
   });
 
@@ -211,6 +231,9 @@ export default function SatisfactionCalls() {
     setRating(0);
     setFeedback('');
     setInternalNotes('');
+    setAppointmentRequested(false);
+    setAppointmentDate(null);
+    setAppointmentNotes('');
     setLogModalOpen(true);
   };
 
@@ -230,6 +253,25 @@ export default function SatisfactionCalls() {
     setSelectedCall(null);
   };
 
+  const formatLocalDate = (d: Date | null): string | undefined => {
+    if (!d) return undefined;
+    try {
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    } catch {
+      // Fallback if d is not a Date object (e.g. string from DateInput)
+      const str = String(d);
+      if (/^\d{4}-\d{2}-\d{2}/.test(str)) return str.slice(0, 10);
+      const parsed = new Date(str);
+      if (!isNaN(parsed.getTime())) {
+        return `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+      }
+      return undefined;
+    }
+  };
+
   const handleLogCall = () => {
     if (!selectedCall || !outcome) return;
     logMutation.mutate({
@@ -239,6 +281,9 @@ export default function SatisfactionCalls() {
         rating: rating > 0 ? rating : undefined,
         feedback: feedback || undefined,
         internal_notes: internalNotes || undefined,
+        appointment_requested: appointmentRequested,
+        appointment_date: appointmentRequested ? formatLocalDate(appointmentDate) : undefined,
+        appointment_notes: appointmentRequested ? (appointmentNotes || undefined) : undefined,
       },
     });
   };
@@ -266,19 +311,38 @@ export default function SatisfactionCalls() {
 
   // Reusable client name link
   const ClientLink = ({ call }: { call: SatisfactionCallEntry }) => (
-    <Anchor
-      size="sm"
-      fw={500}
-      onClick={(e) => { e.stopPropagation(); openClientDrawer(call.client_id); }}
-      style={{ cursor: 'pointer' }}
-    >
-      {call.client_name}
-    </Anchor>
+    <Group gap={6} wrap="nowrap">
+      <Anchor
+        size="sm"
+        fw={500}
+        onClick={(e) => { e.stopPropagation(); openClientDrawer(call.client_id); }}
+        style={{ cursor: 'pointer' }}
+      >
+        {call.client_name}
+      </Anchor>
+      {call.is_follow_up && (
+        <Tooltip label="Follow-up: client didn't answer previously">
+          <Badge size="xs" variant="light" color="orange" leftSection={<IconRepeat size={10} />}>
+            Follow-up
+          </Badge>
+        </Tooltip>
+      )}
+    </Group>
   );
 
   return (
     <Stack gap="lg">
-      <Title order={2}>Satisfaction Calls</Title>
+      <Group justify="space-between">
+        <Title order={2}>Satisfaction Calls</Title>
+        <Button
+          variant="light"
+          color="teal"
+          leftSection={<IconScript size={18} />}
+          onClick={() => setScriptDrawerOpen(true)}
+        >
+          Call Script
+        </Button>
+      </Group>
 
       {/* Stats */}
       <SimpleGrid cols={{ base: 1, xs: 2, sm: 4 }}>
@@ -372,26 +436,34 @@ export default function SatisfactionCalls() {
                     <Table.Td>{formatDate(c.scheduled_date)}</Table.Td>
                     <Table.Td>
                       <Group gap="xs">
-                        <Tooltip label="Log Call">
-                          <ActionIcon color="green" variant="light" onClick={() => openLogModal(c)}>
-                            <IconCheck size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Assign">
-                          <ActionIcon color="violet" variant="light" onClick={() => openAssignModal(c)}>
-                            <IconUser size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Reschedule">
-                          <ActionIcon color="blue" variant="light" onClick={() => openRescheduleModal(c)}>
-                            <IconCalendarEvent size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Cancel">
-                          <ActionIcon color="gray" variant="light" onClick={() => cancelMutation.mutate(c.id)}>
-                            <IconX size={16} />
-                          </ActionIcon>
-                        </Tooltip>
+                        {can('satisfaction_calls.log') && (
+                          <Tooltip label="Log Call">
+                            <ActionIcon color="green" variant="light" onClick={() => openLogModal(c)}>
+                              <IconCheck size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {can('satisfaction_calls.assign') && (
+                          <Tooltip label="Assign">
+                            <ActionIcon color="violet" variant="light" onClick={() => openAssignModal(c)}>
+                              <IconUser size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {can('satisfaction_calls.reschedule') && (
+                          <Tooltip label="Reschedule">
+                            <ActionIcon color="blue" variant="light" onClick={() => openRescheduleModal(c)}>
+                              <IconCalendarEvent size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {can('satisfaction_calls.cancel') && (
+                          <Tooltip label="Cancel">
+                            <ActionIcon color="gray" variant="light" onClick={() => cancelMutation.mutate(c.id)}>
+                              <IconX size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
                       </Group>
                     </Table.Td>
                   </Table.Tr>
@@ -440,21 +512,27 @@ export default function SatisfactionCalls() {
                     </Table.Td>
                     <Table.Td>
                       <Group gap="xs">
-                        <Tooltip label="Log Call">
-                          <ActionIcon color="green" variant="light" onClick={() => openLogModal(c)}>
-                            <IconCheck size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Assign">
-                          <ActionIcon color="violet" variant="light" onClick={() => openAssignModal(c)}>
-                            <IconUser size={16} />
-                          </ActionIcon>
-                        </Tooltip>
-                        <Tooltip label="Reschedule">
-                          <ActionIcon color="blue" variant="light" onClick={() => openRescheduleModal(c)}>
-                            <IconCalendarEvent size={16} />
-                          </ActionIcon>
-                        </Tooltip>
+                        {can('satisfaction_calls.log') && (
+                          <Tooltip label="Log Call">
+                            <ActionIcon color="green" variant="light" onClick={() => openLogModal(c)}>
+                              <IconCheck size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {can('satisfaction_calls.assign') && (
+                          <Tooltip label="Assign">
+                            <ActionIcon color="violet" variant="light" onClick={() => openAssignModal(c)}>
+                              <IconUser size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {can('satisfaction_calls.reschedule') && (
+                          <Tooltip label="Reschedule">
+                            <ActionIcon color="blue" variant="light" onClick={() => openRescheduleModal(c)}>
+                              <IconCalendarEvent size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
                       </Group>
                     </Table.Td>
                   </Table.Tr>
@@ -526,7 +604,9 @@ export default function SatisfactionCalls() {
                     <Table.Th>Outcome</Table.Th>
                     <Table.Th>Rating</Table.Th>
                     <Table.Th>Feedback</Table.Th>
+                    <Table.Th>Appointment</Table.Th>
                     <Table.Th>Status</Table.Th>
+                    <Table.Th>Action</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -549,7 +629,59 @@ export default function SatisfactionCalls() {
                         <Text size="xs" truncate maw={200}>{c.feedback || '—'}</Text>
                       </Table.Td>
                       <Table.Td>
+                        {c.appointment_requested ? (
+                          <Tooltip label={c.appointment_notes || 'Physical visit requested'}>
+                            <Badge
+                              size="sm"
+                              variant="light"
+                              color={c.appointment_status === 'completed' ? 'green' : c.appointment_status === 'cancelled' ? 'gray' : 'orange'}
+                              leftSection={<IconMapPin size={10} />}
+                            >
+                              {c.appointment_date ? formatDate(c.appointment_date) : 'TBD'}
+                            </Badge>
+                          </Tooltip>
+                        ) : (
+                          <Text size="xs" c="dimmed">—</Text>
+                        )}
+                      </Table.Td>
+                      <Table.Td>
                         <Badge color={statusColors[c.status]} size="sm">{c.status}</Badge>
+                      </Table.Td>
+                      <Table.Td>
+                        {c.status === 'scheduled' ? (
+                          <Group gap="xs" wrap="nowrap">
+                            {can('satisfaction_calls.log') && (
+                              <Tooltip label="Log Call">
+                                <ActionIcon color="green" variant="light" size="sm" onClick={() => openLogModal(c)}>
+                                  <IconCheck size={14} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )}
+                            {can('satisfaction_calls.assign') && (
+                              <Tooltip label="Assign">
+                                <ActionIcon color="violet" variant="light" size="sm" onClick={() => openAssignModal(c)}>
+                                  <IconUser size={14} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )}
+                            {can('satisfaction_calls.reschedule') && (
+                              <Tooltip label="Reschedule">
+                                <ActionIcon color="blue" variant="light" size="sm" onClick={() => openRescheduleModal(c)}>
+                                  <IconCalendarEvent size={14} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )}
+                            {can('satisfaction_calls.cancel') && (
+                              <Tooltip label="Cancel">
+                                <ActionIcon color="gray" variant="light" size="sm" onClick={() => cancelMutation.mutate(c.id)}>
+                                  <IconX size={14} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )}
+                          </Group>
+                        ) : (
+                          <Text size="xs" c="dimmed">—</Text>
+                        )}
                       </Table.Td>
                     </Table.Tr>
                   ))}
@@ -723,6 +855,16 @@ export default function SatisfactionCalls() {
                       ) : (
                         <Text size="xs" c="dimmed" mt={4}>No feedback recorded.</Text>
                       )}
+                      {call.appointment_requested && (
+                        <Group gap="xs" mt={4}>
+                          <Badge size="xs" variant="light" color="orange" leftSection={<IconMapPin size={10} />}>
+                            Visit: {call.appointment_date ? formatDate(call.appointment_date) : 'TBD'}
+                          </Badge>
+                          {call.appointment_notes && (
+                            <Text size="xs" c="dimmed">{call.appointment_notes}</Text>
+                          )}
+                        </Group>
+                      )}
                       {call.internal_notes && (
                         <Text size="xs" c="dimmed" mt={4} fs="italic">Notes: {call.internal_notes}</Text>
                       )}
@@ -785,22 +927,46 @@ export default function SatisfactionCalls() {
               ]}
             />
 
-            {outcome && outcome !== 'no_answer' && outcome !== 'unreachable' && (
-              <>
-                <div>
-                  <Text size="sm" fw={500} mb={4}>Satisfaction Rating</Text>
-                  <Rating value={rating} onChange={setRating} size="lg" />
-                </div>
+            <div>
+              <Text size="sm" fw={500} mb={4}>Satisfaction Rating</Text>
+              <Rating value={rating} onChange={setRating} size="lg" />
+            </div>
 
-                <Textarea
-                  label="Customer Feedback"
-                  placeholder="What did the customer say about our services?"
-                  minRows={3}
-                  value={feedback}
-                  onChange={(e) => setFeedback(e.currentTarget.value)}
-                />
-              </>
-            )}
+            <Textarea
+              label="Customer Feedback"
+              placeholder="What did the customer say about our services? Any challenges?"
+              minRows={3}
+              value={feedback}
+              onChange={(e) => setFeedback(e.currentTarget.value)}
+            />
+
+            {/* Appointment / Physical Visit */}
+            <Paper p="sm" radius="sm" withBorder>
+              <Switch
+                label="Client requested a physical visit"
+                checked={appointmentRequested}
+                onChange={(e) => setAppointmentRequested(e.currentTarget.checked)}
+                mb={appointmentRequested ? 'sm' : 0}
+              />
+              {appointmentRequested && (
+                <Stack gap="xs" mt="xs">
+                  <DateInput
+                    label="Appointment Date (suggested by client)"
+                    placeholder="Pick date"
+                    required
+                    value={appointmentDate}
+                    onChange={setAppointmentDate}
+                    minDate={new Date()}
+                  />
+                  <TextInput
+                    label="Visit Notes"
+                    placeholder="Location, purpose, contact person..."
+                    value={appointmentNotes}
+                    onChange={(e) => setAppointmentNotes(e.currentTarget.value)}
+                  />
+                </Stack>
+              )}
+            </Paper>
 
             <Textarea
               label="Internal Notes / Action Items"
@@ -904,6 +1070,13 @@ export default function SatisfactionCalls() {
           </Stack>
         )}
       </Modal>
+
+      <CallScriptDrawer
+        opened={scriptDrawerOpen}
+        onClose={() => setScriptDrawerOpen(false)}
+        agentName={agentName}
+        defaultSection="section5"
+      />
     </Stack>
   );
 }

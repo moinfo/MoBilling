@@ -286,11 +286,15 @@ export default function AppLayout() {
               active={isActive('/sms')} onClick={() => navigateAndClose('/sms')} />
           )}
 
-          <NavLink label="Broadcast" leftSection={<IconSpeakerphone size={18} />}
-            active={isActive('/broadcast')} onClick={() => navigateAndClose('/broadcast')} />
+          {can('menu.broadcast') && (
+            <NavLink label="Broadcast" leftSection={<IconSpeakerphone size={18} />}
+              active={isActive('/broadcast')} onClick={() => navigateAndClose('/broadcast')} />
+          )}
 
-          <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
-            active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
+          {can('menu.subscription') && (
+            <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
+              active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
+          )}
 
           {can('menu.automation') && (
             <NavLink label="Automation" leftSection={<IconRobot size={18} />}
@@ -302,13 +306,15 @@ export default function AppLayout() {
               active={isActive('/users')} onClick={() => navigateAndClose('/users')} />
           )}
 
-          {can('settings.users') && (
+          {can('menu.roles') && (
             <NavLink label="Roles" leftSection={<IconShieldLock size={18} />}
               active={isActive('/roles')} onClick={() => navigateAndClose('/roles')} />
           )}
 
-          <NavLink label="Settings" leftSection={<IconSettings size={18} />}
-            active={isActive('/settings')} onClick={() => navigateAndClose('/settings')} />
+          {can('menu.settings') && (
+            <NavLink label="Settings" leftSection={<IconSettings size={18} />}
+              active={isActive('/settings')} onClick={() => navigateAndClose('/settings')} />
+          )}
         </AppShell.Section>
       </AppShell.Navbar>
 

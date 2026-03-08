@@ -1,4 +1,5 @@
-import { Select, NumberInput, Textarea, Table, Button, Group, ActionIcon, Badge, Stack, Text, SegmentedControl } from '@mantine/core';
+import { useState } from 'react';
+import { Select, NumberInput, Textarea, Table, Button, Group, ActionIcon, Badge, Stack, Text, Combobox, TextInput, useCombobox } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { IconPlus, IconTrash } from '@tabler/icons-react';
@@ -16,7 +17,76 @@ interface Props {
   initialValues?: any;
 }
 
-const emptyItem = { product_service_id: '', item_type: 'product' as const, description: '', quantity: 1, price: 0, discount_type: 'percent' as const, discount_value: 0, tax_percent: 0, unit: '' };
+const emptyItem = { product_service_id: '', item_type: 'product' as const, description: '', quantity: 1, price: 0, discount_type: 'flat' as const, discount_value: 0, tax_percent: 0, unit: '' };
+
+function ProductServiceInput({ productServices, productServiceId, description, onChange }: {
+  productServices: ProductService[];
+  productServiceId: string;
+  description: string;
+  onChange: (id: string | null, customName: string | null) => void;
+}) {
+  const combobox = useCombobox({ onDropdownClose: () => combobox.resetSelectedOption() });
+  const [selectedId, setSelectedId] = useState(productServiceId);
+  const [search, setSearch] = useState(() => {
+    if (productServiceId) {
+      const found = productServices.find(ps => ps.id === productServiceId);
+      return found ? `${found.name}${found.code ? ` (${found.code})` : ''}` : description;
+    }
+    return description || '';
+  });
+
+  const filtered = productServices.filter(ps =>
+    ps.name.toLowerCase().includes(search.toLowerCase().trim()) ||
+    (ps.code && ps.code.toLowerCase().includes(search.toLowerCase().trim()))
+  );
+
+  const options = filtered.map(ps => (
+    <Combobox.Option value={ps.id} key={ps.id}>
+      {ps.name}{ps.code ? ` (${ps.code})` : ''}
+    </Combobox.Option>
+  ));
+
+  return (
+    <Combobox
+      store={combobox}
+      onOptionSubmit={(val) => {
+        const ps = productServices.find(p => p.id === val);
+        if (ps) {
+          setSearch(`${ps.name}${ps.code ? ` (${ps.code})` : ''}`);
+          setSelectedId(ps.id);
+          onChange(ps.id, null);
+        }
+        combobox.closeDropdown();
+      }}
+    >
+      <Combobox.Target>
+        <TextInput
+          placeholder="Type or select item"
+          size="sm"
+          value={search}
+          onChange={(e) => {
+            const val = e.currentTarget.value;
+            setSearch(val);
+            setSelectedId('');
+            combobox.openDropdown();
+            combobox.updateSelectedOptionIndex();
+            if (val.trim()) {
+              onChange(null, val.trim());
+            }
+          }}
+          onClick={() => combobox.openDropdown()}
+          onFocus={() => combobox.openDropdown()}
+          onBlur={() => combobox.closeDropdown()}
+        />
+      </Combobox.Target>
+      <Combobox.Dropdown>
+        <Combobox.Options mah={200} style={{ overflowY: 'auto' }}>
+          {options.length > 0 ? options : <Combobox.Empty>No match — using as custom item</Combobox.Empty>}
+        </Combobox.Options>
+      </Combobox.Dropdown>
+    </Combobox>
+  );
+}
 
 export default function DocumentForm({ clients, productServices, type, onSubmit, loading, initialValues }: Props) {
   const form = useForm({
@@ -29,16 +99,20 @@ export default function DocumentForm({ clients, productServices, type, onSubmit,
     },
   });
 
-  const handleItemSelect = (index: number, productServiceId: string | null) => {
-    if (!productServiceId) return;
-    const selected = productServices.find(ps => ps.id === productServiceId);
-    if (selected) {
-      form.setFieldValue(`items.${index}.product_service_id`, productServiceId);
-      form.setFieldValue(`items.${index}.price`, parseFloat(selected.price));
-      form.setFieldValue(`items.${index}.tax_percent`, parseFloat(selected.tax_percent));
-      form.setFieldValue(`items.${index}.item_type`, selected.type);
-      form.setFieldValue(`items.${index}.description`, selected.name);
-      form.setFieldValue(`items.${index}.unit`, selected.unit);
+  const handleItemChange = (index: number, productServiceId: string | null, customName: string | null) => {
+    if (productServiceId) {
+      const selected = productServices.find(ps => ps.id === productServiceId);
+      if (selected) {
+        form.setFieldValue(`items.${index}.product_service_id`, productServiceId);
+        form.setFieldValue(`items.${index}.price`, parseFloat(selected.price));
+        form.setFieldValue(`items.${index}.tax_percent`, parseFloat(selected.tax_percent));
+        form.setFieldValue(`items.${index}.item_type`, selected.type);
+        form.setFieldValue(`items.${index}.description`, selected.name);
+        form.setFieldValue(`items.${index}.unit`, selected.unit);
+      }
+    } else if (customName) {
+      form.setFieldValue(`items.${index}.product_service_id`, '');
+      form.setFieldValue(`items.${index}.description`, customName);
     }
   };
 
@@ -48,8 +122,7 @@ export default function DocumentForm({ clients, productServices, type, onSubmit,
 
   const calcLineDiscount = (item: any) => {
     const base = item.quantity * item.price;
-    if (item.discount_type === 'flat') return Math.min(item.discount_value || 0, base);
-    return base * ((item.discount_value || 0) / 100);
+    return Math.min(item.discount_value || 0, base);
   };
 
   const calcLineTotal = (item: any) => {
@@ -98,11 +171,11 @@ export default function DocumentForm({ clients, productServices, type, onSubmit,
         <Table>
           <Table.Thead>
             <Table.Tr>
-              <Table.Th style={{ minWidth: 200 }}>Product / Service</Table.Th>
+              <Table.Th style={{ minWidth: 300 }}>Product / Service</Table.Th>
               <Table.Th>Type</Table.Th>
               <Table.Th w={80}>Qty</Table.Th>
               <Table.Th w={120}>Price</Table.Th>
-              <Table.Th w={190}>Discount</Table.Th>
+              <Table.Th w={120}>Discount</Table.Th>
               <Table.Th w={80}>Tax %</Table.Th>
               <Table.Th w={120}>Total</Table.Th>
               <Table.Th w={40}></Table.Th>
@@ -112,16 +185,11 @@ export default function DocumentForm({ clients, productServices, type, onSubmit,
             {form.values.items.map((item: any, index: number) => (
               <Table.Tr key={index}>
                 <Table.Td>
-                  <Select
-                    data={productServices.map(ps => ({
-                      value: ps.id,
-                      label: `${ps.name}${ps.code ? ` (${ps.code})` : ''}`,
-                    }))}
-                    value={item.product_service_id || null}
-                    onChange={(val) => handleItemSelect(index, val)}
-                    searchable
-                    placeholder="Select item"
-                    size="xs"
+                  <ProductServiceInput
+                    productServices={productServices}
+                    productServiceId={item.product_service_id || ''}
+                    description={item.description || ''}
+                    onChange={(id, customName) => handleItemChange(index, id, customName)}
                   />
                 </Table.Td>
                 <Table.Td>
@@ -138,25 +206,12 @@ export default function DocumentForm({ clients, productServices, type, onSubmit,
                   <NumberInput min={0} size="xs" decimalScale={2} {...form.getInputProps(`items.${index}.price`)} />
                 </Table.Td>
                 <Table.Td>
-                  <Group gap={4} wrap="nowrap" align="center">
-                    <SegmentedControl
-                      size="xs"
-                      style={{ flexShrink: 0 }}
-                      data={[
-                        { value: 'percent', label: '%' },
-                        { value: 'flat', label: 'TZS' },
-                      ]}
-                      {...form.getInputProps(`items.${index}.discount_type`)}
-                    />
-                    <NumberInput
-                      min={0}
-                      max={item.discount_type === 'percent' ? 100 : undefined}
-                      size="xs"
-                      decimalScale={2}
-                      style={{ flex: 1, minWidth: 70 }}
-                      {...form.getInputProps(`items.${index}.discount_value`)}
-                    />
-                  </Group>
+                  <NumberInput
+                    min={0}
+                    size="xs"
+                    decimalScale={2}
+                    {...form.getInputProps(`items.${index}.discount_value`)}
+                  />
                 </Table.Td>
                 <Table.Td>
                   <NumberInput min={0} max={100} size="xs" {...form.getInputProps(`items.${index}.tax_percent`)} />

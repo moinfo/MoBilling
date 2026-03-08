@@ -25,6 +25,42 @@ const categoryMeta: Record<string, { label: string; icon: typeof IconMenu2; colo
   reports: { label: 'Reports', icon: IconChartBar, color: 'violet' },
 };
 
+// Order categories to match logical priority
+const categoryOrder = ['menu', 'crud', 'settings', 'reports'];
+
+// Order groups within the "menu" category to match sidebar top-to-bottom
+const menuGroupOrder = ['Navigation', 'Billing', 'Statutory', 'Expenses', 'Other'];
+
+// Order individual permissions within each menu group to match sidebar item order
+const menuPermOrder: Record<string, string[]> = {
+  Navigation: ['menu.dashboard', 'menu.collection', 'menu.followups', 'menu.satisfaction_calls'],
+  Billing: ['menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills'],
+  Statutory: ['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out'],
+  Expenses: ['menu.expense_categories', 'menu.expenses'],
+  Other: ['menu.reports', 'menu.sms', 'menu.broadcast', 'menu.subscription', 'menu.automation', 'menu.users', 'menu.roles', 'menu.settings'],
+};
+
+/** Sort entries by a predefined order array, unknown items go last */
+function sortByOrder<T>(entries: [string, T][], order: string[]): [string, T][] {
+  return [...entries].sort((a, b) => {
+    const ai = order.indexOf(a[0]);
+    const bi = order.indexOf(b[0]);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+}
+
+/** Sort permissions within a menu group by sidebar order */
+function sortPerms(perms: Permission[], groupName: string, category: string): Permission[] {
+  if (category !== 'menu') return perms;
+  const order = menuPermOrder[groupName];
+  if (!order) return perms;
+  return [...perms].sort((a, b) => {
+    const ai = order.indexOf(a.name);
+    const bi = order.indexOf(b.name);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+}
+
 export default function Roles() {
   const queryClient = useQueryClient();
   const [view, setView] = useState<View>({ mode: 'list' });
@@ -319,7 +355,7 @@ function RoleFormPage({
 
       {/* Permission category cards */}
       <Stack gap="lg" mb="xl">
-        {Object.entries(groupedPermissions).map(([category, groups]) => {
+        {sortByOrder(Object.entries(groupedPermissions), categoryOrder).map(([category, groups]) => {
           const meta = categoryMeta[category] || { label: category, icon: IconShieldLock, color: 'gray' };
           const Icon = meta.icon;
           const allCategoryIds = Object.values(groups).flat().map((p: Permission) => p.id);
@@ -359,8 +395,9 @@ function RoleFormPage({
               {/* Permission groups */}
               <Box p="md">
                 <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-                  {Object.entries(groups).map(([groupName, perms]: [string, Permission[]]) => {
-                    const groupIds = getGroupPermIds(perms);
+                  {sortByOrder(Object.entries(groups), category === 'menu' ? menuGroupOrder : []).map(([groupName, perms]: [string, Permission[]]) => {
+                    const sortedPerms = sortPerms(perms, groupName, category);
+                    const groupIds = getGroupPermIds(sortedPerms);
                     const allSelected = groupIds.every((id) => form.values.permissions.includes(id));
                     const someSelected = groupIds.some((id) => form.values.permissions.includes(id));
 
@@ -370,12 +407,12 @@ function RoleFormPage({
                           label={<Text fw={600} size="sm">{groupName}</Text>}
                           checked={allSelected}
                           indeterminate={someSelected && !allSelected}
-                          onChange={() => toggleGroup(perms)}
+                          onChange={() => toggleGroup(sortedPerms)}
                           mb="xs"
                         />
                         <Divider mb="xs" />
                         <Stack gap={6} ml="lg">
-                          {perms.map((perm) => (
+                          {sortedPerms.map((perm) => (
                             <Checkbox
                               key={perm.id}
                               label={perm.label}

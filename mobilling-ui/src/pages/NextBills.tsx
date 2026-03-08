@@ -1,4 +1,4 @@
-import { Title, Table, Text, Badge, Group } from '@mantine/core';
+import { Title, Table, Text, Badge, Group, Loader, Center } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { getNextBills, NextBillItem } from '../api/documents';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -12,7 +12,7 @@ const cycleLabels: Record<string, string> = {
 };
 
 export default function NextBills() {
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['next-bills'],
     queryFn: getNextBills,
   });
@@ -25,13 +25,16 @@ export default function NextBills() {
         <Title order={2}>Next Bills</Title>
       </Group>
 
-      {items.length === 0 ? (
+      {isLoading ? (
+        <Center py="xl"><Loader /></Center>
+      ) : items.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No active subscriptions with recurring billing found. Create an active subscription to see upcoming bills here.</Text>
       ) : (
         <Table.ScrollContainer minWidth={700}>
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
+                <Table.Th w={50}>#</Table.Th>
                 <Table.Th>Client</Table.Th>
                 <Table.Th>Product / Service</Table.Th>
                 <Table.Th>Cycle</Table.Th>
@@ -43,8 +46,9 @@ export default function NextBills() {
               </Table.Tr>
             </Table.Thead>
           <Table.Tbody>
-            {items.map((item) => (
+            {items.map((item, index) => (
               <Table.Tr key={item.subscription_id}>
+                <Table.Td><Text size="sm" c="dimmed">{index + 1}</Text></Table.Td>
                 <Table.Td>
                   <Text fw={500} size="sm">{item.client_name}</Text>
                   {item.client_email && <Text size="xs" c="dimmed">{item.client_email}</Text>}

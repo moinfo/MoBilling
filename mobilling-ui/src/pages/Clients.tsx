@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Pagination } from '@mantine/core';
+import { Title, Group, Button, TextInput, Modal, Pagination, Loader, Center } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -8,16 +8,18 @@ import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { getClients, createClient, updateClient, deleteClient, Client, ClientFormData } from '../api/clients';
 import ClientTable from '../components/Billing/ClientTable';
 import ClientForm from '../components/Billing/ClientForm';
+import { usePermissions } from '../hooks/usePermissions';
 
 export default function Clients() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['clients', debouncedSearch, page],
     queryFn: () => getClients({ search: debouncedSearch || undefined, page }),
   });
@@ -81,9 +83,11 @@ export default function Clients() {
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Clients</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
-          Add Client
-        </Button>
+        {can('clients.create') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
+            Add Client
+          </Button>
+        )}
       </Group>
 
       <TextInput
@@ -95,7 +99,7 @@ export default function Clients() {
         maw={300}
       />
 
-      <ClientTable clients={clients} onEdit={handleEdit} onDelete={handleDelete} />
+      <ClientTable clients={clients} onEdit={handleEdit} onDelete={handleDelete} startIndex={meta ? (meta.current_page - 1) * meta.per_page + 1 : 1} loading={isLoading} />
 
       {meta && meta.last_page > 1 && (
         <Group justify="center" mt="md">

@@ -5,7 +5,7 @@ import {
   Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Line, ComposedChart,
 } from 'recharts';
-import { IconHeartHandshake, IconStar, IconMoodHappy, IconAlertTriangle } from '@tabler/icons-react';
+import { IconHeartHandshake, IconStar, IconMoodHappy, IconAlertTriangle, IconMapPin } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { getSatisfactionReport } from '../../api/reports';
 import ReportHeader from '../../components/Reports/ReportHeader';
@@ -67,7 +67,7 @@ export default function SatisfactionReportPage() {
 
       {r && (
         <>
-          <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }}>
+          <SimpleGrid cols={{ base: 1, xs: 2, md: 5 }}>
             <StatCard
               label="Total Calls"
               value={`${r.stats.total_completed}/${r.stats.total_scheduled}`}
@@ -92,6 +92,13 @@ export default function SatisfactionReportPage() {
               value={`${r.stats.complaint_rate}%`}
               icon={<IconAlertTriangle size={24} />}
               color={r.stats.complaint_rate <= 10 ? 'green' : 'red'}
+            />
+            <StatCard
+              label="Visit Appointments"
+              value={String(r.stats.appointments_total || 0)}
+              icon={<IconMapPin size={24} />}
+              color="orange"
+              subtitle={r.stats.appointments_pending ? `${r.stats.appointments_pending} pending` : undefined}
             />
           </SimpleGrid>
 
@@ -168,6 +175,7 @@ export default function SatisfactionReportPage() {
                       <Table.Th>Outcome</Table.Th>
                       <Table.Th>Rating</Table.Th>
                       <Table.Th>Feedback</Table.Th>
+                      <Table.Th>Appointment</Table.Th>
                       <Table.Th>Status</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
@@ -189,6 +197,19 @@ export default function SatisfactionReportPage() {
                         </Table.Td>
                         <Table.Td>
                           <Text size="xs" truncate maw={200}>{c.feedback || '—'}</Text>
+                        </Table.Td>
+                        <Table.Td>
+                          {c.appointment_requested ? (
+                            <Badge size="sm" variant="light" color={
+                              c.appointment_status === 'completed' ? 'green'
+                              : c.appointment_status === 'cancelled' ? 'gray'
+                              : 'orange'
+                            } leftSection={<IconMapPin size={10} />}>
+                              {c.appointment_date ? new Date(c.appointment_date).toLocaleDateString() : 'TBD'}
+                            </Badge>
+                          ) : (
+                            <Text size="xs" c="dimmed">—</Text>
+                          )}
                         </Table.Td>
                         <Table.Td>
                           <Badge color={statusColors[c.status] || 'gray'} size="sm">{c.status}</Badge>

@@ -15,12 +15,16 @@ class SatisfactionCall extends Model
         'tenant_id', 'client_id', 'user_id',
         'scheduled_date', 'called_at', 'outcome', 'rating',
         'feedback', 'internal_notes', 'status', 'month_key',
+        'follow_up_of',
+        'appointment_requested', 'appointment_date', 'appointment_notes', 'appointment_status',
     ];
 
     protected $casts = [
         'scheduled_date' => 'date',
         'called_at' => 'datetime',
         'rating' => 'integer',
+        'appointment_requested' => 'boolean',
+        'appointment_date' => 'date',
     ];
 
     public function client()
@@ -31,6 +35,16 @@ class SatisfactionCall extends Model
     public function user()
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function originalCall()
+    {
+        return $this->belongsTo(self::class, 'follow_up_of');
+    }
+
+    public function followUp()
+    {
+        return $this->hasOne(self::class, 'follow_up_of');
     }
 
     public function scopeScheduledToday($query)

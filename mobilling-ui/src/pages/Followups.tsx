@@ -9,7 +9,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconPhone, IconPhoneCall, IconAlertTriangle, IconCheck,
-  IconX, IconPlayerPlay,
+  IconX, IconPlayerPlay, IconScript,
 } from '@tabler/icons-react';
 import {
   getFollowupDashboard, getFollowups, logCall, cancelFollowup,
@@ -17,6 +17,8 @@ import {
 } from '../api/followups';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
+import { useAuth } from '../context/AuthContext';
+import CallScriptDrawer from '../components/CallScriptDrawer';
 
 const outcomeColors: Record<string, string> = {
   promised: 'blue',
@@ -37,6 +39,9 @@ const statusColors: Record<string, string> = {
 
 export default function Followups() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const agentName = user?.name || 'Agent';
+  const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [selectedFollowup, setSelectedFollowup] = useState<FollowupEntry | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -131,7 +136,17 @@ export default function Followups() {
 
   return (
     <Stack gap="lg">
-      <Title order={2}>Follow-ups</Title>
+      <Group justify="space-between">
+        <Title order={2}>Follow-ups</Title>
+        <Button
+          variant="light"
+          color="teal"
+          leftSection={<IconScript size={18} />}
+          onClick={() => setScriptDrawerOpen(true)}
+        >
+          Call Script
+        </Button>
+      </Group>
 
       {/* Stats */}
       <SimpleGrid cols={{ base: 1, xs: 3 }}>
@@ -488,6 +503,13 @@ export default function Followups() {
           </Stack>
         )}
       </Modal>
+
+      <CallScriptDrawer
+        opened={scriptDrawerOpen}
+        onClose={() => setScriptDrawerOpen(false)}
+        agentName={agentName}
+        defaultSection="section3"
+      />
     </Stack>
   );
 }

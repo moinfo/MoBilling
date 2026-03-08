@@ -300,11 +300,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:menu.satisfaction_calls')->group(function () {
         Route::get('/satisfaction-calls/dashboard', [SatisfactionCallController::class, 'dashboard']);
         Route::get('/satisfaction-calls', [SatisfactionCallController::class, 'index']);
-        Route::post('/satisfaction-calls/{satisfactionCall}/log-call', [SatisfactionCallController::class, 'logCall']);
-        Route::patch('/satisfaction-calls/{satisfactionCall}/reschedule', [SatisfactionCallController::class, 'reschedule']);
-        Route::patch('/satisfaction-calls/{satisfactionCall}/cancel', [SatisfactionCallController::class, 'cancel']);
-        Route::patch('/satisfaction-calls/{satisfactionCall}/assign', [SatisfactionCallController::class, 'assign']);
         Route::get('/satisfaction-calls/client/{clientId}', [SatisfactionCallController::class, 'clientHistory']);
+        Route::middleware('permission:satisfaction_calls.log')->post('/satisfaction-calls/{satisfactionCall}/log-call', [SatisfactionCallController::class, 'logCall']);
+        Route::middleware('permission:satisfaction_calls.reschedule')->patch('/satisfaction-calls/{satisfactionCall}/reschedule', [SatisfactionCallController::class, 'reschedule']);
+        Route::middleware('permission:satisfaction_calls.cancel')->patch('/satisfaction-calls/{satisfactionCall}/cancel', [SatisfactionCallController::class, 'cancel']);
+        Route::middleware('permission:satisfaction_calls.assign')->patch('/satisfaction-calls/{satisfactionCall}/assign', [SatisfactionCallController::class, 'assign']);
     });
 
     // Automation

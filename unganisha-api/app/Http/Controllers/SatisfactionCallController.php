@@ -47,6 +47,11 @@ class SatisfactionCallController extends Controller
             'internal_notes' => $c->internal_notes,
             'status' => $c->status,
             'month_key' => $c->month_key,
+            'is_follow_up' => !is_null($c->follow_up_of),
+            'appointment_requested' => $c->appointment_requested,
+            'appointment_date' => $c->appointment_date?->toDateString(),
+            'appointment_notes' => $c->appointment_notes,
+            'appointment_status' => $c->appointment_status,
         ];
 
         return response()->json([
@@ -105,6 +110,11 @@ class SatisfactionCallController extends Controller
             'internal_notes' => $c->internal_notes,
             'status' => $c->status,
             'month_key' => $c->month_key,
+            'is_follow_up' => !is_null($c->follow_up_of),
+            'appointment_requested' => $c->appointment_requested,
+            'appointment_date' => $c->appointment_date?->toDateString(),
+            'appointment_notes' => $c->appointment_notes,
+            'appointment_status' => $c->appointment_status,
             'created_at' => $c->created_at?->toISOString(),
         ]);
 
@@ -121,6 +131,9 @@ class SatisfactionCallController extends Controller
             'rating' => 'nullable|integer|min:1|max:5',
             'feedback' => 'nullable|string|max:2000',
             'internal_notes' => 'nullable|string|max:2000',
+            'appointment_requested' => 'nullable|boolean',
+            'appointment_date' => 'nullable|date|after_or_equal:today',
+            'appointment_notes' => 'nullable|string|max:500',
         ]);
 
         $satisfactionCall->update([
@@ -131,11 +144,35 @@ class SatisfactionCallController extends Controller
             'feedback' => $data['feedback'] ?? null,
             'internal_notes' => $data['internal_notes'] ?? null,
             'status' => 'completed',
+            'appointment_requested' => $data['appointment_requested'] ?? false,
+            'appointment_date' => $data['appointment_date'] ?? null,
+            'appointment_notes' => $data['appointment_notes'] ?? null,
+            'appointment_status' => !empty($data['appointment_date']) ? 'pending' : null,
         ]);
+
+        // Auto-schedule follow-up if client didn't answer
+        $followUp = null;
+        if (in_array($data['outcome'], ['no_answer', 'unreachable'])) {
+            $nextDate = $this->nextBusinessDay(now()->addDay());
+
+            $followUp = SatisfactionCall::create([
+                'tenant_id' => $satisfactionCall->tenant_id,
+                'client_id' => $satisfactionCall->client_id,
+                'user_id' => $satisfactionCall->user_id, // keep same assignee
+                'scheduled_date' => $nextDate,
+                'status' => 'scheduled',
+                'month_key' => $satisfactionCall->month_key,
+                'internal_notes' => 'Auto follow-up: client ' . ($data['outcome'] === 'no_answer' ? 'did not answer' : 'was unreachable') . ' on ' . now()->toDateString(),
+                'follow_up_of' => $satisfactionCall->id,
+            ]);
+        }
 
         return response()->json([
             'data' => $satisfactionCall->fresh(),
-            'message' => 'Satisfaction call logged.',
+            'follow_up' => $followUp,
+            'message' => $followUp
+                ? 'Call logged. Follow-up scheduled for ' . $followUp->scheduled_date->toDateString() . '.'
+                : 'Satisfaction call logged.',
         ]);
     }
 
@@ -194,6 +231,17 @@ class SatisfactionCallController extends Controller
     }
 
     /**
+     * Next business day (skip weekends).
+     */
+    private function nextBusinessDay(Carbon $date): Carbon
+    {
+        while ($date->isWeekend()) {
+            $date->addDay();
+        }
+        return $date;
+    }
+
+    /**
      * Client history — last 24 months of calls.
      */
     public function clientHistory(string $clientId)
@@ -214,6 +262,10 @@ class SatisfactionCallController extends Controller
                 'internal_notes' => $c->internal_notes,
                 'status' => $c->status,
                 'month_key' => $c->month_key,
+                'appointment_requested' => $c->appointment_requested,
+                'appointment_date' => $c->appointment_date?->toDateString(),
+                'appointment_notes' => $c->appointment_notes,
+                'appointment_status' => $c->appointment_status,
             ]);
 
         return response()->json(['data' => $calls]);

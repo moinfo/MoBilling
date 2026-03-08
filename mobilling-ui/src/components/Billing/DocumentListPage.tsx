@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Title, Group, Button, TextInput, Pagination, Drawer,
-  SegmentedControl, Modal, Stack, Text, Radio,
+  SegmentedControl, Modal, Stack, Text, Radio, Loader, Center,
 } from '@mantine/core';
 import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
@@ -15,6 +15,7 @@ import { getProductServices, ProductService } from '../../api/productServices';
 import DocumentTable from './DocumentTable';
 import DocumentForm from './DocumentForm';
 import DocumentView from './DocumentView';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface Props {
   type: 'quotation' | 'proforma' | 'invoice';
@@ -23,6 +24,7 @@ interface Props {
 
 export default function DocumentListPage({ type, title }: Props) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
@@ -54,7 +56,7 @@ export default function DocumentListPage({ type, title }: Props) {
     : statusFilter === 'unpaid' ? 'sent' // sent = unpaid invoices
     : statusFilter; // 'paid', 'overdue', 'draft'
 
-  const { data: docsData } = useQuery({
+  const { data: docsData, isLoading } = useQuery({
     queryKey: ['documents', type, debouncedSearch, page, statusParam],
     queryFn: () => getDocuments({ type, search: debouncedSearch || undefined, page, status: statusParam }),
   });
@@ -192,9 +194,11 @@ export default function DocumentListPage({ type, title }: Props) {
     <>
       <Group justify="space-between" mb="md">
         <Title order={2}>{title}</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setFormOpen(true)}>
-          New {title.slice(0, -1)}
-        </Button>
+        {can('documents.create') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setFormOpen(true)}>
+            New {title.slice(0, -1)}
+          </Button>
+        )}
       </Group>
 
       <Group mb="md" justify="space-between" wrap="wrap">
@@ -242,6 +246,8 @@ export default function DocumentListPage({ type, title }: Props) {
         onRemind={isInvoice ? openRemindSingle : undefined}
         onCancel={isInvoice ? handleCancel : undefined}
         onUncancel={isInvoice ? handleUncancel : undefined}
+        startIndex={meta ? (meta.current_page - 1) * meta.per_page + 1 : 1}
+        loading={isLoading}
       />
 
       {meta && meta.last_page > 1 && (

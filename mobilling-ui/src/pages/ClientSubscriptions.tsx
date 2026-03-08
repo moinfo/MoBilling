@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Group, Button, TextInput, Modal, Table, Text, Badge, Pagination,
-  Stack, NumberInput, Select, ActionIcon, Tooltip,
+  Stack, NumberInput, Select, ActionIcon, Tooltip, Loader, Center,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -18,6 +18,7 @@ import { getClients, Client } from '../api/clients';
 import { getProductServices, ProductService } from '../api/productServices';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
+import { usePermissions } from '../hooks/usePermissions';
 
 const cycleLabels: Record<string, string> = {
   monthly: 'Monthly',
@@ -35,6 +36,7 @@ const statusColors: Record<string, string> = {
 
 export default function ClientSubscriptions() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
@@ -53,7 +55,7 @@ export default function ClientSubscriptions() {
     setPage(1);
   };
 
-  const { data } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['client-subscriptions', debouncedSearch, page, sortBy, sortDir],
     queryFn: () => getClientSubscriptions({ search: debouncedSearch || undefined, page, sort_by: sortBy, sort_dir: sortDir }),
   });
@@ -149,9 +151,11 @@ export default function ClientSubscriptions() {
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Client Subscriptions</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
-          Add Subscription
-        </Button>
+        {can('client_subscriptions.create') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
+            Add Subscription
+          </Button>
+        )}
       </Group>
 
       <TextInput
@@ -163,7 +167,9 @@ export default function ClientSubscriptions() {
         maw={350}
       />
 
-      {items.length === 0 ? (
+      {isLoading ? (
+        <Center py="xl"><Loader /></Center>
+      ) : items.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">
           No subscriptions yet. Add a subscription to track what each client is subscribed to (e.g., domains, hosting).
         </Text>
@@ -214,22 +220,28 @@ export default function ClientSubscriptions() {
                 </Table.Td>
                 <Table.Td>
                   <Group gap={4} wrap="nowrap">
-                    <Tooltip label="Create Invoice">
-                      <ActionIcon
-                        variant="light"
-                        color="green"
-                        onClick={() => invoiceMutation.mutate(sub.id)}
-                        loading={invoiceMutation.isPending}
-                      >
-                        <IconFileInvoice size={16} />
+                    {can('documents.create') && (
+                      <Tooltip label="Create Invoice">
+                        <ActionIcon
+                          variant="light"
+                          color="green"
+                          onClick={() => invoiceMutation.mutate(sub.id)}
+                          loading={invoiceMutation.isPending}
+                        >
+                          <IconFileInvoice size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                    {can('client_subscriptions.update') && (
+                      <ActionIcon variant="light" onClick={() => handleEdit(sub)}>
+                        <IconEdit size={16} />
                       </ActionIcon>
-                    </Tooltip>
-                    <ActionIcon variant="light" onClick={() => handleEdit(sub)}>
-                      <IconEdit size={16} />
-                    </ActionIcon>
-                    <ActionIcon variant="light" color="red" onClick={() => handleDelete(sub)}>
-                      <IconTrash size={16} />
-                    </ActionIcon>
+                    )}
+                    {can('client_subscriptions.delete') && (
+                      <ActionIcon variant="light" color="red" onClick={() => handleDelete(sub)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    )}
                   </Group>
                 </Table.Td>
               </Table.Tr>

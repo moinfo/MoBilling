@@ -1,8 +1,9 @@
-import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip } from '@mantine/core';
+import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip, Loader, Center } from '@mantine/core';
 import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX, IconRefresh } from '@tabler/icons-react';
 import { Document } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface Props {
   documents: Document[];
@@ -12,6 +13,8 @@ interface Props {
   onRemind?: (doc: Document) => void;
   onCancel?: (doc: Document) => void;
   onUncancel?: (doc: Document) => void;
+  startIndex?: number;
+  loading?: boolean;
 }
 
 const statusColors: Record<string, string> = {
@@ -31,7 +34,11 @@ const stageLabels: Record<string, string> = {
   termination_warning: 'Termination warning sent',
 };
 
-export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel }: Props) {
+export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, startIndex = 1, loading }: Props) {
+  const { can } = usePermissions();
+  if (loading) {
+    return <Center py="xl"><Loader /></Center>;
+  }
   if (documents.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No documents found</Text>;
   }
@@ -41,6 +48,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
+            <Table.Th w={50}>#</Table.Th>
             <Table.Th>Number</Table.Th>
             <Table.Th>Client</Table.Th>
             <Table.Th>Date</Table.Th>
@@ -50,11 +58,12 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
           </Table.Tr>
         </Table.Thead>
       <Table.Tbody>
-        {documents.map((doc) => {
+        {documents.map((doc, index) => {
           const isCancelled = doc.status === 'cancelled';
           const isUnpaid = !isCancelled && doc.status !== 'paid' && doc.status !== 'draft';
           return (
             <Table.Tr key={doc.id} style={{ cursor: 'pointer', opacity: isCancelled ? 0.5 : 1 }} onClick={() => onView(doc)}>
+              <Table.Td><Text size="sm" c="dimmed">{startIndex + index}</Text></Table.Td>
               <Table.Td fw={500} td={isCancelled ? 'line-through' : undefined}>{doc.document_number}</Table.Td>
               <Table.Td td={isCancelled ? 'line-through' : undefined}>{doc.client?.name || '—'}</Table.Td>
               <Table.Td>{formatDate(doc.date)}</Table.Td>
@@ -80,8 +89,10 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                   </Menu.Target>
                   <Menu.Dropdown>
                     <Menu.Item leftSection={<IconEye size={14} />} onClick={() => onView(doc)}>View</Menu.Item>
-                    <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => onEdit(doc)}>Edit</Menu.Item>
-                    {onRemind && isUnpaid && (
+                    {can('documents.update') && (
+                      <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => onEdit(doc)}>Edit</Menu.Item>
+                    )}
+                    {can('documents.send') && onRemind && isUnpaid && (
                       <Menu.Item
                         leftSection={<IconBell size={14} />}
                         color="orange"
@@ -90,7 +101,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                         Send Reminder
                       </Menu.Item>
                     )}
-                    {onCancel && isUnpaid && (
+                    {can('documents.update') && onCancel && isUnpaid && (
                       <Menu.Item
                         leftSection={<IconX size={14} />}
                         color="red"
@@ -99,7 +110,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                         Cancel
                       </Menu.Item>
                     )}
-                    {onUncancel && isCancelled && (
+                    {can('documents.update') && onUncancel && isCancelled && (
                       <Menu.Item
                         leftSection={<IconRefresh size={14} />}
                         color="green"
@@ -108,7 +119,9 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                         Restore
                       </Menu.Item>
                     )}
-                    <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => onDelete(doc)}>Delete</Menu.Item>
+                    {can('documents.delete') && (
+                      <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => onDelete(doc)}>Delete</Menu.Item>
+                    )}
                   </Menu.Dropdown>
                 </Menu>
               </Table.Td>
