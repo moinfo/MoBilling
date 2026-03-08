@@ -82,7 +82,7 @@ export default function SatisfactionCalls() {
 
   // Appointment state
   const [appointmentRequested, setAppointmentRequested] = useState(false);
-  const [appointmentDate, setAppointmentDate] = useState<Date | null>(null);
+  const [appointmentDate, setAppointmentDate] = useState<string | null>(null);
   const [appointmentNotes, setAppointmentNotes] = useState('');
 
   // Reschedule state
@@ -282,7 +282,7 @@ export default function SatisfactionCalls() {
         feedback: feedback || undefined,
         internal_notes: internalNotes || undefined,
         appointment_requested: appointmentRequested,
-        appointment_date: appointmentRequested ? formatLocalDate(appointmentDate) : undefined,
+        appointment_date: appointmentRequested ? (appointmentDate || undefined) : undefined,
         appointment_notes: appointmentRequested ? (appointmentNotes || undefined) : undefined,
       },
     });

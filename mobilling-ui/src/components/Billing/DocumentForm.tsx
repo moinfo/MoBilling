@@ -26,7 +26,7 @@ function ProductServiceInput({ productServices, productServiceId, description, o
   onChange: (id: string | null, customName: string | null) => void;
 }) {
   const combobox = useCombobox({ onDropdownClose: () => combobox.resetSelectedOption() });
-  const [selectedId, setSelectedId] = useState(productServiceId);
+  const [, setSelectedId] = useState(productServiceId);
   const [search, setSearch] = useState(() => {
     if (productServiceId) {
       const found = productServices.find(ps => ps.id === productServiceId);

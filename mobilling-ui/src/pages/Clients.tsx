@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Pagination, Loader, Center } from '@mantine/core';
+import { Title, Group, Button, TextInput, Modal, Pagination } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';

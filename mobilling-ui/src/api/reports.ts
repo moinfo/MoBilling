@@ -335,6 +335,9 @@ export interface SatisfactionCallDetail {
   feedback: string | null;
   status: string;
   month_key: string;
+  appointment_requested?: boolean;
+  appointment_date?: string | null;
+  appointment_status?: string | null;
 }
 
 export interface SatisfactionReport {
@@ -345,6 +348,8 @@ export interface SatisfactionReport {
     avg_rating: number | null;
     satisfaction_rate: number;
     complaint_rate: number;
+    appointments_total?: number;
+    appointments_pending?: number;
   };
   monthly: SatisfactionMonthly[];
   by_outcome: SatisfactionOutcome[];

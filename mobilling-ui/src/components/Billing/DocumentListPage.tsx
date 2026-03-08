@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Title, Group, Button, TextInput, Pagination, Drawer,
-  SegmentedControl, Modal, Stack, Text, Radio, Loader, Center,
+  SegmentedControl, Modal, Stack, Text, Radio,
 } from '@mantine/core';
 import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
