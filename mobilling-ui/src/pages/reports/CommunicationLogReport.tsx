@@ -136,7 +136,7 @@ export default function CommunicationLogReport() {
                       <Table.Td tt="capitalize">{m.channel}</Table.Td>
                       <Table.Td tt="capitalize">{m.type?.replace('_', ' ')}</Table.Td>
                       <Table.Td>{m.recipient}</Table.Td>
-                      <Table.Td>{m.client_name || '-'}</Table.Td>
+                      <Table.Td tt="uppercase">{m.client_name || '-'}</Table.Td>
                       <Table.Td maw={200} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.subject || '-'}</Table.Td>
                       <Table.Td>
                         <Badge color={m.status === 'sent' ? 'green' : 'red'} variant="light" tt="capitalize">

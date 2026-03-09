@@ -208,7 +208,7 @@ export default function Collection() {
               <Table.Tbody>
                 {[...(followups?.due_today ?? []), ...(followups?.overdue_followups ?? [])].slice(0, 10).map((f) => (
                   <Table.Tr key={f.id} onClick={() => navigate('/followups')} style={{ cursor: 'pointer' }}>
-                    <Table.Td fw={500}>{f.client_name}</Table.Td>
+                    <Table.Td fw={500} tt="uppercase">{f.client_name}</Table.Td>
                     <Table.Td>{f.client_phone || '—'}</Table.Td>
                     <Table.Td>{f.document_number}</Table.Td>
                     <Table.Td fw={600} c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
@@ -290,7 +290,7 @@ export default function Collection() {
                         }}
                       >
                         <Group justify="space-between" gap={4} wrap="nowrap">
-                          <Text size="xs" fw={600} truncate>{entry.client_name}</Text>
+                          <Text size="xs" fw={600} truncate tt="uppercase">{entry.client_name}</Text>
                           <Badge
                             size="xs"
                             variant="light"
@@ -415,7 +415,7 @@ export default function Collection() {
                 {dashboard.today_due.map((inv) => (
                   <Table.Tr key={inv.id} onClick={() => openPreview(inv.id)} style={{ cursor: 'pointer' }}>
                     <Table.Td fw={500}>{inv.document_number}</Table.Td>
-                    <Table.Td>{inv.client_name}</Table.Td>
+                    <Table.Td tt="uppercase">{inv.client_name}</Table.Td>
                     <Table.Td>{formatCurrency(inv.total)}</Table.Td>
                     <Table.Td c="green">{formatCurrency(inv.paid_amount)}</Table.Td>
                     <Table.Td fw={600} c="red">{formatCurrency(inv.balance_due)}</Table.Td>
@@ -456,7 +456,7 @@ export default function Collection() {
               <Table.Tbody>
                 {dashboard.today_payments.map((p) => (
                   <Table.Tr key={p.id}>
-                    <Table.Td>{p.client_name || '—'}</Table.Td>
+                    <Table.Td tt="uppercase">{p.client_name || '—'}</Table.Td>
                     <Table.Td fw={500}>{p.document_number || '—'}</Table.Td>
                     <Table.Td fw={600} c="green">{formatCurrency(p.amount)}</Table.Td>
                     <Table.Td>{p.payment_method || '—'}</Table.Td>
@@ -496,7 +496,7 @@ export default function Collection() {
                 {dashboard.overdue.map((inv) => (
                   <Table.Tr key={inv.id} onClick={() => openPreview(inv.id)} style={{ cursor: 'pointer' }}>
                     <Table.Td fw={500}>{inv.document_number}</Table.Td>
-                    <Table.Td>{inv.client_name}</Table.Td>
+                    <Table.Td tt="uppercase">{inv.client_name}</Table.Td>
                     <Table.Td>{inv.due_date ? formatDate(inv.due_date) : '—'}</Table.Td>
                     <Table.Td>
                       <Badge color="red" variant="light" size="sm">
@@ -540,7 +540,7 @@ export default function Collection() {
                 {dashboard.upcoming.map((inv) => (
                   <Table.Tr key={inv.id} onClick={() => openPreview(inv.id)} style={{ cursor: 'pointer' }}>
                     <Table.Td fw={500}>{inv.document_number}</Table.Td>
-                    <Table.Td>{inv.client_name}</Table.Td>
+                    <Table.Td tt="uppercase">{inv.client_name}</Table.Td>
                     <Table.Td>{inv.due_date ? formatDate(inv.due_date) : '—'}</Table.Td>
                     <Table.Td>
                       <Badge

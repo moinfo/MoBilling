@@ -183,7 +183,7 @@ export default function SatisfactionReportPage() {
                     {r.calls.map((c) => (
                       <Table.Tr key={c.id}>
                         <Table.Td>{new Date(c.scheduled_date).toLocaleDateString()}</Table.Td>
-                        <Table.Td fw={500}>{c.client_name || '—'}</Table.Td>
+                        <Table.Td fw={500} tt="uppercase">{c.client_name || '—'}</Table.Td>
                         <Table.Td>{c.assigned_to || '—'}</Table.Td>
                         <Table.Td>
                           {c.outcome ? (

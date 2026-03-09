@@ -195,7 +195,7 @@ export default function ClientSubscriptions() {
               <Table.Tr key={sub.id}>
                 <Table.Td><Text size="sm" c="dimmed">{((meta?.current_page ?? 1) - 1) * (meta?.per_page ?? 20) + index + 1}</Text></Table.Td>
                 <Table.Td>
-                  <Text fw={500} size="sm">{sub.client_name}</Text>
+                  <Text fw={500} size="sm" tt="uppercase">{sub.client_name}</Text>
                 </Table.Td>
                 <Table.Td>{sub.product_service_name}</Table.Td>
                 <Table.Td>

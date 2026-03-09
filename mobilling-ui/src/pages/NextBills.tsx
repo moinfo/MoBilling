@@ -50,7 +50,7 @@ export default function NextBills() {
               <Table.Tr key={item.subscription_id}>
                 <Table.Td><Text size="sm" c="dimmed">{index + 1}</Text></Table.Td>
                 <Table.Td>
-                  <Text fw={500} size="sm">{item.client_name}</Text>
+                  <Text fw={500} size="sm" tt="uppercase">{item.client_name}</Text>
                   {item.client_email && <Text size="xs" c="dimmed">{item.client_email}</Text>}
                 </Table.Td>
                 <Table.Td>{item.product_service_name}</Table.Td>

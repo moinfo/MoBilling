@@ -239,7 +239,7 @@ export default function SubscriptionReportPage() {
                     {r.upcoming_renewals.map((s, i) => (
                       <Table.Tr key={i}>
                         <Table.Td>
-                          <Text size="sm" truncate maw={120}>{s.client_name}</Text>
+                          <Text size="sm" truncate maw={120} tt="uppercase">{s.client_name}</Text>
                         </Table.Td>
                         <Table.Td>
                           <Text size="sm" truncate maw={100}>{s.product_name}</Text>
@@ -299,7 +299,7 @@ export default function SubscriptionReportPage() {
                             <Table.Tbody>
                               {p.clients.map((c, ci) => (
                                 <Table.Tr key={ci}>
-                                  <Table.Td>{c.client_name}</Table.Td>
+                                  <Table.Td tt="uppercase">{c.client_name}</Table.Td>
                                   <Table.Td>{c.label || '-'}</Table.Td>
                                   <Table.Td ta="center">{c.quantity}</Table.Td>
                                   <Table.Td>

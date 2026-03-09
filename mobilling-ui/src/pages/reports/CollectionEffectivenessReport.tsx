@@ -114,7 +114,7 @@ export default function CollectionEffectivenessReport() {
                   {r.followups.map((f) => (
                     <Table.Tr key={f.id}>
                       <Table.Td>{f.call_date}</Table.Td>
-                      <Table.Td>{f.client_name || '-'}</Table.Td>
+                      <Table.Td tt="uppercase">{f.client_name || '-'}</Table.Td>
                       <Table.Td>{f.document_number || '-'}</Table.Td>
                       <Table.Td>
                         <Badge

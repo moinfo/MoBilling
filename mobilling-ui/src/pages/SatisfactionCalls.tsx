@@ -301,7 +301,7 @@ export default function SatisfactionCalls() {
         size="sm"
         fw={500}
         onClick={(e) => { e.stopPropagation(); openClientDrawer(call.client_id); }}
-        style={{ cursor: 'pointer' }}
+        style={{ cursor: 'pointer', textTransform: 'uppercase' }}
       >
         {call.client_name}
       </Anchor>
@@ -935,7 +935,7 @@ export default function SatisfactionCalls() {
               <Group justify="space-between">
                 <div>
                   <Text size="xs" c="dimmed">Client</Text>
-                  <Text fw={600}>{selectedCall.client_name}</Text>
+                  <Text fw={600} tt="uppercase">{selectedCall.client_name}</Text>
                 </div>
                 <div>
                   <Text size="xs" c="dimmed">Phone</Text>

@@ -308,7 +308,7 @@ export default function Appointments() {
               <Group justify="space-between">
                 <div>
                   <Text size="xs" c="dimmed">Client</Text>
-                  <Text fw={600}>{selectedAppt.client_name}</Text>
+                  <Text fw={600} tt="uppercase">{selectedAppt.client_name}</Text>
                 </div>
                 <div>
                   <Text size="xs" c="dimmed">Date</Text>

@@ -88,7 +88,7 @@ export default function RevenueSummary() {
                   {r.invoices.map((inv) => (
                     <Table.Tr key={inv.id}>
                       <Table.Td>{inv.document_number}</Table.Td>
-                      <Table.Td>{inv.client_name}</Table.Td>
+                      <Table.Td tt="uppercase">{inv.client_name}</Table.Td>
                       <Table.Td>{inv.date}</Table.Td>
                       <Table.Td ta="right">{fmt(inv.total)}</Table.Td>
                       <Table.Td ta="right">{fmt(inv.paid)}</Table.Td>

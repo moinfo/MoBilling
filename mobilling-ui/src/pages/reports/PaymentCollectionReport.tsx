@@ -101,7 +101,7 @@ export default function PaymentCollectionReport() {
                   {r.payments.map((p) => (
                     <Table.Tr key={p.id}>
                       <Table.Td>{p.payment_date}</Table.Td>
-                      <Table.Td>{p.client_name || '-'}</Table.Td>
+                      <Table.Td tt="uppercase">{p.client_name || '-'}</Table.Td>
                       <Table.Td>{p.document_number || '-'}</Table.Td>
                       <Table.Td ta="right" fw={600}>{fmt(p.amount)}</Table.Td>
                       <Table.Td tt="capitalize">{p.payment_method || '-'}</Table.Td>

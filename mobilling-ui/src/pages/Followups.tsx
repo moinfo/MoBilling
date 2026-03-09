@@ -462,7 +462,7 @@ export default function Followups() {
               <Group justify="space-between">
                 <div>
                   <Text size="xs" c="dimmed">Client</Text>
-                  <Text fw={600}>{selectedFollowup.client_name}</Text>
+                  <Text fw={600} tt="uppercase">{selectedFollowup.client_name}</Text>
                 </div>
                 <div>
                   <Text size="xs" c="dimmed">Phone</Text>
