@@ -88,3 +88,26 @@ export interface ClientProfile {
 
 export const getClientProfile = (id: string) =>
   api.get<{ data: ClientProfile }>(`/clients/${id}/profile`);
+
+// Client Portal Users (tenant admin)
+export interface ClientPortalUser {
+  id: string;
+  name: string;
+  email: string;
+  phone: string | null;
+  role: 'admin' | 'viewer';
+  is_active: boolean;
+  last_login_at: string | null;
+}
+
+export const getClientPortalUsers = (clientId: string) =>
+  api.get<{ data: ClientPortalUser[] }>(`/clients/${clientId}/portal-users`);
+
+export const createClientPortalUser = (clientId: string, data: { name: string; email: string; password: string; phone?: string; role: string }) =>
+  api.post(`/clients/${clientId}/portal-users`, data);
+
+export const updateClientPortalUser = (clientId: string, userId: string, data: Partial<ClientPortalUser & { password?: string }>) =>
+  api.put(`/clients/${clientId}/portal-users/${userId}`, data);
+
+export const deleteClientPortalUser = (clientId: string, userId: string) =>
+  api.delete(`/clients/${clientId}/portal-users/${userId}`);

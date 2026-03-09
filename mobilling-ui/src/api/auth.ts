@@ -26,11 +26,24 @@ export interface User {
     bank_branch: string | null;
     payment_instructions: string | null;
   };
+  // Client portal fields (only present when user_type === 'client')
+  client_id?: string;
+  client?: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+    address: string | null;
+    tax_id: string | null;
+  };
 }
+
+export type UserType = 'tenant' | 'client';
 
 export interface AuthResponse {
   user: User;
   token: string;
+  user_type: UserType;
   permissions: string[];
   subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
   days_remaining?: number;
@@ -38,6 +51,7 @@ export interface AuthResponse {
 
 export interface MeResponse {
   user: User;
+  user_type: UserType;
   permissions: string[];
   subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
   days_remaining?: number;

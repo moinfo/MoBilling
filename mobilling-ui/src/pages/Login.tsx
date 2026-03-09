@@ -33,8 +33,12 @@ export default function Login() {
 
   const handleSubmit = async (values: typeof form.values) => {
     try {
-      const user = await login(values);
-      navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
+      const { user, userType } = await login(values);
+      if (userType === 'client') {
+        navigate('/portal/dashboard');
+      } else {
+        navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
+      }
     } catch (err: any) {
       notifications.show({
         title: 'Login failed',

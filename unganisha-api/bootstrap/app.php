@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'tenant' => \App\Http\Middleware\TenantMiddleware::class,
             'permission' => \App\Http\Middleware\CheckPermission::class,
+            'client_portal' => \App\Http\Middleware\ClientPortalMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -54,6 +54,14 @@ import Collection from './pages/Collection';
 import Followups from './pages/Followups';
 import SatisfactionCalls from './pages/SatisfactionCalls';
 import Appointments from './pages/Appointments';
+import PortalShell from './components/Layout/PortalShell';
+import PortalDashboard from './pages/portal/PortalDashboard';
+import PortalDocuments from './pages/portal/PortalDocuments';
+import PortalPayments from './pages/portal/PortalPayments';
+import PortalStatement from './pages/portal/PortalStatement';
+import PortalSubscriptions from './pages/portal/PortalSubscriptions';
+import PortalProfile from './pages/portal/PortalProfile';
+import PortalUsers from './pages/portal/PortalUsers';
 import RevenueSummary from './pages/reports/RevenueSummary';
 import OutstandingAging from './pages/reports/OutstandingAging';
 import ClientStatementReport from './pages/reports/ClientStatementReport';
@@ -176,6 +184,25 @@ export default function App() {
                   <Route path="/reports/communication-log" element={<CommunicationLogReport />} />
                   <Route path="/settings" element={<Settings />} />
                 </Route>
+
+                {/* Client Portal routes */}
+                <Route
+                  element={
+                    <ProtectedRoute requiredUserType="client">
+                      <PortalShell />
+                    </ProtectedRoute>
+                  }
+                >
+                  <Route path="/portal/dashboard" element={<PortalDashboard />} />
+                  <Route path="/portal/invoices" element={<PortalDocuments type="invoice" />} />
+                  <Route path="/portal/quotations" element={<PortalDocuments type="quotation" />} />
+                  <Route path="/portal/payments" element={<PortalPayments />} />
+                  <Route path="/portal/statement" element={<PortalStatement />} />
+                  <Route path="/portal/subscriptions" element={<PortalSubscriptions />} />
+                  <Route path="/portal/profile" element={<PortalProfile />} />
+                  <Route path="/portal/users" element={<PortalUsers />} />
+                </Route>
+
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </AuthProvider>

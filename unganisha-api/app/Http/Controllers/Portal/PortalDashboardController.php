@@ -1,0 +1,70 @@
+<?php
+
+namespace App\Http\Controllers\Portal;
+
+use App\Http\Controllers\Controller;
+use App\Models\Document;
+use App\Models\PaymentIn;
+use Illuminate\Http\Request;
+
+class PortalDashboardController extends Controller
+{
+    public function summary(Request $request)
+    {
+        $clientUser = $request->user();
+        $clientId = $clientUser->client_id;
+
+        $invoices = Document::where('client_id', $clientId)
+            ->where('type', 'invoice')
+            ->whereNotIn('status', ['draft', 'cancelled']);
+
+        $totalInvoiced = (clone $invoices)->sum('total');
+        $totalPaid = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $clientId))->sum('amount');
+        $totalBalance = $totalInvoiced - $totalPaid;
+
+        $overdueCount = (clone $invoices)
+            ->where('status', '!=', 'paid')
+            ->where('due_date', '<', now())
+            ->count();
+
+        $recentInvoices = Document::where('client_id', $clientId)
+            ->where('type', 'invoice')
+            ->whereNotIn('status', ['draft', 'cancelled'])
+            ->orderByDesc('date')
+            ->limit(5)
+            ->get()
+            ->map(fn ($doc) => [
+                'id' => $doc->id,
+                'document_number' => $doc->document_number,
+                'date' => $doc->date->format('Y-m-d'),
+                'due_date' => $doc->due_date?->format('Y-m-d'),
+                'total' => (float) $doc->total,
+                'paid' => (float) $doc->paid_amount,
+                'balance' => (float) $doc->balance_due,
+                'status' => $doc->status,
+            ]);
+
+        $recentPayments = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $clientId))
+            ->with('document:id,document_number')
+            ->orderByDesc('payment_date')
+            ->limit(5)
+            ->get()
+            ->map(fn ($p) => [
+                'id' => $p->id,
+                'payment_date' => $p->payment_date,
+                'amount' => (float) $p->amount,
+                'payment_method' => $p->payment_method,
+                'reference' => $p->reference,
+                'document_number' => $p->document?->document_number,
+            ]);
+
+        return response()->json([
+            'total_invoiced' => $totalInvoiced,
+            'total_paid' => $totalPaid,
+            'total_balance' => $totalBalance,
+            'overdue_count' => $overdueCount,
+            'recent_invoices' => $recentInvoices,
+            'recent_payments' => $recentPayments,
+        ]);
+    }
+}

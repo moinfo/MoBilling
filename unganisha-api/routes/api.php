@@ -15,7 +15,14 @@ use App\Http\Controllers\Admin\RoleTemplateController;
 use App\Http\Controllers\Admin\TenantPermissionController;
 use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\ClientPortalUserController;
 use App\Http\Controllers\BroadcastController;
+use App\Http\Controllers\Portal\PortalDashboardController;
+use App\Http\Controllers\Portal\PortalDocumentController;
+use App\Http\Controllers\Portal\PortalPaymentController;
+use App\Http\Controllers\Portal\PortalProfileController;
+use App\Http\Controllers\Portal\PortalStatementController;
+use App\Http\Controllers\Portal\PortalSubscriptionController;
 use App\Http\Controllers\EmailSettingsController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ExpenseCategoryController;
@@ -335,6 +342,14 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/broadcasts', [BroadcastController::class, 'index']);
     Route::post('/broadcasts', [BroadcastController::class, 'send']);
 
+    // Client Portal Users (tenant admin manages portal access for clients)
+    Route::middleware('permission:clients.update')->group(function () {
+        Route::get('/clients/{client}/portal-users', [ClientPortalUserController::class, 'index']);
+        Route::post('/clients/{client}/portal-users', [ClientPortalUserController::class, 'store']);
+        Route::put('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'update']);
+        Route::delete('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'destroy']);
+    });
+
     // SMS (tenant)
     Route::get('/sms/packages', [SmsPurchaseController::class, 'packages']);
     Route::get('/sms/balance', [SmsPurchaseController::class, 'balance']);
@@ -345,4 +360,21 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/sms/purchases/{smsPurchase}/receipt', [SmsPurchaseController::class, 'downloadReceipt']);
     Route::get('/sms/purchases/{smsPurchase}/invoice', [SmsPurchaseController::class, 'downloadInvoice']);
     Route::post('/sms/request-activation', [SmsPurchaseController::class, 'requestActivation']);
+});
+
+// Client Portal routes
+Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(function () {
+    Route::get('/dashboard', [PortalDashboardController::class, 'summary']);
+    Route::get('/documents', [PortalDocumentController::class, 'index']);
+    Route::get('/documents/{document}', [PortalDocumentController::class, 'show']);
+    Route::get('/payments', [PortalPaymentController::class, 'index']);
+    Route::get('/statement', [PortalStatementController::class, 'index']);
+    Route::get('/subscriptions', [PortalSubscriptionController::class, 'index']);
+    Route::get('/profile', [PortalProfileController::class, 'show']);
+    Route::put('/profile', [PortalProfileController::class, 'update']);
+    Route::post('/profile/change-password', [PortalProfileController::class, 'changePassword']);
+    Route::get('/users', [PortalProfileController::class, 'listUsers']);
+    Route::post('/users', [PortalProfileController::class, 'storeUser']);
+    Route::put('/users/{portalUser}', [PortalProfileController::class, 'updateUser']);
+    Route::delete('/users/{portalUser}', [PortalProfileController::class, 'deleteUser']);
 });

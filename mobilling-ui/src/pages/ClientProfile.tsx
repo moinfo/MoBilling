@@ -2,16 +2,24 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
-  Anchor, Loader, Center, ThemeIcon, Modal,
+  Anchor, Loader, Center, ThemeIcon, Modal, Button, TextInput,
+  PasswordInput, Select, Switch, ActionIcon,
 } from '@mantine/core';
-import { useQuery } from '@tanstack/react-query';
+import { useForm } from '@mantine/form';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import {
   IconArrowLeft, IconMail, IconPhone, IconMapPin, IconId,
   IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend, IconPhoneCall,
-  IconHeartHandshake,
+  IconHeartHandshake, IconUserPlus, IconEdit, IconTrash, IconShieldLock,
 } from '@tabler/icons-react';
 import { Rating } from '@mantine/core';
-import { getClientProfile, ClientProfile as ClientProfileType, ClientCommunicationLog } from '../api/clients';
+import {
+  getClientProfile, ClientProfile as ClientProfileType, ClientCommunicationLog,
+  getClientPortalUsers, createClientPortalUser, updateClientPortalUser, deleteClientPortalUser,
+  ClientPortalUser,
+} from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -412,6 +420,9 @@ export default function ClientProfile() {
         )}
       </Paper>
 
+      {/* Portal Users */}
+      <PortalUsersSection clientId={clientId!} />
+
       {/* Communication Detail Modal */}
       <Modal
         opened={!!selectedLog}
@@ -472,6 +483,184 @@ export default function ClientProfile() {
         )}
       </Modal>
     </Stack>
+  );
+}
+
+function PortalUsersSection({ clientId }: { clientId: string }) {
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ClientPortalUser | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['client-portal-users', clientId],
+    queryFn: () => getClientPortalUsers(clientId),
+  });
+
+  const users = data?.data?.data || [];
+
+  const form = useForm({
+    initialValues: { name: '', email: '', password: '', phone: '', role: 'viewer' },
+    validate: {
+      name: (v) => (v.length > 0 ? null : 'Required'),
+      email: (v) => (/^\S+@\S+$/.test(v) ? null : 'Invalid email'),
+      password: (v) => {
+        if (editing) return null;
+        return v.length >= 8 ? null : 'Min 8 characters';
+      },
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: (data: any) => createClientPortalUser(clientId, data),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Portal user created', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-portal-users', clientId] });
+      closeModal();
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed', color: 'red' });
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => updateClientPortalUser(clientId, id, data),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Portal user updated', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-portal-users', clientId] });
+      closeModal();
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteClientPortalUser(clientId, id),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Portal user deleted', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-portal-users', clientId] });
+    },
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    form.reset();
+    setModalOpen(true);
+  };
+
+  const openEdit = (u: ClientPortalUser) => {
+    setEditing(u);
+    form.setValues({ name: u.name, email: u.email, password: '', phone: u.phone || '', role: u.role });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditing(null);
+    form.reset();
+  };
+
+  const handleSubmit = (values: typeof form.values) => {
+    if (editing) {
+      const payload: any = { name: values.name, phone: values.phone, role: values.role };
+      if (values.password) payload.password = values.password;
+      updateMut.mutate({ id: editing.id, data: payload });
+    } else {
+      createMut.mutate(values);
+    }
+  };
+
+  const confirmDelete = (u: ClientPortalUser) => {
+    modals.openConfirmModal({
+      title: 'Delete Portal User',
+      children: <Text size="sm">Delete {u.name} ({u.email})?</Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteMut.mutate(u.id),
+    });
+  };
+
+  const toggleActive = (u: ClientPortalUser) => {
+    updateMut.mutate({ id: u.id, data: { is_active: !u.is_active } });
+  };
+
+  return (
+    <>
+      <Paper withBorder p="md" radius="md">
+        <Group justify="space-between" mb="sm">
+          <Group gap="sm">
+            <IconShieldLock size={20} />
+            <Title order={4}>Portal Users</Title>
+            {users.length > 0 && <Badge variant="light" size="sm">{users.length}</Badge>}
+          </Group>
+          <Button leftSection={<IconUserPlus size={16} />} size="xs" onClick={openCreate}>
+            Add Portal User
+          </Button>
+        </Group>
+        {isLoading ? (
+          <Center py="md"><Loader size="sm" /></Center>
+        ) : users.length === 0 ? (
+          <Text c="dimmed" size="sm">No portal users. Add one to give this client access to the client portal.</Text>
+        ) : (
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Email</Table.Th>
+                <Table.Th>Role</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th>Last Login</Table.Th>
+                <Table.Th>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {users.map((u) => (
+                <Table.Tr key={u.id}>
+                  <Table.Td fw={500}>{u.name}</Table.Td>
+                  <Table.Td>{u.email}</Table.Td>
+                  <Table.Td>
+                    <Badge color={u.role === 'admin' ? 'blue' : 'gray'} variant="light" size="sm">{u.role}</Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Switch checked={u.is_active} onChange={() => toggleActive(u)} size="xs" label={u.is_active ? 'Active' : 'Inactive'} />
+                  </Table.Td>
+                  <Table.Td>{u.last_login_at ? formatDate(u.last_login_at) : 'Never'}</Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon variant="subtle" size="sm" onClick={() => openEdit(u)}><IconEdit size={14} /></ActionIcon>
+                      <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmDelete(u)}><IconTrash size={14} /></ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+      </Paper>
+
+      <Modal opened={modalOpen} onClose={closeModal} title={editing ? 'Edit Portal User' : 'Add Portal User'}>
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <Stack gap="sm">
+            <TextInput label="Name" required {...form.getInputProps('name')} />
+            <TextInput label="Email" required disabled={!!editing} {...form.getInputProps('email')} />
+            <PasswordInput
+              label={editing ? 'New Password (leave blank to keep)' : 'Password'}
+              required={!editing}
+              {...form.getInputProps('password')}
+            />
+            <TextInput label="Phone" {...form.getInputProps('phone')} />
+            <Select
+              label="Role"
+              data={[
+                { value: 'admin', label: 'Admin (can manage portal users)' },
+                { value: 'viewer', label: 'Viewer (view only)' },
+              ]}
+              {...form.getInputProps('role')}
+            />
+            <Button type="submit" loading={createMut.isPending || updateMut.isPending}>
+              {editing ? 'Update' : 'Create'}
+            </Button>
+          </Stack>
+        </form>
+      </Modal>
+    </>
   );
 }
 
