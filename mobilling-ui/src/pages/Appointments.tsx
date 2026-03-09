@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, Stack, Select,
-  Loader, Center, SimpleGrid, ThemeIcon, ActionIcon, Tooltip,
+  Loader, Center, SimpleGrid, ThemeIcon, ActionIcon,
   Pagination, Anchor, Menu, Modal, Button, Textarea,
 } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';

@@ -29,14 +29,6 @@ const typeConfig: Record<string, { icon: typeof IconPhoneCall; color: string; la
   statutory: { icon: IconShieldCheck, color: 'violet', label: 'Statutory' },
 };
 
-function primaryColor(items: CalendarItem[]): string {
-  const priority = ['appointment', 'invoice', 'bill', 'followup', 'satisfaction', 'statutory'];
-  for (const t of priority) {
-    if (items.some((i) => i.type === t)) return typeConfig[t].color;
-  }
-  return 'gray';
-}
-
 export default function ActivityCalendar({ data }: Props) {
   const today = new Date();
   const [month, setMonth] = useState(today.getMonth());
@@ -237,7 +229,7 @@ export default function ActivityCalendar({ data }: Props) {
           {Object.entries(typeConfig).map(([key, cfg]) => (
             <Group key={key} gap={4} wrap="nowrap">
               <Box w={6} h={6} style={{ borderRadius: '50%', background: `var(--mantine-color-${cfg.color}-5)` }} />
-              <Text size={10} c="dimmed">{cfg.label}</Text>
+              <Text size="xs" c="dimmed">{cfg.label}</Text>
             </Group>
           ))}
         </Group>
