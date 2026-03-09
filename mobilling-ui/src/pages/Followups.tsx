@@ -2,8 +2,9 @@ import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, Stack, Select,
   Loader, Center, Modal, Button, Textarea, NumberInput,
-  SimpleGrid, ThemeIcon, ActionIcon, Tooltip, Pagination,
+  SimpleGrid, ThemeIcon, ActionIcon, Tooltip, Pagination, Anchor, Drawer,
 } from '@mantine/core';
+import { useNavigate } from 'react-router-dom';
 import { DateInput } from '@mantine/dates';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -15,10 +16,12 @@ import {
   getFollowupDashboard, getFollowups, logCall, cancelFollowup,
   FollowupEntry,
 } from '../api/followups';
+import { getDocument, Document } from '../api/documents';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import { useAuth } from '../context/AuthContext';
 import CallScriptDrawer from '../components/CallScriptDrawer';
+import DocumentView from '../components/Billing/DocumentView';
 
 const outcomeColors: Record<string, string> = {
   promised: 'blue',
@@ -39,9 +42,11 @@ const statusColors: Record<string, string> = {
 
 export default function Followups() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useAuth();
   const agentName = user?.name || 'Agent';
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
+  const [viewDoc, setViewDoc] = useState<Document | null>(null);
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [selectedFollowup, setSelectedFollowup] = useState<FollowupEntry | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -111,6 +116,22 @@ export default function Followups() {
   const closeLogModal = () => {
     setLogModalOpen(false);
     setSelectedFollowup(null);
+  };
+
+  const openPreview = async (docId: string) => {
+    try {
+      const res = await getDocument(docId);
+      setViewDoc(res.data.data);
+    } catch { /* ignore */ }
+  };
+
+  const handleDocRefresh = async () => {
+    if (viewDoc) {
+      const res = await getDocument(viewDoc.id);
+      setViewDoc(res.data.data);
+    }
+    queryClient.invalidateQueries({ queryKey: ['followup-dashboard'] });
+    queryClient.invalidateQueries({ queryKey: ['followups'] });
   };
 
   const handleLogCall = () => {
@@ -211,9 +232,17 @@ export default function Followups() {
               <Table.Tbody>
                 {dashboard.due_today.map((f) => (
                   <Table.Tr key={f.id}>
-                    <Table.Td fw={500}>{f.client_name}</Table.Td>
+                    <Table.Td fw={500}>
+                      <Anchor size="sm" fw={500} onClick={() => navigate(`/clients/${f.client_id}`)} style={{ textTransform: 'uppercase' }}>
+                        {f.client_name}
+                      </Anchor>
+                    </Table.Td>
                     <Table.Td>{f.client_phone || '—'}</Table.Td>
-                    <Table.Td>{f.document_number}</Table.Td>
+                    <Table.Td>
+                      <Anchor size="sm" onClick={() => openPreview(f.document_id)}>
+                        {f.document_number}
+                      </Anchor>
+                    </Table.Td>
                     <Table.Td fw={600} c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
                     <Table.Td>
                       <Badge color={f.call_count! >= 3 ? 'red' : 'gray'} variant="light" size="sm">
@@ -269,9 +298,17 @@ export default function Followups() {
               <Table.Tbody>
                 {dashboard!.overdue_followups.map((f) => (
                   <Table.Tr key={f.id}>
-                    <Table.Td fw={500}>{f.client_name}</Table.Td>
+                    <Table.Td fw={500}>
+                      <Anchor size="sm" fw={500} onClick={() => navigate(`/clients/${f.client_id}`)} style={{ textTransform: 'uppercase' }}>
+                        {f.client_name}
+                      </Anchor>
+                    </Table.Td>
                     <Table.Td>{f.client_phone || '—'}</Table.Td>
-                    <Table.Td>{f.document_number}</Table.Td>
+                    <Table.Td>
+                      <Anchor size="sm" onClick={() => openPreview(f.document_id)}>
+                        {f.document_number}
+                      </Anchor>
+                    </Table.Td>
                     <Table.Td fw={600} c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
                     <Table.Td>
                       <Badge color="red" variant="light" size="sm">
@@ -360,8 +397,16 @@ export default function Followups() {
                   {history.data.map((f: FollowupEntry) => (
                     <Table.Tr key={f.id}>
                       <Table.Td>{f.call_date ? new Date(f.call_date).toLocaleDateString() : '—'}</Table.Td>
-                      <Table.Td fw={500}>{f.client_name}</Table.Td>
-                      <Table.Td>{f.document_number}</Table.Td>
+                      <Table.Td fw={500}>
+                        <Anchor size="sm" fw={500} onClick={() => navigate(`/clients/${f.client_id}`)} style={{ textTransform: 'uppercase' }}>
+                          {f.client_name}
+                        </Anchor>
+                      </Table.Td>
+                      <Table.Td>
+                        <Anchor size="sm" onClick={() => openPreview(f.document_id)}>
+                          {f.document_number}
+                        </Anchor>
+                      </Table.Td>
                       <Table.Td c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
                       <Table.Td>{f.assigned_to || '—'}</Table.Td>
                       <Table.Td>
@@ -510,6 +555,22 @@ export default function Followups() {
         agentName={agentName}
         defaultSection="section3"
       />
+
+      <Drawer
+        opened={!!viewDoc}
+        onClose={() => setViewDoc(null)}
+        title="Invoice Preview"
+        size="xl"
+        position="right"
+      >
+        {viewDoc && (
+          <DocumentView
+            document={viewDoc}
+            onRefresh={handleDocRefresh}
+            onClose={() => setViewDoc(null)}
+          />
+        )}
+      </Drawer>
     </Stack>
   );
 }

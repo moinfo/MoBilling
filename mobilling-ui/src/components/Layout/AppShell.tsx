@@ -175,6 +175,11 @@ export default function AppLayout() {
               active={isActive('/satisfaction-calls')} onClick={() => navigateAndClose('/satisfaction-calls')} />
           )}
 
+          {can('menu.satisfaction_calls') && (
+            <NavLink label="Appointments" leftSection={<IconCalendarEvent size={18} />}
+              active={isActive('/appointments')} onClick={() => navigateAndClose('/appointments')} />
+          )}
+
           {showBilling && (
             <NavLink label="Billing" leftSection={<IconFileText size={18} />}
               opened={openSection === 'billing'} onChange={() => toggleSection('billing')}>

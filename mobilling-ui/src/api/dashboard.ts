@@ -51,6 +51,17 @@ export interface UrgentObligation {
   cycle: string;
 }
 
+export interface CalendarItem {
+  type: 'followup' | 'satisfaction' | 'appointment' | 'invoice' | 'bill' | 'statutory';
+  label: string;
+  detail: string | null;
+}
+
+export interface CalendarDay {
+  date: string;
+  items: CalendarItem[];
+}
+
 export interface DashboardSummary {
   total_expenses: number;
   total_receivable: number;
@@ -85,6 +96,7 @@ export interface DashboardSummary {
   upcoming_renewals: UpcomingRenewal[];
   statutory_stats: StatutoryStats;
   urgent_obligations: UrgentObligation[];
+  calendar: CalendarDay[];
 }
 
 export const getDashboardSummary = () =>

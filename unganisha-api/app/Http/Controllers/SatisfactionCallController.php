@@ -32,6 +32,31 @@ class SatisfactionCallController extends Controller
         $totalThisMonth = (clone $monthStats)->count();
         $avgRating = (clone $monthStats)->where('status', 'completed')->whereNotNull('rating')->avg('rating');
 
+        // --- My stats (logged-in user) ---
+        $myId = auth()->id();
+        $myTodayCompleted = SatisfactionCall::where('user_id', $myId)
+            ->where('status', 'completed')
+            ->whereDate('called_at', Carbon::today())
+            ->count();
+        $myTodayDue = SatisfactionCall::where('user_id', $myId)
+            ->scheduledToday()
+            ->count() + $myTodayCompleted;
+        $myMonthCompleted = SatisfactionCall::where('user_id', $myId)
+            ->forMonth($monthKey)
+            ->where('status', 'completed')
+            ->count();
+        $myMonthTotal = SatisfactionCall::where('user_id', $myId)
+            ->forMonth($monthKey)
+            ->count();
+        $myAvgRating = SatisfactionCall::where('user_id', $myId)
+            ->forMonth($monthKey)
+            ->where('status', 'completed')
+            ->whereNotNull('rating')
+            ->avg('rating');
+        $myOverdue = SatisfactionCall::where('user_id', $myId)
+            ->overdue()
+            ->count();
+
         $format = fn ($c) => [
             'id' => $c->id,
             'client_id' => $c->client_id,
@@ -64,6 +89,14 @@ class SatisfactionCallController extends Controller
                     'completed_this_month' => $completedThisMonth,
                     'total_this_month' => $totalThisMonth,
                     'avg_rating' => $avgRating ? round((float) $avgRating, 1) : null,
+                ],
+                'my_stats' => [
+                    'today_completed' => $myTodayCompleted,
+                    'today_total' => $myTodayDue,
+                    'month_completed' => $myMonthCompleted,
+                    'month_total' => $myMonthTotal,
+                    'avg_rating' => $myAvgRating ? round((float) $myAvgRating, 1) : null,
+                    'overdue' => $myOverdue,
                 ],
             ],
         ]);
@@ -239,6 +272,108 @@ class SatisfactionCallController extends Controller
             $date->addDay();
         }
         return $date;
+    }
+
+    /**
+     * Appointments — physical visit schedule from satisfaction calls.
+     */
+    public function appointments(Request $request)
+    {
+        $query = SatisfactionCall::with(['client', 'user'])
+            ->where('appointment_requested', true)
+            ->orderBy('appointment_date');
+
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('appointment_status', $request->status);
+        }
+
+        if ($request->has('from')) {
+            $query->whereDate('appointment_date', '>=', $request->from);
+        }
+
+        if ($request->has('to')) {
+            $query->whereDate('appointment_date', '<=', $request->to);
+        }
+
+        if ($request->has('user_id')) {
+            $query->where('user_id', $request->user_id);
+        }
+
+        $calls = $query->paginate($request->get('per_page', 20));
+
+        $calls->getCollection()->transform(fn ($c) => [
+            'id' => $c->id,
+            'client_id' => $c->client_id,
+            'client_name' => $c->client?->name,
+            'client_phone' => $c->client?->phone,
+            'client_address' => $c->client?->address,
+            'assigned_to' => $c->user?->name,
+            'user_id' => $c->user_id,
+            'appointment_date' => $c->appointment_date?->toDateString(),
+            'appointment_notes' => $c->appointment_notes,
+            'appointment_status' => $c->appointment_status,
+            'outcome' => $c->outcome,
+            'rating' => $c->rating,
+            'feedback' => $c->feedback,
+            'scheduled_date' => $c->scheduled_date->toDateString(),
+            'called_at' => $c->called_at?->toISOString(),
+        ]);
+
+        // Stats
+        $today = Carbon::today();
+        $pending = SatisfactionCall::where('appointment_requested', true)->where('appointment_status', 'pending')->count();
+        $confirmed = SatisfactionCall::where('appointment_requested', true)->where('appointment_status', 'confirmed')->count();
+        $completedTotal = SatisfactionCall::where('appointment_requested', true)->where('appointment_status', 'completed')->count();
+        $todayCount = SatisfactionCall::where('appointment_requested', true)
+            ->whereDate('appointment_date', $today)
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->count();
+        $upcoming = SatisfactionCall::where('appointment_requested', true)
+            ->whereDate('appointment_date', '>', $today)
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->count();
+        $overdue = SatisfactionCall::where('appointment_requested', true)
+            ->whereDate('appointment_date', '<', $today)
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->count();
+
+        return response()->json([
+            'data' => $calls->items(),
+            'meta' => [
+                'current_page' => $calls->currentPage(),
+                'last_page' => $calls->lastPage(),
+                'total' => $calls->total(),
+            ],
+            'stats' => [
+                'today' => $todayCount,
+                'upcoming' => $upcoming,
+                'overdue' => $overdue,
+                'pending' => $pending,
+                'confirmed' => $confirmed,
+                'completed' => $completedTotal,
+            ],
+        ]);
+    }
+
+    /**
+     * Update appointment status.
+     */
+    public function updateAppointment(Request $request, SatisfactionCall $satisfactionCall)
+    {
+        $data = $request->validate([
+            'appointment_status' => 'required|in:pending,confirmed,completed,cancelled',
+            'appointment_notes' => 'nullable|string|max:500',
+        ]);
+
+        $satisfactionCall->update([
+            'appointment_status' => $data['appointment_status'],
+            'appointment_notes' => $data['appointment_notes'] ?? $satisfactionCall->appointment_notes,
+        ]);
+
+        return response()->json([
+            'data' => $satisfactionCall->fresh(),
+            'message' => 'Appointment updated.',
+        ]);
     }
 
     /**

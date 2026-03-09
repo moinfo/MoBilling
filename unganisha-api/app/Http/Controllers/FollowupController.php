@@ -16,14 +16,16 @@ class FollowupController extends Controller
     {
         $today = Carbon::today();
 
+        $notCancelled = fn ($q) => $q->where('status', '!=', 'cancelled');
+
         $dueToday = Followup::with(['client', 'document', 'user'])
-            ->whereHas('document')
+            ->whereHas('document', $notCancelled)
             ->dueToday()
             ->orderBy('next_followup')
             ->get();
 
         $overdueFollowups = Followup::with(['client', 'document', 'user'])
-            ->whereHas('document')
+            ->whereHas('document', $notCancelled)
             ->overdue()
             ->orderBy('next_followup')
             ->get();
@@ -60,7 +62,7 @@ class FollowupController extends Controller
                 'stats' => [
                     'due_today' => $dueToday->count(),
                     'overdue' => $overdueFollowups->count(),
-                    'total_active' => Followup::active()->whereHas('document')->count(),
+                    'total_active' => Followup::active()->whereHas('document', $notCancelled)->count(),
                 ],
             ],
         ]);
@@ -72,7 +74,7 @@ class FollowupController extends Controller
     public function index(Request $request)
     {
         $query = Followup::with(['client', 'document', 'user'])
-            ->whereHas('document')
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'cancelled'))
             ->orderByDesc('created_at');
 
         if ($request->has('status') && $request->status !== 'all') {

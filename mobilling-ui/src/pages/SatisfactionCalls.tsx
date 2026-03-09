@@ -290,6 +290,10 @@ export default function SatisfactionCalls() {
     ? Math.round((dashboard.stats.completed_this_month / dashboard.stats.total_this_month) * 100)
     : 0;
 
+  const my = dashboard?.my_stats;
+  const myTodayPct = my && my.today_total > 0 ? Math.round((my.today_completed / my.today_total) * 100) : 0;
+  const myMonthPct = my && my.month_total > 0 ? Math.round((my.month_completed / my.month_total) * 100) : 0;
+
   // Reusable client name link
   const ClientLink = ({ call }: { call: SatisfactionCallEntry }) => (
     <Group gap={6} wrap="nowrap">
@@ -380,6 +384,58 @@ export default function SatisfactionCalls() {
           </Group>
         </Paper>
       </SimpleGrid>
+
+      {/* My Performance */}
+      {my && (
+        <Paper withBorder p="md" radius="md">
+          <Group gap="sm" mb="sm">
+            <IconUser size={20} />
+            <Title order={4}>My Performance</Title>
+            <Text size="xs" c="dimmed">({agentName})</Text>
+          </Group>
+          <SimpleGrid cols={{ base: 2, xs: 3, sm: 5 }}>
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Today</Text>
+              <Group gap={6} align="baseline">
+                <Text size="xl" fw={700}>{my.today_completed}/{my.today_total}</Text>
+                {my.today_total > 0 && (
+                  <Badge size="sm" variant="light" color={myTodayPct === 100 ? 'green' : myTodayPct >= 50 ? 'blue' : 'orange'}>
+                    {myTodayPct}%
+                  </Badge>
+                )}
+              </Group>
+            </div>
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={600}>This Month</Text>
+              <Group gap={6} align="baseline">
+                <Text size="xl" fw={700}>{my.month_completed}/{my.month_total}</Text>
+                {my.month_total > 0 && (
+                  <Badge size="sm" variant="light" color={myMonthPct >= 80 ? 'green' : myMonthPct >= 50 ? 'blue' : 'orange'}>
+                    {myMonthPct}%
+                  </Badge>
+                )}
+              </Group>
+            </div>
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={600}>My Avg Rating</Text>
+              <Group gap={6} align="baseline">
+                <Text size="xl" fw={700}>{my.avg_rating ? `${my.avg_rating}/5` : '—'}</Text>
+                {my.avg_rating && <Rating value={my.avg_rating} readOnly size="xs" fractions={2} />}
+              </Group>
+            </div>
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={600}>My Overdue</Text>
+              <Text size="xl" fw={700} c={my.overdue > 0 ? 'red' : undefined}>{my.overdue}</Text>
+            </div>
+            <div>
+              <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Remaining Today</Text>
+              <Text size="xl" fw={700} c={my.today_total - my.today_completed > 0 ? 'blue' : 'green'}>
+                {my.today_total - my.today_completed}
+              </Text>
+            </div>
+          </SimpleGrid>
+        </Paper>
+      )}
 
       {/* Due Today */}
       <Paper withBorder p="md" radius="md">

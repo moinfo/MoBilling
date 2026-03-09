@@ -11,6 +11,7 @@ import RecentInvoices from '../components/Dashboard/RecentInvoices';
 import UpcomingBills from '../components/Dashboard/UpcomingBills';
 import UrgentObligations from '../components/Dashboard/UrgentObligations';
 import UpcomingRenewals from '../components/Dashboard/UpcomingRenewals';
+import ActivityCalendar from '../components/Dashboard/ActivityCalendar';
 
 export default function Dashboard() {
   const { data, isLoading } = useQuery({
@@ -43,7 +44,10 @@ export default function Dashboard() {
             smsEnabled={summary.sms_enabled}
           />
 
-          <RevenueChart data={summary.monthly_revenue} />
+          <SimpleGrid cols={{ base: 1, md: 2 }}>
+            <RevenueChart data={summary.monthly_revenue} />
+            <ActivityCalendar data={summary.calendar} />
+          </SimpleGrid>
 
           <SimpleGrid cols={{ base: 1, md: 2 }}>
             <InvoiceStatusChart data={summary.invoice_status_breakdown} />

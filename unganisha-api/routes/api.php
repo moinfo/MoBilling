@@ -305,6 +305,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::middleware('permission:satisfaction_calls.reschedule')->patch('/satisfaction-calls/{satisfactionCall}/reschedule', [SatisfactionCallController::class, 'reschedule']);
         Route::middleware('permission:satisfaction_calls.cancel')->patch('/satisfaction-calls/{satisfactionCall}/cancel', [SatisfactionCallController::class, 'cancel']);
         Route::middleware('permission:satisfaction_calls.assign')->patch('/satisfaction-calls/{satisfactionCall}/assign', [SatisfactionCallController::class, 'assign']);
+        Route::get('/satisfaction-calls/appointments', [SatisfactionCallController::class, 'appointments']);
+        Route::patch('/satisfaction-calls/{satisfactionCall}/appointment', [SatisfactionCallController::class, 'updateAppointment']);
     });
 
     // Automation

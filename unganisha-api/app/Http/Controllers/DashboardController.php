@@ -7,7 +7,9 @@ use App\Models\Client;
 use App\Models\ClientSubscription;
 use App\Models\Document;
 use App\Models\Expense;
+use App\Models\Followup;
 use App\Models\PaymentIn;
+use App\Models\SatisfactionCall;
 use App\Models\Statutory;
 use App\Services\ResellerService;
 use Carbon\Carbon;
@@ -229,6 +231,113 @@ class DashboardController extends Controller
             now()->endOfMonth()->toDateString(),
         ])->sum('amount');
 
+        // Daily activities for the calendar (current month ± 1 month)
+        $calStart = now()->subMonth()->startOfMonth()->toDateString();
+        $calEnd = now()->addMonth()->endOfMonth()->toDateString();
+
+        $calendarItems = collect();
+
+        // Followups with client info
+        Followup::with('client')
+            ->whereIn('status', ['pending', 'open'])
+            ->whereNotNull('next_followup')
+            ->whereDate('next_followup', '>=', $calStart)
+            ->whereDate('next_followup', '<=', $calEnd)
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'cancelled'))
+            ->get()
+            ->each(function ($f) use ($calendarItems) {
+                $calendarItems->push([
+                    'date' => $f->next_followup->format('Y-m-d'),
+                    'type' => 'followup',
+                    'label' => $f->client?->name ?? 'Unknown',
+                    'detail' => $f->document?->document_number,
+                ]);
+            });
+
+        // Satisfaction calls
+        SatisfactionCall::with('client')
+            ->where('status', 'scheduled')
+            ->whereDate('scheduled_date', '>=', $calStart)
+            ->whereDate('scheduled_date', '<=', $calEnd)
+            ->get()
+            ->each(function ($c) use ($calendarItems) {
+                $calendarItems->push([
+                    'date' => $c->scheduled_date->format('Y-m-d'),
+                    'type' => 'satisfaction',
+                    'label' => $c->client?->name ?? 'Unknown',
+                    'detail' => null,
+                ]);
+            });
+
+        // Appointments
+        SatisfactionCall::with('client')
+            ->where('appointment_requested', true)
+            ->whereIn('appointment_status', ['pending', 'confirmed'])
+            ->whereDate('appointment_date', '>=', $calStart)
+            ->whereDate('appointment_date', '<=', $calEnd)
+            ->get()
+            ->each(function ($c) use ($calendarItems) {
+                $calendarItems->push([
+                    'date' => $c->appointment_date->format('Y-m-d'),
+                    'type' => 'appointment',
+                    'label' => $c->client?->name ?? 'Unknown',
+                    'detail' => $c->appointment_notes,
+                ]);
+            });
+
+        // Invoice due dates
+        Document::with('client')
+            ->where('type', 'invoice')
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereDate('due_date', '>=', $calStart)
+            ->whereDate('due_date', '<=', $calEnd)
+            ->get()
+            ->each(function ($d) use ($calendarItems) {
+                $calendarItems->push([
+                    'date' => $d->due_date->format('Y-m-d'),
+                    'type' => 'invoice',
+                    'label' => $d->client?->name ?? 'Unknown',
+                    'detail' => $d->document_number . ' — ' . number_format($d->balance_due, 0),
+                ]);
+            });
+
+        // Bill due dates
+        Bill::whereNull('paid_at')
+            ->where('is_active', true)
+            ->whereDate('due_date', '>=', $calStart)
+            ->whereDate('due_date', '<=', $calEnd)
+            ->get()
+            ->each(function ($b) use ($calendarItems) {
+                $calendarItems->push([
+                    'date' => $b->due_date->format('Y-m-d'),
+                    'type' => 'bill',
+                    'label' => $b->name,
+                    'detail' => number_format($b->amount, 0),
+                ]);
+            });
+
+        // Statutory due dates
+        $activeStatutories
+            ->filter(fn ($s) => $s->next_due_date->gte($calStart) && $s->next_due_date->lte($calEnd))
+            ->each(function ($s) use ($calendarItems) {
+                $calendarItems->push([
+                    'date' => $s->next_due_date->format('Y-m-d'),
+                    'type' => 'statutory',
+                    'label' => $s->name,
+                    'detail' => number_format($s->amount, 0),
+                ]);
+            });
+
+        // Group by date
+        $calendarData = $calendarItems->groupBy('date')->map(fn ($items, $date) => [
+            'date' => $date,
+            'items' => $items->map(fn ($i) => [
+                'type' => $i['type'],
+                'label' => $i['label'],
+                'detail' => $i['detail'],
+            ])->values(),
+        ])->values();
+
         return response()->json([
             'total_expenses' => round((float) $totalExpenses, 2),
             'total_receivable' => round($totalReceivable, 2),
@@ -250,6 +359,7 @@ class DashboardController extends Controller
             'upcoming_renewals' => $upcomingRenewals,
             'statutory_stats' => $statutoryStats,
             'urgent_obligations' => $urgentObligations,
+            'calendar' => $calendarData,
         ]);
     }
 }
