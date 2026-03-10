@@ -192,13 +192,79 @@ class DocumentController extends Controller
             return response()->json(['message' => 'Client has no email address'], 422);
         }
 
-        $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
+        // Update status before sending so PDF shows correct status
         $document->update(['status' => 'sent']);
+        $document->refresh();
+
+        $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
 
         // Confirm to the sending user via in-app notification
         $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
 
         return response()->json(['message' => 'Document sent successfully']);
+    }
+
+    public function submitForApproval(Document $document)
+    {
+        if ($document->status !== 'draft') {
+            return response()->json(['message' => 'Only draft documents can be submitted for approval.'], 422);
+        }
+
+        $document->update(['status' => 'pending_approval']);
+
+        return response()->json([
+            'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+            'message' => "{$document->document_number} submitted for approval.",
+        ]);
+    }
+
+    public function approve(Request $request, Document $document)
+    {
+        if ($document->status !== 'pending_approval') {
+            return response()->json(['message' => 'Only documents pending approval can be approved.'], 422);
+        }
+
+        $document->load('client');
+
+        // Update status before sending so PDF shows correct status
+        $document->update(['status' => 'sent']);
+        $document->refresh();
+
+        // Approve and auto-send to client
+        if ($document->client->email) {
+            $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
+
+            $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
+
+            return response()->json([
+                'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+                'message' => "{$document->document_number} approved and sent to {$document->client->name}.",
+            ]);
+        }
+
+        // No email — already marked as sent above
+        return response()->json([
+            'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+            'message' => "{$document->document_number} approved. Client has no email — send manually.",
+        ]);
+    }
+
+    public function reject(Request $request, Document $document)
+    {
+        if ($document->status !== 'pending_approval') {
+            return response()->json(['message' => 'Only documents pending approval can be rejected.'], 422);
+        }
+
+        $request->validate([
+            'reason' => 'nullable|string|max:500',
+        ]);
+
+        $document->update(['status' => 'draft']);
+
+        return response()->json([
+            'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+            'message' => "{$document->document_number} rejected and returned to draft.",
+        ]);
     }
 
     public function cancel(Document $document)

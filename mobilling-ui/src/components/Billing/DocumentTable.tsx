@@ -1,5 +1,5 @@
 import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip, Loader, Center } from '@mantine/core';
-import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX, IconRefresh } from '@tabler/icons-react';
+import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX, IconRefresh, IconSend, IconCheck, IconArrowBack } from '@tabler/icons-react';
 import { Document } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
@@ -13,12 +13,16 @@ interface Props {
   onRemind?: (doc: Document) => void;
   onCancel?: (doc: Document) => void;
   onUncancel?: (doc: Document) => void;
+  onSubmitForApproval?: (doc: Document) => void;
+  onApprove?: (doc: Document) => void;
+  onReject?: (doc: Document) => void;
   startIndex?: number;
   loading?: boolean;
 }
 
 const statusColors: Record<string, string> = {
   draft: 'gray',
+  pending_approval: 'violet',
   sent: 'blue',
   accepted: 'teal',
   rejected: 'red',
@@ -28,13 +32,17 @@ const statusColors: Record<string, string> = {
   cancelled: 'red',
 };
 
+const statusLabels: Record<string, string> = {
+  pending_approval: 'Pending Approval',
+};
+
 const stageLabels: Record<string, string> = {
   late_fee_applied: 'Late fee added',
   reminder_7d: '7-day reminder sent',
   termination_warning: 'Termination warning sent',
 };
 
-export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, startIndex = 1, loading }: Props) {
+export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, onSubmitForApproval, onApprove, onReject, startIndex = 1, loading }: Props) {
   const { can } = usePermissions();
   if (loading) {
     return <Center py="xl"><Loader /></Center>;
@@ -61,7 +69,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
       <Table.Tbody>
         {documents.map((doc, index) => {
           const isCancelled = doc.status === 'cancelled';
-          const isUnpaid = !isCancelled && doc.status !== 'paid' && doc.status !== 'draft';
+          const isUnpaid = !isCancelled && !['paid', 'draft', 'pending_approval'].includes(doc.status);
           return (
             <Table.Tr key={doc.id} style={{ cursor: 'pointer', opacity: isCancelled ? 0.5 : 1 }} onClick={() => onView(doc)}>
               <Table.Td><Text size="sm" c="dimmed">{startIndex + index}</Text></Table.Td>
@@ -75,7 +83,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
               <Table.Td>
                 <Group gap={6}>
                   <Badge color={statusColors[doc.status] || 'gray'} size="sm">
-                    {doc.status}
+                    {statusLabels[doc.status] || doc.status}
                   </Badge>
                   {doc.reminder_count > 0 && (
                     <Tooltip label={doc.overdue_stage ? stageLabels[doc.overdue_stage] || doc.overdue_stage : `${doc.reminder_count} reminder(s) sent`}>
@@ -93,8 +101,35 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                   </Menu.Target>
                   <Menu.Dropdown>
                     <Menu.Item leftSection={<IconEye size={14} />} onClick={() => onView(doc)}>View</Menu.Item>
-                    {can('documents.update') && (
+                    {can('documents.update') && doc.status === 'draft' && (
                       <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => onEdit(doc)}>Edit</Menu.Item>
+                    )}
+                    {can('documents.send') && onSubmitForApproval && doc.status === 'draft' && (
+                      <Menu.Item
+                        leftSection={<IconSend size={14} />}
+                        color="violet"
+                        onClick={() => onSubmitForApproval(doc)}
+                      >
+                        Submit for Approval
+                      </Menu.Item>
+                    )}
+                    {can('documents.approve') && onApprove && doc.status === 'pending_approval' && (
+                      <Menu.Item
+                        leftSection={<IconCheck size={14} />}
+                        color="green"
+                        onClick={() => onApprove(doc)}
+                      >
+                        Approve & Send
+                      </Menu.Item>
+                    )}
+                    {can('documents.approve') && onReject && doc.status === 'pending_approval' && (
+                      <Menu.Item
+                        leftSection={<IconArrowBack size={14} />}
+                        color="red"
+                        onClick={() => onReject(doc)}
+                      >
+                        Reject
+                      </Menu.Item>
                     )}
                     {can('documents.send') && onRemind && isUnpaid && (
                       <Menu.Item

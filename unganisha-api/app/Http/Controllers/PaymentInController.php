@@ -41,7 +41,8 @@ class PaymentInController extends Controller
             $document->update(['status' => 'partial']);
         }
 
-        // Send payment receipt email to client
+        // Send payment receipt email to client (refresh to get updated status)
+        $document->refresh();
         $document->load('client');
         if ($document->client?->email) {
             $document->client->notify(new PaymentReceiptNotification($payment, $document));

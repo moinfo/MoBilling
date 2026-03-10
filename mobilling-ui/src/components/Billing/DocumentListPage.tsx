@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconBell, IconMail, IconMessage, IconSend } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
-import { getDocuments, getDocument, createDocument, updateDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, Document, DocumentFormData } from '../../api/documents';
+import { getDocuments, getDocument, createDocument, updateDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, submitForApproval, approveDocument, rejectDocument, Document, DocumentFormData } from '../../api/documents';
 import { getClients, Client } from '../../api/clients';
 import { getProductServices, ProductService } from '../../api/productServices';
 import DocumentTable from './DocumentTable';
@@ -145,6 +145,75 @@ export default function DocumentListPage({ type, title }: Props) {
     onError: () => notifications.show({ title: 'Error', message: 'Failed to send reminders', color: 'red' }),
   });
 
+  const submitApprovalMutation = useMutation({
+    mutationFn: (id: string) => submitForApproval(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      notifications.show({ title: 'Submitted', message: res.data.message, color: 'violet' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to submit for approval',
+      color: 'red',
+    }),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => approveDocument(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      notifications.show({ title: 'Approved', message: res.data.message, color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to approve',
+      color: 'red',
+    }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: (id: string) => rejectDocument(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      notifications.show({ title: 'Rejected', message: res.data.message, color: 'orange' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to reject',
+      color: 'red',
+    }),
+  });
+
+  const handleSubmitForApproval = (doc: Document) => {
+    modals.openConfirmModal({
+      title: 'Submit for Approval',
+      children: `Submit ${doc.document_number} for approval? Once approved, it will be sent to the client.`,
+      labels: { confirm: 'Submit', cancel: 'Cancel' },
+      confirmProps: { color: 'violet' },
+      onConfirm: () => submitApprovalMutation.mutate(doc.id),
+    });
+  };
+
+  const handleApprove = (doc: Document) => {
+    modals.openConfirmModal({
+      title: 'Approve & Send',
+      children: `Approve ${doc.document_number}? This will send it to ${doc.client?.name || 'the client'}.`,
+      labels: { confirm: 'Approve & Send', cancel: 'Cancel' },
+      confirmProps: { color: 'green' },
+      onConfirm: () => approveMutation.mutate(doc.id),
+    });
+  };
+
+  const handleReject = (doc: Document) => {
+    modals.openConfirmModal({
+      title: 'Reject Document',
+      children: `Reject ${doc.document_number}? It will be returned to draft for editing.`,
+      labels: { confirm: 'Reject', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => rejectMutation.mutate(doc.id),
+    });
+  };
+
   const handleView = async (doc: Document) => {
     const res = await getDocument(doc.id);
     setViewDoc(res.data.data);
@@ -236,10 +305,11 @@ export default function DocumentListPage({ type, title }: Props) {
               onChange={(v) => { setStatusFilter(v); setPage(1); }}
               data={[
                 { label: 'All', value: 'all' },
+                { label: 'Draft', value: 'draft' },
+                { label: 'Pending', value: 'pending_approval' },
                 { label: 'Unpaid', value: 'unpaid' },
                 { label: 'Paid', value: 'paid' },
                 { label: 'Overdue', value: 'overdue' },
-                { label: 'Draft', value: 'draft' },
                 { label: 'Cancelled', value: 'cancelled' },
               ]}
             />
@@ -265,6 +335,9 @@ export default function DocumentListPage({ type, title }: Props) {
         onRemind={isInvoice ? openRemindSingle : undefined}
         onCancel={isInvoice ? handleCancel : undefined}
         onUncancel={isInvoice ? handleUncancel : undefined}
+        onSubmitForApproval={handleSubmitForApproval}
+        onApprove={handleApprove}
+        onReject={handleReject}
         startIndex={meta ? (meta.current_page - 1) * meta.per_page + 1 : 1}
         loading={isLoading}
       />

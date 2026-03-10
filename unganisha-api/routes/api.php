@@ -212,6 +212,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:documents.download')->get('/documents/{document}/pdf', [DocumentController::class, 'downloadPdf']);
     Route::middleware('permission:documents.send')->post('/documents/{document}/send', [DocumentController::class, 'send']);
     Route::middleware('permission:documents.send')->post('/documents/remind-unpaid', [DocumentController::class, 'remindUnpaid']);
+    Route::middleware('permission:documents.send')->patch('/documents/{document}/submit-for-approval', [DocumentController::class, 'submitForApproval']);
+    Route::middleware('permission:documents.approve')->patch('/documents/{document}/approve', [DocumentController::class, 'approve']);
+    Route::middleware('permission:documents.approve')->patch('/documents/{document}/reject', [DocumentController::class, 'reject']);
     Route::middleware('permission:documents.update')->patch('/documents/{document}/cancel', [DocumentController::class, 'cancel']);
     Route::middleware('permission:documents.update')->patch('/documents/{document}/uncancel', [DocumentController::class, 'uncancel']);
     Route::middleware('permission:documents.update')->delete('/documents/{document}/items/{item}', [DocumentController::class, 'removeItem']);

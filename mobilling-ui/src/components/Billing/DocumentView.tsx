@@ -3,9 +3,10 @@ import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash, IconCopy, IconBrandWhatsapp, IconLink } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash, IconCopy, IconBrandWhatsapp, IconLink, IconCheck, IconArrowBack } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem } from '../../api/documents';
+import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem, submitForApproval, approveDocument, rejectDocument } from '../../api/documents';
+import { usePermissions } from '../../hooks/usePermissions';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -19,13 +20,18 @@ interface Props {
 }
 
 const statusColors: Record<string, string> = {
-  draft: 'gray', sent: 'blue', accepted: 'teal', rejected: 'red',
+  draft: 'gray', pending_approval: 'violet', sent: 'blue', accepted: 'teal', rejected: 'red',
   paid: 'green', overdue: 'orange', partial: 'yellow', cancelled: 'red',
+};
+
+const statusLabels: Record<string, string> = {
+  pending_approval: 'Pending Approval',
 };
 
 export default function DocumentView({ document: doc, onRefresh, onClose: _onClose }: Props) {
   const { methods: paymentMethods, getMethodDetails } = usePaymentMethods();
   const { user } = useAuth();
+  const { can } = usePermissions();
   const tenant = user?.tenant;
   const [showPayment, setShowPayment] = useState(false);
   const [loading, setLoading] = useState('');
@@ -214,9 +220,72 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     });
   };
 
+  const handleSubmitForApproval = () => {
+    modals.openConfirmModal({
+      title: 'Submit for Approval',
+      children: `Submit ${doc.document_number} for approval? Once approved, it will be sent to the client.`,
+      labels: { confirm: 'Submit', cancel: 'Cancel' },
+      confirmProps: { color: 'violet' },
+      onConfirm: async () => {
+        try {
+          setLoading('submitApproval');
+          await submitForApproval(doc.id);
+          notifications.show({ title: 'Submitted', message: `${doc.document_number} submitted for approval`, color: 'violet' });
+          onRefresh();
+        } catch (err: any) {
+          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to submit', color: 'red' });
+        } finally {
+          setLoading('');
+        }
+      },
+    });
+  };
+
+  const handleApprove = () => {
+    modals.openConfirmModal({
+      title: 'Approve & Send',
+      children: `Approve ${doc.document_number}? This will send it to ${doc.client?.name || 'the client'}.`,
+      labels: { confirm: 'Approve & Send', cancel: 'Cancel' },
+      confirmProps: { color: 'green' },
+      onConfirm: async () => {
+        try {
+          setLoading('approve');
+          await approveDocument(doc.id);
+          notifications.show({ title: 'Approved', message: `${doc.document_number} approved and sent`, color: 'green' });
+          onRefresh();
+        } catch (err: any) {
+          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to approve', color: 'red' });
+        } finally {
+          setLoading('');
+        }
+      },
+    });
+  };
+
+  const handleReject = () => {
+    modals.openConfirmModal({
+      title: 'Reject Document',
+      children: `Reject ${doc.document_number}? It will be returned to draft for editing.`,
+      labels: { confirm: 'Reject', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: async () => {
+        try {
+          setLoading('reject');
+          await rejectDocument(doc.id);
+          notifications.show({ title: 'Rejected', message: `${doc.document_number} returned to draft`, color: 'orange' });
+          onRefresh();
+        } catch (err: any) {
+          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to reject', color: 'red' });
+        } finally {
+          setLoading('');
+        }
+      },
+    });
+  };
+
   const canConvert = (doc.type === 'quotation' || doc.type === 'proforma') && doc.status !== 'accepted';
   const isInvoice = doc.type === 'invoice';
-  const canCancel = isInvoice && !['paid', 'cancelled', 'draft'].includes(doc.status) && doc.paid_amount <= 0;
+  const canCancel = isInvoice && !['paid', 'cancelled', 'draft', 'pending_approval'].includes(doc.status) && doc.paid_amount <= 0;
   const canUncancel = isInvoice && doc.status === 'cancelled';
 
   return (
@@ -227,7 +296,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
             <Text size="xl" fw={700}>{doc.document_number}</Text>
             <Text c="dimmed" size="sm">{doc.type.charAt(0).toUpperCase() + doc.type.slice(1)}</Text>
           </div>
-          <Badge color={statusColors[doc.status]} size="lg">{doc.status}</Badge>
+          <Badge color={statusColors[doc.status]} size="lg">{statusLabels[doc.status] || doc.status}</Badge>
         </Group>
 
         <Group justify="space-between" mb="md">
@@ -349,35 +418,64 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
         )}
       </Card>
 
+      {/* Pending Approval Banner */}
+      {doc.status === 'pending_approval' && (
+        <Alert variant="light" color="violet" title="Pending Approval">
+          This document is waiting for approval. {can('documents.approve') ? 'You can approve or reject it below.' : 'An approver needs to review it.'}
+        </Alert>
+      )}
+
       {/* Action Buttons */}
       <Group>
-        <Button variant="light" leftSection={<IconFileDownload size={16} />}
-          onClick={handleDownloadPdf} loading={loading === 'pdf'}>
-          Download PDF
-        </Button>
-        <Button variant="light" leftSection={<IconSend size={16} />}
-          onClick={handleSend} loading={loading === 'send'}>
-          Send Email
-        </Button>
-        {canConvert && (
+        {can('documents.download') && (
+          <Button variant="light" leftSection={<IconFileDownload size={16} />}
+            onClick={handleDownloadPdf} loading={loading === 'pdf'}>
+            Download PDF
+          </Button>
+        )}
+        {doc.status === 'draft' && can('documents.send') && (
+          <Button color="violet" leftSection={<IconSend size={16} />}
+            onClick={handleSubmitForApproval} loading={loading === 'submitApproval'}>
+            Submit for Approval
+          </Button>
+        )}
+        {doc.status === 'pending_approval' && can('documents.approve') && (
+          <>
+            <Button color="green" leftSection={<IconCheck size={16} />}
+              onClick={handleApprove} loading={loading === 'approve'}>
+              Approve & Send
+            </Button>
+            <Button variant="light" color="red" leftSection={<IconArrowBack size={16} />}
+              onClick={handleReject} loading={loading === 'reject'}>
+              Reject
+            </Button>
+          </>
+        )}
+        {can('documents.send') && doc.status !== 'draft' && doc.status !== 'pending_approval' && (
+          <Button variant="light" leftSection={<IconSend size={16} />}
+            onClick={handleSend} loading={loading === 'send'}>
+            Send Email
+          </Button>
+        )}
+        {can('documents.convert') && canConvert && (
           <Button leftSection={<IconArrowRight size={16} />}
             onClick={handleConvert} loading={loading === 'convert'}>
             Convert to {doc.type === 'quotation' ? 'Proforma' : 'Invoice'}
           </Button>
         )}
-        {isInvoice && doc.balance_due > 0 && (
+        {can('payments_in.create') && isInvoice && doc.balance_due > 0 && !['draft', 'pending_approval', 'cancelled'].includes(doc.status) && (
           <Button color="green" leftSection={<IconCash size={16} />}
             onClick={() => setShowPayment(true)}>
             Record Payment
           </Button>
         )}
-        {canCancel && (
+        {can('documents.update') && canCancel && (
           <Button variant="light" color="red" leftSection={<IconX size={16} />}
             onClick={handleCancel} loading={loading === 'cancel'}>
             Cancel Invoice
           </Button>
         )}
-        {canUncancel && (
+        {can('documents.update') && canUncancel && (
           <Button variant="light" color="green" leftSection={<IconRefresh size={16} />}
             onClick={handleUncancel} loading={loading === 'uncancel'}>
             Restore Invoice

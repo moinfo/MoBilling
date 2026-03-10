@@ -36,9 +36,62 @@
         .badge-product { background: #3b82f6; }
         .badge-service { background: #22c55e; }
         .text-right { text-align: right; }
+        .status-stamp {
+            position: fixed;
+            top: 35%;
+            left: 15%;
+            font-size: 100px;
+            font-weight: bold;
+            text-transform: uppercase;
+            opacity: 0.06;
+            transform: rotate(-35deg);
+            z-index: 0;
+            pointer-events: none;
+            letter-spacing: 10px;
+        }
+        .status-stamp.draft { color: #6b7280; }
+        .status-stamp.unpaid { color: #ef4444; }
+        .status-stamp.paid { color: #22c55e; }
+        .status-stamp.cancelled { color: #ef4444; }
+        .status-stamp.overdue { color: #f97316; }
+        .status-label {
+            display: inline-block;
+            padding: 4px 14px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: white;
+            margin-top: 6px;
+        }
+        .status-label.draft { background: #6b7280; }
+        .status-label.sent, .status-label.partial, .status-label.overdue { background: #ef4444; }
+        .status-label.paid { background: #22c55e; }
+        .status-label.cancelled { background: #dc2626; }
+        .status-label.pending_approval { background: #8b5cf6; }
     </style>
 </head>
 <body>
+    @php
+        $statusDisplay = match($document->status) {
+            'draft' => 'DRAFT',
+            'pending_approval' => 'DRAFT',
+            'sent', 'partial', 'overdue' => 'UNPAID',
+            'paid' => 'PAID',
+            'cancelled' => 'CANCELLED',
+            default => strtoupper($document->status),
+        };
+        $stampClass = match($document->status) {
+            'draft', 'pending_approval' => 'draft',
+            'sent', 'partial', 'overdue' => 'unpaid',
+            'paid' => 'paid',
+            'cancelled' => 'cancelled',
+            default => 'draft',
+        };
+    @endphp
+
+    <div class="status-stamp {{ $stampClass }}">{{ $statusDisplay }}</div>
+
     <div class="header">
         <div class="header-left">
             @if($tenant->logo_path)
@@ -59,7 +112,7 @@
             @if($document->due_date)
                 <p>Due: {{ $document->due_date->format('d M Y') }}</p>
             @endif
-            <p>Status: {{ ucfirst($document->status) }}</p>
+            <span class="status-label {{ $stampClass }}">{{ $statusDisplay }}</span>
         </div>
     </div>
 

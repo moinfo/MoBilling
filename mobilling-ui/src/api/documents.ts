@@ -86,6 +86,15 @@ export const downloadPdf = (id: string) =>
 export const sendDocument = (id: string) =>
   api.post(`/documents/${id}/send`);
 
+export const submitForApproval = (id: string) =>
+  api.patch(`/documents/${id}/submit-for-approval`);
+
+export const approveDocument = (id: string) =>
+  api.patch(`/documents/${id}/approve`);
+
+export const rejectDocument = (id: string, reason?: string) =>
+  api.patch(`/documents/${id}/reject`, { reason });
+
 // Payments In
 export const getPaymentsIn = (params?: { document_id?: string; page?: number; per_page?: number }) =>
   api.get('/payments-in', { params });

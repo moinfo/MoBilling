@@ -68,7 +68,7 @@ class RegisterController extends Controller
                 'payments_in.read', 'client_subscriptions.read',
                 'statutories.read', 'bills.read', 'payments_out.read',
                 'expense_categories.read', 'expenses.read',
-                'documents.create', 'documents.update', 'documents.send', 'documents.download',
+                'documents.create', 'documents.update', 'documents.send', 'documents.download', 'documents.approve',
                 'payments_in.create', 'payments_in.update',
                 'expenses.create', 'expenses.update',
                 'settings.profile',
