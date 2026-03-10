@@ -62,7 +62,7 @@ export default function Users() {
   });
 
   const loginAsMutation = useMutation({
-    mutationFn: (user: TenantUser) => impersonateUser(currentUser!.tenant_id, user.id),
+    mutationFn: (user: TenantUser) => impersonateUser(currentUser!.tenant!.id, user.id),
     onSuccess: (res) => {
       const { user: impUser, token, subscription_status, days_remaining } = res.data;
       impersonate(impUser, token, subscription_status, days_remaining);
