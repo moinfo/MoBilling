@@ -14,11 +14,12 @@ class ClientSubscription extends Model
 
     protected $fillable = [
         'tenant_id', 'client_id', 'product_service_id',
-        'label', 'quantity', 'start_date', 'status', 'metadata',
+        'label', 'quantity', 'start_date', 'expire_date', 'status', 'metadata',
     ];
 
     protected $casts = [
         'start_date' => 'date',
+        'expire_date' => 'date',
         'metadata' => 'array',
         'quantity' => 'integer',
     ];

@@ -1,6 +1,7 @@
 import { Title, Stack, SimpleGrid, LoadingOverlay } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { getDashboardSummary } from '../api/dashboard';
+import { usePermissions } from '../hooks/usePermissions';
 import StatsCards from '../components/Dashboard/StatsCards';
 import RevenueChart from '../components/Dashboard/RevenueChart';
 import InvoiceStatusChart from '../components/Dashboard/InvoiceStatusChart';
@@ -14,6 +15,7 @@ import UpcomingRenewals from '../components/Dashboard/UpcomingRenewals';
 import ActivityCalendar from '../components/Dashboard/ActivityCalendar';
 
 export default function Dashboard() {
+  const { can } = usePermissions();
   const { data, isLoading } = useQuery({
     queryKey: ['dashboard'],
     queryFn: getDashboardSummary,
@@ -44,30 +46,40 @@ export default function Dashboard() {
             smsEnabled={summary.sms_enabled}
           />
 
-          <SimpleGrid cols={{ base: 1, md: 2 }}>
-            <RevenueChart data={summary.monthly_revenue} />
-            <ActivityCalendar data={summary.calendar} />
-          </SimpleGrid>
+          {(can('dashboard.revenue_chart') || can('dashboard.activity_calendar')) && (
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              {can('dashboard.revenue_chart') && <RevenueChart data={summary.monthly_revenue} />}
+              {can('dashboard.activity_calendar') && <ActivityCalendar data={summary.calendar} />}
+            </SimpleGrid>
+          )}
 
-          <SimpleGrid cols={{ base: 1, md: 2 }}>
-            <InvoiceStatusChart data={summary.invoice_status_breakdown} />
-            <PaymentMethodChart data={summary.payment_method_breakdown} />
-          </SimpleGrid>
+          {(can('dashboard.invoice_status_chart') || can('dashboard.payment_method_chart')) && (
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              {can('dashboard.invoice_status_chart') && <InvoiceStatusChart data={summary.invoice_status_breakdown} />}
+              {can('dashboard.payment_method_chart') && <PaymentMethodChart data={summary.payment_method_breakdown} />}
+            </SimpleGrid>
+          )}
 
-          <SimpleGrid cols={{ base: 1, md: 2 }}>
-            <TopClientsChart data={summary.top_clients} />
-            <SubscriptionStats data={summary.subscription_stats} />
-          </SimpleGrid>
+          {(can('dashboard.top_clients') || can('dashboard.subscription_stats')) && (
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              {can('dashboard.top_clients') && <TopClientsChart data={summary.top_clients} />}
+              {can('dashboard.subscription_stats') && <SubscriptionStats data={summary.subscription_stats} />}
+            </SimpleGrid>
+          )}
 
-          <SimpleGrid cols={{ base: 1, md: 2 }}>
-            <RecentInvoices invoices={summary.recent_invoices} />
-            <UpcomingBills bills={summary.upcoming_bills} />
-          </SimpleGrid>
+          {(can('dashboard.recent_invoices') || can('dashboard.upcoming_bills')) && (
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              {can('dashboard.recent_invoices') && <RecentInvoices invoices={summary.recent_invoices} />}
+              {can('dashboard.upcoming_bills') && <UpcomingBills bills={summary.upcoming_bills} />}
+            </SimpleGrid>
+          )}
 
-          <SimpleGrid cols={{ base: 1, md: 2 }}>
-            <UrgentObligations obligations={summary.urgent_obligations || []} />
-            <UpcomingRenewals data={summary.upcoming_renewals} />
-          </SimpleGrid>
+          {(can('dashboard.urgent_obligations') || can('dashboard.upcoming_renewals')) && (
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              {can('dashboard.urgent_obligations') && <UrgentObligations obligations={summary.urgent_obligations || []} />}
+              {can('dashboard.upcoming_renewals') && <UpcomingRenewals data={summary.upcoming_renewals} />}
+            </SimpleGrid>
+          )}
         </>
       )}
     </Stack>
