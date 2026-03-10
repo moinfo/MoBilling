@@ -66,6 +66,9 @@ export default function SatisfactionCalls() {
   const [filterMonth, setFilterMonth] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
+  // View detail modal state
+  const [viewCall, setViewCall] = useState<SatisfactionCallEntry | null>(null);
+
   // Assign modal state
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [assignUserId, setAssignUserId] = useState<string>('');
@@ -648,7 +651,7 @@ export default function SatisfactionCalls() {
                 </Table.Thead>
                 <Table.Tbody>
                   {history.data.map((c: SatisfactionCallEntry) => (
-                    <Table.Tr key={c.id}>
+                    <Table.Tr key={c.id} onClick={() => setViewCall(c)} style={{ cursor: 'pointer' }}>
                       <Table.Td>{formatDate(c.scheduled_date)}</Table.Td>
                       <Table.Td><ClientLink call={c} /></Table.Td>
                       <Table.Td>{c.assigned_to || '—'}</Table.Td>
@@ -684,7 +687,7 @@ export default function SatisfactionCalls() {
                       <Table.Td>
                         <Badge color={statusColors[c.status]} size="sm">{c.status}</Badge>
                       </Table.Td>
-                      <Table.Td>
+                      <Table.Td onClick={(e) => e.stopPropagation()}>
                         {c.status === 'scheduled' ? (
                           <Group gap="xs" wrap="nowrap">
                             {can('satisfaction_calls.log') && (
@@ -1104,6 +1107,107 @@ export default function SatisfactionCalls() {
                 Reschedule
               </Button>
             </Group>
+          </Stack>
+        )}
+      </Modal>
+
+      {/* View Detail Modal */}
+      <Modal
+        opened={!!viewCall}
+        onClose={() => setViewCall(null)}
+        title={
+          <Group gap="sm">
+            <IconHeartHandshake size={20} />
+            <Text fw={600}>Satisfaction Call Details</Text>
+          </Group>
+        }
+        size="md"
+      >
+        {viewCall && (
+          <Stack gap="md">
+            <Paper p="sm" radius="sm" bg="var(--mantine-color-default)">
+              <SimpleGrid cols={2}>
+                <div>
+                  <Text size="xs" c="dimmed">Client</Text>
+                  <Text fw={600} tt="uppercase">{viewCall.client_name}</Text>
+                </div>
+                <div>
+                  <Text size="xs" c="dimmed">Phone</Text>
+                  <Text fw={600}>{viewCall.client_phone || '—'}</Text>
+                </div>
+                <div>
+                  <Text size="xs" c="dimmed">Scheduled Date</Text>
+                  <Text fw={500}>{formatDate(viewCall.scheduled_date)}</Text>
+                </div>
+                <div>
+                  <Text size="xs" c="dimmed">Called By</Text>
+                  <Text fw={500}>{viewCall.assigned_to || '—'}</Text>
+                </div>
+              </SimpleGrid>
+            </Paper>
+
+            <Group gap="lg">
+              <div>
+                <Text size="xs" c="dimmed" mb={4}>Outcome</Text>
+                {viewCall.outcome ? (
+                  <Badge color={outcomeColors[viewCall.outcome] || 'gray'} variant="light">
+                    {outcomeLabels[viewCall.outcome] || viewCall.outcome}
+                  </Badge>
+                ) : <Text size="sm" c="dimmed">—</Text>}
+              </div>
+              <div>
+                <Text size="xs" c="dimmed" mb={4}>Rating</Text>
+                {viewCall.rating ? <Rating value={viewCall.rating} readOnly size="md" /> : <Text size="sm" c="dimmed">—</Text>}
+              </div>
+              <div>
+                <Text size="xs" c="dimmed" mb={4}>Status</Text>
+                <Badge color={statusColors[viewCall.status]} size="sm">{viewCall.status}</Badge>
+              </div>
+            </Group>
+
+            <div>
+              <Text size="xs" c="dimmed" fw={600} mb={4}>Customer Feedback</Text>
+              <Paper p="sm" radius="sm" withBorder>
+                <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>
+                  {viewCall.feedback || 'No feedback recorded.'}
+                </Text>
+              </Paper>
+            </div>
+
+            {viewCall.internal_notes && (
+              <div>
+                <Text size="xs" c="dimmed" fw={600} mb={4}>Internal Notes</Text>
+                <Paper p="sm" radius="sm" withBorder>
+                  <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{viewCall.internal_notes}</Text>
+                </Paper>
+              </div>
+            )}
+
+            {viewCall.appointment_requested && (
+              <Paper p="sm" radius="sm" withBorder>
+                <Group gap="xs" mb={4}>
+                  <IconMapPin size={14} />
+                  <Text size="xs" c="dimmed" fw={600}>Physical Visit</Text>
+                </Group>
+                <Group gap="md">
+                  <div>
+                    <Text size="xs" c="dimmed">Date</Text>
+                    <Text size="sm" fw={500}>{viewCall.appointment_date ? formatDate(viewCall.appointment_date) : 'TBD'}</Text>
+                  </div>
+                  {viewCall.appointment_status && (
+                    <div>
+                      <Text size="xs" c="dimmed">Status</Text>
+                      <Badge size="sm" variant="light" color={viewCall.appointment_status === 'completed' ? 'green' : viewCall.appointment_status === 'cancelled' ? 'gray' : 'orange'}>
+                        {viewCall.appointment_status}
+                      </Badge>
+                    </div>
+                  )}
+                </Group>
+                {viewCall.appointment_notes && (
+                  <Text size="sm" mt={4}>{viewCall.appointment_notes}</Text>
+                )}
+              </Paper>
+            )}
           </Stack>
         )}
       </Modal>

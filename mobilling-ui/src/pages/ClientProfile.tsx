@@ -3,7 +3,7 @@ import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
   Anchor, Loader, Center, ThemeIcon, Modal, Button, TextInput,
-  PasswordInput, Select, Switch, ActionIcon,
+  PasswordInput, Select, Switch, ActionIcon, Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -361,7 +361,9 @@ export default function ClientProfile() {
                       {s.rating ? <Rating value={s.rating} readOnly size="xs" /> : '—'}
                     </Table.Td>
                     <Table.Td>
-                      <Text size="xs" truncate maw={200}>{s.feedback || '—'}</Text>
+                      <Tooltip label={s.feedback} disabled={!s.feedback} multiline maw={400} withArrow>
+                        <Text size="xs" truncate maw={200}>{s.feedback || '—'}</Text>
+                      </Tooltip>
                     </Table.Td>
                     <Table.Td>{s.assigned_to || '—'}</Table.Td>
                     <Table.Td>
