@@ -7,6 +7,7 @@ import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefres
 import { useState } from 'react';
 import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem } from '../../api/documents';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
+import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
 import dayjs from 'dayjs';
@@ -24,6 +25,8 @@ const statusColors: Record<string, string> = {
 
 export default function DocumentView({ document: doc, onRefresh, onClose: _onClose }: Props) {
   const { methods: paymentMethods, getMethodDetails } = usePaymentMethods();
+  const { user } = useAuth();
+  const tenant = user?.tenant;
   const [showPayment, setShowPayment] = useState(false);
   const [loading, setLoading] = useState('');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -385,17 +388,114 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
       {/* Pay Link — for unpaid invoices */}
       {isInvoice && doc.balance_due > 0 && doc.status !== 'cancelled' && doc.status !== 'draft' && (() => {
         const payUrl = `${window.location.origin}/pay/${doc.id}`;
-        const itemsList = (doc.items || []).map((item) => `• ${item.description} — ${formatCurrency(item.total || 0)}`).join('\n');
-        const whatsappMsg = `*${doc.document_number}*\nClient: ${doc.client?.name}\n\n${itemsList}\n\n*Total: ${formatCurrency(doc.total)}*\n*Paid: ${formatCurrency(doc.paid_amount)}*\n*Balance: ${formatCurrency(doc.balance_due)}*${doc.due_date ? `\nDue: ${formatDate(doc.due_date)}` : ''}\n\nPay online: ${payUrl}`;
+        const companyName = tenant?.name || '';
+
+        // Build a professional WhatsApp message
+        const lines: string[] = [
+          `📄 *INVOICE ${doc.document_number}*`,
+          `From: *${companyName}*`,
+          `To: ${doc.client?.name}`,
+          '',
+          '━━━━━━━━━━━━━━━━━━',
+          '*Items:*',
+        ];
+        (doc.items || []).forEach((item) => {
+          lines.push(`  ▸ ${item.description}`);
+          lines.push(`     ${item.quantity} × ${formatCurrency(item.price)} = *${formatCurrency(item.total || 0)}*`);
+        });
+        lines.push('━━━━━━━━━━━━━━━━━━');
+        lines.push(`💰 *Total: ${formatCurrency(doc.total)}*`);
+        if (doc.paid_amount > 0) {
+          lines.push(`✅ Paid: ${formatCurrency(doc.paid_amount)}`);
+        }
+        lines.push(`🔴 *Balance Due: ${formatCurrency(doc.balance_due)}*`);
+        if (doc.due_date) {
+          lines.push(`📅 Due Date: ${formatDate(doc.due_date)}`);
+        }
+
+        // Payment terms section
+        lines.push('');
+        lines.push('━━━━━━━━━━━━━━━━━━');
+        lines.push('📋 *Payment Terms:*');
+        if (doc.due_date) {
+          const dueDate = dayjs(doc.due_date);
+          const today = dayjs();
+          const daysLeft = dueDate.diff(today, 'day');
+          if (daysLeft > 0) {
+            lines.push(`⏳ Payment due within *${daysLeft} day(s)*`);
+          } else if (daysLeft === 0) {
+            lines.push(`⚠️ *Payment due today*`);
+          } else {
+            lines.push(`⚠️ *Payment is ${Math.abs(daysLeft)} day(s) overdue*`);
+          }
+        }
+        lines.push('');
+        lines.push('⚠️ _Late payment policy:_');
+        lines.push('  • 10% late fee applied after due date');
+        lines.push('  • Overdue reminder sent after 7 days');
+        lines.push('  • Service termination warning after 14 days');
+        lines.push('  • Service terminated after 21 days');
+
+        // Add payment method details
+        const hasPaymentMethods = paymentMethods.some((m) => m.details?.some((d) => d.value.trim()));
+        if (hasPaymentMethods) {
+          lines.push('');
+          lines.push('💳 *Payment Methods:*');
+          paymentMethods
+            .filter((m) => m.details?.some((d) => d.value.trim()))
+            .forEach((m) => {
+              lines.push(`\n*${m.label}:*`);
+              m.details!.filter((d) => d.value.trim()).forEach((d) => {
+                lines.push(`  ${d.key}: ${d.value}`);
+              });
+            });
+        }
+        if (tenant?.payment_instructions) {
+          lines.push(`\nℹ️ _${tenant.payment_instructions}_`);
+        }
+
+        lines.push('');
+        lines.push('━━━━━━━━━━━━━━━━━━');
+        lines.push(`🔗 *Pay Online:* ${payUrl}`);
+        lines.push('');
+        lines.push(`_Thank you for your business — ${companyName}_`);
+
+        const whatsappMsg = lines.join('\n');
         const whatsappUrl = `https://wa.me/${doc.client?.phone ? doc.client.phone.replace(/\D/g, '') : ''}?text=${encodeURIComponent(whatsappMsg)}`;
 
+        // Build copy-friendly plain text (no emojis)
+        const copyLines: string[] = [
+          `INVOICE ${doc.document_number}`,
+          `From: ${companyName}`,
+          `To: ${doc.client?.name}`,
+          '',
+          'Items:',
+        ];
+        (doc.items || []).forEach((item) => {
+          copyLines.push(`  - ${item.description}: ${item.quantity} x ${formatCurrency(item.price)} = ${formatCurrency(item.total || 0)}`);
+        });
+        copyLines.push('');
+        copyLines.push(`Total: ${formatCurrency(doc.total)}`);
+        if (doc.paid_amount > 0) copyLines.push(`Paid: ${formatCurrency(doc.paid_amount)}`);
+        copyLines.push(`Balance Due: ${formatCurrency(doc.balance_due)}`);
+        if (doc.due_date) copyLines.push(`Due Date: ${formatDate(doc.due_date)}`);
+        copyLines.push('');
+        copyLines.push('Payment Terms:');
+        copyLines.push('  - 10% late fee applied after due date');
+        copyLines.push('  - Service termination warning after 14 days overdue');
+        copyLines.push('  - Service terminated after 21 days overdue');
+        copyLines.push('');
+        copyLines.push(`Pay Online: ${payUrl}`);
+        const copyText = copyLines.join('\n');
+
         return (
-          <Paper withBorder p="sm" radius="md">
-            <Group gap="xs" mb="xs">
-              <IconLink size={16} />
-              <Text size="sm" fw={600}>Pay Link</Text>
+          <Paper withBorder p="md" radius="md" style={{ borderColor: 'var(--mantine-color-green-light)' }}>
+            <Group gap="xs" mb="sm">
+              <IconLink size={18} color="var(--mantine-color-green-6)" />
+              <Text size="sm" fw={700} c="green">Share & Pay</Text>
             </Group>
-            <Group gap="xs">
+
+            <Group gap="xs" mb="sm">
               <TextInput
                 value={payUrl}
                 readOnly
@@ -406,23 +506,39 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
               <CopyButton value={payUrl}>
                 {({ copied, copy }) => (
                   <Tooltip label={copied ? 'Copied!' : 'Copy link'}>
-                    <ActionIcon color={copied ? 'green' : 'gray'} variant="light" onClick={copy}>
+                    <ActionIcon color={copied ? 'teal' : 'green'} variant="light" onClick={copy} size="lg">
                       <IconCopy size={16} />
                     </ActionIcon>
                   </Tooltip>
                 )}
               </CopyButton>
-              <Tooltip label="Share via WhatsApp">
-                <ActionIcon
-                  color="green"
-                  variant="filled"
-                  component="a"
-                  href={whatsappUrl}
-                  target="_blank"
-                >
-                  <IconBrandWhatsapp size={16} />
-                </ActionIcon>
-              </Tooltip>
+            </Group>
+
+            <Group gap="xs">
+              <CopyButton value={copyText}>
+                {({ copied, copy }) => (
+                  <Button
+                    variant="light"
+                    color={copied ? 'teal' : 'gray'}
+                    size="xs"
+                    leftSection={<IconCopy size={14} />}
+                    onClick={copy}
+                  >
+                    {copied ? 'Copied!' : 'Copy Invoice Details'}
+                  </Button>
+                )}
+              </CopyButton>
+              <Button
+                variant="filled"
+                color="green"
+                size="xs"
+                leftSection={<IconBrandWhatsapp size={16} />}
+                component="a"
+                href={whatsappUrl}
+                target="_blank"
+              >
+                Share via WhatsApp
+              </Button>
             </Group>
           </Paper>
         );
