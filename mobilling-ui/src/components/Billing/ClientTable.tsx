@@ -34,7 +34,7 @@ export default function ClientTable({ clients, onEdit, onDelete, startIndex = 1,
             <Table.Th>Email</Table.Th>
             <Table.Th>Phone</Table.Th>
             <Table.Th ta="center">Subscriptions</Table.Th>
-            <Table.Th ta="right">Sub. Amount</Table.Th>
+            {can('client_profile.subscription_value') && <Table.Th ta="right">Sub. Amount</Table.Th>}
             <Table.Th w={120}>Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -58,13 +58,15 @@ export default function ClientTable({ clients, onEdit, onDelete, startIndex = 1,
                   <Text size="sm" c="dimmed">0</Text>
                 )}
               </Table.Td>
-              <Table.Td ta="right">
-                {client.subscription_total ? (
-                  <Text size="sm" fw={500}>{formatCurrency(client.subscription_total)}</Text>
-                ) : (
-                  <Text size="sm" c="dimmed">—</Text>
-                )}
-              </Table.Td>
+              {can('client_profile.subscription_value') && (
+                <Table.Td ta="right">
+                  {client.subscription_total ? (
+                    <Text size="sm" fw={500}>{formatCurrency(client.subscription_total)}</Text>
+                  ) : (
+                    <Text size="sm" c="dimmed">—</Text>
+                  )}
+                </Table.Td>
+              )}
               <Table.Td>
                 <Group gap="xs" wrap="nowrap">
                   <ActionIcon variant="light" color="gray" onClick={() => navigate(`/clients/${client.id}`)}>

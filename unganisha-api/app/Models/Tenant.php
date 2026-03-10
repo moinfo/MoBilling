@@ -34,6 +34,9 @@ class Tenant extends Model
         'overdue_email_subject', 'overdue_email_body',
         'reminder_sms_body', 'overdue_sms_body',
         'reminder_sms_enabled', 'reminder_email_enabled',
+        // WhatsApp Business API
+        'whatsapp_enabled', 'reminder_whatsapp_enabled',
+        'whatsapp_phone_number_id', 'whatsapp_access_token', 'whatsapp_business_account_id',
         // Invoice/quote email templates
         'invoice_email_subject', 'invoice_email_body',
         // Email branding
@@ -47,6 +50,7 @@ class Tenant extends Model
         'sms_authorization',
         'pesapal_consumer_key',
         'pesapal_consumer_secret',
+        'whatsapp_access_token',
     ];
 
     protected $casts = [
@@ -58,6 +62,9 @@ class Tenant extends Model
         'trial_ends_at' => 'datetime',
         'reminder_sms_enabled' => 'boolean',
         'reminder_email_enabled' => 'boolean',
+        'whatsapp_enabled' => 'boolean',
+        'reminder_whatsapp_enabled' => 'boolean',
+        'whatsapp_access_token' => 'encrypted',
         'payment_methods' => 'array',
         'pesapal_enabled' => 'boolean',
         'pesapal_sandbox' => 'boolean',

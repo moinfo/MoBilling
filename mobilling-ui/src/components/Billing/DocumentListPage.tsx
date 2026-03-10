@@ -7,15 +7,16 @@ import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch, IconBell, IconMail, IconMessage, IconSend } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconBell, IconMail, IconMessage, IconSend, IconFileSymlink } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
-import { getDocuments, getDocument, createDocument, updateDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, submitForApproval, approveDocument, rejectDocument, Document, DocumentFormData } from '../../api/documents';
+import { getDocuments, getDocument, createDocument, updateDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, mergeInvoices, submitForApproval, approveDocument, rejectDocument, Document, DocumentFormData } from '../../api/documents';
 import { getClients, Client } from '../../api/clients';
 import { getProductServices, ProductService } from '../../api/productServices';
 import DocumentTable from './DocumentTable';
 import DocumentForm from './DocumentForm';
 import DocumentView from './DocumentView';
 import { usePermissions } from '../../hooks/usePermissions';
+import { formatCurrency } from '../../utils/formatCurrency';
 
 interface Props {
   type: 'quotation' | 'proforma' | 'invoice';
@@ -44,10 +45,13 @@ export default function DocumentListPage({ type, title }: Props) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Selection state for merge
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
   // Remind modal state
   const [remindOpened, { open: openRemind, close: closeRemind }] = useDisclosure(false);
   const [remindIds, setRemindIds] = useState<string[]>([]);
-  const [remindChannel, setRemindChannel] = useState<'email' | 'sms' | 'both'>('email');
+  const [remindChannel, setRemindChannel] = useState<'email' | 'sms' | 'whatsapp' | 'both'>('email');
   const [remindLabel, setRemindLabel] = useState('');
 
   const isInvoice = type === 'invoice';
@@ -136,13 +140,27 @@ export default function DocumentListPage({ type, title }: Props) {
   });
 
   const remindMutation = useMutation({
-    mutationFn: ({ ids, channel }: { ids: string[]; channel: 'email' | 'sms' | 'both' }) =>
+    mutationFn: ({ ids, channel }: { ids: string[]; channel: 'email' | 'sms' | 'whatsapp' | 'both' }) =>
       remindUnpaid(ids, channel),
     onSuccess: (res) => {
       closeRemind();
       notifications.show({ title: 'Reminders Sent', message: res.data.message, color: 'green' });
     },
     onError: () => notifications.show({ title: 'Error', message: 'Failed to send reminders', color: 'red' }),
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: (ids: string[]) => mergeInvoices(ids),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setSelectedIds([]);
+      notifications.show({ title: 'Merged', message: res.data.message, color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to merge invoices',
+      color: 'red',
+    }),
   });
 
   const submitApprovalMutation = useMutation({
@@ -264,6 +282,24 @@ export default function DocumentListPage({ type, title }: Props) {
     queryClient.invalidateQueries({ queryKey: ['documents'] });
   };
 
+  const handleMerge = () => {
+    const selectedDocs = documents.filter((d: Document) => selectedIds.includes(d.id));
+    const clientIds = [...new Set(selectedDocs.map((d: Document) => d.client_id))];
+    if (clientIds.length > 1) {
+      notifications.show({ title: 'Error', message: 'All selected invoices must belong to the same client.', color: 'red' });
+      return;
+    }
+    const clientName = selectedDocs[0]?.client?.name || 'the client';
+    const totalAmount = selectedDocs.reduce((sum: number, d: Document) => sum + parseFloat(d.total), 0);
+    modals.openConfirmModal({
+      title: 'Merge Invoices',
+      children: `Merge ${selectedDocs.length} invoices for ${clientName} into one combined invoice (${formatCurrency(totalAmount)})? The original invoices will be cancelled.`,
+      labels: { confirm: 'Merge', cancel: 'Cancel' },
+      confirmProps: { color: 'blue' },
+      onConfirm: () => mergeMutation.mutate(selectedIds),
+    });
+  };
+
   const openRemindSingle = (doc: Document) => {
     setRemindIds([doc.id]);
     setRemindLabel(doc.document_number);
@@ -315,16 +351,29 @@ export default function DocumentListPage({ type, title }: Props) {
             />
           )}
         </Group>
-        {isInvoice && statusFilter === 'unpaid' && unpaidDocs.length > 0 && (
-          <Button
-            variant="light"
-            color="orange"
-            leftSection={<IconBell size={16} />}
-            onClick={openRemindAll}
-          >
-            Remind All ({unpaidDocs.length})
-          </Button>
-        )}
+        <Group gap="sm">
+          {isInvoice && selectedIds.length >= 2 && (
+            <Button
+              variant="light"
+              color="blue"
+              leftSection={<IconFileSymlink size={16} />}
+              onClick={handleMerge}
+              loading={mergeMutation.isPending}
+            >
+              Merge Selected ({selectedIds.length})
+            </Button>
+          )}
+          {isInvoice && statusFilter === 'unpaid' && unpaidDocs.length > 0 && (
+            <Button
+              variant="light"
+              color="orange"
+              leftSection={<IconBell size={16} />}
+              onClick={openRemindAll}
+            >
+              Remind All ({unpaidDocs.length})
+            </Button>
+          )}
+        </Group>
       </Group>
 
       <DocumentTable
@@ -340,6 +389,9 @@ export default function DocumentListPage({ type, title }: Props) {
         onReject={handleReject}
         startIndex={meta ? (meta.current_page - 1) * meta.per_page + 1 : 1}
         loading={isLoading}
+        selectable={isInvoice}
+        selectedIds={selectedIds}
+        onSelectionChange={setSelectedIds}
       />
 
       {meta && meta.last_page > 1 && (
@@ -416,11 +468,12 @@ export default function DocumentListPage({ type, title }: Props) {
           <Radio.Group
             label="Send via"
             value={remindChannel}
-            onChange={(v) => setRemindChannel(v as 'email' | 'sms' | 'both')}
+            onChange={(v) => setRemindChannel(v as 'email' | 'sms' | 'whatsapp' | 'both')}
           >
             <Stack gap="xs" mt="xs">
               <Radio value="email" label="Email" icon={({ ...rest }) => <IconMail size={14} {...rest} />} />
               <Radio value="sms" label="SMS" icon={({ ...rest }) => <IconMessage size={14} {...rest} />} />
+              <Radio value="whatsapp" label="WhatsApp" icon={({ ...rest }) => <IconSend size={14} {...rest} />} />
               <Radio value="both" label="Both (Email + SMS)" icon={({ ...rest }) => <IconSend size={14} {...rest} />} />
             </Stack>
           </Radio.Group>

@@ -57,6 +57,20 @@ class ClientSubscriptionController extends Controller
             ));
             $subscription->load('client', 'productService');
 
+            // Set initial expire_date from start_date + billing_cycle
+            if ($subscription->start_date && $subscription->productService?->billing_cycle) {
+                $expireDate = match ($subscription->productService->billing_cycle) {
+                    'monthly' => $subscription->start_date->copy()->addMonth(),
+                    'quarterly' => $subscription->start_date->copy()->addMonths(3),
+                    'half_yearly' => $subscription->start_date->copy()->addMonths(6),
+                    'yearly' => $subscription->start_date->copy()->addYear(),
+                    default => null,
+                };
+                if ($expireDate) {
+                    $subscription->update(['expire_date' => $expireDate]);
+                }
+            }
+
             // Only create an invoice when status is "pending"
             if ($status === 'pending') {
                 $client = $subscription->client;
@@ -110,6 +124,7 @@ class ClientSubscriptionController extends Controller
                 RecurringInvoiceLog::create([
                     'client_id' => $client->id,
                     'product_service_id' => $product->id,
+                    'client_subscription_id' => $subscription->id,
                     'document_id' => $document->id,
                     'next_bill_date' => $dueDate,
                     'invoice_created_at' => now(),
@@ -122,6 +137,136 @@ class ClientSubscriptionController extends Controller
             }
 
             return new ClientSubscriptionResource($subscription);
+        });
+    }
+
+    public function bulkStore(Request $request)
+    {
+        $request->validate([
+            'client_id' => 'required|uuid|exists:clients,id',
+            'start_date' => 'required|date',
+            'status' => 'in:pending,active',
+            'items' => 'required|array|min:1',
+            'items.*.product_service_id' => 'required|uuid|exists:product_services,id',
+            'items.*.label' => 'nullable|string|max:255',
+            'items.*.quantity' => 'integer|min:1',
+        ]);
+
+        return DB::transaction(function () use ($request) {
+            $status = $request->status ?? 'pending';
+            $subscriptions = [];
+
+            foreach ($request->items as $item) {
+                $subscription = ClientSubscription::create([
+                    'client_id' => $request->client_id,
+                    'product_service_id' => $item['product_service_id'],
+                    'label' => $item['label'] ?? null,
+                    'quantity' => $item['quantity'] ?? 1,
+                    'start_date' => $request->start_date,
+                    'status' => $status,
+                ]);
+                $subscription->load('client', 'productService');
+
+                // Set initial expire_date
+                if ($subscription->start_date && $subscription->productService?->billing_cycle) {
+                    $expireDate = match ($subscription->productService->billing_cycle) {
+                        'monthly' => $subscription->start_date->copy()->addMonth(),
+                        'quarterly' => $subscription->start_date->copy()->addMonths(3),
+                        'half_yearly' => $subscription->start_date->copy()->addMonths(6),
+                        'yearly' => $subscription->start_date->copy()->addYear(),
+                        default => null,
+                    };
+                    if ($expireDate) {
+                        $subscription->update(['expire_date' => $expireDate]);
+                    }
+                }
+
+                $subscriptions[] = $subscription;
+            }
+
+            // Generate one combined invoice when status is "pending"
+            if ($status === 'pending' && count($subscriptions) > 0) {
+                $client = $subscriptions[0]->client;
+                $tenant = auth()->user()->tenant;
+                $dueDate = $subscriptions[0]->start_date;
+
+                $subtotal = 0;
+                $taxTotal = 0;
+                $lineItems = [];
+
+                foreach ($subscriptions as $sub) {
+                    $product = $sub->productService;
+                    $qty = $sub->quantity;
+                    $lineBase = $qty * (float) $product->price;
+                    $lineTax = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
+                    $lineTotal = $lineBase + $lineTax;
+
+                    $description = $product->name;
+                    if ($sub->label) {
+                        $description .= " — {$sub->label}";
+                    }
+
+                    $subtotal += $lineBase;
+                    $taxTotal += $lineTax;
+
+                    $lineItems[] = [
+                        'product_service_id' => $product->id,
+                        'item_type' => $product->type,
+                        'description' => $description,
+                        'quantity' => $qty,
+                        'price' => $product->price,
+                        'discount_type' => 'percent',
+                        'discount_value' => 0,
+                        'tax_percent' => $product->tax_percent ?? 0,
+                        'tax_amount' => round($lineTax, 2),
+                        'total' => round($lineTotal, 2),
+                        'unit' => $product->unit,
+                    ];
+                }
+
+                $document = Document::create([
+                    'client_id' => $client->id,
+                    'type' => 'invoice',
+                    'document_number' => app(DocumentNumberService::class)
+                        ->generate('invoice', $tenant->id),
+                    'date' => now()->format('Y-m-d'),
+                    'due_date' => $dueDate->format('Y-m-d'),
+                    'subtotal' => round($subtotal, 2),
+                    'discount_amount' => 0,
+                    'tax_amount' => round($taxTotal, 2),
+                    'total' => round($subtotal + $taxTotal, 2),
+                    'notes' => 'Invoice for new subscriptions',
+                    'status' => 'sent',
+                    'created_by' => auth()->id(),
+                ]);
+
+                foreach ($lineItems as $lineItem) {
+                    $document->items()->create($lineItem);
+                }
+
+                // Log each subscription for the recurring system
+                foreach ($subscriptions as $sub) {
+                    RecurringInvoiceLog::updateOrCreate(
+                        [
+                            'client_id' => $client->id,
+                            'product_service_id' => $sub->product_service_id,
+                            'client_subscription_id' => $sub->id,
+                            'next_bill_date' => $dueDate,
+                        ],
+                        [
+                            'document_id' => $document->id,
+                            'invoice_created_at' => now(),
+                            'reminders_sent' => [],
+                        ]
+                    );
+                }
+
+                // Send invoice to client
+                $document->load('items', 'client');
+                $client->notify(new InvoiceSentNotification($document));
+            }
+
+            return ClientSubscriptionResource::collection($subscriptions);
         });
     }
 
@@ -196,6 +341,7 @@ class ClientSubscriptionController extends Controller
             RecurringInvoiceLog::create([
                 'client_id' => $client->id,
                 'product_service_id' => $product->id,
+                'client_subscription_id' => $clientSubscription->id,
                 'document_id' => $document->id,
                 'next_bill_date' => now(),
                 'invoice_created_at' => now(),
@@ -213,6 +359,19 @@ class ClientSubscriptionController extends Controller
                 ],
             ]);
         });
+    }
+
+    public function updateExpireDate(Request $request, ClientSubscription $clientSubscription)
+    {
+        $request->validate([
+            'expire_date' => 'required|date',
+        ]);
+
+        $clientSubscription->update(['expire_date' => $request->expire_date]);
+
+        return new ClientSubscriptionResource(
+            $clientSubscription->load('client', 'productService')
+        );
     }
 
     public function destroy(ClientSubscription $clientSubscription)

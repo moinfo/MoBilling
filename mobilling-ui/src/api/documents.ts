@@ -126,7 +126,7 @@ export const resendReceipt = (id: string) =>
 export const resendInvoice = (documentId: string) =>
   api.post(`/documents/${documentId}/send`);
 
-export const remindUnpaid = (documentIds: string[], channel: 'email' | 'sms' | 'both') =>
+export const remindUnpaid = (documentIds: string[], channel: 'email' | 'sms' | 'whatsapp' | 'both') =>
   api.post('/documents/remind-unpaid', { document_ids: documentIds, channel });
 
 export const cancelDocument = (id: string) =>
@@ -137,6 +137,9 @@ export const uncancelDocument = (id: string) =>
 
 export const removeDocumentItem = (documentId: string, itemId: string) =>
   api.delete(`/documents/${documentId}/items/${itemId}`);
+
+export const mergeInvoices = (documentIds: string[]) =>
+  api.post<{ data: Document; message: string }>('/documents/merge', { document_ids: documentIds });
 
 // Next Bills
 export interface NextBillItem {

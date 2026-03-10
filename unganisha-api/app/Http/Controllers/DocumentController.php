@@ -369,12 +369,122 @@ class DocumentController extends Controller
         });
     }
 
+    public function merge(Request $request)
+    {
+        $request->validate([
+            'document_ids' => 'required|array|min:2',
+            'document_ids.*' => 'uuid',
+        ]);
+
+        $documents = Document::whereIn('id', $request->document_ids)
+            ->where('type', 'invoice')
+            ->whereNotIn('status', ['paid', 'cancelled'])
+            ->with('items', 'client')
+            ->get();
+
+        if ($documents->count() < 2) {
+            return response()->json(['message' => 'At least 2 unpaid invoices are required to merge.'], 422);
+        }
+
+        // All invoices must belong to the same client
+        $clientIds = $documents->pluck('client_id')->unique();
+        if ($clientIds->count() > 1) {
+            return response()->json(['message' => 'All invoices must belong to the same client.'], 422);
+        }
+
+        // Block merge if any invoice has partial payments
+        $hasPayments = $documents->filter(fn ($d) => (float) $d->paid_amount > 0);
+        if ($hasPayments->count() > 0) {
+            $nums = $hasPayments->pluck('document_number')->join(', ');
+            return response()->json([
+                'message' => "Cannot merge invoices with existing payments ({$nums}). Remove payments first.",
+            ], 422);
+        }
+
+        return DB::transaction(function () use ($documents) {
+            $client = $documents->first()->client;
+            $tenant = auth()->user()->tenant;
+
+            // Gather all line items and calculate totals
+            $subtotal = 0;
+            $discountTotal = 0;
+            $taxAmount = 0;
+            $allItems = [];
+            $mergedNumbers = [];
+
+            foreach ($documents as $doc) {
+                $mergedNumbers[] = $doc->document_number;
+                foreach ($doc->items as $item) {
+                    $lineBase = $item->quantity * $item->price;
+                    $lineDiscount = $item->discount_type === 'flat'
+                        ? min($item->discount_value, $lineBase)
+                        : $lineBase * ($item->discount_value / 100);
+
+                    $subtotal += $lineBase;
+                    $discountTotal += $lineDiscount;
+                    $taxAmount += $item->tax_amount;
+
+                    $allItems[] = [
+                        'product_service_id' => $item->product_service_id,
+                        'item_type' => $item->item_type,
+                        'description' => $item->description,
+                        'quantity' => $item->quantity,
+                        'price' => $item->price,
+                        'discount_type' => $item->discount_type,
+                        'discount_value' => $item->discount_value,
+                        'tax_percent' => $item->tax_percent,
+                        'tax_amount' => $item->tax_amount,
+                        'total' => $item->total,
+                        'unit' => $item->unit,
+                    ];
+                }
+            }
+
+            // Use the latest due date from all merged invoices
+            $latestDueDate = $documents->max('due_date');
+
+            $mergedDoc = Document::create([
+                'client_id' => $client->id,
+                'type' => 'invoice',
+                'document_number' => app(DocumentNumberService::class)
+                    ->generate('invoice', $tenant->id),
+                'date' => now()->format('Y-m-d'),
+                'due_date' => $latestDueDate,
+                'subtotal' => round($subtotal, 2),
+                'discount_amount' => round($discountTotal, 2),
+                'tax_amount' => round($taxAmount, 2),
+                'total' => round($subtotal - $discountTotal + $taxAmount, 2),
+                'notes' => 'Merged from: ' . implode(', ', $mergedNumbers),
+                'status' => 'sent',
+                'created_by' => auth()->id(),
+            ]);
+
+            foreach ($allItems as $item) {
+                $mergedDoc->items()->create($item);
+            }
+
+            // Cancel original invoices
+            foreach ($documents as $doc) {
+                $doc->update(['status' => 'cancelled']);
+            }
+
+            // Send merged invoice to client
+            $mergedDoc->load('items', 'client');
+            $client->notify(new \App\Notifications\InvoiceSentNotification($mergedDoc));
+
+            return response()->json([
+                'data' => new DocumentResource($mergedDoc),
+                'message' => "Merged " . count($mergedNumbers) . " invoices into {$mergedDoc->document_number}.",
+            ]);
+        });
+    }
+
     public function remindUnpaid(Request $request)
     {
         $request->validate([
             'document_ids' => 'required|array|min:1',
             'document_ids.*' => 'uuid',
-            'channel' => 'required|in:email,sms,both',
+            'channel' => 'required|in:email,sms,whatsapp,both',
         ]);
 
         $tenant = Tenant::find(auth()->user()->tenant_id);

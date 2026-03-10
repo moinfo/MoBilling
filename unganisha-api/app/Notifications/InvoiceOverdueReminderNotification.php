@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Models\Tenant;
 use App\Notifications\Concerns\HasTenantBranding;
@@ -32,6 +33,10 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
 
         if ($this->tenant->sms_enabled && $this->tenant->reminder_sms_enabled) {
             $channels[] = SmsChannel::class;
+        }
+
+        if ($this->tenant->whatsapp_enabled && $this->tenant->reminder_whatsapp_enabled) {
+            $channels[] = WhatsAppChannel::class;
         }
 
         return $channels;
@@ -79,6 +84,29 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
             $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
             $msg .= " Pay: {$payUrl}";
         }
+
+        return $msg;
+    }
+
+    public function toWhatsApp($notifiable): ?string
+    {
+        $currency = $this->tenant->currency;
+        $totalFormatted = number_format($this->document->total, 2);
+        $balanceDue = number_format($this->document->balance_due, 2);
+
+        $msg = "🔴 *Payment Overdue*\n\n"
+            . "*{$this->document->document_number}*\n"
+            . "Amount: *{$currency} {$totalFormatted}*\n"
+            . "Balance Due: *{$currency} {$balanceDue}*\n"
+            . "Overdue by: *{$this->daysOverdue} day(s)*\n\n"
+            . "⚠️ Please make payment immediately to avoid service disruption.";
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $msg .= "\n\n💳 Pay online: {$payUrl}";
+        }
+
+        $msg .= "\n\n— {$this->tenant->name}";
 
         return $msg;
     }

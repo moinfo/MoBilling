@@ -11,6 +11,7 @@ export interface ClientSubscription {
   label: string | null;
   quantity: number;
   start_date: string;
+  expire_date?: string;
   status: 'active' | 'cancelled' | 'suspended';
   metadata: Record<string, unknown> | null;
   created_at: string;
@@ -23,6 +24,19 @@ export interface ClientSubscriptionFormData {
   quantity: number;
   start_date: string;
   status: string;
+}
+
+export interface BulkSubscriptionItem {
+  product_service_id: string;
+  label: string;
+  quantity: number;
+}
+
+export interface BulkSubscriptionFormData {
+  client_id: string;
+  start_date: string;
+  status: string;
+  items: BulkSubscriptionItem[];
 }
 
 export const getClientSubscriptions = (params?: {
@@ -41,11 +55,17 @@ export const getClientSubscription = (id: string) =>
 export const createClientSubscription = (data: ClientSubscriptionFormData) =>
   api.post('/client-subscriptions', data);
 
+export const createBulkSubscription = (data: BulkSubscriptionFormData) =>
+  api.post('/client-subscriptions/bulk', data);
+
 export const updateClientSubscription = (id: string, data: ClientSubscriptionFormData) =>
   api.put(`/client-subscriptions/${id}`, data);
 
 export const deleteClientSubscription = (id: string) =>
   api.delete(`/client-subscriptions/${id}`);
+
+export const updateExpireDate = (id: string, expire_date: string) =>
+  api.patch(`/client-subscriptions/${id}/expire-date`, { expire_date });
 
 export const generateInvoiceFromSubscription = (id: string) =>
   api.post<{ message: string; data: { document_id: string; document_number: string } }>(`/client-subscriptions/${id}/generate-invoice`);

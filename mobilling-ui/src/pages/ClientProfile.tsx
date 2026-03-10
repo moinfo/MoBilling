@@ -24,6 +24,7 @@ import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
+import { usePermissions } from '../hooks/usePermissions';
 
 const cycleLabels: Record<string, string> = {
   monthly: 'Monthly',
@@ -68,6 +69,7 @@ const outcomeLabels: Record<string, string> = {
 export default function ClientProfile() {
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
+  const { can } = usePermissions();
 
   const { data, isLoading } = useQuery({
     queryKey: ['client-profile', clientId],
@@ -133,11 +135,21 @@ export default function ClientProfile() {
 
       {/* Summary Cards */}
       <SimpleGrid cols={{ base: 2, sm: 5 }}>
-        <SummaryCard icon={<IconFileInvoice size={20} />} label="Total Invoiced" value={formatCurrency(summary.total_invoiced)} color="blue" />
-        <SummaryCard icon={<IconCash size={20} />} label="Total Paid" value={formatCurrency(summary.total_paid)} color="green" />
-        <SummaryCard icon={<IconCalendarDue size={20} />} label="Balance Due" value={formatCurrency(summary.balance)} color={summary.balance > 0 ? 'red' : 'green'} />
-        <SummaryCard icon={<IconRepeat size={20} />} label="Active Subscriptions" value={String(summary.active_subscriptions)} color="violet" />
-        <SummaryCard icon={<IconRepeat size={20} />} label="Subscription Value" value={formatCurrency(summary.total_subscription_value)} color="cyan" />
+        {can('client_profile.total_invoiced') && (
+          <SummaryCard icon={<IconFileInvoice size={20} />} label="Total Invoiced" value={formatCurrency(summary.total_invoiced)} color="blue" />
+        )}
+        {can('client_profile.total_paid') && (
+          <SummaryCard icon={<IconCash size={20} />} label="Total Paid" value={formatCurrency(summary.total_paid)} color="green" />
+        )}
+        {can('client_profile.balance_due') && (
+          <SummaryCard icon={<IconCalendarDue size={20} />} label="Balance Due" value={formatCurrency(summary.balance)} color={summary.balance > 0 ? 'red' : 'green'} />
+        )}
+        {can('client_profile.active_subscriptions') && (
+          <SummaryCard icon={<IconRepeat size={20} />} label="Active Subscriptions" value={String(summary.active_subscriptions)} color="violet" />
+        )}
+        {can('client_profile.subscription_value') && (
+          <SummaryCard icon={<IconRepeat size={20} />} label="Subscription Value" value={formatCurrency(summary.total_subscription_value)} color="cyan" />
+        )}
       </SimpleGrid>
 
       {/* Subscriptions */}
@@ -153,7 +165,7 @@ export default function ClientProfile() {
                   <Table.Th>Product / Service</Table.Th>
                   <Table.Th>Cycle</Table.Th>
                   <Table.Th>Qty</Table.Th>
-                  <Table.Th>Price</Table.Th>
+                  {can('client_profile.subscription_price') && <Table.Th>Price</Table.Th>}
                   <Table.Th>Start</Table.Th>
                   <Table.Th>Next Due</Table.Th>
                   <Table.Th>Status</Table.Th>
@@ -170,7 +182,7 @@ export default function ClientProfile() {
                       <Badge variant="light" size="sm">{cycleLabels[sub.billing_cycle] || sub.billing_cycle}</Badge>
                     </Table.Td>
                     <Table.Td>{sub.quantity}</Table.Td>
-                    <Table.Td>{formatCurrency(sub.price)}</Table.Td>
+                    {can('client_profile.subscription_price') && <Table.Td>{formatCurrency(sub.price)}</Table.Td>}
                     <Table.Td>{formatDate(sub.start_date)}</Table.Td>
                     <Table.Td fw={500}>{sub.next_bill ? formatDate(sub.next_bill) : '—'}</Table.Td>
                     <Table.Td>
@@ -198,7 +210,7 @@ export default function ClientProfile() {
                   <Table.Th>Description</Table.Th>
                   <Table.Th>Date</Table.Th>
                   <Table.Th>Due Date</Table.Th>
-                  <Table.Th>Total</Table.Th>
+                  {can('client_profile.total_invoiced') && <Table.Th>Total</Table.Th>}
                   <Table.Th>Status</Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -211,7 +223,7 @@ export default function ClientProfile() {
                     </Table.Td>
                     <Table.Td>{formatDate(inv.date)}</Table.Td>
                     <Table.Td>{inv.due_date ? formatDate(inv.due_date) : '—'}</Table.Td>
-                    <Table.Td>{formatCurrency(inv.total)}</Table.Td>
+                    {can('client_profile.total_invoiced') && <Table.Td>{formatCurrency(inv.total)}</Table.Td>}
                     <Table.Td>
                       <Badge color={statusColors[inv.status] || 'gray'} size="sm">{inv.status}</Badge>
                     </Table.Td>
