@@ -129,8 +129,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('/tenants/{tenant}/templates', [AdminTemplatesController::class, 'show']);
     Route::put('/tenants/{tenant}/templates', [AdminTemplatesController::class, 'update']);
 
-    // Impersonate tenant
+    // Impersonate tenant (as admin) or specific user
     Route::post('/tenants/{tenant}/impersonate', [TenantController::class, 'impersonate']);
+    Route::post('/tenants/{tenant}/users/{user}/impersonate', [TenantController::class, 'impersonateUser']);
 
     // Tenant SMS settings (super admin)
     Route::get('/tenants/{tenant}/sms-settings', [SmsSettingsController::class, 'show']);

@@ -108,9 +108,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const impersonate = (impersonatedUser: User, token: string, subStatus?: SubscriptionStatus, subDays?: number) => {
-    const adminToken = localStorage.getItem('token');
-    if (adminToken) {
-      localStorage.setItem('admin_token', adminToken);
+    // Only save admin_token if not already impersonating (preserve the original super admin token)
+    if (!localStorage.getItem('admin_token')) {
+      const adminToken = localStorage.getItem('token');
+      if (adminToken) {
+        localStorage.setItem('admin_token', adminToken);
+      }
     }
     localStorage.setItem('token', token);
     localStorage.setItem('user_type', 'tenant');

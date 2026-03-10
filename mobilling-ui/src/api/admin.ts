@@ -83,6 +83,18 @@ export const impersonateTenant = (tenantId: string) =>
     days_remaining?: number;
   }>(`/admin/tenants/${tenantId}/impersonate`);
 
+export const impersonateUser = (tenantId: string, userId: string) => {
+  const adminToken = localStorage.getItem('admin_token');
+  return api.post<{
+    user: import('./auth').User;
+    token: string;
+    subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+    days_remaining?: number;
+  }>(`/admin/tenants/${tenantId}/users/${userId}/impersonate`, {}, {
+    headers: adminToken ? { Authorization: `Bearer ${adminToken}` } : {},
+  });
+};
+
 // --- Tenant User Management ---
 
 export { type TenantUser, type UserFormData } from './users';
