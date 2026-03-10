@@ -12,7 +12,6 @@ import {
   IconUserPlus,
 } from '@tabler/icons-react';
 import { forgotPassword, verifyResetOtp, resetPassword } from '../api/auth';
-import { useAuth } from '../context/AuthContext';
 
 const tips = [
   { icon: IconMail, text: 'A verification code will be sent to your email' },
@@ -24,7 +23,6 @@ type Step = 'request' | 'verify' | 'reset' | 'done';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
-  const { login: authLogin } = useAuth();
   const [step, setStep] = useState<Step>('request');
   const [loading, setLoading] = useState(false);
   const [identifier, setIdentifier] = useState('');

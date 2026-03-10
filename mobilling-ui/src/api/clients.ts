@@ -70,6 +70,7 @@ export interface ClientProfile {
   invoices: {
     id: string;
     document_number: string;
+    description?: string | null;
     date: string;
     due_date: string | null;
     total: string;

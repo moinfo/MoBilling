@@ -27,7 +27,7 @@ export default function PortalUsers() {
     validate: {
       name: (v) => (v.length > 0 ? null : 'Required'),
       email: (v) => (/^\S+@\S+$/.test(v) ? null : 'Invalid email'),
-      password: (v, _values, path) => {
+      password: (v) => {
         if (editing) return null; // Password optional when editing
         return v.length >= 8 ? null : 'Minimum 8 characters';
       },

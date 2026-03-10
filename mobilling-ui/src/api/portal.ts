@@ -8,6 +8,7 @@ export interface PortalDashboard {
   overdue_count: number;
   recent_invoices: PortalInvoice[];
   recent_payments: PortalPayment[];
+  upcoming_subscriptions?: any[];
 }
 
 export interface PortalInvoice {
@@ -64,8 +65,8 @@ export interface PortalDocument {
     id: string;
     description: string;
     quantity: number;
-    unit_price: number;
-    amount: number;
+    price: number;
+    total: number;
   }[];
   paid_amount?: number;
   balance_due?: number;
