@@ -7,7 +7,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import {
@@ -19,6 +19,7 @@ import {
   getTemplates, updateTemplates, TemplateSettings,
   getPaymentMethods, updatePaymentMethods, PaymentMethod,
   getSubscriptionSettings, updateSubscriptionSettings, SubscriptionSettings,
+  getPesapalSettings, updatePesapalSettings, PesapalSettings,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
@@ -56,6 +57,11 @@ export default function Settings() {
           <Tabs.Tab value="payment-methods" leftSection={<IconCreditCard size={16} />}>
             Payment Methods
           </Tabs.Tab>
+          {canCompany && (
+            <Tabs.Tab value="pesapal" leftSection={<IconBrandCashapp size={16} />}>
+              Pesapal
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="company">
@@ -75,6 +81,9 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="payment-methods">
           <PaymentMethodsTab isAdmin={canPaymentMethods} />
+        </Tabs.Panel>
+        <Tabs.Panel value="pesapal">
+          <PesapalTab isAdmin={canCompany} />
         </Tabs.Panel>
       </Tabs>
     </>
@@ -1019,6 +1028,130 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
           </Button>
         </Group>
       )}
+    </Paper>
+  );
+}
+
+// --- Pesapal Tab ---
+
+function PesapalTab({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['pesapal-settings'],
+    queryFn: getPesapalSettings,
+  });
+
+  const settings: PesapalSettings | undefined = data?.data?.data;
+
+  const form = useForm({
+    initialValues: {
+      pesapal_enabled: false,
+      pesapal_consumer_key: '',
+      pesapal_consumer_secret: '',
+      pesapal_sandbox: true,
+    },
+  });
+
+  const [initialized, setInitialized] = useState(false);
+  if (settings && !initialized) {
+    form.setValues({
+      pesapal_enabled: settings.pesapal_enabled,
+      pesapal_consumer_key: settings.pesapal_consumer_key ?? '',
+      pesapal_consumer_secret: '',
+      pesapal_sandbox: settings.pesapal_sandbox,
+    });
+    setInitialized(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: (values: typeof form.values) => {
+      const payload: any = {
+        pesapal_enabled: values.pesapal_enabled,
+        pesapal_sandbox: values.pesapal_sandbox,
+      };
+      if (values.pesapal_consumer_key) payload.pesapal_consumer_key = values.pesapal_consumer_key;
+      if (values.pesapal_consumer_secret) payload.pesapal_consumer_secret = values.pesapal_consumer_secret;
+      return updatePesapalSettings(payload);
+    },
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['pesapal-settings'] });
+      notifications.show({ title: 'Success', message: res.data.message || 'Pesapal settings updated', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to update Pesapal settings',
+        color: 'red',
+      });
+    },
+  });
+
+  if (isLoading) {
+    return <Center py="xl"><Loader /></Center>;
+  }
+
+  return (
+    <Paper p="lg" withBorder maw={600}>
+      {!isAdmin && (
+        <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+          Only admins can edit Pesapal settings.
+        </Alert>
+      )}
+
+      <Alert variant="light" color="blue" icon={<IconAlertCircle size={16} />} mb="md">
+        <Text size="sm">
+          Connect your Pesapal merchant account to allow clients to pay invoices online.
+          When enabled, invoices will include a "Pay Now" link.
+        </Text>
+      </Alert>
+
+      <form onSubmit={form.onSubmit((values) => saveMutation.mutate(values))}>
+        <Stack>
+          <Switch
+            label="Enable Pesapal Payments"
+            description="Allow clients to pay invoices online via Pesapal (card, mobile money, etc.)"
+            disabled={!isAdmin}
+            checked={form.values.pesapal_enabled}
+            onChange={(e) => form.setFieldValue('pesapal_enabled', e.currentTarget.checked)}
+          />
+
+          <Divider label="API Credentials" labelPosition="left" />
+
+          <TextInput
+            label="Consumer Key"
+            placeholder={settings?.pesapal_consumer_key_set ? '••••••• (already set)' : 'Enter your Pesapal consumer key'}
+            disabled={!isAdmin}
+            {...form.getInputProps('pesapal_consumer_key')}
+          />
+          <PasswordInput
+            label="Consumer Secret"
+            placeholder={settings?.pesapal_consumer_secret_set ? '••••••• (already set)' : 'Enter your Pesapal consumer secret'}
+            disabled={!isAdmin}
+            {...form.getInputProps('pesapal_consumer_secret')}
+          />
+
+          <Switch
+            label="Sandbox Mode"
+            description="Use Pesapal demo/test environment instead of live"
+            disabled={!isAdmin}
+            checked={form.values.pesapal_sandbox}
+            onChange={(e) => form.setFieldValue('pesapal_sandbox', e.currentTarget.checked)}
+          />
+
+          {settings?.pesapal_ipn_id && (
+            <Alert variant="light" color="green">
+              <Text size="sm">IPN registered: <Text span fw={600}>{settings.pesapal_ipn_id}</Text></Text>
+            </Alert>
+          )}
+
+          {isAdmin && (
+            <Group justify="flex-end">
+              <Button type="submit" loading={saveMutation.isPending}>Save Pesapal Settings</Button>
+            </Group>
+          )}
+        </Stack>
+      </form>
     </Paper>
   );
 }

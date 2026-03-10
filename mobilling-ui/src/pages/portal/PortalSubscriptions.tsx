@@ -1,6 +1,10 @@
-import { Stack, Paper, Title, Table, Badge, LoadingOverlay } from '@mantine/core';
+import { useState } from 'react';
+import { Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Tooltip } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { useQuery } from '@tanstack/react-query';
-import { getPortalSubscriptions } from '../../api/portal';
+import { useNavigate } from 'react-router-dom';
+import { IconFileInvoice } from '@tabler/icons-react';
+import { getPortalSubscriptions, generateSubscriptionInvoice } from '../../api/portal';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
@@ -18,12 +22,36 @@ const cycleLabel: Record<string, string> = {
 };
 
 export default function PortalSubscriptions() {
+  const navigate = useNavigate();
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+
   const { data, isLoading } = useQuery({
     queryKey: ['portal-subscriptions'],
     queryFn: () => getPortalSubscriptions(),
   });
 
   const subs = data?.data?.data || [];
+
+  const handleGenerateInvoice = async (subId: string) => {
+    setGeneratingId(subId);
+    try {
+      const res = await generateSubscriptionInvoice(subId);
+      notifications.show({
+        title: 'Invoice Created',
+        message: `${res.data.data.document_number} created. Redirecting to invoices...`,
+        color: 'green',
+      });
+      setTimeout(() => navigate('/portal/invoices'), 1500);
+    } catch (err: any) {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to generate invoice.',
+        color: 'red',
+      });
+    } finally {
+      setGeneratingId(null);
+    }
+  };
 
   return (
     <Stack gap="lg" pos="relative">
@@ -44,6 +72,7 @@ export default function PortalSubscriptions() {
                 <Table.Th>Next Invoice</Table.Th>
                 <Table.Th ta="right">Days Left</Table.Th>
                 <Table.Th>Status</Table.Th>
+                <Table.Th ta="center">Action</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -80,12 +109,27 @@ export default function PortalSubscriptions() {
                         {s.status}
                       </Badge>
                     </Table.Td>
+                    <Table.Td ta="center">
+                      {s.status === 'active' && (
+                        <Tooltip label="Generate invoice and pay now">
+                          <Button
+                            variant="light"
+                            size="compact-sm"
+                            leftSection={<IconFileInvoice size={14} />}
+                            loading={generatingId === s.id}
+                            onClick={() => handleGenerateInvoice(s.id)}
+                          >
+                            Pay Now
+                          </Button>
+                        </Tooltip>
+                      )}
+                    </Table.Td>
                   </Table.Tr>
                 );
               })}
               {subs.length === 0 && (
                 <Table.Tr>
-                  <Table.Td colSpan={9} ta="center" c="dimmed">No subscriptions found</Table.Td>
+                  <Table.Td colSpan={10} ta="center" c="dimmed">No subscriptions found</Table.Td>
                 </Table.Tr>
               )}
             </Table.Tbody>

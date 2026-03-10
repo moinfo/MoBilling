@@ -119,6 +119,7 @@ class ClientController extends Controller
             ->map(fn ($doc) => [
                 'id' => $doc->id,
                 'document_number' => $doc->document_number,
+                'description' => $doc->items->first()?->description ?? $doc->notes,
                 'date' => $doc->date?->format('Y-m-d'),
                 'due_date' => $doc->due_date?->format('Y-m-d'),
                 'total' => $doc->total,

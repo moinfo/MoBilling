@@ -60,6 +60,7 @@ import PortalDocuments from './pages/portal/PortalDocuments';
 import PortalPayments from './pages/portal/PortalPayments';
 import PortalStatement from './pages/portal/PortalStatement';
 import PortalSubscriptions from './pages/portal/PortalSubscriptions';
+import PortalProductServices from './pages/portal/PortalProductServices';
 import PortalProfile from './pages/portal/PortalProfile';
 import PortalUsers from './pages/portal/PortalUsers';
 import RevenueSummary from './pages/reports/RevenueSummary';
@@ -75,6 +76,7 @@ import CommunicationLogReport from './pages/reports/CommunicationLogReport';
 import SatisfactionReportPage from './pages/reports/SatisfactionReport';
 import SubscriptionExpired from './pages/SubscriptionExpired';
 import PesapalCallback from './pages/PesapalCallback';
+import PayInvoice from './pages/PayInvoice';
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -101,6 +103,7 @@ export default function App() {
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/pesapal/callback" element={<PesapalCallback />} />
+                <Route path="/pay/:id" element={<PayInvoice />} />
 
                 {/* Subscription expired (standalone, no sidebar) */}
                 <Route
@@ -198,6 +201,7 @@ export default function App() {
                   <Route path="/portal/quotations" element={<PortalDocuments type="quotation" />} />
                   <Route path="/portal/payments" element={<PortalPayments />} />
                   <Route path="/portal/statement" element={<PortalStatement />} />
+                  <Route path="/portal/products-services" element={<PortalProductServices />} />
                   <Route path="/portal/subscriptions" element={<PortalSubscriptions />} />
                   <Route path="/portal/profile" element={<PortalProfile />} />
                   <Route path="/portal/users" element={<PortalUsers />} />

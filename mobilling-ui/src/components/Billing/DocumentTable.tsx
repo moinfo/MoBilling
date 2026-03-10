@@ -50,6 +50,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
           <Table.Tr>
             <Table.Th w={50}>#</Table.Th>
             <Table.Th>Number</Table.Th>
+            <Table.Th>Description</Table.Th>
             <Table.Th>Client</Table.Th>
             <Table.Th>Date</Table.Th>
             <Table.Th>Total</Table.Th>
@@ -65,6 +66,9 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
             <Table.Tr key={doc.id} style={{ cursor: 'pointer', opacity: isCancelled ? 0.5 : 1 }} onClick={() => onView(doc)}>
               <Table.Td><Text size="sm" c="dimmed">{startIndex + index}</Text></Table.Td>
               <Table.Td fw={500} td={isCancelled ? 'line-through' : undefined}>{doc.document_number}</Table.Td>
+              <Table.Td c="dimmed" maw={220} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {doc.items?.[0]?.description || doc.notes || '—'}
+              </Table.Td>
               <Table.Td td={isCancelled ? 'line-through' : undefined}>{doc.client?.name || '—'}</Table.Td>
               <Table.Td>{formatDate(doc.date)}</Table.Td>
               <Table.Td td={isCancelled ? 'line-through' : undefined}>{formatCurrency(doc.total)}</Table.Td>

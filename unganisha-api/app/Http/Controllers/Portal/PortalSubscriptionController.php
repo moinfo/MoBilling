@@ -4,8 +4,14 @@ namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
 use App\Models\ClientSubscription;
+use App\Models\Document;
+use App\Models\RecurringInvoiceLog;
+use App\Models\Tenant;
+use App\Notifications\InvoiceSentNotification;
+use App\Services\DocumentNumberService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PortalSubscriptionController extends Controller
 {
@@ -32,6 +38,84 @@ class PortalSubscriptionController extends Controller
             });
 
         return response()->json(['data' => $subscriptions]);
+    }
+
+    public function generateInvoice(Request $request, ClientSubscription $clientSubscription)
+    {
+        $clientId = $request->user()->client_id;
+
+        if ($clientSubscription->client_id !== $clientId) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        $clientSubscription->load('client', 'productService');
+        $client = $clientSubscription->client;
+        $product = $clientSubscription->productService;
+
+        if (!$client || !$product) {
+            return response()->json(['message' => 'Subscription is missing client or product data.'], 422);
+        }
+
+        return DB::transaction(function () use ($clientSubscription, $client, $product) {
+            $tenant = Tenant::withoutGlobalScopes()->find($client->tenant_id);
+            $qty = $clientSubscription->quantity;
+
+            $lineBase = $qty * (float) $product->price;
+            $lineTax = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
+            $lineTotal = $lineBase + $lineTax;
+
+            $description = $product->name;
+            if ($clientSubscription->label) {
+                $description .= " — {$clientSubscription->label}";
+            }
+
+            $document = Document::create([
+                'tenant_id' => $tenant->id,
+                'client_id' => $client->id,
+                'type' => 'invoice',
+                'document_number' => app(DocumentNumberService::class)
+                    ->generate('invoice', $tenant->id),
+                'date' => now()->format('Y-m-d'),
+                'due_date' => now()->addDays(14)->format('Y-m-d'),
+                'subtotal' => round($lineBase, 2),
+                'discount_amount' => 0,
+                'tax_amount' => round($lineTax, 2),
+                'total' => round($lineTotal, 2),
+                'notes' => "Invoice from subscription: {$clientSubscription->label}",
+                'status' => 'sent',
+            ]);
+
+            $document->items()->create([
+                'product_service_id' => $product->id,
+                'item_type' => $product->type,
+                'description' => $description,
+                'quantity' => $qty,
+                'price' => $product->price,
+                'discount_type' => 'percent',
+                'discount_value' => 0,
+                'tax_percent' => $product->tax_percent ?? 0,
+                'tax_amount' => round($lineTax, 2),
+                'total' => round($lineTotal, 2),
+                'unit' => $product->unit,
+            ]);
+
+            RecurringInvoiceLog::create([
+                'client_id' => $client->id,
+                'product_service_id' => $product->id,
+                'document_id' => $document->id,
+                'next_bill_date' => now(),
+                'invoice_created_at' => now(),
+                'reminders_sent' => [],
+            ]);
+
+            return response()->json([
+                'message' => "Invoice {$document->document_number} created.",
+                'data' => [
+                    'document_id' => $document->id,
+                    'document_number' => $document->document_number,
+                ],
+            ]);
+        });
     }
 
     private function calculateNextBillDate($startDate, ?string $cycle): ?string

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
+use App\Notifications\InvoiceSentNotification;
 use Illuminate\Http\Request;
 
 class PortalDocumentController extends Controller
@@ -46,5 +47,19 @@ class PortalDocumentController extends Controller
                 'balance_due' => (float) $document->balance_due,
             ]),
         ]);
+    }
+
+    public function resend(Request $request, Document $document)
+    {
+        $clientId = $request->user()->client_id;
+
+        if ($document->client_id !== $clientId) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        $document->load('client');
+        $document->client->notify(new InvoiceSentNotification($document));
+
+        return response()->json(['message' => 'Document sent to your email.']);
     }
 }

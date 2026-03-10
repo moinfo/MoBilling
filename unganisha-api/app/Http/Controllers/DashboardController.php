@@ -34,7 +34,7 @@ class DashboardController extends Controller
             ->count();
 
         // Recent invoices
-        $recentInvoices = Document::with('client')
+        $recentInvoices = Document::with(['client', 'items:id,document_id,description'])
             ->where('type', 'invoice')
             ->orderByDesc('created_at')
             ->limit(5)
@@ -42,6 +42,7 @@ class DashboardController extends Controller
             ->map(fn ($doc) => [
                 'id' => $doc->id,
                 'document_number' => $doc->document_number,
+                'description' => $doc->items->first()?->description ?? $doc->notes,
                 'client_name' => $doc->client?->name,
                 'total' => $doc->total,
                 'status' => $doc->status,

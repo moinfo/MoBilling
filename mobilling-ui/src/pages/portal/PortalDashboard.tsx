@@ -1,6 +1,7 @@
 import { Stack, SimpleGrid, Paper, Text, Table, Badge, LoadingOverlay, Group, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { IconFileInvoice, IconCash, IconAlertTriangle, IconClock, IconCalendarRepeat } from '@tabler/icons-react';
+import { useNavigate } from 'react-router-dom';
 import { getPortalDashboard } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
@@ -13,6 +14,7 @@ const statusColor: Record<string, string> = {
 
 export default function PortalDashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['portal-dashboard'],
     queryFn: () => getPortalDashboard(),
@@ -43,6 +45,7 @@ export default function PortalDashboard() {
                 <Table.Thead>
                   <Table.Tr>
                     <Table.Th>Invoice #</Table.Th>
+                    <Table.Th>Description</Table.Th>
                     <Table.Th ta="right">Total</Table.Th>
                     <Table.Th ta="right">Balance</Table.Th>
                     <Table.Th>Status</Table.Th>
@@ -50,8 +53,11 @@ export default function PortalDashboard() {
                 </Table.Thead>
                 <Table.Tbody>
                   {d.recent_invoices.map((inv) => (
-                    <Table.Tr key={inv.id}>
+                    <Table.Tr key={inv.id} onClick={() => navigate('/portal/invoices')} style={{ cursor: 'pointer' }}>
                       <Table.Td>{inv.document_number}</Table.Td>
+                      <Table.Td c="dimmed" maw={180} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {(inv as any).description || '-'}
+                      </Table.Td>
                       <Table.Td ta="right">{fmt(inv.total)}</Table.Td>
                       <Table.Td ta="right" fw={600} c={inv.balance > 0 ? 'red' : undefined}>
                         {fmt(inv.balance)}

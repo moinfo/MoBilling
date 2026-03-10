@@ -138,3 +138,24 @@ export const getSubscriptionSettings = () =>
 
 export const updateSubscriptionSettings = (data: SubscriptionSettings) =>
   api.put<{ data: SubscriptionSettings; message: string }>('/settings/subscriptions', data);
+
+// --- Pesapal Settings ---
+
+export interface PesapalSettings {
+  pesapal_enabled: boolean;
+  pesapal_consumer_key: string | null;
+  pesapal_consumer_key_set: boolean;
+  pesapal_consumer_secret_set: boolean;
+  pesapal_ipn_id: string | null;
+  pesapal_sandbox: boolean;
+}
+
+export const getPesapalSettings = () =>
+  api.get<{ data: PesapalSettings }>('/settings/pesapal');
+
+export const updatePesapalSettings = (data: {
+  pesapal_enabled: boolean;
+  pesapal_consumer_key?: string;
+  pesapal_consumer_secret?: string;
+  pesapal_sandbox: boolean;
+}) => api.put<{ data: Partial<PesapalSettings>; message: string }>('/settings/pesapal', data);

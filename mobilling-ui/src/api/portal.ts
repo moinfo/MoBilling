@@ -33,6 +33,23 @@ export interface PortalPayment {
 export const getPortalDashboard = () =>
   api.get<PortalDashboard>('/portal/dashboard');
 
+// Products & Services
+export interface PortalProductService {
+  id: string;
+  type: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  price: number;
+  tax_percent: number;
+  unit: string | null;
+  category: string | null;
+  billing_cycle: string | null;
+}
+
+export const getPortalProductServices = (params?: { type?: string; search?: string }) =>
+  api.get<{ data: PortalProductService[] }>('/portal/products-services', { params });
+
 // Documents
 export interface PortalDocument {
   id: string;
@@ -59,6 +76,9 @@ export const getPortalDocuments = (params: { type?: string; status?: string; sea
 
 export const getPortalDocument = (id: string) =>
   api.get<{ data: PortalDocument }>(`/portal/documents/${id}`);
+
+export const resendPortalDocument = (id: string) =>
+  api.post<{ message: string }>(`/portal/documents/${id}/resend`);
 
 // Payments
 export const getPortalPayments = (params?: { search?: string; page?: number }) =>
@@ -97,6 +117,9 @@ export interface PortalSubscription {
 
 export const getPortalSubscriptions = () =>
   api.get<{ data: PortalSubscription[] }>('/portal/subscriptions');
+
+export const generateSubscriptionInvoice = (subscriptionId: string) =>
+  api.post<{ message: string; data: { document_id: string; document_number: string } }>(`/portal/subscriptions/${subscriptionId}/generate-invoice`);
 
 // Profile
 export const getPortalProfile = () =>

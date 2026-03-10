@@ -7,7 +7,7 @@ import { useCallback } from 'react';
 import {
   IconDashboard, IconFileInvoice, IconFileText, IconCash, IconReceipt,
   IconCalendarRepeat, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
-  IconLock,
+  IconLock, IconPackage,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -40,6 +40,7 @@ export default function PortalShell() {
     { icon: IconFileText, label: 'Quotations', path: '/portal/quotations' },
     { icon: IconCash, label: 'Payments', path: '/portal/payments' },
     { icon: IconReceipt, label: 'Statement', path: '/portal/statement' },
+    { icon: IconPackage, label: 'Products & Services', path: '/portal/products-services' },
     { icon: IconCalendarRepeat, label: 'Subscriptions', path: '/portal/subscriptions' },
     { icon: IconUser, label: 'Profile', path: '/portal/profile' },
   ];

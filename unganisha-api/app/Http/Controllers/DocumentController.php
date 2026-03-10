@@ -19,7 +19,7 @@ class DocumentController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Document::with('client');
+        $query = Document::with(['client', 'items:id,document_id,description']);
 
         if ($request->has('type')) {
             $query->where('type', $request->type);

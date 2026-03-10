@@ -195,6 +195,7 @@ export default function ClientProfile() {
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Invoice #</Table.Th>
+                  <Table.Th>Description</Table.Th>
                   <Table.Th>Date</Table.Th>
                   <Table.Th>Due Date</Table.Th>
                   <Table.Th>Total</Table.Th>
@@ -205,6 +206,9 @@ export default function ClientProfile() {
                 {invoices.map((inv) => (
                   <Table.Tr key={inv.id}>
                     <Table.Td fw={500}>{inv.document_number}</Table.Td>
+                    <Table.Td c="dimmed" maw={200} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {inv.description || '—'}
+                    </Table.Td>
                     <Table.Td>{formatDate(inv.date)}</Table.Td>
                     <Table.Td>{inv.due_date ? formatDate(inv.due_date) : '—'}</Table.Td>
                     <Table.Td>{formatCurrency(inv.total)}</Table.Td>

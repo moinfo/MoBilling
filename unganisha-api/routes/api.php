@@ -23,6 +23,7 @@ use App\Http\Controllers\Portal\PortalDocumentController;
 use App\Http\Controllers\Portal\PortalPaymentController;
 use App\Http\Controllers\Portal\PortalProfileController;
 use App\Http\Controllers\Portal\PortalStatementController;
+use App\Http\Controllers\Portal\PortalProductServiceController;
 use App\Http\Controllers\Portal\PortalSubscriptionController;
 use App\Http\Controllers\EmailSettingsController;
 use App\Http\Controllers\ReportController;
@@ -45,7 +46,9 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\NextBillController;
 use App\Http\Controllers\PaymentInController;
 use App\Http\Controllers\PaymentOutController;
+use App\Http\Controllers\InvoicePaymentController;
 use App\Http\Controllers\PesapalWebhookController;
+use App\Http\Controllers\TenantPesapalWebhookController;
 use App\Http\Controllers\ProductServiceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\SmsPurchaseController;
@@ -71,6 +74,15 @@ Route::post('/portal/verify-register', [PortalAuthController::class, 'verifyAndR
 // Pesapal webhooks (public, no auth)
 Route::match(['get', 'post'], '/pesapal/ipn', [PesapalWebhookController::class, 'ipn']);
 Route::get('/pesapal/callback', [PesapalWebhookController::class, 'callback']);
+
+// Tenant Pesapal webhooks (public, no auth)
+Route::match(['get', 'post'], '/tenant-pesapal/ipn', [TenantPesapalWebhookController::class, 'ipn']);
+
+// Public invoice payment (no auth required)
+Route::get('/pay/{document}', [InvoicePaymentController::class, 'show']);
+Route::post('/pay/{document}/checkout', [InvoicePaymentController::class, 'checkout']);
+Route::get('/pay/{document}/status/{payment}', [InvoicePaymentController::class, 'status']);
+Route::get('/pay/status/by-tracking', [InvoicePaymentController::class, 'statusByTracking']);
 
 // Auth (Authenticated, no tenant required)
 Route::middleware(['auth:sanctum'])->group(function () {
@@ -290,6 +302,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/settings/payment-methods', [SettingsController::class, 'updatePaymentMethods']);
     Route::get('/settings/subscriptions', [SettingsController::class, 'getSubscriptionSettings']);
     Route::put('/settings/subscriptions', [SettingsController::class, 'updateSubscriptionSettings']);
+    Route::get('/settings/pesapal', [SettingsController::class, 'getPesapal']);
+    Route::put('/settings/pesapal', [SettingsController::class, 'updatePesapal']);
 
     // Email settings (tenant admin)
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);
@@ -373,9 +387,14 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/dashboard', [PortalDashboardController::class, 'summary']);
     Route::get('/documents', [PortalDocumentController::class, 'index']);
     Route::get('/documents/{document}', [PortalDocumentController::class, 'show']);
+    Route::post('/documents/{document}/resend', [PortalDocumentController::class, 'resend']);
     Route::get('/payments', [PortalPaymentController::class, 'index']);
     Route::get('/statement', [PortalStatementController::class, 'index']);
+    Route::get('/products-services', [PortalProductServiceController::class, 'index']);
     Route::get('/subscriptions', [PortalSubscriptionController::class, 'index']);
+    Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
+    Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
+    Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);
     Route::get('/profile', [PortalProfileController::class, 'show']);
     Route::put('/profile', [PortalProfileController::class, 'update']);
     Route::post('/profile/change-password', [PortalProfileController::class, 'changePassword']);

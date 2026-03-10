@@ -32,12 +32,14 @@ class PortalDashboardController extends Controller
         $recentInvoices = Document::where('client_id', $clientId)
             ->where('type', 'invoice')
             ->whereNotIn('status', ['draft', 'cancelled'])
+            ->with('items:id,document_id,description')
             ->orderByDesc('date')
             ->limit(5)
             ->get()
             ->map(fn ($doc) => [
                 'id' => $doc->id,
                 'document_number' => $doc->document_number,
+                'description' => $doc->items->first()?->description ?? $doc->notes,
                 'date' => $doc->date->format('Y-m-d'),
                 'due_date' => $doc->due_date?->format('Y-m-d'),
                 'total' => (float) $doc->total,

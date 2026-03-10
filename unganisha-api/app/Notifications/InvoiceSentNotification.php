@@ -43,10 +43,17 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
         $tenant = $this->document->tenant;
         $typeName = ucfirst($this->document->type);
 
-        return "{$typeName} {$this->document->document_number} for {$tenant->currency} "
+        $msg = "{$typeName} {$this->document->document_number} for {$tenant->currency} "
             . number_format($this->document->total, 2)
             . ($this->document->due_date ? " due {$this->document->due_date->format('d M Y')}" : '')
             . ". — {$tenant->name}";
+
+        if ($this->document->type === 'invoice' && $tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $msg .= " Pay: {$payUrl}";
+        }
+
+        return $msg;
     }
 
     public function toMail($notifiable): MailMessage
@@ -93,6 +100,15 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
                 $mail->line("Due date: {$this->document->due_date->format('d M Y')}");
             }
             $mail->line('Thank you for your business.');
+        }
+
+        // Add "Pay Now" button if tenant has Pesapal enabled and invoice has balance
+        if ($this->document->type === 'invoice'
+            && $tenant->pesapal_enabled
+            && $this->document->balance_due > 0
+        ) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $mail->action('Pay Now', $payUrl);
         }
 
         $this->applyBranding($mail, $tenant);

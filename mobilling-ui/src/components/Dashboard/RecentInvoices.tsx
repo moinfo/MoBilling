@@ -5,6 +5,7 @@ import { formatCurrency } from '../../utils/formatCurrency';
 interface Invoice {
   id: string;
   document_number: string;
+  description?: string;
   client_name: string;
   total: string;
   status: string;
@@ -27,6 +28,7 @@ export default function RecentInvoices({ invoices }: { invoices: Invoice[] }) {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Number</Table.Th>
+                <Table.Th>Description</Table.Th>
                 <Table.Th>Client</Table.Th>
                 <Table.Th>Total</Table.Th>
                 <Table.Th>Status</Table.Th>
@@ -36,6 +38,9 @@ export default function RecentInvoices({ invoices }: { invoices: Invoice[] }) {
               {invoices.map((inv) => (
                 <Table.Tr key={inv.id}>
                   <Table.Td>{inv.document_number}</Table.Td>
+                  <Table.Td c="dimmed" maw={180} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {inv.description || '—'}
+                  </Table.Td>
                   <Table.Td>{inv.client_name}</Table.Td>
                   <Table.Td>{formatCurrency(inv.total)}</Table.Td>
                   <Table.Td>

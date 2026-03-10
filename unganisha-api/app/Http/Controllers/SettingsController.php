@@ -214,6 +214,76 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function getPesapal(Request $request)
+    {
+        $tenant = $request->user()->tenant;
+
+        return response()->json([
+            'data' => [
+                'pesapal_enabled' => (bool) $tenant->pesapal_enabled,
+                'pesapal_consumer_key' => $tenant->pesapal_consumer_key ? '••••' . substr($tenant->pesapal_consumer_key, -6) : null,
+                'pesapal_consumer_key_set' => (bool) $tenant->pesapal_consumer_key,
+                'pesapal_consumer_secret_set' => (bool) $tenant->pesapal_consumer_secret,
+                'pesapal_ipn_id' => $tenant->pesapal_ipn_id,
+                'pesapal_sandbox' => (bool) $tenant->pesapal_sandbox,
+            ],
+        ]);
+    }
+
+    public function updatePesapal(Request $request)
+    {
+        $this->authorizePermission('settings.payment_methods');
+
+        $validated = $request->validate([
+            'pesapal_enabled' => 'required|boolean',
+            'pesapal_consumer_key' => 'nullable|string|max:255',
+            'pesapal_consumer_secret' => 'nullable|string|max:255',
+            'pesapal_sandbox' => 'required|boolean',
+        ]);
+
+        $tenant = $request->user()->tenant;
+
+        // Only update credentials if provided (not masked)
+        $update = [
+            'pesapal_enabled' => $validated['pesapal_enabled'],
+            'pesapal_sandbox' => $validated['pesapal_sandbox'],
+        ];
+
+        if (!empty($validated['pesapal_consumer_key'])) {
+            $update['pesapal_consumer_key'] = $validated['pesapal_consumer_key'];
+        }
+        if (!empty($validated['pesapal_consumer_secret'])) {
+            $update['pesapal_consumer_secret'] = $validated['pesapal_consumer_secret'];
+        }
+
+        $tenant->update($update);
+
+        // Auto-register IPN if credentials are set and no IPN ID yet
+        if ($tenant->pesapal_consumer_key && $tenant->pesapal_consumer_secret && !$tenant->pesapal_ipn_id) {
+            try {
+                $pesapal = new \App\Services\TenantPesapalService($tenant);
+                $ipnUrl = config('app.url') . '/api/tenant-pesapal/ipn';
+                $result = $pesapal->registerIpn($ipnUrl, 'GET');
+                $tenant->update(['pesapal_ipn_id' => $result['ipn_id'] ?? null]);
+            } catch (\Throwable $e) {
+                // Return success but note IPN failed
+                return response()->json([
+                    'data' => $tenant->fresh()->only(['pesapal_enabled', 'pesapal_sandbox', 'pesapal_ipn_id']),
+                    'message' => 'Pesapal settings saved. IPN registration failed: ' . $e->getMessage(),
+                ], 200);
+            }
+        }
+
+        return response()->json([
+            'data' => [
+                'pesapal_enabled' => (bool) $tenant->pesapal_enabled,
+                'pesapal_ipn_id' => $tenant->pesapal_ipn_id,
+                'pesapal_sandbox' => (bool) $tenant->pesapal_sandbox,
+            ],
+            'message' => 'Pesapal settings updated.',
+        ]);
+    }
+
     private const TEMPLATE_FIELDS = [
         'reminder_email_subject', 'reminder_email_body',
         'overdue_email_subject', 'overdue_email_body',
