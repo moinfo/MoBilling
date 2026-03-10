@@ -3,7 +3,9 @@ import {
   Title, Group, Button, TextInput, Pagination, Drawer,
   SegmentedControl, Modal, Stack, Text, Radio,
 } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
+import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,10 +28,15 @@ interface Props {
 export default function DocumentListPage({ type, title }: Props) {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
+  const canChangeDateRange = can('documents.date_range');
+  const monthStart = dayjs().startOf('month').format('YYYY-MM-DD');
+  const monthEnd = dayjs().endOf('month').format('YYYY-MM-DD');
   const [searchParams, setSearchParams] = useSearchParams();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
+  const [dateFrom, setDateFrom] = useState<string>(monthStart);
+  const [dateTo, setDateTo] = useState<string>(monthEnd);
   const [statusFilter, setStatusFilter] = useState('all');
   const [formOpen, setFormOpen] = useState(false);
   const [editDoc, setEditDoc] = useState<Document | null>(null);
@@ -62,8 +69,15 @@ export default function DocumentListPage({ type, title }: Props) {
     : statusFilter; // 'paid', 'overdue', 'draft'
 
   const { data: docsData, isLoading } = useQuery({
-    queryKey: ['documents', type, debouncedSearch, page, statusParam],
-    queryFn: () => getDocuments({ type, search: debouncedSearch || undefined, page, status: statusParam }),
+    queryKey: ['documents', type, debouncedSearch, page, statusParam, dateFrom, dateTo],
+    queryFn: () => getDocuments({
+      type,
+      search: debouncedSearch || undefined,
+      page,
+      status: statusParam,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+    }),
   });
 
   const { data: clientsData } = useQuery({
@@ -326,13 +340,29 @@ export default function DocumentListPage({ type, title }: Props) {
       </Group>
 
       <Group mb="md" justify="space-between" wrap="wrap">
-        <Group gap="sm">
+        <Group gap="sm" wrap="wrap">
           <TextInput
             placeholder="Search by number or client..."
             leftSection={<IconSearch size={16} />}
             value={search}
             onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
             w={300}
+          />
+          <DateInput
+            label="From"
+            value={dateFrom ? new Date(dateFrom) : null}
+            onChange={(v) => { setDateFrom(v ? dayjs(v).format('YYYY-MM-DD') : monthStart); setPage(1); }}
+            disabled={!canChangeDateRange}
+            maw={160}
+            size="sm"
+          />
+          <DateInput
+            label="To"
+            value={dateTo ? new Date(dateTo) : null}
+            onChange={(v) => { setDateTo(v ? dayjs(v).format('YYYY-MM-DD') : monthEnd); setPage(1); }}
+            disabled={!canChangeDateRange}
+            maw={160}
+            size="sm"
           />
           {isInvoice && (
             <SegmentedControl

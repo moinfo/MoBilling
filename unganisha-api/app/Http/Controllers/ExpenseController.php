@@ -22,6 +22,14 @@ class ExpenseController extends Controller
             $query->where('description', 'like', '%' . $request->search . '%');
         }
 
+        if ($request->filled('date_from')) {
+            $query->where('expense_date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->where('expense_date', '<=', $request->date_to);
+        }
+
         return ExpenseResource::collection(
             $query->orderByDesc('expense_date')->paginate($request->per_page ?? 20)
         );

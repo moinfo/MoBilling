@@ -19,16 +19,25 @@ type PaymentWithDoc = Payment & { document?: { document_number: string; type: st
 export default function PaymentsIn() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
+  const canChangeDateRange = can('payments_in.date_range');
+  const today = dayjs().format('YYYY-MM-DD');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
+  const [dateFrom, setDateFrom] = useState<string>(today);
+  const [dateTo, setDateTo] = useState<string>(today);
   const [editPayment, setEditPayment] = useState<PaymentWithDoc | null>(null);
 
   const { methods: paymentMethods } = usePaymentMethods();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['payments-in', page, debouncedSearch],
-    queryFn: () => getPaymentsIn({ page, search: debouncedSearch || undefined } as any),
+    queryKey: ['payments-in', page, debouncedSearch, dateFrom, dateTo],
+    queryFn: () => getPaymentsIn({
+      page,
+      search: debouncedSearch || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+    }),
   });
 
   const payments: PaymentWithDoc[] = data?.data?.data || [];
@@ -118,14 +127,31 @@ export default function PaymentsIn() {
         <Title order={2}>Payments Received</Title>
       </Group>
 
-      <TextInput
-        placeholder="Search by invoice or client..."
-        leftSection={<IconSearch size={16} />}
-        value={search}
-        onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
-        mb="md"
-        maw={300}
-      />
+      <Group mb="md" wrap="wrap" align="flex-end">
+        <TextInput
+          placeholder="Search by invoice or client..."
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
+          maw={300}
+        />
+        <DateInput
+          label="From"
+          value={dateFrom ? new Date(dateFrom) : null}
+          onChange={(v) => { setDateFrom(v ? dayjs(v).format('YYYY-MM-DD') : today); setPage(1); }}
+          disabled={!canChangeDateRange}
+          maw={160}
+          size="sm"
+        />
+        <DateInput
+          label="To"
+          value={dateTo ? new Date(dateTo) : null}
+          onChange={(v) => { setDateTo(v ? dayjs(v).format('YYYY-MM-DD') : today); setPage(1); }}
+          disabled={!canChangeDateRange}
+          maw={160}
+          size="sm"
+        />
+      </Group>
 
       {isLoading ? (
         <Center py="xl"><Loader /></Center>

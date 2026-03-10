@@ -10,6 +10,7 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconEdit, IconTrash, IconArrowUp, IconArrowDown, IconArrowsSort, IconFileInvoice, IconCalendarEvent } from '@tabler/icons-react';
+import dayjs from 'dayjs';
 import {
   getClientSubscriptions, createBulkSubscription, updateClientSubscription,
   deleteClientSubscription, generateInvoiceFromSubscription, updateExpireDate, ClientSubscription, ClientSubscriptionFormData,
@@ -38,9 +39,14 @@ const statusColors: Record<string, string> = {
 export default function ClientSubscriptions() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
+  const canChangeDateRange = can('client_subscriptions.date_range');
+  const monthStart = dayjs().startOf('month').format('YYYY-MM-DD');
+  const monthEnd = dayjs().endOf('month').format('YYYY-MM-DD');
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
+  const [expireFrom, setExpireFrom] = useState<string>(monthStart);
+  const [expireTo, setExpireTo] = useState<string>(monthEnd);
   const [sortBy, setSortBy] = useState<string | undefined>(undefined);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [modalOpen, setModalOpen] = useState(false);
@@ -58,8 +64,15 @@ export default function ClientSubscriptions() {
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['client-subscriptions', debouncedSearch, page, sortBy, sortDir],
-    queryFn: () => getClientSubscriptions({ search: debouncedSearch || undefined, page, sort_by: sortBy, sort_dir: sortDir }),
+    queryKey: ['client-subscriptions', debouncedSearch, page, sortBy, sortDir, expireFrom, expireTo],
+    queryFn: () => getClientSubscriptions({
+      search: debouncedSearch || undefined,
+      page,
+      sort_by: sortBy,
+      sort_dir: sortDir,
+      expire_from: expireFrom || undefined,
+      expire_to: expireTo || undefined,
+    }),
   });
 
   const items: ClientSubscription[] = data?.data?.data || [];
@@ -170,14 +183,31 @@ export default function ClientSubscriptions() {
         )}
       </Group>
 
-      <TextInput
-        placeholder="Search by label, client, or product..."
-        leftSection={<IconSearch size={16} />}
-        value={search}
-        onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
-        mb="md"
-        maw={350}
-      />
+      <Group mb="md" wrap="wrap" align="flex-end">
+        <TextInput
+          placeholder="Search by label, client, or product..."
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
+          maw={350}
+        />
+        <DateInput
+          label="Expire From"
+          value={expireFrom ? new Date(expireFrom) : null}
+          onChange={(v) => { setExpireFrom(v ? dayjs(v).format('YYYY-MM-DD') : monthStart); setPage(1); }}
+          disabled={!canChangeDateRange}
+          maw={160}
+          size="sm"
+        />
+        <DateInput
+          label="Expire To"
+          value={expireTo ? new Date(expireTo) : null}
+          onChange={(v) => { setExpireTo(v ? dayjs(v).format('YYYY-MM-DD') : monthEnd); setPage(1); }}
+          disabled={!canChangeDateRange}
+          maw={160}
+          size="sm"
+        />
+      </Group>
 
       {isLoading ? (
         <Center py="xl"><Loader /></Center>

@@ -21,6 +21,25 @@ class PaymentInController extends Controller
             $query->where('document_id', $request->document_id);
         }
 
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('reference', 'LIKE', "%{$search}%")
+                  ->orWhereHas('document', fn ($dq) => $dq
+                      ->where('document_number', 'LIKE', "%{$search}%")
+                      ->orWhereHas('client', fn ($cq) => $cq->where('name', 'LIKE', "%{$search}%"))
+                  );
+            });
+        }
+
+        if ($request->filled('date_from')) {
+            $query->where('payment_date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->where('payment_date', '<=', $request->date_to);
+        }
+
         return PaymentInResource::collection(
             $query->orderByDesc('payment_date')->paginate($request->per_page ?? 20)
         );
