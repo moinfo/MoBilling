@@ -100,6 +100,7 @@ class SettingsController extends Controller
             'data' => $tenant->only([
                 'email_enabled', 'sms_enabled',
                 'reminder_sms_enabled', 'reminder_email_enabled',
+                'whatsapp_enabled', 'reminder_whatsapp_enabled',
             ]),
         ]);
     }
@@ -109,10 +110,12 @@ class SettingsController extends Controller
         $this->authorizePermission('settings.reminders');
 
         $validated = $request->validate([
-            'email_enabled'          => 'boolean',
-            'sms_enabled'            => 'boolean',
-            'reminder_sms_enabled'   => 'boolean',
-            'reminder_email_enabled' => 'boolean',
+            'email_enabled'             => 'boolean',
+            'sms_enabled'               => 'boolean',
+            'reminder_sms_enabled'      => 'boolean',
+            'reminder_email_enabled'    => 'boolean',
+            'whatsapp_enabled'          => 'boolean',
+            'reminder_whatsapp_enabled' => 'boolean',
         ]);
 
         $tenant = $request->user()->tenant;
@@ -122,8 +125,64 @@ class SettingsController extends Controller
             'data'    => $tenant->fresh()->only([
                 'email_enabled', 'sms_enabled',
                 'reminder_sms_enabled', 'reminder_email_enabled',
+                'whatsapp_enabled', 'reminder_whatsapp_enabled',
             ]),
             'message' => 'Reminder settings updated.',
+        ]);
+    }
+
+    public function getWhatsApp(Request $request)
+    {
+        $tenant = $request->user()->tenant;
+
+        return response()->json([
+            'data' => [
+                'whatsapp_enabled' => (bool) $tenant->whatsapp_enabled,
+                'reminder_whatsapp_enabled' => (bool) $tenant->reminder_whatsapp_enabled,
+                'whatsapp_phone_number_id' => $tenant->whatsapp_phone_number_id,
+                'whatsapp_access_token_set' => (bool) $tenant->whatsapp_access_token,
+                'whatsapp_business_account_id' => $tenant->whatsapp_business_account_id,
+            ],
+        ]);
+    }
+
+    public function updateWhatsApp(Request $request)
+    {
+        $this->authorizePermission('settings.reminders');
+
+        $validated = $request->validate([
+            'whatsapp_enabled'             => 'required|boolean',
+            'reminder_whatsapp_enabled'    => 'required|boolean',
+            'whatsapp_phone_number_id'     => 'nullable|string|max:255',
+            'whatsapp_access_token'        => 'nullable|string|max:1000',
+            'whatsapp_business_account_id' => 'nullable|string|max:255',
+        ]);
+
+        $tenant = $request->user()->tenant;
+
+        $update = [
+            'whatsapp_enabled' => $validated['whatsapp_enabled'],
+            'reminder_whatsapp_enabled' => $validated['reminder_whatsapp_enabled'],
+            'whatsapp_phone_number_id' => $validated['whatsapp_phone_number_id'],
+            'whatsapp_business_account_id' => $validated['whatsapp_business_account_id'],
+        ];
+
+        // Only update token if provided (not masked)
+        if (!empty($validated['whatsapp_access_token'])) {
+            $update['whatsapp_access_token'] = $validated['whatsapp_access_token'];
+        }
+
+        $tenant->update($update);
+
+        return response()->json([
+            'data' => [
+                'whatsapp_enabled' => (bool) $tenant->whatsapp_enabled,
+                'reminder_whatsapp_enabled' => (bool) $tenant->reminder_whatsapp_enabled,
+                'whatsapp_phone_number_id' => $tenant->whatsapp_phone_number_id,
+                'whatsapp_access_token_set' => (bool) $tenant->whatsapp_access_token,
+                'whatsapp_business_account_id' => $tenant->whatsapp_business_account_id,
+            ],
+            'message' => 'WhatsApp settings updated.',
         ]);
     }
 

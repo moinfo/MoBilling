@@ -7,7 +7,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp } from '@tabler/icons-react';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import {
@@ -20,6 +20,7 @@ import {
   getPaymentMethods, updatePaymentMethods, PaymentMethod,
   getSubscriptionSettings, updateSubscriptionSettings, SubscriptionSettings,
   getPesapalSettings, updatePesapalSettings, PesapalSettings,
+  getWhatsAppSettings, updateWhatsAppSettings, WhatsAppSettings,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
@@ -57,6 +58,11 @@ export default function Settings() {
           <Tabs.Tab value="payment-methods" leftSection={<IconCreditCard size={16} />}>
             Payment Methods
           </Tabs.Tab>
+          {canReminders && (
+            <Tabs.Tab value="whatsapp" leftSection={<IconBrandWhatsapp size={16} />}>
+              WhatsApp
+            </Tabs.Tab>
+          )}
           {canCompany && (
             <Tabs.Tab value="pesapal" leftSection={<IconBrandCashapp size={16} />}>
               Pesapal
@@ -81,6 +87,9 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="payment-methods">
           <PaymentMethodsTab isAdmin={canPaymentMethods} />
+        </Tabs.Panel>
+        <Tabs.Panel value="whatsapp">
+          <WhatsAppTab isAdmin={canReminders} />
         </Tabs.Panel>
         <Tabs.Panel value="pesapal">
           <PesapalTab isAdmin={canCompany} />
@@ -452,7 +461,7 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
   const settings: ReminderSettings | undefined = data?.data?.data;
 
   const form = useForm<ReminderSettings>({
-    initialValues: { email_enabled: true, sms_enabled: false, reminder_sms_enabled: false, reminder_email_enabled: true },
+    initialValues: { email_enabled: true, sms_enabled: false, reminder_sms_enabled: false, reminder_email_enabled: true, whatsapp_enabled: false, reminder_whatsapp_enabled: false },
   });
 
   const [initialized, setInitialized] = useState(false);
@@ -462,6 +471,8 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
       sms_enabled: settings.sms_enabled,
       reminder_sms_enabled: settings.reminder_sms_enabled,
       reminder_email_enabled: settings.reminder_email_enabled,
+      whatsapp_enabled: settings.whatsapp_enabled,
+      reminder_whatsapp_enabled: settings.reminder_whatsapp_enabled,
     });
     setInitialized(true);
   }
@@ -543,6 +554,13 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
             checked={form.values.sms_enabled}
             onChange={(e) => form.setFieldValue('sms_enabled', e.currentTarget.checked)}
           />
+          <Switch
+            label="WhatsApp notifications enabled"
+            description="Send WhatsApp messages to customers (reminders, payment alerts)"
+            disabled={!isAdmin}
+            checked={form.values.whatsapp_enabled}
+            onChange={(e) => form.setFieldValue('whatsapp_enabled', e.currentTarget.checked)}
+          />
 
           <Divider my="xs" label="Automatic Reminders" labelPosition="left" />
 
@@ -559,6 +577,13 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
             disabled={!isAdmin || !form.values.sms_enabled}
             checked={form.values.reminder_sms_enabled}
             onChange={(e) => form.setFieldValue('reminder_sms_enabled', e.currentTarget.checked)}
+          />
+          <Switch
+            label="WhatsApp reminders enabled"
+            description="Send WhatsApp reminders for upcoming and overdue invoices"
+            disabled={!isAdmin || !form.values.whatsapp_enabled}
+            checked={form.values.reminder_whatsapp_enabled}
+            onChange={(e) => form.setFieldValue('reminder_whatsapp_enabled', e.currentTarget.checked)}
           />
 
           <Alert variant="light" color="blue" icon={<IconAlertCircle size={16} />}>
@@ -1028,6 +1053,147 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
           </Button>
         </Group>
       )}
+    </Paper>
+  );
+}
+
+// --- WhatsApp Tab ---
+
+function WhatsAppTab({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['whatsapp-settings'],
+    queryFn: getWhatsAppSettings,
+  });
+
+  const settings: WhatsAppSettings | undefined = data?.data?.data;
+
+  const [enabled, setEnabled] = useState(false);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [phoneNumberId, setPhoneNumberId] = useState('');
+  const [accessToken, setAccessToken] = useState('');
+  const [businessAccountId, setBusinessAccountId] = useState('');
+  const [initialized, setInitialized] = useState(false);
+
+  if (settings && !initialized) {
+    setEnabled(settings.whatsapp_enabled);
+    setReminderEnabled(settings.reminder_whatsapp_enabled);
+    setPhoneNumberId(settings.whatsapp_phone_number_id || '');
+    setBusinessAccountId(settings.whatsapp_business_account_id || '');
+    setInitialized(true);
+  }
+
+  const saveMutation = useMutation({
+    mutationFn: () => updateWhatsAppSettings({
+      whatsapp_enabled: enabled,
+      reminder_whatsapp_enabled: reminderEnabled,
+      whatsapp_phone_number_id: phoneNumberId || undefined,
+      whatsapp_access_token: accessToken || undefined,
+      whatsapp_business_account_id: businessAccountId || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-settings'] });
+      queryClient.invalidateQueries({ queryKey: ['reminder-settings'] });
+      setAccessToken('');
+      notifications.show({ title: 'Success', message: 'WhatsApp settings updated', color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to update WhatsApp settings',
+        color: 'red',
+      });
+    },
+  });
+
+  if (isLoading) {
+    return <Center py="xl"><Loader /></Center>;
+  }
+
+  return (
+    <Paper p="lg" withBorder maw={600}>
+      {!isAdmin && (
+        <Alert icon={<IconAlertCircle size={16} />} color="yellow" mb="md">
+          Only admins can edit WhatsApp settings.
+        </Alert>
+      )}
+
+      <Stack>
+        <Group gap="xs">
+          <ThemeIcon variant="light" color="green" size="lg" radius="xl">
+            <IconBrandWhatsapp size={20} />
+          </ThemeIcon>
+          <div>
+            <Text fw={600}>WhatsApp Business API</Text>
+            <Text size="xs" c="dimmed">Send automated reminders via WhatsApp</Text>
+          </div>
+        </Group>
+
+        <Switch
+          label="WhatsApp integration enabled"
+          description="Enable WhatsApp Business API for sending messages"
+          disabled={!isAdmin}
+          checked={enabled}
+          onChange={(e) => setEnabled(e.currentTarget.checked)}
+        />
+
+        <Switch
+          label="Auto-send WhatsApp reminders"
+          description="Automatically send invoice reminders via WhatsApp"
+          disabled={!isAdmin || !enabled}
+          checked={reminderEnabled}
+          onChange={(e) => setReminderEnabled(e.currentTarget.checked)}
+        />
+
+        <Divider my="xs" label="API Credentials" labelPosition="left" />
+
+        <TextInput
+          label="Phone Number ID"
+          description="From Meta Business Manager → WhatsApp → Phone numbers"
+          placeholder="e.g. 123456789012345"
+          disabled={!isAdmin}
+          value={phoneNumberId}
+          onChange={(e) => setPhoneNumberId(e.currentTarget.value)}
+        />
+
+        <PasswordInput
+          label="Permanent Access Token"
+          description="System user token from Meta Business Manager"
+          placeholder={settings?.whatsapp_access_token_set ? '••••••••••••• (already set)' : 'Paste your access token'}
+          disabled={!isAdmin}
+          value={accessToken}
+          onChange={(e) => setAccessToken(e.currentTarget.value)}
+        />
+
+        <TextInput
+          label="Business Account ID"
+          description="Your WhatsApp Business Account ID"
+          placeholder="e.g. 123456789012345"
+          disabled={!isAdmin}
+          value={businessAccountId}
+          onChange={(e) => setBusinessAccountId(e.currentTarget.value)}
+        />
+
+        {settings?.whatsapp_access_token_set && (
+          <Badge color="green" variant="light">Access token configured</Badge>
+        )}
+
+        <Alert variant="light" color="blue" icon={<IconAlertCircle size={16} />}>
+          <Text size="sm">
+            To set up WhatsApp Business API, you need a <strong>Meta Business Manager</strong> account
+            with a verified WhatsApp Business number. See the setup guide in the documentation.
+          </Text>
+        </Alert>
+
+        {isAdmin && (
+          <Group justify="flex-end">
+            <Button onClick={() => saveMutation.mutate()} loading={saveMutation.isPending}>
+              Save Settings
+            </Button>
+          </Group>
+        )}
+      </Stack>
     </Paper>
   );
 }

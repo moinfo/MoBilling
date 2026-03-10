@@ -374,7 +374,7 @@ class DocumentController extends Controller
         $request->validate([
             'document_ids' => 'required|array|min:1',
             'document_ids.*' => 'uuid',
-            'channel' => 'required|in:email,sms,both',
+            'channel' => 'required|in:email,sms,whatsapp,both',
         ]);
 
         $tenant = Tenant::find(auth()->user()->tenant_id);

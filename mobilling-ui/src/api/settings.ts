@@ -78,6 +78,8 @@ export interface ReminderSettings {
   sms_enabled: boolean;
   reminder_sms_enabled: boolean;
   reminder_email_enabled: boolean;
+  whatsapp_enabled: boolean;
+  reminder_whatsapp_enabled: boolean;
 }
 
 export const getReminderSettings = () =>
@@ -159,3 +161,24 @@ export const updatePesapalSettings = (data: {
   pesapal_consumer_secret?: string;
   pesapal_sandbox: boolean;
 }) => api.put<{ data: Partial<PesapalSettings>; message: string }>('/settings/pesapal', data);
+
+// --- WhatsApp Settings ---
+
+export interface WhatsAppSettings {
+  whatsapp_enabled: boolean;
+  reminder_whatsapp_enabled: boolean;
+  whatsapp_phone_number_id: string | null;
+  whatsapp_access_token_set: boolean;
+  whatsapp_business_account_id: string | null;
+}
+
+export const getWhatsAppSettings = () =>
+  api.get<{ data: WhatsAppSettings }>('/settings/whatsapp');
+
+export const updateWhatsAppSettings = (data: {
+  whatsapp_enabled: boolean;
+  reminder_whatsapp_enabled: boolean;
+  whatsapp_phone_number_id?: string;
+  whatsapp_access_token?: string;
+  whatsapp_business_account_id?: string;
+}) => api.put<{ data: WhatsAppSettings; message: string }>('/settings/whatsapp', data);

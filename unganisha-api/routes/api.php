@@ -307,6 +307,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/settings/subscriptions', [SettingsController::class, 'updateSubscriptionSettings']);
     Route::get('/settings/pesapal', [SettingsController::class, 'getPesapal']);
     Route::put('/settings/pesapal', [SettingsController::class, 'updatePesapal']);
+    Route::get('/settings/whatsapp', [SettingsController::class, 'getWhatsApp']);
+    Route::put('/settings/whatsapp', [SettingsController::class, 'updateWhatsApp']);
 
     // Email settings (tenant admin)
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);

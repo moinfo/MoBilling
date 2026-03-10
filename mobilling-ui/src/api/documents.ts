@@ -126,7 +126,7 @@ export const resendReceipt = (id: string) =>
 export const resendInvoice = (documentId: string) =>
   api.post(`/documents/${documentId}/send`);
 
-export const remindUnpaid = (documentIds: string[], channel: 'email' | 'sms' | 'both') =>
+export const remindUnpaid = (documentIds: string[], channel: 'email' | 'sms' | 'whatsapp' | 'both') =>
   api.post('/documents/remind-unpaid', { document_ids: documentIds, channel });
 
 export const cancelDocument = (id: string) =>

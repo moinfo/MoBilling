@@ -47,7 +47,7 @@ export default function DocumentListPage({ type, title }: Props) {
   // Remind modal state
   const [remindOpened, { open: openRemind, close: closeRemind }] = useDisclosure(false);
   const [remindIds, setRemindIds] = useState<string[]>([]);
-  const [remindChannel, setRemindChannel] = useState<'email' | 'sms' | 'both'>('email');
+  const [remindChannel, setRemindChannel] = useState<'email' | 'sms' | 'whatsapp' | 'both'>('email');
   const [remindLabel, setRemindLabel] = useState('');
 
   const isInvoice = type === 'invoice';
@@ -136,7 +136,7 @@ export default function DocumentListPage({ type, title }: Props) {
   });
 
   const remindMutation = useMutation({
-    mutationFn: ({ ids, channel }: { ids: string[]; channel: 'email' | 'sms' | 'both' }) =>
+    mutationFn: ({ ids, channel }: { ids: string[]; channel: 'email' | 'sms' | 'whatsapp' | 'both' }) =>
       remindUnpaid(ids, channel),
     onSuccess: (res) => {
       closeRemind();
@@ -416,11 +416,12 @@ export default function DocumentListPage({ type, title }: Props) {
           <Radio.Group
             label="Send via"
             value={remindChannel}
-            onChange={(v) => setRemindChannel(v as 'email' | 'sms' | 'both')}
+            onChange={(v) => setRemindChannel(v as 'email' | 'sms' | 'whatsapp' | 'both')}
           >
             <Stack gap="xs" mt="xs">
               <Radio value="email" label="Email" icon={({ ...rest }) => <IconMail size={14} {...rest} />} />
               <Radio value="sms" label="SMS" icon={({ ...rest }) => <IconMessage size={14} {...rest} />} />
+              <Radio value="whatsapp" label="WhatsApp" icon={({ ...rest }) => <IconSend size={14} {...rest} />} />
               <Radio value="both" label="Both (Email + SMS)" icon={({ ...rest }) => <IconSend size={14} {...rest} />} />
             </Stack>
           </Radio.Group>
