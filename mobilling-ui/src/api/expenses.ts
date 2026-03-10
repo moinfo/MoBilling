@@ -23,6 +23,8 @@ export const getExpenses = (params?: {
   page?: number;
   sub_expense_category_id?: string;
   per_page?: number;
+  date_from?: string;
+  date_to?: string;
 }) => api.get('/expenses', { params });
 
 export const getExpense = (id: string) =>

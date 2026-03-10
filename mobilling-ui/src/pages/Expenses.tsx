@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { useDebouncedValue } from '@mantine/hooks';
+import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,15 +28,24 @@ export default function Expenses() {
   const canCreate = can('expenses.create');
   const canUpdate = can('expenses.update');
   const canDelete = can('expenses.delete');
+  const canChangeDateRange = can('expenses.date_range');
+  const today = dayjs().format('YYYY-MM-DD');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
+  const [dateFrom, setDateFrom] = useState<string>(today);
+  const [dateTo, setDateTo] = useState<string>(today);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
 
   const { data } = useQuery({
-    queryKey: ['expenses', page, debouncedSearch],
-    queryFn: () => getExpenses({ page, search: debouncedSearch || undefined }),
+    queryKey: ['expenses', page, debouncedSearch, dateFrom, dateTo],
+    queryFn: () => getExpenses({
+      page,
+      search: debouncedSearch || undefined,
+      date_from: dateFrom || undefined,
+      date_to: dateTo || undefined,
+    }),
   });
 
   const { data: catData } = useQuery({
@@ -126,6 +137,25 @@ export default function Expenses() {
             </Button>
           )}
         </Group>
+      </Group>
+
+      <Group mb="md" wrap="wrap">
+        <DateInput
+          label="From"
+          value={dateFrom ? new Date(dateFrom) : null}
+          onChange={(v) => { setDateFrom(v ? dayjs(v).format('YYYY-MM-DD') : today); setPage(1); }}
+          disabled={!canChangeDateRange}
+          maw={160}
+          size="sm"
+        />
+        <DateInput
+          label="To"
+          value={dateTo ? new Date(dateTo) : null}
+          onChange={(v) => { setDateTo(v ? dayjs(v).format('YYYY-MM-DD') : today); setPage(1); }}
+          disabled={!canChangeDateRange}
+          maw={160}
+          size="sm"
+        />
       </Group>
 
       {expenses.length === 0 ? (

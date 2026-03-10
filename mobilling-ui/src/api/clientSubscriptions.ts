@@ -47,6 +47,8 @@ export const getClientSubscriptions = (params?: {
   sort_dir?: 'asc' | 'desc';
   page?: number;
   per_page?: number;
+  expire_from?: string;
+  expire_to?: string;
 }) => api.get('/client-subscriptions', { params });
 
 export const getClientSubscription = (id: string) =>

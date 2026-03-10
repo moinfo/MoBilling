@@ -26,6 +26,14 @@ class ClientSubscriptionController extends Controller
             $query->where('status', $request->status);
         }
 
+        if ($request->filled('expire_from')) {
+            $query->where('expire_date', '>=', $request->expire_from);
+        }
+
+        if ($request->filled('expire_to')) {
+            $query->where('expire_date', '<=', $request->expire_to);
+        }
+
         if ($request->has('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {

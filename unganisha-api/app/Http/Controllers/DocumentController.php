@@ -43,6 +43,14 @@ class DocumentController extends Controller
             });
         }
 
+        if ($request->filled('date_from')) {
+            $query->where('date', '>=', $request->date_from);
+        }
+
+        if ($request->filled('date_to')) {
+            $query->where('date', '<=', $request->date_to);
+        }
+
         // Add reminder count for invoices (count from communication_logs by document_id in metadata)
         if ($request->type === 'invoice') {
             $query->addSelect([

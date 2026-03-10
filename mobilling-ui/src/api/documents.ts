@@ -62,7 +62,7 @@ export interface DocumentFormData {
   items: DocumentItem[];
 }
 
-export const getDocuments = (params?: { type?: string; search?: string; page?: number; status?: string; per_page?: number }) =>
+export const getDocuments = (params?: { type?: string; search?: string; page?: number; status?: string; per_page?: number; date_from?: string; date_to?: string }) =>
   api.get('/documents', { params });
 
 export const getDocument = (id: string) =>
@@ -96,7 +96,7 @@ export const rejectDocument = (id: string, reason?: string) =>
   api.patch(`/documents/${id}/reject`, { reason });
 
 // Payments In
-export const getPaymentsIn = (params?: { document_id?: string; page?: number; per_page?: number }) =>
+export const getPaymentsIn = (params?: { document_id?: string; page?: number; per_page?: number; search?: string; date_from?: string; date_to?: string }) =>
   api.get('/payments-in', { params });
 
 export const createPaymentIn = (data: {
