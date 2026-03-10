@@ -115,6 +115,10 @@ class DocumentController extends Controller
 
     public function update(StoreDocumentRequest $request, Document $document)
     {
+        if ($document->status !== 'draft') {
+            return response()->json(['message' => 'Only draft documents can be edited. Return to draft first.'], 422);
+        }
+
         return DB::transaction(function () use ($request, $document) {
             $items = $request->items;
             $subtotal = 0;
