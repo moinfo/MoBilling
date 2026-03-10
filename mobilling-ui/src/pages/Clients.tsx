@@ -4,7 +4,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconDownload, IconAddressBook } from '@tabler/icons-react';
 import { getClients, createClient, updateClient, deleteClient, Client, ClientFormData } from '../api/clients';
 import ClientTable from '../components/Billing/ClientTable';
 import ClientForm from '../components/Billing/ClientForm';
@@ -71,6 +71,60 @@ export default function Clients() {
     });
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const res = await getClients({ per_page: 10000 });
+      const allClients: Client[] = res.data?.data || [];
+      const csvRows = [
+        ['Name', 'Email', 'Phone'].join(','),
+        ...allClients.map((c) =>
+          [`"${(c.name || '').replace(/"/g, '""')}"`, `"${c.email || ''}"`, `"${c.phone || ''}"`].join(',')
+        ),
+      ];
+      const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `clients-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to export clients', color: 'red' });
+    }
+  };
+
+  const handleExportVcf = async () => {
+    try {
+      const res = await getClients({ per_page: 10000 });
+      const allClients: Client[] = res.data?.data || [];
+      const vcards = allClients.map((c) => {
+        const nameParts = (c.name || '').trim().split(/\s+/);
+        const lastName = nameParts.length > 1 ? nameParts.pop() : '';
+        const firstName = nameParts.join(' ');
+        const lines = [
+          'BEGIN:VCARD',
+          'VERSION:3.0',
+          `FN:${c.name || ''}`,
+          `N:${lastName};${firstName};;;`,
+        ];
+        if (c.email) lines.push(`EMAIL:${c.email}`);
+        if (c.phone) lines.push(`TEL;TYPE=CELL:${c.phone}`);
+        if (c.address) lines.push(`ADR;TYPE=WORK:;;${c.address};;;;`);
+        lines.push('END:VCARD');
+        return lines.join('\r\n');
+      });
+      const blob = new Blob([vcards.join('\r\n')], { type: 'text/vcard' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `clients-${new Date().toISOString().slice(0, 10)}.vcf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to export contacts', color: 'red' });
+    }
+  };
+
   const handleSubmit = (values: ClientFormData) => {
     if (editing) {
       updateMutation.mutate(values);
@@ -83,11 +137,19 @@ export default function Clients() {
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Clients</Title>
-        {can('clients.create') && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
-            Add Client
+        <Group gap="xs">
+          <Button variant="light" leftSection={<IconDownload size={16} />} onClick={handleExportCsv}>
+            Export CSV
           </Button>
-        )}
+          <Button variant="light" leftSection={<IconAddressBook size={16} />} onClick={handleExportVcf}>
+            Export VCF
+          </Button>
+          {can('clients.create') && (
+            <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
+              Add Client
+            </Button>
+          )}
+        </Group>
       </Group>
 
       <TextInput
