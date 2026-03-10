@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconBell, IconMail, IconMessage, IconSend } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
-import { getDocuments, getDocument, createDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, Document, DocumentFormData } from '../../api/documents';
+import { getDocuments, getDocument, createDocument, updateDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, Document, DocumentFormData } from '../../api/documents';
 import { getClients, Client } from '../../api/clients';
 import { getProductServices, ProductService } from '../../api/productServices';
 import DocumentTable from './DocumentTable';
@@ -31,6 +31,7 @@ export default function DocumentListPage({ type, title }: Props) {
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState('all');
   const [formOpen, setFormOpen] = useState(false);
+  const [editDoc, setEditDoc] = useState<Document | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
 
   // Auto-open preview from URL query param (?preview=documentId)
@@ -89,6 +90,17 @@ export default function DocumentListPage({ type, title }: Props) {
     onError: () => notifications.show({ title: 'Error', message: 'Failed to create', color: 'red' }),
   });
 
+  const updateMutation = useMutation({
+    mutationFn: ({ id, values }: { id: string; values: DocumentFormData }) => updateDocument(id, values),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setFormOpen(false);
+      setEditDoc(null);
+      notifications.show({ title: 'Success', message: `${title.slice(0, -1)} updated`, color: 'green' });
+    },
+    onError: () => notifications.show({ title: 'Error', message: 'Failed to update', color: 'red' }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteDocument(id),
     onSuccess: () => {
@@ -136,6 +148,13 @@ export default function DocumentListPage({ type, title }: Props) {
   const handleView = async (doc: Document) => {
     const res = await getDocument(doc.id);
     setViewDoc(res.data.data);
+  };
+
+  const handleEdit = async (doc: Document) => {
+    const res = await getDocument(doc.id);
+    const full = res.data.data;
+    setEditDoc(full);
+    setFormOpen(true);
   };
 
   const handleDelete = (doc: Document) => {
@@ -241,7 +260,7 @@ export default function DocumentListPage({ type, title }: Props) {
       <DocumentTable
         documents={documents}
         onView={handleView}
-        onEdit={() => {}}
+        onEdit={handleEdit}
         onDelete={handleDelete}
         onRemind={isInvoice ? openRemindSingle : undefined}
         onCancel={isInvoice ? handleCancel : undefined}
@@ -256,20 +275,44 @@ export default function DocumentListPage({ type, title }: Props) {
         </Group>
       )}
 
-      {/* Create form drawer */}
+      {/* Create/Edit form drawer */}
       <Drawer
         opened={formOpen}
-        onClose={() => setFormOpen(false)}
-        title={`New ${title.slice(0, -1)}`}
+        onClose={() => { setFormOpen(false); setEditDoc(null); }}
+        title={editDoc ? `Edit ${editDoc.document_number}` : `New ${title.slice(0, -1)}`}
         size={900}
         position="right"
       >
         <DocumentForm
+          key={editDoc?.id || 'new'}
           clients={clients}
           productServices={productServices}
           type={type}
-          onSubmit={(values) => createMutation.mutate(values)}
-          loading={createMutation.isPending}
+          onSubmit={(values) => {
+            if (editDoc) {
+              updateMutation.mutate({ id: editDoc.id, values });
+            } else {
+              createMutation.mutate(values);
+            }
+          }}
+          loading={editDoc ? updateMutation.isPending : createMutation.isPending}
+          initialValues={editDoc ? {
+            client_id: editDoc.client_id,
+            date: editDoc.date,
+            due_date: editDoc.due_date || null,
+            notes: editDoc.notes || '',
+            items: editDoc.items.map((item) => ({
+              product_service_id: item.product_service_id || '',
+              item_type: item.item_type,
+              description: item.description,
+              quantity: item.quantity,
+              price: item.price,
+              discount_type: item.discount_type,
+              discount_value: item.discount_value,
+              tax_percent: item.tax_percent,
+              unit: item.unit || '',
+            })),
+          } : undefined}
         />
       </Drawer>
 

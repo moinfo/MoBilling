@@ -1,9 +1,9 @@
-import { Card, Group, Text, Badge, Checkbox, Table, Divider, Button, Stack, NumberInput, Select, TextInput, Textarea, Alert } from '@mantine/core';
+import { Card, Group, Text, Badge, Checkbox, Table, Divider, Button, Stack, NumberInput, Select, TextInput, Textarea, Alert, ActionIcon, CopyButton, Tooltip, Paper } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash, IconCopy, IconBrandWhatsapp, IconLink } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem } from '../../api/documents';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
@@ -381,6 +381,52 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           </Button>
         )}
       </Group>
+
+      {/* Pay Link — for unpaid invoices */}
+      {isInvoice && doc.balance_due > 0 && doc.status !== 'cancelled' && doc.status !== 'draft' && (() => {
+        const payUrl = `${window.location.origin}/pay/${doc.id}`;
+        const itemsList = (doc.items || []).map((item) => `• ${item.description} — ${formatCurrency(item.total || 0)}`).join('\n');
+        const whatsappMsg = `*${doc.document_number}*\nClient: ${doc.client?.name}\n\n${itemsList}\n\n*Total: ${formatCurrency(doc.total)}*\n*Paid: ${formatCurrency(doc.paid_amount)}*\n*Balance: ${formatCurrency(doc.balance_due)}*${doc.due_date ? `\nDue: ${formatDate(doc.due_date)}` : ''}\n\nPay online: ${payUrl}`;
+        const whatsappUrl = `https://wa.me/${doc.client?.phone ? doc.client.phone.replace(/\D/g, '') : ''}?text=${encodeURIComponent(whatsappMsg)}`;
+
+        return (
+          <Paper withBorder p="sm" radius="md">
+            <Group gap="xs" mb="xs">
+              <IconLink size={16} />
+              <Text size="sm" fw={600}>Pay Link</Text>
+            </Group>
+            <Group gap="xs">
+              <TextInput
+                value={payUrl}
+                readOnly
+                size="xs"
+                style={{ flex: 1 }}
+                styles={{ input: { fontFamily: 'monospace', fontSize: 12 } }}
+              />
+              <CopyButton value={payUrl}>
+                {({ copied, copy }) => (
+                  <Tooltip label={copied ? 'Copied!' : 'Copy link'}>
+                    <ActionIcon color={copied ? 'green' : 'gray'} variant="light" onClick={copy}>
+                      <IconCopy size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+              </CopyButton>
+              <Tooltip label="Share via WhatsApp">
+                <ActionIcon
+                  color="green"
+                  variant="filled"
+                  component="a"
+                  href={whatsappUrl}
+                  target="_blank"
+                >
+                  <IconBrandWhatsapp size={16} />
+                </ActionIcon>
+              </Tooltip>
+            </Group>
+          </Paper>
+        );
+      })()}
 
       {/* Payment Form */}
       {showPayment && (
