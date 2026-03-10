@@ -50,8 +50,15 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
             ->subject("Payment Overdue — {$this->document->document_number} — {$this->tenant->name}")
             ->greeting("Hello {$this->document->client->name},")
             ->line("This is a reminder that invoice {$this->document->document_number} for {$currency} {$totalFormatted} is now {$this->daysOverdue} day(s) overdue.")
-            ->line('Please make payment as soon as possible to avoid service disruption.')
-            ->line('Thank you.')
+            ->line('Please make payment as soon as possible to avoid service disruption.');
+
+        // Add "Pay Now" button if tenant has Pesapal enabled and invoice has balance
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $mail->action('Pay Now', $payUrl);
+        }
+
+        $mail->line('Thank you.')
             ->attachData($pdfContent, "{$this->document->document_number}.pdf", [
                 'mime' => 'application/pdf',
             ]);
@@ -66,6 +73,13 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
         $currency = $this->tenant->currency;
         $totalFormatted = number_format($this->document->total, 2);
 
-        return "OVERDUE: Invoice {$this->document->document_number} for {$currency} {$totalFormatted} is {$this->daysOverdue} days overdue. Please pay immediately. — {$this->tenant->name}";
+        $msg = "OVERDUE: Invoice {$this->document->document_number} for {$currency} {$totalFormatted} is {$this->daysOverdue} days overdue. Please pay immediately. — {$this->tenant->name}";
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $msg .= " Pay: {$payUrl}";
+        }
+
+        return $msg;
     }
 }

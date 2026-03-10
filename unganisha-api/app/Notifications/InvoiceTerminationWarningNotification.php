@@ -51,8 +51,14 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
             ->line("**This is a final notice regarding invoice {$this->document->document_number}.**")
             ->line("The outstanding amount of {$currency} {$totalFormatted} remains unpaid despite multiple reminders.")
             ->line('**If payment is not received within the next 7 days, your service will be terminated.**')
-            ->line('Please settle this invoice immediately to avoid service disruption.')
-            ->line("If you have already made payment, please disregard this notice and contact us with your payment reference.")
+            ->line('Please settle this invoice immediately to avoid service disruption.');
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $mail->action('Pay Now', $payUrl);
+        }
+
+        $mail->line("If you have already made payment, please disregard this notice and contact us with your payment reference.")
             ->line('Thank you.')
             ->attachData($pdfContent, "{$this->document->document_number}.pdf", [
                 'mime' => 'application/pdf',
@@ -68,6 +74,13 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
         $currency = $this->tenant->currency;
         $totalFormatted = number_format($this->document->total, 2);
 
-        return "FINAL NOTICE: Invoice {$this->document->document_number} ({$currency} {$totalFormatted}) is unpaid. Service will be TERMINATED in 7 days if not cleared. Pay now. — {$this->tenant->name}";
+        $msg = "FINAL NOTICE: Invoice {$this->document->document_number} ({$currency} {$totalFormatted}) is unpaid. Service will be TERMINATED in 7 days if not cleared. Pay now. — {$this->tenant->name}";
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $msg .= " Pay: {$payUrl}";
+        }
+
+        return $msg;
     }
 }

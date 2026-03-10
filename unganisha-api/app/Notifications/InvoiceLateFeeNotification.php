@@ -54,8 +54,14 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
             ->line("Invoice {$this->document->document_number} is now overdue.")
             ->line("A 10% late fee of {$currency} {$feeFormatted} has been applied.")
             ->line("**New total: {$currency} {$newTotalFormatted}**")
-            ->line('Please settle this invoice promptly to avoid further action.')
-            ->line('Thank you.')
+            ->line('Please settle this invoice promptly to avoid further action.');
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $mail->action('Pay Now', $payUrl);
+        }
+
+        $mail->line('Thank you.')
             ->attachData($pdfContent, "{$this->document->document_number}.pdf", [
                 'mime' => 'application/pdf',
             ]);
@@ -71,6 +77,13 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
         $feeFormatted = number_format($this->lateFeeAmount, 2);
         $newTotalFormatted = number_format($this->newTotal, 2);
 
-        return "OVERDUE: Invoice {$this->document->document_number} has a 10% late fee of {$currency} {$feeFormatted} applied. New total: {$currency} {$newTotalFormatted}. Please pay promptly. — {$this->tenant->name}";
+        $msg = "OVERDUE: Invoice {$this->document->document_number} has a 10% late fee of {$currency} {$feeFormatted} applied. New total: {$currency} {$newTotalFormatted}. Please pay promptly. — {$this->tenant->name}";
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $msg .= " Pay: {$payUrl}";
+        }
+
+        return $msg;
     }
 }

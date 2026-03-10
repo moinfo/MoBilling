@@ -72,8 +72,15 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
             ->subject($subject)
             ->greeting("Hello {$this->document->client->name},")
             ->line("This is a friendly reminder that invoice {$this->document->document_number} for {$currency} {$amount} is due on {$dueDate}.")
-            ->line("Please ensure payment is made before the due date to avoid any disruption.")
-            ->line('Thank you for your business.')
+            ->line("Please ensure payment is made before the due date to avoid any disruption.");
+
+        // Add "Pay Now" button if tenant has Pesapal enabled and invoice has balance
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $mail->action('Pay Now', $payUrl);
+        }
+
+        $mail->line('Thank you for your business.')
             ->attachData($pdfContent, "{$this->document->document_number}.pdf", [
                 'mime' => 'application/pdf',
             ]);
@@ -89,6 +96,13 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
         $amount = number_format($this->document->total, 2);
         $dueDate = $this->document->due_date->format('d M Y');
 
-        return "Reminder: Invoice {$this->document->document_number} for {$currency} {$amount} is due on {$dueDate} ({$this->daysRemaining} day(s) remaining). — {$this->tenant->name}";
+        $msg = "Reminder: Invoice {$this->document->document_number} for {$currency} {$amount} is due on {$dueDate} ({$this->daysRemaining} day(s) remaining). — {$this->tenant->name}";
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $msg .= " Pay: {$payUrl}";
+        }
+
+        return $msg;
     }
 }
