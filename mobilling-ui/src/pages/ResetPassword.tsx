@@ -58,7 +58,7 @@ export default function ResetPassword() {
   const handleSubmit = async (values: typeof form.values) => {
     setLoading(true);
     try {
-      await resetPassword({ token, email, ...values });
+      await resetPassword({ identifier: email, otp: token, ...values });
       notifications.show({
         title: 'Password reset',
         message: 'Your password has been reset successfully. Please sign in.',

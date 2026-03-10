@@ -58,8 +58,6 @@ export default function PayInvoice() {
     try {
       const res = await checkoutInvoice(id);
       if (res.data.redirect_url) {
-        // Save payment_id for callback
-        const url = new URL(res.data.redirect_url);
         window.location.href = res.data.redirect_url;
       }
     } catch (err: any) {

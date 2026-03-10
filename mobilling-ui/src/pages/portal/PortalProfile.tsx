@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Stack, Paper, Title, TextInput, Button, Group, PasswordInput, Text, Divider, LoadingOverlay } from '@mantine/core';
+import { Stack, Paper, Title, TextInput, Button, Group, PasswordInput, Text, LoadingOverlay } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';

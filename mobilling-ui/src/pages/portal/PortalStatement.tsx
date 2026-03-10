@@ -9,14 +9,14 @@ const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 
 export default function PortalStatement() {
-  const [range, setRange] = useState<[Date | null, Date | null]>([
-    dayjs().startOf('year').toDate(),
-    dayjs().endOf('month').toDate(),
+  const [range, setRange] = useState<[string | null, string | null]>([
+    dayjs().startOf('year').format('YYYY-MM-DD'),
+    dayjs().endOf('month').format('YYYY-MM-DD'),
   ]);
 
   const params = {
-    start_date: range[0] ? dayjs(range[0]).format('YYYY-MM-DD') : undefined,
-    end_date: range[1] ? dayjs(range[1]).format('YYYY-MM-DD') : undefined,
+    start_date: range[0] || undefined,
+    end_date: range[1] || undefined,
   };
 
   const { data, isLoading } = useQuery({

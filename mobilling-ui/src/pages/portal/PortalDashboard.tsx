@@ -98,7 +98,7 @@ export default function PortalDashboard() {
             </Paper>
           </SimpleGrid>
 
-          {d.upcoming_subscriptions?.length > 0 && (
+          {(d.upcoming_subscriptions?.length ?? 0) > 0 && (
             <Paper withBorder p="md">
               <Group gap="xs" mb="md">
                 <IconCalendarRepeat size={20} />
@@ -116,7 +116,7 @@ export default function PortalDashboard() {
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {d.upcoming_subscriptions.map((s: any) => {
+                  {d.upcoming_subscriptions!.map((s: any) => {
                     const daysLeft = s.next_invoice_date
                       ? Math.ceil((new Date(s.next_invoice_date).getTime() - Date.now()) / 86400000)
                       : null;
