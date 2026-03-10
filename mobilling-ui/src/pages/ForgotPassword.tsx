@@ -1,53 +1,126 @@
 import { useState } from 'react';
 import {
-  TextInput, Button, Paper, Title, Text, Anchor, Stack,
+  TextInput, PasswordInput, Button, Paper, Title, Text, Anchor, Stack,
   Image, Group, Box, ThemeIcon, List, rem, useMantineColorScheme, useComputedColorScheme,
-  ActionIcon, Alert,
+  ActionIcon, Alert, PinInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   IconMail, IconShieldCheck, IconLock, IconSun, IconMoon, IconArrowLeft, IconCheck,
+  IconUserPlus,
 } from '@tabler/icons-react';
-import { forgotPassword } from '../api/auth';
+import { forgotPassword, verifyResetOtp, resetPassword } from '../api/auth';
+import { useAuth } from '../context/AuthContext';
 
 const tips = [
-  { icon: IconMail, text: 'A reset link will be sent to your email address' },
-  { icon: IconShieldCheck, text: 'The link expires in 60 minutes for security' },
+  { icon: IconMail, text: 'A verification code will be sent to your email' },
+  { icon: IconShieldCheck, text: 'The code expires in 10 minutes for security' },
   { icon: IconLock, text: 'Your account stays secure throughout the process' },
 ];
 
+type Step = 'request' | 'verify' | 'reset' | 'done';
+
 export default function ForgotPassword() {
-  const [sent, setSent] = useState(false);
+  const navigate = useNavigate();
+  const { login: authLogin } = useAuth();
+  const [step, setStep] = useState<Step>('request');
   const [loading, setLoading] = useState(false);
+  const [identifier, setIdentifier] = useState('');
+  const [emailHint, setEmailHint] = useState('');
+  const [otp, setOtp] = useState('');
+  const [isRegistration, setIsRegistration] = useState(false);
+  const [clientName, setClientName] = useState('');
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
 
-  const form = useForm({
-    initialValues: { email: '' },
+  const requestForm = useForm({
+    initialValues: { identifier: '' },
     validate: {
-      email: (v) => (/^\S+@\S+$/.test(v) ? null : 'Invalid email'),
+      identifier: (v) => (v.length > 0 ? null : 'Email or phone is required'),
     },
   });
 
-  const handleSubmit = async (values: typeof form.values) => {
+  const resetForm = useForm({
+    initialValues: { password: '', password_confirmation: '' },
+    validate: {
+      password: (v) => (v.length >= 8 ? null : 'Min 8 characters'),
+      password_confirmation: (v, values) => (v === values.password ? null : 'Passwords do not match'),
+    },
+  });
+
+  // Step 1: Request OTP
+  const handleRequest = async (values: typeof requestForm.values) => {
     setLoading(true);
     try {
-      await forgotPassword(values.email);
-      setSent(true);
+      const res = await forgotPassword(values.identifier);
+      setIdentifier(values.identifier);
+      setEmailHint(res.data.email_hint || '');
+      setIsRegistration(!!res.data.requires_registration);
+      setStep('verify');
+      notifications.show({ title: 'Code sent', message: res.data.message, color: 'green' });
     } catch (err: any) {
-      const emailError = err.response?.data?.errors?.email?.[0];
-      if (emailError) {
-        form.setFieldError('email', emailError);
-      } else {
-        notifications.show({
-          title: 'Error',
-          message: err.response?.data?.message || 'Something went wrong. Please try again.',
-          color: 'red',
-        });
+      const msg = err.response?.data?.message || err.response?.data?.errors?.identifier?.[0] || 'Something went wrong.';
+      notifications.show({ title: 'Error', message: msg, color: 'red' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 2: Verify OTP
+  const handleVerifyOtp = async () => {
+    if (otp.length !== 6) {
+      notifications.show({ title: 'Error', message: 'Enter the 6-digit code', color: 'red' });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await verifyResetOtp({ identifier, otp });
+      setIsRegistration(!!res.data.requires_registration);
+      if (res.data.client_name) setClientName(res.data.client_name);
+      setStep('reset');
+      notifications.show({
+        title: 'Verified',
+        message: res.data.requires_registration
+          ? 'Code verified. Set up your portal account.'
+          : 'Code verified. Set your new password.',
+        color: 'green',
+      });
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.response?.data?.errors?.otp?.[0] || 'Verification failed.';
+      notifications.show({ title: 'Error', message: msg, color: 'red' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Step 3: Reset password or create account
+  const handleReset = async (values: typeof resetForm.values) => {
+    setLoading(true);
+    try {
+      const res = await resetPassword({
+        identifier,
+        otp,
+        password: values.password,
+        password_confirmation: values.password_confirmation,
+      });
+
+      if (isRegistration && res.data.token) {
+        // Auto-login after account creation
+        localStorage.setItem('token', res.data.token);
+        localStorage.setItem('user_type', res.data.user_type || 'client');
+        notifications.show({ title: 'Welcome!', message: 'Portal account created successfully.', color: 'green' });
+        navigate('/portal/dashboard');
+        return;
       }
+
+      setStep('done');
+    } catch (err: any) {
+      const msg = err.response?.data?.message || err.response?.data?.errors?.otp?.[0]
+        || err.response?.data?.errors?.name?.[0] || 'Failed.';
+      notifications.show({ title: 'Error', message: msg, color: 'red' });
     } finally {
       setLoading(false);
     }
@@ -101,7 +174,7 @@ export default function ForgotPassword() {
           Forgot your password?{'\n'}No worries.
         </Title>
         <Text c={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.75)'} size="lg" mb={rem(40)} maw={420}>
-          We'll help you get back into your account quickly and securely.
+          We&apos;ll help you get back into your account quickly and securely.
         </Text>
 
         <List spacing="lg" size="md" center>
@@ -112,7 +185,7 @@ export default function ForgotPassword() {
                 <ThemeIcon
                   size={36}
                   radius="xl"
-                  color={isDark ? 'orange' : 'orange'}
+                  color="orange"
                   variant={isDark ? 'light' : 'white'}
                 >
                   <t.icon size={18} />
@@ -167,41 +240,141 @@ export default function ForgotPassword() {
             <Text size="xl" fw={800}>MoBilling</Text>
           </Group>
 
-          <Title order={2} ta="center" mb={4}>Reset password</Title>
-          <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>
-            Enter your email and we'll send you a reset link
-          </Text>
+          {/* Step 1: Enter email or phone */}
+          {step === 'request' && (
+            <>
+              <Title order={2} ta="center" mb={4}>Reset password</Title>
+              <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>
+                Enter your email or phone and we&apos;ll send you a verification code
+              </Text>
 
-          <Paper withBorder shadow="sm" p="xl" radius="md">
-            {sent ? (
-              <Alert icon={<IconCheck size={18} />} color="green" title="Check your email">
-                If an account exists with that email, you'll receive a password reset link shortly.
-                Check your inbox (and spam folder).
-              </Alert>
-            ) : (
-              <form onSubmit={form.onSubmit(handleSubmit)}>
+              <Paper withBorder shadow="sm" p="xl" radius="md">
+                <form onSubmit={requestForm.onSubmit(handleRequest)}>
+                  <Stack gap="md">
+                    <TextInput
+                      label="Email or Phone"
+                      placeholder="you@company.com or 0712345678"
+                      size="md"
+                      required
+                      {...requestForm.getInputProps('identifier')}
+                    />
+                    <Button fullWidth type="submit" size="md" mt="xs" loading={loading}>
+                      Send verification code
+                    </Button>
+                  </Stack>
+                </form>
+              </Paper>
+
+              <Text c="dimmed" size="sm" ta="center" mt="lg">
+                Remember your password?{' '}
+                <Anchor component={Link} to="/login" size="sm" fw={600}>
+                  Sign in
+                </Anchor>
+              </Text>
+            </>
+          )}
+
+          {/* Step 2: Enter and verify OTP */}
+          {step === 'verify' && (
+            <>
+              <Title order={2} ta="center" mb={4}>Verify code</Title>
+              <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>
+                Enter the 6-digit code sent to your email
+              </Text>
+
+              <Paper withBorder shadow="sm" p="xl" radius="md">
                 <Stack gap="md">
-                  <TextInput
-                    label="Email address"
-                    placeholder="you@company.com"
-                    size="md"
-                    required
-                    {...form.getInputProps('email')}
-                  />
-                  <Button fullWidth type="submit" size="md" mt="xs" loading={loading}>
-                    Send reset link
-                  </Button>
-                </Stack>
-              </form>
-            )}
-          </Paper>
+                  <Alert color="blue" variant="light">
+                    Code sent to {emailHint || identifier}
+                  </Alert>
 
-          <Text c="dimmed" size="sm" ta="center" mt="lg">
-            Remember your password?{' '}
-            <Anchor component={Link} to="/login" size="sm" fw={600}>
-              Sign in
-            </Anchor>
-          </Text>
+                  <div>
+                    <Text size="sm" fw={500} mb={4}>Verification Code</Text>
+                    <Group justify="center">
+                      <PinInput
+                        length={6}
+                        type="number"
+                        size="md"
+                        value={otp}
+                        onChange={setOtp}
+                      />
+                    </Group>
+                  </div>
+
+                  <Button fullWidth size="md" loading={loading} onClick={handleVerifyOtp}>
+                    Verify Code
+                  </Button>
+
+                  <Anchor size="sm" ta="center" onClick={() => { setStep('request'); setOtp(''); }}>
+                    Use a different email or phone
+                  </Anchor>
+                </Stack>
+              </Paper>
+            </>
+          )}
+
+          {/* Step 3: Set new password OR create account */}
+          {step === 'reset' && (
+            <>
+              <Title order={2} ta="center" mb={4}>
+                {isRegistration ? 'Create portal account' : 'Set new password'}
+              </Title>
+              <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>
+                {isRegistration
+                  ? 'Your identity has been verified. Set up your portal account.'
+                  : 'Your identity has been verified. Choose a new password.'}
+              </Text>
+
+              <Paper withBorder shadow="sm" p="xl" radius="md">
+                <form onSubmit={resetForm.onSubmit(handleReset)}>
+                  <Stack gap="md">
+                    <Alert
+                      color={isRegistration ? 'blue' : 'green'}
+                      variant="light"
+                      icon={isRegistration ? <IconUserPlus size={16} /> : <IconCheck size={16} />}
+                    >
+                      {isRegistration
+                        ? `Setting up portal access for ${clientName || identifier}`
+                        : `Code verified for ${emailHint || identifier}`}
+                    </Alert>
+
+                    <PasswordInput
+                      label={isRegistration ? 'Password' : 'New Password'}
+                      required
+                      size="md"
+                      {...resetForm.getInputProps('password')}
+                    />
+                    <PasswordInput
+                      label="Confirm Password"
+                      required
+                      size="md"
+                      {...resetForm.getInputProps('password_confirmation')}
+                    />
+
+                    <Button fullWidth type="submit" size="md" loading={loading}>
+                      {isRegistration ? 'Create Account' : 'Reset Password'}
+                    </Button>
+                  </Stack>
+                </form>
+              </Paper>
+            </>
+          )}
+
+          {/* Step 4: Success (password reset only — registration auto-redirects) */}
+          {step === 'done' && (
+            <Paper withBorder shadow="sm" p="xl" radius="md">
+              <Stack gap="md" align="center" py="lg">
+                <ThemeIcon size={60} radius="xl" color="green" variant="light">
+                  <IconCheck size={32} />
+                </ThemeIcon>
+                <Title order={3}>Password Reset!</Title>
+                <Text c="dimmed" ta="center">Your password has been changed successfully.</Text>
+                <Button fullWidth size="md" onClick={() => navigate('/login')}>
+                  Sign in
+                </Button>
+              </Stack>
+            </Paper>
+          )}
         </Box>
       </Box>
     </Box>

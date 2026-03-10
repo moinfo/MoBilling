@@ -5,6 +5,7 @@ import { IconSearch } from '@tabler/icons-react';
 import { getPortalPayments } from '../../api/portal';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 
 export default function PortalPayments() {
   const [page, setPage] = useState(1);
@@ -47,7 +48,7 @@ export default function PortalPayments() {
             <Table.Tbody>
               {payments.map((p: any) => (
                 <Table.Tr key={p.id}>
-                  <Table.Td>{p.payment_date}</Table.Td>
+                  <Table.Td>{fmtDate(p.payment_date)}</Table.Td>
                   <Table.Td>{p.document?.document_number || '-'}</Table.Td>
                   <Table.Td ta="right" fw={600}>{fmt(p.amount)}</Table.Td>
                   <Table.Td tt="capitalize">{p.payment_method || '-'}</Table.Td>

@@ -6,6 +6,7 @@ import dayjs from 'dayjs';
 import { getPortalStatement } from '../../api/portal';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 
 export default function PortalStatement() {
   const [range, setRange] = useState<[Date | null, Date | null]>([
@@ -74,7 +75,7 @@ export default function PortalStatement() {
                 <Table.Tbody>
                   {r.entries.map((entry, i) => (
                     <Table.Tr key={i}>
-                      <Table.Td>{entry.date}</Table.Td>
+                      <Table.Td>{fmtDate(entry.date)}</Table.Td>
                       <Table.Td>
                         <Group gap="xs">
                           <Badge

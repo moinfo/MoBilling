@@ -48,4 +48,42 @@ class SmsService
 
         return $response->json();
     }
+
+    /**
+     * Send an OTP SMS using tenant credentials, falling back to platform master credentials.
+     */
+    public function sendOtp(string $recipient, string $message, ?Tenant $tenant = null): array
+    {
+        // Try tenant credentials first
+        if ($tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
+            return $this->send($tenant, $recipient, $message);
+        }
+
+        // Fall back to platform master credentials
+        $masterAuth = config('smsgateway.master_authorization');
+        if (!$masterAuth) {
+            throw new \RuntimeException('No SMS credentials available.');
+        }
+
+        $response = Http::baseUrl($this->baseUrl)
+            ->timeout($this->timeout)
+            ->withHeaders([
+                'Authorization' => str_starts_with($masterAuth, 'Basic ') ? $masterAuth : 'Basic ' . $masterAuth,
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+            ])
+            ->post('/api/sms/v1/text/single', [
+                'from' => $tenant?->sender_id ?? 'MoBilling',
+                'text' => $message,
+                'to' => $recipient,
+            ]);
+
+        if (!$response->successful()) {
+            throw new \RuntimeException(
+                'SMS send failed: ' . ($response->json('message') ?? $response->body())
+            );
+        }
+
+        return $response->json();
+    }
 }

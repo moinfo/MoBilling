@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
+use App\Models\ClientSubscription;
 use App\Models\Document;
 use App\Models\PaymentIn;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class PortalDashboardController extends Controller
@@ -58,6 +60,51 @@ class PortalDashboardController extends Controller
                 'document_number' => $p->document?->document_number,
             ]);
 
+        // Upcoming subscription schedule
+        $cycleIntervals = [
+            'monthly' => '1 month',
+            'quarterly' => '3 months',
+            'half_yearly' => '6 months',
+            'yearly' => '1 year',
+        ];
+        $cycleLabels = [
+            'once' => 'One-time',
+            'monthly' => 'Monthly',
+            'quarterly' => 'Quarterly',
+            'half_yearly' => 'Half Yearly',
+            'yearly' => 'Yearly',
+        ];
+
+        $subscriptions = ClientSubscription::where('client_id', $clientId)
+            ->where('status', 'active')
+            ->with('productService:id,name,price,billing_cycle')
+            ->get()
+            ->map(function ($sub) use ($cycleIntervals, $cycleLabels) {
+                $cycle = $sub->productService?->billing_cycle;
+                $nextDate = null;
+
+                if ($cycle && $cycle !== 'once' && isset($cycleIntervals[$cycle])) {
+                    $next = Carbon::parse($sub->start_date);
+                    $today = Carbon::today();
+                    while ($next->lte($today)) {
+                        $next->add($cycleIntervals[$cycle]);
+                    }
+                    $nextDate = $next->format('Y-m-d');
+                }
+
+                return [
+                    'id' => $sub->id,
+                    'service' => $sub->productService?->name,
+                    'label' => $sub->label,
+                    'price' => (float) ($sub->productService?->price ?? 0),
+                    'quantity' => $sub->quantity,
+                    'schedule' => $cycleLabels[$cycle] ?? $cycle,
+                    'next_invoice_date' => $nextDate,
+                ];
+            })
+            ->sortBy('next_invoice_date')
+            ->values();
+
         return response()->json([
             'total_invoiced' => $totalInvoiced,
             'total_paid' => $totalPaid,
@@ -65,6 +112,7 @@ class PortalDashboardController extends Controller
             'overdue_count' => $overdueCount,
             'recent_invoices' => $recentInvoices,
             'recent_payments' => $recentPayments,
+            'upcoming_subscriptions' => $subscriptions,
         ]);
     }
 }

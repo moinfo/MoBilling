@@ -58,7 +58,7 @@ export interface MeResponse {
 }
 
 export interface LoginData {
-  email: string;
+  identifier: string;
   password: string;
 }
 
@@ -82,12 +82,34 @@ export const logout = () => api.post('/auth/logout');
 export const getMe = () =>
   api.get<MeResponse>('/auth/me');
 
-export const forgotPassword = (email: string) =>
-  api.post<{ message: string }>('/auth/forgot-password', { email });
+export const forgotPassword = (identifier: string) =>
+  api.post<{ message: string; email_hint?: string; requires_registration?: boolean }>('/auth/forgot-password', { identifier });
+
+export const verifyResetOtp = (data: { identifier: string; otp: string }) =>
+  api.post<{ message: string; requires_registration?: boolean; client_name?: string }>('/auth/verify-reset-otp', data);
 
 export const resetPassword = (data: {
-  token: string;
-  email: string;
+  identifier: string;
+  otp: string;
   password: string;
   password_confirmation: string;
-}) => api.post<{ message: string }>('/auth/reset-password', data);
+}) => api.post<AuthResponse & { message: string }>('/auth/reset-password', data);
+
+// Portal self-registration
+export interface OtpResponse {
+  has_account: boolean;
+  message: string;
+  client_name?: string;
+}
+
+export const requestPortalOtp = (email: string) =>
+  api.post<OtpResponse>('/portal/request-otp', { email });
+
+export const verifyAndRegisterPortal = (data: {
+  email: string;
+  otp: string;
+  name: string;
+  password: string;
+  password_confirmation: string;
+  phone?: string;
+}) => api.post<AuthResponse>('/portal/verify-register', data);

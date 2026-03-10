@@ -17,6 +17,7 @@ use App\Http\Controllers\Admin\TenantSubscriptionController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\ClientPortalUserController;
 use App\Http\Controllers\BroadcastController;
+use App\Http\Controllers\Portal\PortalAuthController;
 use App\Http\Controllers\Portal\PortalDashboardController;
 use App\Http\Controllers\Portal\PortalDocumentController;
 use App\Http\Controllers\Portal\PortalPaymentController;
@@ -60,7 +61,12 @@ Route::get('/plans', [SubscriptionController::class, 'plans']);
 Route::post('/auth/register', [RegisterController::class, 'register']);
 Route::post('/auth/login', [LoginController::class, 'login']);
 Route::post('/auth/forgot-password', [PasswordResetController::class, 'forgotPassword']);
+Route::post('/auth/verify-reset-otp', [PasswordResetController::class, 'verifyOtp']);
 Route::post('/auth/reset-password', [PasswordResetController::class, 'resetPassword']);
+
+// Portal self-registration (public)
+Route::post('/portal/request-otp', [PortalAuthController::class, 'requestOtp']);
+Route::post('/portal/verify-register', [PortalAuthController::class, 'verifyAndRegister']);
 
 // Pesapal webhooks (public, no auth)
 Route::match(['get', 'post'], '/pesapal/ipn', [PesapalWebhookController::class, 'ipn']);

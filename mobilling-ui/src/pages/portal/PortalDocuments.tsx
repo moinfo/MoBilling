@@ -5,6 +5,7 @@ import { IconSearch } from '@tabler/icons-react';
 import { getPortalDocuments, getPortalDocument } from '../../api/portal';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
 
 const statusColor: Record<string, string> = {
   sent: 'blue', viewed: 'cyan', partial: 'orange', paid: 'green', overdue: 'red',
@@ -62,8 +63,8 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
               {docs.map((doc: any) => (
                 <Table.Tr key={doc.id} onClick={() => setViewId(doc.id)} style={{ cursor: 'pointer' }}>
                   <Table.Td fw={600}>{doc.document_number}</Table.Td>
-                  <Table.Td>{doc.date}</Table.Td>
-                  <Table.Td>{doc.due_date || '-'}</Table.Td>
+                  <Table.Td>{fmtDate(doc.date)}</Table.Td>
+                  <Table.Td>{fmtDate(doc.due_date)}</Table.Td>
                   <Table.Td ta="right">{fmt(doc.total)}</Table.Td>
                   <Table.Td>
                     <Badge color={statusColor[doc.status] || 'gray'} variant="light" size="sm">
@@ -95,8 +96,8 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
               <Badge color={statusColor[detail.status] || 'gray'} variant="light">{detail.status}</Badge>
             </Group>
             <Group>
-              <Text size="sm" c="dimmed">Date: {detail.date}</Text>
-              {detail.due_date && <Text size="sm" c="dimmed">Due: {detail.due_date}</Text>}
+              <Text size="sm" c="dimmed">Date: {fmtDate(detail.date)}</Text>
+              {detail.due_date && <Text size="sm" c="dimmed">Due: {fmtDate(detail.due_date)}</Text>}
             </Group>
 
             <Table striped>
