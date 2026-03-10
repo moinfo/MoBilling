@@ -62,11 +62,14 @@ export default function Users() {
   });
 
   const loginAsMutation = useMutation({
-    mutationFn: (user: TenantUser) => impersonateUser(currentUser!.tenant!.id, user.id),
-    onSuccess: (res) => {
+    mutationFn: async (user: TenantUser) => {
+      const res = await impersonateUser(currentUser!.tenant!.id, user.id);
       const { user: impUser, token, subscription_status, days_remaining } = res.data;
-      impersonate(impUser, token, subscription_status, days_remaining);
-      navigate('/');
+      await impersonate(impUser, token, subscription_status, days_remaining);
+      return impUser;
+    },
+    onSuccess: (impUser) => {
+      navigate('/dashboard');
       notifications.show({ title: 'Impersonating', message: `Logged in as ${impUser.name}`, color: 'violet' });
     },
     onError: () => notifications.show({ title: 'Error', message: 'Failed to login as user', color: 'red' }),

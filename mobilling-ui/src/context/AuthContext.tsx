@@ -17,7 +17,7 @@ interface AuthContextType {
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  impersonate: (user: User, token: string, subStatus?: SubscriptionStatus, subDays?: number) => void;
+  impersonate: (user: User, token: string, subStatus?: SubscriptionStatus, subDays?: number) => Promise<void>;
   exitImpersonation: () => void;
 }
 
@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setDaysRemaining(res.data.days_remaining ?? 0);
   };
 
-  const impersonate = (impersonatedUser: User, token: string, subStatus?: SubscriptionStatus, subDays?: number) => {
+  const impersonate = async (impersonatedUser: User, token: string, subStatus?: SubscriptionStatus, subDays?: number) => {
     // Only save admin_token if not already impersonating (preserve the original super admin token)
     if (!localStorage.getItem('admin_token')) {
       const adminToken = localStorage.getItem('token');
@@ -124,9 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSubscriptionStatus(subStatus);
       setDaysRemaining(subDays ?? 0);
     }
-    getMe().then((res) => {
-      setPermissions(res.data.permissions ?? []);
-    });
+    const res = await getMe();
+    setPermissions(res.data.permissions ?? []);
   };
 
   const exitImpersonation = () => {
