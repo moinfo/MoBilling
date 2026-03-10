@@ -10,6 +10,7 @@ import { getExpenseCategories, ExpenseCategory } from '../api/expenseCategories'
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import ExpenseForm from '../components/Expenses/ExpenseForm';
+import { usePermissions } from '../hooks/usePermissions';
 
 const methodLabels: Record<string, string> = {
   cash: 'Cash',
@@ -21,6 +22,10 @@ const methodLabels: Record<string, string> = {
 
 export default function Expenses() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canCreate = can('expenses.create');
+  const canUpdate = can('expenses.update');
+  const canDelete = can('expenses.delete');
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
@@ -115,9 +120,11 @@ export default function Expenses() {
             onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
             maw={250}
           />
-          <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
-            Add Expense
-          </Button>
+          {canCreate && (
+            <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>
+              Add Expense
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -136,7 +143,7 @@ export default function Expenses() {
               <Table.Th>Method</Table.Th>
               <Table.Th>Control #</Table.Th>
               <Table.Th>Attachment</Table.Th>
-              <Table.Th w={100}>Actions</Table.Th>
+              {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -158,16 +165,22 @@ export default function Expenses() {
                     </Anchor>
                   ) : '—'}
                 </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <ActionIcon variant="light" onClick={() => openEdit(e)}>
-                      <IconEdit size={16} />
-                    </ActionIcon>
-                    <ActionIcon variant="light" color="red" onClick={() => handleDelete(e)}>
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Group>
-                </Table.Td>
+                {(canUpdate || canDelete) && (
+                  <Table.Td>
+                    <Group gap="xs">
+                      {canUpdate && (
+                        <ActionIcon variant="light" onClick={() => openEdit(e)}>
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                      )}
+                      {canDelete && (
+                        <ActionIcon variant="light" color="red" onClick={() => handleDelete(e)}>
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      )}
+                    </Group>
+                  </Table.Td>
+                )}
               </Table.Tr>
             ))}
             </Table.Tbody>

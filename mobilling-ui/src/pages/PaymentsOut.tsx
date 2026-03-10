@@ -9,11 +9,15 @@ import { IconEdit, IconTrash, IconDownload } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { getPaymentsOut, updatePaymentOut, deletePaymentOut, PaymentOut } from '../api/bills';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
+import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 
 export default function PaymentsOut() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canUpdate = can('payments_out.update');
+  const canDelete = can('payments_out.delete');
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<PaymentOut | null>(null);
 
@@ -74,7 +78,7 @@ export default function PaymentsOut() {
                 <Table.Th>Control No.</Table.Th>
                 <Table.Th>Reference</Table.Th>
                 <Table.Th>Receipt</Table.Th>
-                <Table.Th w={100}>Actions</Table.Th>
+                {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
               </Table.Tr>
             </Table.Thead>
           <Table.Tbody>
@@ -95,16 +99,22 @@ export default function PaymentsOut() {
                     </Anchor>
                   ) : '—'}
                 </Table.Td>
-                <Table.Td>
-                  <Group gap="xs">
-                    <ActionIcon variant="light" onClick={() => setEditing(p)}>
-                      <IconEdit size={16} />
-                    </ActionIcon>
-                    <ActionIcon variant="light" color="red" onClick={() => handleDelete(p)}>
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Group>
-                </Table.Td>
+                {(canUpdate || canDelete) && (
+                  <Table.Td>
+                    <Group gap="xs">
+                      {canUpdate && (
+                        <ActionIcon variant="light" onClick={() => setEditing(p)}>
+                          <IconEdit size={16} />
+                        </ActionIcon>
+                      )}
+                      {canDelete && (
+                        <ActionIcon variant="light" color="red" onClick={() => handleDelete(p)}>
+                          <IconTrash size={16} />
+                        </ActionIcon>
+                      )}
+                    </Group>
+                  </Table.Td>
+                )}
               </Table.Tr>
             ))}
             </Table.Tbody>

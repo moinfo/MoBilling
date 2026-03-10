@@ -9,9 +9,15 @@ import { getBills, createBill, updateBill, deleteBill, createPaymentOut, Bill, B
 import BillTable from '../components/Statutory/BillTable';
 import BillForm from '../components/Statutory/BillForm';
 import PaymentOutForm from '../components/Statutory/PaymentOutForm';
+import { usePermissions } from '../hooks/usePermissions';
 
 export default function Bills() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canCreate = can('bills.create');
+  const canUpdate = can('bills.update');
+  const canDelete = can('bills.delete');
+  const canPay = can('payments_out.create');
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
@@ -91,9 +97,11 @@ export default function Bills() {
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Bills</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setFormOpen(true); }}>
-          Add Bill
-        </Button>
+        {canCreate && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setFormOpen(true); }}>
+            Add Bill
+          </Button>
+        )}
       </Group>
 
       <TextInput
@@ -110,6 +118,9 @@ export default function Bills() {
         onEdit={handleEdit}
         onDelete={handleDelete}
         onMarkPaid={(bill) => setPayingBill(bill)}
+        canUpdate={canUpdate}
+        canDelete={canDelete}
+        canPay={canPay}
       />
 
       {meta && meta.last_page > 1 && (

@@ -9,9 +9,12 @@ interface Props {
   onEdit: (bill: Bill) => void;
   onDelete: (bill: Bill) => void;
   onMarkPaid: (bill: Bill) => void;
+  canUpdate?: boolean;
+  canDelete?: boolean;
+  canPay?: boolean;
 }
 
-export default function BillTable({ bills, onEdit, onDelete, onMarkPaid }: Props) {
+export default function BillTable({ bills, onEdit, onDelete, onMarkPaid, canUpdate = true, canDelete = true, canPay = true }: Props) {
   if (bills.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No bills found</Text>;
   }
@@ -37,7 +40,7 @@ export default function BillTable({ bills, onEdit, onDelete, onMarkPaid }: Props
             <Table.Th>Cycle</Table.Th>
             <Table.Th>Due Date</Table.Th>
             <Table.Th>Status</Table.Th>
-            <Table.Th w={120}>Actions</Table.Th>
+            {(canUpdate || canDelete || canPay) && <Table.Th w={120}>Actions</Table.Th>}
           </Table.Tr>
         </Table.Thead>
       <Table.Tbody>
@@ -62,21 +65,27 @@ export default function BillTable({ bills, onEdit, onDelete, onMarkPaid }: Props
               <Table.Td>
                 <Badge color={status.color} size="sm">{status.label}</Badge>
               </Table.Td>
-              <Table.Td>
-                <Group gap="xs">
-                  {!bill.paid_at && (
-                    <ActionIcon variant="light" color="green" onClick={() => onMarkPaid(bill)} title="Mark Paid">
-                      <IconCash size={16} />
-                    </ActionIcon>
-                  )}
-                  <ActionIcon variant="light" onClick={() => onEdit(bill)}>
-                    <IconEdit size={16} />
-                  </ActionIcon>
-                  <ActionIcon variant="light" color="red" onClick={() => onDelete(bill)}>
-                    <IconTrash size={16} />
-                  </ActionIcon>
-                </Group>
-              </Table.Td>
+              {(canUpdate || canDelete || canPay) && (
+                <Table.Td>
+                  <Group gap="xs">
+                    {canPay && !bill.paid_at && (
+                      <ActionIcon variant="light" color="green" onClick={() => onMarkPaid(bill)} title="Mark Paid">
+                        <IconCash size={16} />
+                      </ActionIcon>
+                    )}
+                    {canUpdate && (
+                      <ActionIcon variant="light" onClick={() => onEdit(bill)}>
+                        <IconEdit size={16} />
+                      </ActionIcon>
+                    )}
+                    {canDelete && (
+                      <ActionIcon variant="light" color="red" onClick={() => onDelete(bill)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    )}
+                  </Group>
+                </Table.Td>
+              )}
             </Table.Tr>
           );
         })}
