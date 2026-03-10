@@ -11,7 +11,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconEdit, IconTrash, IconArrowUp, IconArrowDown, IconArrowsSort, IconFileInvoice, IconCalendarEvent } from '@tabler/icons-react';
 import {
-  getClientSubscriptions, createClientSubscription, createBulkSubscription, updateClientSubscription,
+  getClientSubscriptions, createBulkSubscription, updateClientSubscription,
   deleteClientSubscription, generateInvoiceFromSubscription, updateExpireDate, ClientSubscription, ClientSubscriptionFormData,
   BulkSubscriptionFormData, BulkSubscriptionItem,
 } from '../api/clientSubscriptions';
@@ -375,7 +375,7 @@ function RenewModal({ subscription, onClose, onSubmit, loading }: {
           placeholder="Select new expire date"
           required
           value={date}
-          onChange={setDate}
+          onChange={(v) => setDate(v ? new Date(v) : null)}
         />
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
