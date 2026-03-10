@@ -1,5 +1,5 @@
 import { Table, ActionIcon, Group, Text, Badge } from '@mantine/core';
-import { IconEdit, IconUserCheck, IconUserOff } from '@tabler/icons-react';
+import { IconEdit, IconLogin, IconUserCheck, IconUserOff } from '@tabler/icons-react';
 import { TenantUser } from '../../api/users';
 
 interface Props {
@@ -8,9 +8,11 @@ interface Props {
   currentUserId: string;
   onEdit: (user: TenantUser) => void;
   onToggleActive: (user: TenantUser) => void;
+  onLoginAs?: (user: TenantUser) => void;
+  showLoginAs?: boolean;
 }
 
-export default function UserTable({ users, isAdmin, currentUserId, onEdit, onToggleActive }: Props) {
+export default function UserTable({ users, isAdmin, currentUserId, onEdit, onToggleActive, onLoginAs, showLoginAs }: Props) {
   if (users.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No team members found</Text>;
   }
@@ -25,7 +27,7 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
           <Table.Th>Phone</Table.Th>
           <Table.Th>Role</Table.Th>
           <Table.Th>Status</Table.Th>
-          {isAdmin && <Table.Th w={100}>Actions</Table.Th>}
+          {isAdmin && <Table.Th w={140}>Actions</Table.Th>}
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
@@ -46,7 +48,7 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
             </Table.Td>
             {isAdmin && (
               <Table.Td>
-                <Group gap="xs">
+                <Group gap="xs" wrap="nowrap">
                   <ActionIcon variant="light" onClick={() => onEdit(user)}>
                     <IconEdit size={16} />
                   </ActionIcon>
@@ -57,6 +59,16 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
                       onClick={() => onToggleActive(user)}
                     >
                       {user.is_active ? <IconUserOff size={16} /> : <IconUserCheck size={16} />}
+                    </ActionIcon>
+                  )}
+                  {showLoginAs && user.is_active && (
+                    <ActionIcon
+                      variant="light"
+                      color="violet"
+                      title="Login as this user"
+                      onClick={() => onLoginAs?.(user)}
+                    >
+                      <IconLogin size={16} />
                     </ActionIcon>
                   )}
                 </Group>

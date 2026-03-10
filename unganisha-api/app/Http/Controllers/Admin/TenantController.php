@@ -141,6 +141,29 @@ class TenantController extends Controller
         ]);
     }
 
+    public function impersonateUser(Tenant $tenant, User $user)
+    {
+        $this->authorize();
+
+        if ($user->tenant_id !== $tenant->id) {
+            return response()->json(['message' => 'User does not belong to this tenant.'], 422);
+        }
+
+        if (!$user->is_active) {
+            return response()->json(['message' => 'Cannot impersonate an inactive user.'], 422);
+        }
+
+        $token = $user->createToken('impersonate')->plainTextToken;
+        $user->load('tenant');
+
+        return response()->json([
+            'user' => $user,
+            'token' => $token,
+            'subscription_status' => $tenant->subscriptionStatus(),
+            'days_remaining' => $tenant->daysRemaining(),
+        ]);
+    }
+
     public function toggleActive(Tenant $tenant)
     {
         $this->authorize();

@@ -5,14 +5,17 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { getUsers, createUser, updateUser, toggleUserActive, TenantUser, UserFormData } from '../api/users';
+import { impersonateUser } from '../api/admin';
 import UserTable from '../components/Settings/UserTable';
 import UserForm from '../components/Settings/UserForm';
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function Users() {
   const queryClient = useQueryClient();
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, isImpersonating, impersonate } = useAuth();
+  const navigate = useNavigate();
   const { can } = usePermissions();
   const canManageUsers = can('settings.users');
   const [search, setSearch] = useState('');
@@ -57,6 +60,21 @@ export default function Users() {
       notifications.show({ title: 'Success', message: 'User status updated', color: 'green' });
     },
   });
+
+  const loginAsMutation = useMutation({
+    mutationFn: (user: TenantUser) => impersonateUser(currentUser!.tenant_id, user.id),
+    onSuccess: (res) => {
+      const { user: impUser, token, subscription_status, days_remaining } = res.data;
+      impersonate(impUser, token, subscription_status, days_remaining);
+      navigate('/');
+      notifications.show({ title: 'Impersonating', message: `Logged in as ${impUser.name}`, color: 'violet' });
+    },
+    onError: () => notifications.show({ title: 'Error', message: 'Failed to login as user', color: 'red' }),
+  });
+
+  const handleLoginAs = (user: TenantUser) => {
+    loginAsMutation.mutate(user);
+  };
 
   const handleEdit = (user: TenantUser) => {
     setEditing(user);
@@ -105,6 +123,8 @@ export default function Users() {
         currentUserId={currentUser?.id || ''}
         onEdit={handleEdit}
         onToggleActive={handleToggleActive}
+        showLoginAs={isImpersonating}
+        onLoginAs={handleLoginAs}
       />
 
       {meta && meta.last_page > 1 && (
