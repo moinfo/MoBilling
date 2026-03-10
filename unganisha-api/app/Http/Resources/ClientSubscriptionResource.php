@@ -20,6 +20,7 @@ class ClientSubscriptionResource extends JsonResource
             'label' => $this->label,
             'quantity' => $this->quantity,
             'start_date' => $this->start_date?->format('Y-m-d'),
+            'expire_date' => $this->expire_date?->format('Y-m-d'),
             'status' => $this->status,
             'metadata' => $this->metadata,
             'created_at' => $this->created_at,

@@ -189,8 +189,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:client_subscriptions.read')->get('/client-subscriptions', [ClientSubscriptionController::class, 'index']);
     Route::middleware('permission:client_subscriptions.read')->get('/client-subscriptions/{client_subscription}', [ClientSubscriptionController::class, 'show']);
     Route::middleware('permission:client_subscriptions.create')->post('/client-subscriptions', [ClientSubscriptionController::class, 'store']);
+    Route::middleware('permission:client_subscriptions.create')->post('/client-subscriptions/bulk', [ClientSubscriptionController::class, 'bulkStore']);
     Route::middleware('permission:client_subscriptions.update')->put('/client-subscriptions/{client_subscription}', [ClientSubscriptionController::class, 'update']);
     Route::middleware('permission:client_subscriptions.create')->post('/client-subscriptions/{client_subscription}/generate-invoice', [ClientSubscriptionController::class, 'generateInvoice']);
+    Route::middleware('permission:client_subscriptions.renew')->patch('/client-subscriptions/{client_subscription}/expire-date', [ClientSubscriptionController::class, 'updateExpireDate']);
     Route::middleware('permission:client_subscriptions.delete')->delete('/client-subscriptions/{client_subscription}', [ClientSubscriptionController::class, 'destroy']);
 
     // Products & Services
@@ -212,6 +214,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:documents.download')->get('/documents/{document}/pdf', [DocumentController::class, 'downloadPdf']);
     Route::middleware('permission:documents.send')->post('/documents/{document}/send', [DocumentController::class, 'send']);
     Route::middleware('permission:documents.send')->post('/documents/remind-unpaid', [DocumentController::class, 'remindUnpaid']);
+    Route::middleware('permission:documents.create')->post('/documents/merge', [DocumentController::class, 'merge']);
     Route::middleware('permission:documents.send')->patch('/documents/{document}/submit-for-approval', [DocumentController::class, 'submitForApproval']);
     Route::middleware('permission:documents.approve')->patch('/documents/{document}/approve', [DocumentController::class, 'approve']);
     Route::middleware('permission:documents.approve')->patch('/documents/{document}/reject', [DocumentController::class, 'reject']);

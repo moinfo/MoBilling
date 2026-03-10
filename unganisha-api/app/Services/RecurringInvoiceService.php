@@ -125,6 +125,7 @@ class RecurringInvoiceService
                         'tenant_id' => $tenant->id,
                         'client_id' => $client->id,
                         'product_service_id' => $item['subscription']->product_service_id,
+                        'client_subscription_id' => $item['subscription']->id,
                         'document_id' => $document->id,
                         'next_bill_date' => $item['next_bill_date'],
                         'invoice_created_at' => now(),

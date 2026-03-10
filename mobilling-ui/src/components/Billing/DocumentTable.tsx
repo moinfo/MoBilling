@@ -1,4 +1,4 @@
-import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip, Loader, Center } from '@mantine/core';
+import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip, Loader, Center, Checkbox } from '@mantine/core';
 import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX, IconRefresh, IconSend, IconCheck, IconArrowBack } from '@tabler/icons-react';
 import { Document } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -18,6 +18,9 @@ interface Props {
   onReject?: (doc: Document) => void;
   startIndex?: number;
   loading?: boolean;
+  selectable?: boolean;
+  selectedIds?: string[];
+  onSelectionChange?: (ids: string[]) => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -42,7 +45,7 @@ const stageLabels: Record<string, string> = {
   termination_warning: 'Termination warning sent',
 };
 
-export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, onSubmitForApproval, onApprove, onReject, startIndex = 1, loading }: Props) {
+export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, onSubmitForApproval, onApprove, onReject, startIndex = 1, loading, selectable, selectedIds = [], onSelectionChange }: Props) {
   const { can } = usePermissions();
   if (loading) {
     return <Center py="xl"><Loader /></Center>;
@@ -51,11 +54,43 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
     return <Text c="dimmed" ta="center" py="xl">No documents found</Text>;
   }
 
+  // Only unpaid invoices can be selected for merge
+  const selectableDocs = documents.filter((d) => !['paid', 'draft', 'cancelled', 'pending_approval'].includes(d.status));
+  const allSelectableSelected = selectableDocs.length > 0 && selectableDocs.every((d) => selectedIds.includes(d.id));
+
+  const toggleAll = () => {
+    if (!onSelectionChange) return;
+    if (allSelectableSelected) {
+      onSelectionChange([]);
+    } else {
+      onSelectionChange(selectableDocs.map((d) => d.id));
+    }
+  };
+
+  const toggleOne = (id: string) => {
+    if (!onSelectionChange) return;
+    if (selectedIds.includes(id)) {
+      onSelectionChange(selectedIds.filter((i) => i !== id));
+    } else {
+      onSelectionChange([...selectedIds, id]);
+    }
+  };
+
   return (
     <Table.ScrollContainer minWidth={650}>
       <Table striped highlightOnHover>
         <Table.Thead>
           <Table.Tr>
+            {selectable && (
+              <Table.Th w={40}>
+                <Checkbox
+                  size="xs"
+                  checked={allSelectableSelected}
+                  indeterminate={selectedIds.length > 0 && !allSelectableSelected}
+                  onChange={toggleAll}
+                />
+              </Table.Th>
+            )}
             <Table.Th w={50}>#</Table.Th>
             <Table.Th>Number</Table.Th>
             <Table.Th>Description</Table.Th>
@@ -70,8 +105,22 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
         {documents.map((doc, index) => {
           const isCancelled = doc.status === 'cancelled';
           const isUnpaid = !isCancelled && !['paid', 'draft', 'pending_approval'].includes(doc.status);
+          const isSelectable = selectable && isUnpaid;
           return (
             <Table.Tr key={doc.id} style={{ cursor: 'pointer', opacity: isCancelled ? 0.5 : 1 }} onClick={() => onView(doc)}>
+              {selectable && (
+                <Table.Td onClick={(e) => e.stopPropagation()}>
+                  {isSelectable ? (
+                    <Checkbox
+                      size="xs"
+                      checked={selectedIds.includes(doc.id)}
+                      onChange={() => toggleOne(doc.id)}
+                    />
+                  ) : (
+                    <Checkbox size="xs" disabled />
+                  )}
+                </Table.Td>
+              )}
               <Table.Td><Text size="sm" c="dimmed">{startIndex + index}</Text></Table.Td>
               <Table.Td fw={500} td={isCancelled ? 'line-through' : undefined}>{doc.document_number}</Table.Td>
               <Table.Td c="dimmed" maw={220} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

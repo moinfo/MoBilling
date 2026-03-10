@@ -11,8 +11,8 @@ class RecurringInvoiceLog extends Model
     use HasUuids, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'client_id', 'product_service_id', 'document_id',
-        'next_bill_date', 'invoice_created_at', 'reminders_sent',
+        'tenant_id', 'client_id', 'product_service_id', 'client_subscription_id',
+        'document_id', 'next_bill_date', 'invoice_created_at', 'reminders_sent',
     ];
 
     protected $casts = [

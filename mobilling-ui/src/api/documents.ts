@@ -138,6 +138,9 @@ export const uncancelDocument = (id: string) =>
 export const removeDocumentItem = (documentId: string, itemId: string) =>
   api.delete(`/documents/${documentId}/items/${itemId}`);
 
+export const mergeInvoices = (documentIds: string[]) =>
+  api.post<{ data: Document; message: string }>('/documents/merge', { document_ids: documentIds });
+
 // Next Bills
 export interface NextBillItem {
   subscription_id: string;
