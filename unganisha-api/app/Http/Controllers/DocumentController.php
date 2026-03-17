@@ -238,8 +238,18 @@ class DocumentController extends Controller
 
         $document->load('client');
 
-        // Update status before sending so PDF shows correct status
-        $document->update(['status' => 'sent']);
+        // Reset date to today and shift due_date by the same payment window
+        $today = now()->startOfDay();
+        $updates = ['status' => 'sent', 'date' => $today];
+
+        if ($document->due_date && $document->date) {
+            $daysDiff = $document->date->diffInDays($document->due_date);
+            $updates['due_date'] = $today->copy()->addDays($daysDiff);
+        } elseif (!$document->due_date) {
+            $updates['due_date'] = $today->copy()->addDays(14);
+        }
+
+        $document->update($updates);
         $document->refresh();
 
         // Approve and auto-send to client
@@ -261,6 +271,24 @@ class DocumentController extends Controller
         ]);
     }
 
+    public function updateDueDate(Request $request, Document $document)
+    {
+        $request->validate([
+            'due_date' => 'required|date',
+        ]);
+
+        if (!in_array($document->status, ['sent', 'overdue', 'partial'])) {
+            return response()->json(['message' => 'Due date can only be changed for unpaid invoices.'], 422);
+        }
+
+        $document->update(['due_date' => $request->due_date]);
+
+        return response()->json([
+            'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+            'message' => "Due date updated to {$document->fresh()->due_date->format('d M Y')}.",
+        ]);
+    }
+
     public function reject(Request $request, Document $document)
     {
         if ($document->status !== 'pending_approval') {
@@ -276,6 +304,24 @@ class DocumentController extends Controller
         return response()->json([
             'data' => new DocumentResource($document->fresh()->load('items', 'client')),
             'message' => "{$document->document_number} rejected and returned to draft.",
+        ]);
+    }
+
+    public function returnToDraft(Document $document)
+    {
+        if (!in_array($document->status, ['sent', 'overdue', 'partial', 'pending_approval'])) {
+            return response()->json(['message' => 'Only sent or pending invoices can be returned to draft.'], 422);
+        }
+
+        if ($document->payments()->exists()) {
+            return response()->json(['message' => 'Cannot return to draft — this invoice has payments recorded.'], 422);
+        }
+
+        $document->update(['status' => 'draft']);
+
+        return response()->json([
+            'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+            'message' => "{$document->document_number} returned to draft.",
         ]);
     }
 

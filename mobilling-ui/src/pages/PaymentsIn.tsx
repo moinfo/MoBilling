@@ -1,4 +1,4 @@
-import { Title, Table, Text, Group, Pagination, Badge, TextInput, ActionIcon, Drawer, Stack, NumberInput, Select, Textarea, Button, Tooltip, Loader, Center } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, TextInput, ActionIcon, Drawer, Stack, NumberInput, Select, Textarea, Button, Tooltip, Loader, Center, Divider, Anchor, Paper } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
@@ -6,8 +6,8 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconSearch, IconEdit, IconTrash, IconReceipt, IconFileInvoice } from '@tabler/icons-react';
-import { getPaymentsIn, updatePaymentIn, deletePaymentIn, resendReceipt, resendInvoice, Payment } from '../api/documents';
+import { IconSearch, IconEdit, IconTrash, IconReceipt, IconFileInvoice, IconEye, IconDownload, IconPaperclip } from '@tabler/icons-react';
+import { getPaymentsIn, updatePaymentIn, deletePaymentIn, resendReceipt, resendInvoice, downloadPaymentReceipt, Payment } from '../api/documents';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -27,6 +27,7 @@ export default function PaymentsIn() {
   const [dateFrom, setDateFrom] = useState<string>(today);
   const [dateTo, setDateTo] = useState<string>(today);
   const [editPayment, setEditPayment] = useState<PaymentWithDoc | null>(null);
+  const [viewPayment, setViewPayment] = useState<PaymentWithDoc | null>(null);
 
   const { methods: paymentMethods } = usePaymentMethods();
 
@@ -169,7 +170,7 @@ export default function PaymentsIn() {
                 <Table.Th>Amount</Table.Th>
                 <Table.Th>Method</Table.Th>
                 <Table.Th>Reference</Table.Th>
-                <Table.Th w={140}>Actions</Table.Th>
+                <Table.Th w={170}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
           <Table.Tbody>
@@ -187,7 +188,12 @@ export default function PaymentsIn() {
                 </Table.Td>
                 <Table.Td>{p.reference || '—'}</Table.Td>
                 <Table.Td>
-                  <Group gap={4}>
+                  <Group gap={4} wrap="nowrap">
+                    <Tooltip label="Preview">
+                      <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setViewPayment(p)}>
+                        <IconEye size={16} />
+                      </ActionIcon>
+                    </Tooltip>
                     {can('payments_in.resend_receipt') && (
                       <Tooltip label="Resend Receipt">
                         <ActionIcon variant="subtle" color="green" size="sm" onClick={() => handleResendReceipt(p)}>
@@ -230,6 +236,94 @@ export default function PaymentsIn() {
           <Pagination total={meta.last_page} value={page} onChange={setPage} />
         </Group>
       )}
+
+      {/* Preview Payment Drawer */}
+      <Drawer
+        opened={!!viewPayment}
+        onClose={() => setViewPayment(null)}
+        title="Payment Receipt"
+        position="right"
+        size="md"
+      >
+        {viewPayment && (
+          <Stack>
+            <Paper p="md" withBorder>
+              <Stack gap="xs">
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Invoice</Text>
+                  <Text fw={600}>{viewPayment.document?.document_number || '—'}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Client</Text>
+                  <Text fw={500}>{viewPayment.document?.client?.name || '—'}</Text>
+                </Group>
+                <Divider />
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Payment Date</Text>
+                  <Text>{formatDate(viewPayment.payment_date)}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Amount</Text>
+                  <Text fw={700} size="lg" c="green">{formatCurrency(viewPayment.amount)}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Method</Text>
+                  <Badge variant="light">{viewPayment.payment_method.replace('_', ' ')}</Badge>
+                </Group>
+                {viewPayment.reference && (
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">Reference</Text>
+                    <Text>{viewPayment.reference}</Text>
+                  </Group>
+                )}
+                {viewPayment.notes && (
+                  <>
+                    <Divider />
+                    <Text size="sm" c="dimmed">Notes</Text>
+                    <Text size="sm">{viewPayment.notes}</Text>
+                  </>
+                )}
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Invoice Total</Text>
+                  <Text>{viewPayment.document?.total ? formatCurrency(viewPayment.document.total) : '—'}</Text>
+                </Group>
+              </Stack>
+            </Paper>
+
+            {viewPayment.attachment_url && (
+              <Paper p="md" withBorder>
+                <Text size="sm" fw={600} mb="xs">Attachment</Text>
+                <Anchor href={viewPayment.attachment_url} target="_blank" size="sm">
+                  <Group gap={6}>
+                    <IconPaperclip size={16} />
+                    View Attachment
+                  </Group>
+                </Anchor>
+              </Paper>
+            )}
+
+            <Group>
+              <Button
+                variant="light"
+                leftSection={<IconDownload size={16} />}
+                onClick={() => downloadPaymentReceipt(viewPayment.id)}
+              >
+                Download Receipt PDF
+              </Button>
+              {can('payments_in.resend_receipt') && (
+                <Button
+                  variant="light"
+                  color="green"
+                  leftSection={<IconReceipt size={16} />}
+                  onClick={() => handleResendReceipt(viewPayment)}
+                >
+                  Resend Receipt
+                </Button>
+              )}
+            </Group>
+          </Stack>
+        )}
+      </Drawer>
 
       {/* Edit Payment Drawer */}
       <Drawer

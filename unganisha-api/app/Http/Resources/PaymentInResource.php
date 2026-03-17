@@ -17,6 +17,9 @@ class PaymentInResource extends JsonResource
             'payment_method' => $this->payment_method,
             'reference' => $this->reference,
             'notes' => $this->notes,
+            'attachment_url' => $this->attachment_path
+                ? url('storage/' . $this->attachment_path)
+                : null,
             'document' => $this->whenLoaded('document', fn () => [
                 'document_number' => $this->document->document_number,
                 'type' => $this->document->type,

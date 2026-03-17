@@ -15,7 +15,7 @@ class PaymentIn extends Model
 
     protected $fillable = [
         'tenant_id', 'document_id', 'amount', 'payment_date',
-        'payment_method', 'reference', 'notes',
+        'payment_method', 'reference', 'notes', 'attachment_path',
     ];
 
     protected $casts = [

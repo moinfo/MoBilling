@@ -26,6 +26,11 @@ return new class extends Migration
             ['name' => 'payments_in.date_range'],
             ['label' => 'Change Payment Date Range', 'category' => 'crud', 'group_name' => 'Payments In']
         );
+
+        Permission::firstOrCreate(
+            ['name' => 'documents.extend_due_date'],
+            ['label' => 'Extend Invoice Due Date', 'category' => 'crud', 'group_name' => 'Documents']
+        );
     }
 
     public function down(): void
@@ -34,5 +39,6 @@ return new class extends Migration
         Permission::where('name', 'client_subscriptions.date_range')->delete();
         Permission::where('name', 'documents.date_range')->delete();
         Permission::where('name', 'payments_in.date_range')->delete();
+        Permission::where('name', 'documents.extend_due_date')->delete();
     }
 };

@@ -9,6 +9,7 @@ use App\Models\Document;
 use App\Models\PaymentIn;
 use App\Models\RecurringInvoiceLog;
 use App\Notifications\PaymentReceiptNotification;
+use App\Services\PdfService;
 use Illuminate\Http\Request;
 
 class PaymentInController extends Controller
@@ -92,6 +93,16 @@ class PaymentInController extends Controller
         $this->recalcDocumentStatus($documentId);
 
         return response()->json(['message' => 'Payment deleted']);
+    }
+
+    public function downloadReceipt(PaymentIn $payments_in)
+    {
+        $payments_in->load('document.client', 'document.items', 'document.tenant');
+
+        $pdf = app(PdfService::class)->generateReceipt($payments_in, $payments_in->document);
+        $receiptNumber = 'RCT-' . $payments_in->payment_date->format('Ymd') . '-' . strtoupper(substr($payments_in->id, 0, 6));
+
+        return $pdf->download("{$receiptNumber}.pdf");
     }
 
     public function resendReceipt(PaymentIn $payments_in)

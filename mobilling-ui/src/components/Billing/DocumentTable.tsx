@@ -1,5 +1,5 @@
 import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip, Loader, Center, Checkbox } from '@mantine/core';
-import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX, IconRefresh, IconSend, IconCheck, IconArrowBack } from '@tabler/icons-react';
+import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX, IconRefresh, IconSend, IconCheck, IconArrowBack, IconCalendarEvent } from '@tabler/icons-react';
 import { Document } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
@@ -16,6 +16,8 @@ interface Props {
   onSubmitForApproval?: (doc: Document) => void;
   onApprove?: (doc: Document) => void;
   onReject?: (doc: Document) => void;
+  onExtendDueDate?: (doc: Document) => void;
+  onReturnToDraft?: (doc: Document) => void;
   startIndex?: number;
   loading?: boolean;
   selectable?: boolean;
@@ -45,7 +47,7 @@ const stageLabels: Record<string, string> = {
   termination_warning: 'Termination warning sent',
 };
 
-export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, onSubmitForApproval, onApprove, onReject, startIndex = 1, loading, selectable, selectedIds = [], onSelectionChange }: Props) {
+export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, onSubmitForApproval, onApprove, onReject, onExtendDueDate, onReturnToDraft, startIndex = 1, loading, selectable, selectedIds = [], onSelectionChange }: Props) {
   const { can } = usePermissions();
   if (loading) {
     return <Center py="xl"><Loader /></Center>;
@@ -174,10 +176,10 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                     {can('documents.approve') && onReject && doc.status === 'pending_approval' && (
                       <Menu.Item
                         leftSection={<IconArrowBack size={14} />}
-                        color="red"
+                        color="orange"
                         onClick={() => onReject(doc)}
                       >
-                        Reject
+                        Return to Draft
                       </Menu.Item>
                     )}
                     {can('documents.send') && onRemind && isUnpaid && (
@@ -187,6 +189,24 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                         onClick={() => onRemind(doc)}
                       >
                         Send Reminder
+                      </Menu.Item>
+                    )}
+                    {can('documents.update') && onReturnToDraft && isUnpaid && (
+                      <Menu.Item
+                        leftSection={<IconArrowBack size={14} />}
+                        color="orange"
+                        onClick={() => onReturnToDraft(doc)}
+                      >
+                        Return to Draft
+                      </Menu.Item>
+                    )}
+                    {can('documents.extend_due_date') && onExtendDueDate && isUnpaid && (
+                      <Menu.Item
+                        leftSection={<IconCalendarEvent size={14} />}
+                        color="cyan"
+                        onClick={() => onExtendDueDate(doc)}
+                      >
+                        Extend Due Date
                       </Menu.Item>
                     )}
                     {can('documents.update') && onCancel && isUnpaid && (
