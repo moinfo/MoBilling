@@ -50,6 +50,7 @@ export interface Payment {
   payment_method: string;
   reference: string | null;
   notes: string | null;
+  attachment_url: string | null;
   created_at: string;
 }
 
@@ -100,6 +101,18 @@ export const updateDocumentDueDate = (id: string, due_date: string) =>
 
 export const returnDocumentToDraft = (id: string) =>
   api.patch(`/documents/${id}/return-to-draft`);
+
+export const downloadPaymentReceipt = async (id: string) => {
+  const res = await api.get(`/payments-in/${id}/receipt-pdf`, { responseType: 'blob' });
+  const url = window.URL.createObjectURL(new Blob([res.data]));
+  const link = document.createElement('a');
+  link.href = url;
+  link.setAttribute('download', `receipt-${id.substring(0, 8)}.pdf`);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+};
 
 // Payments In
 export const getPaymentsIn = (params?: { document_id?: string; page?: number; per_page?: number; search?: string; date_from?: string; date_to?: string }) =>

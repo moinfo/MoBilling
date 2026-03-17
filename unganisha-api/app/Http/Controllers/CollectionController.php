@@ -20,7 +20,7 @@ class CollectionController extends Controller
         $todayDue = Document::with('client')
             ->where('type', 'invoice')
             ->whereDate('due_date', $today)
-            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->get()
             ->map(fn ($d) => [
                 'id' => $d->id,
@@ -37,7 +37,7 @@ class CollectionController extends Controller
         $overdue = Document::with('client')
             ->where('type', 'invoice')
             ->whereDate('due_date', '<', $today)
-            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->orderBy('due_date')
             ->get()
             ->map(fn ($d) => [
@@ -58,7 +58,7 @@ class CollectionController extends Controller
             ->where('type', 'invoice')
             ->whereDate('due_date', '>', $today)
             ->whereDate('due_date', '<=', $today->copy()->addDays(30))
-            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->orderBy('due_date')
             ->get()
             ->map(fn ($d) => [
@@ -91,7 +91,7 @@ class CollectionController extends Controller
         // --- Summary calculations ---
         $todayDueTotal = Document::where('type', 'invoice')
             ->whereDate('due_date', $today)
-            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->sum('total');
 
         $todayDuePaid = PaymentIn::whereHas('document', fn ($q) => $q
@@ -103,7 +103,7 @@ class CollectionController extends Controller
 
         $overdueTotal = Document::where('type', 'invoice')
             ->whereDate('due_date', '<', $today)
-            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->sum('total');
 
         $overduePaid = (float) $overdue->sum('paid_amount');
@@ -112,12 +112,12 @@ class CollectionController extends Controller
         $monthDue = (float) Document::where('type', 'invoice')
             ->whereDate('due_date', '>=', $monthStart)
             ->whereDate('due_date', '<=', $monthEnd)
-            ->whereNotIn('status', ['draft', 'cancelled'])
+            ->whereNotIn('status', ['draft', 'cancelled', 'pending_approval'])
             ->sum('total');
 
         $overdueCarryOver = (float) Document::where('type', 'invoice')
             ->whereDate('due_date', '<', $monthStart)
-            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->get()
             ->sum(fn ($d) => $d->balance_due);
 
@@ -129,7 +129,7 @@ class CollectionController extends Controller
 
         // --- Total outstanding (all unpaid invoices) ---
         $allUnpaid = Document::where('type', 'invoice')
-            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->get();
 
         $totalOutstanding = (float) $allUnpaid->sum('balance_due');

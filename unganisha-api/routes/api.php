@@ -232,6 +232,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:payments_in.update')->put('/payments-in/{payments_in}', [PaymentInController::class, 'update']);
     Route::middleware('permission:payments_in.delete')->delete('/payments-in/{payments_in}', [PaymentInController::class, 'destroy']);
     Route::middleware('permission:payments_in.resend_receipt')->post('/payments-in/{payments_in}/resend-receipt', [PaymentInController::class, 'resendReceipt']);
+    Route::middleware('permission:payments_in.read')->get('/payments-in/{payments_in}/receipt-pdf', [PaymentInController::class, 'downloadReceipt']);
 
     // Next Bill Schedule
     Route::middleware('permission:client_subscriptions.read')->get('/next-bills', [NextBillController::class, 'index']);
