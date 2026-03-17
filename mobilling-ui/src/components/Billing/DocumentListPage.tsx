@@ -11,7 +11,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconBell, IconMail, IconMessage, IconSend, IconFileSymlink } from '@tabler/icons-react';
 import { useSearchParams } from 'react-router-dom';
-import { getDocuments, getDocument, createDocument, updateDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, mergeInvoices, submitForApproval, approveDocument, rejectDocument, Document, DocumentFormData } from '../../api/documents';
+import { getDocuments, getDocument, createDocument, updateDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, mergeInvoices, submitForApproval, approveDocument, rejectDocument, updateDocumentDueDate, returnDocumentToDraft, Document, DocumentFormData } from '../../api/documents';
 import { getClients, Client } from '../../api/clients';
 import { getProductServices, ProductService } from '../../api/productServices';
 import DocumentTable from './DocumentTable';
@@ -19,6 +19,7 @@ import DocumentForm from './DocumentForm';
 import DocumentView from './DocumentView';
 import { usePermissions } from '../../hooks/usePermissions';
 import { formatCurrency } from '../../utils/formatCurrency';
+import { formatDate } from '../../utils/formatDate';
 
 interface Props {
   type: 'quotation' | 'proforma' | 'invoice';
@@ -41,6 +42,8 @@ export default function DocumentListPage({ type, title }: Props) {
   const [formOpen, setFormOpen] = useState(false);
   const [editDoc, setEditDoc] = useState<Document | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
+  const [dueDateDoc, setDueDateDoc] = useState<Document | null>(null);
+  const [newDueDate, setNewDueDate] = useState<Date | null>(null);
 
   // Auto-open preview from URL query param (?preview=documentId)
   useEffect(() => {
@@ -216,6 +219,48 @@ export default function DocumentListPage({ type, title }: Props) {
     }),
   });
 
+  const dueDateMutation = useMutation({
+    mutationFn: ({ id, due_date }: { id: string; due_date: string }) => updateDocumentDueDate(id, due_date),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setDueDateDoc(null);
+      notifications.show({ title: 'Updated', message: res.data.message, color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to update due date',
+      color: 'red',
+    }),
+  });
+
+  const handleExtendDueDate = (doc: Document) => {
+    setDueDateDoc(doc);
+    setNewDueDate(doc.due_date ? new Date(doc.due_date) : null);
+  };
+
+  const returnToDraftMutation = useMutation({
+    mutationFn: (id: string) => returnDocumentToDraft(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      notifications.show({ title: 'Returned', message: res.data.message, color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to return to draft',
+      color: 'red',
+    }),
+  });
+
+  const handleReturnToDraft = (doc: Document) => {
+    modals.openConfirmModal({
+      title: 'Return to Draft',
+      children: `Return ${doc.document_number} to draft? You will be able to edit it before resending.`,
+      labels: { confirm: 'Return to Draft', cancel: 'Cancel' },
+      confirmProps: { color: 'orange' },
+      onConfirm: () => returnToDraftMutation.mutate(doc.id),
+    });
+  };
+
   const handleSubmitForApproval = (doc: Document) => {
     modals.openConfirmModal({
       title: 'Submit for Approval',
@@ -238,10 +283,10 @@ export default function DocumentListPage({ type, title }: Props) {
 
   const handleReject = (doc: Document) => {
     modals.openConfirmModal({
-      title: 'Reject Document',
-      children: `Reject ${doc.document_number}? It will be returned to draft for editing.`,
-      labels: { confirm: 'Reject', cancel: 'Cancel' },
-      confirmProps: { color: 'red' },
+      title: 'Return to Draft',
+      children: `Return ${doc.document_number} to draft? You can edit and resubmit it.`,
+      labels: { confirm: 'Return to Draft', cancel: 'Cancel' },
+      confirmProps: { color: 'orange' },
       onConfirm: () => rejectMutation.mutate(doc.id),
     });
   };
@@ -417,6 +462,8 @@ export default function DocumentListPage({ type, title }: Props) {
         onSubmitForApproval={handleSubmitForApproval}
         onApprove={handleApprove}
         onReject={handleReject}
+        onExtendDueDate={isInvoice ? handleExtendDueDate : undefined}
+        onReturnToDraft={isInvoice ? handleReturnToDraft : undefined}
         startIndex={meta ? (meta.current_page - 1) * meta.per_page + 1 : 1}
         loading={isLoading}
         selectable={isInvoice}
@@ -487,6 +534,45 @@ export default function DocumentListPage({ type, title }: Props) {
           />
         )}
       </Drawer>
+
+      {/* Extend Due Date Modal */}
+      <Modal opened={!!dueDateDoc} onClose={() => setDueDateDoc(null)} title="Extend Due Date" size="sm">
+        <Stack gap="md">
+          <Text size="sm">
+            <Text span fw={600}>{dueDateDoc?.document_number}</Text> — {dueDateDoc?.client?.name}
+          </Text>
+          {dueDateDoc?.due_date && (
+            <Text size="sm" c="dimmed">
+              Current due date: <Text span fw={500}>{formatDate(dueDateDoc.due_date)}</Text>
+            </Text>
+          )}
+          <DateInput
+            label="New Due Date"
+            placeholder="Select new due date"
+            required
+            value={newDueDate}
+            onChange={(v) => setNewDueDate(v ? new Date(v) : null)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setDueDateDoc(null)}>Cancel</Button>
+            <Button
+              color="cyan"
+              loading={dueDateMutation.isPending}
+              disabled={!newDueDate}
+              onClick={() => {
+                if (dueDateDoc && newDueDate) {
+                  dueDateMutation.mutate({
+                    id: dueDateDoc.id,
+                    due_date: dayjs(newDueDate).format('YYYY-MM-DD'),
+                  });
+                }
+              }}
+            >
+              Update Due Date
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       {/* Remind Modal */}
       <Modal opened={remindOpened} onClose={closeRemind} title="Send Payment Reminder" size="sm">

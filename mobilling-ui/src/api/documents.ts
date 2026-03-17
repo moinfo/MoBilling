@@ -95,6 +95,12 @@ export const approveDocument = (id: string) =>
 export const rejectDocument = (id: string, reason?: string) =>
   api.patch(`/documents/${id}/reject`, { reason });
 
+export const updateDocumentDueDate = (id: string, due_date: string) =>
+  api.patch(`/documents/${id}/due-date`, { due_date });
+
+export const returnDocumentToDraft = (id: string) =>
+  api.patch(`/documents/${id}/return-to-draft`);
+
 // Payments In
 export const getPaymentsIn = (params?: { document_id?: string; page?: number; per_page?: number; search?: string; date_from?: string; date_to?: string }) =>
   api.get('/payments-in', { params });
