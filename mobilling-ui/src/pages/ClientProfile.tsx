@@ -216,8 +216,8 @@ export default function ClientProfile() {
               </Table.Thead>
               <Table.Tbody>
                 {invoices.map((inv) => (
-                  <Table.Tr key={inv.id}>
-                    <Table.Td fw={500}>{inv.document_number}</Table.Td>
+                  <Table.Tr key={inv.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/invoices?preview=${inv.id}`)}>
+                    <Table.Td fw={500} c="blue">{inv.document_number}</Table.Td>
                     <Table.Td c="dimmed" maw={200} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {inv.description || '—'}
                     </Table.Td>
