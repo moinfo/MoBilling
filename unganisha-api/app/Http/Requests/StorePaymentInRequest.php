@@ -17,7 +17,8 @@ class StorePaymentInRequest extends FormRequest
         $methods = $this->allowedPaymentMethods();
 
         return [
-            'document_id' => 'required|uuid|exists:documents,id',
+            'client_id' => 'required|uuid|exists:clients,id',
+            'document_id' => 'nullable|uuid|exists:documents,id',
             'amount' => 'required|numeric|min:0.01',
             'payment_date' => 'required|date',
             'payment_method' => ['required', 'string', Rule::in($methods)],
