@@ -16,7 +16,7 @@ class PaymentInController extends Controller
 {
     public function index(Request $request)
     {
-        $query = PaymentIn::with('document.client');
+        $query = PaymentIn::with(['document.client', 'client', 'receiver']);
 
         if ($request->has('document_id')) {
             $query->where('document_id', $request->document_id);
@@ -48,24 +48,28 @@ class PaymentInController extends Controller
 
     public function store(StorePaymentInRequest $request)
     {
-        $payment = PaymentIn::create($request->validated());
+        $payment = PaymentIn::create(array_merge($request->validated(), [
+            'received_by' => auth()->id(),
+        ]));
 
-        // Update document status
-        $document = Document::find($request->document_id);
-        $totalPaid = $document->payments()->sum('amount');
+        // Update document status if linked to an invoice
+        if ($request->document_id) {
+            $document = Document::find($request->document_id);
+            $totalPaid = $document->payments()->sum('amount');
 
-        if ($totalPaid >= $document->total) {
-            $document->update(['status' => 'paid']);
-            $this->activateLinkedSubscriptions($document);
-        } else {
-            $document->update(['status' => 'partial']);
-        }
+            if ($totalPaid >= $document->total) {
+                $document->update(['status' => 'paid']);
+                $this->activateLinkedSubscriptions($document);
+            } else {
+                $document->update(['status' => 'partial']);
+            }
 
-        // Send payment receipt email to client (refresh to get updated status)
-        $document->refresh();
-        $document->load('client');
-        if ($document->client?->email) {
-            $document->client->notify(new PaymentReceiptNotification($payment, $document));
+            // Send payment receipt email to client
+            $document->refresh();
+            $document->load('client');
+            if ($document->client?->email) {
+                $document->client->notify(new PaymentReceiptNotification($payment, $document));
+            }
         }
 
         return new PaymentInResource($payment);

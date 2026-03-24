@@ -43,6 +43,10 @@ class DocumentController extends Controller
             });
         }
 
+        if ($request->has('client_id')) {
+            $query->where('client_id', $request->client_id);
+        }
+
         if ($request->filled('date_from')) {
             $query->where('date', '>=', $request->date_from);
         }

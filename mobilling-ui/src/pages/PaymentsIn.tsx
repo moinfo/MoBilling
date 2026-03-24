@@ -6,15 +6,16 @@ import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconSearch, IconEdit, IconTrash, IconReceipt, IconFileInvoice, IconEye, IconDownload, IconPaperclip } from '@tabler/icons-react';
-import { getPaymentsIn, updatePaymentIn, deletePaymentIn, resendReceipt, resendInvoice, downloadPaymentReceipt, Payment } from '../api/documents';
+import { IconSearch, IconEdit, IconTrash, IconReceipt, IconFileInvoice, IconEye, IconDownload, IconPaperclip, IconPlus } from '@tabler/icons-react';
+import { getPaymentsIn, getDocuments, createPaymentIn, updatePaymentIn, deletePaymentIn, resendReceipt, resendInvoice, downloadPaymentReceipt, Payment } from '../api/documents';
+import { getClients } from '../api/clients';
 import { usePaymentMethods } from '../hooks/usePaymentMethods';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import dayjs from 'dayjs';
 
-type PaymentWithDoc = Payment & { document?: { document_number: string; type: string; total: string; client?: { name: string; email: string } } };
+type PaymentWithDoc = Payment & { document?: { document_number: string; type: string; total: string; client?: { name: string; email: string } } | null };
 
 export default function PaymentsIn() {
   const queryClient = useQueryClient();
@@ -28,6 +29,7 @@ export default function PaymentsIn() {
   const [dateTo, setDateTo] = useState<string>(today);
   const [editPayment, setEditPayment] = useState<PaymentWithDoc | null>(null);
   const [viewPayment, setViewPayment] = useState<PaymentWithDoc | null>(null);
+  const [addDrawerOpen, setAddDrawerOpen] = useState(false);
 
   const { methods: paymentMethods } = usePaymentMethods();
 
@@ -44,6 +46,61 @@ export default function PaymentsIn() {
   const payments: PaymentWithDoc[] = data?.data?.data || [];
   const meta = data?.data?.meta;
 
+  const addForm = useForm({
+    initialValues: {
+      client_id: '',
+      document_id: '',
+      amount: 0,
+      payment_date: new Date(),
+      payment_method: 'bank',
+      reference: '',
+      notes: '',
+    },
+  });
+
+  // Fetch clients for the add form
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients-list'],
+    queryFn: () => getClients({ per_page: 500 }),
+    enabled: addDrawerOpen,
+  });
+  const clientOptions = (clientsData?.data?.data || []).map((c: any) => ({ value: c.id, label: c.name }));
+
+  // Fetch unpaid invoices for selected client
+  const selectedClientId = addForm.values.client_id;
+  const { data: invoicesData } = useQuery({
+    queryKey: ['client-unpaid-invoices', selectedClientId],
+    queryFn: () => getDocuments({ type: 'invoice', status: 'sent', client_id: selectedClientId, per_page: 100 }),
+    enabled: !!selectedClientId,
+  });
+  const invoiceOptions = [
+    { value: '', label: '— No invoice (standalone payment) —' },
+    ...(invoicesData?.data?.data || []).map((d: any) => ({
+      value: d.id,
+      label: `${d.document_number} — ${formatCurrency(d.total)} (due: ${formatCurrency(d.balance_due)})`,
+    })),
+  ];
+
+  const createMutation = useMutation({
+    mutationFn: (values: typeof addForm.values) => createPaymentIn({
+      client_id: values.client_id,
+      document_id: values.document_id || undefined,
+      amount: values.amount,
+      payment_date: dayjs(values.payment_date).format('YYYY-MM-DD'),
+      payment_method: values.payment_method,
+      reference: values.reference || undefined,
+      notes: values.notes || undefined,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['payments-in'] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      setAddDrawerOpen(false);
+      addForm.reset();
+      notifications.show({ title: 'Success', message: 'Payment recorded', color: 'green' });
+    },
+    onError: () => notifications.show({ title: 'Error', message: 'Failed to record payment', color: 'red' }),
+  });
+
   const editForm = useForm({
     initialValues: {
       amount: 0,
@@ -56,7 +113,8 @@ export default function PaymentsIn() {
 
   const updateMutation = useMutation({
     mutationFn: (values: any) => updatePaymentIn(editPayment!.id, {
-      document_id: editPayment!.document_id,
+      client_id: editPayment!.client_id!,
+      document_id: editPayment!.document_id || undefined,
       amount: values.amount,
       payment_date: dayjs(values.payment_date).format('YYYY-MM-DD'),
       payment_method: values.payment_method,
@@ -126,6 +184,11 @@ export default function PaymentsIn() {
     <>
       <Group justify="space-between" mb="md">
         <Title order={2}>Payments Received</Title>
+        {can('payments_in.create') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setAddDrawerOpen(true)}>
+            Add Payment
+          </Button>
+        )}
       </Group>
 
       <Group mb="md" wrap="wrap" align="flex-end">
@@ -170,6 +233,7 @@ export default function PaymentsIn() {
                 <Table.Th>Amount</Table.Th>
                 <Table.Th>Method</Table.Th>
                 <Table.Th>Reference</Table.Th>
+                <Table.Th>Received By</Table.Th>
                 <Table.Th w={170}>Actions</Table.Th>
               </Table.Tr>
             </Table.Thead>
@@ -179,7 +243,7 @@ export default function PaymentsIn() {
                 <Table.Td><Text size="sm" c="dimmed">{(meta ? (meta.current_page - 1) * meta.per_page : 0) + index + 1}</Text></Table.Td>
                 <Table.Td>{formatDate(p.payment_date)}</Table.Td>
                 <Table.Td fw={500}>{p.document?.document_number || '—'}</Table.Td>
-                <Table.Td>{p.document?.client?.name || '—'}</Table.Td>
+                <Table.Td>{p.document?.client?.name || p.client?.name || '—'}</Table.Td>
                 <Table.Td fw={500}>{formatCurrency(p.amount)}</Table.Td>
                 <Table.Td>
                   <Badge variant="light" size="sm">
@@ -187,6 +251,9 @@ export default function PaymentsIn() {
                   </Badge>
                 </Table.Td>
                 <Table.Td>{p.reference || '—'}</Table.Td>
+                <Table.Td>
+                  <Text size="sm">{p.received_by?.name || '—'}</Text>
+                </Table.Td>
                 <Table.Td>
                   <Group gap={4} wrap="nowrap">
                     <Tooltip label="Preview">
@@ -255,7 +322,7 @@ export default function PaymentsIn() {
                 </Group>
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">Client</Text>
-                  <Text fw={500}>{viewPayment.document?.client?.name || '—'}</Text>
+                  <Text fw={500}>{viewPayment.document?.client?.name || viewPayment.client?.name || '—'}</Text>
                 </Group>
                 <Divider />
                 <Group justify="space-between">
@@ -287,6 +354,12 @@ export default function PaymentsIn() {
                   <Text size="sm" c="dimmed">Invoice Total</Text>
                   <Text>{viewPayment.document?.total ? formatCurrency(viewPayment.document.total) : '—'}</Text>
                 </Group>
+                {viewPayment.received_by && (
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">Received By</Text>
+                    <Text>{viewPayment.received_by.name}</Text>
+                  </Group>
+                )}
               </Stack>
             </Paper>
 
@@ -323,6 +396,51 @@ export default function PaymentsIn() {
             </Group>
           </Stack>
         )}
+      </Drawer>
+
+      {/* Add Payment Drawer */}
+      <Drawer
+        opened={addDrawerOpen}
+        onClose={() => { setAddDrawerOpen(false); addForm.reset(); }}
+        title="Add Payment"
+        position="right"
+        size="md"
+      >
+        <form onSubmit={addForm.onSubmit((values) => createMutation.mutate(values))}>
+          <Stack>
+            <Select
+              label="Client"
+              placeholder="Select a client"
+              data={clientOptions}
+              searchable
+              required
+              {...addForm.getInputProps('client_id')}
+              onChange={(v) => {
+                addForm.setFieldValue('client_id', v || '');
+                addForm.setFieldValue('document_id', '');
+              }}
+            />
+            {selectedClientId && (
+              <Select
+                label="Invoice (optional)"
+                placeholder="Link to an invoice or leave empty"
+                data={invoiceOptions}
+                searchable
+                clearable
+                {...addForm.getInputProps('document_id')}
+              />
+            )}
+            <NumberInput label="Amount" min={0.01} decimalScale={2} required {...addForm.getInputProps('amount')} />
+            <DateInput label="Payment Date" required {...addForm.getInputProps('payment_date')} />
+            <Select label="Method" data={paymentMethods} {...addForm.getInputProps('payment_method')} />
+            <TextInput label="Reference" placeholder="Transaction ref / M-Pesa code" {...addForm.getInputProps('reference')} />
+            <Textarea label="Notes" {...addForm.getInputProps('notes')} />
+            <Group justify="flex-end">
+              <Button variant="light" onClick={() => { setAddDrawerOpen(false); addForm.reset(); }}>Cancel</Button>
+              <Button type="submit" loading={createMutation.isPending}>Record Payment</Button>
+            </Group>
+          </Stack>
+        </form>
       </Drawer>
 
       {/* Edit Payment Drawer */}

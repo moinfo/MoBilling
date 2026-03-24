@@ -14,14 +14,24 @@ class PaymentIn extends Model
     protected $table = 'payments_in';
 
     protected $fillable = [
-        'tenant_id', 'document_id', 'amount', 'payment_date',
-        'payment_method', 'reference', 'notes', 'attachment_path',
+        'tenant_id', 'client_id', 'document_id', 'amount', 'payment_date',
+        'payment_method', 'reference', 'notes', 'attachment_path', 'received_by',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
         'payment_date' => 'date',
     ];
+
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
+    public function receiver()
+    {
+        return $this->belongsTo(User::class, 'received_by');
+    }
 
     public function document()
     {

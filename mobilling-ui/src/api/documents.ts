@@ -44,13 +44,16 @@ export interface Document {
 
 export interface Payment {
   id: string;
-  document_id: string;
+  client_id: string | null;
+  document_id: string | null;
   amount: string;
   payment_date: string;
   payment_method: string;
   reference: string | null;
   notes: string | null;
   attachment_url: string | null;
+  client?: { name: string; email: string } | null;
+  received_by?: { id: string; name: string } | null;
   created_at: string;
 }
 
@@ -63,7 +66,7 @@ export interface DocumentFormData {
   items: DocumentItem[];
 }
 
-export const getDocuments = (params?: { type?: string; search?: string; page?: number; status?: string; per_page?: number; date_from?: string; date_to?: string }) =>
+export const getDocuments = (params?: { type?: string; search?: string; page?: number; status?: string; per_page?: number; date_from?: string; date_to?: string; client_id?: string }) =>
   api.get('/documents', { params });
 
 export const getDocument = (id: string) =>
@@ -119,7 +122,8 @@ export const getPaymentsIn = (params?: { document_id?: string; page?: number; pe
   api.get('/payments-in', { params });
 
 export const createPaymentIn = (data: {
-  document_id: string;
+  client_id: string;
+  document_id?: string;
   amount: number;
   payment_date: string;
   payment_method: string;
@@ -128,7 +132,8 @@ export const createPaymentIn = (data: {
 }) => api.post('/payments-in', data);
 
 export const updatePaymentIn = (id: string, data: {
-  document_id: string;
+  client_id: string;
+  document_id?: string;
   amount: number;
   payment_date: string;
   payment_method: string;

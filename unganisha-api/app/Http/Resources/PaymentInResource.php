@@ -11,6 +11,7 @@ class PaymentInResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'client_id' => $this->client_id,
             'document_id' => $this->document_id,
             'amount' => $this->amount,
             'payment_date' => $this->payment_date?->format('Y-m-d'),
@@ -20,7 +21,15 @@ class PaymentInResource extends JsonResource
             'attachment_url' => $this->attachment_path
                 ? url('storage/' . $this->attachment_path)
                 : null,
-            'document' => $this->whenLoaded('document', fn () => [
+            'client' => $this->whenLoaded('client', fn () => [
+                'name' => $this->client->name,
+                'email' => $this->client->email,
+            ]),
+            'received_by' => $this->whenLoaded('receiver', fn () => $this->receiver ? [
+                'id' => $this->receiver->id,
+                'name' => $this->receiver->name,
+            ] : null),
+            'document' => $this->whenLoaded('document', fn () => $this->document ? [
                 'document_number' => $this->document->document_number,
                 'type' => $this->document->type,
                 'total' => $this->document->total,
@@ -28,7 +37,7 @@ class PaymentInResource extends JsonResource
                     'name' => $this->document->client->name,
                     'email' => $this->document->client->email,
                 ] : null,
-            ]),
+            ] : null),
             'created_at' => $this->created_at,
         ];
     }
