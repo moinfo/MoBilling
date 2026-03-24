@@ -161,6 +161,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     try {
       setLoading('payment');
       await createPaymentIn({
+        client_id: doc.client_id,
         document_id: doc.id,
         amount: values.amount,
         payment_date: dayjs(values.payment_date).format('YYYY-MM-DD'),
