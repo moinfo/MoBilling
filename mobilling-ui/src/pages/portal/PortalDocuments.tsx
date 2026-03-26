@@ -247,9 +247,25 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
                     </Table.Td>
                     <Table.Td>{fmtDate(doc.date)}</Table.Td>
                     <Table.Td>
-                      <Text size="sm" c={isDueDatePast(doc.due_date) && hasBalance ? 'red' : undefined} fw={isDueDatePast(doc.due_date) && hasBalance ? 600 : undefined}>
-                        {fmtDate(doc.due_date)}
-                      </Text>
+                      {doc.due_date ? (() => {
+                        const daysLeft = Math.ceil((new Date(doc.due_date).getTime() - Date.now()) / 86400000);
+                        return (
+                          <>
+                            <Text size="sm" c={daysLeft < 0 && hasBalance ? 'red' : undefined} fw={daysLeft < 0 && hasBalance ? 600 : undefined}>
+                              {fmtDate(doc.due_date)}
+                            </Text>
+                            {hasBalance && (
+                              <Badge
+                                variant="light"
+                                size="xs"
+                                color={daysLeft < 0 ? 'red' : daysLeft <= 3 ? 'orange' : daysLeft <= 7 ? 'yellow' : 'blue'}
+                              >
+                                {daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? 'Due today' : `${daysLeft}d left`}
+                              </Badge>
+                            )}
+                          </>
+                        );
+                      })() : '-'}
                     </Table.Td>
                     {isInvoice ? (
                       <>
