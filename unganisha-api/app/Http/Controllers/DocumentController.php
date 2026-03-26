@@ -555,7 +555,7 @@ class DocumentController extends Controller
         $tenant = Tenant::find(auth()->user()->tenant_id);
         $documents = Document::whereIn('id', $request->document_ids)
             ->where('type', 'invoice')
-            ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+            ->whereIn('status', ['sent', 'overdue', 'partial'])
             ->with('client')
             ->get();
 

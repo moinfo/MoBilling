@@ -1,5 +1,5 @@
-import { Table, ActionIcon, Group, Text, Anchor, Badge, Loader, Center } from '@mantine/core';
-import { IconEdit, IconTrash, IconEye } from '@tabler/icons-react';
+import { Table, ActionIcon, Group, Text, Anchor, Badge, Loader, Center, Tooltip } from '@mantine/core';
+import { IconEdit, IconTrash, IconEye, IconLogin, IconKey } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { Client } from '../../api/clients';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -9,11 +9,13 @@ interface Props {
   clients: Client[];
   onEdit: (client: Client) => void;
   onDelete: (client: Client) => void;
+  onPortalLogin?: (client: Client) => void;
+  onChangePassword?: (client: Client) => void;
   startIndex?: number;
   loading?: boolean;
 }
 
-export default function ClientTable({ clients, onEdit, onDelete, startIndex = 1, loading }: Props) {
+export default function ClientTable({ clients, onEdit, onDelete, onPortalLogin, onChangePassword, startIndex = 1, loading }: Props) {
   const navigate = useNavigate();
   const { can } = usePermissions();
 
@@ -35,7 +37,7 @@ export default function ClientTable({ clients, onEdit, onDelete, startIndex = 1,
             <Table.Th>Phone</Table.Th>
             <Table.Th ta="center">Subscriptions</Table.Th>
             {can('client_profile.subscription_value') && <Table.Th ta="right">Sub. Amount</Table.Th>}
-            <Table.Th w={120}>Actions</Table.Th>
+            <Table.Th w={180}>Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -69,18 +71,38 @@ export default function ClientTable({ clients, onEdit, onDelete, startIndex = 1,
               )}
               <Table.Td>
                 <Group gap="xs" wrap="nowrap">
-                  <ActionIcon variant="light" color="gray" onClick={() => navigate(`/clients/${client.id}`)}>
-                    <IconEye size={16} />
-                  </ActionIcon>
-                  {can('clients.update') && (
-                    <ActionIcon variant="light" onClick={() => onEdit(client)}>
-                      <IconEdit size={16} />
+                  <Tooltip label="View Profile">
+                    <ActionIcon variant="light" color="gray" onClick={() => navigate(`/clients/${client.id}`)}>
+                      <IconEye size={16} />
                     </ActionIcon>
+                  </Tooltip>
+                  {can('clients.portal_login') && onPortalLogin && (
+                    <Tooltip label="Login as Client">
+                      <ActionIcon variant="light" color="violet" onClick={() => onPortalLogin(client)}>
+                        <IconLogin size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                  {can('clients.portal_password') && onChangePassword && (
+                    <Tooltip label="Change Portal Password">
+                      <ActionIcon variant="light" color="orange" onClick={() => onChangePassword(client)}>
+                        <IconKey size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                  {can('clients.update') && (
+                    <Tooltip label="Edit">
+                      <ActionIcon variant="light" onClick={() => onEdit(client)}>
+                        <IconEdit size={16} />
+                      </ActionIcon>
+                    </Tooltip>
                   )}
                   {can('clients.delete') && (
-                    <ActionIcon variant="light" color="red" onClick={() => onDelete(client)}>
-                      <IconTrash size={16} />
-                    </ActionIcon>
+                    <Tooltip label="Delete">
+                      <ActionIcon variant="light" color="red" onClick={() => onDelete(client)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Tooltip>
                   )}
                 </Group>
               </Table.Td>

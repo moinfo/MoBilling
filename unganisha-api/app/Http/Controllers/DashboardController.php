@@ -183,6 +183,22 @@ class DashboardController extends Controller
                     };
                 }
 
+                // Skip forward past dates that already have a paid invoice
+                $cycleIntervals = [
+                    'weekly' => '1 week', 'monthly' => '1 month', 'quarterly' => '3 months',
+                    'semi_annual' => '6 months', 'annual' => '1 year', 'yearly' => '1 year',
+                ];
+                $interval = $cycleIntervals[$cycle] ?? '1 month';
+                while (
+                    \App\Models\RecurringInvoiceLog::where('client_id', $sub->client_id)
+                        ->where('product_service_id', $sub->product_service_id)
+                        ->where('next_bill_date', $nextBill->format('Y-m-d'))
+                        ->whereHas('document', fn ($q) => $q->where('status', 'paid'))
+                        ->exists()
+                ) {
+                    $nextBill->add($interval);
+                }
+
                 return [
                     'client_name' => $sub->client?->name ?? 'Unknown',
                     'product_name' => $sub->productService?->name ?? 'Unknown',

@@ -381,6 +381,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::put('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'update']);
         Route::delete('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'destroy']);
     });
+    Route::middleware('permission:clients.portal_login')
+        ->post('/clients/{client}/portal-login', [ClientPortalUserController::class, 'impersonate']);
+    Route::middleware('permission:clients.portal_password')
+        ->post('/clients/{client}/portal-password', [ClientPortalUserController::class, 'changePassword']);
 
     // SMS (tenant)
     Route::get('/sms/packages', [SmsPurchaseController::class, 'packages']);
@@ -401,6 +405,7 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/documents/{document}', [PortalDocumentController::class, 'show']);
     Route::post('/documents/{document}/resend', [PortalDocumentController::class, 'resend']);
     Route::get('/payments', [PortalPaymentController::class, 'index']);
+    Route::get('/payments/{payment}/receipt', [PortalPaymentController::class, 'downloadReceipt']);
     Route::get('/statement', [PortalStatementController::class, 'index']);
     Route::get('/products-services', [PortalProductServiceController::class, 'index']);
     Route::get('/subscriptions', [PortalSubscriptionController::class, 'index']);

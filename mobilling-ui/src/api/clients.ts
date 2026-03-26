@@ -73,7 +73,11 @@ export interface ClientProfile {
     description?: string | null;
     date: string;
     due_date: string | null;
+    subtotal: number;
+    late_fee: number;
     total: string;
+    paid_amount: number;
+    balance_due: number;
     status: string;
   }[];
   payments: {
@@ -112,3 +116,9 @@ export const updateClientPortalUser = (clientId: string, userId: string, data: P
 
 export const deleteClientPortalUser = (clientId: string, userId: string) =>
   api.delete(`/clients/${clientId}/portal-users/${userId}`);
+
+export const portalLoginAsClient = (clientId: string) =>
+  api.post<{ user: any; token: string; user_type: string; permissions: string[]; message: string }>(`/clients/${clientId}/portal-login`);
+
+export const changePortalPassword = (clientId: string, password: string, portalUserId?: string) =>
+  api.post<{ message: string }>(`/clients/${clientId}/portal-password`, { password, portal_user_id: portalUserId });

@@ -39,6 +39,17 @@ class NextBillController extends Controller
 
             $nextBillDate = $this->calculateNextBillDate($sub->start_date, $interval, $today);
 
+            // Skip forward past dates that already have a paid invoice
+            while (
+                RecurringInvoiceLog::where('client_id', $sub->client_id)
+                    ->where('product_service_id', $sub->product_service_id)
+                    ->where('next_bill_date', $nextBillDate->format('Y-m-d'))
+                    ->whereHas('document', fn ($q) => $q->where('status', 'paid'))
+                    ->exists()
+            ) {
+                $nextBillDate->add($interval);
+            }
+
             // Find last invoice date from recurring log
             $lastLog = RecurringInvoiceLog::where('client_id', $sub->client_id)
                 ->where('product_service_id', $sub->product_service_id)

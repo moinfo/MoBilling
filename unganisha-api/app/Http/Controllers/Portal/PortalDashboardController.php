@@ -91,6 +91,18 @@ class PortalDashboardController extends Controller
                     while ($next->lte($today)) {
                         $next->add($cycleIntervals[$cycle]);
                     }
+
+                    // Skip forward past dates that already have a paid invoice
+                    while (
+                        \App\Models\RecurringInvoiceLog::where('client_id', $sub->client_id)
+                            ->where('product_service_id', $sub->product_service_id)
+                            ->where('next_bill_date', $next->format('Y-m-d'))
+                            ->whereHas('document', fn ($q) => $q->where('status', 'paid'))
+                            ->exists()
+                    ) {
+                        $next->add($cycleIntervals[$cycle]);
+                    }
+
                     $nextDate = $next->format('Y-m-d');
                 }
 

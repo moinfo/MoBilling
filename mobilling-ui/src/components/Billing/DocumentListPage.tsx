@@ -98,8 +98,8 @@ export default function DocumentListPage({ type, title }: Props) {
   const clients: Client[] = clientsData?.data?.data || [];
   const productServices: ProductService[] = psData?.data?.data || [];
 
-  // Unpaid invoices for "Remind All"
-  const unpaidDocs = documents.filter((d: Document) => d.status !== 'paid' && d.status !== 'draft');
+  // Unpaid invoices for "Remind All" — only sent, overdue, partial
+  const unpaidDocs = documents.filter((d: Document) => ['sent', 'overdue', 'partial'].includes(d.status));
 
   const createMutation = useMutation({
     mutationFn: (values: DocumentFormData) => createDocument(values),
