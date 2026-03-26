@@ -28,12 +28,12 @@ class PortalSubscriptionController extends Controller
 
         $subscriptions = ClientSubscription::where('client_id', $clientId)
             ->with('productService:id,name,type,price,billing_cycle')
-            ->orderByDesc('start_date')
+            ->orderBy('expire_date')
             ->get()
             ->map(function ($sub) {
                 $cycle = $sub->productService?->billing_cycle;
                 $sub->billing_cycle = $cycle;
-                $sub->next_invoice_date = $this->calculateNextBillDate($sub->start_date, $cycle);
+                $sub->next_invoice_date = $this->calculateNextDueDate($sub);
                 return $sub;
             });
 
@@ -118,18 +118,28 @@ class PortalSubscriptionController extends Controller
         });
     }
 
-    private function calculateNextBillDate($startDate, ?string $cycle): ?string
+    private function calculateNextDueDate(ClientSubscription $sub): ?string
     {
+        $cycle = $sub->productService?->billing_cycle;
         if (!$cycle || $cycle === 'once' || !isset(self::CYCLE_INTERVALS[$cycle])) {
             return null;
         }
 
-        $start = Carbon::parse($startDate);
-        $interval = self::CYCLE_INTERVALS[$cycle];
-        $today = Carbon::today();
-        $next = $start->copy();
+        // Use expire_date as the next due date if available
+        if ($sub->expire_date) {
+            $next = Carbon::parse($sub->expire_date);
+            // If expire_date is in the past, walk forward
+            $interval = self::CYCLE_INTERVALS[$cycle];
+            while ($next->lt(Carbon::today())) {
+                $next->add($interval);
+            }
+            return $next->format('Y-m-d');
+        }
 
-        while ($next->lte($today)) {
+        // Fallback: calculate from start_date
+        $interval = self::CYCLE_INTERVALS[$cycle];
+        $next = Carbon::parse($sub->start_date)->copy();
+        while ($next->lte(Carbon::today())) {
             $next->add($interval);
         }
 
