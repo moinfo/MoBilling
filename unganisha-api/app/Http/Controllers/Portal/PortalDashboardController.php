@@ -86,21 +86,19 @@ class PortalDashboardController extends Controller
                 $nextDate = null;
 
                 if ($cycle && $cycle !== 'once' && isset($cycleIntervals[$cycle])) {
-                    $next = Carbon::parse($sub->start_date);
-                    $today = Carbon::today();
-                    while ($next->lte($today)) {
-                        $next->add($cycleIntervals[$cycle]);
-                    }
+                    $interval = $cycleIntervals[$cycle];
 
-                    // Skip forward past dates that already have a paid invoice
-                    while (
-                        \App\Models\RecurringInvoiceLog::where('client_id', $sub->client_id)
-                            ->where('product_service_id', $sub->product_service_id)
-                            ->where('next_bill_date', $next->format('Y-m-d'))
-                            ->whereHas('document', fn ($q) => $q->where('status', 'paid'))
-                            ->exists()
-                    ) {
-                        $next->add($cycleIntervals[$cycle]);
+                    // Use expire_date if available, otherwise fall back to start_date
+                    if ($sub->expire_date) {
+                        $next = Carbon::parse($sub->expire_date);
+                        while ($next->lt(Carbon::today())) {
+                            $next->add($interval);
+                        }
+                    } else {
+                        $next = Carbon::parse($sub->start_date);
+                        while ($next->lte(Carbon::today())) {
+                            $next->add($interval);
+                        }
                     }
 
                     $nextDate = $next->format('Y-m-d');
