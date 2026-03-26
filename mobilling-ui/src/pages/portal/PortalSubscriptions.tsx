@@ -69,7 +69,8 @@ export default function PortalSubscriptions() {
                 <Table.Th ta="right">Price</Table.Th>
                 <Table.Th>Schedule</Table.Th>
                 <Table.Th>Start Date</Table.Th>
-                <Table.Th>Next Invoice</Table.Th>
+                <Table.Th>Expire Date</Table.Th>
+                <Table.Th>Next Due</Table.Th>
                 <Table.Th ta="right">Days Left</Table.Th>
                 <Table.Th>Status</Table.Th>
                 <Table.Th ta="center">Action</Table.Th>
@@ -92,6 +93,9 @@ export default function PortalSubscriptions() {
                       </Badge>
                     </Table.Td>
                     <Table.Td>{fmtDate(s.start_date)}</Table.Td>
+                    <Table.Td>
+                      {s.expire_date ? fmtDate(s.expire_date) : '-'}
+                    </Table.Td>
                     <Table.Td>{s.status === 'active' ? fmtDate(s.next_invoice_date) : '-'}</Table.Td>
                     <Table.Td ta="right">
                       {daysLeft !== null && (
@@ -129,7 +133,7 @@ export default function PortalSubscriptions() {
               })}
               {subs.length === 0 && (
                 <Table.Tr>
-                  <Table.Td colSpan={10} ta="center" c="dimmed">No subscriptions found</Table.Td>
+                  <Table.Td colSpan={11} ta="center" c="dimmed">No subscriptions found</Table.Td>
                 </Table.Tr>
               )}
             </Table.Tbody>
