@@ -48,27 +48,53 @@ export default function PortalDashboard() {
                     <Table.Th>Description</Table.Th>
                     <Table.Th ta="right">Total</Table.Th>
                     <Table.Th ta="right">Balance</Table.Th>
+                    <Table.Th>Due Date</Table.Th>
                     <Table.Th>Status</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {d.recent_invoices.map((inv) => (
-                    <Table.Tr key={inv.id} onClick={() => navigate('/portal/invoices')} style={{ cursor: 'pointer' }}>
-                      <Table.Td>{inv.document_number}</Table.Td>
-                      <Table.Td c="dimmed" maw={180} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {(inv as any).description || '-'}
-                      </Table.Td>
-                      <Table.Td ta="right">{fmt(inv.total)}</Table.Td>
-                      <Table.Td ta="right" fw={600} c={inv.balance > 0 ? 'red' : undefined}>
-                        {fmt(inv.balance)}
-                      </Table.Td>
-                      <Table.Td>
-                        <Badge color={statusColor[inv.status] || 'gray'} variant="light" size="sm">
-                          {inv.status}
-                        </Badge>
-                      </Table.Td>
-                    </Table.Tr>
-                  ))}
+                  {d.recent_invoices.map((inv) => {
+                    const dueDate = (inv as any).due_date;
+                    const daysLeft = dueDate
+                      ? Math.ceil((new Date(dueDate).getTime() - Date.now()) / 86400000)
+                      : null;
+                    const hasBalance = inv.balance > 0;
+                    return (
+                      <Table.Tr key={inv.id} onClick={() => navigate('/portal/invoices')} style={{ cursor: 'pointer' }}>
+                        <Table.Td>{inv.document_number}</Table.Td>
+                        <Table.Td c="dimmed" maw={180} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {(inv as any).description || '-'}
+                        </Table.Td>
+                        <Table.Td ta="right">{fmt(inv.total)}</Table.Td>
+                        <Table.Td ta="right" fw={600} c={hasBalance ? 'red' : undefined}>
+                          {fmt(inv.balance)}
+                        </Table.Td>
+                        <Table.Td>
+                          {dueDate ? (
+                            <>
+                              <Text size="sm" c={daysLeft !== null && daysLeft < 0 && hasBalance ? 'red' : undefined}>
+                                {fmtDate(dueDate)}
+                              </Text>
+                              {hasBalance && daysLeft !== null && (
+                                <Badge
+                                  variant="light"
+                                  size="xs"
+                                  color={daysLeft < 0 ? 'red' : daysLeft <= 3 ? 'orange' : daysLeft <= 7 ? 'yellow' : 'blue'}
+                                >
+                                  {daysLeft < 0 ? `${Math.abs(daysLeft)}d overdue` : daysLeft === 0 ? 'Due today' : `${daysLeft}d left`}
+                                </Badge>
+                              )}
+                            </>
+                          ) : '-'}
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge color={statusColor[inv.status] || 'gray'} variant="light" size="sm">
+                            {inv.status}
+                          </Badge>
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
                 </Table.Tbody>
               </Table>
             </Paper>
