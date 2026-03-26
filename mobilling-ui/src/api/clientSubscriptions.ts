@@ -10,6 +10,8 @@ export interface ClientSubscription {
   price?: string;
   label: string | null;
   quantity: number;
+  discount_type?: 'percent' | 'fixed' | null;
+  discount_value?: number;
   start_date: string;
   expire_date?: string;
   status: 'active' | 'cancelled' | 'suspended';
@@ -30,12 +32,15 @@ export interface BulkSubscriptionItem {
   product_service_id: string;
   label: string;
   quantity: number;
+  discount_type: 'percent' | 'fixed';
+  discount_value: number;
 }
 
 export interface BulkSubscriptionFormData {
   client_id: string;
   start_date: string;
   status: string;
+  send_email?: boolean;
   items: BulkSubscriptionItem[];
 }
 

@@ -19,6 +19,8 @@ class ClientSubscriptionResource extends JsonResource
             'price' => $this->whenLoaded('productService', fn () => $this->productService->price),
             'label' => $this->label,
             'quantity' => $this->quantity,
+            'discount_type' => $this->discount_type,
+            'discount_value' => $this->discount_value,
             'start_date' => $this->start_date?->format('Y-m-d'),
             'expire_date' => $this->expire_date?->format('Y-m-d'),
             'status' => $this->status,

@@ -18,6 +18,8 @@ class StoreClientSubscriptionRequest extends FormRequest
             'product_service_id' => 'required|uuid|exists:product_services,id',
             'label' => 'nullable|string|max:255',
             'quantity' => 'integer|min:1',
+            'discount_type' => 'nullable|in:percent,fixed',
+            'discount_value' => 'nullable|numeric|min:0',
             'start_date' => 'required|date',
             'status' => 'in:pending,active,cancelled,suspended',
             'metadata' => 'nullable|array',

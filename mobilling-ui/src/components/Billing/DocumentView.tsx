@@ -1,4 +1,4 @@
-import { Card, Group, Text, Badge, Checkbox, Table, Divider, Button, Stack, NumberInput, Select, TextInput, Textarea, Alert, ActionIcon, CopyButton, Tooltip, Paper } from '@mantine/core';
+import { Card, Group, Text, Badge, Checkbox, Table, Divider, Button, Stack, NumberInput, Select, TextInput, Textarea, Alert, ActionIcon, CopyButton, Tooltip, Paper, Modal } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
@@ -35,6 +35,9 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
   const tenant = user?.tenant;
   const [showPayment, setShowPayment] = useState(false);
   const [loading, setLoading] = useState('');
+  const [showSendConfirm, setShowSendConfirm] = useState(false);
+  const [showApproveConfirm, setShowApproveConfirm] = useState(false);
+  const [sendEmail, setSendEmail] = useState(true);
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
 
   const paymentForm = useForm({
@@ -137,24 +140,18 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     }
   };
 
-  const handleSend = () => {
-    modals.openConfirmModal({
-      title: 'Send Document',
-      children: `Send ${doc.document_number} to ${doc.client?.email || 'client'}?`,
-      labels: { confirm: 'Send', cancel: 'Cancel' },
-      onConfirm: async () => {
-        try {
-          setLoading('send');
-          await sendDocument(doc.id);
-          notifications.show({ title: 'Success', message: 'Document sent', color: 'green' });
-          onRefresh();
-        } catch (err: any) {
-          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Send failed', color: 'red' });
-        } finally {
-          setLoading('');
-        }
-      },
-    });
+  const handleSendConfirm = async () => {
+    try {
+      setLoading('send');
+      await sendDocument(doc.id, sendEmail);
+      notifications.show({ title: 'Success', message: sendEmail ? 'Document sent' : 'Status updated (email not sent)', color: 'green' });
+      setShowSendConfirm(false);
+      onRefresh();
+    } catch (err: any) {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Send failed', color: 'red' });
+    } finally {
+      setLoading('');
+    }
   };
 
   const handlePayment = async (values: any) => {
@@ -242,25 +239,18 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     });
   };
 
-  const handleApprove = () => {
-    modals.openConfirmModal({
-      title: 'Approve & Send',
-      children: `Approve ${doc.document_number}? This will send it to ${doc.client?.name || 'the client'}.`,
-      labels: { confirm: 'Approve & Send', cancel: 'Cancel' },
-      confirmProps: { color: 'green' },
-      onConfirm: async () => {
-        try {
-          setLoading('approve');
-          await approveDocument(doc.id);
-          notifications.show({ title: 'Approved', message: `${doc.document_number} approved and sent`, color: 'green' });
-          onRefresh();
-        } catch (err: any) {
-          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to approve', color: 'red' });
-        } finally {
-          setLoading('');
-        }
-      },
-    });
+  const handleApproveConfirm = async () => {
+    try {
+      setLoading('approve');
+      await approveDocument(doc.id, sendEmail);
+      notifications.show({ title: 'Approved', message: sendEmail ? `${doc.document_number} approved and sent` : `${doc.document_number} approved (email not sent)`, color: 'green' });
+      setShowApproveConfirm(false);
+      onRefresh();
+    } catch (err: any) {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to approve', color: 'red' });
+    } finally {
+      setLoading('');
+    }
   };
 
   const handleReject = () => {
@@ -443,7 +433,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
         {doc.status === 'pending_approval' && can('documents.approve') && (
           <>
             <Button color="green" leftSection={<IconCheck size={16} />}
-              onClick={handleApprove} loading={loading === 'approve'}>
+              onClick={() => { setSendEmail(true); setShowApproveConfirm(true); }} loading={loading === 'approve'}>
               Approve & Send
             </Button>
             <Button variant="light" color="red" leftSection={<IconArrowBack size={16} />}
@@ -454,7 +444,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
         )}
         {can('documents.send') && doc.status !== 'draft' && doc.status !== 'pending_approval' && (
           <Button variant="light" leftSection={<IconSend size={16} />}
-            onClick={handleSend} loading={loading === 'send'}>
+            onClick={() => { setSendEmail(true); setShowSendConfirm(true); }} loading={loading === 'send'}>
             Send Email
           </Button>
         )}
@@ -710,6 +700,42 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           </form>
         </Card>
       )}
+
+      {/* Send Confirm Modal */}
+      <Modal opened={showSendConfirm} onClose={() => setShowSendConfirm(false)} title="Send Document" size="sm">
+        <Stack>
+          <Text size="sm">Send {doc.document_number} to {doc.client?.name || 'client'}?</Text>
+          <Checkbox
+            label="Send invoice to client via email/SMS"
+            checked={sendEmail}
+            onChange={(e) => setSendEmail(e.currentTarget.checked)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setShowSendConfirm(false)}>Cancel</Button>
+            <Button onClick={handleSendConfirm} loading={loading === 'send'}>
+              {sendEmail ? 'Send' : 'Update Status'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      {/* Approve Confirm Modal */}
+      <Modal opened={showApproveConfirm} onClose={() => setShowApproveConfirm(false)} title="Approve & Send" size="sm">
+        <Stack>
+          <Text size="sm">Approve {doc.document_number}? This will mark it as sent{sendEmail ? ` and notify ${doc.client?.name || 'the client'}` : ''}.</Text>
+          <Checkbox
+            label="Send invoice to client via email/SMS"
+            checked={sendEmail}
+            onChange={(e) => setSendEmail(e.currentTarget.checked)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setShowApproveConfirm(false)}>Cancel</Button>
+            <Button color="green" onClick={handleApproveConfirm} loading={loading === 'approve'}>
+              {sendEmail ? 'Approve & Send' : 'Approve'}
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       {/* Payment History */}
       {doc.payments && doc.payments.length > 0 && (

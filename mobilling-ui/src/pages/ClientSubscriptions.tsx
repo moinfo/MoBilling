@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Title, Group, Button, TextInput, Modal, Table, Text, Badge, Pagination,
-  Stack, NumberInput, Select, ActionIcon, Tooltip, Loader, Center,
+  Stack, NumberInput, Select, ActionIcon, Tooltip, Loader, Center, Grid, Checkbox,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -520,6 +520,7 @@ interface BulkFormValues {
   client_id: string;
   start_date: string;
   status: string;
+  send_email: boolean;
   items: BulkSubscriptionItem[];
 }
 
@@ -539,7 +540,8 @@ function BulkSubscriptionForm({
       client_id: '',
       start_date: new Date().toISOString().split('T')[0],
       status: 'pending',
-      items: [{ product_service_id: '', label: '', quantity: 1 }],
+      send_email: true,
+      items: [{ product_service_id: '', label: '', quantity: 1, discount_type: 'percent' as const, discount_value: 0 }],
     },
     validate: {
       client_id: (v) => (v ? null : 'Client is required'),
@@ -557,7 +559,7 @@ function BulkSubscriptionForm({
   }));
 
   const addItem = () => {
-    form.insertListItem('items', { product_service_id: '', label: '', quantity: 1 });
+    form.insertListItem('items', { product_service_id: '', label: '', quantity: 1, discount_type: 'percent' as const, discount_value: 0 });
   };
 
   const removeItem = (index: number) => {
@@ -573,12 +575,24 @@ function BulkSubscriptionForm({
     });
   };
 
-  // Calculate total price preview
-  const totalPreview = form.values.items.reduce((sum, item) => {
-    const product = products.find((p) => p.id === item.product_service_id);
-    if (!product) return sum;
-    return sum + (item.quantity || 1) * parseFloat(product.price || '0');
-  }, 0);
+  // Calculate total price preview with discounts
+  const { subtotalPreview, discountPreview, totalPreview } = form.values.items.reduce(
+    (acc, item) => {
+      const product = products.find((p) => p.id === item.product_service_id);
+      if (!product) return acc;
+      const lineBase = (item.quantity || 1) * parseFloat(product.price || '0');
+      const discountVal = item.discount_value || 0;
+      const lineDiscount = discountVal > 0
+        ? (item.discount_type === 'fixed' ? discountVal : lineBase * (discountVal / 100))
+        : 0;
+      return {
+        subtotalPreview: acc.subtotalPreview + lineBase,
+        discountPreview: acc.discountPreview + lineDiscount,
+        totalPreview: acc.totalPreview + (lineBase - lineDiscount),
+      };
+    },
+    { subtotalPreview: 0, discountPreview: 0, totalPreview: 0 }
+  );
 
   return (
     <form onSubmit={form.onSubmit(handleFormSubmit)}>
@@ -602,45 +616,94 @@ function BulkSubscriptionForm({
           {...form.getInputProps('status')}
         />
 
+        {form.values.status === 'pending' && (
+          <Checkbox
+            label="Send invoice to client via email/SMS"
+            {...form.getInputProps('send_email', { type: 'checkbox' })}
+          />
+        )}
+
         <Text fw={600} size="sm" mt="xs">Products / Services</Text>
 
-        {form.values.items.map((_, index) => (
-          <Group key={index} align="flex-start" gap="xs" wrap="nowrap">
-            <Select
-              placeholder="Select product"
-              data={productOptions}
-              searchable
-              required
-              style={{ flex: 3 }}
-              {...form.getInputProps(`items.${index}.product_service_id`)}
-            />
-            <TextInput
-              placeholder="Label (optional)"
-              style={{ flex: 2 }}
-              {...form.getInputProps(`items.${index}.label`)}
-            />
-            <NumberInput
-              placeholder="Qty"
-              min={1}
-              style={{ width: 70 }}
-              {...form.getInputProps(`items.${index}.quantity`)}
-            />
-            {form.values.items.length > 1 && (
-              <ActionIcon variant="light" color="red" mt={4} onClick={() => removeItem(index)}>
-                <IconTrash size={16} />
-              </ActionIcon>
-            )}
-          </Group>
+        {form.values.items.map((item, index) => (
+          <Stack key={index} gap={4}>
+            <Group align="flex-start" gap="xs" wrap="nowrap">
+              <Select
+                placeholder="Select product"
+                data={productOptions}
+                searchable
+                required
+                style={{ flex: 3 }}
+                {...form.getInputProps(`items.${index}.product_service_id`)}
+              />
+              <TextInput
+                placeholder="Label (optional)"
+                style={{ flex: 2 }}
+                {...form.getInputProps(`items.${index}.label`)}
+              />
+              <NumberInput
+                placeholder="Qty"
+                min={1}
+                style={{ width: 70 }}
+                {...form.getInputProps(`items.${index}.quantity`)}
+              />
+              {form.values.items.length > 1 && (
+                <ActionIcon variant="light" color="red" mt={4} onClick={() => removeItem(index)}>
+                  <IconTrash size={16} />
+                </ActionIcon>
+              )}
+            </Group>
+            <Grid gutter="xs" ml={0}>
+              <Grid.Col span={4}>
+                <Select
+                  placeholder="Discount type"
+                  size="xs"
+                  data={[
+                    { value: 'percent', label: 'Discount %' },
+                    { value: 'fixed', label: 'Fixed Amount' },
+                  ]}
+                  {...form.getInputProps(`items.${index}.discount_type`)}
+                />
+              </Grid.Col>
+              <Grid.Col span={4}>
+                <NumberInput
+                  placeholder={item.discount_type === 'fixed' ? 'Amount' : '%'}
+                  size="xs"
+                  min={0}
+                  max={item.discount_type === 'percent' ? 100 : undefined}
+                  decimalScale={2}
+                  {...form.getInputProps(`items.${index}.discount_value`)}
+                />
+              </Grid.Col>
+              <Grid.Col span={4}>
+                {(() => {
+                  const product = products.find((p) => p.id === item.product_service_id);
+                  if (!product || !item.discount_value) return null;
+                  const lineBase = (item.quantity || 1) * parseFloat(product.price || '0');
+                  const disc = item.discount_type === 'fixed' ? item.discount_value : lineBase * (item.discount_value / 100);
+                  return (
+                    <Text size="xs" c="green" mt={6}>
+                      -{formatCurrency(disc)}
+                    </Text>
+                  );
+                })()}
+              </Grid.Col>
+            </Grid>
+          </Stack>
         ))}
 
         <Button variant="light" leftSection={<IconPlus size={14} />} onClick={addItem} size="xs">
           Add Product
         </Button>
 
-        {totalPreview > 0 && (
-          <Text size="sm" c="dimmed" ta="right">
-            Subtotal: {formatCurrency(totalPreview)}
-          </Text>
+        {subtotalPreview > 0 && (
+          <Stack gap={2} align="flex-end">
+            <Text size="sm" c="dimmed">Subtotal: {formatCurrency(subtotalPreview)}</Text>
+            {discountPreview > 0 && (
+              <Text size="sm" c="green" fw={500}>Discount: -{formatCurrency(discountPreview)}</Text>
+            )}
+            <Text size="sm" fw={600}>Total: {formatCurrency(totalPreview)}</Text>
+          </Stack>
         )}
 
         <Group justify="flex-end">
