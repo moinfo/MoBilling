@@ -28,7 +28,7 @@ class PortalSubscriptionController extends Controller
 
         $subscriptions = ClientSubscription::where('client_id', $clientId)
             ->with('productService:id,name,type,price,billing_cycle')
-            ->orderByDesc('start_date')
+            ->orderBy('expire_date')
             ->get()
             ->map(function ($sub) {
                 $cycle = $sub->productService?->billing_cycle;
