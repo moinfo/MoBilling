@@ -402,7 +402,7 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
             {/* Totals */}
             <Paper withBorder p="md" radius="md">
               <Stack gap={6}>
-                {detail.subtotal !== undefined && parseFloat(detail.discount_amount || 0) > 0 && (
+                {detail.subtotal !== undefined && parseFloat(detail.discount_amount || '0') > 0 && (
                   <>
                     <Group justify="space-between">
                       <Text size="sm" c="dimmed">Subtotal</Text>
@@ -410,14 +410,14 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
                     </Group>
                     <Group justify="space-between">
                       <Text size="sm" c="dimmed">Discount</Text>
-                      <Text size="sm" c="green">-{fmt(detail.discount_amount)}</Text>
+                      <Text size="sm" c="green">-{fmt(parseFloat(detail.discount_amount || '0'))}</Text>
                     </Group>
                   </>
                 )}
-                {parseFloat(detail.tax_amount || 0) > 0 && (
+                {parseFloat(detail.tax_amount || '0') > 0 && (
                   <Group justify="space-between">
                     <Text size="sm" c="dimmed">Tax</Text>
-                    <Text size="sm">{fmt(detail.tax_amount)}</Text>
+                    <Text size="sm">{fmt(parseFloat(detail.tax_amount || '0'))}</Text>
                   </Group>
                 )}
                 <Divider />
