@@ -58,6 +58,9 @@ export interface PortalDocument {
   type: string;
   date: string;
   due_date: string | null;
+  subtotal?: number;
+  discount_amount?: string;
+  tax_amount?: string;
   total: number;
   status: string;
   notes: string | null;
@@ -67,12 +70,23 @@ export interface PortalDocument {
     quantity: number;
     price: number;
     total: number;
+    discount_type?: string;
+    discount_value?: number;
+    service_from?: string;
+    service_to?: string;
+  }[];
+  payments?: {
+    id: string;
+    amount: string;
+    payment_date: string;
+    payment_method: string;
+    reference: string | null;
   }[];
   paid_amount?: number;
   balance_due?: number;
 }
 
-export const getPortalDocuments = (params: { type?: string; status?: string; search?: string; page?: number }) =>
+export const getPortalDocuments = (params: { type?: string; status?: string; search?: string; page?: number; per_page?: number }) =>
   api.get('/portal/documents', { params });
 
 export const getPortalDocument = (id: string) =>

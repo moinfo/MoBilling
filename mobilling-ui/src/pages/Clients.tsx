@@ -7,7 +7,6 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconDownload, IconAddressBook } from '@tabler/icons-react';
 import { getClients, createClient, updateClient, deleteClient, portalLoginAsClient, changePortalPassword, Client, ClientFormData } from '../api/clients';
-import { useAuth } from '../context/AuthContext';
 import ClientTable from '../components/Billing/ClientTable';
 import ClientForm from '../components/Billing/ClientForm';
 import { usePermissions } from '../hooks/usePermissions';
@@ -15,7 +14,6 @@ import { usePermissions } from '../hooks/usePermissions';
 export default function Clients() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
-  const { login: authLogin } = useAuth();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);

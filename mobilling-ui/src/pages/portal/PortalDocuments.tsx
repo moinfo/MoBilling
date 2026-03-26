@@ -8,7 +8,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
   IconSearch, IconCreditCard, IconCheck, IconMail, IconArrowUp, IconArrowDown,
-  IconArrowsSort, IconAlertTriangle, IconCash, IconFileInvoice, IconDownload,
+  IconArrowsSort, IconAlertTriangle, IconCash, IconFileInvoice,
 } from '@tabler/icons-react';
 import { getPortalDocuments, getPortalDocument, resendPortalDocument } from '../../api/portal';
 import { portalCheckoutInvoice, getPaymentStatusByTracking } from '../../api/payment';
