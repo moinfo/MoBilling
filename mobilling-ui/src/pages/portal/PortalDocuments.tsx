@@ -156,8 +156,6 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
     </Table.Th>
   );
 
-  const isDueDatePast = (d: string | null) => d && new Date(d) < new Date();
-
   return (
     <Stack gap="lg" pos="relative">
       <LoadingOverlay visible={isLoading} />
