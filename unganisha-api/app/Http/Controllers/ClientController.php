@@ -93,6 +93,16 @@ class ClientController extends Controller
                     while ($date->lt($today)) {
                         $date->add($interval);
                     }
+                    // Skip forward past dates that already have a paid invoice
+                    while (
+                        RecurringInvoiceLog::where('client_id', $sub->client_id)
+                            ->where('product_service_id', $sub->product_service_id)
+                            ->where('next_bill_date', $date->format('Y-m-d'))
+                            ->whereHas('document', fn ($q) => $q->where('status', 'paid'))
+                            ->exists()
+                    ) {
+                        $date->add($interval);
+                    }
                     $nextBill = $date->format('Y-m-d');
                 }
 
@@ -112,19 +122,30 @@ class ClientController extends Controller
         // Invoices (documents of type invoice)
         $invoices = Document::where('client_id', $client->id)
             ->where('type', 'invoice')
-            ->with('items')
+            ->with(['items', 'payments'])
             ->orderByDesc('date')
             ->limit(50)
             ->get()
-            ->map(fn ($doc) => [
-                'id' => $doc->id,
-                'document_number' => $doc->document_number,
-                'description' => $doc->items->first()?->description ?? $doc->notes,
-                'date' => $doc->date?->format('Y-m-d'),
-                'due_date' => $doc->due_date?->format('Y-m-d'),
-                'total' => $doc->total,
-                'status' => $doc->status,
-            ]);
+            ->map(function ($doc) {
+                // Late fee = sum of line items with 'Late payment fee' description
+                $lateFee = $doc->items
+                    ->filter(fn ($item) => str_contains($item->description ?? '', 'Late payment fee'))
+                    ->sum('total');
+
+                return [
+                    'id' => $doc->id,
+                    'document_number' => $doc->document_number,
+                    'description' => $doc->items->first()?->description ?? $doc->notes,
+                    'date' => $doc->date?->format('Y-m-d'),
+                    'due_date' => $doc->due_date?->format('Y-m-d'),
+                    'subtotal' => round((float) $doc->total - $lateFee, 2),
+                    'late_fee' => round($lateFee, 2),
+                    'total' => $doc->total,
+                    'paid_amount' => round((float) $doc->paid_amount, 2),
+                    'balance_due' => round((float) $doc->balance_due, 2),
+                    'status' => $doc->status,
+                ];
+            });
 
         // Payments
         $payments = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $client->id))

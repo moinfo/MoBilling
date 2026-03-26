@@ -1,11 +1,13 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Pagination } from '@mantine/core';
+import { Title, Group, Button, TextInput, Modal, Pagination, Stack, PasswordInput, Text } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconDownload, IconAddressBook } from '@tabler/icons-react';
-import { getClients, createClient, updateClient, deleteClient, Client, ClientFormData } from '../api/clients';
+import { getClients, createClient, updateClient, deleteClient, portalLoginAsClient, changePortalPassword, Client, ClientFormData } from '../api/clients';
+import { useAuth } from '../context/AuthContext';
 import ClientTable from '../components/Billing/ClientTable';
 import ClientForm from '../components/Billing/ClientForm';
 import { usePermissions } from '../hooks/usePermissions';
@@ -13,11 +15,13 @@ import { usePermissions } from '../hooks/usePermissions';
 export default function Clients() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
+  const { login: authLogin } = useAuth();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
+  const [passwordClient, setPasswordClient] = useState<Client | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['clients', debouncedSearch, page],
@@ -125,6 +129,45 @@ export default function Clients() {
     }
   };
 
+  const handlePortalLogin = async (client: Client) => {
+    try {
+      const res = await portalLoginAsClient(client.id);
+      const { token, user, user_type, permissions } = res.data;
+      // Store current session to allow returning later
+      const currentToken = localStorage.getItem('token');
+      const currentUser = localStorage.getItem('user');
+      if (currentToken) localStorage.setItem('impersonate_return_token', currentToken);
+      if (currentUser) localStorage.setItem('impersonate_return_user', currentUser);
+      // Login as portal user
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify({ ...user, user_type, permissions }));
+      notifications.show({ title: 'Logged in as client', message: res.data.message, color: 'violet' });
+      window.location.href = '/portal/dashboard';
+    } catch (err: any) {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'No portal user found', color: 'red' });
+    }
+  };
+
+  const passwordForm = useForm({
+    initialValues: { password: '', password_confirmation: '' },
+    validate: {
+      password: (v) => (v.length >= 8 ? null : 'Min 8 characters'),
+      password_confirmation: (v, values) => (v === values.password ? null : 'Passwords do not match'),
+    },
+  });
+
+  const handleChangePassword = async (values: { password: string }) => {
+    if (!passwordClient) return;
+    try {
+      const res = await changePortalPassword(passwordClient.id, values.password);
+      notifications.show({ title: 'Success', message: res.data.message, color: 'green' });
+      setPasswordClient(null);
+      passwordForm.reset();
+    } catch (err: any) {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to change password', color: 'red' });
+    }
+  };
+
   const handleSubmit = (values: ClientFormData) => {
     if (editing) {
       updateMutation.mutate(values);
@@ -161,7 +204,15 @@ export default function Clients() {
         maw={300}
       />
 
-      <ClientTable clients={clients} onEdit={handleEdit} onDelete={handleDelete} startIndex={meta ? (meta.current_page - 1) * meta.per_page + 1 : 1} loading={isLoading} />
+      <ClientTable
+        clients={clients}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+        onPortalLogin={handlePortalLogin}
+        onChangePassword={(c) => { setPasswordClient(c); passwordForm.reset(); }}
+        startIndex={meta ? (meta.current_page - 1) * meta.per_page + 1 : 1}
+        loading={isLoading}
+      />
 
       {meta && meta.last_page > 1 && (
         <Group justify="center" mt="md">
@@ -186,6 +237,27 @@ export default function Clients() {
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}
         />
+      </Modal>
+
+      <Modal
+        opened={!!passwordClient}
+        onClose={() => { setPasswordClient(null); passwordForm.reset(); }}
+        title="Change Portal Password"
+        size="sm"
+      >
+        {passwordClient && (
+          <form onSubmit={passwordForm.onSubmit(handleChangePassword)}>
+            <Stack>
+              <Text size="sm">Change portal password for <Text span fw={600}>{passwordClient.name}</Text></Text>
+              <PasswordInput label="New Password" required {...passwordForm.getInputProps('password')} />
+              <PasswordInput label="Confirm Password" required {...passwordForm.getInputProps('password_confirmation')} />
+              <Group justify="flex-end">
+                <Button variant="default" onClick={() => setPasswordClient(null)}>Cancel</Button>
+                <Button type="submit" color="orange">Change Password</Button>
+              </Group>
+            </Stack>
+          </form>
+        )}
       </Modal>
     </>
   );

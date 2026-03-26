@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Portal;
 
 use App\Http\Controllers\Controller;
 use App\Models\PaymentIn;
+use App\Services\PdfService;
 use Illuminate\Http\Request;
 
 class PortalPaymentController extends Controller
@@ -24,5 +25,21 @@ class PortalPaymentController extends Controller
         }
 
         return response()->json($query->paginate($request->get('per_page', 20)));
+    }
+
+    public function downloadReceipt(Request $request, PaymentIn $payment)
+    {
+        $clientId = $request->user()->client_id;
+
+        // Verify this payment belongs to the client
+        $payment->load('document.client', 'document.items', 'document.tenant');
+        if ($payment->document?->client_id !== $clientId) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        $pdf = app(PdfService::class)->generateReceipt($payment, $payment->document);
+        $receiptNumber = 'RCT-' . $payment->payment_date->format('Ymd') . '-' . strtoupper(substr($payment->id, 0, 6));
+
+        return $pdf->download("{$receiptNumber}.pdf");
     }
 }

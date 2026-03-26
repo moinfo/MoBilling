@@ -9,9 +9,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconEdit, IconTrash } from '@tabler/icons-react';
 import { getPortalUsers, createPortalUser, updatePortalUser, deletePortalUser, PortalUser } from '../../api/portal';
 import { modals } from '@mantine/modals';
+import { useAuth } from '../../context/AuthContext';
 
 export default function PortalUsers() {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAuth();
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<PortalUser | null>(null);
 
@@ -148,7 +150,9 @@ export default function PortalUsers() {
                 <Table.Td>
                   <Group gap="xs">
                     <ActionIcon variant="subtle" onClick={() => openEdit(u)}><IconEdit size={16} /></ActionIcon>
-                    <ActionIcon variant="subtle" color="red" onClick={() => confirmDelete(u)}><IconTrash size={16} /></ActionIcon>
+                    {u.id !== currentUser?.id && (
+                      <ActionIcon variant="subtle" color="red" onClick={() => confirmDelete(u)}><IconTrash size={16} /></ActionIcon>
+                    )}
                   </Group>
                 </Table.Td>
               </Table.Tr>

@@ -17,7 +17,7 @@ class PortalDocumentController extends Controller
         $query = Document::where('client_id', $clientId)
             ->where('type', $type)
             ->whereNotIn('status', ['draft', 'cancelled'])
-            ->with('items')
+            ->with(['items', 'payments'])
             ->orderByDesc('date');
 
         if ($request->filled('status')) {
@@ -28,7 +28,23 @@ class PortalDocumentController extends Controller
             $query->where('document_number', 'like', "%{$request->search}%");
         }
 
-        return response()->json($query->paginate($request->get('per_page', 20)));
+        $paginated = $query->paginate($request->get('per_page', 20));
+
+        // Append computed fields
+        $paginated->getCollection()->transform(function ($doc) {
+            $lateFee = $doc->items
+                ->filter(fn ($item) => str_contains($item->description ?? '', 'Late payment fee'))
+                ->sum('total');
+
+            $doc->setAttribute('late_fee', round($lateFee, 2));
+            $doc->setAttribute('original_amount', round((float) $doc->total - $lateFee, 2));
+            $doc->setAttribute('paid_amount', round((float) $doc->paid_amount, 2));
+            $doc->setAttribute('balance_due', round((float) $doc->balance_due, 2));
+
+            return $doc;
+        });
+
+        return response()->json($paginated);
     }
 
     public function show(Request $request, Document $document)

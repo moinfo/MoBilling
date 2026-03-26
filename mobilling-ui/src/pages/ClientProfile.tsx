@@ -3,7 +3,7 @@ import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
   Anchor, Loader, Center, ThemeIcon, Modal, Button, TextInput,
-  PasswordInput, Select, Switch, ActionIcon, Tooltip,
+  PasswordInput, Select, Switch, ActionIcon, Tooltip, SegmentedControl,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,6 +13,7 @@ import {
   IconArrowLeft, IconMail, IconPhone, IconMapPin, IconId,
   IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend, IconPhoneCall,
   IconHeartHandshake, IconUserPlus, IconEdit, IconTrash, IconShieldLock,
+  IconArrowUp, IconArrowDown, IconArrowsSort,
 } from '@tabler/icons-react';
 import { Rating } from '@mantine/core';
 import {
@@ -92,6 +93,18 @@ export default function ClientProfile() {
   const clientFollowups: FollowupEntry[] = followupData?.data?.data ?? [];
   const clientSatisfaction: SatisfactionCallEntry[] = satisfactionData?.data?.data ?? [];
   const [selectedLog, setSelectedLog] = useState<ClientCommunicationLog | null>(null);
+  const [invoiceSortBy, setInvoiceSortBy] = useState<string>('date');
+  const [invoiceSortDir, setInvoiceSortDir] = useState<'asc' | 'desc'>('desc');
+  const [invoiceStatusFilter, setInvoiceStatusFilter] = useState('all');
+
+  const toggleInvoiceSort = (col: string) => {
+    if (invoiceSortBy === col) {
+      setInvoiceSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setInvoiceSortBy(col);
+      setInvoiceSortDir('asc');
+    }
+  };
 
   if (isLoading) {
     return <Center py="xl"><Loader /></Center>;
@@ -198,41 +211,154 @@ export default function ClientProfile() {
 
       {/* Invoices */}
       <Paper withBorder p="md" radius="md">
-        <Title order={4} mb="sm">Invoices</Title>
+        <Group justify="space-between" mb="sm">
+          <Title order={4}>Invoices</Title>
+          {invoices.length > 0 && (
+            <SegmentedControl
+              size="xs"
+              value={invoiceStatusFilter}
+              onChange={setInvoiceStatusFilter}
+              data={[
+                { label: 'All', value: 'all' },
+                { label: 'Unpaid', value: 'unpaid' },
+                { label: 'Paid', value: 'paid' },
+                { label: 'Overdue', value: 'overdue' },
+                { label: 'Cancelled', value: 'cancelled' },
+              ]}
+            />
+          )}
+        </Group>
         {invoices.length === 0 ? (
           <Text c="dimmed" size="sm">No invoices yet.</Text>
-        ) : (
-          <Table.ScrollContainer minWidth={500}>
-            <Table striped highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Invoice #</Table.Th>
-                  <Table.Th>Description</Table.Th>
-                  <Table.Th>Date</Table.Th>
-                  <Table.Th>Due Date</Table.Th>
-                  {can('client_profile.total_invoiced') && <Table.Th>Total</Table.Th>}
-                  <Table.Th>Status</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {invoices.map((inv) => (
-                  <Table.Tr key={inv.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/invoices?preview=${inv.id}`)}>
-                    <Table.Td fw={500} c="blue">{inv.document_number}</Table.Td>
-                    <Table.Td c="dimmed" maw={200} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {inv.description || '—'}
-                    </Table.Td>
-                    <Table.Td>{formatDate(inv.date)}</Table.Td>
-                    <Table.Td>{inv.due_date ? formatDate(inv.due_date) : '—'}</Table.Td>
-                    {can('client_profile.total_invoiced') && <Table.Td>{formatCurrency(inv.total)}</Table.Td>}
-                    <Table.Td>
-                      <Badge color={statusColors[inv.status] || 'gray'} size="sm">{inv.status}</Badge>
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
-        )}
+        ) : (() => {
+          const filtered = invoices.filter((inv) => {
+            if (invoiceStatusFilter === 'all') return inv.status !== 'cancelled';
+            if (invoiceStatusFilter === 'unpaid') return ['sent', 'overdue', 'partial'].includes(inv.status);
+            if (invoiceStatusFilter === 'paid') return inv.status === 'paid';
+            if (invoiceStatusFilter === 'overdue') return inv.status === 'overdue';
+            if (invoiceStatusFilter === 'cancelled') return inv.status === 'cancelled';
+            return true;
+          });
+
+          const sorted = [...filtered].sort((a, b) => {
+            let cmp = 0;
+            switch (invoiceSortBy) {
+              case 'date': cmp = (a.date || '').localeCompare(b.date || ''); break;
+              case 'due_date': cmp = (a.due_date || '').localeCompare(b.due_date || ''); break;
+              case 'total': cmp = parseFloat(a.total) - parseFloat(b.total); break;
+              case 'balance_due': cmp = a.balance_due - b.balance_due; break;
+              case 'status': cmp = a.status.localeCompare(b.status); break;
+              default: cmp = 0;
+            }
+            return invoiceSortDir === 'asc' ? cmp : -cmp;
+          });
+
+          const totals = {
+            subtotal: sorted.reduce((s, inv) => s + (parseFloat(String(inv.subtotal)) || 0), 0),
+            lateFee: sorted.reduce((s, inv) => s + (parseFloat(String(inv.late_fee)) || 0), 0),
+            total: sorted.reduce((s, inv) => s + (parseFloat(String(inv.total)) || 0), 0),
+            paid: sorted.reduce((s, inv) => s + (parseFloat(String(inv.paid_amount)) || 0), 0),
+            balance: sorted.reduce((s, inv) => s + (parseFloat(String(inv.balance_due)) || 0), 0),
+          };
+
+          const SortHeader = ({ col, label }: { col: string; label: string }) => (
+            <Table.Th
+              style={{ cursor: 'pointer', userSelect: 'none' }}
+              onClick={() => toggleInvoiceSort(col)}
+            >
+              <Group gap={4} wrap="nowrap">
+                {label}
+                {invoiceSortBy !== col
+                  ? <IconArrowsSort size={14} style={{ opacity: 0.4 }} />
+                  : invoiceSortDir === 'asc'
+                    ? <IconArrowUp size={14} />
+                    : <IconArrowDown size={14} />
+                }
+              </Group>
+            </Table.Th>
+          );
+
+          return (
+            <>
+              <Table.ScrollContainer minWidth={700}>
+                <Table striped highlightOnHover>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Invoice #</Table.Th>
+                      <Table.Th>Description</Table.Th>
+                      <SortHeader col="date" label="Date" />
+                      <SortHeader col="due_date" label="Due Date" />
+                      {can('client_profile.total_invoiced') && (
+                        <>
+                          <SortHeader col="total" label="Amount" />
+                          <Table.Th>Late Fee</Table.Th>
+                          <Table.Th>Total</Table.Th>
+                          <Table.Th>Paid</Table.Th>
+                          <SortHeader col="balance_due" label="Balance" />
+                        </>
+                      )}
+                      <SortHeader col="status" label="Status" />
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {sorted.map((inv) => (
+                      <Table.Tr key={inv.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/invoices?preview=${inv.id}`)}>
+                        <Table.Td fw={500} c="blue">{inv.document_number}</Table.Td>
+                        <Table.Td c="dimmed" maw={200} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {inv.description || '—'}
+                        </Table.Td>
+                        <Table.Td>{formatDate(inv.date)}</Table.Td>
+                        <Table.Td>{inv.due_date ? formatDate(inv.due_date) : '—'}</Table.Td>
+                        {can('client_profile.total_invoiced') && (
+                          <>
+                            <Table.Td>{formatCurrency(parseFloat(String(inv.subtotal)) || 0)}</Table.Td>
+                            <Table.Td>
+                              {(parseFloat(String(inv.late_fee)) || 0) > 0
+                                ? <Text size="sm" c="red" fw={500}>{formatCurrency(inv.late_fee)}</Text>
+                                : <Text size="sm" c="dimmed">—</Text>
+                              }
+                            </Table.Td>
+                            <Table.Td fw={500}>{formatCurrency(parseFloat(String(inv.total)) || 0)}</Table.Td>
+                            <Table.Td>
+                              <Text size="sm" c="green">{(parseFloat(String(inv.paid_amount)) || 0) > 0 ? formatCurrency(inv.paid_amount) : '—'}</Text>
+                            </Table.Td>
+                            <Table.Td>
+                              <Text size="sm" fw={600} c={(parseFloat(String(inv.balance_due)) || 0) > 0 ? 'red' : 'green'}>
+                                {formatCurrency(parseFloat(String(inv.balance_due)) || 0)}
+                              </Text>
+                            </Table.Td>
+                          </>
+                        )}
+                        <Table.Td>
+                          <Badge color={statusColors[inv.status] || 'gray'} size="sm">{inv.status}</Badge>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                  {can('client_profile.total_invoiced') && sorted.length > 0 && (
+                    <Table.Tfoot>
+                      <Table.Tr style={{ fontWeight: 700, borderTop: '2px solid var(--mantine-color-dark-4)' }}>
+                        <Table.Td colSpan={4} ta="right">
+                          <Text fw={700} size="sm">Totals ({sorted.length} invoices)</Text>
+                        </Table.Td>
+                        <Table.Td><Text fw={700} size="sm">{formatCurrency(totals.subtotal)}</Text></Table.Td>
+                        <Table.Td>
+                          <Text fw={700} size="sm" c={totals.lateFee > 0 ? 'red' : undefined}>
+                            {totals.lateFee > 0 ? formatCurrency(totals.lateFee) : '—'}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td><Text fw={700} size="sm">{formatCurrency(totals.total)}</Text></Table.Td>
+                        <Table.Td><Text fw={700} size="sm" c="green">{formatCurrency(totals.paid)}</Text></Table.Td>
+                        <Table.Td><Text fw={700} size="sm" c={totals.balance > 0 ? 'red' : 'green'}>{formatCurrency(totals.balance)}</Text></Table.Td>
+                        <Table.Td />
+                      </Table.Tr>
+                    </Table.Tfoot>
+                  )}
+                </Table>
+              </Table.ScrollContainer>
+            </>
+          );
+        })()}
       </Paper>
 
       {/* Payments */}

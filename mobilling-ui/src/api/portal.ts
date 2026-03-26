@@ -85,6 +85,9 @@ export const resendPortalDocument = (id: string) =>
 export const getPortalPayments = (params?: { search?: string; page?: number }) =>
   api.get('/portal/payments', { params });
 
+export const downloadPortalReceipt = (paymentId: string) =>
+  api.get(`/portal/payments/${paymentId}/receipt`, { responseType: 'blob' });
+
 // Statement
 export interface StatementEntry {
   date: string;
