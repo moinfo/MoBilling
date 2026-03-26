@@ -87,14 +87,14 @@ export const convertDocument = (id: string, targetType: string) =>
 export const downloadPdf = (id: string) =>
   api.get(`/documents/${id}/pdf`, { responseType: 'blob' });
 
-export const sendDocument = (id: string) =>
-  api.post(`/documents/${id}/send`);
+export const sendDocument = (id: string, send_email = true) =>
+  api.post(`/documents/${id}/send`, { send_email });
 
 export const submitForApproval = (id: string) =>
   api.patch(`/documents/${id}/submit-for-approval`);
 
-export const approveDocument = (id: string) =>
-  api.patch(`/documents/${id}/approve`);
+export const approveDocument = (id: string, send_email = true) =>
+  api.patch(`/documents/${id}/approve`, { send_email });
 
 export const rejectDocument = (id: string, reason?: string) =>
   api.patch(`/documents/${id}/reject`, { reason });
@@ -129,6 +129,7 @@ export const createPaymentIn = (data: {
   payment_method: string;
   reference?: string;
   notes?: string;
+  send_email?: boolean;
 }) => api.post('/payments-in', data);
 
 export const updatePaymentIn = (id: string, data: {

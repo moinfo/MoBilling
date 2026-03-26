@@ -86,10 +86,19 @@ class ClientSubscriptionController extends Controller
                 $tenant = auth()->user()->tenant;
                 $qty = $subscription->quantity;
 
-                // Calculate line item
+                // Calculate line item with promotional discount
                 $lineBase = $qty * (float) $product->price;
-                $lineTax = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
-                $lineTotal = $lineBase + $lineTax;
+                $discountType = $subscription->discount_type ?? 'percent';
+                $discountValue = (float) ($subscription->discount_value ?? 0);
+                $lineDiscount = 0;
+                if ($discountValue > 0) {
+                    $lineDiscount = $discountType === 'percent'
+                        ? $lineBase * ($discountValue / 100)
+                        : $discountValue;
+                }
+                $lineAfterDiscount = $lineBase - $lineDiscount;
+                $lineTax = $lineAfterDiscount * ((float) ($product->tax_percent ?? 0) / 100);
+                $lineTotal = $lineAfterDiscount + $lineTax;
 
                 $description = $product->name;
                 if ($subscription->label) {
@@ -106,10 +115,10 @@ class ClientSubscriptionController extends Controller
                     'date' => now()->format('Y-m-d'),
                     'due_date' => $dueDate->format('Y-m-d'),
                     'subtotal' => round($lineBase, 2),
-                    'discount_amount' => 0,
+                    'discount_amount' => round($lineDiscount, 2),
                     'tax_amount' => round($lineTax, 2),
                     'total' => round($lineTotal, 2),
-                    'notes' => 'Invoice for new subscription',
+                    'notes' => $lineDiscount > 0 ? 'Invoice for new subscription (promotional discount applied)' : 'Invoice for new subscription',
                     'status' => 'sent',
                     'created_by' => auth()->id(),
                 ]);
@@ -120,8 +129,8 @@ class ClientSubscriptionController extends Controller
                     'description' => $description,
                     'quantity' => $qty,
                     'price' => $product->price,
-                    'discount_type' => 'percent',
-                    'discount_value' => 0,
+                    'discount_type' => $discountType,
+                    'discount_value' => $discountValue,
                     'tax_percent' => $product->tax_percent ?? 0,
                     'tax_amount' => round($lineTax, 2),
                     'total' => round($lineTotal, 2),
@@ -139,9 +148,11 @@ class ClientSubscriptionController extends Controller
                     'reminders_sent' => [],
                 ]);
 
-                // Send invoice to client (email + SMS if tenant allows)
-                $document->load('items', 'client');
-                $client->notify(new InvoiceSentNotification($document));
+                // Send invoice to client if requested
+                if ($request->boolean('send_email', true)) {
+                    $document->load('items', 'client');
+                    $client->notify(new InvoiceSentNotification($document));
+                }
             }
 
             return new ClientSubscriptionResource($subscription);
@@ -158,6 +169,8 @@ class ClientSubscriptionController extends Controller
             'items.*.product_service_id' => 'required|uuid|exists:product_services,id',
             'items.*.label' => 'nullable|string|max:255',
             'items.*.quantity' => 'integer|min:1',
+            'items.*.discount_type' => 'nullable|in:percent,fixed',
+            'items.*.discount_value' => 'nullable|numeric|min:0',
         ]);
 
         return DB::transaction(function () use ($request) {
@@ -170,6 +183,8 @@ class ClientSubscriptionController extends Controller
                     'product_service_id' => $item['product_service_id'],
                     'label' => $item['label'] ?? null,
                     'quantity' => $item['quantity'] ?? 1,
+                    'discount_type' => $item['discount_type'] ?? null,
+                    'discount_value' => $item['discount_value'] ?? 0,
                     'start_date' => $request->start_date,
                     'status' => $status,
                 ]);
@@ -199,6 +214,7 @@ class ClientSubscriptionController extends Controller
                 $dueDate = $subscriptions[0]->start_date;
 
                 $subtotal = 0;
+                $discountTotal = 0;
                 $taxTotal = 0;
                 $lineItems = [];
 
@@ -206,8 +222,19 @@ class ClientSubscriptionController extends Controller
                     $product = $sub->productService;
                     $qty = $sub->quantity;
                     $lineBase = $qty * (float) $product->price;
-                    $lineTax = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
-                    $lineTotal = $lineBase + $lineTax;
+
+                    // Apply promotional discount (first invoice only)
+                    $discountType = $sub->discount_type ?? 'percent';
+                    $discountValue = (float) ($sub->discount_value ?? 0);
+                    $lineDiscount = 0;
+                    if ($discountValue > 0) {
+                        $lineDiscount = $discountType === 'percent'
+                            ? $lineBase * ($discountValue / 100)
+                            : $discountValue;
+                    }
+                    $lineAfterDiscount = $lineBase - $lineDiscount;
+                    $lineTax = $lineAfterDiscount * ((float) ($product->tax_percent ?? 0) / 100);
+                    $lineTotal = $lineAfterDiscount + $lineTax;
 
                     $description = $product->name;
                     if ($sub->label) {
@@ -215,6 +242,7 @@ class ClientSubscriptionController extends Controller
                     }
 
                     $subtotal += $lineBase;
+                    $discountTotal += $lineDiscount;
                     $taxTotal += $lineTax;
 
                     $lineItems[] = [
@@ -223,8 +251,8 @@ class ClientSubscriptionController extends Controller
                         'description' => $description,
                         'quantity' => $qty,
                         'price' => $product->price,
-                        'discount_type' => 'percent',
-                        'discount_value' => 0,
+                        'discount_type' => $discountType,
+                        'discount_value' => $discountValue,
                         'tax_percent' => $product->tax_percent ?? 0,
                         'tax_amount' => round($lineTax, 2),
                         'total' => round($lineTotal, 2),
@@ -240,10 +268,10 @@ class ClientSubscriptionController extends Controller
                     'date' => now()->format('Y-m-d'),
                     'due_date' => $dueDate->format('Y-m-d'),
                     'subtotal' => round($subtotal, 2),
-                    'discount_amount' => 0,
+                    'discount_amount' => round($discountTotal, 2),
                     'tax_amount' => round($taxTotal, 2),
-                    'total' => round($subtotal + $taxTotal, 2),
-                    'notes' => 'Invoice for new subscriptions',
+                    'total' => round($subtotal - $discountTotal + $taxTotal, 2),
+                    'notes' => $discountTotal > 0 ? 'Invoice for new subscriptions (promotional discount applied)' : 'Invoice for new subscriptions',
                     'status' => 'sent',
                     'created_by' => auth()->id(),
                 ]);
@@ -269,9 +297,11 @@ class ClientSubscriptionController extends Controller
                     );
                 }
 
-                // Send invoice to client
-                $document->load('items', 'client');
-                $client->notify(new InvoiceSentNotification($document));
+                // Send invoice to client if requested
+                if ($request->boolean('send_email', true)) {
+                    $document->load('items', 'client');
+                    $client->notify(new InvoiceSentNotification($document));
+                }
             }
 
             return ClientSubscriptionResource::collection($subscriptions);

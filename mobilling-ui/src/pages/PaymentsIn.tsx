@@ -1,4 +1,4 @@
-import { Title, Table, Text, Group, Pagination, Badge, TextInput, ActionIcon, Drawer, Stack, NumberInput, Select, Textarea, Button, Tooltip, Loader, Center, Divider, Anchor, Paper } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, TextInput, ActionIcon, Drawer, Stack, NumberInput, Select, Textarea, Button, Tooltip, Loader, Center, Divider, Anchor, Paper, Checkbox } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
@@ -55,6 +55,7 @@ export default function PaymentsIn() {
       payment_method: 'bank',
       reference: '',
       notes: '',
+      send_email: true,
     },
   });
 
@@ -90,6 +91,7 @@ export default function PaymentsIn() {
       payment_method: values.payment_method,
       reference: values.reference || undefined,
       notes: values.notes || undefined,
+      send_email: values.send_email,
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['payments-in'] });
@@ -435,6 +437,10 @@ export default function PaymentsIn() {
             <Select label="Method" data={paymentMethods} {...addForm.getInputProps('payment_method')} />
             <TextInput label="Reference" placeholder="Transaction ref / M-Pesa code" {...addForm.getInputProps('reference')} />
             <Textarea label="Notes" {...addForm.getInputProps('notes')} />
+            <Checkbox
+              label="Send receipt to client via email/SMS"
+              {...addForm.getInputProps('send_email', { type: 'checkbox' })}
+            />
             <Group justify="flex-end">
               <Button variant="light" onClick={() => { setAddDrawerOpen(false); addForm.reset(); }}>Cancel</Button>
               <Button type="submit" loading={createMutation.isPending}>Record Payment</Button>

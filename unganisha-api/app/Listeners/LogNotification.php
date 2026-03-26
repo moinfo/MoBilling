@@ -110,7 +110,10 @@ class LogNotification
     {
         $meta = [];
 
-        if (property_exists($notification, 'document') && $notification->document) {
+        if (property_exists($notification, 'documents') && $notification->documents) {
+            $meta['document_ids'] = $notification->documents->pluck('id')->values()->all();
+            $meta['bundled'] = true;
+        } elseif (property_exists($notification, 'document') && $notification->document) {
             $meta['document_id'] = $notification->document->id;
         }
         if (property_exists($notification, 'bill') && $notification->bill) {

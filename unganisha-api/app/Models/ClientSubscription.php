@@ -14,7 +14,8 @@ class ClientSubscription extends Model
 
     protected $fillable = [
         'tenant_id', 'client_id', 'product_service_id',
-        'label', 'quantity', 'start_date', 'expire_date', 'status', 'metadata',
+        'label', 'quantity', 'discount_type', 'discount_value',
+        'start_date', 'expire_date', 'status', 'metadata',
     ];
 
     protected $casts = [
@@ -22,6 +23,7 @@ class ClientSubscription extends Model
         'expire_date' => 'date',
         'metadata' => 'array',
         'quantity' => 'integer',
+        'discount_value' => 'decimal:2',
     ];
 
     public function client()

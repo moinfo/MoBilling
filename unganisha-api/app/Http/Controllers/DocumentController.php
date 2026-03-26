@@ -204,20 +204,24 @@ class DocumentController extends Controller
     {
         $document->load('client');
 
-        if (!$document->client->email) {
-            return response()->json(['message' => 'Client has no email address'], 422);
-        }
-
         // Update status before sending so PDF shows correct status
         $document->update(['status' => 'sent']);
         $document->refresh();
 
-        $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
+        if ($request->boolean('send_email', true)) {
+            if (!$document->client->email) {
+                return response()->json(['message' => 'Client has no email address. Document status updated.'], 422);
+            }
 
-        // Confirm to the sending user via in-app notification
-        $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
+            $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
 
-        return response()->json(['message' => 'Document sent successfully']);
+            // Confirm to the sending user via in-app notification
+            $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
+
+            return response()->json(['message' => 'Document sent successfully']);
+        }
+
+        return response()->json(['message' => 'Document status updated (email not sent)']);
     }
 
     public function submitForApproval(Document $document)
@@ -256,8 +260,8 @@ class DocumentController extends Controller
         $document->update($updates);
         $document->refresh();
 
-        // Approve and auto-send to client
-        if ($document->client->email) {
+        // Approve and optionally send to client
+        if ($request->boolean('send_email', true) && $document->client->email) {
             $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
 
             $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
@@ -268,10 +272,13 @@ class DocumentController extends Controller
             ]);
         }
 
-        // No email — already marked as sent above
+        $msg = $request->boolean('send_email', true)
+            ? "{$document->document_number} approved. Client has no email — send manually."
+            : "{$document->document_number} approved (email not sent).";
+
         return response()->json([
             'data' => new DocumentResource($document->fresh()->load('items', 'client')),
-            'message' => "{$document->document_number} approved. Client has no email — send manually.",
+            'message' => $msg,
         ]);
     }
 
@@ -552,52 +559,65 @@ class DocumentController extends Controller
             ->with('client')
             ->get();
 
+        // Group invoices by client — one notification per client
+        $grouped = $documents->groupBy('client_id');
+
         $sent = 0;
         $failed = 0;
         $skipped = 0;
         $errors = [];
+        $invoiceCount = 0;
 
-        foreach ($documents as $document) {
-            $client = $document->client;
+        foreach ($grouped as $clientId => $clientDocs) {
+            $client = $clientDocs->first()->client;
             if (!$client) {
-                $skipped++;
+                $skipped += $clientDocs->count();
                 continue;
             }
 
-            // Need email or phone depending on channel
             if ($request->channel === 'email' && !$client->email) {
-                $skipped++;
+                $skipped += $clientDocs->count();
                 continue;
             }
             if ($request->channel === 'sms' && !$client->phone) {
-                $skipped++;
+                $skipped += $clientDocs->count();
                 continue;
             }
 
-            $daysRemaining = $document->due_date
-                ? (int) Carbon::today()->diffInDays($document->due_date, false)
-                : 0;
-
-            $notification = new RecurringInvoiceReminderNotification(
-                $document,
-                $tenant,
-                max($daysRemaining, 0),
-            );
-
-            // Override channels based on user selection
-            $notification->forceChannels = $request->channel;
-
             try {
-                // Send immediately (not queued) for instant feedback
-                $client->notifyNow($notification);
+                if ($clientDocs->count() === 1) {
+                    // Single invoice — use the original per-invoice notification
+                    $document = $clientDocs->first();
+                    $daysRemaining = $document->due_date
+                        ? (int) Carbon::today()->diffInDays($document->due_date, false)
+                        : 0;
+
+                    $notification = new RecurringInvoiceReminderNotification(
+                        $document,
+                        $tenant,
+                        max($daysRemaining, 0),
+                    );
+                    $notification->forceChannels = $request->channel;
+                    $client->notifyNow($notification);
+                } else {
+                    // Multiple invoices — send one bundled reminder
+                    $notification = new \App\Notifications\BundledReminderNotification(
+                        $clientDocs,
+                        $tenant,
+                    );
+                    $notification->forceChannels = $request->channel;
+                    $client->notifyNow($notification);
+                }
+
                 $sent++;
+                $invoiceCount += $clientDocs->count();
             } catch (\Throwable $e) {
                 $failed++;
                 $errors[] = $client->name . ': ' . $e->getMessage();
             }
         }
 
-        $message = "Reminder sent to {$sent} client(s)";
+        $message = "Reminder sent to {$sent} client(s) covering {$invoiceCount} invoice(s)";
         if ($failed) {
             $message .= ", {$failed} failed";
         }
