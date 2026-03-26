@@ -251,7 +251,7 @@ class ClientSubscriptionController extends Controller
                         'description' => $description,
                         'quantity' => $qty,
                         'price' => $product->price,
-                        'discount_type' => $discountType,
+                        'discount_type' => $discountType === 'fixed' ? 'flat' : $discountType,
                         'discount_value' => $discountValue,
                         'tax_percent' => $product->tax_percent ?? 0,
                         'tax_amount' => round($lineTax, 2),
@@ -286,10 +286,10 @@ class ClientSubscriptionController extends Controller
                         [
                             'client_id' => $client->id,
                             'product_service_id' => $sub->product_service_id,
-                            'client_subscription_id' => $sub->id,
                             'next_bill_date' => $dueDate,
                         ],
                         [
+                            'client_subscription_id' => $sub->id,
                             'document_id' => $document->id,
                             'invoice_created_at' => now(),
                             'reminders_sent' => [],
