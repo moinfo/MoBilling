@@ -30,10 +30,7 @@ class SubscriptionSuspendedNotification extends Notification implements ShouldQu
             $channels[] = 'mail';
         }
 
-        if ($this->tenant->sms_enabled) {
-            $channels[] = SmsChannel::class;
-        }
-
+        // SMS disabled for suspension notifications — email only
         return $channels;
     }
 
