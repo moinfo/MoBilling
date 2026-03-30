@@ -95,6 +95,7 @@ class DocumentController extends Controller
                 $discountTotal += $lineDiscount;
                 $taxAmount += $lineTax;
             }
+            unset($item);
 
             $document = Document::create([
                 'client_id' => $request->client_id,
@@ -154,6 +155,7 @@ class DocumentController extends Controller
                 $discountTotal += $lineDiscount;
                 $taxAmount += $lineTax;
             }
+            unset($item);
 
             $document->update([
                 'client_id' => $request->client_id,
