@@ -391,6 +391,26 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:whatsapp_contacts.log')->post('/whatsapp-contacts/{whatsappContact}/followups', [\App\Http\Controllers\WhatsappFollowupController::class, 'store']);
     Route::middleware('permission:whatsapp_contacts.log')->delete('/whatsapp-contacts/{whatsappContact}/followups/{followup}', [\App\Http\Controllers\WhatsappFollowupController::class, 'destroy']);
 
+    // ── Field Marketing (Door-to-Door) ───────────────────────────────────────
+    Route::middleware('permission:field_sessions.read')->get('/field-sessions', [\App\Http\Controllers\FieldMarketingController::class, 'sessions']);
+    Route::middleware('permission:field_sessions.read')->get('/field-sessions/{fieldSession}', [\App\Http\Controllers\FieldMarketingController::class, 'sessionDetail']);
+    Route::middleware('permission:field_sessions.create')->post('/field-sessions', [\App\Http\Controllers\FieldMarketingController::class, 'storeSession']);
+    Route::middleware('permission:field_sessions.update')->put('/field-sessions/{fieldSession}', [\App\Http\Controllers\FieldMarketingController::class, 'updateSession']);
+    Route::middleware('permission:field_sessions.delete')->delete('/field-sessions/{fieldSession}', [\App\Http\Controllers\FieldMarketingController::class, 'destroySession']);
+
+    Route::middleware('permission:field_visits.create')->post('/field-sessions/{fieldSession}/visits', [\App\Http\Controllers\FieldMarketingController::class, 'storeVisit']);
+    Route::middleware('permission:field_visits.update')->put('/field-sessions/{fieldSession}/visits/{visit}', [\App\Http\Controllers\FieldMarketingController::class, 'updateVisit']);
+    Route::middleware('permission:field_visits.delete')->delete('/field-sessions/{fieldSession}/visits/{visit}', [\App\Http\Controllers\FieldMarketingController::class, 'destroyVisit']);
+    Route::middleware('permission:field_visits.convert')->post('/field-sessions/{fieldSession}/visits/{visit}/convert', [\App\Http\Controllers\FieldMarketingController::class, 'convertVisit']);
+    Route::middleware('permission:field_visits.log')->get('/field-visits/{visit}/followups', [\App\Http\Controllers\FieldFollowupController::class, 'index']);
+    Route::middleware('permission:field_visits.log')->post('/field-visits/{visit}/followups', [\App\Http\Controllers\FieldFollowupController::class, 'store']);
+    Route::middleware('permission:field_visits.log')->delete('/field-visits/{visit}/followups/{followup}', [\App\Http\Controllers\FieldFollowupController::class, 'destroy']);
+
+    Route::middleware('permission:field_targets.read')->get('/field-targets', [\App\Http\Controllers\FieldMarketingController::class, 'targets']);
+    Route::middleware('permission:field_targets.update')->post('/field-targets', [\App\Http\Controllers\FieldMarketingController::class, 'setTarget']);
+
+    Route::middleware('permission:field_sessions.read')->get('/field-stats', [\App\Http\Controllers\FieldMarketingController::class, 'stats']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/clients/{client}/portal-users', [ClientPortalUserController::class, 'index']);

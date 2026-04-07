@@ -6,7 +6,7 @@ import {
 import {
   IconChevronLeft, IconChevronRight, IconPhoneCall,
   IconHeartHandshake, IconMapPin, IconFileInvoice,
-  IconReceipt, IconShieldCheck, IconBrandWhatsapp,
+  IconReceipt, IconShieldCheck, IconBrandWhatsapp, IconRoute,
 } from '@tabler/icons-react';
 import { CalendarDay, CalendarItem } from '../../api/dashboard';
 
@@ -27,7 +27,8 @@ const typeConfig: Record<string, { icon: typeof IconPhoneCall; color: string; la
   invoice: { icon: IconFileInvoice, color: 'red', label: 'Invoice Due' },
   bill: { icon: IconReceipt, color: 'yellow', label: 'Bill Due' },
   statutory: { icon: IconShieldCheck, color: 'violet', label: 'Statutory' },
-  whatsapp: { icon: IconBrandWhatsapp, color: 'green', label: 'WhatsApp Follow-up' },
+  whatsapp:        { icon: IconBrandWhatsapp, color: 'green',  label: 'WhatsApp Follow-up'  },
+  field_followup:  { icon: IconRoute,         color: 'orange', label: 'Field Follow-up'      },
 };
 
 export default function ActivityCalendar({ data }: Props) {

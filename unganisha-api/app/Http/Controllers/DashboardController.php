@@ -353,6 +353,21 @@ class DashboardController extends Controller
                 ]);
             });
 
+        // Field visit follow-ups where the officer is the current user
+        \App\Models\FieldVisit::where('officer_id', auth()->id())
+            ->whereNotNull('next_followup_date')
+            ->whereDate('next_followup_date', '>=', $calStart)
+            ->whereDate('next_followup_date', '<=', $calEnd)
+            ->get()
+            ->each(function ($v) use ($calendarItems) {
+                $calendarItems->push([
+                    'date'   => $v->next_followup_date->format('Y-m-d'),
+                    'type'   => 'field_followup',
+                    'label'  => $v->business_name,
+                    'detail' => $v->location,
+                ]);
+            });
+
         // WhatsApp follow-ups assigned to the current user
         \App\Models\WhatsappContact::where('assigned_to', auth()->id())
             ->whereNotNull('next_followup_date')
