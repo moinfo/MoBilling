@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Stack, Group, Button, Badge, Table, Text, ActionIcon, Tooltip,
-  Select, TextInput, SimpleGrid, Card, ThemeIcon, Anchor, Tabs, NumberFormatter,
+  Select, TextInput, SimpleGrid, Card, ThemeIcon, Anchor, Tabs,
 } from '@mantine/core';
 import {
   IconBrandWhatsapp, IconPlus, IconEdit, IconTrash, IconStar, IconStarFilled,
@@ -12,7 +12,7 @@ import { usePermissions } from '../hooks/usePermissions';
 import { notifications } from '@mantine/notifications';
 import {
   getContacts, getStats, deleteContact, updateContact,
-  LABEL_META, LABEL_ORDER, SOURCE_META, WhatsappContact, WaLabel, WaSource,
+  LABEL_META, LABEL_ORDER, SOURCE_META, WhatsappContact, WaSource,
 } from '../api/whatsappContacts';
 import { getCampaigns, deleteCampaign } from '../api/whatsappCampaigns';
 import { WhatsappCampaign } from '../api/whatsappCampaigns';

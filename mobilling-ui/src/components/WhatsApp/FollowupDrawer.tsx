@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconPhone, IconPhoneOff, IconPhoneCall, IconStar,
-  IconX, IconPlus, IconTrash,
+  IconPlus, IconTrash,
 } from '@tabler/icons-react';
 import { WhatsappContact } from '../../api/whatsappContacts';
 import {
@@ -127,7 +127,7 @@ export default function FollowupDrawer({ contact, onClose }: Props) {
                 label="Call Date"
                 required
                 value={callDate}
-                onChange={(v) => setCallDate(v instanceof Date ? v : v ? new Date(v as string) : null)}
+                onChange={(v) => setCallDate(v as Date | null)}
               />
               <Select
                 label="Outcome"
@@ -142,7 +142,7 @@ export default function FollowupDrawer({ contact, onClose }: Props) {
               label="Next Follow-up Date"
               clearable
               value={nextDate}
-              onChange={(v) => setNextDate(v instanceof Date ? v : v ? new Date(v as string) : null)}
+              onChange={(v) => setNextDate(v as Date | null)}
             />
 
             <Textarea

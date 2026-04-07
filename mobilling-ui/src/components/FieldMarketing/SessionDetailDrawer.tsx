@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Drawer, Stack, Text, Group, Badge, Button, Divider,
+  Drawer, Stack, Text, Group, Badge, Button,
   ActionIcon, Modal, LoadingOverlay, Box,
 } from '@mantine/core';
 import { IconPlus, IconTrash, IconUserCheck, IconEdit, IconPhone } from '@tabler/icons-react';

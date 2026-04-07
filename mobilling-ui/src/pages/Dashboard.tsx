@@ -45,7 +45,7 @@ export default function Dashboard() {
           value={selectedMonth}
           onChange={(val) => {
             if (!val) return;
-            const d = val instanceof Date ? val : new Date(val as string);
+            const d = val as Date;
             if (!isNaN(d.getTime())) setSelectedMonth(d);
           }}
           maxDate={new Date()}

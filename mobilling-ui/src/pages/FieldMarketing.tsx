@@ -22,7 +22,6 @@ import SessionForm from '../components/FieldMarketing/SessionForm';
 import SessionDetailDrawer from '../components/FieldMarketing/SessionDetailDrawer';
 import TargetForm from '../components/FieldMarketing/TargetForm';
 
-const statusMeta = Object.fromEntries(VISIT_STATUSES.map(s => [s.value, s]));
 
 export default function FieldMarketing() {
   const { can } = usePermissions();
@@ -114,7 +113,7 @@ export default function FieldMarketing() {
             value={selectedMonth}
             onChange={(val) => {
               if (!val) return;
-              const d = val instanceof Date ? val : new Date(val as string);
+              const d = val as Date;
               if (!isNaN(d.getTime())) setSelectedMonth(d);
             }}
             maxDate={new Date()}
