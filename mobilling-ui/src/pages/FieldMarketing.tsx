@@ -113,7 +113,7 @@ export default function FieldMarketing() {
             value={selectedMonth}
             onChange={(val) => {
               if (!val) return;
-              const d = val as Date;
+              const d = val as unknown as Date;
               if (!isNaN(d.getTime())) setSelectedMonth(d);
             }}
             maxDate={new Date()}
