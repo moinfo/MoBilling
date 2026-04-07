@@ -23,11 +23,17 @@ class DashboardController extends Controller
     {
         $tenantId = auth()->user()->tenant_id;
 
-        // Invoice stats
-        $invoices = Document::where('type', 'invoice');
+        $month = (int) $request->query('month', now()->month);
+        $year  = (int) $request->query('year', now()->year);
+        $periodStart = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+        $periodEnd   = $periodStart->copy()->endOfMonth();
+
+        // Invoice stats scoped to selected month
+        $invoices = Document::where('type', 'invoice')
+            ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
         $totalReceivable = (clone $invoices)->sum('total');
-        $totalReceived = PaymentIn::sum('amount');
-        $overdueInvoices = (clone $invoices)
+        $totalReceived = PaymentIn::whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])->sum('amount');
+        $overdueInvoices = Document::where('type', 'invoice')
             ->where('status', '!=', 'paid')
             ->whereNotNull('due_date')
             ->where('due_date', '<', now())
@@ -111,15 +117,17 @@ class DashboardController extends Controller
             ]);
         }
 
-        // Invoice status breakdown
+        // Invoice status breakdown for selected month
         $invoiceStatusBreakdown = Document::where('type', 'invoice')
+            ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])
             ->selectRaw('status, COUNT(*) as count')
             ->groupBy('status')
             ->get()
             ->map(fn ($row) => ['status' => $row->status, 'count' => (int) $row->count]);
 
-        // Payment method breakdown
-        $paymentMethodBreakdown = PaymentIn::selectRaw('payment_method, SUM(amount) as amount')
+        // Payment method breakdown for selected month
+        $paymentMethodBreakdown = PaymentIn::whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ->selectRaw('payment_method, SUM(amount) as amount')
             ->groupBy('payment_method')
             ->get()
             ->map(fn ($row) => [
@@ -242,10 +250,10 @@ class DashboardController extends Controller
             ])
             ->values();
 
-        // Total expenses this month
+        // Total expenses for selected month
         $totalExpenses = Expense::whereBetween('expense_date', [
-            now()->startOfMonth()->toDateString(),
-            now()->endOfMonth()->toDateString(),
+            $periodStart->toDateString(),
+            $periodEnd->toDateString(),
         ])->sum('amount');
 
         // Daily activities for the calendar (current month ± 1 month)

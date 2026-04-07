@@ -99,5 +99,5 @@ export interface DashboardSummary {
   calendar: CalendarDay[];
 }
 
-export const getDashboardSummary = () =>
-  api.get<DashboardSummary>('/dashboard/summary');
+export const getDashboardSummary = (month: number, year: number) =>
+  api.get<DashboardSummary>('/dashboard/summary', { params: { month, year } });

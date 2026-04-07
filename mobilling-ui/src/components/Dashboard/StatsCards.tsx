@@ -16,16 +16,17 @@ interface Props {
   smsEnabled?: boolean;
   statutoryOverdue?: number;
   statutoryDueSoon?: number;
+  periodLabel?: string;
 }
 
 export default function StatsCards(props: Props) {
   const { can } = usePermissions();
 
   const cards = [
-    { title: 'Total Receivable', value: formatCurrency(props.totalReceivable), icon: IconReceipt, color: 'blue', permission: 'dashboard.total_receivable' },
-    { title: 'Total Received', value: formatCurrency(props.totalReceived), icon: IconCash, color: 'green', permission: 'dashboard.total_received' },
-    { title: 'Outstanding', value: formatCurrency(props.outstanding), icon: IconAlertTriangle, color: 'orange', permission: 'dashboard.outstanding' },
-    { title: 'Expenses (This Month)', value: formatCurrency(props.totalExpenses), icon: IconWallet, color: 'grape', permission: 'dashboard.expenses' },
+    { title: `Total Receivable (${props.periodLabel ?? 'This Month'})`, value: formatCurrency(props.totalReceivable), icon: IconReceipt, color: 'blue', permission: 'dashboard.total_receivable' },
+    { title: `Total Received (${props.periodLabel ?? 'This Month'})`, value: formatCurrency(props.totalReceived), icon: IconCash, color: 'green', permission: 'dashboard.total_received' },
+    { title: `Outstanding (${props.periodLabel ?? 'This Month'})`, value: formatCurrency(props.outstanding), icon: IconAlertTriangle, color: 'orange', permission: 'dashboard.outstanding' },
+    { title: `Expenses (${props.periodLabel ?? 'This Month'})`, value: formatCurrency(props.totalExpenses), icon: IconWallet, color: 'grape', permission: 'dashboard.expenses' },
     { title: 'Overdue Invoices', value: String(props.overdueInvoices), icon: IconAlertTriangle, color: 'red', permission: 'dashboard.overdue_invoices' },
     { title: 'Overdue Bills', value: String(props.overdueBills), icon: IconAlertTriangle, color: 'red', permission: 'dashboard.overdue_bills' },
     { title: 'Total Clients', value: String(props.totalClients), icon: IconUsers, color: 'teal', permission: 'dashboard.total_clients' },

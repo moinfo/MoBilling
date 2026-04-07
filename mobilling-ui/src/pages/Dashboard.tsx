@@ -1,5 +1,7 @@
-import { Title, Stack, SimpleGrid, LoadingOverlay } from '@mantine/core';
-import { useQuery } from '@tanstack/react-query';
+import { Title, Stack, SimpleGrid, LoadingOverlay, Group, Loader } from '@mantine/core';
+import { MonthPickerInput } from '@mantine/dates';
+import { useState } from 'react';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getDashboardSummary } from '../api/dashboard';
 import { usePermissions } from '../hooks/usePermissions';
 import StatsCards from '../components/Dashboard/StatsCards';
@@ -16,18 +18,42 @@ import ActivityCalendar from '../components/Dashboard/ActivityCalendar';
 
 export default function Dashboard() {
   const { can } = usePermissions();
-  const { data, isLoading } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: getDashboardSummary,
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+
+  const safeDate = selectedMonth instanceof Date && !isNaN(selectedMonth.getTime()) ? selectedMonth : new Date();
+  const month = safeDate.getMonth() + 1;
+  const year = safeDate.getFullYear();
+  const periodLabel = safeDate.toLocaleString('default', { month: 'short', year: 'numeric' });
+
+  const { data, isFetching } = useQuery({
+    queryKey: ['dashboard', month, year],
+    queryFn: () => getDashboardSummary(month, year),
+    placeholderData: keepPreviousData,
   });
 
   const summary = data?.data;
 
-  if (isLoading) return <LoadingOverlay visible />;
-
   return (
-    <Stack>
-      <Title order={2}>Dashboard</Title>
+    <Stack pos="relative">
+      <LoadingOverlay visible={isFetching && !summary} />
+      <Group justify="space-between" align="center">
+        <Group gap="sm">
+          <Title order={2}>Dashboard</Title>
+          {isFetching && !!summary && <Loader size="xs" />}
+        </Group>
+        <MonthPickerInput
+          value={selectedMonth}
+          onChange={(val) => {
+            if (!val) return;
+            const d = val instanceof Date ? val : new Date(val as string);
+            if (!isNaN(d.getTime())) setSelectedMonth(d);
+          }}
+          maxDate={new Date()}
+          maxLevel="decade"
+          w={160}
+          size="sm"
+        />
+      </Group>
 
       {summary && (
         <>
@@ -44,6 +70,7 @@ export default function Dashboard() {
             totalDocuments={summary.total_documents}
             smsBalance={summary.sms_balance}
             smsEnabled={summary.sms_enabled}
+            periodLabel={periodLabel}
           />
 
           {(can('dashboard.revenue_chart') || can('dashboard.activity_calendar')) && (
