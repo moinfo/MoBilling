@@ -374,6 +374,23 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/broadcasts', [BroadcastController::class, 'index']);
     Route::post('/broadcasts', [BroadcastController::class, 'send']);
 
+    // WhatsApp Campaigns
+    Route::middleware('permission:whatsapp_campaigns.read')->get('/whatsapp-campaigns', [\App\Http\Controllers\WhatsappCampaignController::class, 'index']);
+    Route::middleware('permission:whatsapp_campaigns.create')->post('/whatsapp-campaigns', [\App\Http\Controllers\WhatsappCampaignController::class, 'store']);
+    Route::middleware('permission:whatsapp_campaigns.update')->put('/whatsapp-campaigns/{whatsappCampaign}', [\App\Http\Controllers\WhatsappCampaignController::class, 'update']);
+    Route::middleware('permission:whatsapp_campaigns.delete')->delete('/whatsapp-campaigns/{whatsappCampaign}', [\App\Http\Controllers\WhatsappCampaignController::class, 'destroy']);
+
+    // WhatsApp Contacts (Marketing Pipeline)
+    Route::middleware('permission:whatsapp_contacts.read')->get('/whatsapp-contacts/stats', [\App\Http\Controllers\WhatsappContactController::class, 'stats']);
+    Route::middleware('permission:whatsapp_contacts.read')->get('/whatsapp-contacts', [\App\Http\Controllers\WhatsappContactController::class, 'index']);
+    Route::middleware('permission:whatsapp_contacts.create')->post('/whatsapp-contacts', [\App\Http\Controllers\WhatsappContactController::class, 'store']);
+    Route::middleware('permission:whatsapp_contacts.update')->put('/whatsapp-contacts/{whatsappContact}', [\App\Http\Controllers\WhatsappContactController::class, 'update']);
+    Route::middleware('permission:whatsapp_contacts.delete')->delete('/whatsapp-contacts/{whatsappContact}', [\App\Http\Controllers\WhatsappContactController::class, 'destroy']);
+    Route::middleware('permission:whatsapp_contacts.convert')->post('/whatsapp-contacts/{whatsappContact}/convert', [\App\Http\Controllers\WhatsappContactController::class, 'convertToClient']);
+    Route::middleware('permission:whatsapp_contacts.log')->get('/whatsapp-contacts/{whatsappContact}/followups', [\App\Http\Controllers\WhatsappFollowupController::class, 'index']);
+    Route::middleware('permission:whatsapp_contacts.log')->post('/whatsapp-contacts/{whatsappContact}/followups', [\App\Http\Controllers\WhatsappFollowupController::class, 'store']);
+    Route::middleware('permission:whatsapp_contacts.log')->delete('/whatsapp-contacts/{whatsappContact}/followups/{followup}', [\App\Http\Controllers\WhatsappFollowupController::class, 'destroy']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/clients/{client}/portal-users', [ClientPortalUserController::class, 'index']);

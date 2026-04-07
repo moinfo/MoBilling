@@ -11,7 +11,7 @@ import {
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
-  IconHeartHandshake,
+  IconHeartHandshake, IconBrandWhatsapp,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -294,6 +294,15 @@ export default function AppLayout() {
           {can('menu.broadcast') && (
             <NavLink label="Broadcast" leftSection={<IconSpeakerphone size={18} />}
               active={isActive('/broadcast')} onClick={() => navigateAndClose('/broadcast')} />
+          )}
+
+          {can('menu.whatsapp') && (
+            <NavLink
+              label="WhatsApp"
+              leftSection={<IconBrandWhatsapp size={18} color="#25D366" />}
+              active={isActive('/whatsapp-contacts')}
+              onClick={() => navigateAndClose('/whatsapp-contacts')}
+            />
           )}
 
           {can('menu.subscription') && (

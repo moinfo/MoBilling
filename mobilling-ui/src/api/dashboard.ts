@@ -52,7 +52,7 @@ export interface UrgentObligation {
 }
 
 export interface CalendarItem {
-  type: 'followup' | 'satisfaction' | 'appointment' | 'invoice' | 'bill' | 'statutory';
+  type: 'followup' | 'satisfaction' | 'appointment' | 'invoice' | 'bill' | 'statutory' | 'whatsapp';
   label: string;
   detail: string | null;
 }
