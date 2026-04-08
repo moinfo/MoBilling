@@ -9,6 +9,9 @@ import {
   WhatsappContact, WaLabel, WaSource,
   createContact, updateContact, LABEL_META, LABEL_ORDER, SOURCE_META,
 } from '../../api/whatsappContacts';
+import { Alert } from '@mantine/core';
+import { IconAlertCircle } from '@tabler/icons-react';
+import { useState } from 'react';
 import { getCampaigns } from '../../api/whatsappCampaigns';
 import { getUsers } from '../../api/users';
 import { notifications } from '@mantine/notifications';
@@ -24,6 +27,7 @@ const SOURCE_OPTIONS = (Object.keys(SOURCE_META) as WaSource[]).map((v) => ({ va
 
 export default function WhatsappContactForm({ opened, onClose, contact }: Props) {
   const qc = useQueryClient();
+  const [existingClient, setExistingClient] = useState<{ name: string; phone: string | null } | null>(null);
 
   const { data: usersData } = useQuery({
     queryKey: ['users-simple'],
@@ -68,6 +72,7 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
     } else {
       form.reset();
     }
+    setExistingClient(null);
   }, [contact, opened]);
 
   const toDateStr = (val: any): string | null => {
@@ -85,14 +90,28 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
       };
       return contact ? updateContact(contact.id, payload) : createContact(payload);
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
       qc.invalidateQueries({ queryKey: ['whatsapp-stats'] });
-      notifications.show({ message: contact ? 'Contact updated' : 'Contact added', color: 'green' });
-      onClose();
+      // Check if phone matched an existing client
+      const matched = (res.data as any)?.existing_client;
+      if (matched) {
+        setExistingClient(matched);
+        notifications.show({
+          message: `Contact added. Phone matches existing client: ${matched.name}`,
+          color: 'yellow',
+          autoClose: 8000,
+        });
+      } else {
+        notifications.show({ message: contact ? 'Contact updated' : 'Contact added', color: 'green' });
+        onClose();
+      }
     },
-    onError: () => {
-      notifications.show({ message: 'Failed to save contact', color: 'red' });
+    onError: (err: any) => {
+      const msg = err?.response?.data?.errors
+        ? Object.values(err.response.data.errors).flat().join(' ')
+        : 'Failed to save contact';
+      notifications.show({ message: msg as string, color: 'red' });
     },
   });
 
@@ -100,6 +119,12 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
     <Modal opened={opened} onClose={onClose} title={contact ? 'Edit Contact' : 'Add WhatsApp Contact'} size="md">
       <form onSubmit={form.onSubmit((v) => mutation.mutate(v))}>
         <Stack gap="sm">
+          {existingClient && (
+            <Alert icon={<IconAlertCircle size={16} />} color="yellow" title="Phone matches existing client">
+              This phone number belongs to client <strong>{existingClient.name}</strong>.
+              Consider linking instead of creating a duplicate.
+            </Alert>
+          )}
           <TextInput label="Name" required {...form.getInputProps('name')} />
           <TextInput label="Phone" required placeholder="+255..." {...form.getInputProps('phone')} />
 
@@ -126,10 +151,12 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
           <Switch label="Mark as Important" {...form.getInputProps('is_important', { type: 'checkbox' })} />
 
           <Group justify="flex-end" mt="sm">
-            <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button type="submit" loading={mutation.isPending} color="green">
-              {contact ? 'Save Changes' : 'Add Contact'}
-            </Button>
+            <Button variant="default" onClick={onClose}>{existingClient ? 'Close' : 'Cancel'}</Button>
+            {!existingClient && (
+              <Button type="submit" loading={mutation.isPending} color="green">
+                {contact ? 'Save Changes' : 'Add Contact'}
+              </Button>
+            )}
           </Group>
         </Stack>
       </form>

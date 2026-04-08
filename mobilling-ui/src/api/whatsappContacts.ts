@@ -63,8 +63,15 @@ export const getContacts = (params?: Record<string, string>) =>
 export const getStats = () =>
   api.get<WaStats>('/whatsapp-contacts/stats');
 
+export interface ExistingClientMatch {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+}
+
 export const createContact = (data: Partial<WhatsappContact>) =>
-  api.post<WhatsappContact>('/whatsapp-contacts', data);
+  api.post<{ contact: WhatsappContact; existing_client: ExistingClientMatch | null }>('/whatsapp-contacts', data);
 
 export const updateContact = (id: string, data: Partial<WhatsappContact>) =>
   api.put<WhatsappContact>(`/whatsapp-contacts/${id}`, data);
