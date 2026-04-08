@@ -298,6 +298,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/users', [UserController::class, 'store']);
         Route::put('/users/{user}', [UserController::class, 'update']);
         Route::patch('/users/{user}/toggle-active', [UserController::class, 'toggleActive']);
+        Route::post('/users/{user}/impersonate', [UserController::class, 'impersonate']);
     });
 
     // Settings

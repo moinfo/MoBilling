@@ -99,4 +99,30 @@ class UserController extends Controller
 
         return new UserResource($user->load('role'));
     }
+
+    public function impersonate(User $user)
+    {
+        $this->authorizePermission('settings.users');
+
+        if ($user->tenant_id !== auth()->user()->tenant_id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+
+        if (!$user->is_active) {
+            return response()->json(['message' => 'Cannot impersonate an inactive user'], 422);
+        }
+
+        if ($user->id === auth()->id()) {
+            return response()->json(['message' => 'You cannot impersonate yourself'], 422);
+        }
+
+        $token = $user->createToken('impersonation')->plainTextToken;
+
+        return response()->json([
+            'user'                => new UserResource($user->load('role')),
+            'token'               => $token,
+            'subscription_status' => null,
+            'days_remaining'      => null,
+        ]);
+    }
 }

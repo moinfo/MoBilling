@@ -120,12 +120,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     updateUser(impersonatedUser);
     setUserType('tenant');
     setIsImpersonating(true);
-    if (subStatus !== undefined) {
+    if (subStatus !== undefined && subStatus !== null) {
       setSubscriptionStatus(subStatus);
       setDaysRemaining(subDays ?? 0);
     }
     const res = await getMe();
     setPermissions(res.data.permissions ?? []);
+    // Always sync subscription status from getMe so we reflect the impersonated user's tenant
+    setSubscriptionStatus(res.data.subscription_status ?? null);
+    setDaysRemaining(res.data.days_remaining ?? 0);
   };
 
   const exitImpersonation = () => {

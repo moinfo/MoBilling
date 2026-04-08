@@ -61,7 +61,7 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
                       {user.is_active ? <IconUserOff size={16} /> : <IconUserCheck size={16} />}
                     </ActionIcon>
                   )}
-                  {showLoginAs && user.is_active && (
+                  {showLoginAs && user.is_active && user.id !== currentUserId && (
                     <ActionIcon
                       variant="light"
                       color="violet"

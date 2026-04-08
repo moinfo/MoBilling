@@ -5,7 +5,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch } from '@tabler/icons-react';
 import { getUsers, createUser, updateUser, toggleUserActive, TenantUser, UserFormData } from '../api/users';
-import { impersonateUser } from '../api/admin';
+import { impersonateUser, impersonateUserAsTenantAdmin } from '../api/admin';
 import UserTable from '../components/Settings/UserTable';
 import UserForm from '../components/Settings/UserForm';
 import { usePermissions } from '../hooks/usePermissions';
@@ -63,7 +63,11 @@ export default function Users() {
 
   const loginAsMutation = useMutation({
     mutationFn: async (user: TenantUser) => {
-      const res = await impersonateUser(currentUser!.tenant!.id, user.id);
+      // Super-admin impersonating within a tenant uses the admin endpoint.
+      // Tenant admins use the regular tenant-scoped endpoint.
+      const res = isImpersonating
+        ? await impersonateUser(currentUser!.tenant!.id, user.id)
+        : await impersonateUserAsTenantAdmin(user.id);
       const { user: impUser, token, subscription_status, days_remaining } = res.data;
       await impersonate(impUser, token, subscription_status, days_remaining);
       return impUser;
@@ -126,7 +130,7 @@ export default function Users() {
         currentUserId={currentUser?.id || ''}
         onEdit={handleEdit}
         onToggleActive={handleToggleActive}
-        showLoginAs={isImpersonating}
+        showLoginAs={canManageUsers}
         onLoginAs={handleLoginAs}
       />
 
