@@ -927,7 +927,6 @@ export default function Landing() {
 // ── Pricing section ───────────────────────────────────────────────────────────
 
 function PricingSection() {
-  const theme = useMantineTheme();
   const { data, isLoading } = useQuery({ queryKey: ['public-plans'], queryFn: getPublicPlans });
   const plans: SubscriptionPlan[] = data?.data?.data || [];
 
