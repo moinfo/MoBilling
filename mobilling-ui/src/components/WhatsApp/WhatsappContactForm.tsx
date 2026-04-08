@@ -1,8 +1,10 @@
 import { useEffect } from 'react';
 import { useForm } from '@mantine/form';
 import {
-  TextInput, Textarea, Select, Switch, Stack, Button, Group, Modal,
+  TextInput, Textarea, Select, Switch, Stack, Button, Group, Modal, MultiSelect, ScrollArea, Text, Anchor,
 } from '@mantine/core';
+
+const { Autosize: ScrollAreaAutosize } = ScrollArea;
 import { DatePickerInput } from '@mantine/dates';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -14,6 +16,8 @@ import { IconAlertCircle } from '@tabler/icons-react';
 import { useState } from 'react';
 import { getCampaigns } from '../../api/whatsappCampaigns';
 import { getUsers } from '../../api/users';
+import { getServices } from '../../api/marketingServices';
+import { Link } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 
 interface Props {
@@ -28,6 +32,14 @@ const SOURCE_OPTIONS = (Object.keys(SOURCE_META) as WaSource[]).map((v) => ({ va
 export default function WhatsappContactForm({ opened, onClose, contact }: Props) {
   const qc = useQueryClient();
   const [existingClient, setExistingClient] = useState<{ name: string; phone: string | null } | null>(null);
+  const [extraServiceOptions, setExtraServiceOptions] = useState<string[]>([]);
+
+  const { data: servicesData } = useQuery({
+    queryKey: ['marketing-services'],
+    queryFn: getServices,
+  });
+  const apiServices = (servicesData?.data ?? []).map(s => s.name);
+  const serviceOptions = [...apiServices, ...extraServiceOptions.filter(e => !apiServices.includes(e))];
 
   const { data: usersData } = useQuery({
     queryKey: ['users-simple'],
@@ -51,6 +63,7 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
       source: 'whatsapp_ad' as WaSource,
       campaign_id: null as string | null,
       notes: '',
+      services: [] as string[],
       next_followup_date: null as Date | null,
       assigned_to: null as string | null,
     },
@@ -66,6 +79,7 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
         source: contact.source,
         campaign_id: contact.campaign_id ?? null,
         notes: contact.notes ?? '',
+        services: contact.services ?? [],
         next_followup_date: contact.next_followup_date ? new Date(contact.next_followup_date) : null,
         assigned_to: contact.assigned_to ?? null,
       });
@@ -116,7 +130,7 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
   });
 
   return (
-    <Modal opened={opened} onClose={onClose} title={contact ? 'Edit Contact' : 'Add WhatsApp Contact'} size="md">
+    <Modal opened={opened} onClose={onClose} title={contact ? 'Edit Contact' : 'Add WhatsApp Contact'} size="md" scrollAreaComponent={ScrollAreaAutosize}>
       <form onSubmit={form.onSubmit((v) => mutation.mutate(v))}>
         <Stack gap="sm">
           {existingClient && (
@@ -140,6 +154,37 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
             clearable
             searchable
             {...form.getInputProps('campaign_id')}
+          />
+
+          <MultiSelect
+            label={
+              <Group gap={4} justify="space-between">
+                <Text size="sm" fw={500}>Services Interested In</Text>
+                <Anchor component={Link} to="/field-marketing?tab=services" size="xs" c="dimmed">
+                  + Manage services
+                </Anchor>
+              </Group>
+            }
+            placeholder="Select or type to add..."
+            data={serviceOptions}
+            searchable
+            clearable
+            nothingFoundMessage={(search) =>
+              search ? `Press Enter to add "${search}"` : 'No services found'
+            }
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const input = (e.target as HTMLInputElement).value.trim();
+                if (input && !serviceOptions.includes(input)) {
+                  setExtraServiceOptions(prev => [...prev, input]);
+                  const current = form.values.services ?? [];
+                  if (!current.includes(input)) {
+                    form.setFieldValue('services', [...current, input]);
+                  }
+                }
+              }
+            }}
+            {...form.getInputProps('services')}
           />
 
           <DatePickerInput label="Next Follow-up Date" clearable {...form.getInputProps('next_followup_date')} />

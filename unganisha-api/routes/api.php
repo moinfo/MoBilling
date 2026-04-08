@@ -380,6 +380,13 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:whatsapp_campaigns.update')->put('/whatsapp-campaigns/{whatsappCampaign}', [\App\Http\Controllers\WhatsappCampaignController::class, 'update']);
     Route::middleware('permission:whatsapp_campaigns.delete')->delete('/whatsapp-campaigns/{whatsappCampaign}', [\App\Http\Controllers\WhatsappCampaignController::class, 'destroy']);
 
+    // Marketing Services (shared picklist for field visits & whatsapp contacts)
+    Route::middleware('permission:marketing_services.read')->get('/marketing-services', [\App\Http\Controllers\MarketingServiceController::class, 'index']);
+    Route::middleware('permission:marketing_services.create')->post('/marketing-services', [\App\Http\Controllers\MarketingServiceController::class, 'store']);
+    Route::middleware('permission:marketing_services.update')->put('/marketing-services/{marketingService}', [\App\Http\Controllers\MarketingServiceController::class, 'update']);
+    Route::middleware('permission:marketing_services.delete')->delete('/marketing-services/{marketingService}', [\App\Http\Controllers\MarketingServiceController::class, 'destroy']);
+    Route::middleware('permission:marketing_services.update')->post('/marketing-services/reorder', [\App\Http\Controllers\MarketingServiceController::class, 'reorder']);
+
     // WhatsApp Contacts (Marketing Pipeline)
     Route::middleware('permission:whatsapp_contacts.read')->get('/whatsapp-contacts/stats', [\App\Http\Controllers\WhatsappContactController::class, 'stats']);
     Route::middleware('permission:whatsapp_contacts.read')->get('/whatsapp-contacts', [\App\Http\Controllers\WhatsappContactController::class, 'index']);
@@ -392,6 +399,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:whatsapp_contacts.log')->delete('/whatsapp-contacts/{whatsappContact}/followups/{followup}', [\App\Http\Controllers\WhatsappFollowupController::class, 'destroy']);
 
     // ── Field Marketing (Door-to-Door) ───────────────────────────────────────
+    Route::middleware('permission:field_sessions.read')->get('/field-visits-report', [\App\Http\Controllers\FieldMarketingController::class, 'allVisits']);
     Route::middleware('permission:field_sessions.read')->get('/field-sessions', [\App\Http\Controllers\FieldMarketingController::class, 'sessions']);
     Route::middleware('permission:field_sessions.read')->get('/field-sessions/{fieldSession}', [\App\Http\Controllers\FieldMarketingController::class, 'sessionDetail']);
     Route::middleware('permission:field_sessions.create')->post('/field-sessions', [\App\Http\Controllers\FieldMarketingController::class, 'storeSession']);

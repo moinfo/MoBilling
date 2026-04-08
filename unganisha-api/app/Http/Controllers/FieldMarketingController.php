@@ -83,6 +83,35 @@ class FieldMarketingController extends Controller
         ]);
     }
 
+    // ── All Visits (report) ──────────────────────────────────────
+
+    public function allVisits(Request $request)
+    {
+        $query = FieldVisit::with(['session:id,visit_date,area', 'officer:id,name', 'client:id,name'])
+            ->latest('created_at');
+
+        if ($request->date_from) $query->whereHas('session', fn ($q) => $q->whereDate('visit_date', '>=', $request->date_from));
+        if ($request->date_to)   $query->whereHas('session', fn ($q) => $q->whereDate('visit_date', '<=', $request->date_to));
+        if ($request->officer_id) $query->where('officer_id', $request->officer_id);
+        if ($request->status)    $query->where('status', $request->status);
+
+        return response()->json($query->get()->map(fn ($v) => [
+            'id'                 => $v->id,
+            'session_id'         => $v->session_id,
+            'visit_date'         => $v->session?->visit_date?->format('Y-m-d'),
+            'area'               => $v->session?->area,
+            'officer'            => $v->officer,
+            'business_name'      => $v->business_name,
+            'location'           => $v->location,
+            'phone'              => $v->phone,
+            'services'           => $v->services,
+            'feedback'           => $v->feedback,
+            'status'             => $v->status,
+            'next_followup_date' => $v->next_followup_date?->format('Y-m-d'),
+            'client'             => $v->client,
+        ]));
+    }
+
     // ── Visits ──────────────────────────────────────────────────
 
     public function storeVisit(Request $request, FieldSession $fieldSession)

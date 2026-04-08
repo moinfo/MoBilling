@@ -201,9 +201,11 @@ export default function WhatsappContacts() {
               <Table highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th w={40}>#</Table.Th>
                     <Table.Th></Table.Th>
                     <Table.Th>Name</Table.Th>
                     <Table.Th>Phone</Table.Th>
+                    <Table.Th>Services</Table.Th>
                     <Table.Th>Stage</Table.Th>
                     <Table.Th>Source</Table.Th>
                     <Table.Th>Campaign</Table.Th>
@@ -214,11 +216,12 @@ export default function WhatsappContacts() {
                 </Table.Thead>
                 <Table.Tbody>
                   {isLoading ? (
-                    <Table.Tr><Table.Td colSpan={9}><Text c="dimmed" ta="center" py="md">Loading...</Text></Table.Td></Table.Tr>
+                    <Table.Tr><Table.Td colSpan={11}><Text c="dimmed" ta="center" py="md">Loading...</Text></Table.Td></Table.Tr>
                   ) : contacts.length === 0 ? (
-                    <Table.Tr><Table.Td colSpan={9}><Text c="dimmed" ta="center" py="md">No contacts found</Text></Table.Td></Table.Tr>
-                  ) : contacts.map((c) => (
+                    <Table.Tr><Table.Td colSpan={11}><Text c="dimmed" ta="center" py="md">No contacts found</Text></Table.Td></Table.Tr>
+                  ) : contacts.map((c, idx) => (
                     <Table.Tr key={c.id}>
+                      <Table.Td><Text size="sm" c="dimmed">{idx + 1}</Text></Table.Td>
                       <Table.Td>
                         <ActionIcon variant="subtle" color="yellow" onClick={() => toggleImportant(c)}>
                           {c.is_important ? <IconStarFilled size={16} /> : <IconStar size={16} />}
@@ -229,6 +232,13 @@ export default function WhatsappContacts() {
                         <Anchor href={`https://wa.me/${c.phone.replace(/\D/g, '')}`} target="_blank" size="sm">
                           {c.phone}
                         </Anchor>
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4} wrap="wrap">
+                          {c.services?.length
+                            ? c.services.map(s => <Badge key={s} size="xs" variant="outline">{s}</Badge>)
+                            : <Text size="xs" c="dimmed">—</Text>}
+                        </Group>
                       </Table.Td>
                       <Table.Td>
                         <Badge color={LABEL_META[c.label].color} variant="light">{LABEL_META[c.label].label}</Badge>

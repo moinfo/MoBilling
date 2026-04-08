@@ -1,6 +1,10 @@
-import { TextInput, Textarea, Button, Stack, MultiSelect, Select, Group } from '@mantine/core';
+import { useState } from 'react';
+import { TextInput, Textarea, Button, Stack, MultiSelect, Select, Group, Text, Anchor } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { SERVICES, VISIT_STATUSES, type FieldVisit, type VisitStatus } from '../../api/fieldMarketing';
+import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
+import { VISIT_STATUSES, type FieldVisit, type VisitStatus } from '../../api/fieldMarketing';
+import { getServices } from '../../api/marketingServices';
 
 interface Props {
   visit?: FieldVisit | null;
@@ -16,6 +20,15 @@ interface Props {
 }
 
 export default function VisitForm({ visit, onSubmit, loading }: Props) {
+  const { data: servicesData } = useQuery({
+    queryKey: ['marketing-services'],
+    queryFn: getServices,
+  });
+
+  const apiServices = (servicesData?.data ?? []).map(s => s.name);
+  const [extraOptions, setExtraOptions] = useState<string[]>([]);
+  const serviceOptions = [...apiServices, ...extraOptions.filter(e => !apiServices.includes(e))];
+
   const form = useForm({
     initialValues: {
       business_name: visit?.business_name ?? '',
@@ -43,10 +56,36 @@ export default function VisitForm({ visit, onSubmit, loading }: Props) {
         <TextInput label="Location" placeholder="e.g. Kariakoo, Stall 12" required {...form.getInputProps('location')} />
         <TextInput label="Phone" placeholder="+255..." {...form.getInputProps('phone')} />
         <MultiSelect
-          label="Services Interested In"
-          placeholder="Select services"
-          data={SERVICES as unknown as string[]}
+          label={
+            <Group gap={4} justify="space-between">
+              <Text size="sm" fw={500}>Services Interested In</Text>
+              <Anchor component={Link} to="/field-marketing?tab=services" size="xs" c="dimmed">
+                + Manage services
+              </Anchor>
+            </Group>
+          }
+          placeholder="Select or type to add..."
+          data={serviceOptions}
+          searchable
+          clearable
           required
+          nothingFoundMessage={(search: string) =>
+            search
+              ? `Press Enter to add "${search}"`
+              : 'No services found'
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              const input = (e.target as HTMLInputElement).value.trim();
+              if (input && !serviceOptions.includes(input)) {
+                setExtraOptions(prev => [...prev, input]);
+                const current = form.values.services ?? [];
+                if (!current.includes(input)) {
+                  form.setFieldValue('services', [...current, input]);
+                }
+              }
+            }
+          }}
           {...form.getInputProps('services')}
         />
         <Select

@@ -9,7 +9,7 @@ export type WaLabel =
   | 'paid'
   | 'order_complete';
 
-export type WaSource = 'whatsapp_ad' | 'direct' | 'referral' | 'other';
+export type WaSource = 'whatsapp_ad' | 'instagram' | 'facebook' | 'social_media' | 'direct' | 'referral' | 'other';
 
 export interface WhatsappContact {
   id: string;
@@ -18,6 +18,7 @@ export interface WhatsappContact {
   label: WaLabel;
   is_important: boolean;
   source: WaSource;
+  services: string[] | null;
   campaign_id: string | null;
   campaign: { id: string; name: string } | null;
   notes: string | null;
@@ -47,10 +48,13 @@ export const LABEL_META: Record<WaLabel, { label: string; color: string }> = {
 };
 
 export const SOURCE_META: Record<WaSource, string> = {
-  whatsapp_ad: 'WhatsApp Ad',
-  direct:      'Direct',
-  referral:    'Referral',
-  other:       'Other',
+  whatsapp_ad:  'WhatsApp Ad',
+  instagram:    'Instagram',
+  facebook:     'Facebook',
+  social_media: 'Other Social Media',
+  direct:       'Direct',
+  referral:     'Referral',
+  other:        'Other',
 };
 
 export const LABEL_ORDER: WaLabel[] = [

@@ -1,33 +1,41 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Title, Stack, Group, Button, Badge, Table, Text, ActionIcon,
   Tabs, SimpleGrid, Card, ThemeIcon, Progress, Modal, Select,
-  Box, LoadingOverlay,
+  Box, LoadingOverlay, Tooltip,
 } from '@mantine/core';
-import { MonthPickerInput } from '@mantine/dates';
+import { MonthPickerInput, DatePickerInput } from '@mantine/dates';
 import {
   IconPlus, IconEdit, IconTrash, IconMapPin, IconUsers,
-  IconTarget, IconChartBar, IconEye,
+  IconTarget, IconChartBar, IconEye, IconList, IconTools,
 } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePermissions } from '../hooks/usePermissions';
 import { notifications } from '@mantine/notifications';
 import {
   getSessions, deleteSession, createSession, updateSession,
-  getTargets, setTarget, getFieldStats,
-  VISIT_STATUSES, type FieldSession, type FieldTarget,
+  getTargets, setTarget, getFieldStats, getAllVisits,
+  VISIT_STATUSES, type FieldSession, type FieldTarget, type FieldVisitReport,
 } from '../api/fieldMarketing';
 import { getUsers } from '../api/users';
 import SessionForm from '../components/FieldMarketing/SessionForm';
 import SessionDetailDrawer from '../components/FieldMarketing/SessionDetailDrawer';
 import TargetForm from '../components/FieldMarketing/TargetForm';
+import ServicesManager from '../components/FieldMarketing/ServicesManager';
 
 
 export default function FieldMarketing() {
   const { can } = usePermissions();
   const qc = useQueryClient();
 
-  const [tab, setTab] = useState<string | null>('sessions');
+  const [searchParams] = useSearchParams();
+  const [tab, setTab] = useState<string | null>(searchParams.get('tab') ?? 'sessions');
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t) setTab(t);
+  }, [searchParams]);
 
   // Month/year picker — defaults to current month
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(new Date());
@@ -38,6 +46,14 @@ export default function FieldMarketing() {
 
   // Sessions filters
   const [filterOfficer, setFilterOfficer] = useState('');
+
+  // Visits report filters
+  const [visitDateFrom, setVisitDateFrom] = useState<Date | null>(null);
+  const [visitDateTo,   setVisitDateTo]   = useState<Date | null>(null);
+  const [visitOfficer,  setVisitOfficer]  = useState('');
+  const [visitStatus,   setVisitStatus]   = useState('');
+
+  const toDateStr = (d: Date | null) => d ? d.toISOString().slice(0, 10) : undefined;
 
   // Modal/drawer state
   const [sessionModal, setSessionModal] = useState(false);
@@ -66,6 +82,17 @@ export default function FieldMarketing() {
     queryKey: ['field-stats', month, year],
     queryFn:  () => getFieldStats(month, year),
     enabled:  can('field_sessions.read') && tab === 'stats',
+  });
+
+  const { data: allVisits = [], isFetching: loadingVisits } = useQuery({
+    queryKey: ['field-visits-report', { visitDateFrom, visitDateTo, visitOfficer, visitStatus }],
+    queryFn:  () => getAllVisits({
+      date_from:  toDateStr(visitDateFrom),
+      date_to:    toDateStr(visitDateTo),
+      officer_id: visitOfficer || undefined,
+      status:     visitStatus  || undefined,
+    }),
+    enabled:  can('field_sessions.read') && tab === 'visits',
   });
 
   // ── Mutations ─────────────────────────────────────────────────────────────
@@ -145,6 +172,12 @@ export default function FieldMarketing() {
           {can('field_sessions.read') && (
             <Tabs.Tab value="stats" leftSection={<IconChartBar size={14} />}>Stats</Tabs.Tab>
           )}
+          {can('field_sessions.read') && (
+            <Tabs.Tab value="visits" leftSection={<IconList size={14} />}>All Visits</Tabs.Tab>
+          )}
+          {can('marketing_services.read') && (
+            <Tabs.Tab value="services" leftSection={<IconTools size={14} />}>Services</Tabs.Tab>
+          )}
         </Tabs.List>
 
         {/* ── Sessions tab ────────────────────────────────────────────── */}
@@ -167,6 +200,7 @@ export default function FieldMarketing() {
               <Table striped highlightOnHover withTableBorder>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th w={40}>#</Table.Th>
                     <Table.Th>Date</Table.Th>
                     <Table.Th>Officer</Table.Th>
                     <Table.Th>Area</Table.Th>
@@ -177,8 +211,9 @@ export default function FieldMarketing() {
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {(sessions as FieldSession[]).map(s => (
+                  {(sessions as FieldSession[]).map((s, idx) => (
                     <Table.Tr key={s.id}>
+                      <Table.Td><Text size="sm" c="dimmed">{idx + 1}</Text></Table.Td>
                       <Table.Td>{s.visit_date}</Table.Td>
                       <Table.Td>{s.officer?.name}</Table.Td>
                       <Table.Td>{s.area}</Table.Td>
@@ -277,6 +312,7 @@ export default function FieldMarketing() {
                 <Table withTableBorder striped>
                   <Table.Thead>
                     <Table.Tr>
+                      <Table.Th w={40}>#</Table.Th>
                       <Table.Th>Officer</Table.Th>
                       <Table.Th>Visits</Table.Th>
                       <Table.Th>Clients Won</Table.Th>
@@ -284,8 +320,9 @@ export default function FieldMarketing() {
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {stats.by_officer.map(r => (
+                    {stats.by_officer.map((r, idx) => (
                       <Table.Tr key={r.officer_id}>
+                        <Table.Td><Text size="sm" c="dimmed">{idx + 1}</Text></Table.Td>
                         <Table.Td>{r.officer?.name ?? r.officer_id}</Table.Td>
                         <Table.Td>{r.visits}</Table.Td>
                         <Table.Td><Badge color="green">{r.won}</Badge></Table.Td>
@@ -302,6 +339,122 @@ export default function FieldMarketing() {
               <Text c="dimmed" ta="center" py="xl">No data for {periodLabel}</Text>
             )}
           </Box>
+        </Tabs.Panel>
+
+        {/* ── All Visits tab ───────────────────────────────────────────── */}
+        <Tabs.Panel value="visits" pt="md">
+          <Stack>
+            {/* Filters */}
+            <Group wrap="wrap">
+              <DatePickerInput
+                placeholder="From date"
+                value={visitDateFrom}
+                onChange={v => setVisitDateFrom(v as Date | null)}
+                clearable
+                size="sm"
+                w={150}
+              />
+              <DatePickerInput
+                placeholder="To date"
+                value={visitDateTo}
+                onChange={v => setVisitDateTo(v as Date | null)}
+                clearable
+                size="sm"
+                w={150}
+              />
+              <Select
+                data={officerOptions}
+                value={visitOfficer}
+                onChange={v => setVisitOfficer(v ?? '')}
+                placeholder="All Officers"
+                size="sm"
+                w={180}
+                clearable
+              />
+              <Select
+                data={[
+                  { value: '', label: 'All Statuses' },
+                  ...VISIT_STATUSES.map(s => ({ value: s.value, label: s.label })),
+                ]}
+                value={visitStatus}
+                onChange={v => setVisitStatus(v ?? '')}
+                placeholder="All Statuses"
+                size="sm"
+                w={160}
+                clearable
+              />
+              <Text size="sm" c="dimmed">{allVisits.length} visits</Text>
+            </Group>
+
+            <Box pos="relative">
+              <LoadingOverlay visible={loadingVisits} />
+              <Table striped highlightOnHover withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th w={40}>#</Table.Th>
+                    <Table.Th>Date</Table.Th>
+                    <Table.Th>Officer</Table.Th>
+                    <Table.Th>Area</Table.Th>
+                    <Table.Th>Business</Table.Th>
+                    <Table.Th>Location</Table.Th>
+                    <Table.Th>Phone</Table.Th>
+                    <Table.Th>Services</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                    <Table.Th>Next Follow-up</Table.Th>
+                    <Table.Th>Client</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {(allVisits as FieldVisitReport[]).map((v, idx) => {
+                    const statusMeta = VISIT_STATUSES.find(s => s.value === v.status);
+                    return (
+                      <Table.Tr key={v.id}>
+                        <Table.Td><Text size="sm" c="dimmed">{idx + 1}</Text></Table.Td>
+                        <Table.Td><Text size="sm">{v.visit_date}</Text></Table.Td>
+                        <Table.Td><Text size="sm">{v.officer?.name}</Text></Table.Td>
+                        <Table.Td><Text size="sm" c="dimmed">{v.area}</Text></Table.Td>
+                        <Table.Td><Text size="sm" fw={500}>{v.business_name}</Text></Table.Td>
+                        <Table.Td><Text size="sm">{v.location}</Text></Table.Td>
+                        <Table.Td><Text size="sm">{v.phone ?? '—'}</Text></Table.Td>
+                        <Table.Td>
+                          <Group gap={4} wrap="wrap">
+                            {v.services.map(s => (
+                              <Tooltip key={s} label={s} withArrow>
+                                <Badge size="xs" variant="outline">{s.length > 8 ? s.slice(0, 8) + '…' : s}</Badge>
+                              </Tooltip>
+                            ))}
+                          </Group>
+                        </Table.Td>
+                        <Table.Td>
+                          <Badge size="sm" color={statusMeta?.color ?? 'gray'} variant="light">
+                            {statusMeta?.label ?? v.status}
+                          </Badge>
+                        </Table.Td>
+                        <Table.Td>
+                          <Text size="sm" c={v.next_followup_date && new Date(v.next_followup_date) < new Date() ? 'red' : 'dimmed'}>
+                            {v.next_followup_date ?? '—'}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>
+                          {v.client
+                            ? <Text size="sm" c="green">{v.client.name}</Text>
+                            : <Text size="sm" c="dimmed">—</Text>}
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+              {allVisits.length === 0 && !loadingVisits && (
+                <Text c="dimmed" ta="center" py="xl">No visits found for selected filters</Text>
+              )}
+            </Box>
+          </Stack>
+        </Tabs.Panel>
+
+        {/* ── Services tab ─────────────────────────────────────────────── */}
+        <Tabs.Panel value="services" pt="md">
+          <ServicesManager />
         </Tabs.Panel>
       </Tabs>
 

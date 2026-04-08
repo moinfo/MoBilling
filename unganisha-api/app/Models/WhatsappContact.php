@@ -22,11 +22,13 @@ class WhatsappContact extends Model
         'next_followup_date',
         'assigned_to',
         'client_id',
+        'services',
     ];
 
     protected $casts = [
-        'is_important' => 'boolean',
+        'is_important'       => 'boolean',
         'next_followup_date' => 'date',
+        'services'           => 'array',
     ];
 
     public function followups()

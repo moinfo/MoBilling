@@ -75,6 +75,18 @@ export interface FieldStats {
 
 // ── Sessions ─────────────────────────────────────────────────
 
+export interface FieldVisitReport extends FieldVisit {
+  visit_date: string;
+  area: string | null;
+}
+
+export const getAllVisits = (params?: {
+  date_from?: string;
+  date_to?: string;
+  officer_id?: string;
+  status?: string;
+}) => api.get<FieldVisitReport[]>('/field-visits-report', { params }).then(r => r.data);
+
 export const getSessions = (params?: { officer_id?: string; month?: number; year?: number }) =>
   api.get<FieldSession[]>('/field-sessions', { params }).then(r => r.data);
 
