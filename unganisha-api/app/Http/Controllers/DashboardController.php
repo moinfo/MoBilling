@@ -393,6 +393,9 @@ class DashboardController extends Controller
             ])->values(),
         ])->values();
 
+        $totalWhatsappContacts = \App\Models\WhatsappContact::count();
+        $totalFieldVisits      = \App\Models\FieldVisit::count();
+
         return response()->json([
             'total_expenses' => round((float) $totalExpenses, 2),
             'total_receivable' => round($totalReceivable, 2),
@@ -400,7 +403,9 @@ class DashboardController extends Controller
             'outstanding' => round($totalReceivable - $totalReceived, 2),
             'overdue_invoices' => $overdueInvoices,
             'overdue_bills' => $overdueBills,
-            'total_clients' => $totalClients,
+            'total_clients'           => $totalClients,
+            'total_whatsapp_contacts' => $totalWhatsappContacts,
+            'total_field_visits'      => $totalFieldVisits,
             'total_documents' => $totalDocuments,
             'sms_balance' => $smsBalance,
             'sms_enabled' => $tenant?->sms_enabled ?? false,

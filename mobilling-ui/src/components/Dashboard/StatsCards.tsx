@@ -1,5 +1,5 @@
 import { SimpleGrid, Card, Text, Group } from '@mantine/core';
-import { IconCash, IconReceipt, IconAlertTriangle, IconUsers, IconFileText, IconMessage, IconCalendarDue, IconWallet } from '@tabler/icons-react';
+import { IconCash, IconReceipt, IconAlertTriangle, IconUsers, IconFileText, IconMessage, IconCalendarDue, IconWallet, IconBrandWhatsapp, IconMapPin } from '@tabler/icons-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { usePermissions } from '../../hooks/usePermissions';
 
@@ -16,6 +16,8 @@ interface Props {
   smsEnabled?: boolean;
   statutoryOverdue?: number;
   statutoryDueSoon?: number;
+  totalWhatsappContacts?: number;
+  totalFieldVisits?: number;
   periodLabel?: string;
 }
 
@@ -34,6 +36,8 @@ export default function StatsCards(props: Props) {
     { title: 'Overdue Obligations', value: String(props.statutoryOverdue ?? 0), icon: IconCalendarDue, color: 'red', permission: 'dashboard.overdue_obligations' },
     { title: 'Due Soon Obligations', value: String(props.statutoryDueSoon ?? 0), icon: IconCalendarDue, color: 'orange', permission: 'dashboard.due_soon_obligations' },
     ...(props.smsEnabled ? [{ title: 'SMS Balance', value: props.smsBalance != null ? props.smsBalance.toLocaleString() : '—', icon: IconMessage, color: 'cyan', permission: 'dashboard.sms_balance' }] : []),
+    { title: 'WhatsApp Contacts', value: String(props.totalWhatsappContacts ?? 0), icon: IconBrandWhatsapp, color: 'green',  permission: 'dashboard.whatsapp_contacts' },
+    { title: 'Field Prospects',   value: String(props.totalFieldVisits ?? 0),      icon: IconMapPin,         color: 'orange', permission: 'dashboard.field_visits'      },
   ];
 
   const visibleCards = cards.filter((card) => can(card.permission));

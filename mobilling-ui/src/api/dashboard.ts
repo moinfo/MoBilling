@@ -71,6 +71,8 @@ export interface DashboardSummary {
   overdue_bills: number;
   total_clients: number;
   total_documents: number;
+  total_whatsapp_contacts: number;
+  total_field_visits: number;
   sms_balance?: number | null;
   sms_enabled?: boolean;
   recent_invoices: {

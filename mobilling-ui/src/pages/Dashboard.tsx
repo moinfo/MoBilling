@@ -41,18 +41,20 @@ export default function Dashboard() {
           <Title order={2}>Dashboard</Title>
           {isFetching && !!summary && <Loader size="xs" />}
         </Group>
-        <MonthPickerInput
-          value={selectedMonth}
-          onChange={(val) => {
-            if (!val) return;
-            const d = val as unknown as Date;
-            if (!isNaN(d.getTime())) setSelectedMonth(d);
-          }}
-          maxDate={new Date()}
-          maxLevel="decade"
-          w={160}
-          size="sm"
-        />
+        {can('dashboard.month_filter') && (
+          <MonthPickerInput
+            value={selectedMonth}
+            onChange={(val) => {
+              if (!val) return;
+              const d = val as unknown as Date;
+              if (!isNaN(d.getTime())) setSelectedMonth(d);
+            }}
+            maxDate={new Date()}
+            maxLevel="decade"
+            w={160}
+            size="sm"
+          />
+        )}
       </Group>
 
       {summary && (
@@ -70,6 +72,8 @@ export default function Dashboard() {
             totalDocuments={summary.total_documents}
             smsBalance={summary.sms_balance}
             smsEnabled={summary.sms_enabled}
+            totalWhatsappContacts={summary.total_whatsapp_contacts}
+            totalFieldVisits={summary.total_field_visits}
             periodLabel={periodLabel}
           />
 
