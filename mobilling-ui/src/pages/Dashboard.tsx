@@ -46,8 +46,10 @@ export default function Dashboard() {
             value={selectedMonth}
             onChange={(val) => {
               if (!val) return;
-              const d = val as unknown as Date;
-              if (!isNaN(d.getTime())) setSelectedMonth(d);
+              try {
+                const d = new Date(val as any);
+                if (!isNaN(d.getTime())) setSelectedMonth(d);
+              } catch { /* ignore */ }
             }}
             maxDate={new Date()}
             maxLevel="decade"
