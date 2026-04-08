@@ -37,12 +37,12 @@ export default function FieldMarketing() {
     if (t) setTab(t);
   }, [searchParams]);
 
-  // Month/year picker — defaults to current month
+  // Month/year picker — null means all months
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(new Date());
   const safeDate = selectedMonth instanceof Date && !isNaN(selectedMonth.getTime())
-    ? selectedMonth : new Date();
-  const month = safeDate.getMonth() + 1;
-  const year  = safeDate.getFullYear();
+    ? selectedMonth : null;
+  const month = safeDate ? safeDate.getMonth() + 1 : undefined;
+  const year  = safeDate ? safeDate.getFullYear()  : undefined;
 
   // Sessions filters
   const [filterOfficer, setFilterOfficer] = useState('');
@@ -129,7 +129,7 @@ export default function FieldMarketing() {
     ...users.map(u => ({ value: u.id, label: u.name })),
   ];
 
-  const periodLabel = safeDate.toLocaleString('default', { month: 'short', year: 'numeric' });
+  const periodLabel = safeDate ? safeDate.toLocaleString('default', { month: 'short', year: 'numeric' }) : 'All Months';
 
   return (
     <Stack>
@@ -139,12 +139,15 @@ export default function FieldMarketing() {
           <MonthPickerInput
             value={selectedMonth}
             onChange={(val) => {
-              if (!val) return;
-              const d = val as unknown as Date;
+              if (!val) { setSelectedMonth(null); return; }
+              // Mantine v8 passes DateValue — cast via unknown
+              const d = (val instanceof Date ? val : new Date(val as any)) as Date;
               if (!isNaN(d.getTime())) setSelectedMonth(d);
             }}
+            placeholder="All months"
             maxDate={new Date()}
             maxLevel="decade"
+            clearable
             w={160}
             size="sm"
           />
