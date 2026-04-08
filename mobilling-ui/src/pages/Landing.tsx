@@ -719,7 +719,7 @@ export default function Landing() {
 
       {/* ── Pricing ── */}
       <Box id="pricing" bg={altBg}>
-        <PricingSection dark={dark} theme={theme} />
+        <PricingSection />
       </Box>
 
       {/* ── FAQ ── */}
@@ -926,7 +926,8 @@ export default function Landing() {
 
 // ── Pricing section ───────────────────────────────────────────────────────────
 
-function PricingSection({ dark, theme }: { dark: boolean; theme: any }) {
+function PricingSection() {
+  const theme = useMantineTheme();
   const { data, isLoading } = useQuery({ queryKey: ['public-plans'], queryFn: getPublicPlans });
   const plans: SubscriptionPlan[] = data?.data?.data || [];
 
