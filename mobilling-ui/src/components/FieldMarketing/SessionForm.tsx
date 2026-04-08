@@ -1,9 +1,10 @@
 import { useEffect } from 'react';
-import { TextInput, Textarea, Button, Stack, Select, Group } from '@mantine/core';
+import { TextInput, Textarea, Button, Stack, Select, Group, Text } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { getUsers } from '../../api/users';
 import type { FieldSession } from '../../api/fieldMarketing';
 
@@ -29,7 +30,14 @@ const toDateStr = (val: unknown): string => {
 
 export default function SessionForm({ session, onSubmit, loading }: Props) {
   const { user } = useAuth();
-  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => getUsers({ per_page: 100 }) });
+  const { can } = usePermissions();
+  const canPickOfficer = can('settings.users');
+
+  const { data: usersData } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => getUsers({ per_page: 100 }),
+    enabled: canPickOfficer,
+  });
   const users: { id: string; name: string }[] = usersData?.data?.data ?? [];
 
   const form = useForm({
@@ -78,14 +86,21 @@ export default function SessionForm({ session, onSubmit, loading }: Props) {
       visit_date: toDateStr(v.visit_date),
     }))}>
       <Stack>
-        <Select
-          label="Officer"
-          placeholder="Select officer"
-          data={officerOptions}
-          searchable
-          required
-          {...form.getInputProps('officer_id')}
-        />
+        {canPickOfficer ? (
+          <Select
+            label="Officer"
+            placeholder="Select officer"
+            data={officerOptions}
+            searchable
+            required
+            {...form.getInputProps('officer_id')}
+          />
+        ) : (
+          <div>
+            <Text size="sm" fw={500} mb={4}>Officer</Text>
+            <TextInput value={user?.name ?? ''} readOnly disabled />
+          </div>
+        )}
         <DatePickerInput
           label="Visit Date"
           placeholder="Pick date"
