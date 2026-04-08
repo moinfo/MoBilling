@@ -44,12 +44,14 @@ export interface FieldVisit {
   id: string;
   session_id: string;
   officer_id: string;
+  officer: { id: string; name: string } | null;
   business_name: string;
   location: string;
   phone: string | null;
   services: string[];
   feedback: string | null;
   status: VisitStatus;
+  next_followup_date: string | null;
   client_id: string | null;
   client: { id: string; name: string } | null;
   created_at: string;

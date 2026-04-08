@@ -69,11 +69,7 @@ export default function VisitForm({ visit, onSubmit, loading }: Props) {
           searchable
           clearable
           required
-          nothingFoundMessage={(search: string) =>
-            search
-              ? `Press Enter to add "${search}"`
-              : 'No services found'
-          }
+          nothingFoundMessage="Press Enter to add a custom service"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               const input = (e.target as HTMLInputElement).value.trim();

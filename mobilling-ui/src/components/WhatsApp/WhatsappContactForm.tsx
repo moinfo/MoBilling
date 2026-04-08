@@ -95,14 +95,20 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
     return isNaN(d.getTime()) ? null : d.toISOString().split('T')[0];
   };
 
+  const buildPayload = (values: any) => ({
+    ...values,
+    next_followup_date: toDateStr(values.next_followup_date),
+    notes: values.notes || null,
+  });
+
   const mutation = useMutation({
-    mutationFn: (values: any) => {
-      const payload = {
-        ...values,
-        next_followup_date: toDateStr(values.next_followup_date),
-        notes: values.notes || null,
-      };
-      return contact ? updateContact(contact.id, payload) : createContact(payload);
+    mutationFn: async (values: any) => {
+      const payload = buildPayload(values);
+      if (contact) {
+        const res = await updateContact(contact.id, payload);
+        return { data: { contact: res.data, existing_client: null } } as any;
+      }
+      return createContact(payload);
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
@@ -169,9 +175,7 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
             data={serviceOptions}
             searchable
             clearable
-            nothingFoundMessage={(search) =>
-              search ? `Press Enter to add "${search}"` : 'No services found'
-            }
+            nothingFoundMessage="Press Enter to add a custom service"
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 const input = (e.target as HTMLInputElement).value.trim();
