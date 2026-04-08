@@ -41,8 +41,9 @@ export default function FieldMarketing() {
   const [selectedMonth, setSelectedMonth] = useState<Date | null>(new Date());
   const safeDate = selectedMonth instanceof Date && !isNaN(selectedMonth.getTime())
     ? selectedMonth : null;
-  const month = safeDate ? safeDate.getMonth() + 1 : undefined;
-  const year  = safeDate ? safeDate.getFullYear()  : undefined;
+  const month = safeDate ? safeDate.getMonth() + 1 : new Date().getMonth() + 1;
+  const year  = safeDate ? safeDate.getFullYear()  : new Date().getFullYear();
+  const hasMonthFilter = safeDate !== null;
 
   // Sessions filters
   const [filterOfficer, setFilterOfficer] = useState('');
@@ -68,7 +69,7 @@ export default function FieldMarketing() {
 
   const { data: sessions = [], isFetching: loadingSessions } = useQuery({
     queryKey: ['field-sessions', { month, year, officer: filterOfficer }],
-    queryFn: () => getSessions({ month, year, officer_id: filterOfficer || undefined }),
+    queryFn: () => getSessions({ month: hasMonthFilter ? month : undefined, year: hasMonthFilter ? year : undefined, officer_id: filterOfficer || undefined }),
     enabled: can('field_sessions.read'),
   });
 
@@ -141,7 +142,7 @@ export default function FieldMarketing() {
             onChange={(val) => {
               if (!val) { setSelectedMonth(null); return; }
               // Mantine v8 passes DateValue — cast via unknown
-              const d = (val instanceof Date ? val : new Date(val as any)) as Date;
+              const d = new Date(val as any) as Date;
               if (!isNaN(d.getTime())) setSelectedMonth(d);
             }}
             placeholder="All months"
