@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Document;
 use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -368,6 +370,67 @@ class SettingsController extends Controller
         return response()->json([
             'data'    => $tenant->fresh()->only(['late_fee_enabled', 'late_fee_percent', 'late_fee_days']),
             'message' => 'Late fee settings updated.',
+        ]);
+    }
+
+    public function getLateFeeCount(Request $request)
+    {
+        $this->authorizePermission('settings.reminders');
+
+        $tenant = $request->user()->tenant;
+
+        $count = Document::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('type', 'invoice')
+            ->whereNotNull('overdue_stage')
+            ->whereHas('items', fn ($q) => $q->where('description', 'like', 'Late payment fee%'))
+            ->count();
+
+        return response()->json(['count' => $count]);
+    }
+
+    public function revertLateFees(Request $request)
+    {
+        $this->authorizePermission('settings.reminders');
+
+        $validated = $request->validate([
+            'update_totals' => 'required|boolean',
+        ]);
+
+        $tenant = $request->user()->tenant;
+
+        $documents = Document::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('type', 'invoice')
+            ->whereNotNull('overdue_stage')
+            ->whereHas('items', fn ($q) => $q->where('description', 'like', 'Late payment fee%'))
+            ->with(['items' => fn ($q) => $q->where('description', 'like', 'Late payment fee%')])
+            ->get();
+
+        $count = $documents->count();
+
+        DB::transaction(function () use ($documents, $validated) {
+            foreach ($documents as $document) {
+                $feeTotal = $document->items->sum('total');
+
+                foreach ($document->items as $item) {
+                    $item->delete();
+                }
+
+                $updates = ['overdue_stage' => null];
+
+                if ($validated['update_totals']) {
+                    $updates['subtotal'] = max(0, round((float) $document->subtotal - $feeTotal, 2));
+                    $updates['total']    = max(0, round((float) $document->total - $feeTotal, 2));
+                }
+
+                $document->update($updates);
+            }
+        });
+
+        return response()->json([
+            'message' => "{$count} invoice(s) updated — late fee line items removed.",
+            'count'   => $count,
         ]);
     }
 

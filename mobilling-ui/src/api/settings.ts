@@ -186,6 +186,12 @@ export const getLateFeeSettings = () =>
 export const updateLateFeeSettings = (data: LateFeeSettings) =>
   api.put<{ data: LateFeeSettings; message: string }>('/settings/late-fee', data);
 
+export const getLateFeeCount = () =>
+  api.get<{ count: number }>('/settings/late-fee/count');
+
+export const revertLateFees = (data: { update_totals: boolean }) =>
+  api.post<{ message: string; count: number }>('/settings/late-fee/revert', data);
+
 export const getWhatsAppSettings = () =>
   api.get<{ data: WhatsAppSettings }>('/settings/whatsapp');
 
