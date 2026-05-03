@@ -69,8 +69,6 @@ export interface SocialPost {
   hashtags:           string | null;
   design_file_url:    string | null;
   design_notes:       string | null;
-  assigned_designer:  { id: string; name: string } | null;
-  assigned_creator:   { id: string; name: string } | null;
   design_status:      DesignStatus;
   content_status:     ContentStatus;
   status:             PostStatus;
@@ -113,14 +111,12 @@ export const createPost = (data: {
   title: string; type: PostType; post_format?: PostFormat[]; media_type?: MediaType;
   scheduled_date: string; scheduled_time?: string;
   brief?: string; hashtags?: string;
-  assigned_designer_id?: string; assigned_creator_id?: string;
 }) => api.post<{ data: SocialPost }>('/social/posts', data);
 
 export const updatePost = (id: string, data: Partial<{
   title: string; type: PostType; post_format: PostFormat[]; media_type: MediaType;
   scheduled_date: string; scheduled_time: string;
   brief: string; hashtags: string;
-  assigned_designer_id: string; assigned_creator_id: string;
 }>) => api.put<{ data: SocialPost }>(`/social/posts/${id}`, data);
 
 export const deletePost = (id: string) =>

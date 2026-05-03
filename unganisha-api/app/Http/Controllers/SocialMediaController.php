@@ -79,7 +79,7 @@ class SocialMediaController extends Controller
     {
         $this->authorizePermission('social.read');
 
-        $query = SocialPost::with(['platforms', 'designer:id,name', 'creator:id,name'])
+        $query = SocialPost::with(['platforms'])
             ->orderBy('scheduled_date');
 
         if ($request->week_start) {
@@ -111,10 +111,8 @@ class SocialMediaController extends Controller
             'media_type'           => 'nullable|in:image,video',
             'scheduled_date'       => 'required|date',
             'scheduled_time'       => 'nullable|date_format:H:i',
-            'brief'                => 'nullable|string',
-            'hashtags'             => 'nullable|string',
-            'assigned_designer_id' => 'nullable|uuid|exists:users,id',
-            'assigned_creator_id'  => 'nullable|uuid|exists:users,id',
+            'brief'    => 'nullable|string',
+            'hashtags' => 'nullable|string',
         ]);
 
         if (empty($data['post_format'])) {
@@ -129,7 +127,7 @@ class SocialMediaController extends Controller
             SocialPostPlatform::create(['social_post_id' => $post->id, 'platform' => $platform]);
         }
 
-        return response()->json(['data' => $this->formatPost($post->load(['platforms', 'designer:id,name', 'creator:id,name']))], 201);
+        return response()->json(['data' => $this->formatPost($post->load(['platforms']))], 201);
     }
 
     public function updatePost(Request $request, SocialPost $socialPost)
@@ -148,15 +146,13 @@ class SocialMediaController extends Controller
             'media_type'           => 'sometimes|in:image,video',
             'scheduled_date'       => 'sometimes|date',
             'scheduled_time'       => 'nullable|date_format:H:i',
-            'brief'                => 'nullable|string',
-            'hashtags'             => 'nullable|string',
-            'assigned_designer_id' => 'nullable|uuid|exists:users,id',
-            'assigned_creator_id'  => 'nullable|uuid|exists:users,id',
+            'brief'    => 'nullable|string',
+            'hashtags' => 'nullable|string',
         ]);
 
         $socialPost->update($data);
 
-        return response()->json(['data' => $this->formatPost($socialPost->load(['platforms', 'designer:id,name', 'creator:id,name']))]);
+        return response()->json(['data' => $this->formatPost($socialPost->load(['platforms']))]);
     }
 
     public function destroyPost(SocialPost $socialPost)
@@ -181,7 +177,7 @@ class SocialMediaController extends Controller
         $socialPost->update($data);
         $socialPost->syncStatus();
 
-        return response()->json(['data' => $this->formatPost($socialPost->load(['platforms', 'designer:id,name', 'creator:id,name']))]);
+        return response()->json(['data' => $this->formatPost($socialPost->load(['platforms']))]);
     }
 
     // ── Caption / content ────────────────────────────────────────
@@ -199,7 +195,7 @@ class SocialMediaController extends Controller
         $socialPost->update($data);
         $socialPost->syncStatus();
 
-        return response()->json(['data' => $this->formatPost($socialPost->load(['platforms', 'designer:id,name', 'creator:id,name']))]);
+        return response()->json(['data' => $this->formatPost($socialPost->load(['platforms']))]);
     }
 
     // ── Platform posting ─────────────────────────────────────────
@@ -229,7 +225,7 @@ class SocialMediaController extends Controller
         $socialPost->load('platforms');
         $socialPost->syncStatus();
 
-        return response()->json(['data' => $this->formatPost($socialPost->load(['platforms', 'designer:id,name', 'creator:id,name']))]);
+        return response()->json(['data' => $this->formatPost($socialPost->load(['platforms']))]);
     }
 
     // ── Targets ──────────────────────────────────────────────────
@@ -439,8 +435,6 @@ class SocialMediaController extends Controller
             'hashtags'             => $post->hashtags,
             'design_file_url'      => $post->design_file_url,
             'design_notes'         => $post->design_notes,
-            'assigned_designer'    => $post->designer ? ['id' => $post->designer->id, 'name' => $post->designer->name] : null,
-            'assigned_creator'     => $post->creator  ? ['id' => $post->creator->id,  'name' => $post->creator->name]  : null,
             'design_status'        => $post->design_status,
             'content_status'       => $post->content_status,
             'status'               => $post->status,

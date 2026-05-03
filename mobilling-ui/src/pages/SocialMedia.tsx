@@ -354,26 +354,6 @@ function PostCard({ post, platforms, canUpdate, canDelete, onOpen, onDelete }: {
           )}
         </Group>
 
-        {/* Designer / Creator avatars */}
-        {(post.assigned_designer || post.assigned_creator) && (
-          <Group gap={4} wrap="nowrap">
-            {post.assigned_designer && (
-              <Tooltip label={`Designer: ${post.assigned_designer.name}`} position="top" withArrow>
-                <ThemeIcon size={18} color="violet" variant="light" radius="xl">
-                  <IconPhoto size={10} />
-                </ThemeIcon>
-              </Tooltip>
-            )}
-            {post.assigned_creator && (
-              <Tooltip label={`Creator: ${post.assigned_creator.name}`} position="top" withArrow>
-                <ThemeIcon size={18} color="teal" variant="light" radius="xl">
-                  <IconPencil size={10} />
-                </ThemeIcon>
-              </Tooltip>
-            )}
-          </Group>
-        )}
-
         {/* Platform icons — dynamic */}
         <Group gap={2} mt={2}>
           {platforms.map(p => (
@@ -398,9 +378,6 @@ function PostFormModal({ opened, onClose, existing }: {
   opened: boolean; onClose: () => void; existing?: SocialPost;
 }) {
   const qc = useQueryClient();
-  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => getUsers({ per_page: 100 }) });
-  const users = (usersData?.data?.data ?? []).map((u: any) => ({ value: u.id, label: u.name }));
-
   const [scheduledTime, setScheduledTime] = useState(existing?.scheduled_time ?? '');
 
   const form = useForm({
@@ -410,10 +387,8 @@ function PostFormModal({ opened, onClose, existing }: {
       post_format:         (existing?.post_format ?? ['feed_post']) as PostFormat[],
       media_type:          existing?.media_type ?? 'image',
       scheduled_date:      existing?.scheduled_date ? new Date(existing.scheduled_date) : new Date() as Date | null,
-      brief:               existing?.brief ?? '',
-      hashtags:            existing?.hashtags ?? '',
-      assigned_designer_id: existing?.assigned_designer?.id ?? '',
-      assigned_creator_id:  existing?.assigned_creator?.id  ?? '',
+      brief:    existing?.brief ?? '',
+      hashtags: existing?.hashtags ?? '',
     },
     validate: {
       title:          v => !v.trim() ? 'Title required' : null,
@@ -432,10 +407,8 @@ function PostFormModal({ opened, onClose, existing }: {
         media_type:          vals.media_type as 'image' | 'video',
         scheduled_date:      dayjs(vals.scheduled_date!).format('YYYY-MM-DD'),
         scheduled_time:      scheduledTime || undefined,
-        brief:               vals.brief || undefined,
-        hashtags:            vals.hashtags || undefined,
-        assigned_designer_id: vals.assigned_designer_id || undefined,
-        assigned_creator_id:  vals.assigned_creator_id  || undefined,
+        brief:    vals.brief || undefined,
+        hashtags: vals.hashtags || undefined,
       };
       return isEdit ? updatePost(existing!.id, payload) : createPost(payload);
     },
@@ -506,9 +479,6 @@ function PostFormModal({ opened, onClose, existing }: {
             leftSection={<IconHash size={14} />}
             {...form.getInputProps('hashtags')}
           />
-
-          <Select label="Assigned Designer" data={users} clearable searchable {...form.getInputProps('assigned_designer_id')} />
-          <Select label="Assigned Content Creator" data={users} clearable searchable {...form.getInputProps('assigned_creator_id')} />
 
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>Cancel</Button>
@@ -583,7 +553,7 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
         <Divider label="Design" labelPosition="left" />
         <Stack gap="xs">
           <Group>
-            <Text size="sm" fw={500}>Designer: {post.assigned_designer?.name ?? '—'}</Text>
+            <Text size="sm" fw={500}>Design Status</Text>
             <Badge size="sm" color={post.design_status === 'done' ? 'green' : post.design_status === 'in_progress' ? 'yellow' : 'gray'}>
               {post.design_status === 'done' ? 'Done' : post.design_status === 'in_progress' ? 'In Progress' : 'Pending'}
             </Badge>
@@ -623,7 +593,7 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
         <Divider label="Content" labelPosition="left" />
         <Stack gap="xs">
           <Group>
-            <Text size="sm" fw={500}>Creator: {post.assigned_creator?.name ?? '—'}</Text>
+            <Text size="sm" fw={500}>Content Status</Text>
             <Badge size="sm" color={post.content_status === 'ready' ? 'green' : 'gray'}>
               {post.content_status === 'ready' ? 'Ready' : 'Pending'}
             </Badge>
@@ -712,7 +682,6 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
 // ── Designer Tab ─────────────────────────────────────────────────────────────
 
 function DesignerTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
-  const { user } = useAuth();
   const [weekOffset, setWeekOffset] = useState(0);
   const ws = weekStart(weekOffset);
   const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
@@ -722,10 +691,7 @@ function DesignerTab({ can, platforms }: { can: (p: string) => boolean; platform
     queryFn: () => getPosts({ week_start: ws }),
   });
 
-  const allPosts: SocialPost[] = data?.data?.data ?? [];
-  const posts = allPosts.filter(p =>
-    !p.assigned_designer || p.assigned_designer.id === user?.id
-  );
+  const posts: SocialPost[] = data?.data?.data ?? [];
 
   const pending    = posts.filter(p => p.design_status === 'pending');
   const inProgress = posts.filter(p => p.design_status === 'in_progress');
@@ -817,7 +783,6 @@ function DesignerTab({ can, platforms }: { can: (p: string) => boolean; platform
 // ── Content Creator Tab ───────────────────────────────────────────────────────
 
 function CreatorTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
-  const { user } = useAuth();
   const [weekOffset, setWeekOffset] = useState(0);
   const ws = weekStart(weekOffset);
   const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
@@ -827,10 +792,7 @@ function CreatorTab({ can, platforms }: { can: (p: string) => boolean; platforms
     queryFn: () => getPosts({ week_start: ws }),
   });
 
-  const allPosts: SocialPost[] = data?.data?.data ?? [];
-  const posts = allPosts.filter(p =>
-    !p.assigned_creator || p.assigned_creator.id === user?.id
-  );
+  const posts: SocialPost[] = data?.data?.data ?? [];
 
   const needsCaption = posts.filter(p => p.design_status === 'done' && p.content_status === 'pending');
   const readyToPost  = posts.filter(p => p.content_status === 'ready' && p.status !== 'posted');
