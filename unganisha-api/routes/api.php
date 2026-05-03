@@ -313,6 +313,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/settings/payment-methods', [SettingsController::class, 'updatePaymentMethods']);
     Route::get('/settings/subscriptions', [SettingsController::class, 'getSubscriptionSettings']);
     Route::put('/settings/subscriptions', [SettingsController::class, 'updateSubscriptionSettings']);
+    Route::get('/settings/late-fee', [SettingsController::class, 'getLateFeeSettings']);
+    Route::put('/settings/late-fee', [SettingsController::class, 'updateLateFeeSettings']);
+    Route::get('/settings/late-fee/count', [SettingsController::class, 'getLateFeeCount']);
+    Route::post('/settings/late-fee/revert', [SettingsController::class, 'revertLateFees']);
     Route::get('/settings/pesapal', [SettingsController::class, 'getPesapal']);
     Route::put('/settings/pesapal', [SettingsController::class, 'updatePesapal']);
     Route::get('/settings/whatsapp', [SettingsController::class, 'getWhatsApp']);
@@ -419,6 +423,43 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:field_targets.update')->post('/field-targets', [\App\Http\Controllers\FieldMarketingController::class, 'setTarget']);
 
     Route::middleware('permission:field_sessions.read')->get('/field-stats', [\App\Http\Controllers\FieldMarketingController::class, 'stats']);
+
+    // Social Media
+    Route::middleware('permission:social.read')->get('/social/platforms', [\App\Http\Controllers\SocialMediaController::class, 'platformSettings']);
+    Route::middleware('permission:social.targets')->post('/social/platforms', [\App\Http\Controllers\SocialMediaController::class, 'storePlatform']);
+    Route::middleware('permission:social.targets')->put('/social/platforms/{socialPlatform}', [\App\Http\Controllers\SocialMediaController::class, 'updatePlatform']);
+    Route::middleware('permission:social.targets')->delete('/social/platforms/{socialPlatform}', [\App\Http\Controllers\SocialMediaController::class, 'destroyPlatform']);
+    Route::middleware('permission:social.read')->get('/social/posts', [\App\Http\Controllers\SocialMediaController::class, 'posts']);
+    Route::middleware('permission:social.read')->get('/social/weekly-summary', [\App\Http\Controllers\SocialMediaController::class, 'weeklySummary']);
+    Route::middleware('permission:social.read')->get('/social/targets', [\App\Http\Controllers\SocialMediaController::class, 'targets']);
+    Route::middleware('permission:social.create')->post('/social/posts', [\App\Http\Controllers\SocialMediaController::class, 'storePost']);
+    Route::middleware('permission:social.update')->put('/social/posts/{socialPost}', [\App\Http\Controllers\SocialMediaController::class, 'updatePost']);
+    Route::middleware('permission:social.update')->patch('/social/posts/{socialPost}/design', [\App\Http\Controllers\SocialMediaController::class, 'updateDesign']);
+    Route::middleware('permission:social.update')->patch('/social/posts/{socialPost}/content', [\App\Http\Controllers\SocialMediaController::class, 'updateContent']);
+    Route::middleware('permission:social.update')->patch('/social/posts/{socialPost}/platform/{platform}', [\App\Http\Controllers\SocialMediaController::class, 'togglePlatform']);
+    Route::middleware('permission:social.delete')->delete('/social/posts/{socialPost}', [\App\Http\Controllers\SocialMediaController::class, 'destroyPost']);
+    Route::middleware('permission:social.targets')->post('/social/targets', [\App\Http\Controllers\SocialMediaController::class, 'upsertTarget']);
+    Route::middleware('permission:social.targets')->delete('/social/targets/{socialTarget}', [\App\Http\Controllers\SocialMediaController::class, 'destroyTarget']);
+    Route::middleware('permission:social.read')->get('/social/design-orders', [\App\Http\Controllers\SocialMediaController::class, 'designOrders']);
+    Route::middleware('permission:social.create')->post('/social/design-orders', [\App\Http\Controllers\SocialMediaController::class, 'storeDesignOrder']);
+    Route::middleware('permission:social.update')->put('/social/design-orders/{clientDesignOrder}', [\App\Http\Controllers\SocialMediaController::class, 'updateDesignOrder']);
+    Route::middleware('permission:social.delete')->delete('/social/design-orders/{clientDesignOrder}', [\App\Http\Controllers\SocialMediaController::class, 'destroyDesignOrder']);
+
+    // Served Customers
+    Route::middleware('permission:served.read')->get('/served/services', [\App\Http\Controllers\ServedCustomersController::class, 'services']);
+    Route::middleware('permission:served.settings')->post('/served/services', [\App\Http\Controllers\ServedCustomersController::class, 'storeService']);
+    Route::middleware('permission:served.settings')->put('/served/services/{servedService}', [\App\Http\Controllers\ServedCustomersController::class, 'updateService']);
+    Route::middleware('permission:served.settings')->delete('/served/services/{servedService}', [\App\Http\Controllers\ServedCustomersController::class, 'destroyService']);
+    Route::middleware('permission:served.read')->get('/served/customers', [\App\Http\Controllers\ServedCustomersController::class, 'customers']);
+    Route::middleware('permission:served.create')->post('/served/customers', [\App\Http\Controllers\ServedCustomersController::class, 'storeCustomer']);
+    Route::middleware('permission:served.update')->put('/served/customers/{servedCustomer}', [\App\Http\Controllers\ServedCustomersController::class, 'updateCustomer']);
+    Route::middleware('permission:served.delete')->delete('/served/customers/{servedCustomer}', [\App\Http\Controllers\ServedCustomersController::class, 'destroyCustomer']);
+    Route::middleware('permission:served.create')->post('/served/customers/{servedCustomer}/feedback', [\App\Http\Controllers\ServedCustomersController::class, 'storeFeedback']);
+    Route::middleware('permission:served.delete')->delete('/served/customers/{servedCustomer}/feedback/{feedback}', [\App\Http\Controllers\ServedCustomersController::class, 'destroyFeedback']);
+    Route::middleware('permission:served.read')->get('/served/target', [\App\Http\Controllers\ServedCustomersController::class, 'target']);
+    Route::middleware('permission:served.settings')->post('/served/target', [\App\Http\Controllers\ServedCustomersController::class, 'upsertTarget']);
+    Route::middleware('permission:served.read')->get('/served/weekly-summary', [\App\Http\Controllers\ServedCustomersController::class, 'weeklyTargetSummary']);
+    Route::middleware('permission:served.read')->get('/served/report', [\App\Http\Controllers\ServedCustomersController::class, 'report']);
 
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {

@@ -43,6 +43,8 @@ class Tenant extends Model
         'email_footer_text',
         // Subscription settings
         'subscription_grace_days',
+        // Late fee settings
+        'late_fee_enabled', 'late_fee_percent', 'late_fee_days',
     ];
 
     protected $hidden = [
@@ -70,6 +72,9 @@ class Tenant extends Model
         'pesapal_sandbox' => 'boolean',
         'pesapal_consumer_secret' => 'encrypted',
         'subscription_grace_days' => 'integer',
+        'late_fee_enabled' => 'boolean',
+        'late_fee_percent' => 'decimal:2',
+        'late_fee_days' => 'integer',
     ];
 
     protected $appends = ['logo_url'];

@@ -51,16 +51,23 @@ class ProcessOverdueInvoices extends Command
                     $document->update(['status' => 'overdue']);
                 }
 
-                // Stage 1: Day 1 overdue — Apply 10% late fee (once)
+                $lateFeeAfterDays = (int) ($tenant->late_fee_days ?? 1);
+                $lateFeePercent   = (float) ($tenant->late_fee_percent ?? 10);
+
+                // Stage 1: Apply late fee once, after the tenant-configured grace days
                 if (!$document->overdue_stage) {
-                    $lateFeeAmount = round((float) $document->total * 0.10, 2);
+                    if (!$tenant->late_fee_enabled || $daysOverdue < $lateFeeAfterDays) {
+                        continue;
+                    }
+
+                    $lateFeeAmount = round((float) $document->total * ($lateFeePercent / 100), 2);
                     $newTotal = round((float) $document->total + $lateFeeAmount, 2);
 
                     // Add late fee line item
                     $document->items()->create([
                         'product_service_id' => null,
                         'item_type' => 'service',
-                        'description' => 'Late payment fee (10%)',
+                        'description' => "Late payment fee ({$lateFeePercent}%)",
                         'quantity' => 1,
                         'price' => $lateFeeAmount,
                         'discount_type' => 'percent',

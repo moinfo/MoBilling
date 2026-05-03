@@ -141,9 +141,10 @@ export default function FieldMarketing() {
             value={selectedMonth}
             onChange={(val) => {
               if (!val) { setSelectedMonth(null); return; }
-              // Mantine v8 passes DateValue — cast via unknown
-              const d = new Date(val as any) as Date;
-              if (!isNaN(d.getTime())) setSelectedMonth(d);
+              try {
+                const d = new Date(val as any);
+                if (!isNaN(d.getTime())) setSelectedMonth(d);
+              } catch { /* ignore */ }
             }}
             placeholder="All months"
             maxDate={new Date()}

@@ -518,12 +518,16 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
             lines.push(`⚠️ *Payment is ${Math.abs(daysLeft)} day(s) overdue*`);
           }
         }
-        lines.push('');
-        lines.push('⚠️ _Late payment policy:_');
-        lines.push('  • 10% late fee applied after due date');
-        lines.push('  • Overdue reminder sent after 7 days');
-        lines.push('  • Service termination warning after 14 days');
-        lines.push('  • Service terminated after 21 days');
+        if (tenant?.late_fee_enabled) {
+          const feePercent = tenant.late_fee_percent ?? 10;
+          const feeDays = tenant.late_fee_days ?? 1;
+          lines.push('');
+          lines.push('⚠️ _Late payment policy:_');
+          lines.push(`  • ${feePercent}% late fee applied after ${feeDays} day(s) overdue`);
+          lines.push('  • Overdue reminder sent after 7 days');
+          lines.push('  • Service termination warning after 14 days');
+          lines.push('  • Service terminated after 21 days');
+        }
 
         // Add payment method details
         const hasPaymentMethods = paymentMethods.some((m) => m.details?.some((d) => d.value.trim()));
@@ -568,11 +572,15 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
         if (doc.paid_amount > 0) copyLines.push(`Paid: ${formatCurrency(doc.paid_amount)}`);
         copyLines.push(`Balance Due: ${formatCurrency(doc.balance_due)}`);
         if (doc.due_date) copyLines.push(`Due Date: ${formatDate(doc.due_date)}`);
-        copyLines.push('');
-        copyLines.push('Payment Terms:');
-        copyLines.push('  - 10% late fee applied after due date');
-        copyLines.push('  - Service termination warning after 14 days overdue');
-        copyLines.push('  - Service terminated after 21 days overdue');
+        if (tenant?.late_fee_enabled) {
+          const feePercent = tenant.late_fee_percent ?? 10;
+          const feeDays = tenant.late_fee_days ?? 1;
+          copyLines.push('');
+          copyLines.push('Payment Terms:');
+          copyLines.push(`  - ${feePercent}% late fee applied after ${feeDays} day(s) overdue`);
+          copyLines.push('  - Service termination warning after 14 days overdue');
+          copyLines.push('  - Service terminated after 21 days overdue');
+        }
         copyLines.push('');
         copyLines.push(`Pay Online: ${payUrl}`);
         const copyText = copyLines.join('\n');

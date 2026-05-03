@@ -7,7 +7,8 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock } from '@tabler/icons-react';
+import LateFeeTab from '../components/Settings/LateFeeTab';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import {
@@ -68,6 +69,11 @@ export default function Settings() {
               Pesapal
             </Tabs.Tab>
           )}
+          {canReminders && (
+            <Tabs.Tab value="late-fee" leftSection={<IconClock size={16} />}>
+              Late Fees
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="company">
@@ -93,6 +99,9 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="pesapal">
           <PesapalTab isAdmin={canCompany} />
+        </Tabs.Panel>
+        <Tabs.Panel value="late-fee">
+          <LateFeeTab isAdmin={canReminders} />
         </Tabs.Panel>
       </Tabs>
     </>

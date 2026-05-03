@@ -52,6 +52,8 @@ import Automation from './pages/Automation';
 import Broadcast from './pages/Broadcast';
 import WhatsappContacts from './pages/WhatsappContacts';
 import FieldMarketing from './pages/FieldMarketing';
+import SocialMedia from './pages/SocialMedia';
+import ServedCustomers from './pages/ServedCustomers';
 import Collection from './pages/Collection';
 import Followups from './pages/Followups';
 import SatisfactionCalls from './pages/SatisfactionCalls';
@@ -178,6 +180,8 @@ export default function App() {
                   <Route path="/broadcast" element={<Broadcast />} />
                   <Route path="/whatsapp-contacts" element={<WhatsappContacts />} />
                   <Route path="/field-marketing" element={<FieldMarketing />} />
+                  <Route path="/social-media" element={<SocialMedia />} />
+                  <Route path="/served-customers" element={<ServedCustomers />} />
                   <Route path="/reports/revenue" element={<RevenueSummary />} />
                   <Route path="/reports/aging" element={<OutstandingAging />} />
                   <Route path="/reports/client-statement" element={<ClientStatementReport />} />

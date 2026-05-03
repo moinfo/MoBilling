@@ -25,6 +25,9 @@ export interface User {
     bank_account_number: string | null;
     bank_branch: string | null;
     payment_instructions: string | null;
+    late_fee_enabled: boolean;
+    late_fee_percent: number;
+    late_fee_days: number;
   };
   // Client portal fields (only present when user_type === 'client')
   client_id?: string;

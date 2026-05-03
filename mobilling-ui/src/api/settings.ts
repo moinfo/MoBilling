@@ -172,6 +172,26 @@ export interface WhatsAppSettings {
   whatsapp_business_account_id: string | null;
 }
 
+// --- Late Fee Settings ---
+
+export interface LateFeeSettings {
+  late_fee_enabled: boolean;
+  late_fee_percent: number;
+  late_fee_days: number;
+}
+
+export const getLateFeeSettings = () =>
+  api.get<{ data: LateFeeSettings }>('/settings/late-fee');
+
+export const updateLateFeeSettings = (data: LateFeeSettings) =>
+  api.put<{ data: LateFeeSettings; message: string }>('/settings/late-fee', data);
+
+export const getLateFeeCount = () =>
+  api.get<{ count: number }>('/settings/late-fee/count');
+
+export const revertLateFees = (data: { update_totals: boolean }) =>
+  api.post<{ message: string; count: number }>('/settings/late-fee/revert', data);
+
 export const getWhatsAppSettings = () =>
   api.get<{ data: WhatsAppSettings }>('/settings/whatsapp');
 
