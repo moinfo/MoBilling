@@ -314,7 +314,7 @@ export default function AppLayout() {
             />
           )}
 
-          {can('social.read') && (
+          {can('menu.social_media') && (
             <NavLink
               label="Social Media"
               leftSection={<IconBrandInstagram size={18} />}
