@@ -98,6 +98,11 @@ class SocialMediaController extends Controller
     {
         $this->authorizePermission('social.create');
 
+        // Normalize: accept both string ("feed_post") and array (["feed_post"])
+        if (is_string($request->post_format)) {
+            $request->merge(['post_format' => [$request->post_format]]);
+        }
+
         $data = $request->validate([
             'title'                => 'required|string|max:255',
             'type'                 => 'required|in:product_education,holiday,employee_birthday,promotion,announcement,general',
@@ -130,6 +135,10 @@ class SocialMediaController extends Controller
     public function updatePost(Request $request, SocialPost $socialPost)
     {
         $this->authorizePermission('social.update');
+
+        if (is_string($request->post_format)) {
+            $request->merge(['post_format' => [$request->post_format]]);
+        }
 
         $data = $request->validate([
             'title'                => 'sometimes|string|max:255',

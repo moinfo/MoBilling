@@ -428,7 +428,7 @@ function PostFormModal({ opened, onClose, existing }: {
       const payload = {
         title:               vals.title,
         type:                vals.type,
-        post_format:         vals.post_format,
+        post_format:         Array.isArray(vals.post_format) ? vals.post_format : [vals.post_format],
         media_type:          vals.media_type as 'image' | 'video',
         scheduled_date:      dayjs(vals.scheduled_date!).format('YYYY-MM-DD'),
         scheduled_time:      scheduledTime || undefined,
