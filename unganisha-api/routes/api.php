@@ -436,6 +436,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:social.delete')->delete('/social/posts/{socialPost}', [\App\Http\Controllers\SocialMediaController::class, 'destroyPost']);
     Route::middleware('permission:social.targets')->post('/social/targets', [\App\Http\Controllers\SocialMediaController::class, 'upsertTarget']);
     Route::middleware('permission:social.targets')->delete('/social/targets/{socialTarget}', [\App\Http\Controllers\SocialMediaController::class, 'destroyTarget']);
+    Route::middleware('permission:social.read')->get('/social/design-orders', [\App\Http\Controllers\SocialMediaController::class, 'designOrders']);
+    Route::middleware('permission:social.create')->post('/social/design-orders', [\App\Http\Controllers\SocialMediaController::class, 'storeDesignOrder']);
+    Route::middleware('permission:social.update')->put('/social/design-orders/{clientDesignOrder}', [\App\Http\Controllers\SocialMediaController::class, 'updateDesignOrder']);
+    Route::middleware('permission:social.delete')->delete('/social/design-orders/{clientDesignOrder}', [\App\Http\Controllers\SocialMediaController::class, 'destroyDesignOrder']);
 
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {

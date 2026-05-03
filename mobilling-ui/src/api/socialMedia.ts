@@ -151,3 +151,93 @@ export const deleteTarget = (id: string) =>
 // Weekly summary
 export const getWeeklySummary = (weekStart: string) =>
   api.get<{ week_start: string; week_end: string; data: WeeklySummaryEntry[] }>('/social/weekly-summary', { params: { week_start: weekStart } });
+
+// ── Client Design Orders ────────────────────────────────────────────────────
+
+export const DESIGN_TYPES = [
+  'logo', 'flyer', 'brochure', 'business_card', 'banner',
+  'book_cover', 'label_poster', 'social_media_graphic', 'merchandise', 'other',
+] as const;
+export type DesignType = typeof DESIGN_TYPES[number];
+
+export const DESIGN_TYPE_LABELS: Record<DesignType, string> = {
+  logo:                 'Logo Designing',
+  flyer:                'Flyer Designing',
+  brochure:             'Brochure Designing',
+  business_card:        'Business Cards',
+  banner:               'Banner Designing',
+  book_cover:           'Book Cover',
+  label_poster:         'Label Poster',
+  social_media_graphic: 'Social Media Graphic',
+  merchandise:          'Merchandise Design',
+  other:                'Other',
+};
+
+export const DESIGN_TYPE_COLORS: Record<DesignType, string> = {
+  logo:                 'violet',
+  flyer:                'blue',
+  brochure:             'cyan',
+  business_card:        'teal',
+  banner:               'green',
+  book_cover:           'orange',
+  label_poster:         'red',
+  social_media_graphic: 'pink',
+  merchandise:          'grape',
+  other:                'gray',
+};
+
+export const DESIGN_ORDER_STATUSES = ['pending', 'in_progress', 'needs_revision', 'done', 'delivered'] as const;
+export type DesignOrderStatus = typeof DESIGN_ORDER_STATUSES[number];
+
+export const DESIGN_ORDER_STATUS_LABELS: Record<DesignOrderStatus, string> = {
+  pending:        'Pending',
+  in_progress:    'In Progress',
+  needs_revision: 'Needs Revision',
+  done:           'Done',
+  delivered:      'Delivered',
+};
+
+export const DESIGN_ORDER_STATUS_COLORS: Record<DesignOrderStatus, string> = {
+  pending:        'gray',
+  in_progress:    'yellow',
+  needs_revision: 'orange',
+  done:           'green',
+  delivered:      'teal',
+};
+
+export interface ClientDesignOrder {
+  id:             string;
+  title:          string;
+  design_type:    DesignType;
+  description:    string | null;
+  reference_url:  string | null;
+  client:         { id: string; name: string } | null;
+  designer:       { id: string; name: string } | null;
+  status:         DesignOrderStatus;
+  due_date:       string | null;
+  is_overdue:     boolean;
+  file_url:       string | null;
+  revision_count: number;
+  revision_notes: string | null;
+  price:          string | null;
+  created_at:     string;
+}
+
+export const getDesignOrders = (params?: { status?: string; design_type?: string; designer_id?: string }) =>
+  api.get<{ data: ClientDesignOrder[] }>('/social/design-orders', { params });
+
+export const createDesignOrder = (data: {
+  title: string; design_type: DesignType; client_id?: string;
+  description?: string; reference_url?: string;
+  assigned_designer_id?: string; due_date?: string; price?: number;
+}) => api.post<{ data: ClientDesignOrder }>('/social/design-orders', data);
+
+export const updateDesignOrder = (id: string, data: Partial<{
+  title: string; design_type: DesignType; client_id: string;
+  description: string; reference_url: string;
+  assigned_designer_id: string; status: DesignOrderStatus;
+  due_date: string; file_url: string; revision_notes: string; price: number;
+}>) => api.put<{ data: ClientDesignOrder }>(`/social/design-orders/${id}`, data);
+
+export const deleteDesignOrder = (id: string) =>
+  api.delete(`/social/design-orders/${id}`);

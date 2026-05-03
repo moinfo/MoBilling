@@ -15,7 +15,7 @@ import {
   IconBrandThreads, IconPlus, IconCheck, IconX, IconEdit, IconTrash,
   IconPencil, IconLink, IconTarget, IconCalendarWeek, IconPhoto,
   IconEye, IconShieldCheck, IconVideo, IconDeviceMobile, IconLayoutColumns,
-  IconHash, IconClock,
+  IconHash, IconClock, IconBriefcase, IconAlertTriangle, IconPackage,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
@@ -24,10 +24,15 @@ import {
   updateDesign, updateContent, togglePlatform,
   getTargets, upsertTarget, deleteTarget,
   getWeeklySummary,
+  getDesignOrders, createDesignOrder, updateDesignOrder, deleteDesignOrder,
   PLATFORMS, POST_TYPES, POST_FORMATS, FORMAT_LABELS, FORMAT_COLORS,
   TYPE_LABELS, PLATFORM_LABELS, DAY_NAMES,
+  DESIGN_TYPES, DESIGN_TYPE_LABELS, DESIGN_TYPE_COLORS,
+  DESIGN_ORDER_STATUSES, DESIGN_ORDER_STATUS_LABELS, DESIGN_ORDER_STATUS_COLORS,
   type SocialPost, type SocialTarget, type Platform, type PostType, type PostFormat,
+  type ClientDesignOrder, type DesignType, type DesignOrderStatus,
 } from '../api/socialMedia';
+import { getClients } from '../api/clients';
 import { getUsers } from '../api/users';
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
@@ -84,17 +89,19 @@ export default function SocialMedia() {
       <Title order={2}>Social Media</Title>
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List mb="md">
-          <Tabs.Tab value="board"    leftSection={<IconCalendarWeek size={16} />}>Board</Tabs.Tab>
-          <Tabs.Tab value="designer" leftSection={<IconPhoto size={16} />}>Design Work</Tabs.Tab>
-          <Tabs.Tab value="creator"  leftSection={<IconPencil size={16} />}>Content & Posting</Tabs.Tab>
-          <Tabs.Tab value="qa"       leftSection={<IconShieldCheck size={16} />}>QA Review</Tabs.Tab>
-          <Tabs.Tab value="targets"  leftSection={<IconTarget size={16} />}>Targets</Tabs.Tab>
+          <Tabs.Tab value="board"           leftSection={<IconCalendarWeek size={16} />}>Board</Tabs.Tab>
+          <Tabs.Tab value="designer"        leftSection={<IconPhoto size={16} />}>Design Work</Tabs.Tab>
+          <Tabs.Tab value="creator"         leftSection={<IconPencil size={16} />}>Content & Posting</Tabs.Tab>
+          <Tabs.Tab value="qa"              leftSection={<IconShieldCheck size={16} />}>QA Review</Tabs.Tab>
+          <Tabs.Tab value="client_designs"  leftSection={<IconBriefcase size={16} />}>Client Designs</Tabs.Tab>
+          <Tabs.Tab value="targets"         leftSection={<IconTarget size={16} />}>Targets</Tabs.Tab>
         </Tabs.List>
-        <Tabs.Panel value="board">   <BoardTab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="designer"><DesignerTab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="creator"> <CreatorTab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="qa">      <QATab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="targets"> <TargetsTab can={can} /></Tabs.Panel>
+        <Tabs.Panel value="board">          <BoardTab can={can} /></Tabs.Panel>
+        <Tabs.Panel value="designer">       <DesignerTab can={can} /></Tabs.Panel>
+        <Tabs.Panel value="creator">        <CreatorTab can={can} /></Tabs.Panel>
+        <Tabs.Panel value="qa">             <QATab can={can} /></Tabs.Panel>
+        <Tabs.Panel value="client_designs"> <ClientDesignsTab can={can} /></Tabs.Panel>
+        <Tabs.Panel value="targets">        <TargetsTab can={can} /></Tabs.Panel>
       </Tabs>
     </Stack>
   );
@@ -997,6 +1004,501 @@ function QAPostRow({ post, onOpen }: { post: SocialPost; onOpen: () => void }) {
         </Group>
       </Group>
     </Paper>
+  );
+}
+
+// ── Client Designs Tab ────────────────────────────────────────────────────────
+
+function ClientDesignsTab({ can }: { can: (p: string) => boolean }) {
+  const qc = useQueryClient();
+  const [filterStatus,  setFilterStatus]  = useState<string | null>(null);
+  const [filterType,    setFilterType]    = useState<string | null>(null);
+  const [filterDesigner, setFilterDesigner] = useState<string | null>(null);
+  const [orderModal,  { open: openOrder,  close: closeOrder }]  = useDisclosure(false);
+  const [detailModal, { open: openDetail, close: closeDetail }] = useDisclosure(false);
+  const [selected, setSelected]   = useState<ClientDesignOrder | null>(null);
+  const [editing,  setEditing]    = useState<ClientDesignOrder | null>(null);
+
+  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => getUsers({ per_page: 100 }) });
+  const users = (usersData?.data?.data ?? []).map((u: any) => ({ value: u.id, label: u.name }));
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['client-design-orders', filterStatus, filterType, filterDesigner],
+    queryFn: () => getDesignOrders({
+      status:      filterStatus  || undefined,
+      design_type: filterType    || undefined,
+      designer_id: filterDesigner || undefined,
+    }),
+  });
+  const orders: ClientDesignOrder[] = data?.data?.data ?? [];
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteDesignOrder,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['client-design-orders'] }); notifications.show({ message: 'Order deleted.', color: 'green' }); },
+  });
+
+  // Stats
+  const stats = DESIGN_ORDER_STATUSES.map(s => ({
+    status: s, count: orders.filter(o => o.status === s).length,
+  }));
+  const overdueCount = orders.filter(o => o.is_overdue).length;
+
+  return (
+    <Stack>
+      {/* Header */}
+      <Group justify="space-between">
+        <Group gap="xs">
+          <Text fw={600} size="lg">Client Design Orders</Text>
+          {overdueCount > 0 && (
+            <Badge color="red" leftSection={<IconAlertTriangle size={12} />} variant="light">
+              {overdueCount} overdue
+            </Badge>
+          )}
+        </Group>
+        {can('social.create') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); openOrder(); }}>
+            New Order
+          </Button>
+        )}
+      </Group>
+
+      {/* Status summary chips */}
+      <Group gap="xs" wrap="wrap">
+        {stats.map(({ status, count }) => (
+          <Badge
+            key={status} size="lg" variant={filterStatus === status ? 'filled' : 'light'}
+            color={DESIGN_ORDER_STATUS_COLORS[status as DesignOrderStatus]}
+            style={{ cursor: 'pointer' }}
+            onClick={() => setFilterStatus(filterStatus === status ? null : status)}
+          >
+            {DESIGN_ORDER_STATUS_LABELS[status as DesignOrderStatus]}: {count}
+          </Badge>
+        ))}
+      </Group>
+
+      {/* Filter row */}
+      <Group gap="xs" wrap="wrap">
+        <Select
+          size="xs" placeholder="All types" clearable
+          data={DESIGN_TYPES.map(t => ({ value: t, label: DESIGN_TYPE_LABELS[t] }))}
+          value={filterType} onChange={setFilterType}
+          style={{ width: 180 }}
+        />
+        <Select
+          size="xs" placeholder="All designers" clearable
+          data={users}
+          value={filterDesigner} onChange={setFilterDesigner}
+          style={{ width: 160 }}
+        />
+        {(filterStatus || filterType || filterDesigner) && (
+          <Button size="xs" variant="subtle" color="gray"
+            onClick={() => { setFilterStatus(null); setFilterType(null); setFilterDesigner(null); }}>
+            Clear filters
+          </Button>
+        )}
+        <Text size="xs" c="dimmed" ml="auto">{orders.length} order{orders.length !== 1 ? 's' : ''}</Text>
+      </Group>
+
+      {/* Orders list */}
+      {isLoading ? <Center py="xl"><Loader /></Center> : orders.length === 0 ? (
+        <Center py="xl">
+          <Stack align="center" gap="xs">
+            <ThemeIcon size="xl" color="gray" variant="light" radius="xl"><IconPackage size={28} /></ThemeIcon>
+            <Text c="dimmed">No design orders found.</Text>
+            {can('social.create') && (
+              <Button size="sm" variant="light" onClick={() => { setEditing(null); openOrder(); }}>
+                Create first order
+              </Button>
+            )}
+          </Stack>
+        </Center>
+      ) : (
+        <Stack gap="xs">
+          {orders.map(order => (
+            <Paper key={order.id} withBorder p="md" radius="md"
+              style={{
+                cursor: 'pointer',
+                borderLeft: `4px solid var(--mantine-color-${DESIGN_ORDER_STATUS_COLORS[order.status]}-5)`,
+                opacity: order.status === 'delivered' ? 0.75 : 1,
+              }}
+              onClick={() => { setSelected(order); openDetail(); }}>
+              <Group justify="space-between" wrap="nowrap" align="flex-start">
+                <Group gap="sm" style={{ flex: 1, minWidth: 0 }} align="flex-start">
+                  <ThemeIcon size="md" color={DESIGN_TYPE_COLORS[order.design_type]} variant="light" mt={2}>
+                    <IconPhoto size={16} />
+                  </ThemeIcon>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <Group gap="xs" mb={4} wrap="wrap">
+                      <Text fw={600} size="sm" lineClamp={1}>{order.title}</Text>
+                      {order.is_overdue && (
+                        <Badge size="xs" color="red" leftSection={<IconAlertTriangle size={10} />}>Overdue</Badge>
+                      )}
+                    </Group>
+                    <Group gap="xs" wrap="wrap">
+                      <Badge size="xs" color={DESIGN_TYPE_COLORS[order.design_type]} variant="light">
+                        {DESIGN_TYPE_LABELS[order.design_type]}
+                      </Badge>
+                      <Badge size="xs" color={DESIGN_ORDER_STATUS_COLORS[order.status]}>
+                        {DESIGN_ORDER_STATUS_LABELS[order.status]}
+                      </Badge>
+                      {order.revision_count > 0 && (
+                        <Badge size="xs" color="orange" variant="dot">
+                          {order.revision_count} revision{order.revision_count > 1 ? 's' : ''}
+                        </Badge>
+                      )}
+                    </Group>
+                    <Group gap="xs" mt={6} wrap="wrap">
+                      {order.client && (
+                        <Text size="xs" c="dimmed">Client: <strong>{order.client.name}</strong></Text>
+                      )}
+                      {order.designer && (
+                        <Text size="xs" c="dimmed">Designer: <strong>{order.designer.name}</strong></Text>
+                      )}
+                      {order.due_date && (
+                        <Group gap={4} wrap="nowrap">
+                          <IconClock size={12} style={{ color: order.is_overdue ? 'var(--mantine-color-red-5)' : 'var(--mantine-color-dimmed)' }} />
+                          <Text size="xs" c={order.is_overdue ? 'red' : 'dimmed'}>
+                            Due {dayjs(order.due_date).format('D MMM YYYY')}
+                          </Text>
+                        </Group>
+                      )}
+                      {order.price && (
+                        <Text size="xs" c="dimmed">
+                          TZS {Number(order.price).toLocaleString()}
+                        </Text>
+                      )}
+                    </Group>
+                    {order.revision_notes && order.status === 'needs_revision' && (
+                      <Text size="xs" c="orange" mt={4} lineClamp={2}>
+                        📋 Revision: {order.revision_notes}
+                      </Text>
+                    )}
+                  </div>
+                </Group>
+                <Group gap="xs" wrap="nowrap">
+                  {order.file_url && (
+                    <Tooltip label="File uploaded" position="top" withArrow>
+                      <ThemeIcon size="sm" color="green" variant="light">
+                        <IconCheck size={12} />
+                      </ThemeIcon>
+                    </Tooltip>
+                  )}
+                  {can('social.update') && (
+                    <ActionIcon size="sm" variant="subtle"
+                      onClick={e => { e.stopPropagation(); setEditing(order); openOrder(); }}>
+                      <IconEdit size={14} />
+                    </ActionIcon>
+                  )}
+                  {can('social.delete') && (
+                    <ActionIcon size="sm" variant="subtle" color="red"
+                      onClick={e => { e.stopPropagation(); deleteMutation.mutate(order.id); }}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  )}
+                </Group>
+              </Group>
+            </Paper>
+          ))}
+        </Stack>
+      )}
+
+      <DesignOrderFormModal
+        opened={orderModal} onClose={closeOrder}
+        existing={editing} users={users}
+      />
+      {selected && (
+        <DesignOrderDetailModal
+          order={selected} opened={detailModal}
+          onClose={() => { closeDetail(); setSelected(null); refetch(); }}
+          canUpdate={can('social.update')}
+          users={users}
+        />
+      )}
+    </Stack>
+  );
+}
+
+function DesignOrderFormModal({ opened, onClose, existing, users }: {
+  opened: boolean; onClose: () => void;
+  existing: ClientDesignOrder | null;
+  users: { value: string; label: string }[];
+}) {
+  const qc = useQueryClient();
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients-list'],
+    queryFn: () => getClients({ per_page: 200 }),
+  });
+  const clients = (clientsData?.data?.data ?? []).map((c: any) => ({ value: c.id, label: c.name }));
+
+  const form = useForm({
+    initialValues: {
+      title:                existing?.title ?? '',
+      design_type:          (existing?.design_type ?? 'flyer') as DesignType,
+      client_id:            existing?.client?.id ?? '',
+      description:          existing?.description ?? '',
+      reference_url:        existing?.reference_url ?? '',
+      assigned_designer_id: existing?.designer?.id ?? '',
+      due_date:             existing?.due_date ? new Date(existing.due_date) : null as Date | null,
+      price:                existing?.price ? Number(existing.price) : null as number | null,
+    },
+    validate: {
+      title: v => !v.trim() ? 'Title required' : null,
+    },
+  });
+
+  useEffect(() => {
+    if (existing) {
+      form.setValues({
+        title:                existing.title,
+        design_type:          existing.design_type,
+        client_id:            existing.client?.id ?? '',
+        description:          existing.description ?? '',
+        reference_url:        existing.reference_url ?? '',
+        assigned_designer_id: existing.designer?.id ?? '',
+        due_date:             existing.due_date ? new Date(existing.due_date) : null,
+        price:                existing.price ? Number(existing.price) : null,
+      });
+    } else {
+      form.reset();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existing?.id]);
+
+  const mutation = useMutation({
+    mutationFn: (v: ReturnType<typeof form.getValues>) => {
+      const payload = {
+        title:                v.title,
+        design_type:          v.design_type,
+        client_id:            v.client_id   || undefined,
+        description:          v.description  || undefined,
+        reference_url:        v.reference_url || undefined,
+        assigned_designer_id: v.assigned_designer_id || undefined,
+        due_date:             v.due_date ? dayjs(v.due_date).format('YYYY-MM-DD') : undefined,
+        price:                v.price ?? undefined,
+      };
+      return existing ? updateDesignOrder(existing.id, payload) : createDesignOrder(payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-design-orders'] });
+      notifications.show({ message: existing ? 'Order updated.' : 'Order created.', color: 'green' });
+      form.reset();
+      onClose();
+    },
+  });
+
+  return (
+    <Modal opened={opened} onClose={onClose}
+      title={existing ? 'Edit Design Order' : 'New Client Design Order'}
+      centered size="md">
+      <form onSubmit={form.onSubmit(v => mutation.mutate(v))}>
+        <Stack>
+          <TextInput label="Order title" required placeholder="Logo for ABC Company" {...form.getInputProps('title')} />
+
+          <Select
+            label="Design type" required
+            data={DESIGN_TYPES.map(t => ({ value: t, label: DESIGN_TYPE_LABELS[t] }))}
+            {...form.getInputProps('design_type')}
+          />
+
+          <Select
+            label="Client" placeholder="Select client (optional)"
+            data={clients} clearable searchable
+            {...form.getInputProps('client_id')}
+          />
+
+          <Textarea
+            label="Brief / Requirements" minRows={3}
+            placeholder="Describe what the client needs, brand colors, style preferences…"
+            {...form.getInputProps('description')}
+          />
+
+          <TextInput
+            label="Reference URL" placeholder="https://drive.google.com/… (brand guidelines, examples)"
+            leftSection={<IconLink size={14} />}
+            {...form.getInputProps('reference_url')}
+          />
+
+          <Select
+            label="Assigned Designer" data={users} clearable searchable
+            {...form.getInputProps('assigned_designer_id')}
+          />
+
+          <Group grow>
+            <DatePickerInput label="Due date" clearable {...form.getInputProps('due_date')} />
+            <NumberInput
+              label="Price (TZS)" placeholder="0" min={0}
+              {...form.getInputProps('price')}
+            />
+          </Group>
+
+          <Group justify="flex-end">
+            <Button variant="default" onClick={onClose}>Cancel</Button>
+            <Button type="submit" loading={mutation.isPending}>
+              {existing ? 'Update' : 'Create Order'}
+            </Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
+  );
+}
+
+function DesignOrderDetailModal({ order, opened, onClose, canUpdate, users }: {
+  order: ClientDesignOrder; opened: boolean; onClose: () => void;
+  canUpdate: boolean;
+  users: { value: string; label: string }[];
+}) {
+  const qc = useQueryClient();
+  const [fileUrl,       setFileUrl]       = useState(order.file_url ?? '');
+  const [revisionNotes, setRevisionNotes] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: (updates: Parameters<typeof updateDesignOrder>[1]) =>
+      updateDesignOrder(order.id, updates),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-design-orders'] });
+      notifications.show({ message: 'Order updated.', color: 'green' });
+      onClose();
+    },
+  });
+
+  const setStatus = (status: DesignOrderStatus) => {
+    const updates: Parameters<typeof updateDesignOrder>[1] = { status };
+    if (fileUrl) updates.file_url = fileUrl;
+    if (status === 'needs_revision' && revisionNotes) updates.revision_notes = revisionNotes;
+    mutation.mutate(updates);
+  };
+
+  const timeStr = order.due_date ? dayjs(order.due_date).format('D MMM YYYY') : null;
+
+  return (
+    <Modal opened={opened} onClose={onClose} title={order.title} size="md" centered>
+      <Stack gap="md">
+        {/* Status + badges */}
+        <Group gap="xs" wrap="wrap">
+          <Badge color={DESIGN_ORDER_STATUS_COLORS[order.status]} size="lg">
+            {DESIGN_ORDER_STATUS_LABELS[order.status]}
+          </Badge>
+          <Badge color={DESIGN_TYPE_COLORS[order.design_type]} variant="light">
+            {DESIGN_TYPE_LABELS[order.design_type]}
+          </Badge>
+          {order.is_overdue && <Badge color="red" leftSection={<IconAlertTriangle size={10} />}>Overdue</Badge>}
+          {order.revision_count > 0 && (
+            <Badge color="orange" variant="dot">{order.revision_count} revision{order.revision_count > 1 ? 's' : ''}</Badge>
+          )}
+        </Group>
+
+        {/* Meta */}
+        <SimpleGrid cols={2} spacing="xs">
+          {order.client   && <Text size="sm"><Text span c="dimmed">Client: </Text>{order.client.name}</Text>}
+          {order.designer && <Text size="sm"><Text span c="dimmed">Designer: </Text>{order.designer.name}</Text>}
+          {timeStr        && <Text size="sm" c={order.is_overdue ? 'red' : undefined}><Text span c="dimmed">Due: </Text>{timeStr}</Text>}
+          {order.price    && <Text size="sm"><Text span c="dimmed">Price: </Text>TZS {Number(order.price).toLocaleString()}</Text>}
+        </SimpleGrid>
+
+        {/* Description */}
+        {order.description && (
+          <>
+            <Divider label="Brief" labelPosition="left" />
+            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{order.description}</Text>
+          </>
+        )}
+
+        {/* Revision notes */}
+        {order.revision_notes && (
+          <>
+            <Divider label="Revision Request" labelPosition="left" />
+            <Paper withBorder p="sm" bg="orange.0" radius="sm">
+              <Text size="sm" c="orange.8">{order.revision_notes}</Text>
+            </Paper>
+          </>
+        )}
+
+        {/* Reference */}
+        {order.reference_url && (
+          <Button
+            size="xs" variant="subtle" component="a"
+            href={order.reference_url} target="_blank" rel="noopener noreferrer"
+            leftSection={<IconLink size={12} />}
+          >
+            View Reference / Brief
+          </Button>
+        )}
+
+        {/* File + status actions */}
+        {canUpdate && (
+          <>
+            <Divider label="Update Status" labelPosition="left" />
+            <TextInput
+              label="Design file URL (Google Drive, Canva…)"
+              placeholder="https://drive.google.com/…"
+              leftSection={<IconLink size={14} />}
+              value={fileUrl} onChange={e => setFileUrl(e.currentTarget.value)}
+            />
+            {order.status === 'in_progress' || order.status === 'needs_revision' ? (
+              <Textarea
+                label="Revision notes (if requesting changes)"
+                placeholder="Describe what needs to be changed…"
+                minRows={2}
+                value={revisionNotes} onChange={e => setRevisionNotes(e.currentTarget.value)}
+              />
+            ) : null}
+
+            <Group gap="xs" wrap="wrap">
+              {order.status === 'pending' && (
+                <Button size="xs" color="yellow" loading={mutation.isPending}
+                  onClick={() => setStatus('in_progress')}>
+                  Start Working
+                </Button>
+              )}
+              {(order.status === 'in_progress' || order.status === 'needs_revision') && (
+                <>
+                  <Button size="xs" color="green" loading={mutation.isPending}
+                    onClick={() => setStatus('done')}>
+                    Mark Done
+                  </Button>
+                  <Button size="xs" color="orange" variant="light" loading={mutation.isPending}
+                    onClick={() => setStatus('needs_revision')}>
+                    Request Revision
+                  </Button>
+                </>
+              )}
+              {order.status === 'done' && (
+                <Button size="xs" color="teal" loading={mutation.isPending}
+                  onClick={() => setStatus('delivered')}>
+                  Mark Delivered
+                </Button>
+              )}
+              {order.status === 'delivered' && (
+                <Button size="xs" variant="light" color="yellow" loading={mutation.isPending}
+                  onClick={() => setStatus('in_progress')}>
+                  Re-open
+                </Button>
+              )}
+              {order.file_url && (
+                <Button
+                  size="xs" variant="subtle" component="a"
+                  href={order.file_url} target="_blank" rel="noopener noreferrer"
+                  leftSection={<IconLink size={12} />}
+                >
+                  View Current File
+                </Button>
+              )}
+            </Group>
+          </>
+        )}
+
+        {!canUpdate && order.file_url && (
+          <Button
+            size="xs" variant="light" component="a"
+            href={order.file_url} target="_blank" rel="noopener noreferrer"
+            leftSection={<IconLink size={12} />}
+          >
+            Download Design File
+          </Button>
+        )}
+      </Stack>
+    </Modal>
   );
 }
 

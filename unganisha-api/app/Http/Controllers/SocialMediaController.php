@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ClientDesignOrder;
 use App\Models\SocialPost;
 use App\Models\SocialPostPlatform;
 use App\Models\SocialTarget;
@@ -275,6 +276,79 @@ class SocialMediaController extends Controller
         ]);
     }
 
+    // ── Client Design Orders ─────────────────────────────────────
+
+    public function designOrders(Request $request)
+    {
+        $this->authorizePermission('social.read');
+
+        $query = ClientDesignOrder::with(['client:id,name', 'designer:id,name'])
+            ->orderByRaw("FIELD(status,'pending','in_progress','needs_revision','done','delivered')")
+            ->orderBy('due_date');
+
+        if ($request->status)      $query->where('status', $request->status);
+        if ($request->design_type) $query->where('design_type', $request->design_type);
+        if ($request->designer_id) $query->where('assigned_designer_id', $request->designer_id);
+
+        return response()->json(['data' => $query->get()->map(fn ($o) => $this->formatDesignOrder($o))]);
+    }
+
+    public function storeDesignOrder(Request $request)
+    {
+        $this->authorizePermission('social.create');
+
+        $data = $request->validate([
+            'title'               => 'required|string|max:255',
+            'client_id'           => 'nullable|uuid|exists:clients,id',
+            'design_type'         => 'required|in:logo,flyer,brochure,business_card,banner,book_cover,label_poster,social_media_graphic,merchandise,other',
+            'description'         => 'nullable|string',
+            'reference_url'       => 'nullable|string|max:1000',
+            'assigned_designer_id'=> 'nullable|uuid|exists:users,id',
+            'due_date'            => 'nullable|date',
+            'price'               => 'nullable|numeric|min:0',
+        ]);
+
+        $order = ClientDesignOrder::create([...$data, 'created_by' => $request->user()->id]);
+
+        return response()->json(['data' => $this->formatDesignOrder($order->load(['client:id,name', 'designer:id,name']))], 201);
+    }
+
+    public function updateDesignOrder(Request $request, ClientDesignOrder $clientDesignOrder)
+    {
+        $this->authorizePermission('social.update');
+
+        $data = $request->validate([
+            'title'                => 'sometimes|string|max:255',
+            'client_id'            => 'nullable|uuid|exists:clients,id',
+            'design_type'          => 'sometimes|in:logo,flyer,brochure,business_card,banner,book_cover,label_poster,social_media_graphic,merchandise,other',
+            'description'          => 'nullable|string',
+            'reference_url'        => 'nullable|string|max:1000',
+            'assigned_designer_id' => 'nullable|uuid|exists:users,id',
+            'status'               => 'sometimes|in:pending,in_progress,needs_revision,done,delivered',
+            'due_date'             => 'nullable|date',
+            'file_url'             => 'nullable|string|max:1000',
+            'revision_notes'       => 'nullable|string',
+            'price'                => 'nullable|numeric|min:0',
+        ]);
+
+        // Auto-increment revision_count when status changes to needs_revision
+        if (isset($data['status']) && $data['status'] === 'needs_revision'
+            && $clientDesignOrder->status !== 'needs_revision') {
+            $data['revision_count'] = $clientDesignOrder->revision_count + 1;
+        }
+
+        $clientDesignOrder->update($data);
+
+        return response()->json(['data' => $this->formatDesignOrder($clientDesignOrder->load(['client:id,name', 'designer:id,name']))]);
+    }
+
+    public function destroyDesignOrder(ClientDesignOrder $clientDesignOrder)
+    {
+        $this->authorizePermission('social.delete');
+        $clientDesignOrder->delete();
+        return response()->json(['message' => 'Design order deleted.']);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────
 
     private function formatPost(SocialPost $post): array
@@ -304,6 +378,28 @@ class SocialMediaController extends Controller
                 'post_url'  => $p->post_url,
             ])->keyBy('platform'),
             'created_at'           => $post->created_at,
+        ];
+    }
+
+    private function formatDesignOrder(ClientDesignOrder $o): array
+    {
+        $isOverdue = $o->due_date && $o->due_date->isPast() && !in_array($o->status, ['done', 'delivered']);
+        return [
+            'id'                   => $o->id,
+            'title'                => $o->title,
+            'design_type'          => $o->design_type,
+            'description'          => $o->description,
+            'reference_url'        => $o->reference_url,
+            'client'               => $o->client ? ['id' => $o->client->id, 'name' => $o->client->name] : null,
+            'designer'             => $o->designer ? ['id' => $o->designer->id, 'name' => $o->designer->name] : null,
+            'status'               => $o->status,
+            'due_date'             => $o->due_date?->format('Y-m-d'),
+            'is_overdue'           => $isOverdue,
+            'file_url'             => $o->file_url,
+            'revision_count'       => $o->revision_count,
+            'revision_notes'       => $o->revision_notes,
+            'price'                => $o->price,
+            'created_at'           => $o->created_at,
         ];
     }
 
