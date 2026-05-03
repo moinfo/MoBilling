@@ -313,6 +313,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/settings/payment-methods', [SettingsController::class, 'updatePaymentMethods']);
     Route::get('/settings/subscriptions', [SettingsController::class, 'getSubscriptionSettings']);
     Route::put('/settings/subscriptions', [SettingsController::class, 'updateSubscriptionSettings']);
+    Route::get('/settings/late-fee', [SettingsController::class, 'getLateFeeSettings']);
+    Route::put('/settings/late-fee', [SettingsController::class, 'updateLateFeeSettings']);
     Route::get('/settings/pesapal', [SettingsController::class, 'getPesapal']);
     Route::put('/settings/pesapal', [SettingsController::class, 'updatePesapal']);
     Route::get('/settings/whatsapp', [SettingsController::class, 'getWhatsApp']);

@@ -343,6 +343,34 @@ class SettingsController extends Controller
         ]);
     }
 
+    public function getLateFeeSettings(Request $request)
+    {
+        $tenant = $request->user()->tenant;
+
+        return response()->json([
+            'data' => $tenant->only(['late_fee_enabled', 'late_fee_percent', 'late_fee_days']),
+        ]);
+    }
+
+    public function updateLateFeeSettings(Request $request)
+    {
+        $this->authorizePermission('settings.reminders');
+
+        $validated = $request->validate([
+            'late_fee_enabled' => 'required|boolean',
+            'late_fee_percent' => 'required|numeric|min:0.01|max:100',
+            'late_fee_days'    => 'required|integer|min:1|max:365',
+        ]);
+
+        $tenant = $request->user()->tenant;
+        $tenant->update($validated);
+
+        return response()->json([
+            'data'    => $tenant->fresh()->only(['late_fee_enabled', 'late_fee_percent', 'late_fee_days']),
+            'message' => 'Late fee settings updated.',
+        ]);
+    }
+
     private const TEMPLATE_FIELDS = [
         'reminder_email_subject', 'reminder_email_body',
         'overdue_email_subject', 'overdue_email_body',
