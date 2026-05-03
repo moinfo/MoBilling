@@ -3,7 +3,7 @@ import {
   Title, Tabs, Stack, Group, Button, Badge, Text, Paper, SimpleGrid,
   ActionIcon, Tooltip, Modal, TextInput, Select, Textarea, Progress,
   ThemeIcon, Divider, Checkbox, NumberInput, Switch, Loader, Center,
-  SegmentedControl, SegmentedControlItem,
+  SegmentedControl, Chip,
 } from '@mantine/core';
 import { DatePickerInput } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
@@ -192,7 +192,7 @@ function BoardTab({ can, platforms }: { can: (p: string) => boolean; platforms: 
   });
   const allPosts: SocialPost[] = data?.data?.data ?? [];
   const posts = allPosts.filter(p =>
-    (!filterFormat || p.post_format === filterFormat) &&
+    (!filterFormat || p.post_format.includes(filterFormat as PostFormat)) &&
     (!filterType   || p.type === filterType) &&
     (!filterStatus || p.status === filterStatus)
   );
@@ -314,14 +314,11 @@ function PostCard({ post, platforms, canUpdate, canDelete, onOpen, onDelete }: {
         {/* Format + delete row */}
         <Group justify="space-between" wrap="nowrap" gap={4}>
           <Group gap={4} wrap="nowrap">
-            <Badge
-              size="xs"
-              color={FORMAT_COLORS[post.post_format]}
-              variant="filled"
-              leftSection={FORMAT_ICONS[post.post_format]}
-            >
-              {FORMAT_LABELS[post.post_format]}
-            </Badge>
+            {post.post_format.map(fmt => (
+              <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="filled" leftSection={FORMAT_ICONS[fmt]}>
+                {FORMAT_LABELS[fmt]}
+              </Badge>
+            ))}
             {post.media_type === 'video' && (
               <Tooltip label="Video" position="top" withArrow>
                 <ThemeIcon size={16} color="grape" variant="light" radius="xl">
@@ -410,7 +407,7 @@ function PostFormModal({ opened, onClose, existing }: {
     initialValues: {
       title:               existing?.title ?? '',
       type:                (existing?.type ?? 'general') as PostType,
-      post_format:         (existing?.post_format ?? 'feed_post') as PostFormat,
+      post_format:         (existing?.post_format ?? ['feed_post']) as PostFormat[],
       media_type:          existing?.media_type ?? 'image',
       scheduled_date:      existing?.scheduled_date ? new Date(existing.scheduled_date) : new Date() as Date | null,
       brief:               existing?.brief ?? '',
@@ -452,11 +449,6 @@ function PostFormModal({ opened, onClose, existing }: {
     },
   });
 
-  const formatData: SegmentedControlItem[] = POST_FORMATS.map(f => ({
-    value: f,
-    label: FORMAT_LABELS[f],
-  }));
-
   return (
     <Modal opened={opened} onClose={onClose} title={isEdit ? 'Edit Post' : 'Schedule New Post'} centered size="md">
       <form onSubmit={form.onSubmit(v => mutation.mutate(v))}>
@@ -470,8 +462,16 @@ function PostFormModal({ opened, onClose, existing }: {
           />
 
           <div>
-            <Text size="sm" fw={500} mb={4}>Format</Text>
-            <SegmentedControl fullWidth data={formatData} {...form.getInputProps('post_format')} />
+            <Text size="sm" fw={500} mb={4}>Format <Text span size="xs" c="dimmed">(select all that apply)</Text></Text>
+            <Chip.Group multiple {...form.getInputProps('post_format')}>
+              <Group gap="xs">
+                {POST_FORMATS.map(f => (
+                  <Chip key={f} value={f} color={FORMAT_COLORS[f]} variant="outline" size="sm">
+                    {FORMAT_LABELS[f]}
+                  </Chip>
+                ))}
+              </Group>
+            </Chip.Group>
           </div>
 
           <div>
@@ -561,9 +561,11 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
       <Stack gap="md">
         {/* Header badges */}
         <Group gap="xs" wrap="wrap">
-          <Badge color={FORMAT_COLORS[post.post_format]} leftSection={FORMAT_ICONS[post.post_format]}>
-            {FORMAT_LABELS[post.post_format]}
-          </Badge>
+          {post.post_format.map(fmt => (
+            <Badge key={fmt} color={FORMAT_COLORS[fmt]} leftSection={FORMAT_ICONS[fmt]}>
+              {FORMAT_LABELS[fmt]}
+            </Badge>
+          ))}
           <Badge color={post.media_type === 'video' ? 'grape' : 'blue'} variant="light">
             {post.media_type === 'video' ? '🎬 Video' : '📷 Image'}
           </Badge>
@@ -767,10 +769,11 @@ function DesignerTab({ can, platforms }: { can: (p: string) => boolean; platform
                     onClick={() => { setSelected(post); openDetail(); }}>
                     <Stack gap={5}>
                       <Group gap={4} wrap="nowrap">
-                        <Badge size="xs" color={FORMAT_COLORS[post.post_format]} variant="filled"
-                          leftSection={FORMAT_ICONS[post.post_format]}>
-                          {FORMAT_LABELS[post.post_format]}
-                        </Badge>
+                        {post.post_format.map(fmt => (
+                          <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="filled" leftSection={FORMAT_ICONS[fmt]}>
+                            {FORMAT_LABELS[fmt]}
+                          </Badge>
+                        ))}
                         {post.media_type === 'video' && (
                           <Badge size="xs" color="grape" variant="light" leftSection={<IconVideo size={9} />}>
                             Video
@@ -841,10 +844,11 @@ function CreatorTab({ can, platforms }: { can: (p: string) => boolean; platforms
       onClick={() => { setSelected(post); openDetail(); }}>
       <Stack gap={5}>
         <Group gap={4} wrap="nowrap">
-          <Badge size="xs" color={FORMAT_COLORS[post.post_format]} variant="filled"
-            leftSection={FORMAT_ICONS[post.post_format]}>
-            {FORMAT_LABELS[post.post_format]}
-          </Badge>
+          {post.post_format.map(fmt => (
+            <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="filled" leftSection={FORMAT_ICONS[fmt]}>
+              {FORMAT_LABELS[fmt]}
+            </Badge>
+          ))}
           {post.media_type === 'video' && (
             <Badge size="xs" color="grape" variant="light" leftSection={<IconVideo size={9} />}>Video</Badge>
           )}
@@ -1053,9 +1057,11 @@ function QAPostRow({ post, platforms, onOpen }: { post: SocialPost; platforms: S
           <div style={{ minWidth: 0 }}>
             <Group gap={4} mb={2} wrap="nowrap">
               <Text size="sm" fw={500} lineClamp={1}>{post.title}</Text>
-              <Badge size="xs" color={FORMAT_COLORS[post.post_format]} variant="light">
-                {FORMAT_LABELS[post.post_format]}
-              </Badge>
+              {post.post_format.map(fmt => (
+                <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="light">
+                  {FORMAT_LABELS[fmt]}
+                </Badge>
+              ))}
             </Group>
             <Text size="xs" c="dimmed">
               {dayjs(post.scheduled_date).format('ddd D MMM')}

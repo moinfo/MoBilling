@@ -60,7 +60,7 @@ export interface SocialPost {
   id:                 string;
   title:              string;
   type:               PostType;
-  post_format:        PostFormat;
+  post_format:        PostFormat[];  // multiple formats allowed
   media_type:         MediaType;
   scheduled_date:     string;
   scheduled_time:     string | null;  // HH:MM
@@ -110,14 +110,14 @@ export const getPosts = (params?: { week_start?: string; status?: string; type?:
   api.get<{ data: SocialPost[] }>('/social/posts', { params });
 
 export const createPost = (data: {
-  title: string; type: PostType; post_format?: PostFormat; media_type?: MediaType;
+  title: string; type: PostType; post_format?: PostFormat[]; media_type?: MediaType;
   scheduled_date: string; scheduled_time?: string;
   brief?: string; hashtags?: string;
   assigned_designer_id?: string; assigned_creator_id?: string;
 }) => api.post<{ data: SocialPost }>('/social/posts', data);
 
 export const updatePost = (id: string, data: Partial<{
-  title: string; type: PostType; post_format: PostFormat; media_type: MediaType;
+  title: string; type: PostType; post_format: PostFormat[]; media_type: MediaType;
   scheduled_date: string; scheduled_time: string;
   brief: string; hashtags: string;
   assigned_designer_id: string; assigned_creator_id: string;

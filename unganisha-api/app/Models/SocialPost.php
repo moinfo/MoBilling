@@ -20,6 +20,7 @@ class SocialPost extends Model
 
     protected $casts = [
         'scheduled_date' => 'date',
+        'post_format'    => 'array',
     ];
 
     public function platforms()

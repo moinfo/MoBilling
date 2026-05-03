@@ -101,7 +101,8 @@ class SocialMediaController extends Controller
         $data = $request->validate([
             'title'                => 'required|string|max:255',
             'type'                 => 'required|in:product_education,holiday,employee_birthday,promotion,announcement,general',
-            'post_format'          => 'nullable|in:feed_post,reel,story,carousel',
+            'post_format'          => 'nullable|array',
+            'post_format.*'        => 'in:feed_post,reel,story,carousel',
             'media_type'           => 'nullable|in:image,video',
             'scheduled_date'       => 'required|date',
             'scheduled_time'       => 'nullable|date_format:H:i',
@@ -110,6 +111,10 @@ class SocialMediaController extends Controller
             'assigned_designer_id' => 'nullable|uuid|exists:users,id',
             'assigned_creator_id'  => 'nullable|uuid|exists:users,id',
         ]);
+
+        if (empty($data['post_format'])) {
+            $data['post_format'] = ['feed_post'];
+        }
 
         $post = SocialPost::create([...$data, 'created_by' => $request->user()->id]);
 
@@ -129,7 +134,8 @@ class SocialMediaController extends Controller
         $data = $request->validate([
             'title'                => 'sometimes|string|max:255',
             'type'                 => 'sometimes|in:product_education,holiday,employee_birthday,promotion,announcement,general',
-            'post_format'          => 'sometimes|in:feed_post,reel,story,carousel',
+            'post_format'          => 'sometimes|array',
+            'post_format.*'        => 'in:feed_post,reel,story,carousel',
             'media_type'           => 'sometimes|in:image,video',
             'scheduled_date'       => 'sometimes|date',
             'scheduled_time'       => 'nullable|date_format:H:i',
@@ -415,7 +421,7 @@ class SocialMediaController extends Controller
             'id'                   => $post->id,
             'title'                => $post->title,
             'type'                 => $post->type,
-            'post_format'          => $post->post_format ?? 'feed_post',
+            'post_format'          => $post->post_format ?? ['feed_post'],
             'media_type'           => $post->media_type ?? 'image',
             'scheduled_date'       => $post->scheduled_date?->format('Y-m-d'),
             'scheduled_time'       => $post->scheduled_time ? substr($post->scheduled_time, 0, 5) : null,
