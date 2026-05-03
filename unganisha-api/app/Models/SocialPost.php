@@ -11,8 +11,9 @@ class SocialPost extends Model
     use HasUuids, BelongsToTenant;
 
     protected $fillable = [
-        'title', 'type', 'scheduled_date', 'brief', 'caption',
-        'design_file_url', 'design_notes',
+        'title', 'type', 'post_format', 'media_type',
+        'scheduled_date', 'scheduled_time', 'brief',
+        'caption', 'hashtags', 'design_file_url', 'design_notes',
         'assigned_designer_id', 'assigned_creator_id',
         'design_status', 'content_status', 'status', 'created_by',
     ];

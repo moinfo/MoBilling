@@ -6,6 +6,12 @@ export type Platform = typeof PLATFORMS[number];
 export const POST_TYPES = ['product_education', 'holiday', 'employee_birthday', 'promotion', 'announcement', 'general'] as const;
 export type PostType = typeof POST_TYPES[number];
 
+export const POST_FORMATS = ['feed_post', 'reel', 'story', 'carousel'] as const;
+export type PostFormat = typeof POST_FORMATS[number];
+
+export const MEDIA_TYPES = ['image', 'video'] as const;
+export type MediaType = typeof MEDIA_TYPES[number];
+
 export const TYPE_LABELS: Record<PostType, string> = {
   product_education: 'Product Education',
   holiday:           'Holiday Wishes',
@@ -13,6 +19,20 @@ export const TYPE_LABELS: Record<PostType, string> = {
   promotion:         'Promotion',
   announcement:      'Announcement',
   general:           'General',
+};
+
+export const FORMAT_LABELS: Record<PostFormat, string> = {
+  feed_post: 'Feed Post',
+  reel:      'Reel',
+  story:     'Story',
+  carousel:  'Carousel',
+};
+
+export const FORMAT_COLORS: Record<PostFormat, string> = {
+  feed_post: 'blue',
+  reel:      'violet',
+  story:     'orange',
+  carousel:  'cyan',
 };
 
 export const PLATFORM_LABELS: Record<Platform, string> = {
@@ -40,9 +60,13 @@ export interface SocialPost {
   id:                 string;
   title:              string;
   type:               PostType;
+  post_format:        PostFormat;
+  media_type:         MediaType;
   scheduled_date:     string;
+  scheduled_time:     string | null;  // HH:MM
   brief:              string | null;
   caption:            string | null;
+  hashtags:           string | null;
   design_file_url:    string | null;
   design_notes:       string | null;
   assigned_designer:  { id: string; name: string } | null;
@@ -86,13 +110,17 @@ export const getPosts = (params?: { week_start?: string; status?: string; type?:
   api.get<{ data: SocialPost[] }>('/social/posts', { params });
 
 export const createPost = (data: {
-  title: string; type: PostType; scheduled_date: string;
-  brief?: string; assigned_designer_id?: string; assigned_creator_id?: string;
+  title: string; type: PostType; post_format?: PostFormat; media_type?: MediaType;
+  scheduled_date: string; scheduled_time?: string;
+  brief?: string; hashtags?: string;
+  assigned_designer_id?: string; assigned_creator_id?: string;
 }) => api.post<{ data: SocialPost }>('/social/posts', data);
 
 export const updatePost = (id: string, data: Partial<{
-  title: string; type: PostType; scheduled_date: string;
-  brief: string; assigned_designer_id: string; assigned_creator_id: string;
+  title: string; type: PostType; post_format: PostFormat; media_type: MediaType;
+  scheduled_date: string; scheduled_time: string;
+  brief: string; hashtags: string;
+  assigned_designer_id: string; assigned_creator_id: string;
 }>) => api.put<{ data: SocialPost }>(`/social/posts/${id}`, data);
 
 export const deletePost = (id: string) =>
@@ -101,7 +129,7 @@ export const deletePost = (id: string) =>
 export const updateDesign = (id: string, data: { design_status: DesignStatus; design_notes?: string; design_file_url?: string }) =>
   api.patch<{ data: SocialPost }>(`/social/posts/${id}/design`, data);
 
-export const updateContent = (id: string, data: { content_status: ContentStatus; caption?: string }) =>
+export const updateContent = (id: string, data: { content_status: ContentStatus; caption?: string; hashtags?: string }) =>
   api.patch<{ data: SocialPost }>(`/social/posts/${id}/content`, data);
 
 export const togglePlatform = (id: string, platform: Platform, data: { posted: boolean; post_url?: string }) =>
