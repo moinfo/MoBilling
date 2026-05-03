@@ -371,64 +371,64 @@ function PostFormModal({ opened, onClose, existing }: {
   opened: boolean; onClose: () => void; existing?: SocialPost;
 }) {
   const qc = useQueryClient();
-  const [scheduledTime, setScheduledTime] = useState(existing?.scheduled_time ?? '');
 
   const form = useForm({
     initialValues: {
-      title:               existing?.title ?? '',
-      type:                (existing?.type ?? 'general') as PostType,
-      post_format:         (existing?.post_format ?? ['feed_post']) as PostFormat[],
-      media_type:          existing?.media_type ?? 'image',
-      scheduled_date:      existing?.scheduled_date ? new Date(existing.scheduled_date) : new Date() as Date | null,
-      brief:    existing?.brief ?? '',
-      hashtags: existing?.hashtags ?? '',
+      title:          existing?.title ?? '',
+      post_format:    (existing?.post_format ?? ['feed_post']) as PostFormat[],
+      media_type:     existing?.media_type ?? 'image',
+      scheduled_date: existing?.scheduled_date ? new Date(existing.scheduled_date) : new Date() as Date | null,
+      type:           (existing?.type ?? 'general') as PostType,
     },
     validate: {
-      title:          v => !v.trim() ? 'Title required' : null,
-      scheduled_date: v => !v ? 'Date required' : null,
+      title:          v => !v.trim() ? 'Title is required' : null,
+      scheduled_date: v => !v ? 'Date is required' : null,
     },
   });
 
   const isEdit = !!existing;
 
   const mutation = useMutation({
-    mutationFn: (vals: ReturnType<typeof form.getValues>) => {
-      const payload = {
-        title:               vals.title,
-        type:                vals.type,
-        post_format:         Array.isArray(vals.post_format) ? vals.post_format : [vals.post_format],
-        media_type:          vals.media_type as 'image' | 'video',
-        scheduled_date:      dayjs(vals.scheduled_date!).format('YYYY-MM-DD'),
-        scheduled_time:      scheduledTime || undefined,
-        brief:    vals.brief || undefined,
-        hashtags: vals.hashtags || undefined,
-      };
-      return isEdit ? updatePost(existing!.id, payload) : createPost(payload);
-    },
+    mutationFn: (vals: ReturnType<typeof form.getValues>) =>
+      isEdit
+        ? updatePost(existing!.id, {
+            title:          vals.title,
+            type:           vals.type,
+            post_format:    Array.isArray(vals.post_format) ? vals.post_format : [vals.post_format],
+            media_type:     vals.media_type as 'image' | 'video',
+            scheduled_date: dayjs(vals.scheduled_date!).format('YYYY-MM-DD'),
+          })
+        : createPost({
+            title:          vals.title,
+            type:           vals.type,
+            post_format:    Array.isArray(vals.post_format) ? vals.post_format : [vals.post_format],
+            media_type:     vals.media_type as 'image' | 'video',
+            scheduled_date: dayjs(vals.scheduled_date!).format('YYYY-MM-DD'),
+          }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['social-posts'] });
       qc.invalidateQueries({ queryKey: ['social-weekly-summary'] });
-      notifications.show({ message: isEdit ? 'Post updated.' : 'Post scheduled.', color: 'green' });
+      notifications.show({ message: isEdit ? 'Post updated.' : 'Post added to plan.', color: 'green' });
       form.reset();
-      setScheduledTime('');
       onClose();
     },
   });
 
   return (
-    <Modal opened={opened} onClose={onClose} title={isEdit ? 'Edit Post' : 'Schedule New Post'} centered size="md">
+    <Modal opened={opened} onClose={onClose} title={isEdit ? 'Edit Post' : 'Plan a Post'} centered size="sm">
       <form onSubmit={form.onSubmit(v => mutation.mutate(v))}>
-        <Stack>
-          <TextInput label="Title" required {...form.getInputProps('title')} />
-
-          <Select
-            label="Post type" required
-            data={POST_TYPES.map(t => ({ value: t, label: TYPE_LABELS[t] }))}
-            {...form.getInputProps('type')}
+        <Stack gap="sm">
+          <TextInput
+            label="What's this post about?"
+            placeholder="e.g. Ramadan promo, Product launch, Staff spotlight…"
+            required
+            {...form.getInputProps('title')}
           />
 
+          <DatePickerInput label="Date" required {...form.getInputProps('scheduled_date')} />
+
           <div>
-            <Text size="sm" fw={500} mb={4}>Format <Text span size="xs" c="dimmed">(select all that apply)</Text></Text>
+            <Text size="sm" fw={500} mb={6}>Format</Text>
             <Chip.Group multiple {...form.getInputProps('post_format')}>
               <Group gap="xs">
                 {POST_FORMATS.map(f => (
@@ -440,42 +440,26 @@ function PostFormModal({ opened, onClose, existing }: {
             </Chip.Group>
           </div>
 
-          <div>
-            <Text size="sm" fw={500} mb={4}>Media type</Text>
-            <SegmentedControl
-              fullWidth
-              data={[
-                { value: 'image', label: '📷 Image / Graphic' },
-                { value: 'video', label: '🎬 Video / Animation' },
-              ]}
-              {...form.getInputProps('media_type')}
-            />
-          </div>
-
-          <Group grow>
-            <DatePickerInput label="Scheduled date" required {...form.getInputProps('scheduled_date')} />
-            <TextInput
-              label="Time (optional)"
-              placeholder="09:00"
-              type="time"
-              value={scheduledTime}
-              onChange={e => setScheduledTime(e.currentTarget.value)}
-              leftSection={<IconClock size={14} />}
-            />
-          </Group>
-
-          <Textarea label="Brief / Instructions for designer" minRows={2} {...form.getInputProps('brief')} />
-
-          <TextInput
-            label="Hashtags"
-            placeholder="#moinfotech #tech #innovation"
-            leftSection={<IconHash size={14} />}
-            {...form.getInputProps('hashtags')}
+          <SegmentedControl
+            fullWidth
+            data={[
+              { value: 'image', label: '📷 Graphic / Image' },
+              { value: 'video', label: '🎬 Video / Reel' },
+            ]}
+            {...form.getInputProps('media_type')}
           />
 
-          <Group justify="flex-end">
+          <Select
+            label="Category"
+            data={POST_TYPES.map(t => ({ value: t, label: TYPE_LABELS[t] }))}
+            {...form.getInputProps('type')}
+          />
+
+          <Group justify="flex-end" mt="xs">
             <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button type="submit" loading={mutation.isPending}>{isEdit ? 'Update' : 'Schedule'}</Button>
+            <Button type="submit" loading={mutation.isPending}>
+              {isEdit ? 'Save changes' : 'Add to plan'}
+            </Button>
           </Group>
         </Stack>
       </form>
@@ -518,29 +502,75 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
   });
 
   const timeStr = formatTime(post.scheduled_time);
+  const [editModal, { open: openEdit, close: closeEdit }] = useDisclosure(false);
+  const [brief, setBrief] = useState(post.brief ?? '');
+  const [time,  setTime]  = useState(post.scheduled_time?.slice(0, 5) ?? '');
+
+  const briefMutation = useMutation({
+    mutationFn: () => updatePost(post.id, {
+      brief: brief || undefined,
+      scheduled_time: time || undefined,
+    }),
+    onSuccess: r => { invalidate(); onUpdated(r.data.data); notifications.show({ message: 'Saved.', color: 'green' }); },
+  });
 
   return (
+    <>
     <Modal opened={opened} onClose={onClose} title={post.title} size="lg" centered>
       <Stack gap="md">
-        {/* Header badges */}
-        <Group gap="xs" wrap="wrap">
-          {post.post_format.map(fmt => (
-            <Badge key={fmt} color={FORMAT_COLORS[fmt]} leftSection={FORMAT_ICONS[fmt]}>
-              {FORMAT_LABELS[fmt]}
+        {/* Header */}
+        <Group justify="space-between" wrap="wrap">
+          <Group gap="xs" wrap="wrap">
+            {post.post_format.map(fmt => (
+              <Badge key={fmt} color={FORMAT_COLORS[fmt]} leftSection={FORMAT_ICONS[fmt]}>
+                {FORMAT_LABELS[fmt]}
+              </Badge>
+            ))}
+            <Badge color={post.media_type === 'video' ? 'grape' : 'blue'} variant="light">
+              {post.media_type === 'video' ? '🎬 Video' : '📷 Image'}
             </Badge>
-          ))}
-          <Badge color={post.media_type === 'video' ? 'grape' : 'blue'} variant="light">
-            {post.media_type === 'video' ? '🎬 Video' : '📷 Image'}
-          </Badge>
-          <Badge color={STATUS_COLOR[post.status]}>{STATUS_LABEL[post.status]}</Badge>
-          <Badge variant="dot" color="gray">{TYPE_LABELS[post.type]}</Badge>
-          <Text size="xs" c="dimmed">
-            {dayjs(post.scheduled_date).format('D MMM YYYY')}
-            {timeStr ? ` at ${timeStr}` : ''}
-          </Text>
+            <Badge color={STATUS_COLOR[post.status]}>{STATUS_LABEL[post.status]}</Badge>
+            <Badge variant="dot" color="gray">{TYPE_LABELS[post.type]}</Badge>
+            <Text size="xs" c="dimmed">
+              {dayjs(post.scheduled_date).format('D MMM YYYY')}
+              {timeStr ? ` at ${timeStr}` : ''}
+            </Text>
+          </Group>
+          {canUpdate && (
+            <Button size="xs" variant="subtle" leftSection={<IconEdit size={13} />} onClick={openEdit}>
+              Edit
+            </Button>
+          )}
         </Group>
 
-        {post.brief && <Text size="sm" c="dimmed" style={{ fontStyle: 'italic' }}>{post.brief}</Text>}
+        {/* Brief — editable by anyone with update permission */}
+        <Divider label="Brief" labelPosition="left" />
+        <Stack gap="xs">
+          {canUpdate ? (
+            <>
+              <Textarea
+                size="xs" minRows={2}
+                placeholder="Instructions for the designer — what to create, colors, text to include…"
+                value={brief} onChange={e => setBrief(e.currentTarget.value)}
+              />
+              <Group gap="xs">
+                <TextInput
+                  size="xs" placeholder="Time (HH:MM)" style={{ width: 120 }}
+                  type="time" value={time} onChange={e => setTime(e.currentTarget.value)}
+                  leftSection={<IconClock size={13} />}
+                />
+                <Button size="xs" variant="light" loading={briefMutation.isPending}
+                  onClick={() => briefMutation.mutate()}>
+                  Save
+                </Button>
+              </Group>
+            </>
+          ) : (
+            <Text size="sm" c="dimmed" style={{ fontStyle: 'italic' }}>
+              {post.brief ?? 'No brief added yet.'}
+            </Text>
+          )}
+        </Stack>
 
         {/* Design section */}
         <Divider label="Design" labelPosition="left" />
@@ -669,6 +699,9 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
         </Stack>
       </Stack>
     </Modal>
+
+    <PostFormModal opened={editModal} onClose={closeEdit} existing={post} />
+    </>
   );
 }
 
