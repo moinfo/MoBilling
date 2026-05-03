@@ -102,15 +102,11 @@ function formatTime(t: string | null) {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
-// Ordered tab config — permission controls visibility, alignRight pushes to the far end
 const SOCIAL_TABS = [
-  { value: 'board',          perm: 'social.board',          label: 'Board',             icon: <IconCalendarWeek size={16} /> },
-  { value: 'designer',       perm: 'social.design_work',    label: 'Design Work',       icon: <IconPhoto size={16} /> },
-  { value: 'creator',        perm: 'social.content',        label: 'Content & Posting', icon: <IconPencil size={16} /> },
-  { value: 'qa',             perm: 'social.qa',             label: 'QA Review',         icon: <IconShieldCheck size={16} /> },
-  { value: 'client_designs', perm: 'social.client_designs', label: 'Client Designs',    icon: <IconBriefcase size={16} /> },
-  { value: 'targets',        perm: 'social.targets',        label: 'Targets',           icon: <IconTarget size={16} /> },
-  { value: 'settings',       perm: 'social.settings',       label: 'Platform Settings', icon: <IconSettings size={16} />, alignRight: true },
+  { value: 'posts',          perm: 'social.board',          label: 'Posts',          icon: <IconCalendarWeek size={16} /> },
+  { value: 'workflow',       perm: 'social.design_work',    label: 'Workflow',       icon: <IconLayoutColumns size={16} /> },
+  { value: 'client_designs', perm: 'social.client_designs', label: 'Client Designs', icon: <IconBriefcase size={16} /> },
+  { value: 'settings',       perm: 'social.settings',       label: 'Settings',       icon: <IconSettings size={16} />, alignRight: true },
 ] as const;
 
 export default function SocialMedia() {
@@ -157,13 +153,10 @@ export default function SocialMedia() {
             </Tabs.Tab>
           ))}
         </Tabs.List>
-        {can('social.board')          && <Tabs.Panel value="board">          <BoardTab    can={can} platforms={activePlatforms} /></Tabs.Panel>}
-        {can('social.design_work')    && <Tabs.Panel value="designer">       <DesignerTab can={can} platforms={activePlatforms} /></Tabs.Panel>}
-        {can('social.content')        && <Tabs.Panel value="creator">        <CreatorTab  can={can} platforms={activePlatforms} /></Tabs.Panel>}
-        {can('social.qa')             && <Tabs.Panel value="qa">             <QATab       can={can} platforms={activePlatforms} /></Tabs.Panel>}
+        {can('social.board')          && <Tabs.Panel value="posts">          <PostsTab    can={can} platforms={activePlatforms} /></Tabs.Panel>}
+        {can('social.design_work')    && <Tabs.Panel value="workflow">       <WorkflowTab can={can} platforms={activePlatforms} /></Tabs.Panel>}
         {can('social.client_designs') && <Tabs.Panel value="client_designs"> <ClientDesignsTab can={can} /></Tabs.Panel>}
-        {can('social.targets')        && <Tabs.Panel value="targets">        <TargetsTab  can={can} /></Tabs.Panel>}
-        {can('social.settings')       && <Tabs.Panel value="settings">       <PlatformSettingsTab can={can} platforms={platforms} /></Tabs.Panel>}
+        {can('social.settings')       && <Tabs.Panel value="settings">       <SettingsTab can={can} platforms={platforms} /></Tabs.Panel>}
       </Tabs>
     </Stack>
   );
@@ -171,121 +164,61 @@ export default function SocialMedia() {
 
 // ── Board Tab ────────────────────────────────────────────────────────────────
 
-function BoardTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
+function PostsTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
   const qc = useQueryClient();
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [selected, setSelected] = useState<SocialPost | null>(null);
-  const [postModal, { open: openPost, close: closePost }] = useDisclosure(false);
-  const [detailModal, { open: openDetail, close: closeDetail }] = useDisclosure(false);
-
-  // Filters (applied client-side on the week's data)
-  const [filterFormat, setFilterFormat] = useState<string | null>(null);
   const [filterType,   setFilterType]   = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
-
-  const ws = weekStart(weekOffset);
-  const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
+  const [selected, setSelected] = useState<SocialPost | null>(null);
+  const [postModal,   { open: openPost,   close: closePost   }] = useDisclosure(false);
+  const [detailModal, { open: openDetail, close: closeDetail }] = useDisclosure(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['social-posts', ws],
-    queryFn: () => getPosts({ week_start: ws }),
+    queryKey: ['social-posts'],
+    queryFn: () => getPosts(),
   });
   const allPosts: SocialPost[] = data?.data?.data ?? [];
   const posts = allPosts.filter(p =>
-    (!filterFormat || p.post_format.includes(filterFormat as PostFormat)) &&
     (!filterType   || p.type === filterType) &&
     (!filterStatus || p.status === filterStatus)
   );
 
-  const days = Array.from({ length: 7 }, (_, i) => dayjs(ws).add(i, 'day'));
-
   const deleteMutation = useMutation({
     mutationFn: deletePost,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['social-posts'] }); notifications.show({ message: 'Post deleted.', color: 'green' }); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['social-posts'] });
+      notifications.show({ message: 'Post deleted.', color: 'green' });
+    },
   });
-
-  const hasFilters = filterFormat || filterType || filterStatus;
 
   return (
     <Stack>
-      {/* Navigation row */}
       <Group justify="space-between" wrap="nowrap">
         <Group gap="xs">
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o - 1)}>‹</ActionIcon>
-          <Text fw={500} size="sm">{dayjs(ws).format('D MMM')} – {dayjs(we).format('D MMM YYYY')}</Text>
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o + 1)}>›</ActionIcon>
-          {weekOffset !== 0 && <Button size="xs" variant="light" onClick={() => setWeekOffset(0)}>This week</Button>}
+          <Select size="xs" placeholder="All types" clearable
+            data={POST_TYPES.map(t => ({ value: t, label: TYPE_LABELS[t] }))}
+            value={filterType} onChange={setFilterType} style={{ width: 160 }} />
+          <Select size="xs" placeholder="All statuses" clearable
+            data={Object.entries(STATUS_LABEL).map(([v, l]) => ({ value: v, label: l }))}
+            value={filterStatus} onChange={setFilterStatus} style={{ width: 140 }} />
+          <Text size="xs" c="dimmed">{posts.length} post{posts.length !== 1 ? 's' : ''}</Text>
         </Group>
         {can('social.create') && (
           <Button leftSection={<IconPlus size={16} />} onClick={openPost}>New Post</Button>
         )}
       </Group>
 
-      {/* Filter row */}
-      <Group gap="xs" wrap="wrap">
-        <Select
-          size="xs" placeholder="All formats" clearable
-          data={POST_FORMATS.map(f => ({ value: f, label: FORMAT_LABELS[f] }))}
-          value={filterFormat} onChange={setFilterFormat}
-          style={{ width: 130 }}
-        />
-        <Select
-          size="xs" placeholder="All types" clearable
-          data={POST_TYPES.map(t => ({ value: t, label: TYPE_LABELS[t] }))}
-          value={filterType} onChange={setFilterType}
-          style={{ width: 160 }}
-        />
-        <Select
-          size="xs" placeholder="All statuses" clearable
-          data={Object.entries(STATUS_LABEL).map(([v, l]) => ({ value: v, label: l }))}
-          value={filterStatus} onChange={setFilterStatus}
-          style={{ width: 140 }}
-        />
-        {hasFilters && (
-          <Button size="xs" variant="subtle" color="gray"
-            onClick={() => { setFilterFormat(null); setFilterType(null); setFilterStatus(null); }}>
-            Clear filters
-          </Button>
-        )}
-        <Text size="xs" c="dimmed" ml="auto">
-          {posts.length} post{posts.length !== 1 ? 's' : ''} this week
-        </Text>
-      </Group>
-
       {isLoading ? <Center py="xl"><Loader /></Center> : (
-        <SimpleGrid cols={{ base: 1, sm: 2, md: 3, lg: 7 }} spacing="xs">
-          {days.map(day => {
-            const dayPosts = posts.filter(p => p.scheduled_date === day.format('YYYY-MM-DD'));
-            const isToday = day.format('YYYY-MM-DD') === dayjs().format('YYYY-MM-DD');
-            return (
-              <Stack key={day.format('YYYY-MM-DD')} gap="xs">
-                <Paper
-                  p="xs" withBorder
-                  style={{
-                    borderColor: isToday ? 'var(--mantine-color-blue-5)' : undefined,
-                    background: isToday ? 'var(--mantine-color-blue-0)' : undefined,
-                  }}
-                >
-                  <Text size="xs" fw={700} c={isToday ? 'blue' : 'dimmed'} ta="center">{day.format('ddd')}</Text>
-                  <Text size="xs" ta="center" c="dimmed">{day.format('D')}</Text>
-                </Paper>
-                {dayPosts
-                  .sort((a, b) => (a.scheduled_time ?? '00:00').localeCompare(b.scheduled_time ?? '00:00'))
-                  .map(post => (
-                    <PostCard
-                      key={post.id} post={post} platforms={platforms}
-                      canUpdate={can('social.update')} canDelete={can('social.delete')}
-                      onOpen={() => { setSelected(post); openDetail(); }}
-                      onDelete={() => deleteMutation.mutate(post.id)}
-                    />
-                  ))}
-                {dayPosts.length === 0 && (
-                  <Text size="xs" c="dimmed" ta="center" py="xs">—</Text>
-                )}
-              </Stack>
-            );
-          })}
-        </SimpleGrid>
+        <Stack gap="xs">
+          {posts.length === 0 && <Center py="xl"><Text c="dimmed">No posts yet.</Text></Center>}
+          {posts.map(post => (
+            <PostRow
+              key={post.id} post={post} platforms={platforms}
+              canDelete={can('social.delete')}
+              onOpen={() => { setSelected(post); openDetail(); }}
+              onDelete={() => deleteMutation.mutate(post.id)}
+            />
+          ))}
+        </Stack>
       )}
 
       <PostFormModal opened={postModal} onClose={closePost} />
@@ -298,6 +231,66 @@ function BoardTab({ can, platforms }: { can: (p: string) => boolean; platforms: 
         />
       )}
     </Stack>
+  );
+}
+
+function PostRow({ post, platforms, canDelete, onOpen, onDelete }: {
+  post: SocialPost; platforms: SocialPlatformConfig[];
+  canDelete: boolean; onOpen: () => void; onDelete: () => void;
+}) {
+  const timeStr = formatTime(post.scheduled_time);
+  const isToday = post.scheduled_date === dayjs().format('YYYY-MM-DD');
+
+  return (
+    <Paper withBorder p="sm" style={{ cursor: 'pointer' }} onClick={onOpen}>
+      <Group wrap="nowrap" gap="md">
+        {/* Date */}
+        <Stack gap={0} align="center" style={{ minWidth: 52 }}>
+          <Text size="xs" fw={700} c={isToday ? 'blue' : 'dimmed'}>{dayjs(post.scheduled_date).format('ddd').toUpperCase()}</Text>
+          <Text size="lg" fw={800} lh={1}>{dayjs(post.scheduled_date).format('D')}</Text>
+          <Text size="xs" c="dimmed">{dayjs(post.scheduled_date).format('MMM')}</Text>
+          {timeStr && <Text size={10} c="dimmed">{timeStr}</Text>}
+        </Stack>
+
+        <Divider orientation="vertical" />
+
+        {/* Title + type */}
+        <Stack gap={4} style={{ flex: 1, minWidth: 0 }}>
+          <Text size="sm" fw={600} lineClamp={1}>{post.title}</Text>
+          <Group gap={4} wrap="wrap">
+            <Badge size="xs" variant="dot" color="gray">{TYPE_LABELS[post.type]}</Badge>
+            {post.post_format.map(fmt => (
+              <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="light">{FORMAT_LABELS[fmt]}</Badge>
+            ))}
+            {post.media_type === 'video' && <Badge size="xs" color="grape" variant="light">Video</Badge>}
+          </Group>
+        </Stack>
+
+        {/* Platforms */}
+        <Group gap={3} wrap="nowrap">
+          {platforms.map(pl => {
+            const row = post.platforms[pl.name];
+            return (
+              <Tooltip key={pl.name} label={pl.label} withArrow position="top">
+                <ThemeIcon size={22} color={row?.posted ? pl.color : 'gray'} variant={row?.posted ? 'filled' : 'light'} radius="xl">
+                  {getPlatformIcon(pl.icon, 12)}
+                </ThemeIcon>
+              </Tooltip>
+            );
+          })}
+        </Group>
+
+        {/* Status */}
+        <Badge size="sm" color={STATUS_COLOR[post.status]} style={{ flexShrink: 0 }}>{STATUS_LABEL[post.status]}</Badge>
+
+        {canDelete && (
+          <ActionIcon size="sm" color="red" variant="subtle"
+            onClick={e => { e.stopPropagation(); onDelete(); }}>
+            <IconTrash size={14} />
+          </ActionIcon>
+        )}
+      </Group>
+    </Paper>
   );
 }
 
@@ -679,203 +672,113 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
   );
 }
 
-// ── Designer Tab ─────────────────────────────────────────────────────────────
+// ── Workflow Tab (Design · Content · Posting) ─────────────────────────────────
 
-function DesignerTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
+function WorkflowTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const ws = weekStart(weekOffset);
   const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['social-posts-designer', ws],
+    queryKey: ['social-posts-workflow', ws],
     queryFn: () => getPosts({ week_start: ws }),
   });
 
   const posts: SocialPost[] = data?.data?.data ?? [];
 
-  const pending    = posts.filter(p => p.design_status === 'pending');
-  const inProgress = posts.filter(p => p.design_status === 'in_progress');
-  const done       = posts.filter(p => p.design_status === 'done');
+  // Design column: needs design work
+  const designing = posts.filter(p => p.design_status !== 'done');
+  // Content column: design done, needs caption/posting
+  const content   = posts.filter(p => p.design_status === 'done' && p.status !== 'posted');
+  // Posting column: all posts for QA review
+  const posting   = posts.sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
 
   const [selected, setSelected] = useState<SocialPost | null>(null);
   const [detailModal, { open: openDetail, close: closeDetail }] = useDisclosure(false);
 
-  return (
-    <Stack>
-      <Group justify="space-between">
-        <Group gap="xs">
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o - 1)}>‹</ActionIcon>
-          <Text fw={500} size="sm">{dayjs(ws).format('D MMM')} – {dayjs(we).format('D MMM YYYY')}</Text>
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o + 1)}>›</ActionIcon>
-          {weekOffset !== 0 && <Button size="xs" variant="light" onClick={() => setWeekOffset(0)}>This week</Button>}
-        </Group>
-        <Group gap="sm">
-          <Badge color="gray"   variant="light">{pending.length} Pending</Badge>
-          <Badge color="yellow" variant="light">{inProgress.length} In Progress</Badge>
-          <Badge color="green"  variant="light">{done.length} Done</Badge>
-        </Group>
-      </Group>
-
-      {isLoading ? <Center py="xl"><Loader /></Center> : (
-        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
-          {[
-            { label: 'Pending Design', color: 'gray',   items: pending },
-            { label: 'In Progress',    color: 'yellow', items: inProgress },
-            { label: 'Design Done',    color: 'green',  items: done },
-          ].map(({ label, color, items }) => (
-            <Stack key={label} gap="xs">
-              <Group gap="xs">
-                <Badge color={color} variant="filled" size="sm">{label}</Badge>
-                <Text size="xs" c="dimmed">({items.length})</Text>
-              </Group>
-              {items.length === 0
-                ? <Text size="xs" c="dimmed" ta="center" py="md">Nothing here</Text>
-                : items.map(post => (
-                  <Paper key={post.id} withBorder p="sm" style={{ cursor: 'pointer' }}
-                    onClick={() => { setSelected(post); openDetail(); }}>
-                    <Stack gap={5}>
-                      <Group gap={4} wrap="nowrap">
-                        {post.post_format.map(fmt => (
-                          <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="filled" leftSection={FORMAT_ICONS[fmt]}>
-                            {FORMAT_LABELS[fmt]}
-                          </Badge>
-                        ))}
-                        {post.media_type === 'video' && (
-                          <Badge size="xs" color="grape" variant="light" leftSection={<IconVideo size={9} />}>
-                            Video
-                          </Badge>
-                        )}
-                      </Group>
-                      <Text size="sm" fw={600} lineClamp={2}>{post.title}</Text>
-                      <Text size="xs" c="dimmed">
-                        {dayjs(post.scheduled_date).format('D MMM')}
-                        {post.scheduled_time ? ` at ${formatTime(post.scheduled_time)}` : ''}
-                        {' · '}{TYPE_LABELS[post.type]}
-                      </Text>
-                      {post.brief && (
-                        <Text size="xs" c="blue" lineClamp={2}>📋 {post.brief}</Text>
-                      )}
-                      {post.design_notes && <Text size="xs" c="orange" lineClamp={1}>📝 {post.design_notes}</Text>}
-                      {post.design_file_url && (
-                        <Text size="xs" c="green" fw={500}>✓ File uploaded</Text>
-                      )}
-                    </Stack>
-                  </Paper>
-                ))
-              }
-            </Stack>
-          ))}
-        </SimpleGrid>
-      )}
-
-      {selected && (
-        <PostDetailModal
-          post={selected} opened={detailModal} platforms={platforms}
-          onClose={() => { closeDetail(); setSelected(null); }}
-          canUpdate={can('social.update')}
-          onUpdated={p => setSelected(p)}
-        />
-      )}
-    </Stack>
-  );
-}
-
-// ── Content Creator Tab ───────────────────────────────────────────────────────
-
-function CreatorTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const ws = weekStart(weekOffset);
-  const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['social-posts-creator', ws],
-    queryFn: () => getPosts({ week_start: ws }),
-  });
-
-  const posts: SocialPost[] = data?.data?.data ?? [];
-
-  const needsCaption = posts.filter(p => p.design_status === 'done' && p.content_status === 'pending');
-  const readyToPost  = posts.filter(p => p.content_status === 'ready' && p.status !== 'posted');
-  const fullyPosted  = posts.filter(p => p.status === 'posted');
-
-  const [selected, setSelected] = useState<SocialPost | null>(null);
-  const [detailModal, { open: openDetail, close: closeDetail }] = useDisclosure(false);
-
-  const renderPostItem = (post: SocialPost) => (
+  const renderCard = (post: SocialPost) => (
     <Paper key={post.id} withBorder p="sm" style={{ cursor: 'pointer' }}
       onClick={() => { setSelected(post); openDetail(); }}>
-      <Stack gap={5}>
-        <Group gap={4} wrap="nowrap">
+      <Stack gap={4}>
+        <Text size="sm" fw={600} lineClamp={1}>{post.title}</Text>
+        <Group gap={4} wrap="wrap">
           {post.post_format.map(fmt => (
-            <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="filled" leftSection={FORMAT_ICONS[fmt]}>
-              {FORMAT_LABELS[fmt]}
-            </Badge>
+            <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="light">{FORMAT_LABELS[fmt]}</Badge>
           ))}
-          {post.media_type === 'video' && (
-            <Badge size="xs" color="grape" variant="light" leftSection={<IconVideo size={9} />}>Video</Badge>
-          )}
+          {post.media_type === 'video' && <Badge size="xs" color="grape" variant="light">Video</Badge>}
         </Group>
-        <Text size="sm" fw={600} lineClamp={2}>{post.title}</Text>
         <Text size="xs" c="dimmed">
-          {dayjs(post.scheduled_date).format('D MMM')}
-          {post.scheduled_time ? ` at ${formatTime(post.scheduled_time)}` : ''}
+          {dayjs(post.scheduled_date).format('ddd D MMM')}
+          {post.scheduled_time ? ` · ${formatTime(post.scheduled_time)}` : ''}
         </Text>
-        {post.caption && (
-          <Text size="xs" c="dimmed" lineClamp={2} style={{ fontStyle: 'italic' }}>"{post.caption}"</Text>
-        )}
-        {post.hashtags && (
-          <Text size="xs" c="blue" lineClamp={1}>{post.hashtags}</Text>
-        )}
         <Group gap={2} mt={2}>
           {platforms.map(p => (
-            <ThemeIcon key={p.name} size="xs"
-              variant={post.platforms[p.name]?.posted ? 'filled' : 'light'}
-              color={post.platforms[p.name]?.posted ? p.color : 'gray'}>
-              {getPlatformIcon(p.icon)}
-            </ThemeIcon>
+            <Tooltip key={p.name} label={p.label} withArrow>
+              <ThemeIcon size={16} color={post.platforms[p.name]?.posted ? p.color : 'gray'}
+                variant={post.platforms[p.name]?.posted ? 'filled' : 'light'} radius="xl">
+                {getPlatformIcon(p.icon, 9)}
+              </ThemeIcon>
+            </Tooltip>
           ))}
-          <Text size="xs" c="dimmed" ml="auto">
-            {platforms.filter(p => post.platforms[p.name]?.posted).length}/{platforms.length}
-          </Text>
+          <Badge size="xs" color={STATUS_COLOR[post.status]} variant="dot" ml="auto">
+            {STATUS_LABEL[post.status]}
+          </Badge>
         </Group>
       </Stack>
     </Paper>
   );
 
+  const colCount = [can('social.design_work'), can('social.content'), can('social.qa')].filter(Boolean).length || 1;
+
   return (
     <Stack>
-      <Group justify="space-between">
-        <Group gap="xs">
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o - 1)}>‹</ActionIcon>
-          <Text fw={500} size="sm">{dayjs(ws).format('D MMM')} – {dayjs(we).format('D MMM YYYY')}</Text>
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o + 1)}>›</ActionIcon>
-          {weekOffset !== 0 && <Button size="xs" variant="light" onClick={() => setWeekOffset(0)}>This week</Button>}
-        </Group>
-        <Group gap="sm">
-          <Badge color="blue"   variant="light">{needsCaption.length} Need Caption</Badge>
-          <Badge color="orange" variant="light">{readyToPost.length} Ready to Post</Badge>
-          <Badge color="green"  variant="light">{fullyPosted.length} Fully Posted</Badge>
-        </Group>
+      <Group gap="xs">
+        <ActionIcon variant="default" onClick={() => setWeekOffset(o => o - 1)}>‹</ActionIcon>
+        <Text fw={500} size="sm">{dayjs(ws).format('D MMM')} – {dayjs(we).format('D MMM YYYY')}</Text>
+        <ActionIcon variant="default" onClick={() => setWeekOffset(o => o + 1)}>›</ActionIcon>
+        {weekOffset !== 0 && <Button size="xs" variant="light" onClick={() => setWeekOffset(0)}>This week</Button>}
       </Group>
 
       {isLoading ? <Center py="xl"><Loader /></Center> : (
-        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="md">
-          {[
-            { label: 'Write Caption',        color: 'blue',   items: needsCaption },
-            { label: 'Ready to Post',         color: 'orange', items: readyToPost },
-            { label: 'All Platforms Posted',  color: 'green',  items: fullyPosted },
-          ].map(({ label, color, items }) => (
-            <Stack key={label} gap="xs">
+        <SimpleGrid cols={colCount} spacing="md">
+          {can('social.design_work') && (
+            <Stack gap="xs">
               <Group gap="xs">
-                <Badge color={color} variant="filled" size="sm">{label}</Badge>
-                <Text size="xs" c="dimmed">({items.length})</Text>
+                <Badge color="violet" variant="filled" size="sm">Design</Badge>
+                <Text size="xs" c="dimmed">({designing.length})</Text>
               </Group>
-              {items.length === 0
-                ? <Text size="xs" c="dimmed" ta="center" py="md">Nothing here</Text>
-                : items.map(renderPostItem)
-              }
+              <Divider />
+              {designing.length === 0
+                ? <Text size="xs" c="dimmed" ta="center" py="md">All designed ✓</Text>
+                : designing.map(renderCard)}
             </Stack>
-          ))}
+          )}
+
+          {can('social.content') && (
+            <Stack gap="xs">
+              <Group gap="xs">
+                <Badge color="teal" variant="filled" size="sm">Content</Badge>
+                <Text size="xs" c="dimmed">({content.length})</Text>
+              </Group>
+              <Divider />
+              {content.length === 0
+                ? <Text size="xs" c="dimmed" ta="center" py="md">All captioned ✓</Text>
+                : content.map(renderCard)}
+            </Stack>
+          )}
+
+          {can('social.qa') && (
+            <Stack gap="xs">
+              <Group gap="xs">
+                <Badge color="orange" variant="filled" size="sm">Posting</Badge>
+                <Text size="xs" c="dimmed">({posting.length})</Text>
+              </Group>
+              <Divider />
+              {posting.length === 0
+                ? <Text size="xs" c="dimmed" ta="center" py="md">No posts this week</Text>
+                : posting.map(renderCard)}
+            </Stack>
+          )}
         </SimpleGrid>
       )}
 
@@ -891,169 +794,9 @@ function CreatorTab({ can, platforms }: { can: (p: string) => boolean; platforms
   );
 }
 
-// ── QA Review Tab ─────────────────────────────────────────────────────────────
+// ── Settings Tab (Platforms + Targets) ───────────────────────────────────────
 
-function QATab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
-  const [weekOffset, setWeekOffset] = useState(0);
-  const ws = weekStart(weekOffset);
-  const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['social-posts-qa', ws],
-    queryFn: () => getPosts({ week_start: ws }),
-  });
-
-  const posts: SocialPost[] = (data?.data?.data ?? [])
-    .sort((a: SocialPost, b: SocialPost) => a.scheduled_date.localeCompare(b.scheduled_date));
-
-  const totalPlatformSlots = posts.length * platforms.length;
-  const postedSlots = posts.reduce((sum, p) =>
-    sum + platforms.filter(pl => p.platforms[pl.name]?.posted).length, 0
-  );
-  const coveragePercent = totalPlatformSlots > 0
-    ? Math.round((postedSlots / totalPlatformSlots) * 100)
-    : 0;
-
-  const notPosted  = posts.filter(p => p.status !== 'posted');
-  const allPosted  = posts.filter(p => p.status === 'posted');
-
-  const [selected, setSelected] = useState<SocialPost | null>(null);
-  const [detailModal, { open: openDetail, close: closeDetail }] = useDisclosure(false);
-
-  return (
-    <Stack>
-      <Group justify="space-between">
-        <Group gap="xs">
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o - 1)}>‹</ActionIcon>
-          <Text fw={500} size="sm">{dayjs(ws).format('D MMM')} – {dayjs(we).format('D MMM YYYY')}</Text>
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o + 1)}>›</ActionIcon>
-          {weekOffset !== 0 && <Button size="xs" variant="light" onClick={() => setWeekOffset(0)}>This week</Button>}
-        </Group>
-        <Group gap="sm">
-          <Badge color="blue" variant="light">{posts.length} Posts</Badge>
-          <Badge
-            color={coveragePercent === 100 ? 'green' : coveragePercent >= 60 ? 'yellow' : 'red'}
-            variant="light"
-          >
-            {postedSlots}/{totalPlatformSlots} platform posts ({coveragePercent}%)
-          </Badge>
-        </Group>
-      </Group>
-
-      {/* Per-platform coverage summary */}
-      <Paper withBorder p="md" radius="md">
-        <Text fw={600} size="sm" mb="sm">Platform Coverage This Week</Text>
-        <SimpleGrid cols={{ base: 2, sm: Math.min(platforms.length, 6) }} spacing="sm">
-          {platforms.map(platform => {
-            const postedCount = posts.filter(p => p.platforms[platform.name]?.posted).length;
-            const pct = posts.length > 0 ? Math.round((postedCount / posts.length) * 100) : 0;
-            return (
-              <Stack key={platform.name} gap={4} align="center">
-                <ThemeIcon
-                  size="lg"
-                  color={pct === 100 ? 'green' : pct >= 50 ? 'yellow' : 'red'}
-                  variant={pct === 100 ? 'filled' : 'light'}
-                >
-                  {getPlatformIcon(platform.icon)}
-                </ThemeIcon>
-                <Text size="xs" fw={500}>{platform.label}</Text>
-                {platform.profile_url && (
-                  <Text size="xs" c="blue" component="a" href={platform.profile_url} target="_blank"
-                    rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
-                    Open ↗
-                  </Text>
-                )}
-                <Text size="xs" c="dimmed">{postedCount}/{posts.length}</Text>
-                <Progress value={pct} size="xs" w="100%"
-                  color={pct === 100 ? 'green' : pct >= 50 ? 'yellow' : 'red'} />
-              </Stack>
-            );
-          })}
-        </SimpleGrid>
-      </Paper>
-
-      {/* Per-post checklist grouped by posted / pending */}
-      {isLoading ? <Center py="xl"><Loader /></Center> : posts.length === 0 ? (
-        <Text c="dimmed" ta="center" py="xl">No posts scheduled this week.</Text>
-      ) : (
-        <Stack gap="sm">
-          {notPosted.length > 0 && (
-            <Stack gap="xs">
-              <Text size="xs" fw={600} c="dimmed" tt="uppercase">Needs attention ({notPosted.length})</Text>
-              {notPosted.map(post => <QAPostRow key={post.id} post={post} platforms={platforms} onOpen={() => { setSelected(post); openDetail(); }} />)}
-            </Stack>
-          )}
-          {allPosted.length > 0 && (
-            <Stack gap="xs">
-              <Text size="xs" fw={600} c="dimmed" tt="uppercase">Completed ({allPosted.length})</Text>
-              {allPosted.map(post => <QAPostRow key={post.id} post={post} platforms={platforms} onOpen={() => { setSelected(post); openDetail(); }} />)}
-            </Stack>
-          )}
-        </Stack>
-      )}
-
-      {selected && (
-        <PostDetailModal
-          post={selected} opened={detailModal} platforms={platforms}
-          onClose={() => { closeDetail(); setSelected(null); }}
-          canUpdate={can('social.update')}
-          onUpdated={p => setSelected(p)}
-        />
-      )}
-    </Stack>
-  );
-}
-
-function QAPostRow({ post, platforms, onOpen }: { post: SocialPost; platforms: SocialPlatformConfig[]; onOpen: () => void }) {
-  const postedOnAll = platforms.every(p => post.platforms[p.name]?.posted);
-  const postedCount = platforms.filter(p => post.platforms[p.name]?.posted).length;
-  const timeStr = formatTime(post.scheduled_time);
-
-  return (
-    <Paper withBorder p="sm" style={{ cursor: 'pointer' }} onClick={onOpen}>
-      <Group justify="space-between" wrap="nowrap">
-        <Group gap="sm" style={{ flex: 1, minWidth: 0 }}>
-          <ThemeIcon size="sm" color={postedOnAll ? 'green' : 'orange'} variant="light">
-            {postedOnAll ? <IconCheck size={12} /> : <IconEye size={12} />}
-          </ThemeIcon>
-          <div style={{ minWidth: 0 }}>
-            <Group gap={4} mb={2} wrap="nowrap">
-              <Text size="sm" fw={500} lineClamp={1}>{post.title}</Text>
-              {post.post_format.map(fmt => (
-                <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="light">
-                  {FORMAT_LABELS[fmt]}
-                </Badge>
-              ))}
-            </Group>
-            <Text size="xs" c="dimmed">
-              {dayjs(post.scheduled_date).format('ddd D MMM')}
-              {timeStr ? ` · ${timeStr}` : ''}
-              {' · '}{TYPE_LABELS[post.type]}
-            </Text>
-          </div>
-        </Group>
-        <Group gap={4} wrap="nowrap">
-          {platforms.map(p => (
-            <Tooltip key={p.name}
-              label={`${p.label}: ${post.platforms[p.name]?.posted ? 'Posted ✓' : 'Not posted'}`}
-              position="top" withArrow>
-              <ThemeIcon size="xs"
-                variant={post.platforms[p.name]?.posted ? 'filled' : 'light'}
-                color={post.platforms[p.name]?.posted ? p.color : 'red'}>
-                {post.platforms[p.name]?.posted ? <IconCheck size={10} /> : <IconX size={10} />}
-              </ThemeIcon>
-            </Tooltip>
-          ))}
-          <Text size="xs" c="dimmed" w={30} ta="right">{postedCount}/{platforms.length}</Text>
-        </Group>
-      </Group>
-    </Paper>
-  );
-}
-
-// ── Platform Settings Tab ─────────────────────────────────────────────────────
-
-function PlatformSettingsTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
+function SettingsTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
   const qc = useQueryClient();
   const [modal, { open, close }] = useDisclosure(false);
   const [editing, setEditing] = useState<SocialPlatformConfig | null>(null);
@@ -1154,6 +897,119 @@ function PlatformSettingsTab({ can, platforms }: { can: (p: string) => boolean; 
       </Stack>
 
       <PlatformFormModal opened={modal} onClose={close} existing={editing} />
+
+      {/* ── Targets section ── */}
+      <Divider label="Targets" labelPosition="left" mt="xl" />
+      <TargetsSection can={can} />
+    </Stack>
+  );
+}
+
+function TargetsSection({ can }: { can: (p: string) => boolean }) {
+  const qc = useQueryClient();
+  const [weekOffset, setWeekOffset] = useState(0);
+  const ws = weekStart(weekOffset);
+  const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
+  const [targetModal, { open: openTarget, close: closeTarget }] = useDisclosure(false);
+  const [editTarget, setEditTarget] = useState<SocialTarget | null>(null);
+
+  const { data: targetsData } = useQuery({ queryKey: ['social-targets'], queryFn: getTargets });
+  const { data: summaryData, isLoading } = useQuery({
+    queryKey: ['social-weekly-summary', ws],
+    queryFn: () => getWeeklySummary(ws),
+  });
+
+  const summary = summaryData?.data?.data ?? [];
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteTarget,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['social-targets'] });
+      qc.invalidateQueries({ queryKey: ['social-weekly-summary'] });
+    },
+  });
+
+  return (
+    <Stack>
+      <Group justify="space-between">
+        <Group gap="xs">
+          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o - 1)}>‹</ActionIcon>
+          <Text fw={500} size="sm">{dayjs(ws).format('D MMM')} – {dayjs(we).format('D MMM YYYY')}</Text>
+          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o + 1)}>›</ActionIcon>
+          {weekOffset !== 0 && <Button size="xs" variant="light" onClick={() => setWeekOffset(0)}>This week</Button>}
+        </Group>
+        {can('social.settings') && (
+          <Button size="sm" leftSection={<IconPlus size={16} />}
+            onClick={() => { setEditTarget(null); openTarget(); }}>
+            Set Target
+          </Button>
+        )}
+      </Group>
+
+      {isLoading ? <Center py="xl"><Loader /></Center> : summary.length === 0 ? (
+        <Text c="dimmed" ta="center" py="md">No targets set yet.</Text>
+      ) : (
+        <Stack gap="md">
+          {summary.map((entry: any, i: number) => (
+            <Paper key={i} withBorder p="md" radius="md">
+              <Stack gap="sm">
+                <Group justify="space-between">
+                  <Group gap="sm">
+                    <ThemeIcon size="md" variant="light" color={entry.target.metric === 'designs' ? 'violet' : 'teal'}>
+                      {entry.target.metric === 'designs' ? <IconPhoto size={16} /> : <IconBrandInstagram size={16} />}
+                    </ThemeIcon>
+                    <div>
+                      <Text fw={600} size="sm">{entry.target.user?.name ?? '—'}</Text>
+                      <Text size="xs" c="dimmed">
+                        {entry.target.metric === 'designs' ? 'Designs' : 'Platform Posts'} ·{' '}
+                        {entry.target.daily_target}/day on{' '}
+                        {entry.target.active_days.map((d: number) => DAY_NAMES[d]).join(', ')}
+                      </Text>
+                    </div>
+                  </Group>
+                  <Group gap="xs">
+                    <Badge size="lg"
+                      color={entry.percent >= 100 ? 'green' : entry.percent >= 50 ? 'yellow' : 'red'}
+                      variant="light">
+                      {entry.weekly_achieved}/{entry.weekly_target}
+                    </Badge>
+                    {can('social.settings') && (
+                      <>
+                        <ActionIcon size="sm" variant="subtle"
+                          onClick={() => { setEditTarget(entry.target); openTarget(); }}>
+                          <IconEdit size={14} />
+                        </ActionIcon>
+                        <ActionIcon size="sm" variant="subtle" color="red"
+                          onClick={() => deleteMutation.mutate(entry.target.id)}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </>
+                    )}
+                  </Group>
+                </Group>
+                <Progress value={entry.percent}
+                  color={entry.percent >= 100 ? 'green' : entry.percent >= 50 ? 'yellow' : 'red'} size="sm" />
+                <Text size="xs" c="dimmed" ta="right">{entry.percent}% of weekly target</Text>
+                <SimpleGrid cols={7} spacing="xs">
+                  {entry.daily.map((day: any) => (
+                    <Stack key={day.date} gap={2} align="center">
+                      <Text size="xs" c="dimmed" fw={500}>{day.day_name}</Text>
+                      <ThemeIcon size="sm"
+                        variant={!day.is_active ? 'subtle' : day.met ? 'filled' : 'light'}
+                        color={!day.is_active ? 'gray' : day.met ? 'green' : day.achieved > 0 ? 'yellow' : 'red'}>
+                        {!day.is_active ? <IconX size={10} /> : day.met ? <IconCheck size={10} /> : <Text size={9}>{day.achieved}</Text>}
+                      </ThemeIcon>
+                      {day.is_active && <Text size={9} c="dimmed">{day.achieved}/{day.target}</Text>}
+                    </Stack>
+                  ))}
+                </SimpleGrid>
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
+      )}
+
+      <TargetFormModal opened={targetModal} onClose={closeTarget} existing={editTarget} />
     </Stack>
   );
 }
@@ -1802,136 +1658,6 @@ function DesignOrderDetailModal({ order, opened, onClose, canUpdate, users }: {
   );
 }
 
-// ── Targets Tab ──────────────────────────────────────────────────────────────
-
-function TargetsTab({ can }: { can: (p: string) => boolean }) {
-  const qc = useQueryClient();
-  const [weekOffset, setWeekOffset] = useState(0);
-  const ws = weekStart(weekOffset);
-  const [targetModal, { open: openTarget, close: closeTarget }] = useDisclosure(false);
-  const [editTarget, setEditTarget] = useState<SocialTarget | null>(null);
-
-  const { data: targetsData } = useQuery({ queryKey: ['social-targets'], queryFn: getTargets });
-  const { data: summaryData, isLoading } = useQuery({
-    queryKey: ['social-weekly-summary', ws],
-    queryFn: () => getWeeklySummary(ws),
-  });
-
-  const targets: SocialTarget[] = targetsData?.data?.data ?? [];
-  const summary = summaryData?.data?.data ?? [];
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteTarget,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['social-targets'] });
-      qc.invalidateQueries({ queryKey: ['social-weekly-summary'] });
-    },
-  });
-
-  const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
-
-  return (
-    <Stack>
-      <Group justify="space-between">
-        <Group gap="xs">
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o - 1)}>‹</ActionIcon>
-          <Text fw={500} size="sm">{dayjs(ws).format('D MMM')} – {dayjs(we).format('D MMM YYYY')}</Text>
-          <ActionIcon variant="default" onClick={() => setWeekOffset(o => o + 1)}>›</ActionIcon>
-          {weekOffset !== 0 && <Button size="xs" variant="light" onClick={() => setWeekOffset(0)}>This week</Button>}
-        </Group>
-        {can('social.targets') && (
-          <Button size="sm" leftSection={<IconPlus size={16} />}
-            onClick={() => { setEditTarget(null); openTarget(); }}>
-            Set Target
-          </Button>
-        )}
-      </Group>
-
-      {isLoading ? <Center py="xl"><Loader /></Center> : summary.length === 0 ? (
-        <Text c="dimmed" ta="center" py="xl">No targets set yet. Add targets to start tracking.</Text>
-      ) : (
-        <Stack gap="md">
-          {summary.map((entry, i) => (
-            <Paper key={i} withBorder p="md" radius="md">
-              <Stack gap="sm">
-                <Group justify="space-between">
-                  <Group gap="sm">
-                    <ThemeIcon size="md" variant="light" color={entry.target.metric === 'designs' ? 'violet' : 'teal'}>
-                      {entry.target.metric === 'designs' ? <IconPhoto size={16} /> : <IconBrandInstagram size={16} />}
-                    </ThemeIcon>
-                    <div>
-                      <Text fw={600} size="sm">{entry.target.user?.name ?? '—'}</Text>
-                      <Text size="xs" c="dimmed">
-                        {entry.target.metric === 'designs' ? 'Designs' : 'Platform Posts'} ·{' '}
-                        {entry.target.daily_target}/day on{' '}
-                        {entry.target.active_days.map((d: number) => DAY_NAMES[d]).join(', ')}
-                      </Text>
-                    </div>
-                  </Group>
-                  <Group gap="xs">
-                    <Badge
-                      size="lg"
-                      color={entry.percent >= 100 ? 'green' : entry.percent >= 50 ? 'yellow' : 'red'}
-                      variant="light"
-                    >
-                      {entry.weekly_achieved}/{entry.weekly_target}
-                    </Badge>
-                    {can('social.targets') && (
-                      <>
-                        <ActionIcon size="sm" variant="subtle"
-                          onClick={() => { setEditTarget(entry.target); openTarget(); }}>
-                          <IconEdit size={14} />
-                        </ActionIcon>
-                        <ActionIcon size="sm" variant="subtle" color="red"
-                          onClick={() => deleteMutation.mutate(entry.target.id)}>
-                          <IconTrash size={14} />
-                        </ActionIcon>
-                      </>
-                    )}
-                  </Group>
-                </Group>
-
-                <Progress
-                  value={entry.percent}
-                  color={entry.percent >= 100 ? 'green' : entry.percent >= 50 ? 'yellow' : 'red'}
-                  size="sm"
-                />
-                <Text size="xs" c="dimmed" ta="right">
-                  {entry.percent}% of weekly target ({entry.weekly_target})
-                </Text>
-
-                <SimpleGrid cols={7} spacing="xs">
-                  {entry.daily.map((day: any) => (
-                    <Stack key={day.date} gap={2} align="center">
-                      <Text size="xs" c="dimmed" fw={500}>{day.day_name}</Text>
-                      <ThemeIcon
-                        size="sm"
-                        variant={!day.is_active ? 'subtle' : day.met ? 'filled' : 'light'}
-                        color={!day.is_active ? 'gray' : day.met ? 'green' : day.achieved > 0 ? 'yellow' : 'red'}
-                      >
-                        {!day.is_active
-                          ? <IconX size={10} />
-                          : day.met
-                            ? <IconCheck size={10} />
-                            : <Text size={9}>{day.achieved}</Text>
-                        }
-                      </ThemeIcon>
-                      {day.is_active && (
-                        <Text size={9} c="dimmed">{day.achieved}/{day.target}</Text>
-                      )}
-                    </Stack>
-                  ))}
-                </SimpleGrid>
-              </Stack>
-            </Paper>
-          ))}
-        </Stack>
-      )}
-
-      <TargetFormModal opened={targetModal} onClose={closeTarget} existing={editTarget} />
-    </Stack>
-  );
-}
 
 function TargetFormModal({ opened, onClose, existing }: {
   opened: boolean; onClose: () => void; existing: SocialTarget | null;
