@@ -11,7 +11,7 @@ import {
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
-  IconHeartHandshake, IconBrandWhatsapp, IconMapPin,
+  IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -311,6 +311,15 @@ export default function AppLayout() {
               leftSection={<IconMapPin size={18} />}
               active={isActive('/field-marketing')}
               onClick={() => navigateAndClose('/field-marketing')}
+            />
+          )}
+
+          {can('social.read') && (
+            <NavLink
+              label="Social Media"
+              leftSection={<IconBrandInstagram size={18} />}
+              active={isActive('/social-media')}
+              onClick={() => navigateAndClose('/social-media')}
             />
           )}
 

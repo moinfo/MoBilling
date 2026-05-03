@@ -424,6 +424,19 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     Route::middleware('permission:field_sessions.read')->get('/field-stats', [\App\Http\Controllers\FieldMarketingController::class, 'stats']);
 
+    // Social Media
+    Route::middleware('permission:social.read')->get('/social/posts', [\App\Http\Controllers\SocialMediaController::class, 'posts']);
+    Route::middleware('permission:social.read')->get('/social/weekly-summary', [\App\Http\Controllers\SocialMediaController::class, 'weeklySummary']);
+    Route::middleware('permission:social.read')->get('/social/targets', [\App\Http\Controllers\SocialMediaController::class, 'targets']);
+    Route::middleware('permission:social.create')->post('/social/posts', [\App\Http\Controllers\SocialMediaController::class, 'storePost']);
+    Route::middleware('permission:social.update')->put('/social/posts/{socialPost}', [\App\Http\Controllers\SocialMediaController::class, 'updatePost']);
+    Route::middleware('permission:social.update')->patch('/social/posts/{socialPost}/design', [\App\Http\Controllers\SocialMediaController::class, 'updateDesign']);
+    Route::middleware('permission:social.update')->patch('/social/posts/{socialPost}/content', [\App\Http\Controllers\SocialMediaController::class, 'updateContent']);
+    Route::middleware('permission:social.update')->patch('/social/posts/{socialPost}/platform/{platform}', [\App\Http\Controllers\SocialMediaController::class, 'togglePlatform']);
+    Route::middleware('permission:social.delete')->delete('/social/posts/{socialPost}', [\App\Http\Controllers\SocialMediaController::class, 'destroyPost']);
+    Route::middleware('permission:social.targets')->post('/social/targets', [\App\Http\Controllers\SocialMediaController::class, 'upsertTarget']);
+    Route::middleware('permission:social.targets')->delete('/social/targets/{socialTarget}', [\App\Http\Controllers\SocialMediaController::class, 'destroyTarget']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/clients/{client}/portal-users', [ClientPortalUserController::class, 'index']);
