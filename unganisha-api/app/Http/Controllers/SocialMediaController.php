@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ClientDesignOrder;
+use App\Models\SocialPlatform;
 use App\Models\SocialPost;
 use App\Models\SocialPostPlatform;
 use App\Models\SocialTarget;
@@ -15,7 +16,62 @@ class SocialMediaController extends Controller
 {
     use AuthorizesPermissions;
 
-    const PLATFORMS = ['instagram', 'facebook', 'threads', 'x', 'tiktok'];
+    // ── Platform Settings ─────────────────────────────────────────
+
+    public function platformSettings(Request $request)
+    {
+        $this->authorizePermission('social.read');
+        $platforms = SocialPlatform::orderBy('sort_order')->get()
+            ->map(fn ($p) => $this->formatPlatform($p));
+        return response()->json(['data' => $platforms]);
+    }
+
+    public function storePlatform(Request $request)
+    {
+        $this->authorizePermission('social.targets'); // reuse targets permission for settings
+
+        $data = $request->validate([
+            'name'        => 'required|string|max:50|alpha_dash',
+            'label'       => 'required|string|max:100',
+            'color'       => 'nullable|string|max:50',
+            'icon'        => 'nullable|string|max:50',
+            'profile_url' => 'nullable|string|max:1000',
+            'is_active'   => 'boolean',
+            'sort_order'  => 'integer|min:0|max:99',
+        ]);
+
+        // Enforce unique name per tenant
+        if (SocialPlatform::where('name', $data['name'])->exists()) {
+            return response()->json(['message' => 'A platform with this name already exists.'], 422);
+        }
+
+        $platform = SocialPlatform::create($data);
+        return response()->json(['data' => $this->formatPlatform($platform)], 201);
+    }
+
+    public function updatePlatform(Request $request, SocialPlatform $socialPlatform)
+    {
+        $this->authorizePermission('social.targets');
+
+        $data = $request->validate([
+            'label'       => 'sometimes|string|max:100',
+            'color'       => 'nullable|string|max:50',
+            'icon'        => 'nullable|string|max:50',
+            'profile_url' => 'nullable|string|max:1000',
+            'is_active'   => 'boolean',
+            'sort_order'  => 'integer|min:0|max:99',
+        ]);
+
+        $socialPlatform->update($data);
+        return response()->json(['data' => $this->formatPlatform($socialPlatform)]);
+    }
+
+    public function destroyPlatform(SocialPlatform $socialPlatform)
+    {
+        $this->authorizePermission('social.targets');
+        $socialPlatform->delete();
+        return response()->json(['message' => 'Platform removed.']);
+    }
 
     // ── Posts ────────────────────────────────────────────────────
 
@@ -57,8 +113,9 @@ class SocialMediaController extends Controller
 
         $post = SocialPost::create([...$data, 'created_by' => $request->user()->id]);
 
-        // Seed one platform row per platform
-        foreach (self::PLATFORMS as $platform) {
+        // Seed one row per active configured platform (dynamic, not hardcoded)
+        $activePlatforms = SocialPlatform::active()->pluck('name');
+        foreach ($activePlatforms as $platform) {
             SocialPostPlatform::create(['social_post_id' => $post->id, 'platform' => $platform]);
         }
 
@@ -136,7 +193,8 @@ class SocialMediaController extends Controller
     {
         $this->authorizePermission('social.update');
 
-        if (!in_array($platform, self::PLATFORMS)) {
+        $validPlatforms = SocialPlatform::pluck('name')->toArray();
+        if (!in_array($platform, $validPlatforms)) {
             return response()->json(['message' => 'Invalid platform.'], 422);
         }
 
@@ -378,6 +436,20 @@ class SocialMediaController extends Controller
                 'post_url'  => $p->post_url,
             ])->keyBy('platform'),
             'created_at'           => $post->created_at,
+        ];
+    }
+
+    private function formatPlatform(SocialPlatform $p): array
+    {
+        return [
+            'id'          => $p->id,
+            'name'        => $p->name,
+            'label'       => $p->label,
+            'color'       => $p->color,
+            'icon'        => $p->icon,
+            'profile_url' => $p->profile_url,
+            'is_active'   => $p->is_active,
+            'sort_order'  => $p->sort_order,
         ];
     }
 

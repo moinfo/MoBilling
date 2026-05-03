@@ -425,6 +425,10 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:field_sessions.read')->get('/field-stats', [\App\Http\Controllers\FieldMarketingController::class, 'stats']);
 
     // Social Media
+    Route::middleware('permission:social.read')->get('/social/platforms', [\App\Http\Controllers\SocialMediaController::class, 'platformSettings']);
+    Route::middleware('permission:social.targets')->post('/social/platforms', [\App\Http\Controllers\SocialMediaController::class, 'storePlatform']);
+    Route::middleware('permission:social.targets')->put('/social/platforms/{socialPlatform}', [\App\Http\Controllers\SocialMediaController::class, 'updatePlatform']);
+    Route::middleware('permission:social.targets')->delete('/social/platforms/{socialPlatform}', [\App\Http\Controllers\SocialMediaController::class, 'destroyPlatform']);
     Route::middleware('permission:social.read')->get('/social/posts', [\App\Http\Controllers\SocialMediaController::class, 'posts']);
     Route::middleware('permission:social.read')->get('/social/weekly-summary', [\App\Http\Controllers\SocialMediaController::class, 'weeklySummary']);
     Route::middleware('permission:social.read')->get('/social/targets', [\App\Http\Controllers\SocialMediaController::class, 'targets']);

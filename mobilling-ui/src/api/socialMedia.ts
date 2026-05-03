@@ -152,6 +152,52 @@ export const deleteTarget = (id: string) =>
 export const getWeeklySummary = (weekStart: string) =>
   api.get<{ week_start: string; week_end: string; data: WeeklySummaryEntry[] }>('/social/weekly-summary', { params: { week_start: weekStart } });
 
+// ── Platform Settings ───────────────────────────────────────────────────────
+
+export interface SocialPlatformConfig {
+  id:          string;
+  name:        string;  // slug: 'instagram'
+  label:       string;  // display: 'Instagram'
+  color:       string;  // Mantine color name
+  icon:        string;  // Tabler icon key: 'brand-instagram'
+  profile_url: string | null;
+  is_active:   boolean;
+  sort_order:  number;
+}
+
+export const KNOWN_ICONS = [
+  { value: 'brand-instagram', label: 'Instagram' },
+  { value: 'brand-facebook',  label: 'Facebook' },
+  { value: 'brand-threads',   label: 'Threads' },
+  { value: 'brand-x',         label: 'X (Twitter)' },
+  { value: 'brand-tiktok',    label: 'TikTok' },
+  { value: 'brand-linkedin',  label: 'LinkedIn' },
+  { value: 'brand-youtube',   label: 'YouTube' },
+  { value: 'brand-whatsapp',  label: 'WhatsApp' },
+  { value: 'brand-telegram',  label: 'Telegram' },
+  { value: 'brand-snapchat',  label: 'Snapchat' },
+  { value: 'brand-pinterest', label: 'Pinterest' },
+  { value: 'brand-twitter',   label: 'Twitter' },
+  { value: 'globe',           label: 'Globe / Other' },
+] as const;
+
+export const MANTINE_COLORS = [
+  'blue', 'cyan', 'teal', 'green', 'lime', 'yellow', 'orange', 'red',
+  'pink', 'grape', 'violet', 'indigo', 'dark', 'gray',
+];
+
+export const getSocialPlatforms = () =>
+  api.get<{ data: SocialPlatformConfig[] }>('/social/platforms');
+
+export const createSocialPlatform = (data: Partial<SocialPlatformConfig>) =>
+  api.post<{ data: SocialPlatformConfig }>('/social/platforms', data);
+
+export const updateSocialPlatform = (id: string, data: Partial<SocialPlatformConfig>) =>
+  api.put<{ data: SocialPlatformConfig }>(`/social/platforms/${id}`, data);
+
+export const deleteSocialPlatform = (id: string) =>
+  api.delete(`/social/platforms/${id}`);
+
 // ── Client Design Orders ────────────────────────────────────────────────────
 
 export const DESIGN_TYPES = [

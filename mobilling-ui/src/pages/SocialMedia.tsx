@@ -12,10 +12,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconBrandInstagram, IconBrandFacebook, IconBrandTiktok, IconBrandX,
-  IconBrandThreads, IconPlus, IconCheck, IconX, IconEdit, IconTrash,
+  IconBrandThreads, IconBrandLinkedin, IconBrandYoutube, IconBrandWhatsapp,
+  IconBrandTelegram, IconBrandSnapchat, IconBrandPinterest, IconBrandTwitter,
+  IconGlobe, IconPlus, IconCheck, IconX, IconEdit, IconTrash,
   IconPencil, IconLink, IconTarget, IconCalendarWeek, IconPhoto,
   IconEye, IconShieldCheck, IconVideo, IconDeviceMobile, IconLayoutColumns,
   IconHash, IconClock, IconBriefcase, IconAlertTriangle, IconPackage,
+  IconSettings, IconToggleLeft, IconToggleRight, IconExternalLink,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
@@ -25,12 +28,15 @@ import {
   getTargets, upsertTarget, deleteTarget,
   getWeeklySummary,
   getDesignOrders, createDesignOrder, updateDesignOrder, deleteDesignOrder,
-  PLATFORMS, POST_TYPES, POST_FORMATS, FORMAT_LABELS, FORMAT_COLORS,
-  TYPE_LABELS, PLATFORM_LABELS, DAY_NAMES,
+  getSocialPlatforms, createSocialPlatform, updateSocialPlatform, deleteSocialPlatform,
+  POST_TYPES, POST_FORMATS, FORMAT_LABELS, FORMAT_COLORS,
+  TYPE_LABELS, DAY_NAMES,
   DESIGN_TYPES, DESIGN_TYPE_LABELS, DESIGN_TYPE_COLORS,
   DESIGN_ORDER_STATUSES, DESIGN_ORDER_STATUS_LABELS, DESIGN_ORDER_STATUS_COLORS,
-  type SocialPost, type SocialTarget, type Platform, type PostType, type PostFormat,
+  KNOWN_ICONS, MANTINE_COLORS,
+  type SocialPost, type SocialTarget, type PostType, type PostFormat,
   type ClientDesignOrder, type DesignType, type DesignOrderStatus,
+  type SocialPlatformConfig,
 } from '../api/socialMedia';
 import { getClients } from '../api/clients';
 import { getUsers } from '../api/users';
@@ -39,17 +45,33 @@ import { useAuth } from '../context/AuthContext';
 
 dayjs.extend(isoWeek);
 
-const PLATFORM_ICONS: Record<Platform, React.ReactNode> = {
-  instagram: <IconBrandInstagram size={16} />,
-  facebook:  <IconBrandFacebook size={16} />,
-  threads:   <IconBrandThreads size={16} />,
-  x:         <IconBrandX size={16} />,
-  tiktok:    <IconBrandTiktok size={16} />,
-};
+// Default fallback platforms (used while API loads or if no platforms configured)
+const DEFAULT_PLATFORMS: SocialPlatformConfig[] = [
+  { id: '1', name: 'instagram', label: 'Instagram', color: 'pink',  icon: 'brand-instagram', profile_url: null, is_active: true, sort_order: 1 },
+  { id: '2', name: 'facebook',  label: 'Facebook',  color: 'blue',  icon: 'brand-facebook',  profile_url: null, is_active: true, sort_order: 2 },
+  { id: '3', name: 'threads',   label: 'Threads',   color: 'dark',  icon: 'brand-threads',   profile_url: null, is_active: true, sort_order: 3 },
+  { id: '4', name: 'x',         label: 'X (Twitter)', color: 'gray', icon: 'brand-x',         profile_url: null, is_active: true, sort_order: 4 },
+  { id: '5', name: 'tiktok',    label: 'TikTok',    color: 'red',   icon: 'brand-tiktok',    profile_url: null, is_active: true, sort_order: 5 },
+];
 
-const PLATFORM_COLORS: Record<Platform, string> = {
-  instagram: 'pink', facebook: 'blue', threads: 'dark', x: 'dark', tiktok: 'red',
-};
+function getPlatformIcon(iconName: string, size = 16): React.ReactNode {
+  const map: Record<string, React.ReactNode> = {
+    'brand-instagram': <IconBrandInstagram size={size} />,
+    'brand-facebook':  <IconBrandFacebook  size={size} />,
+    'brand-threads':   <IconBrandThreads   size={size} />,
+    'brand-x':         <IconBrandX         size={size} />,
+    'brand-tiktok':    <IconBrandTiktok    size={size} />,
+    'brand-linkedin':  <IconBrandLinkedin  size={size} />,
+    'brand-youtube':   <IconBrandYoutube   size={size} />,
+    'brand-whatsapp':  <IconBrandWhatsapp  size={size} />,
+    'brand-telegram':  <IconBrandTelegram  size={size} />,
+    'brand-snapchat':  <IconBrandSnapchat  size={size} />,
+    'brand-pinterest': <IconBrandPinterest size={size} />,
+    'brand-twitter':   <IconBrandTwitter   size={size} />,
+    'globe':           <IconGlobe          size={size} />,
+  };
+  return map[iconName] ?? <IconGlobe size={size} />;
+}
 
 const FORMAT_ICONS: Record<PostFormat, React.ReactNode> = {
   feed_post: <IconPhoto size={11} />,
@@ -84,6 +106,14 @@ export default function SocialMedia() {
   const { can } = usePermissions();
   const [tab, setTab] = useState<string | null>('board');
 
+  const { data: platformsData } = useQuery({
+    queryKey: ['social-platforms'],
+    queryFn: getSocialPlatforms,
+    staleTime: 5 * 60 * 1000, // 5 min — platforms rarely change
+  });
+  const platforms: SocialPlatformConfig[] = platformsData?.data?.data ?? DEFAULT_PLATFORMS;
+  const activePlatforms = platforms.filter(p => p.is_active);
+
   return (
     <Stack>
       <Title order={2}>Social Media</Title>
@@ -95,13 +125,19 @@ export default function SocialMedia() {
           <Tabs.Tab value="qa"              leftSection={<IconShieldCheck size={16} />}>QA Review</Tabs.Tab>
           <Tabs.Tab value="client_designs"  leftSection={<IconBriefcase size={16} />}>Client Designs</Tabs.Tab>
           <Tabs.Tab value="targets"         leftSection={<IconTarget size={16} />}>Targets</Tabs.Tab>
+          {can('social.targets') && (
+            <Tabs.Tab value="settings" leftSection={<IconSettings size={16} />} ml="auto">
+              Platform Settings
+            </Tabs.Tab>
+          )}
         </Tabs.List>
-        <Tabs.Panel value="board">          <BoardTab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="designer">       <DesignerTab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="creator">        <CreatorTab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="qa">             <QATab can={can} /></Tabs.Panel>
+        <Tabs.Panel value="board">          <BoardTab    can={can} platforms={activePlatforms} /></Tabs.Panel>
+        <Tabs.Panel value="designer">       <DesignerTab can={can} platforms={activePlatforms} /></Tabs.Panel>
+        <Tabs.Panel value="creator">        <CreatorTab  can={can} platforms={activePlatforms} /></Tabs.Panel>
+        <Tabs.Panel value="qa">             <QATab       can={can} platforms={activePlatforms} /></Tabs.Panel>
         <Tabs.Panel value="client_designs"> <ClientDesignsTab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="targets">        <TargetsTab can={can} /></Tabs.Panel>
+        <Tabs.Panel value="targets">        <TargetsTab  can={can} /></Tabs.Panel>
+        <Tabs.Panel value="settings">       <PlatformSettingsTab can={can} platforms={platforms} /></Tabs.Panel>
       </Tabs>
     </Stack>
   );
@@ -109,7 +145,7 @@ export default function SocialMedia() {
 
 // ── Board Tab ────────────────────────────────────────────────────────────────
 
-function BoardTab({ can }: { can: (p: string) => boolean }) {
+function BoardTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
   const qc = useQueryClient();
   const [weekOffset, setWeekOffset] = useState(0);
   const [selected, setSelected] = useState<SocialPost | null>(null);
@@ -211,7 +247,7 @@ function BoardTab({ can }: { can: (p: string) => boolean }) {
                   .sort((a, b) => (a.scheduled_time ?? '00:00').localeCompare(b.scheduled_time ?? '00:00'))
                   .map(post => (
                     <PostCard
-                      key={post.id} post={post}
+                      key={post.id} post={post} platforms={platforms}
                       canUpdate={can('social.update')} canDelete={can('social.delete')}
                       onOpen={() => { setSelected(post); openDetail(); }}
                       onDelete={() => deleteMutation.mutate(post.id)}
@@ -229,7 +265,7 @@ function BoardTab({ can }: { can: (p: string) => boolean }) {
       <PostFormModal opened={postModal} onClose={closePost} />
       {selected && (
         <PostDetailModal
-          post={selected} opened={detailModal}
+          post={selected} opened={detailModal} platforms={platforms}
           onClose={() => { closeDetail(); setSelected(null); }}
           canUpdate={can('social.update')}
           onUpdated={p => setSelected(p)}
@@ -239,11 +275,11 @@ function BoardTab({ can }: { can: (p: string) => boolean }) {
   );
 }
 
-function PostCard({ post, canUpdate, canDelete, onOpen, onDelete }: {
-  post: SocialPost; canUpdate: boolean; canDelete: boolean;
+function PostCard({ post, platforms, canUpdate, canDelete, onOpen, onDelete }: {
+  post: SocialPost; platforms: SocialPlatformConfig[]; canUpdate: boolean; canDelete: boolean;
   onOpen: () => void; onDelete: () => void;
 }) {
-  const postedCount = PLATFORMS.filter(p => post.platforms[p]?.posted).length;
+  const postedCount = platforms.filter(p => post.platforms[p.name]?.posted).length;
   const timeStr = formatTime(post.scheduled_time);
 
   return (
@@ -315,20 +351,20 @@ function PostCard({ post, canUpdate, canDelete, onOpen, onDelete }: {
           </Group>
         )}
 
-        {/* Platform icons */}
+        {/* Platform icons — dynamic */}
         <Group gap={2} mt={2}>
-          {PLATFORMS.map(p => (
-            <Tooltip key={p} label={PLATFORM_LABELS[p]} position="top" withArrow>
+          {platforms.map(p => (
+            <Tooltip key={p.name} label={p.label} position="top" withArrow>
               <ThemeIcon
                 size="xs"
-                variant={post.platforms[p]?.posted ? 'filled' : 'light'}
-                color={post.platforms[p]?.posted ? PLATFORM_COLORS[p] : 'gray'}
+                variant={post.platforms[p.name]?.posted ? 'filled' : 'light'}
+                color={post.platforms[p.name]?.posted ? p.color : 'gray'}
               >
-                {PLATFORM_ICONS[p]}
+                {getPlatformIcon(p.icon)}
               </ThemeIcon>
             </Tooltip>
           ))}
-          <Text size="xs" c="dimmed" ml="auto">{postedCount}/5</Text>
+          <Text size="xs" c="dimmed" ml="auto">{postedCount}/{platforms.length}</Text>
         </Group>
       </Stack>
     </Paper>
@@ -458,9 +494,10 @@ function PostFormModal({ opened, onClose, existing }: {
   );
 }
 
-function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated }: {
+function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platforms = DEFAULT_PLATFORMS }: {
   post: SocialPost; opened: boolean; onClose: () => void;
   canUpdate: boolean; onUpdated: (p: SocialPost) => void;
+  platforms?: SocialPlatformConfig[];
 }) {
   const qc = useQueryClient();
   const [caption,     setCaption]     = useState(post.caption ?? '');
@@ -468,7 +505,7 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated }: {
   const [designUrl,   setDesignUrl]   = useState(post.design_file_url ?? '');
   const [designNotes, setDesignNotes] = useState(post.design_notes ?? '');
   const [platformUrls, setPlatformUrls] = useState<Record<string, string>>(
-    Object.fromEntries(PLATFORMS.map(p => [p, post.platforms[p]?.post_url ?? '']))
+    Object.fromEntries(platforms.map(p => [p.name, post.platforms[p.name]?.post_url ?? '']))
   );
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['social-posts'] });
@@ -588,18 +625,25 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated }: {
           )}
         </Stack>
 
-        {/* Platform posting */}
+        {/* Platform posting — dynamic */}
         <Divider label="Platform Posting" labelPosition="left" />
         <Stack gap="xs">
-          {PLATFORMS.map(platform => {
-            const row = post.platforms[platform];
+          {platforms.map(platform => {
+            const row = post.platforms[platform.name];
             return (
-              <Group key={platform} justify="space-between" wrap="nowrap">
+              <Group key={platform.name} justify="space-between" wrap="nowrap">
                 <Group gap="xs" style={{ flex: 1 }}>
-                  <ThemeIcon size="sm" color={PLATFORM_COLORS[platform]} variant={row?.posted ? 'filled' : 'light'}>
-                    {PLATFORM_ICONS[platform]}
+                  <ThemeIcon size="sm" color={platform.color} variant={row?.posted ? 'filled' : 'light'}>
+                    {getPlatformIcon(platform.icon)}
                   </ThemeIcon>
-                  <Text size="sm">{PLATFORM_LABELS[platform]}</Text>
+                  <div>
+                    <Text size="sm">{platform.label}</Text>
+                    {platform.profile_url && !row?.posted && (
+                      <Text size="xs" c="blue" component="a" href={platform.profile_url} target="_blank" rel="noopener noreferrer">
+                        {platform.profile_url.replace('https://', '')}
+                      </Text>
+                    )}
+                  </div>
                   {row?.posted && row.posted_at && (
                     <Text size="xs" c="dimmed">{dayjs(row.posted_at).format('D MMM HH:mm')}</Text>
                   )}
@@ -608,14 +652,14 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated }: {
                   <Group gap="xs" wrap="nowrap">
                     <TextInput
                       size="xs" placeholder="Post URL" style={{ width: 180 }}
-                      value={platformUrls[platform]}
-                      onChange={e => setPlatformUrls(prev => ({ ...prev, [platform]: e.currentTarget.value }))}
+                      value={platformUrls[platform.name] ?? ''}
+                      onChange={e => setPlatformUrls(prev => ({ ...prev, [platform.name]: e.currentTarget.value }))}
                       leftSection={<IconLink size={12} />}
                     />
                     <Switch
                       checked={row?.posted ?? false}
-                      onChange={e => platformMutation.mutate({ platform, posted: e.currentTarget.checked })}
-                      color={PLATFORM_COLORS[platform]}
+                      onChange={e => platformMutation.mutate({ platform: platform.name as any, posted: e.currentTarget.checked })}
+                      color={platform.color}
                     />
                   </Group>
                 )}
@@ -639,7 +683,7 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated }: {
 
 // ── Designer Tab ─────────────────────────────────────────────────────────────
 
-function DesignerTab({ can }: { can: (p: string) => boolean }) {
+function DesignerTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
   const { user } = useAuth();
   const [weekOffset, setWeekOffset] = useState(0);
   const ws = weekStart(weekOffset);
@@ -731,7 +775,7 @@ function DesignerTab({ can }: { can: (p: string) => boolean }) {
 
       {selected && (
         <PostDetailModal
-          post={selected} opened={detailModal}
+          post={selected} opened={detailModal} platforms={platforms}
           onClose={() => { closeDetail(); setSelected(null); }}
           canUpdate={can('social.update')}
           onUpdated={p => setSelected(p)}
@@ -743,7 +787,7 @@ function DesignerTab({ can }: { can: (p: string) => boolean }) {
 
 // ── Content Creator Tab ───────────────────────────────────────────────────────
 
-function CreatorTab({ can }: { can: (p: string) => boolean }) {
+function CreatorTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
   const { user } = useAuth();
   const [weekOffset, setWeekOffset] = useState(0);
   const ws = weekStart(weekOffset);
@@ -791,15 +835,15 @@ function CreatorTab({ can }: { can: (p: string) => boolean }) {
           <Text size="xs" c="blue" lineClamp={1}>{post.hashtags}</Text>
         )}
         <Group gap={2} mt={2}>
-          {PLATFORMS.map(p => (
-            <ThemeIcon key={p} size="xs"
-              variant={post.platforms[p]?.posted ? 'filled' : 'light'}
-              color={post.platforms[p]?.posted ? PLATFORM_COLORS[p] : 'gray'}>
-              {PLATFORM_ICONS[p]}
+          {platforms.map(p => (
+            <ThemeIcon key={p.name} size="xs"
+              variant={post.platforms[p.name]?.posted ? 'filled' : 'light'}
+              color={post.platforms[p.name]?.posted ? p.color : 'gray'}>
+              {getPlatformIcon(p.icon)}
             </ThemeIcon>
           ))}
           <Text size="xs" c="dimmed" ml="auto">
-            {PLATFORMS.filter(p => post.platforms[p]?.posted).length}/5
+            {platforms.filter(p => post.platforms[p.name]?.posted).length}/{platforms.length}
           </Text>
         </Group>
       </Stack>
@@ -845,7 +889,7 @@ function CreatorTab({ can }: { can: (p: string) => boolean }) {
 
       {selected && (
         <PostDetailModal
-          post={selected} opened={detailModal}
+          post={selected} opened={detailModal} platforms={platforms}
           onClose={() => { closeDetail(); setSelected(null); }}
           canUpdate={can('social.update')}
           onUpdated={p => setSelected(p)}
@@ -857,7 +901,7 @@ function CreatorTab({ can }: { can: (p: string) => boolean }) {
 
 // ── QA Review Tab ─────────────────────────────────────────────────────────────
 
-function QATab({ can }: { can: (p: string) => boolean }) {
+function QATab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
   const [weekOffset, setWeekOffset] = useState(0);
   const ws = weekStart(weekOffset);
   const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
@@ -870,9 +914,9 @@ function QATab({ can }: { can: (p: string) => boolean }) {
   const posts: SocialPost[] = (data?.data?.data ?? [])
     .sort((a: SocialPost, b: SocialPost) => a.scheduled_date.localeCompare(b.scheduled_date));
 
-  const totalPlatformSlots = posts.length * PLATFORMS.length;
+  const totalPlatformSlots = posts.length * platforms.length;
   const postedSlots = posts.reduce((sum, p) =>
-    sum + PLATFORMS.filter(pl => p.platforms[pl]?.posted).length, 0
+    sum + platforms.filter(pl => p.platforms[pl.name]?.posted).length, 0
   );
   const coveragePercent = totalPlatformSlots > 0
     ? Math.round((postedSlots / totalPlatformSlots) * 100)
@@ -907,20 +951,26 @@ function QATab({ can }: { can: (p: string) => boolean }) {
       {/* Per-platform coverage summary */}
       <Paper withBorder p="md" radius="md">
         <Text fw={600} size="sm" mb="sm">Platform Coverage This Week</Text>
-        <SimpleGrid cols={{ base: 2, sm: 5 }} spacing="sm">
-          {PLATFORMS.map(platform => {
-            const postedCount = posts.filter(p => p.platforms[platform]?.posted).length;
+        <SimpleGrid cols={{ base: 2, sm: Math.min(platforms.length, 6) }} spacing="sm">
+          {platforms.map(platform => {
+            const postedCount = posts.filter(p => p.platforms[platform.name]?.posted).length;
             const pct = posts.length > 0 ? Math.round((postedCount / posts.length) * 100) : 0;
             return (
-              <Stack key={platform} gap={4} align="center">
+              <Stack key={platform.name} gap={4} align="center">
                 <ThemeIcon
                   size="lg"
                   color={pct === 100 ? 'green' : pct >= 50 ? 'yellow' : 'red'}
                   variant={pct === 100 ? 'filled' : 'light'}
                 >
-                  {PLATFORM_ICONS[platform]}
+                  {getPlatformIcon(platform.icon)}
                 </ThemeIcon>
-                <Text size="xs" fw={500}>{PLATFORM_LABELS[platform]}</Text>
+                <Text size="xs" fw={500}>{platform.label}</Text>
+                {platform.profile_url && (
+                  <Text size="xs" c="blue" component="a" href={platform.profile_url} target="_blank"
+                    rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+                    Open ↗
+                  </Text>
+                )}
                 <Text size="xs" c="dimmed">{postedCount}/{posts.length}</Text>
                 <Progress value={pct} size="xs" w="100%"
                   color={pct === 100 ? 'green' : pct >= 50 ? 'yellow' : 'red'} />
@@ -938,13 +988,13 @@ function QATab({ can }: { can: (p: string) => boolean }) {
           {notPosted.length > 0 && (
             <Stack gap="xs">
               <Text size="xs" fw={600} c="dimmed" tt="uppercase">Needs attention ({notPosted.length})</Text>
-              {notPosted.map(post => <QAPostRow key={post.id} post={post} onOpen={() => { setSelected(post); openDetail(); }} />)}
+              {notPosted.map(post => <QAPostRow key={post.id} post={post} platforms={platforms} onOpen={() => { setSelected(post); openDetail(); }} />)}
             </Stack>
           )}
           {allPosted.length > 0 && (
             <Stack gap="xs">
               <Text size="xs" fw={600} c="dimmed" tt="uppercase">Completed ({allPosted.length})</Text>
-              {allPosted.map(post => <QAPostRow key={post.id} post={post} onOpen={() => { setSelected(post); openDetail(); }} />)}
+              {allPosted.map(post => <QAPostRow key={post.id} post={post} platforms={platforms} onOpen={() => { setSelected(post); openDetail(); }} />)}
             </Stack>
           )}
         </Stack>
@@ -952,7 +1002,7 @@ function QATab({ can }: { can: (p: string) => boolean }) {
 
       {selected && (
         <PostDetailModal
-          post={selected} opened={detailModal}
+          post={selected} opened={detailModal} platforms={platforms}
           onClose={() => { closeDetail(); setSelected(null); }}
           canUpdate={can('social.update')}
           onUpdated={p => setSelected(p)}
@@ -962,9 +1012,9 @@ function QATab({ can }: { can: (p: string) => boolean }) {
   );
 }
 
-function QAPostRow({ post, onOpen }: { post: SocialPost; onOpen: () => void }) {
-  const postedOnAll = PLATFORMS.every(p => post.platforms[p]?.posted);
-  const postedCount = PLATFORMS.filter(p => post.platforms[p]?.posted).length;
+function QAPostRow({ post, platforms, onOpen }: { post: SocialPost; platforms: SocialPlatformConfig[]; onOpen: () => void }) {
+  const postedOnAll = platforms.every(p => post.platforms[p.name]?.posted);
+  const postedCount = platforms.filter(p => post.platforms[p.name]?.posted).length;
   const timeStr = formatTime(post.scheduled_time);
 
   return (
@@ -989,21 +1039,277 @@ function QAPostRow({ post, onOpen }: { post: SocialPost; onOpen: () => void }) {
           </div>
         </Group>
         <Group gap={4} wrap="nowrap">
-          {PLATFORMS.map(p => (
-            <Tooltip key={p}
-              label={`${PLATFORM_LABELS[p]}: ${post.platforms[p]?.posted ? 'Posted ✓' : 'Not posted'}`}
+          {platforms.map(p => (
+            <Tooltip key={p.name}
+              label={`${p.label}: ${post.platforms[p.name]?.posted ? 'Posted ✓' : 'Not posted'}`}
               position="top" withArrow>
               <ThemeIcon size="xs"
-                variant={post.platforms[p]?.posted ? 'filled' : 'light'}
-                color={post.platforms[p]?.posted ? PLATFORM_COLORS[p] : 'red'}>
-                {post.platforms[p]?.posted ? <IconCheck size={10} /> : <IconX size={10} />}
+                variant={post.platforms[p.name]?.posted ? 'filled' : 'light'}
+                color={post.platforms[p.name]?.posted ? p.color : 'red'}>
+                {post.platforms[p.name]?.posted ? <IconCheck size={10} /> : <IconX size={10} />}
               </ThemeIcon>
             </Tooltip>
           ))}
-          <Text size="xs" c="dimmed" w={30} ta="right">{postedCount}/5</Text>
+          <Text size="xs" c="dimmed" w={30} ta="right">{postedCount}/{platforms.length}</Text>
         </Group>
       </Group>
     </Paper>
+  );
+}
+
+// ── Platform Settings Tab ─────────────────────────────────────────────────────
+
+function PlatformSettingsTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
+  const qc = useQueryClient();
+  const [modal, { open, close }] = useDisclosure(false);
+  const [editing, setEditing] = useState<SocialPlatformConfig | null>(null);
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteSocialPlatform,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['social-platforms'] });
+      notifications.show({ message: 'Platform removed.', color: 'green' });
+    },
+  });
+
+  const toggleActive = useMutation({
+    mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
+      updateSocialPlatform(id, { is_active }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['social-platforms'] }),
+  });
+
+  return (
+    <Stack>
+      <Group justify="space-between">
+        <div>
+          <Text fw={600} size="lg">Social Media Platforms</Text>
+          <Text size="xs" c="dimmed">Configure which platforms you post to. Active platforms are seeded on every new post.</Text>
+        </div>
+        {can('social.targets') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); open(); }}>
+            Add Platform
+          </Button>
+        )}
+      </Group>
+
+      <Stack gap="xs">
+        {platforms.length === 0 && (
+          <Text c="dimmed" ta="center" py="xl">No platforms configured.</Text>
+        )}
+        {[...platforms].sort((a, b) => a.sort_order - b.sort_order).map(platform => (
+          <Paper key={platform.id} withBorder p="md" radius="md"
+            style={{ opacity: platform.is_active ? 1 : 0.6 }}>
+            <Group justify="space-between" wrap="nowrap">
+              <Group gap="md" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                <ThemeIcon
+                  size="xl" color={platform.color}
+                  variant={platform.is_active ? 'filled' : 'light'}
+                  radius="xl"
+                >
+                  {getPlatformIcon(platform.icon, 22)}
+                </ThemeIcon>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <Group gap="xs" mb={4}>
+                    <Text fw={700} size="sm">{platform.label}</Text>
+                    <Badge size="xs" color="gray" variant="dot">{platform.name}</Badge>
+                    {!platform.is_active && <Badge size="xs" color="gray">Inactive</Badge>}
+                  </Group>
+                  {platform.profile_url ? (
+                    <Group gap={4} wrap="nowrap">
+                      <IconExternalLink size={12} style={{ color: 'var(--mantine-color-blue-5)', flexShrink: 0 }} />
+                      <Text
+                        size="xs" c="blue" lineClamp={1} component="a"
+                        href={platform.profile_url} target="_blank" rel="noopener noreferrer"
+                        style={{ textDecoration: 'none' }}
+                      >
+                        {platform.profile_url}
+                      </Text>
+                    </Group>
+                  ) : (
+                    <Text size="xs" c="dimmed">No profile URL set</Text>
+                  )}
+                </div>
+              </Group>
+              <Group gap="xs" wrap="nowrap">
+                <Tooltip label={platform.is_active ? 'Disable platform' : 'Enable platform'} position="top" withArrow>
+                  <ActionIcon
+                    size="md" variant="subtle"
+                    color={platform.is_active ? 'green' : 'gray'}
+                    loading={toggleActive.isPending}
+                    onClick={() => toggleActive.mutate({ id: platform.id, is_active: !platform.is_active })}
+                  >
+                    {platform.is_active ? <IconToggleRight size={20} /> : <IconToggleLeft size={20} />}
+                  </ActionIcon>
+                </Tooltip>
+                {can('social.targets') && (
+                  <>
+                    <ActionIcon size="sm" variant="subtle"
+                      onClick={() => { setEditing(platform); open(); }}>
+                      <IconEdit size={14} />
+                    </ActionIcon>
+                    <ActionIcon size="sm" variant="subtle" color="red"
+                      onClick={() => deleteMutation.mutate(platform.id)}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  </>
+                )}
+              </Group>
+            </Group>
+          </Paper>
+        ))}
+      </Stack>
+
+      <PlatformFormModal opened={modal} onClose={close} existing={editing} />
+    </Stack>
+  );
+}
+
+function PlatformFormModal({ opened, onClose, existing }: {
+  opened: boolean; onClose: () => void; existing: SocialPlatformConfig | null;
+}) {
+  const qc = useQueryClient();
+
+  const form = useForm({
+    initialValues: {
+      name:        existing?.name        ?? '',
+      label:       existing?.label       ?? '',
+      color:       existing?.color       ?? 'blue',
+      icon:        existing?.icon        ?? 'brand-instagram',
+      profile_url: existing?.profile_url ?? '',
+      is_active:   existing?.is_active   ?? true,
+      sort_order:  existing?.sort_order  ?? 99,
+    },
+    validate: {
+      name:  v => !existing && !v.trim() ? 'Name required' : null,
+      label: v => !v.trim() ? 'Label required' : null,
+    },
+  });
+
+  useEffect(() => {
+    if (existing) {
+      form.setValues({
+        name:        existing.name,
+        label:       existing.label,
+        color:       existing.color,
+        icon:        existing.icon,
+        profile_url: existing.profile_url ?? '',
+        is_active:   existing.is_active,
+        sort_order:  existing.sort_order,
+      });
+    } else {
+      form.reset();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [existing?.id]);
+
+  const mutation = useMutation({
+    mutationFn: (v: ReturnType<typeof form.getValues>) => {
+      const payload = {
+        name:        v.name,
+        label:       v.label,
+        color:       v.color,
+        icon:        v.icon,
+        profile_url: v.profile_url || undefined,
+        is_active:   v.is_active,
+        sort_order:  v.sort_order,
+      };
+      return existing
+        ? updateSocialPlatform(existing.id, payload)
+        : createSocialPlatform(payload);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['social-platforms'] });
+      notifications.show({ message: existing ? 'Platform updated.' : 'Platform added.', color: 'green' });
+      form.reset();
+      onClose();
+    },
+  });
+
+  const selectedIcon = form.values.icon;
+  const selectedColor = form.values.color;
+
+  return (
+    <Modal opened={opened} onClose={onClose}
+      title={existing ? `Edit ${existing.label}` : 'Add Social Media Platform'}
+      centered size="sm">
+      <form onSubmit={form.onSubmit(v => mutation.mutate(v))}>
+        <Stack>
+          {/* Icon + color preview */}
+          <Group justify="center" mb="xs">
+            <ThemeIcon size={60} color={selectedColor} variant="filled" radius="xl">
+              {getPlatformIcon(selectedIcon, 30)}
+            </ThemeIcon>
+          </Group>
+
+          <Select
+            label="Icon" required
+            data={KNOWN_ICONS.map(i => ({ value: i.value, label: i.label }))}
+            renderOption={({ option }) => (
+              <Group gap="sm">
+                {getPlatformIcon(option.value, 16)}
+                <Text size="sm">{option.label}</Text>
+              </Group>
+            )}
+            {...form.getInputProps('icon')}
+          />
+
+          <TextInput
+            label="Label" required placeholder="Instagram"
+            {...form.getInputProps('label')}
+          />
+
+          {!existing && (
+            <TextInput
+              label="Name (slug)" required placeholder="instagram"
+              description="Lowercase, no spaces — used internally"
+              {...form.getInputProps('name')}
+            />
+          )}
+
+          <div>
+            <Text size="sm" fw={500} mb={6}>Color</Text>
+            <Group gap="xs" wrap="wrap">
+              {MANTINE_COLORS.map(c => (
+                <Tooltip key={c} label={c} position="top" withArrow>
+                  <div
+                    onClick={() => form.setFieldValue('color', c)}
+                    style={{
+                      width: 24, height: 24, borderRadius: '50%', cursor: 'pointer',
+                      background: `var(--mantine-color-${c}-6)`,
+                      outline: form.values.color === c ? '3px solid var(--mantine-color-blue-5)' : 'none',
+                      outlineOffset: 2,
+                    }}
+                  />
+                </Tooltip>
+              ))}
+            </Group>
+          </div>
+
+          <TextInput
+            label="Profile URL" placeholder="https://instagram.com/moinfotech"
+            leftSection={<IconLink size={14} />}
+            description="Used as a quick link in QA review"
+            {...form.getInputProps('profile_url')}
+          />
+
+          <Group grow>
+            <NumberInput label="Sort order" min={0} max={99} {...form.getInputProps('sort_order')} />
+            <Switch
+              label="Active" checked={form.values.is_active}
+              onChange={e => form.setFieldValue('is_active', e.currentTarget.checked)}
+              mt="lg"
+            />
+          </Group>
+
+          <Group justify="flex-end">
+            <Button variant="default" onClick={onClose}>Cancel</Button>
+            <Button type="submit" loading={mutation.isPending}>
+              {existing ? 'Update' : 'Add Platform'}
+            </Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
   );
 }
 
