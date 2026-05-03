@@ -382,6 +382,7 @@ class SettingsController extends Controller
         $count = Document::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
             ->where('type', 'invoice')
+            ->whereIn('status', ['sent', 'overdue', 'partial'])
             ->whereNotNull('overdue_stage')
             ->whereHas('items', fn ($q) => $q->where('description', 'like', 'Late payment fee%'))
             ->count();
@@ -402,6 +403,7 @@ class SettingsController extends Controller
         $documents = Document::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
             ->where('type', 'invoice')
+            ->whereIn('status', ['sent', 'overdue', 'partial'])
             ->whereNotNull('overdue_stage')
             ->whereHas('items', fn ($q) => $q->where('description', 'like', 'Late payment fee%'))
             ->with(['items' => fn ($q) => $q->where('description', 'like', 'Late payment fee%')])

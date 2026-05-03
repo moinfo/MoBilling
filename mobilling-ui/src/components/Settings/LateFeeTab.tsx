@@ -146,7 +146,7 @@ export default function LateFeeTab({ isAdmin }: { isAdmin: boolean }) {
                   <div>
                     <Text size="sm" fw={500}>Remove late fees from invoices</Text>
                     <Text size="xs" c="dimmed">
-                      Remove all late fee line items that were automatically applied to existing invoices.
+                      Remove late fee line items from unpaid invoices (sent, overdue, partial). Paid and cancelled invoices are skipped.
                     </Text>
                   </div>
                   <Badge color={affectedCount > 0 ? 'orange' : 'gray'} variant="light" size="lg">
@@ -180,7 +180,8 @@ export default function LateFeeTab({ isAdmin }: { isAdmin: boolean }) {
         <Stack gap="md">
           <Text size="sm">
             This will remove the late fee line item from{' '}
-            <strong>{affectedCount} invoice{affectedCount !== 1 ? 's' : ''}</strong> and reset their overdue escalation stage.
+            <strong>{affectedCount} unpaid invoice{affectedCount !== 1 ? 's' : ''}</strong> (status: sent, overdue, or partial) and reset their overdue escalation stage.
+            Paid and cancelled invoices are not affected.
           </Text>
 
           <Alert icon={<IconAlertCircle size={16} />} color="orange" variant="light">
