@@ -102,42 +102,68 @@ function formatTime(t: string | null) {
   return `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
 }
 
+// Ordered tab config — permission controls visibility, alignRight pushes to the far end
+const SOCIAL_TABS = [
+  { value: 'board',          perm: 'social.board',          label: 'Board',             icon: <IconCalendarWeek size={16} /> },
+  { value: 'designer',       perm: 'social.design_work',    label: 'Design Work',       icon: <IconPhoto size={16} /> },
+  { value: 'creator',        perm: 'social.content',        label: 'Content & Posting', icon: <IconPencil size={16} /> },
+  { value: 'qa',             perm: 'social.qa',             label: 'QA Review',         icon: <IconShieldCheck size={16} /> },
+  { value: 'client_designs', perm: 'social.client_designs', label: 'Client Designs',    icon: <IconBriefcase size={16} /> },
+  { value: 'targets',        perm: 'social.targets',        label: 'Targets',           icon: <IconTarget size={16} /> },
+  { value: 'settings',       perm: 'social.settings',       label: 'Platform Settings', icon: <IconSettings size={16} />, alignRight: true },
+] as const;
+
 export default function SocialMedia() {
   const { can } = usePermissions();
-  const [tab, setTab] = useState<string | null>('board');
+  const [tab, setTab] = useState<string | null>(null);
+
+  // Auto-select the first tab the user has permission for
+  useEffect(() => {
+    if (tab) return;
+    const first = SOCIAL_TABS.find(t => can(t.perm));
+    if (first) setTab(first.value);
+  }, [can, tab]);
 
   const { data: platformsData } = useQuery({
     queryKey: ['social-platforms'],
     queryFn: getSocialPlatforms,
-    staleTime: 5 * 60 * 1000, // 5 min — platforms rarely change
+    staleTime: 5 * 60 * 1000,
   });
   const platforms: SocialPlatformConfig[] = platformsData?.data?.data ?? DEFAULT_PLATFORMS;
   const activePlatforms = platforms.filter(p => p.is_active);
+
+  const visibleTabs = SOCIAL_TABS.filter(t => can(t.perm));
+
+  if (visibleTabs.length === 0) {
+    return (
+      <Stack>
+        <Title order={2}>Social Media</Title>
+        <Center py="xl">
+          <Text c="dimmed">You don't have permission to access any social media tabs.</Text>
+        </Center>
+      </Stack>
+    );
+  }
 
   return (
     <Stack>
       <Title order={2}>Social Media</Title>
       <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List mb="md">
-          <Tabs.Tab value="board"           leftSection={<IconCalendarWeek size={16} />}>Board</Tabs.Tab>
-          <Tabs.Tab value="designer"        leftSection={<IconPhoto size={16} />}>Design Work</Tabs.Tab>
-          <Tabs.Tab value="creator"         leftSection={<IconPencil size={16} />}>Content & Posting</Tabs.Tab>
-          <Tabs.Tab value="qa"              leftSection={<IconShieldCheck size={16} />}>QA Review</Tabs.Tab>
-          <Tabs.Tab value="client_designs"  leftSection={<IconBriefcase size={16} />}>Client Designs</Tabs.Tab>
-          <Tabs.Tab value="targets"         leftSection={<IconTarget size={16} />}>Targets</Tabs.Tab>
-          {can('social.targets') && (
-            <Tabs.Tab value="settings" leftSection={<IconSettings size={16} />} ml="auto">
-              Platform Settings
+          {SOCIAL_TABS.map(t => !can(t.perm) ? null : (
+            <Tabs.Tab key={t.value} value={t.value} leftSection={t.icon}
+              ml={'alignRight' in t && t.alignRight ? 'auto' : undefined}>
+              {t.label}
             </Tabs.Tab>
-          )}
+          ))}
         </Tabs.List>
-        <Tabs.Panel value="board">          <BoardTab    can={can} platforms={activePlatforms} /></Tabs.Panel>
-        <Tabs.Panel value="designer">       <DesignerTab can={can} platforms={activePlatforms} /></Tabs.Panel>
-        <Tabs.Panel value="creator">        <CreatorTab  can={can} platforms={activePlatforms} /></Tabs.Panel>
-        <Tabs.Panel value="qa">             <QATab       can={can} platforms={activePlatforms} /></Tabs.Panel>
-        <Tabs.Panel value="client_designs"> <ClientDesignsTab can={can} /></Tabs.Panel>
-        <Tabs.Panel value="targets">        <TargetsTab  can={can} /></Tabs.Panel>
-        <Tabs.Panel value="settings">       <PlatformSettingsTab can={can} platforms={platforms} /></Tabs.Panel>
+        {can('social.board')          && <Tabs.Panel value="board">          <BoardTab    can={can} platforms={activePlatforms} /></Tabs.Panel>}
+        {can('social.design_work')    && <Tabs.Panel value="designer">       <DesignerTab can={can} platforms={activePlatforms} /></Tabs.Panel>}
+        {can('social.content')        && <Tabs.Panel value="creator">        <CreatorTab  can={can} platforms={activePlatforms} /></Tabs.Panel>}
+        {can('social.qa')             && <Tabs.Panel value="qa">             <QATab       can={can} platforms={activePlatforms} /></Tabs.Panel>}
+        {can('social.client_designs') && <Tabs.Panel value="client_designs"> <ClientDesignsTab can={can} /></Tabs.Panel>}
+        {can('social.targets')        && <Tabs.Panel value="targets">        <TargetsTab  can={can} /></Tabs.Panel>}
+        {can('social.settings')       && <Tabs.Panel value="settings">       <PlatformSettingsTab can={can} platforms={platforms} /></Tabs.Panel>}
       </Tabs>
     </Stack>
   );
