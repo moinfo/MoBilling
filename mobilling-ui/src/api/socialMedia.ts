@@ -78,10 +78,8 @@ export interface SocialPost {
 
 export interface SocialTarget {
   id:             string;
-  user:           { id: string; name: string } | null;
-  metric:         'designs' | 'posts';
-  weekly_target:  number;
-  daily_target:   number;
+  image_target:   number;  // posters per week
+  video_target:   number;  // videos per week
   active_days:    number[];  // ISO 1=Mon … 7=Sun
   effective_from: string;
 }
@@ -90,17 +88,18 @@ export interface DailyBreakdown {
   date:      string;
   day_name:  string;
   is_active: boolean;
-  target:    number;
-  achieved:  number;
-  met:       boolean;
+  images:    number;
+  videos:    number;
+  total:     number;
 }
 
-export interface WeeklySummaryEntry {
-  target:          SocialTarget;
-  weekly_achieved: number;
-  weekly_target:   number;
-  percent:         number;
-  daily:           DailyBreakdown[];
+export interface WeeklySummary {
+  week_start:     string;
+  week_end:       string;
+  target:         SocialTarget | null;
+  image_achieved: number;
+  video_achieved: number;
+  daily:          DailyBreakdown[];
 }
 
 // Posts
@@ -132,12 +131,11 @@ export const togglePlatform = (id: string, platform: Platform, data: { posted: b
   api.patch<{ data: SocialPost }>(`/social/posts/${id}/platform/${platform}`, data);
 
 // Targets
-export const getTargets = () =>
-  api.get<{ data: SocialTarget[] }>('/social/targets');
+export const getTarget = () =>
+  api.get<{ data: SocialTarget | null }>('/social/targets');
 
 export const upsertTarget = (data: {
-  user_id: string; metric: 'designs' | 'posts';
-  weekly_target: number; daily_target: number;
+  image_target: number; video_target: number;
   active_days: number[]; effective_from: string;
 }) => api.post<{ data: SocialTarget }>('/social/targets', data);
 
@@ -146,7 +144,7 @@ export const deleteTarget = (id: string) =>
 
 // Weekly summary
 export const getWeeklySummary = (weekStart: string) =>
-  api.get<{ week_start: string; week_end: string; data: WeeklySummaryEntry[] }>('/social/weekly-summary', { params: { week_start: weekStart } });
+  api.get<WeeklySummary>('/social/weekly-summary', { params: { week_start: weekStart } });
 
 // ── Platform Settings ───────────────────────────────────────────────────────
 

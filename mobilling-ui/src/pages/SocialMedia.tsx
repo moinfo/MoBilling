@@ -25,7 +25,7 @@ import isoWeek from 'dayjs/plugin/isoWeek';
 import {
   getPosts, createPost, updatePost, deletePost,
   updateDesign, updateContent, togglePlatform,
-  getTargets, upsertTarget, deleteTarget,
+  getTarget, upsertTarget,
   getWeeklySummary,
   getDesignOrders, createDesignOrder, updateDesignOrder, deleteDesignOrder,
   getSocialPlatforms, createSocialPlatform, updateSocialPlatform, deleteSocialPlatform,
@@ -164,6 +164,50 @@ export default function SocialMedia() {
 
 // ── Board Tab ────────────────────────────────────────────────────────────────
 
+function WeeklyProgressBar() {
+  const ws = weekStart(0);
+  const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
+
+  const { data: targetData } = useQuery({ queryKey: ['social-target'], queryFn: getTarget });
+  const { data: summaryData } = useQuery({
+    queryKey: ['social-weekly-summary', ws],
+    queryFn: () => getWeeklySummary(ws),
+  });
+
+  const target  = targetData?.data?.data ?? null;
+  const summary = summaryData?.data ?? null;
+  if (!target) return null;
+
+  const imageTarget  = target.image_target;
+  const videoTarget  = target.video_target;
+  const imageDone    = summary?.image_achieved ?? 0;
+  const videoDone    = summary?.video_achieved ?? 0;
+  const imagePercent = imageTarget > 0 ? Math.min(100, Math.round((imageDone / imageTarget) * 100)) : 0;
+  const videoPercent = videoTarget > 0 ? Math.min(100, Math.round((videoDone / videoTarget) * 100)) : 0;
+
+  const barColor = (pct: number) => pct >= 100 ? 'green' : pct >= 50 ? 'yellow' : 'red';
+
+  return (
+    <Paper withBorder px="md" py="xs" radius="md">
+      <Group gap="xl" wrap="nowrap">
+        <Text size="xs" c="dimmed" fw={500} style={{ whiteSpace: 'nowrap' }}>
+          {dayjs(ws).format('D MMM')} – {dayjs(we).format('D MMM')}
+        </Text>
+        <Group gap="xs" style={{ flex: 1 }} wrap="nowrap">
+          <ThemeIcon size="xs" variant="light" color="blue"><IconPhoto size={10} /></ThemeIcon>
+          <Text size="xs" fw={500} style={{ whiteSpace: 'nowrap' }}>{imageDone}/{imageTarget}</Text>
+          <Progress value={imagePercent} color={barColor(imagePercent)} size="sm" style={{ flex: 1 }} />
+        </Group>
+        <Group gap="xs" style={{ flex: 1 }} wrap="nowrap">
+          <ThemeIcon size="xs" variant="light" color="grape"><IconVideo size={10} /></ThemeIcon>
+          <Text size="xs" fw={500} style={{ whiteSpace: 'nowrap' }}>{videoDone}/{videoTarget}</Text>
+          <Progress value={videoPercent} color={barColor(videoPercent)} size="sm" style={{ flex: 1 }} />
+        </Group>
+      </Group>
+    </Paper>
+  );
+}
+
 function PostsTab({ can, platforms }: { can: (p: string) => boolean; platforms: SocialPlatformConfig[] }) {
   const qc = useQueryClient();
   const [filterType,   setFilterType]   = useState<string | null>(null);
@@ -192,6 +236,7 @@ function PostsTab({ can, platforms }: { can: (p: string) => boolean; platforms: 
 
   return (
     <Stack>
+      <WeeklyProgressBar />
       <Group justify="space-between" wrap="nowrap">
         <Group gap="xs">
           <Select size="xs" placeholder="All types" clearable
@@ -517,186 +562,212 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
   return (
     <>
     <Modal opened={opened} onClose={onClose} title={post.title} size="lg" centered>
-      <Stack gap="md">
-        {/* Header */}
+      <Stack gap="sm">
+        {/* Persistent header: badges + edit */}
         <Group justify="space-between" wrap="wrap">
           <Group gap="xs" wrap="wrap">
             {post.post_format.map(fmt => (
-              <Badge key={fmt} color={FORMAT_COLORS[fmt]} leftSection={FORMAT_ICONS[fmt]}>
+              <Badge key={fmt} size="sm" color={FORMAT_COLORS[fmt]} leftSection={FORMAT_ICONS[fmt]}>
                 {FORMAT_LABELS[fmt]}
               </Badge>
             ))}
-            <Badge color={post.media_type === 'video' ? 'grape' : 'blue'} variant="light">
+            <Badge size="sm" color={post.media_type === 'video' ? 'grape' : 'blue'} variant="light">
               {post.media_type === 'video' ? '🎬 Video' : '📷 Image'}
             </Badge>
-            <Badge color={STATUS_COLOR[post.status]}>{STATUS_LABEL[post.status]}</Badge>
-            <Badge variant="dot" color="gray">{TYPE_LABELS[post.type]}</Badge>
+            <Badge size="sm" color={STATUS_COLOR[post.status]}>{STATUS_LABEL[post.status]}</Badge>
+            <Badge size="sm" variant="dot" color="gray">{TYPE_LABELS[post.type]}</Badge>
+          </Group>
+          <Group gap="xs">
             <Text size="xs" c="dimmed">
               {dayjs(post.scheduled_date).format('D MMM YYYY')}
               {timeStr ? ` at ${timeStr}` : ''}
             </Text>
+            {canUpdate && (
+              <Button size="xs" variant="subtle" leftSection={<IconEdit size={13} />} onClick={openEdit}>
+                Edit
+              </Button>
+            )}
           </Group>
-          {canUpdate && (
-            <Button size="xs" variant="subtle" leftSection={<IconEdit size={13} />} onClick={openEdit}>
-              Edit
-            </Button>
-          )}
         </Group>
 
-        {/* Brief — editable by anyone with update permission */}
-        <Divider label="Brief" labelPosition="left" />
-        <Stack gap="xs">
-          {canUpdate ? (
-            <>
-              <Textarea
-                size="xs" minRows={2}
-                placeholder="Instructions for the designer — what to create, colors, text to include…"
-                value={brief} onChange={e => setBrief(e.currentTarget.value)}
-              />
-              <Group gap="xs">
-                <TextInput
-                  size="xs" placeholder="Time (HH:MM)" style={{ width: 120 }}
-                  type="time" value={time} onChange={e => setTime(e.currentTarget.value)}
-                  leftSection={<IconClock size={13} />}
-                />
-                <Button size="xs" variant="light" loading={briefMutation.isPending}
-                  onClick={() => briefMutation.mutate()}>
-                  Save
-                </Button>
-              </Group>
-            </>
-          ) : (
-            <Text size="sm" c="dimmed" style={{ fontStyle: 'italic' }}>
-              {post.brief ?? 'No brief added yet.'}
-            </Text>
-          )}
-        </Stack>
+        {/* Tabbed sections */}
+        <Tabs defaultValue="brief" variant="outline">
+          <Tabs.List>
+            <Tabs.Tab value="brief" leftSection={<IconPencil size={13} />}>Brief</Tabs.Tab>
+            <Tabs.Tab value="design" leftSection={<IconPhoto size={13} />}>
+              Design
+              {post.design_status !== 'pending' && (
+                <Badge size="xs" color={post.design_status === 'done' ? 'green' : 'yellow'} variant="filled" ml={6}>
+                  {post.design_status === 'done' ? '✓' : '…'}
+                </Badge>
+              )}
+            </Tabs.Tab>
+            <Tabs.Tab value="content" leftSection={<IconHash size={13} />}>
+              Content
+              {post.content_status === 'ready' && (
+                <Badge size="xs" color="green" variant="filled" ml={6}>✓</Badge>
+              )}
+            </Tabs.Tab>
+            <Tabs.Tab value="posting" leftSection={<IconDeviceMobile size={13} />}>
+              Posting
+              {post.status === 'posted' && (
+                <Badge size="xs" color="teal" variant="filled" ml={6}>✓</Badge>
+              )}
+            </Tabs.Tab>
+          </Tabs.List>
 
-        {/* Design section */}
-        <Divider label="Design" labelPosition="left" />
-        <Stack gap="xs">
-          <Group>
-            <Text size="sm" fw={500}>Design Status</Text>
-            <Badge size="sm" color={post.design_status === 'done' ? 'green' : post.design_status === 'in_progress' ? 'yellow' : 'gray'}>
-              {post.design_status === 'done' ? 'Done' : post.design_status === 'in_progress' ? 'In Progress' : 'Pending'}
-            </Badge>
-          </Group>
-          {canUpdate && (
-            <>
-              <TextInput
-                size="xs" label="Design file URL (Google Drive, Canva, Figma…)"
-                placeholder="https://drive.google.com/…"
-                value={designUrl} onChange={e => setDesignUrl(e.currentTarget.value)}
-                leftSection={<IconLink size={14} />}
-              />
-              <Textarea
-                size="xs" label="Design notes" minRows={1}
-                value={designNotes} onChange={e => setDesignNotes(e.currentTarget.value)}
-              />
-              <Group gap="xs">
-                <Button size="xs" variant="light" color="yellow" loading={designMutation.isPending}
-                  onClick={() => designMutation.mutate('in_progress')}>In Progress</Button>
-                <Button size="xs" variant="light" color="green" loading={designMutation.isPending}
-                  onClick={() => designMutation.mutate('done')}>Mark Done</Button>
-              </Group>
-            </>
-          )}
-          {post.design_file_url && (
-            <Button
-              size="xs" variant="subtle" component="a"
-              href={post.design_file_url} target="_blank" rel="noopener noreferrer"
-              leftSection={<IconLink size={12} />}
-            >
-              View Design File
-            </Button>
-          )}
-        </Stack>
-
-        {/* Content section */}
-        <Divider label="Content" labelPosition="left" />
-        <Stack gap="xs">
-          <Group>
-            <Text size="sm" fw={500}>Content Status</Text>
-            <Badge size="sm" color={post.content_status === 'ready' ? 'green' : 'gray'}>
-              {post.content_status === 'ready' ? 'Ready' : 'Pending'}
-            </Badge>
-          </Group>
-          {canUpdate && (
-            <>
-              <Textarea
-                size="xs" label="Caption" minRows={3} placeholder="Write caption…"
-                value={caption} onChange={e => setCaption(e.currentTarget.value)}
-              />
-              <TextInput
-                size="xs" label="Hashtags" placeholder="#moinfotech #tech"
-                leftSection={<IconHash size={12} />}
-                value={hashtags} onChange={e => setHashtags(e.currentTarget.value)}
-              />
-              <Group gap="xs">
-                <Button size="xs" variant="light" color="green" loading={contentMutation.isPending}
-                  onClick={() => contentMutation.mutate('ready')}>Mark Ready</Button>
-              </Group>
-            </>
-          )}
-          {!canUpdate && post.caption && (
-            <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{post.caption}</Text>
-          )}
-          {!canUpdate && post.hashtags && (
-            <Text size="sm" c="blue">{post.hashtags}</Text>
-          )}
-        </Stack>
-
-        {/* Platform posting — dynamic */}
-        <Divider label="Platform Posting" labelPosition="left" />
-        <Stack gap="xs">
-          {platforms.map(platform => {
-            const row = post.platforms[platform.name];
-            return (
-              <Group key={platform.name} justify="space-between" wrap="nowrap">
-                <Group gap="xs" style={{ flex: 1 }}>
-                  <ThemeIcon size="sm" color={platform.color} variant={row?.posted ? 'filled' : 'light'}>
-                    {getPlatformIcon(platform.icon)}
-                  </ThemeIcon>
-                  <div>
-                    <Text size="sm">{platform.label}</Text>
-                    {platform.profile_url && !row?.posted && (
-                      <Text size="xs" c="blue" component="a" href={platform.profile_url} target="_blank" rel="noopener noreferrer">
-                        {platform.profile_url.replace('https://', '')}
-                      </Text>
-                    )}
-                  </div>
-                  {row?.posted && row.posted_at && (
-                    <Text size="xs" c="dimmed">{dayjs(row.posted_at).format('D MMM HH:mm')}</Text>
-                  )}
-                </Group>
-                {canUpdate && (
-                  <Group gap="xs" wrap="nowrap">
+          {/* Brief */}
+          <Tabs.Panel value="brief" pt="sm">
+            <Stack gap="xs">
+              {canUpdate ? (
+                <>
+                  <Textarea
+                    size="xs" minRows={3}
+                    placeholder="Instructions for the designer — colors, text, references…"
+                    value={brief} onChange={e => setBrief(e.currentTarget.value)}
+                  />
+                  <Group gap="xs">
                     <TextInput
-                      size="xs" placeholder="Post URL" style={{ width: 180 }}
-                      value={platformUrls[platform.name] ?? ''}
-                      onChange={e => setPlatformUrls(prev => ({ ...prev, [platform.name]: e.currentTarget.value }))}
-                      leftSection={<IconLink size={12} />}
+                      size="xs" type="time" style={{ width: 130 }}
+                      leftSection={<IconClock size={13} />}
+                      value={time} onChange={e => setTime(e.currentTarget.value)}
                     />
-                    <Switch
-                      checked={row?.posted ?? false}
-                      onChange={e => platformMutation.mutate({ platform: platform.name as any, posted: e.currentTarget.checked })}
-                      color={platform.color}
-                    />
+                    <Button size="xs" variant="light" loading={briefMutation.isPending}
+                      onClick={() => briefMutation.mutate()}>
+                      Save
+                    </Button>
                   </Group>
-                )}
-                {!canUpdate && row?.post_url && (
-                  <Button
-                    size="xs" variant="subtle" component="a"
-                    href={row.post_url} target="_blank" rel="noopener noreferrer"
-                    leftSection={<IconLink size={12} />}
-                  >
-                    View
+                </>
+              ) : (
+                <Text size="sm" c={brief ? undefined : 'dimmed'} style={{ fontStyle: brief ? 'normal' : 'italic' }}>
+                  {brief || 'No brief added yet.'}
+                </Text>
+              )}
+            </Stack>
+          </Tabs.Panel>
+
+          {/* Design */}
+          <Tabs.Panel value="design" pt="sm">
+            <Stack gap="xs">
+              <Group justify="space-between">
+                <Group gap="xs">
+                  <Text size="sm" fw={500}>Status</Text>
+                  <Badge size="sm" color={post.design_status === 'done' ? 'green' : post.design_status === 'in_progress' ? 'yellow' : 'gray'}>
+                    {post.design_status === 'done' ? 'Done' : post.design_status === 'in_progress' ? 'In Progress' : 'Pending'}
+                  </Badge>
+                </Group>
+                {post.design_file_url && (
+                  <Button size="xs" variant="subtle" component="a"
+                    href={post.design_file_url} target="_blank" rel="noopener noreferrer"
+                    leftSection={<IconExternalLink size={12} />}>
+                    View File
                   </Button>
                 )}
               </Group>
-            );
-          })}
-        </Stack>
+              {canUpdate && (
+                <>
+                  <TextInput
+                    size="xs" placeholder="Google Drive / Canva / Figma URL"
+                    value={designUrl} onChange={e => setDesignUrl(e.currentTarget.value)}
+                    leftSection={<IconLink size={13} />}
+                  />
+                  <Textarea
+                    size="xs" placeholder="Design notes…" minRows={2}
+                    value={designNotes} onChange={e => setDesignNotes(e.currentTarget.value)}
+                  />
+                  <Group gap="xs">
+                    <Button size="xs" variant="light" color="yellow" loading={designMutation.isPending}
+                      onClick={() => designMutation.mutate('in_progress')}>In Progress</Button>
+                    <Button size="xs" variant="light" color="green" loading={designMutation.isPending}
+                      onClick={() => designMutation.mutate('done')}>Mark Done</Button>
+                  </Group>
+                </>
+              )}
+            </Stack>
+          </Tabs.Panel>
+
+          {/* Content */}
+          <Tabs.Panel value="content" pt="sm">
+            <Stack gap="xs">
+              <Group justify="space-between">
+                <Group gap="xs">
+                  <Text size="sm" fw={500}>Status</Text>
+                  <Badge size="sm" color={post.content_status === 'ready' ? 'green' : 'gray'}>
+                    {post.content_status === 'ready' ? 'Ready' : 'Pending'}
+                  </Badge>
+                </Group>
+              </Group>
+              {canUpdate ? (
+                <>
+                  <Textarea
+                    size="xs" placeholder="Write caption…" minRows={3}
+                    value={caption} onChange={e => setCaption(e.currentTarget.value)}
+                  />
+                  <TextInput
+                    size="xs" placeholder="#moinfotech #tech"
+                    leftSection={<IconHash size={12} />}
+                    value={hashtags} onChange={e => setHashtags(e.currentTarget.value)}
+                  />
+                  <Button size="xs" variant="light" color="green" loading={contentMutation.isPending}
+                    onClick={() => contentMutation.mutate('ready')} style={{ alignSelf: 'flex-start' }}>
+                    Mark Ready
+                  </Button>
+                </>
+              ) : (
+                <Stack gap={4}>
+                  {post.caption && <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{post.caption}</Text>}
+                  {post.hashtags && <Text size="sm" c="blue">{post.hashtags}</Text>}
+                  {!post.caption && !post.hashtags && <Text size="sm" c="dimmed" fs="italic">No content yet.</Text>}
+                </Stack>
+              )}
+            </Stack>
+          </Tabs.Panel>
+
+          {/* Platform Posting */}
+          <Tabs.Panel value="posting" pt="sm">
+            <Stack gap="xs">
+              {platforms.map(platform => {
+                const row = post.platforms[platform.name];
+                return (
+                  <Group key={platform.name} justify="space-between" wrap="nowrap">
+                    <Group gap="xs" style={{ minWidth: 0, flex: 1 }}>
+                      <ThemeIcon size="sm" color={platform.color} variant={row?.posted ? 'filled' : 'light'}>
+                        {getPlatformIcon(platform.icon)}
+                      </ThemeIcon>
+                      <div style={{ minWidth: 0 }}>
+                        <Text size="sm">{platform.label}</Text>
+                        {row?.posted && row.posted_at && (
+                          <Text size="xs" c="dimmed">{dayjs(row.posted_at).format('D MMM HH:mm')}</Text>
+                        )}
+                      </div>
+                    </Group>
+                    {canUpdate ? (
+                      <Group gap="xs" wrap="nowrap">
+                        <TextInput
+                          size="xs" placeholder="Post URL" style={{ width: 160 }}
+                          value={platformUrls[platform.name] ?? ''}
+                          onChange={e => setPlatformUrls(prev => ({ ...prev, [platform.name]: e.currentTarget.value }))}
+                          leftSection={<IconLink size={12} />}
+                        />
+                        <Switch
+                          checked={row?.posted ?? false}
+                          onChange={e => platformMutation.mutate({ platform: platform.name as any, posted: e.currentTarget.checked })}
+                          color={platform.color}
+                        />
+                      </Group>
+                    ) : row?.post_url ? (
+                      <Button size="xs" variant="subtle" component="a"
+                        href={row.post_url} target="_blank" rel="noopener noreferrer"
+                        leftSection={<IconLink size={12} />}>
+                        View
+                      </Button>
+                    ) : null}
+                  </Group>
+                );
+              })}
+            </Stack>
+          </Tabs.Panel>
+        </Tabs>
       </Stack>
     </Modal>
 
@@ -939,28 +1010,28 @@ function SettingsTab({ can, platforms }: { can: (p: string) => boolean; platform
 }
 
 function TargetsSection({ can }: { can: (p: string) => boolean }) {
-  const qc = useQueryClient();
   const [weekOffset, setWeekOffset] = useState(0);
   const ws = weekStart(weekOffset);
   const we = dayjs(ws).add(6, 'day').format('YYYY-MM-DD');
   const [targetModal, { open: openTarget, close: closeTarget }] = useDisclosure(false);
-  const [editTarget, setEditTarget] = useState<SocialTarget | null>(null);
 
-  const { data: targetsData } = useQuery({ queryKey: ['social-targets'], queryFn: getTargets });
+  const { data: targetData } = useQuery({ queryKey: ['social-target'], queryFn: getTarget });
   const { data: summaryData, isLoading } = useQuery({
     queryKey: ['social-weekly-summary', ws],
     queryFn: () => getWeeklySummary(ws),
   });
 
-  const summary = summaryData?.data?.data ?? [];
+  const target = targetData?.data?.data ?? null;
+  const summary = summaryData?.data ?? null;
 
-  const deleteMutation = useMutation({
-    mutationFn: deleteTarget,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['social-targets'] });
-      qc.invalidateQueries({ queryKey: ['social-weekly-summary'] });
-    },
-  });
+  const imageTarget  = target?.image_target  ?? 0;
+  const videoTarget  = target?.video_target  ?? 0;
+  const imageDone    = summary?.image_achieved ?? 0;
+  const videoDone    = summary?.video_achieved ?? 0;
+  const imagePercent = imageTarget > 0 ? Math.min(100, Math.round((imageDone / imageTarget) * 100)) : 0;
+  const videoPercent = videoTarget > 0 ? Math.min(100, Math.round((videoDone / videoTarget) * 100)) : 0;
+
+  const daily = summary?.daily ?? [];
 
   return (
     <Stack>
@@ -972,77 +1043,63 @@ function TargetsSection({ can }: { can: (p: string) => boolean }) {
           {weekOffset !== 0 && <Button size="xs" variant="light" onClick={() => setWeekOffset(0)}>This week</Button>}
         </Group>
         {can('social.settings') && (
-          <Button size="sm" leftSection={<IconPlus size={16} />}
-            onClick={() => { setEditTarget(null); openTarget(); }}>
-            Set Target
+          <Button size="sm" leftSection={<IconTarget size={16} />} onClick={openTarget}>
+            {target ? 'Edit Target' : 'Set Target'}
           </Button>
         )}
       </Group>
 
-      {isLoading ? <Center py="xl"><Loader /></Center> : summary.length === 0 ? (
-        <Text c="dimmed" ta="center" py="md">No targets set yet.</Text>
+      {isLoading ? <Center py="xl"><Loader /></Center> : !target ? (
+        <Text c="dimmed" ta="center" py="md">No target set yet.</Text>
       ) : (
         <Stack gap="md">
-          {summary.map((entry: any, i: number) => (
-            <Paper key={i} withBorder p="md" radius="md">
-              <Stack gap="sm">
-                <Group justify="space-between">
-                  <Group gap="sm">
-                    <ThemeIcon size="md" variant="light" color={entry.target.metric === 'designs' ? 'violet' : 'teal'}>
-                      {entry.target.metric === 'designs' ? <IconPhoto size={16} /> : <IconBrandInstagram size={16} />}
-                    </ThemeIcon>
-                    <div>
-                      <Text fw={600} size="sm">{entry.target.user?.name ?? '—'}</Text>
-                      <Text size="xs" c="dimmed">
-                        {entry.target.metric === 'designs' ? 'Designs' : 'Platform Posts'} ·{' '}
-                        {entry.target.daily_target}/day on{' '}
-                        {entry.target.active_days.map((d: number) => DAY_NAMES[d]).join(', ')}
-                      </Text>
-                    </div>
-                  </Group>
-                  <Group gap="xs">
-                    <Badge size="lg"
-                      color={entry.percent >= 100 ? 'green' : entry.percent >= 50 ? 'yellow' : 'red'}
-                      variant="light">
-                      {entry.weekly_achieved}/{entry.weekly_target}
-                    </Badge>
-                    {can('social.settings') && (
-                      <>
-                        <ActionIcon size="sm" variant="subtle"
-                          onClick={() => { setEditTarget(entry.target); openTarget(); }}>
-                          <IconEdit size={14} />
-                        </ActionIcon>
-                        <ActionIcon size="sm" variant="subtle" color="red"
-                          onClick={() => deleteMutation.mutate(entry.target.id)}>
-                          <IconTrash size={14} />
-                        </ActionIcon>
-                      </>
-                    )}
-                  </Group>
+          <Paper withBorder p="md" radius="md">
+            <Stack gap="sm">
+              <Group justify="space-between">
+                <Group gap="xs">
+                  <ThemeIcon size="sm" variant="light" color="blue"><IconPhoto size={14} /></ThemeIcon>
+                  <Text fw={500} size="sm">Image Posts</Text>
                 </Group>
-                <Progress value={entry.percent}
-                  color={entry.percent >= 100 ? 'green' : entry.percent >= 50 ? 'yellow' : 'red'} size="sm" />
-                <Text size="xs" c="dimmed" ta="right">{entry.percent}% of weekly target</Text>
-                <SimpleGrid cols={7} spacing="xs">
-                  {entry.daily.map((day: any) => (
-                    <Stack key={day.date} gap={2} align="center">
-                      <Text size="xs" c="dimmed" fw={500}>{day.day_name}</Text>
-                      <ThemeIcon size="sm"
-                        variant={!day.is_active ? 'subtle' : day.met ? 'filled' : 'light'}
-                        color={!day.is_active ? 'gray' : day.met ? 'green' : day.achieved > 0 ? 'yellow' : 'red'}>
-                        {!day.is_active ? <IconX size={10} /> : day.met ? <IconCheck size={10} /> : <Text size={9}>{day.achieved}</Text>}
-                      </ThemeIcon>
-                      {day.is_active && <Text size={9} c="dimmed">{day.achieved}/{day.target}</Text>}
-                    </Stack>
-                  ))}
-                </SimpleGrid>
-              </Stack>
-            </Paper>
-          ))}
+                <Badge size="lg" color={imagePercent >= 100 ? 'green' : imagePercent >= 50 ? 'yellow' : 'red'} variant="light">
+                  {imageDone} / {imageTarget}
+                </Badge>
+              </Group>
+              <Progress value={imagePercent} color={imagePercent >= 100 ? 'green' : imagePercent >= 50 ? 'yellow' : 'red'} size="sm" />
+
+              <Group justify="space-between" mt="xs">
+                <Group gap="xs">
+                  <ThemeIcon size="sm" variant="light" color="grape"><IconVideo size={14} /></ThemeIcon>
+                  <Text fw={500} size="sm">Video Posts</Text>
+                </Group>
+                <Badge size="lg" color={videoPercent >= 100 ? 'green' : videoPercent >= 50 ? 'yellow' : 'red'} variant="light">
+                  {videoDone} / {videoTarget}
+                </Badge>
+              </Group>
+              <Progress value={videoPercent} color={videoPercent >= 100 ? 'green' : videoPercent >= 50 ? 'yellow' : 'red'} size="sm" />
+            </Stack>
+          </Paper>
+
+          {daily.length > 0 && (
+            <SimpleGrid cols={7} spacing="xs">
+              {daily.map(day => (
+                <Stack key={day.date} gap={2} align="center">
+                  <Text size="xs" c="dimmed" fw={500}>{day.day_name}</Text>
+                  <ThemeIcon size="sm"
+                    variant={!day.is_active ? 'subtle' : day.total > 0 ? 'filled' : 'light'}
+                    color={!day.is_active ? 'gray' : day.total > 0 ? 'green' : 'red'}>
+                    {!day.is_active ? <IconX size={10} /> : day.total > 0 ? <IconCheck size={10} /> : <Text size={9}>0</Text>}
+                  </ThemeIcon>
+                  {day.is_active && (
+                    <Text size={9} c="dimmed">{day.images}🖼 {day.videos}🎬</Text>
+                  )}
+                </Stack>
+              ))}
+            </SimpleGrid>
+          )}
         </Stack>
       )}
 
-      <TargetFormModal opened={targetModal} onClose={closeTarget} existing={editTarget} />
+      <TargetFormModal opened={targetModal} onClose={closeTarget} existing={target} />
     </Stack>
   );
 }
@@ -1696,20 +1753,15 @@ function TargetFormModal({ opened, onClose, existing }: {
   opened: boolean; onClose: () => void; existing: SocialTarget | null;
 }) {
   const qc = useQueryClient();
-  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => getUsers({ per_page: 100 }) });
-  const users = (usersData?.data?.data ?? []).map((u: any) => ({ value: u.id, label: u.name }));
 
   const form = useForm({
     initialValues: {
-      user_id:        existing?.user?.id ?? '',
-      metric:         (existing?.metric ?? 'designs') as 'designs' | 'posts',
-      daily_target:   existing?.daily_target ?? 1,
-      weekly_target:  existing?.weekly_target ?? 5,
-      active_days:    existing?.active_days ?? [1, 2, 3, 4, 5],
+      image_target:   existing?.image_target  ?? 3,
+      video_target:   existing?.video_target  ?? 2,
+      active_days:    existing?.active_days   ?? [1, 2, 3, 4, 5],
       effective_from: existing?.effective_from ? new Date(existing.effective_from) : new Date() as Date | null,
     },
     validate: {
-      user_id:     v => !v ? 'Select a team member' : null,
       active_days: v => v.length === 0 ? 'Select at least one day' : null,
     },
   });
@@ -1717,10 +1769,8 @@ function TargetFormModal({ opened, onClose, existing }: {
   useEffect(() => {
     if (existing) {
       form.setValues({
-        user_id:        existing.user?.id ?? '',
-        metric:         existing.metric,
-        daily_target:   existing.daily_target,
-        weekly_target:  existing.weekly_target,
+        image_target:   existing.image_target,
+        video_target:   existing.video_target,
         active_days:    existing.active_days,
         effective_from: new Date(existing.effective_from),
       });
@@ -1733,7 +1783,7 @@ function TargetFormModal({ opened, onClose, existing }: {
   const mutation = useMutation({
     mutationFn: upsertTarget,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['social-targets'] });
+      qc.invalidateQueries({ queryKey: ['social-target'] });
       qc.invalidateQueries({ queryKey: ['social-weekly-summary'] });
       notifications.show({ message: 'Target saved.', color: 'green' });
       form.reset();
@@ -1751,27 +1801,26 @@ function TargetFormModal({ opened, onClose, existing }: {
   return (
     <Modal opened={opened} onClose={onClose} title={existing ? 'Edit Target' : 'Set Target'} centered size="sm">
       <form onSubmit={form.onSubmit(v => mutation.mutate({
-        user_id:        v.user_id,
-        metric:         v.metric,
-        daily_target:   v.daily_target,
-        weekly_target:  v.weekly_target,
+        image_target:   v.image_target,
+        video_target:   v.video_target,
         active_days:    v.active_days,
         effective_from: dayjs(v.effective_from!).format('YYYY-MM-DD'),
       }))}>
         <Stack gap="md">
-          <Select label="Team Member" required data={users} searchable {...form.getInputProps('user_id')} />
-
-          <div>
-            <Text size="sm" fw={500} mb={4}>Tracking metric</Text>
-            <SegmentedControl
-              fullWidth
-              data={[
-                { value: 'designs', label: 'Designs completed' },
-                { value: 'posts',   label: 'Platform posts' },
-              ]}
-              {...form.getInputProps('metric')}
+          <Group grow>
+            <NumberInput
+              label="Image posts per week"
+              leftSection={<IconPhoto size={14} />}
+              min={0} max={100}
+              {...form.getInputProps('image_target')}
             />
-          </div>
+            <NumberInput
+              label="Video posts per week"
+              leftSection={<IconVideo size={14} />}
+              min={0} max={100}
+              {...form.getInputProps('video_target')}
+            />
+          </Group>
 
           <div>
             <Text size="sm" fw={500} mb={6}>Active days</Text>
@@ -1787,20 +1836,6 @@ function TargetFormModal({ opened, onClose, existing }: {
             </Group>
             {form.errors.active_days && <Text size="xs" c="red" mt={4}>{form.errors.active_days}</Text>}
           </div>
-
-          <NumberInput
-            label="Daily target"
-            description="Expected completions per active day"
-            min={1} max={100}
-            {...form.getInputProps('daily_target')}
-          />
-
-          <NumberInput
-            label="Weekly target"
-            description="Total expected per week"
-            min={1} max={500}
-            {...form.getInputProps('weekly_target')}
-          />
 
           <DatePickerInput label="Effective from" required {...form.getInputProps('effective_from')} />
 

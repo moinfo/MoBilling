@@ -233,39 +233,35 @@ class SocialMediaController extends Controller
     public function targets(Request $request)
     {
         $this->authorizePermission('social.read');
-
-        $targets = SocialTarget::with('user:id,name')
-            ->get()
-            ->map(fn ($t) => $this->formatTarget($t));
-
-        return response()->json(['data' => $targets]);
+        $target = SocialTarget::first();
+        return response()->json(['data' => $target ? $this->formatTarget($target) : null]);
     }
 
     public function upsertTarget(Request $request)
     {
-        $this->authorizePermission('social.targets');
+        $this->authorizePermission('social.settings');
 
         $data = $request->validate([
-            'user_id'        => 'required|uuid|exists:users,id',
-            'metric'         => 'required|in:designs,posts',
-            'weekly_target'  => 'required|integer|min:1|max:500',
-            'daily_target'   => 'required|integer|min:1|max:100',
+            'image_target'   => 'required|integer|min:0|max:500',
+            'video_target'   => 'required|integer|min:0|max:500',
             'active_days'    => 'required|array|min:1|max:7',
             'active_days.*'  => 'integer|min:1|max:7',
             'effective_from' => 'required|date',
         ]);
 
-        $target = SocialTarget::updateOrCreate(
-            ['tenant_id' => auth()->user()->tenant_id, 'user_id' => $data['user_id'], 'metric' => $data['metric']],
-            $data
-        );
+        $target = SocialTarget::first();
+        if ($target) {
+            $target->update($data);
+        } else {
+            $target = SocialTarget::create($data);
+        }
 
-        return response()->json(['data' => $this->formatTarget($target->load('user:id,name'))]);
+        return response()->json(['data' => $this->formatTarget($target)]);
     }
 
     public function destroyTarget(SocialTarget $socialTarget)
     {
-        $this->authorizePermission('social.targets');
+        $this->authorizePermission('social.settings');
         $socialTarget->delete();
         return response()->json(['message' => 'Target removed.']);
     }
@@ -279,69 +275,43 @@ class SocialMediaController extends Controller
         $weekStart = Carbon::parse($request->week_start ?? now()->startOfWeek(Carbon::MONDAY));
         $weekEnd   = $weekStart->copy()->endOfWeek(Carbon::SUNDAY);
 
-        $targets = SocialTarget::with('user:id,name')->get();
+        $target = SocialTarget::first();
 
+        $posts = SocialPost::whereBetween('scheduled_date', [$weekStart, $weekEnd])->get();
+
+        // Count posts that have been posted on at least one platform
+        $imageAchieved = $posts->filter(fn ($p) =>
+            $p->media_type === 'image' && in_array($p->status, ['partial_posted', 'posted'])
+        )->count();
+
+        $videoAchieved = $posts->filter(fn ($p) =>
+            $p->media_type === 'video' && in_array($p->status, ['partial_posted', 'posted'])
+        )->count();
+
+        // Per-day breakdown
         $days = collect(range(0, 6))->map(fn ($i) => $weekStart->copy()->addDays($i));
-
-        $summary = $targets->map(function ($target) use ($weekStart, $weekEnd, $days) {
-            // Actual achieved this week
-            if ($target->metric === 'designs') {
-                $achieved = SocialPost::whereBetween('scheduled_date', [$weekStart, $weekEnd])
-                    ->where('design_status', 'done')
-                    ->where('assigned_designer_id', $target->user_id)
-                    ->count();
-            } else {
-                // Count platform posts by this user this week
-                $achieved = SocialPostPlatform::whereHas('post', fn ($q) =>
-                    $q->whereBetween('scheduled_date', [$weekStart, $weekEnd])
-                )->where('posted_by', $target->user_id)
-                 ->where('posted', true)
-                 ->count();
-            }
-
-            // Per-day breakdown
-            $dailyBreakdown = $days->map(function ($day) use ($target) {
-                $isoDay = (int) $day->format('N'); // 1=Mon … 7=Sun
-                $isActive = in_array($isoDay, $target->active_days);
-
-                if ($target->metric === 'designs') {
-                    $done = SocialPost::whereDate('scheduled_date', $day->toDateString())
-                        ->where('design_status', 'done')
-                        ->where('assigned_designer_id', $target->user_id)
-                        ->count();
-                } else {
-                    $done = SocialPostPlatform::whereHas('post', fn ($q) =>
-                        $q->whereDate('scheduled_date', $day->toDateString())
-                    )->where('posted_by', $target->user_id)
-                     ->where('posted', true)
-                     ->count();
-                }
-
-                return [
-                    'date'      => $day->toDateString(),
-                    'day_name'  => $day->format('D'),
-                    'is_active' => $isActive,
-                    'target'    => $isActive ? $target->daily_target : 0,
-                    'achieved'  => $done,
-                    'met'       => !$isActive || $done >= $target->daily_target,
-                ];
-            });
+        $daily = $days->map(function ($day) use ($posts, $target) {
+            $isoDay   = (int) $day->format('N');
+            $isActive = $target ? in_array($isoDay, $target->active_days ?? []) : true;
+            $dayPosts = $posts->filter(fn ($p) => $p->scheduled_date->format('Y-m-d') === $day->toDateString());
 
             return [
-                'target'         => $this->formatTarget($target),
-                'weekly_achieved' => $achieved,
-                'weekly_target'  => $target->weekly_target,
-                'percent'        => $target->weekly_target > 0
-                    ? min(100, round(($achieved / $target->weekly_target) * 100))
-                    : 0,
-                'daily'          => $dailyBreakdown->values(),
+                'date'      => $day->toDateString(),
+                'day_name'  => $day->format('D'),
+                'is_active' => $isActive,
+                'images'    => $dayPosts->filter(fn ($p) => $p->media_type === 'image' && in_array($p->status, ['partial_posted', 'posted']))->count(),
+                'videos'    => $dayPosts->filter(fn ($p) => $p->media_type === 'video' && in_array($p->status, ['partial_posted', 'posted']))->count(),
+                'total'     => $dayPosts->count(),
             ];
         });
 
         return response()->json([
-            'week_start' => $weekStart->toDateString(),
-            'week_end'   => $weekEnd->toDateString(),
-            'data'       => $summary->values(),
+            'week_start'     => $weekStart->toDateString(),
+            'week_end'       => $weekEnd->toDateString(),
+            'target'         => $target ? $this->formatTarget($target) : null,
+            'image_achieved' => $imageAchieved,
+            'video_achieved' => $videoAchieved,
+            'daily'          => $daily->values(),
         ]);
     }
 
@@ -488,11 +458,9 @@ class SocialMediaController extends Controller
     {
         return [
             'id'             => $t->id,
-            'user'           => $t->user ? ['id' => $t->user->id, 'name' => $t->user->name] : null,
-            'metric'         => $t->metric,
-            'weekly_target'  => $t->weekly_target,
-            'daily_target'   => $t->daily_target,
-            'active_days'    => $t->active_days,
+            'image_target'   => $t->image_target,
+            'video_target'   => $t->video_target,
+            'active_days'    => $t->active_days ?? [],
             'effective_from' => $t->effective_from?->format('Y-m-d'),
         ];
     }

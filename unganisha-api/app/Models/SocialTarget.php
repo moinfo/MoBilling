@@ -11,18 +11,13 @@ class SocialTarget extends Model
     use HasUuids, BelongsToTenant;
 
     protected $fillable = [
-        'user_id', 'metric', 'weekly_target', 'daily_target', 'active_days', 'effective_from',
+        'image_target', 'video_target', 'active_days', 'effective_from',
     ];
 
     protected $casts = [
         'active_days'    => 'array',
         'effective_from' => 'date',
-        'weekly_target'  => 'integer',
-        'daily_target'   => 'integer',
+        'image_target'   => 'integer',
+        'video_target'   => 'integer',
     ];
-
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
 }

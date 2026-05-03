@@ -445,6 +445,22 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:social.update')->put('/social/design-orders/{clientDesignOrder}', [\App\Http\Controllers\SocialMediaController::class, 'updateDesignOrder']);
     Route::middleware('permission:social.delete')->delete('/social/design-orders/{clientDesignOrder}', [\App\Http\Controllers\SocialMediaController::class, 'destroyDesignOrder']);
 
+    // Served Customers
+    Route::middleware('permission:served.read')->get('/served/services', [\App\Http\Controllers\ServedCustomersController::class, 'services']);
+    Route::middleware('permission:served.settings')->post('/served/services', [\App\Http\Controllers\ServedCustomersController::class, 'storeService']);
+    Route::middleware('permission:served.settings')->put('/served/services/{servedService}', [\App\Http\Controllers\ServedCustomersController::class, 'updateService']);
+    Route::middleware('permission:served.settings')->delete('/served/services/{servedService}', [\App\Http\Controllers\ServedCustomersController::class, 'destroyService']);
+    Route::middleware('permission:served.read')->get('/served/customers', [\App\Http\Controllers\ServedCustomersController::class, 'customers']);
+    Route::middleware('permission:served.create')->post('/served/customers', [\App\Http\Controllers\ServedCustomersController::class, 'storeCustomer']);
+    Route::middleware('permission:served.update')->put('/served/customers/{servedCustomer}', [\App\Http\Controllers\ServedCustomersController::class, 'updateCustomer']);
+    Route::middleware('permission:served.delete')->delete('/served/customers/{servedCustomer}', [\App\Http\Controllers\ServedCustomersController::class, 'destroyCustomer']);
+    Route::middleware('permission:served.create')->post('/served/customers/{servedCustomer}/feedback', [\App\Http\Controllers\ServedCustomersController::class, 'storeFeedback']);
+    Route::middleware('permission:served.delete')->delete('/served/customers/{servedCustomer}/feedback/{feedback}', [\App\Http\Controllers\ServedCustomersController::class, 'destroyFeedback']);
+    Route::middleware('permission:served.read')->get('/served/target', [\App\Http\Controllers\ServedCustomersController::class, 'target']);
+    Route::middleware('permission:served.settings')->post('/served/target', [\App\Http\Controllers\ServedCustomersController::class, 'upsertTarget']);
+    Route::middleware('permission:served.read')->get('/served/weekly-summary', [\App\Http\Controllers\ServedCustomersController::class, 'weeklyTargetSummary']);
+    Route::middleware('permission:served.read')->get('/served/report', [\App\Http\Controllers\ServedCustomersController::class, 'report']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/clients/{client}/portal-users', [ClientPortalUserController::class, 'index']);
