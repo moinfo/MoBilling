@@ -16,7 +16,7 @@ import {
   IconBrandTelegram, IconBrandSnapchat, IconBrandPinterest, IconBrandTwitter,
   IconGlobe, IconPlus, IconCheck, IconX, IconEdit, IconTrash,
   IconPencil, IconLink, IconTarget, IconCalendarWeek, IconPhoto,
-  IconEye, IconShieldCheck, IconVideo, IconDeviceMobile, IconLayoutColumns,
+  IconVideo, IconDeviceMobile, IconLayoutColumns,
   IconHash, IconClock, IconBriefcase, IconAlertTriangle, IconPackage,
   IconSettings, IconToggleLeft, IconToggleRight, IconExternalLink,
 } from '@tabler/icons-react';
@@ -41,7 +41,6 @@ import {
 import { getClients } from '../api/clients';
 import { getUsers } from '../api/users';
 import { usePermissions } from '../hooks/usePermissions';
-import { useAuth } from '../context/AuthContext';
 
 dayjs.extend(isoWeek);
 
@@ -294,7 +293,7 @@ function PostRow({ post, platforms, canDelete, onOpen, onDelete }: {
           <Text size="xs" fw={700} c={isToday ? 'blue' : 'dimmed'}>{dayjs(post.scheduled_date).format('ddd').toUpperCase()}</Text>
           <Text size="lg" fw={800} lh={1}>{dayjs(post.scheduled_date).format('D')}</Text>
           <Text size="xs" c="dimmed">{dayjs(post.scheduled_date).format('MMM')}</Text>
-          {timeStr && <Text size={10} c="dimmed">{timeStr}</Text>}
+          {timeStr && <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>{timeStr}</Text>}
         </Stack>
 
         <Divider orientation="vertical" />
@@ -335,79 +334,6 @@ function PostRow({ post, platforms, canDelete, onOpen, onDelete }: {
           </ActionIcon>
         )}
       </Group>
-    </Paper>
-  );
-}
-
-function PostCard({ post, platforms, canUpdate, canDelete, onOpen, onDelete }: {
-  post: SocialPost; platforms: SocialPlatformConfig[]; canUpdate: boolean; canDelete: boolean;
-  onOpen: () => void; onDelete: () => void;
-}) {
-  const postedCount = platforms.filter(p => post.platforms[p.name]?.posted).length;
-  const timeStr = formatTime(post.scheduled_time);
-
-  return (
-    <Paper withBorder p="xs" style={{ cursor: 'pointer' }} onClick={onOpen}>
-      <Stack gap={5}>
-        {/* Format + delete row */}
-        <Group justify="space-between" wrap="nowrap" gap={4}>
-          <Group gap={4} wrap="nowrap">
-            {post.post_format.map(fmt => (
-              <Badge key={fmt} size="xs" color={FORMAT_COLORS[fmt]} variant="filled" leftSection={FORMAT_ICONS[fmt]}>
-                {FORMAT_LABELS[fmt]}
-              </Badge>
-            ))}
-            {post.media_type === 'video' && (
-              <Tooltip label="Video" position="top" withArrow>
-                <ThemeIcon size={16} color="grape" variant="light" radius="xl">
-                  <IconVideo size={9} />
-                </ThemeIcon>
-              </Tooltip>
-            )}
-          </Group>
-          {canDelete && (
-            <ActionIcon size="xs" color="red" variant="subtle"
-              onClick={e => { e.stopPropagation(); onDelete(); }}>
-              <IconTrash size={12} />
-            </ActionIcon>
-          )}
-        </Group>
-
-        {/* Status */}
-        <Badge size="xs" color={STATUS_COLOR[post.status]} variant="light" style={{ alignSelf: 'flex-start' }}>
-          {STATUS_LABEL[post.status]}
-        </Badge>
-
-        {/* Title */}
-        <Text size="xs" fw={600} lineClamp={2}>{post.title}</Text>
-
-        {/* Meta: type + time */}
-        <Group gap={4} wrap="nowrap">
-          <Text size="xs" c="dimmed" style={{ flex: 1 }} lineClamp={1}>{TYPE_LABELS[post.type]}</Text>
-          {timeStr && (
-            <Group gap={2} wrap="nowrap">
-              <IconClock size={10} style={{ color: 'var(--mantine-color-dimmed)' }} />
-              <Text size="xs" c="dimmed">{timeStr}</Text>
-            </Group>
-          )}
-        </Group>
-
-        {/* Platform icons — dynamic */}
-        <Group gap={2} mt={2}>
-          {platforms.map(p => (
-            <Tooltip key={p.name} label={p.label} position="top" withArrow>
-              <ThemeIcon
-                size="xs"
-                variant={post.platforms[p.name]?.posted ? 'filled' : 'light'}
-                color={post.platforms[p.name]?.posted ? p.color : 'gray'}
-              >
-                {getPlatformIcon(p.icon)}
-              </ThemeIcon>
-            </Tooltip>
-          ))}
-          <Text size="xs" c="dimmed" ml="auto">{postedCount}/{platforms.length}</Text>
-        </Group>
-      </Stack>
     </Paper>
   );
 }
@@ -541,7 +467,7 @@ function PostDetailModal({ post, opened, onClose, canUpdate, onUpdated, platform
   });
 
   const platformMutation = useMutation({
-    mutationFn: ({ platform, posted }: { platform: Platform; posted: boolean }) =>
+    mutationFn: ({ platform, posted }: { platform: string; posted: boolean }) =>
       togglePlatform(post.id, platform, { posted, post_url: platformUrls[platform] || undefined }),
     onSuccess: r => { invalidate(); onUpdated(r.data.data); },
   });
@@ -1087,10 +1013,10 @@ function TargetsSection({ can }: { can: (p: string) => boolean }) {
                   <ThemeIcon size="sm"
                     variant={!day.is_active ? 'subtle' : day.total > 0 ? 'filled' : 'light'}
                     color={!day.is_active ? 'gray' : day.total > 0 ? 'green' : 'red'}>
-                    {!day.is_active ? <IconX size={10} /> : day.total > 0 ? <IconCheck size={10} /> : <Text size={9}>0</Text>}
+                    {!day.is_active ? <IconX size={10} /> : day.total > 0 ? <IconCheck size={10} /> : <Text style={{ fontSize: 9 }}>0</Text>}
                   </ThemeIcon>
                   {day.is_active && (
-                    <Text size={9} c="dimmed">{day.images}🖼 {day.videos}🎬</Text>
+                    <Text c="dimmed" style={{ fontSize: 9 }}>{day.images}🖼 {day.videos}🎬</Text>
                   )}
                 </Stack>
               ))}
@@ -1589,7 +1515,7 @@ function DesignOrderFormModal({ opened, onClose, existing, users }: {
   );
 }
 
-function DesignOrderDetailModal({ order, opened, onClose, canUpdate, users }: {
+function DesignOrderDetailModal({ order, opened, onClose, canUpdate, users: _users }: {
   order: ClientDesignOrder; opened: boolean; onClose: () => void;
   canUpdate: boolean;
   users: { value: string; label: string }[];

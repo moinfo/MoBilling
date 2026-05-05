@@ -25,7 +25,7 @@ import {
   createFeedback, deleteFeedback,
   getServedTarget, upsertServedTarget, getServedWeeklySummary,
   getServedReport,
-  type ServedService, type ServedCustomer, type CustomerFeedback, type ServedTarget,
+  type ServedService, type ServedCustomer, type ServedTarget,
   type ServedReport, type ServedReportDay,
 } from '../api/servedCustomers';
 import { usePermissions } from '../hooks/usePermissions';
@@ -89,7 +89,7 @@ const OUTCOME_CONFIG = {
 
 function CustomersTab({ can }: { can: (p: string) => boolean }) {
   const qc = useQueryClient();
-  const [dateFilter, setDateFilter] = useState<Date | null>(null);
+  const [dateFilter, setDateFilter] = useState<string | null>(null);
   const [search, setSearch]         = useState('');
   const [editing, setEditing]       = useState<ServedCustomer | null>(null);
   const [feedbackTarget, setFeedbackTarget] = useState<ServedCustomer | null>(null);
@@ -622,12 +622,12 @@ function TargetTab({ can }: { can: (p: string) => boolean }) {
                   <ThemeIcon size="sm"
                     variant={!day.is_active ? 'subtle' : day.new_customers > 0 || day.calls_made > 0 ? 'filled' : 'light'}
                     color={!day.is_active ? 'gray' : day.new_customers > 0 ? 'teal' : 'red'}>
-                    {!day.is_active ? <IconCheck size={10} color="gray" /> : day.new_customers > 0 ? <IconCheck size={10} /> : <Text size={9}>0</Text>}
+                    {!day.is_active ? <IconCheck size={10} color="gray" /> : day.new_customers > 0 ? <IconCheck size={10} /> : <Text style={{ fontSize: 9 }}>0</Text>}
                   </ThemeIcon>
                   {day.is_active && (
                     <Stack gap={0} align="center">
-                      <Text size={9} c="teal">{day.new_customers}👤</Text>
-                      <Text size={9} c="blue">{day.calls_made}📞</Text>
+                      <Text c="teal" style={{ fontSize: 9 }}>{day.new_customers}👤</Text>
+                      <Text c="blue" style={{ fontSize: 9 }}>{day.calls_made}📞</Text>
                     </Stack>
                   )}
                 </Stack>
