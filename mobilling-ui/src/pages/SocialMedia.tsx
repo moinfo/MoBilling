@@ -293,7 +293,7 @@ function PostRow({ post, platforms, canDelete, onOpen, onDelete }: {
           <Text size="xs" fw={700} c={isToday ? 'blue' : 'dimmed'}>{dayjs(post.scheduled_date).format('ddd').toUpperCase()}</Text>
           <Text size="lg" fw={800} lh={1}>{dayjs(post.scheduled_date).format('D')}</Text>
           <Text size="xs" c="dimmed">{dayjs(post.scheduled_date).format('MMM')}</Text>
-          {timeStr && <Text size="xs" c="dimmed" style={{ fontSize: 10 }}>{timeStr}</Text>}
+          {timeStr && <Text fz={10} c="dimmed">{timeStr}</Text>}
         </Stack>
 
         <Divider orientation="vertical" />
@@ -1013,10 +1013,10 @@ function TargetsSection({ can }: { can: (p: string) => boolean }) {
                   <ThemeIcon size="sm"
                     variant={!day.is_active ? 'subtle' : day.total > 0 ? 'filled' : 'light'}
                     color={!day.is_active ? 'gray' : day.total > 0 ? 'green' : 'red'}>
-                    {!day.is_active ? <IconX size={10} /> : day.total > 0 ? <IconCheck size={10} /> : <Text style={{ fontSize: 9 }}>0</Text>}
+                    {!day.is_active ? <IconX size={10} /> : day.total > 0 ? <IconCheck size={10} /> : <Text fz={9}>0</Text>}
                   </ThemeIcon>
                   {day.is_active && (
-                    <Text c="dimmed" style={{ fontSize: 9 }}>{day.images}🖼 {day.videos}🎬</Text>
+                    <Text fz={9} c="dimmed">{day.images}🖼 {day.videos}🎬</Text>
                   )}
                 </Stack>
               ))}
@@ -1383,7 +1383,6 @@ function ClientDesignsTab({ can }: { can: (p: string) => boolean }) {
           order={selected} opened={detailModal}
           onClose={() => { closeDetail(); setSelected(null); refetch(); }}
           canUpdate={can('social.update')}
-          users={users}
         />
       )}
     </Stack>
@@ -1515,10 +1514,9 @@ function DesignOrderFormModal({ opened, onClose, existing, users }: {
   );
 }
 
-function DesignOrderDetailModal({ order, opened, onClose, canUpdate, users: _users }: {
+function DesignOrderDetailModal({ order, opened, onClose, canUpdate }: {
   order: ClientDesignOrder; opened: boolean; onClose: () => void;
   canUpdate: boolean;
-  users: { value: string; label: string }[];
 }) {
   const qc = useQueryClient();
   const [fileUrl,       setFileUrl]       = useState(order.file_url ?? '');

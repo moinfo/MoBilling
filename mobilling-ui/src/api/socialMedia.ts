@@ -50,7 +50,7 @@ export type ContentStatus = 'pending' | 'ready';
 export type PostStatus    = 'planned' | 'designing' | 'content_ready' | 'partial_posted' | 'posted';
 
 export interface PlatformRow {
-  platform:  Platform;
+  platform:  string;
   posted:    boolean;
   posted_at: string | null;
   post_url:  string | null;
@@ -72,7 +72,7 @@ export interface SocialPost {
   design_status:      DesignStatus;
   content_status:     ContentStatus;
   status:             PostStatus;
-  platforms:          Record<string, PlatformRow>;
+  platforms:          Record<string, PlatformRow | undefined>;
   created_at:         string;
 }
 

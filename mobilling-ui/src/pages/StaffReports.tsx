@@ -160,7 +160,7 @@ function DashboardTab({ can, canSeeTeam }: { can: (p: string) => boolean; canSee
             </ThemeIcon>
             <Text size="sm" fw={700} tt="uppercase" c="dimmed">Team Overview — {month}</Text>
           </Group>
-          <TeamStatsTable staff={team.staff} settings={settings} />
+          <TeamStatsTable staff={team.staff} />
         </div>
       )}
 
@@ -234,7 +234,7 @@ function DeadlineInfo({ label, value, color }: { label: string; value: string; c
 
 // ── Team Stats Table (supervisor dashboard) ───────────────────────────────────
 
-function TeamStatsTable({ staff, settings }: { staff: StaffStat[]; settings: ReportSettings }) {
+function TeamStatsTable({ staff }: { staff: StaffStat[] }) {
   return (
     <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
       <div style={{ overflowX: 'auto' }}>
@@ -1090,7 +1090,7 @@ function ReportFormModal({ opened, onClose, existing, onSaved }: {
                 <DatePickerInput
                   label={reportType === 'weekly' ? 'Any day in the week' : 'Date'}
                   value={periodDate}
-                  onChange={v => setPeriodDate(v)}
+                  onChange={v => setPeriodDate(v ? new Date(v as any) : null)}
                   leftSection={<IconCalendar size={14} />}
                   description={reportType === 'weekly' && periodDate
                     ? `Week: ${weekRangeLabel(periodDate)}`

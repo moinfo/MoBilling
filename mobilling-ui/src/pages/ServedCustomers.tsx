@@ -128,7 +128,7 @@ function CustomersTab({ can }: { can: (p: string) => boolean }) {
           <DatePickerInput
             size="xs" placeholder="Filter by date" clearable
             leftSection={<IconCalendar size={14} />}
-            value={dateFilter} onChange={setDateFilter}
+            value={dateFilter} onChange={v => setDateFilter(v ? new Date(v as any) : null)}
             style={{ width: 160 }}
           />
           <TextInput
@@ -622,12 +622,12 @@ function TargetTab({ can }: { can: (p: string) => boolean }) {
                   <ThemeIcon size="sm"
                     variant={!day.is_active ? 'subtle' : day.new_customers > 0 || day.calls_made > 0 ? 'filled' : 'light'}
                     color={!day.is_active ? 'gray' : day.new_customers > 0 ? 'teal' : 'red'}>
-                    {!day.is_active ? <IconCheck size={10} color="gray" /> : day.new_customers > 0 ? <IconCheck size={10} /> : <Text style={{ fontSize: 9 }}>0</Text>}
+                    {!day.is_active ? <IconCheck size={10} color="gray" /> : day.new_customers > 0 ? <IconCheck size={10} /> : <Text fz={9}>0</Text>}
                   </ThemeIcon>
                   {day.is_active && (
                     <Stack gap={0} align="center">
-                      <Text c="teal" style={{ fontSize: 9 }}>{day.new_customers}👤</Text>
-                      <Text c="blue" style={{ fontSize: 9 }}>{day.calls_made}📞</Text>
+                      <Text fz={9} c="teal">{day.new_customers}👤</Text>
+                      <Text fz={9} c="blue">{day.calls_made}📞</Text>
                     </Stack>
                   )}
                 </Stack>
