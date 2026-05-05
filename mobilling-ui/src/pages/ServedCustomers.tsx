@@ -128,7 +128,7 @@ function CustomersTab({ can }: { can: (p: string) => boolean }) {
           <DatePickerInput
             size="xs" placeholder="Filter by date" clearable
             leftSection={<IconCalendar size={14} />}
-            value={dateFilter} onChange={v => setDateFilter(v ? new Date(v as any) : null)}
+            value={dateFilter} onChange={v => setDateFilter(v ? dayjs(v as any).format('YYYY-MM-DD') : null)}
             style={{ width: 160 }}
           />
           <TextInput
