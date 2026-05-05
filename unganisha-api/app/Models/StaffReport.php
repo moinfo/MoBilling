@@ -14,13 +14,14 @@ class StaffReport extends Model
     protected $fillable = [
         'user_id', 'report_type', 'period_date',
         'achievements', 'challenges', 'plans', 'notes',
-        'status', 'reviewed_by', 'reviewed_at', 'review_notes', 'rating',
+        'status', 'is_late', 'reviewed_by', 'reviewed_at', 'review_notes', 'rating',
     ];
 
     protected $casts = [
         'period_date' => 'date',
         'reviewed_at' => 'datetime',
         'rating'      => 'integer',
+        'is_late'     => 'boolean',
     ];
 
     public function user(): BelongsTo

@@ -12,7 +12,6 @@ import {
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
-  IconClipboardList,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -339,6 +338,15 @@ export default function AppLayout() {
               leftSection={<IconClipboardList size={18} />}
               active={isActive('/staff-reports')}
               onClick={() => navigateAndClose('/staff-reports')}
+            />
+          )}
+
+          {can('menu.staff_targets') && (
+            <NavLink
+              label="Staff Targets"
+              leftSection={<IconTargetArrow size={18} />}
+              active={isActive('/staff-targets')}
+              onClick={() => navigateAndClose('/staff-targets')}
             />
           )}
 

@@ -18,7 +18,7 @@ class User extends Authenticatable implements CanResetPasswordContract
 
     protected $fillable = [
         'tenant_id', 'name', 'email', 'password',
-        'phone', 'role', 'role_id', 'is_active',
+        'phone', 'role', 'role_id', 'is_active', 'supervisor_id',
     ];
 
     protected $hidden = [
@@ -47,6 +47,16 @@ class User extends Authenticatable implements CanResetPasswordContract
     public function role()
     {
         return $this->belongsTo(Role::class);
+    }
+
+    public function supervisor()
+    {
+        return $this->belongsTo(User::class, 'supervisor_id');
+    }
+
+    public function subordinates()
+    {
+        return $this->hasMany(User::class, 'supervisor_id');
     }
 
     /**

@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import {
   Title, Tabs, Stack, Group, Button, Badge, Text, Paper, ActionIcon,
   Textarea, Modal, Loader, Center, ThemeIcon, Select, Divider,
-  SegmentedControl, Avatar, ScrollArea,
+  SegmentedControl, Avatar, ScrollArea, RingProgress, SimpleGrid,
+  NumberInput, Alert,
 } from '@mantine/core';
-import { DatePickerInput, MonthPickerInput } from '@mantine/dates';
+import { DatePickerInput, MonthPickerInput, TimeInput } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,17 +14,21 @@ import { Rating } from '@mantine/core';
 import {
   IconPlus, IconEdit, IconTrash, IconCalendar, IconCheck,
   IconClipboardList, IconUsers, IconStar, IconAlertCircle,
+  IconSettings, IconChartBar, IconAlertTriangle, IconMoodHappy,
+  IconClock, IconTarget, IconTrendingUp,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 dayjs.extend(isoWeek);
 import {
   getReports, createReport, updateReport, deleteReport, reviewReport,
-  type StaffReport,
+  getDashboard, getSettings, updateSettings, getSupervisors, updateSupervisor,
+  type StaffReport, type ReportSettings, type MonthStats, type StaffStat,
+  type StaffWithSupervisor,
 } from '../api/staffReports';
 import { usePermissions } from '../hooks/usePermissions';
 
-// ── Config ───────────────────────────────────────────────────────────────────
+// ── Config ────────────────────────────────────────────────────────────────────
 
 const TYPE_CONFIG = {
   daily:   { color: 'blue',   label: 'Daily'   },
@@ -36,9 +41,14 @@ const STATUS_CONFIG = {
   reviewed:  { color: 'green',  label: 'Reviewed'       },
 } as const;
 
+const DAY_NAMES: Record<number, string> = {
+  1: 'Monday', 2: 'Tuesday', 3: 'Wednesday',
+  4: 'Thursday', 5: 'Friday', 6: 'Saturday', 7: 'Sunday',
+};
+
 type ReportType = 'daily' | 'weekly' | 'monthly';
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 function normalizePeriodDate(type: ReportType, date: Date): Date {
   const d = dayjs(date);
@@ -52,43 +62,364 @@ function weekRangeLabel(date: Date): string {
   return `${mon.format('D MMM')} – ${mon.add(6, 'day').format('D MMM YYYY')}`;
 }
 
-// ── Main page ────────────────────────────────────────────────────────────────
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function StaffReports() {
   const { can } = usePermissions();
 
+  // can see team reports if they can review (assigned subordinates) or view_all (everyone)
+  const canSeeTeam = can('staff_reports.review') || can('staff_reports.view_all');
+  // settings only for those who can manage reviews
+  const canManage  = can('staff_reports.review');
+
   return (
     <Stack>
       <Title order={2}>Staff Reports</Title>
-      <Tabs
-        defaultValue={can('staff_reports.submit') ? 'mine' : 'team'}
-        keepMounted={false}
-      >
+      <Tabs defaultValue="dashboard" keepMounted={false}>
         <Tabs.List>
+          <Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>
+            Dashboard
+          </Tabs.Tab>
           {can('staff_reports.submit') && (
             <Tabs.Tab value="mine" leftSection={<IconClipboardList size={15} />}>
               My Reports
             </Tabs.Tab>
           )}
-          {can('staff_reports.review') && (
+          {canSeeTeam && (
             <Tabs.Tab value="team" leftSection={<IconUsers size={15} />}>
               Team Reports
             </Tabs.Tab>
           )}
+          {canManage && (
+            <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>
+              Settings
+            </Tabs.Tab>
+          )}
         </Tabs.List>
+
+        <Tabs.Panel value="dashboard" pt="md">
+          <DashboardTab can={can} canSeeTeam={canSeeTeam} />
+        </Tabs.Panel>
 
         {can('staff_reports.submit') && (
           <Tabs.Panel value="mine" pt="md">
             <MyReportsTab can={can} />
           </Tabs.Panel>
         )}
-        {can('staff_reports.review') && (
+        {canSeeTeam && (
           <Tabs.Panel value="team" pt="md">
             <TeamReportsTab can={can} />
           </Tabs.Panel>
         )}
+        {canManage && (
+          <Tabs.Panel value="settings" pt="md">
+            <SettingsTab />
+          </Tabs.Panel>
+        )}
       </Tabs>
     </Stack>
+  );
+}
+
+// ── Dashboard Tab ─────────────────────────────────────────────────────────────
+
+function DashboardTab({ can, canSeeTeam }: { can: (p: string) => boolean; canSeeTeam: boolean }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['staff-reports-dashboard'],
+    queryFn:  getDashboard,
+  });
+
+  const dash = data?.data?.data;
+
+  if (isLoading) return <Center py="xl"><Loader /></Center>;
+  if (!dash)     return null;
+
+  const { this_month, recent_reviews, settings, team } = dash;
+  const month = dayjs().format('MMMM YYYY');
+  const isSupervisor = canSeeTeam;
+
+  return (
+    <Stack gap="lg">
+      {/* Supervisor: pending review alert */}
+      {isSupervisor && team && team.pending_review > 0 && (
+        <Alert
+          icon={<IconAlertCircle size={16} />}
+          color="orange"
+          title={`${team.pending_review} report${team.pending_review !== 1 ? 's' : ''} awaiting your review`}
+        >
+          Open the Team Reports tab to review and leave feedback on your team's submissions.
+        </Alert>
+      )}
+
+      {/* ── ADMIN: Team overview table ─────────────────────────────────────── */}
+      {isSupervisor && team && team.staff.length > 0 && (
+        <div>
+          <Group gap="xs" mb="sm">
+            <ThemeIcon size="sm" variant="light" color="blue" radius="xl">
+              <IconTrendingUp size={14} />
+            </ThemeIcon>
+            <Text size="sm" fw={700} tt="uppercase" c="dimmed">Team Overview — {month}</Text>
+          </Group>
+          <TeamStatsTable staff={team.staff} settings={settings} />
+        </div>
+      )}
+
+      {/* ── MY PROGRESS (always shown if user can submit) ─────────────────── */}
+      {can('staff_reports.submit') && (
+        <div>
+          <Text size="sm" fw={600} c="dimmed" mb="sm" tt="uppercase">
+            {isSupervisor ? 'My Progress' : month + ' Progress'}
+          </Text>
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+            <ProgressCard type="daily"   stats={this_month.daily}   settings={settings} />
+            <ProgressCard type="weekly"  stats={this_month.weekly}  settings={settings} />
+            <ProgressCard type="monthly" stats={this_month.monthly} settings={settings} />
+          </SimpleGrid>
+        </div>
+      )}
+
+      {/* Deadline info */}
+      <Paper withBorder p="sm" radius="md">
+        <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb="xs">Submission Deadlines</Text>
+        <Group gap="xl" wrap="wrap">
+          <DeadlineInfo label="Daily" value={`by ${settings.daily_deadline_time}`} color="blue" />
+          <DeadlineInfo
+            label="Weekly"
+            value={`${DAY_NAMES[settings.weekly_deadline_day]} by ${settings.weekly_deadline_time}`}
+            color="teal"
+          />
+          <DeadlineInfo
+            label="Monthly"
+            value={`Day ${settings.monthly_deadline_day} by ${settings.monthly_deadline_time}`}
+            color="violet"
+          />
+        </Group>
+      </Paper>
+
+      {/* Recent supervisor feedback (staff view) */}
+      {!isSupervisor && (
+        <>
+          {recent_reviews.length > 0 && (
+            <div>
+              <Text size="sm" fw={600} c="dimmed" mb="sm" tt="uppercase">Recent Feedback from Supervisor</Text>
+              <Stack gap="sm">
+                {recent_reviews.map(r => (
+                  <ReviewFeedbackCard key={r.id} report={r} />
+                ))}
+              </Stack>
+            </div>
+          )}
+          {recent_reviews.length === 0 && (
+            <Center py="md">
+              <Text c="dimmed" size="sm">No reviewed reports yet — submit reports to receive supervisor feedback.</Text>
+            </Center>
+          )}
+        </>
+      )}
+    </Stack>
+  );
+}
+
+function DeadlineInfo({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <Group gap="xs">
+      <Badge size="sm" color={color} variant="light">{label}</Badge>
+      <Group gap={4}>
+        <IconClock size={13} />
+        <Text size="xs">{value}</Text>
+      </Group>
+    </Group>
+  );
+}
+
+// ── Team Stats Table (supervisor dashboard) ───────────────────────────────────
+
+function TeamStatsTable({ staff, settings }: { staff: StaffStat[]; settings: ReportSettings }) {
+  return (
+    <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+              <th style={{ padding: '8px 12px', textAlign: 'left' }}>
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">Staff Member</Text>
+              </th>
+              {(['daily', 'weekly', 'monthly'] as const).map(type => (
+                <th key={type} style={{ padding: '8px 12px', textAlign: 'center' }}>
+                  <Badge size="xs" color={TYPE_CONFIG[type].color} variant="light">
+                    {TYPE_CONFIG[type].label}
+                  </Badge>
+                </th>
+              ))}
+              <th style={{ padding: '8px 12px', textAlign: 'center' }}>
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">Late</Text>
+              </th>
+              <th style={{ padding: '8px 12px', textAlign: 'center' }}>
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">Reviewed</Text>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {staff.map((row, i) => {
+              const totalLate     = row.daily.late + row.weekly.late + row.monthly.late;
+              const totalReviewed = row.daily.reviewed + row.weekly.reviewed + row.monthly.reviewed;
+              const totalSubmitted = row.daily.submitted + row.weekly.submitted + row.monthly.submitted;
+              return (
+                <tr key={row.user.id}
+                  style={{
+                    borderBottom: i < staff.length - 1 ? '1px solid var(--mantine-color-default-border)' : undefined,
+                    background: totalSubmitted === 0 ? 'var(--mantine-color-red-light)' : undefined,
+                  }}
+                >
+                  <td style={{ padding: '10px 12px' }}>
+                    <Group gap="xs" wrap="nowrap">
+                      <Avatar size="xs" radius="xl" color="blue">{row.user.name[0]}</Avatar>
+                      <Text size="sm" fw={500}>{row.user.name}</Text>
+                    </Group>
+                  </td>
+                  {(['daily', 'weekly', 'monthly'] as const).map(type => (
+                    <td key={type} style={{ padding: '10px 12px', textAlign: 'center' }}>
+                      <StatCell stat={row[type]} color={TYPE_CONFIG[type].color} />
+                    </td>
+                  ))}
+                  <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                    {totalLate > 0 ? (
+                      <Badge size="sm" color="red" variant="light">{totalLate}</Badge>
+                    ) : (
+                      <Text size="xs" c="dimmed">—</Text>
+                    )}
+                  </td>
+                  <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                    {totalReviewed > 0 ? (
+                      <Badge size="sm" color="green" variant="light">{totalReviewed}</Badge>
+                    ) : (
+                      <Text size="xs" c="dimmed">—</Text>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Paper>
+  );
+}
+
+function StatCell({ stat, color }: { stat: MonthStats; color: string }) {
+  const ratio = stat.target > 0 ? stat.submitted / stat.target : 0;
+  const cellColor = ratio >= 1 ? 'green' : ratio >= 0.6 ? color : ratio > 0 ? 'orange' : 'red';
+  const met = ratio >= 1;
+
+  return (
+    <Group gap={4} justify="center" wrap="nowrap">
+      <Text size="sm" fw={600} c={cellColor}>
+        {stat.submitted}/{stat.target}
+      </Text>
+      {met && (
+        <ThemeIcon size={14} color="green" variant="transparent">
+          <IconCheck size={11} />
+        </ThemeIcon>
+      )}
+    </Group>
+  );
+}
+
+function ProgressCard({ type, stats, settings }: {
+  type: ReportType; stats: MonthStats; settings: ReportSettings;
+}) {
+  const cfg    = TYPE_CONFIG[type];
+  const ratio  = stats.target > 0 ? stats.submitted / stats.target : 0;
+  const pct    = Math.min(ratio, 1) * 100;
+  const over   = stats.submitted > stats.target;
+
+  const deadlineLabel = type === 'daily'
+    ? `by ${settings.daily_deadline_time} daily`
+    : type === 'weekly'
+      ? `${DAY_NAMES[settings.weekly_deadline_day]} by ${settings.weekly_deadline_time}`
+      : `Day ${settings.monthly_deadline_day} by ${settings.monthly_deadline_time}`;
+
+  return (
+    <Paper withBorder p="md" radius="md">
+      <Group justify="space-between" align="flex-start" wrap="nowrap">
+        <Stack gap={2} style={{ flex: 1 }}>
+          <Badge size="sm" color={cfg.color} variant="light">{cfg.label}</Badge>
+          <Group gap={4} mt={4}>
+            <Text size="xl" fw={800} lh={1}>{stats.submitted}</Text>
+            <Text size="sm" c="dimmed" mt={4}>/ {stats.target}</Text>
+          </Group>
+          <Text size="xs" c="dimmed">target this month</Text>
+
+          <Group gap="xs" mt={6} wrap="wrap">
+            {stats.reviewed > 0 && (
+              <Group gap={3}>
+                <ThemeIcon size={14} color="green" variant="transparent">
+                  <IconCheck size={12} />
+                </ThemeIcon>
+                <Text size="xs" c="green">{stats.reviewed} reviewed</Text>
+              </Group>
+            )}
+            {stats.late > 0 && (
+              <Group gap={3}>
+                <ThemeIcon size={14} color="red" variant="transparent">
+                  <IconAlertTriangle size={12} />
+                </ThemeIcon>
+                <Text size="xs" c="red">{stats.late} late</Text>
+              </Group>
+            )}
+          </Group>
+
+          <Text size="xs" c="dimmed" mt={2}>{deadlineLabel}</Text>
+        </Stack>
+
+        <RingProgress
+          size={70}
+          thickness={7}
+          roundCaps
+          sections={[{
+            value: pct,
+            color: over ? 'green' : pct >= 75 ? cfg.color : pct >= 40 ? 'yellow' : 'red',
+          }]}
+          label={
+            <Text ta="center" size="xs" fw={700} c={over ? 'green' : 'dimmed'}>
+              {Math.round(pct)}%
+            </Text>
+          }
+        />
+      </Group>
+    </Paper>
+  );
+}
+
+// Card shown in Recent Feedback section of dashboard
+function ReviewFeedbackCard({ report: r }: { report: StaffReport }) {
+  const typeCfg = TYPE_CONFIG[r.report_type];
+  return (
+    <Paper withBorder p="sm" radius="md" style={{ borderLeft: '3px solid var(--mantine-color-green-5)' }}>
+      <Group justify="space-between" wrap="nowrap">
+        <Group gap="xs" wrap="nowrap">
+          <Badge size="sm" color={typeCfg.color} variant="light">{typeCfg.label}</Badge>
+          <Text size="sm" fw={600}>{r.period_label}</Text>
+        </Group>
+        <Group gap="xs" wrap="nowrap">
+          {r.rating && <Rating value={r.rating} readOnly size="xs" />}
+          <Text size="xs" c="dimmed">{dayjs(r.reviewed_at!).format('D MMM')}</Text>
+        </Group>
+      </Group>
+      {r.review_notes && (
+        <Text size="sm" c="dimmed" fs="italic" mt={6}>
+          <IconMoodHappy size={12} style={{ marginRight: 4, verticalAlign: 'middle' }} />
+          "{r.review_notes}"
+          <Text span size="xs" c="dimmed" ml={6}>— {r.reviewer?.name}</Text>
+        </Text>
+      )}
+      {!r.review_notes && (
+        <Group gap={4} mt={4}>
+          <ThemeIcon size={14} color="green" variant="transparent"><IconCheck size={12} /></ThemeIcon>
+          <Text size="xs" c="dimmed">Reviewed by {r.reviewer?.name} — no written feedback</Text>
+        </Group>
+      )}
+    </Paper>
   );
 }
 
@@ -110,6 +441,7 @@ function MyReportsTab({ can }: { can: (p: string) => boolean }) {
     mutationFn: deleteReport,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['staff-reports-mine'] });
+      qc.invalidateQueries({ queryKey: ['staff-reports-dashboard'] });
       notifications.show({ message: 'Report deleted.', color: 'green' });
     },
     onError: (err: any) => {
@@ -184,7 +516,10 @@ function MyReportsTab({ can }: { can: (p: string) => boolean }) {
       )}
 
       <ReportFormModal opened={modal} onClose={close} existing={editing}
-        onSaved={() => qc.invalidateQueries({ queryKey: ['staff-reports-mine'] })} />
+        onSaved={() => {
+          qc.invalidateQueries({ queryKey: ['staff-reports-mine'] });
+          qc.invalidateQueries({ queryKey: ['staff-reports-dashboard'] });
+        }} />
     </Stack>
   );
 }
@@ -278,21 +613,230 @@ function TeamReportsTab({ can }: { can: (p: string) => boolean }) {
       {reviewing && (
         <ReviewModal report={reviewing} opened={reviewModal}
           onClose={() => { closeReview(); setReviewing(null); }}
-          onSaved={() => qc.invalidateQueries({ queryKey: ['staff-reports-team'] })} />
+          onSaved={() => {
+            qc.invalidateQueries({ queryKey: ['staff-reports-team'] });
+            qc.invalidateQueries({ queryKey: ['staff-reports-dashboard'] });
+          }} />
       )}
     </Stack>
   );
 }
 
-// ── Shared Report Card ────────────────────────────────────────────────────────
+// ── Settings Tab ──────────────────────────────────────────────────────────────
+
+function SettingsTab() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['staff-report-settings'],
+    queryFn:  getSettings,
+  });
+  const settings = data?.data?.data;
+
+  const form = useForm<ReportSettings>({
+    initialValues: {
+      daily_target: 20, weekly_target: 4, monthly_target: 1,
+      daily_deadline_time: '18:00',
+      weekly_deadline_day: 5, weekly_deadline_time: '17:00',
+      monthly_deadline_day: 28, monthly_deadline_time: '17:00',
+    },
+  });
+
+  useEffect(() => {
+    if (settings) form.setValues(settings);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
+
+  const mutation = useMutation({
+    mutationFn: updateSettings,
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['staff-report-settings'] });
+      qc.invalidateQueries({ queryKey: ['staff-reports-dashboard'] });
+      form.setValues(res.data.data);
+      notifications.show({ message: 'Settings saved.', color: 'green' });
+    },
+    onError: () => notifications.show({ message: 'Failed to save settings.', color: 'red' }),
+  });
+
+  if (isLoading) return <Center py="xl"><Loader /></Center>;
+
+  return (
+    <Stack gap="xl">
+      {/* ── Targets + Deadlines ──────────────────────────────────────────── */}
+      <form onSubmit={form.onSubmit(v => mutation.mutate(v))}>
+        <Stack gap="lg" maw={560}>
+          <div>
+            <Group gap="xs" mb="xs">
+              <ThemeIcon size="sm" variant="light" color="blue" radius="xl">
+                <IconTarget size={14} />
+              </ThemeIcon>
+              <Text size="sm" fw={700}>Monthly Submission Targets</Text>
+            </Group>
+            <Text size="xs" c="dimmed" mb="sm">
+              How many reports of each type should staff submit per month.
+            </Text>
+            <SimpleGrid cols={3} spacing="sm">
+              <NumberInput label="Daily target" min={1} max={200}
+                {...form.getInputProps('daily_target')} />
+              <NumberInput label="Weekly target" min={1} max={50}
+                {...form.getInputProps('weekly_target')} />
+              <NumberInput label="Monthly target" min={1} max={12}
+                {...form.getInputProps('monthly_target')} />
+            </SimpleGrid>
+          </div>
+
+          <Divider />
+
+          <div>
+            <Group gap="xs" mb="xs">
+              <ThemeIcon size="sm" variant="light" color="orange" radius="xl">
+                <IconClock size={14} />
+              </ThemeIcon>
+              <Text size="sm" fw={700}>Submission Deadlines</Text>
+            </Group>
+            <Text size="xs" c="dimmed" mb="sm">
+              Reports submitted after these deadlines will be marked as late.
+            </Text>
+            <Stack gap="md">
+              <Paper withBorder p="sm" radius="md">
+                <Badge size="sm" color="blue" variant="light" mb="xs">Daily</Badge>
+                <Text size="xs" c="dimmed" mb="xs">Submit by this time on the same day.</Text>
+                <TimeInput label="Deadline time" leftSection={<IconClock size={14} />}
+                  {...form.getInputProps('daily_deadline_time')} style={{ maxWidth: 180 }} />
+              </Paper>
+
+              <Paper withBorder p="sm" radius="md">
+                <Badge size="sm" color="teal" variant="light" mb="xs">Weekly</Badge>
+                <Text size="xs" c="dimmed" mb="xs">Submit by this day and time within the report week (Mon–Sun).</Text>
+                <Group gap="sm" align="flex-end">
+                  <Select label="Deadline day"
+                    data={Object.entries(DAY_NAMES).map(([v, l]) => ({ value: String(v), label: l }))}
+                    value={String(form.values.weekly_deadline_day)}
+                    onChange={v => form.setFieldValue('weekly_deadline_day', Number(v))}
+                    style={{ width: 160 }} />
+                  <TimeInput label="Deadline time" leftSection={<IconClock size={14} />}
+                    {...form.getInputProps('weekly_deadline_time')} style={{ width: 160 }} />
+                </Group>
+              </Paper>
+
+              <Paper withBorder p="sm" radius="md">
+                <Badge size="sm" color="violet" variant="light" mb="xs">Monthly</Badge>
+                <Text size="xs" c="dimmed" mb="xs">Submit by day N of the same reporting month (1–28).</Text>
+                <Group gap="sm" align="flex-end">
+                  <NumberInput label="Deadline day" min={1} max={28}
+                    {...form.getInputProps('monthly_deadline_day')} style={{ width: 160 }} />
+                  <TimeInput label="Deadline time" leftSection={<IconClock size={14} />}
+                    {...form.getInputProps('monthly_deadline_time')} style={{ width: 160 }} />
+                </Group>
+              </Paper>
+            </Stack>
+          </div>
+
+          <Group>
+            <Button type="submit" loading={mutation.isPending}>Save Settings</Button>
+          </Group>
+        </Stack>
+      </form>
+
+      <Divider />
+
+      {/* ── Supervisor Assignments ───────────────────────────────────────── */}
+      <SupervisorAssignments />
+    </Stack>
+  );
+}
+
+// ── Supervisor Assignments (within Settings) ───────────────────────────────────
+
+function SupervisorAssignments() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['staff-supervisors'],
+    queryFn:  getSupervisors,
+  });
+  const staff: StaffWithSupervisor[] = data?.data?.data ?? [];
+
+  const mutation = useMutation({
+    mutationFn: ({ userId, supervisorId }: { userId: string; supervisorId: string | null }) =>
+      updateSupervisor(userId, supervisorId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['staff-supervisors'] });
+      notifications.show({ message: 'Supervisor updated.', color: 'green' });
+    },
+    onError: () => notifications.show({ message: 'Failed to update supervisor.', color: 'red' }),
+  });
+
+  // All users can be chosen as supervisor (any user in the tenant)
+  const supervisorOptions = staff.map(u => ({ value: u.id, label: u.name }));
+
+  return (
+    <div>
+      <Group gap="xs" mb="xs">
+        <ThemeIcon size="sm" variant="light" color="teal" radius="xl">
+          <IconUsers size={14} />
+        </ThemeIcon>
+        <Text size="sm" fw={700}>Staff Supervisor Assignments</Text>
+      </Group>
+      <Text size="xs" c="dimmed" mb="md">
+        Assign a supervisor to each staff member. Supervisors can review and track the reports of their assigned staff.
+      </Text>
+
+      {isLoading ? (
+        <Center py="md"><Loader size="sm" /></Center>
+      ) : (
+        <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
+          <Stack gap={0}>
+            {staff.map((member, i) => (
+              <Group
+                key={member.id}
+                justify="space-between"
+                p="sm"
+                style={{
+                  borderBottom: i < staff.length - 1 ? '1px solid var(--mantine-color-default-border)' : undefined,
+                }}
+              >
+                <Group gap="xs">
+                  <Avatar size="sm" radius="xl" color="blue">{member.name[0]}</Avatar>
+                  <Text size="sm" fw={500}>{member.name}</Text>
+                </Group>
+                <Select
+                  size="xs"
+                  placeholder="No supervisor"
+                  clearable
+                  searchable
+                  data={supervisorOptions.filter(o => o.value !== member.id)}
+                  value={member.supervisor?.id ?? null}
+                  onChange={v => mutation.mutate({ userId: member.id, supervisorId: v ?? null })}
+                  style={{ width: 220 }}
+                  disabled={mutation.isPending}
+                />
+              </Group>
+            ))}
+            {staff.length === 0 && (
+              <Center py="md">
+                <Text c="dimmed" size="sm">No staff members found.</Text>
+              </Center>
+            )}
+          </Stack>
+        </Paper>
+      )}
+    </div>
+  );
+}
+
+// ── Shared Report Card ─────────────────────────────────────────────────────────
 
 function ReportCard({ report: r, actions }: { report: StaffReport; actions?: React.ReactNode }) {
   const [expanded, setExpanded] = useState(false);
-  const typeCfg  = TYPE_CONFIG[r.report_type];
+  const typeCfg   = TYPE_CONFIG[r.report_type];
   const statusCfg = STATUS_CONFIG[r.status];
 
   return (
-    <Paper withBorder p="sm" radius="md" style={{ cursor: 'pointer' }}
+    <Paper withBorder p="sm" radius="md" style={{
+      cursor: 'pointer',
+      borderLeft: r.status === 'reviewed' ? '3px solid var(--mantine-color-green-5)' : undefined,
+    }}
       onClick={() => setExpanded(e => !e)}>
       <Stack gap="xs">
         {/* Header row */}
@@ -300,6 +844,11 @@ function ReportCard({ report: r, actions }: { report: StaffReport; actions?: Rea
           <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
             <Badge size="sm" color={typeCfg.color} variant="light">{typeCfg.label}</Badge>
             <Text size="sm" fw={600}>{r.period_label}</Text>
+            {r.is_late && (
+              <Badge size="xs" color="red" variant="light" leftSection={<IconAlertTriangle size={10} />}>
+                Late
+              </Badge>
+            )}
           </Group>
           <Group gap="xs" wrap="nowrap" onClick={e => e.stopPropagation()}>
             <Badge size="sm" color={statusCfg.color} variant="dot">{statusCfg.label}</Badge>
@@ -308,8 +857,28 @@ function ReportCard({ report: r, actions }: { report: StaffReport; actions?: Rea
           </Group>
         </Group>
 
+        {/* Reviewed: show feedback preview even when collapsed */}
+        {r.status === 'reviewed' && !expanded && r.review_notes && (
+          <Group gap="xs" mt={2}>
+            <ThemeIcon size={14} color="green" variant="transparent">
+              <IconCheck size={12} />
+            </ThemeIcon>
+            <Text size="xs" c="dimmed" fs="italic" lineClamp={1}>
+              "{r.review_notes}" — {r.reviewer?.name}
+            </Text>
+          </Group>
+        )}
+        {r.status === 'reviewed' && !expanded && !r.review_notes && (
+          <Group gap="xs" mt={2}>
+            <ThemeIcon size={14} color="green" variant="transparent">
+              <IconCheck size={12} />
+            </ThemeIcon>
+            <Text size="xs" c="dimmed">Reviewed by {r.reviewer?.name} · {dayjs(r.reviewed_at!).format('D MMM YYYY')}</Text>
+          </Group>
+        )}
+
         {/* Preview / expand */}
-        {r.achievements && !expanded && (
+        {r.achievements && !expanded && r.status !== 'reviewed' && (
           <Text size="xs" c="dimmed" lineClamp={2}>{r.achievements}</Text>
         )}
 
@@ -342,23 +911,27 @@ function ReportCard({ report: r, actions }: { report: StaffReport; actions?: Rea
 
             {r.status === 'reviewed' && (
               <>
-                <Divider label="Review" labelPosition="left" />
-                <Group gap="xs" align="flex-start">
-                  <ThemeIcon size="sm" variant="light" color="green" radius="xl">
-                    <IconCheck size={12} />
-                  </ThemeIcon>
-                  <Stack gap={2} style={{ flex: 1 }}>
-                    <Group gap="xs">
-                      <Text size="xs" c="dimmed">
-                        Reviewed by {r.reviewer?.name} · {dayjs(r.reviewed_at!).format('D MMM YYYY')}
-                      </Text>
-                      {r.rating && <Rating value={r.rating} readOnly size="xs" />}
-                    </Group>
-                    {r.review_notes && (
-                      <Text size="sm" fs="italic" c="dimmed">"{r.review_notes}"</Text>
-                    )}
-                  </Stack>
-                </Group>
+                <Divider label="Supervisor Review" labelPosition="left" />
+                <Paper withBorder p="sm" radius="sm" bg="green.0">
+                  <Group gap="xs" align="flex-start">
+                    <ThemeIcon size="sm" variant="light" color="green" radius="xl">
+                      <IconCheck size={12} />
+                    </ThemeIcon>
+                    <Stack gap={2} style={{ flex: 1 }}>
+                      <Group gap="xs">
+                        <Text size="xs" c="dimmed">
+                          Reviewed by <Text span fw={600}>{r.reviewer?.name}</Text> · {dayjs(r.reviewed_at!).format('D MMM YYYY HH:mm')}
+                        </Text>
+                        {r.rating && <Rating value={r.rating} readOnly size="xs" />}
+                      </Group>
+                      {r.review_notes ? (
+                        <Text size="sm" fs="italic">"{r.review_notes}"</Text>
+                      ) : (
+                        <Text size="xs" c="dimmed">No written feedback provided.</Text>
+                      )}
+                    </Stack>
+                  </Group>
+                </Paper>
               </>
             )}
 
@@ -378,6 +951,39 @@ function ReportFormModal({ opened, onClose, existing, onSaved }: {
 }) {
   const [reportType, setReportType] = useState<ReportType>(existing?.report_type ?? 'daily');
   const [periodDate, setPeriodDate] = useState<Date | null>(new Date());
+
+  const { data: settingsData } = useQuery({
+    queryKey: ['staff-report-settings'],
+    queryFn:  getSettings,
+  });
+  const settings = settingsData?.data?.data;
+
+  // Determine if current period + type is past deadline
+  const isDeadlinePassed = (): boolean => {
+    if (!settings || !periodDate) return false;
+    const now = new Date();
+    if (reportType === 'daily') {
+      const [h, m] = settings.daily_deadline_time.split(':').map(Number);
+      const deadline = new Date(periodDate);
+      deadline.setHours(h, m, 0, 0);
+      return now > deadline;
+    }
+    if (reportType === 'weekly') {
+      const mon = dayjs(periodDate).isoWeekday(1);
+      const [h, m] = settings.weekly_deadline_time.split(':').map(Number);
+      const deadline = mon.add(settings.weekly_deadline_day - 1, 'day').toDate();
+      deadline.setHours(h, m, 0, 0);
+      return now > deadline;
+    }
+    if (reportType === 'monthly') {
+      const [h, m] = settings.monthly_deadline_time.split(':').map(Number);
+      const deadline = new Date(dayjs(periodDate).startOf('month').toDate());
+      deadline.setDate(settings.monthly_deadline_day);
+      deadline.setHours(h, m, 0, 0);
+      return now > deadline;
+    }
+    return false;
+  };
 
   const form = useForm({
     initialValues: {
@@ -404,15 +1010,13 @@ function ReportFormModal({ opened, onClose, existing, onSaved }: {
         });
       } else {
         const today = new Date();
-        setPeriodDate(reportType === 'weekly' ? normalizePeriodDate('weekly', today)
-          : reportType === 'monthly' ? normalizePeriodDate('monthly', today) : today);
+        setPeriodDate(normalizePeriodDate(reportType, today));
         form.reset();
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, existing?.id]);
 
-  // Reset period when type changes (new report only)
   useEffect(() => {
     if (!existing) {
       const today = new Date();
@@ -451,13 +1055,14 @@ function ReportFormModal({ opened, onClose, existing, onSaved }: {
     },
   });
 
+  const deadlinePassed = !existing && isDeadlinePassed();
+
   return (
     <Modal opened={opened} onClose={onClose}
       title={existing ? 'Edit Report' : 'Submit Report'}
       centered size="lg" scrollAreaComponent={ScrollArea.Autosize}>
       <form onSubmit={form.onSubmit(v => mutation.mutate(v))}>
         <Stack gap="md">
-          {/* Type + period — locked when editing */}
           {!existing && (
             <Stack gap="sm">
               <div>
@@ -492,6 +1097,12 @@ function ReportFormModal({ opened, onClose, existing, onSaved }: {
                     : undefined}
                   required
                 />
+              )}
+
+              {deadlinePassed && (
+                <Alert icon={<IconAlertTriangle size={14} />} color="orange" py="xs">
+                  The submission deadline for this period has passed. This report will be marked as late.
+                </Alert>
               )}
             </Stack>
           )}
@@ -542,8 +1153,9 @@ function ReportFormModal({ opened, onClose, existing, onSaved }: {
 
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button type="submit" loading={mutation.isPending}>
-              {existing ? 'Update' : 'Submit Report'}
+            <Button type="submit" loading={mutation.isPending}
+              color={deadlinePassed ? 'orange' : undefined}>
+              {existing ? 'Update' : deadlinePassed ? 'Submit (Late)' : 'Submit Report'}
             </Button>
           </Group>
         </Stack>
@@ -552,7 +1164,7 @@ function ReportFormModal({ opened, onClose, existing, onSaved }: {
   );
 }
 
-// ── Review Modal ──────────────────────────────────────────────────────────────
+// ── Review Modal ───────────────────────────────────────────────────────────────
 
 function ReviewModal({ report, opened, onClose, onSaved }: {
   report: StaffReport; opened: boolean; onClose: () => void; onSaved: () => void;
@@ -595,11 +1207,13 @@ function ReviewModal({ report, opened, onClose, onSaved }: {
         <Group gap="xs">
           <Badge color={typeCfg.color} variant="light">{typeCfg.label}</Badge>
           <Text fw={600}>{report.user.name} · {report.period_label}</Text>
+          {report.is_late && (
+            <Badge size="xs" color="red" variant="light">Late</Badge>
+          )}
         </Group>
       }
       centered size="lg" scrollAreaComponent={ScrollArea.Autosize}>
       <Stack gap="md">
-        {/* Report content — read only */}
         <ScrollArea.Autosize mah={320}>
           <Stack gap="sm">
             {report.achievements && (
