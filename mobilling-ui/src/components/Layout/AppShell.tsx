@@ -332,6 +332,24 @@ export default function AppLayout() {
             />
           )}
 
+          {can('menu.staff_reports') && (
+            <NavLink
+              label="Staff Reports"
+              leftSection={<IconClipboardList size={18} />}
+              active={isActive('/staff-reports')}
+              onClick={() => navigateAndClose('/staff-reports')}
+            />
+          )}
+
+          {can('menu.staff_targets') && (
+            <NavLink
+              label="Staff Targets"
+              leftSection={<IconTargetArrow size={18} />}
+              active={isActive('/staff-targets')}
+              onClick={() => navigateAndClose('/staff-targets')}
+            />
+          )}
+
           {can('menu.subscription') && (
             <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
               active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />

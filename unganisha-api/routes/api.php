@@ -461,6 +461,27 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:served.read')->get('/served/weekly-summary', [\App\Http\Controllers\ServedCustomersController::class, 'weeklyTargetSummary']);
     Route::middleware('permission:served.read')->get('/served/report', [\App\Http\Controllers\ServedCustomersController::class, 'report']);
 
+    // ── Staff Reports ────────────────────────────────────────────────────────
+    Route::get('/staff-reports/dashboard',               [\App\Http\Controllers\StaffReportsController::class, 'dashboard']);
+    Route::get('/staff-reports/settings',                [\App\Http\Controllers\StaffReportSettingsController::class, 'show']);
+    Route::put('/staff-reports/settings',                [\App\Http\Controllers\StaffReportSettingsController::class, 'update']);
+    Route::get('/staff-reports/supervisors',             [\App\Http\Controllers\StaffSupervisorController::class, 'index']);
+    Route::put('/staff-reports/supervisors/{userId}',    [\App\Http\Controllers\StaffSupervisorController::class, 'update']);
+    Route::get('/staff-reports',                         [\App\Http\Controllers\StaffReportsController::class, 'index']);
+    Route::post('/staff-reports',                        [\App\Http\Controllers\StaffReportsController::class, 'store']);
+    Route::put('/staff-reports/{staffReport}',           [\App\Http\Controllers\StaffReportsController::class, 'update']);
+    Route::delete('/staff-reports/{staffReport}',        [\App\Http\Controllers\StaffReportsController::class, 'destroy']);
+    Route::post('/staff-reports/{staffReport}/review',   [\App\Http\Controllers\StaffReportsController::class, 'review']);
+
+    // ── Staff Targets & Commission ────────────────────────────────────────────
+    Route::get('/staff-targets/summary',                          [\App\Http\Controllers\StaffTargetsController::class, 'summary']);
+    Route::get('/staff-targets',                                  [\App\Http\Controllers\StaffTargetsController::class, 'index']);
+    Route::post('/staff-targets',                                 [\App\Http\Controllers\StaffTargetsController::class, 'store']);
+    Route::put('/staff-targets/{staffTarget}',                    [\App\Http\Controllers\StaffTargetsController::class, 'update']);
+    Route::delete('/staff-targets/{staffTarget}',                 [\App\Http\Controllers\StaffTargetsController::class, 'destroy']);
+    Route::post('/staff-targets/{staffTarget}/self-report',       [\App\Http\Controllers\StaffTargetsController::class, 'selfReport']);
+    Route::post('/staff-targets/{staffTarget}/verify',            [\App\Http\Controllers\StaffTargetsController::class, 'verify']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/clients/{client}/portal-users', [ClientPortalUserController::class, 'index']);

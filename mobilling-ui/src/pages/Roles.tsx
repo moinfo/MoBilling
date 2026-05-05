@@ -33,7 +33,12 @@ const menuGroupOrder = ['Navigation', 'Billing', 'Statutory', 'Expenses', 'Other
 
 // Order individual permissions within each menu group to match sidebar item order
 const menuPermOrder: Record<string, string[]> = {
-  Navigation: ['menu.dashboard', 'menu.collection', 'menu.followups', 'menu.satisfaction_calls'],
+  Navigation: [
+    'menu.dashboard', 'menu.collection', 'menu.followups',
+    'menu.satisfaction_calls', 'menu.whatsapp', 'menu.field_marketing',
+    'menu.social_media', 'menu.served_customers',
+    'menu.staff_reports', 'menu.staff_targets',
+  ],
   Billing: ['menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills'],
   Statutory: ['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out'],
   Expenses: ['menu.expense_categories', 'menu.expenses'],
