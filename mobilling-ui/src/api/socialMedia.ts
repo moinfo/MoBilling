@@ -50,7 +50,7 @@ export type ContentStatus = 'pending' | 'ready';
 export type PostStatus    = 'planned' | 'designing' | 'content_ready' | 'partial_posted' | 'posted';
 
 export interface PlatformRow {
-  platform:  Platform;
+  platform:  string;
   posted:    boolean;
   posted_at: string | null;
   post_url:  string | null;
@@ -72,7 +72,7 @@ export interface SocialPost {
   design_status:      DesignStatus;
   content_status:     ContentStatus;
   status:             PostStatus;
-  platforms:          Record<Platform, PlatformRow>;
+  platforms:          Record<string, PlatformRow | undefined>;
   created_at:         string;
 }
 
@@ -127,7 +127,7 @@ export const updateDesign = (id: string, data: { design_status: DesignStatus; de
 export const updateContent = (id: string, data: { content_status: ContentStatus; caption?: string; hashtags?: string }) =>
   api.patch<{ data: SocialPost }>(`/social/posts/${id}/content`, data);
 
-export const togglePlatform = (id: string, platform: Platform, data: { posted: boolean; post_url?: string }) =>
+export const togglePlatform = (id: string, platform: string, data: { posted: boolean; post_url?: string }) =>
   api.patch<{ data: SocialPost }>(`/social/posts/${id}/platform/${platform}`, data);
 
 // Targets

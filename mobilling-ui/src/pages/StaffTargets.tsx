@@ -20,6 +20,7 @@ import {
   getTargets, createTarget, updateTarget, deleteTarget,
   selfReportTarget, verifyTarget, getCommissionSummary,
   type StaffTarget, type TargetCriterion, type CriterionType, type CommissionType,
+  type CommissionSummaryEntry,
 } from '../api/staffTargets';
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
@@ -115,7 +116,7 @@ export default function StaffTargets() {
         )}
         {canViewTeam && (
           <Tabs.Panel value="team" pt="md">
-            <TeamTargetsTab can={can} canManage={canManage} canVerify={canVerify} />
+            <TeamTargetsTab canManage={canManage} canVerify={canVerify} />
           </Tabs.Panel>
         )}
         {canViewTeam && (
@@ -402,8 +403,8 @@ function MyTargetsTab({ can }: { can: (p: string) => boolean }) {
 
 // ── Team Targets Tab ───────────────────────────────────────────────────────────
 
-function TeamTargetsTab({ can, canManage, canVerify }: {
-  can: (p: string) => boolean; canManage: boolean; canVerify: boolean;
+function TeamTargetsTab({ canManage, canVerify }: {
+  canManage: boolean; canVerify: boolean;
 }) {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
@@ -507,9 +508,9 @@ function TeamTargetsTab({ can, canManage, canVerify }: {
 function CommissionSummaryTab() {
   const { data, isLoading } = useQuery({
     queryKey: ['staff-commission-summary'],
-    queryFn: getCommissionSummary,
+    queryFn: () => getCommissionSummary(),
   });
-  const entries = data?.data?.data ?? [];
+  const entries: CommissionSummaryEntry[] = data?.data?.data ?? [];
   const totalNet       = entries.reduce((s, e) => s + e.total_commission, 0);
   const totalDeduction = entries.reduce((s, e) => s + e.salary_deductions, 0);
 
@@ -606,8 +607,6 @@ function TargetCard({ target: t, actions }: { target: StaffTarget; actions?: Rea
   const statusCfg  = STATUS_CONFIG[t.status];
   const totalCrit  = t.criteria.length;
   const metCrit    = t.criteria.filter(c => c.goal_met).length;
-  const groupBonus = groupBonusPotential(t);
-
   return (
     <Paper withBorder p="sm" radius="md"
       style={{
@@ -1155,7 +1154,9 @@ function TargetFormModal({ opened, onClose, existing, onSaved }: {
               </div>
             )}
             <DatePickerInput type="range" label="Period" placeholder="Start – End"
-              value={periodDates} onChange={setPeriodDates} required />
+              value={periodDates}
+              onChange={(v) => setPeriodDates([v[0] ? new Date(v[0] as any) : null, v[1] ? new Date(v[1] as any) : null])}
+              required />
           </SimpleGrid>
 
           <TextInput label="Title" placeholder="e.g. May 2026 Sales Target"
