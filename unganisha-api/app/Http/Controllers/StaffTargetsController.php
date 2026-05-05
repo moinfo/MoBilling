@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\StaffTarget;
 use App\Models\StaffTargetCriterion;
 use App\Models\User;
+use App\Notifications\StaffTargetAssignedNotification;
+use App\Notifications\StaffTargetSelfReportedNotification;
+use App\Notifications\StaffTargetVerifiedNotification;
 use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
 
@@ -88,7 +91,12 @@ class StaffTargetsController extends Controller
             ]);
         }
 
-        return response()->json(['data' => $this->format($target->load(['user', 'assignedBy', 'criteria']))], 201);
+        $target->load(['user', 'assignedBy', 'criteria']);
+
+        // Notify the assigned staff member
+        $targetUser->notify(new StaffTargetAssignedNotification($targetUser->tenant, $target));
+
+        return response()->json(['data' => $this->format($target)], 201);
     }
 
     // ── Update (admin edits target while still active) ────────────────────────
@@ -183,8 +191,15 @@ class StaffTargetsController extends Controller
         }
 
         $staffTarget->update(['status' => 'self_reported']);
+        $staffTarget->load(['user', 'assignedBy', 'criteria']);
 
-        return response()->json(['data' => $this->format($staffTarget->load(['user', 'assignedBy', 'criteria']))]);
+        // Notify supervisor that self-report needs verification
+        $supervisor = $staffTarget->user->supervisor;
+        if ($supervisor) {
+            $supervisor->notify(new StaffTargetSelfReportedNotification($staffTarget->user->tenant, $staffTarget));
+        }
+
+        return response()->json(['data' => $this->format($staffTarget)]);
     }
 
     // ── Verify: supervisor confirms values and calculates commission ───────────
@@ -226,7 +241,14 @@ class StaffTargetsController extends Controller
             'verified_at'      => now(),
         ]);
 
-        return response()->json(['data' => $this->format($staffTarget->load(['user', 'assignedBy', 'verifiedBy', 'criteria']))]);
+        $staffTarget->load(['user', 'assignedBy', 'verifiedBy', 'criteria']);
+
+        // Notify staff member of verification result with commission details
+        $staffTarget->user->notify(
+            new StaffTargetVerifiedNotification($staffTarget->user->tenant, $staffTarget)
+        );
+
+        return response()->json(['data' => $this->format($staffTarget)]);
     }
 
     // ── Commission summary ────────────────────────────────────────────────────
