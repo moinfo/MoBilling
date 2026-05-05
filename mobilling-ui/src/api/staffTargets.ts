@@ -1,6 +1,6 @@
 import api from './axios';
 
-export type CriterionType = 'customer_count' | 'revenue' | 'item_sales' | 'custom';
+export type CriterionType  = 'customer_count' | 'revenue' | 'item_sales' | 'custom';
 export type CommissionType = 'none' | 'fixed' | 'percentage';
 export type TargetStatus   = 'active' | 'self_reported' | 'verified' | 'cancelled';
 
@@ -30,16 +30,33 @@ export interface StaffTarget {
   supervisor_notes: string | null;
   verified_by:      { id: string; name: string } | null;
   verified_at:      string | null;
-  total_commission: number;
-  criteria:         TargetCriterion[];
-  created_at:       string;
+  // Group bonus
+  group_commission_type:   CommissionType;
+  group_commission_value:  number | null;
+  group_commission_earned: number | null;
+  all_goals_met:           boolean | null;
+  // Salary & penalty
+  staff_salary:            number | null;
+  deduct_on_failure:       boolean;
+  salary_deduction_earned: number | null;
+  // Totals
+  gross_commission:  number;
+  total_commission:  number;
+  criteria:          TargetCriterion[];
+  created_at:        string;
 }
 
 export interface CommissionSummaryEntry {
-  user:             { id: string; name: string };
-  total_commission: number;
-  targets_count:    number;
-  targets:          { id: string; title: string; period: string; commission_earned: number }[];
+  user:              { id: string; name: string };
+  gross_commission:  number;
+  salary_deductions: number;
+  total_commission:  number;
+  targets_count:     number;
+  targets:           {
+    id: string; title: string; period: string;
+    commission_earned: number;
+    salary_deduction:  number;
+  }[];
 }
 
 export const getTargets = (params?: { user_id?: string; status?: string }) =>
@@ -48,6 +65,8 @@ export const getTargets = (params?: { user_id?: string; status?: string }) =>
 export const createTarget = (data: {
   user_id: string; title: string; description?: string;
   period_start: string; period_end: string;
+  group_commission_type?: CommissionType; group_commission_value?: number;
+  staff_salary?: number; deduct_on_failure?: boolean;
   criteria: {
     type: CriterionType; label: string; unit?: string; goal_value: number;
     commission_type: CommissionType; commission_value?: number;
@@ -57,6 +76,8 @@ export const createTarget = (data: {
 export const updateTarget = (id: string, data: {
   title?: string; description?: string;
   period_start?: string; period_end?: string;
+  group_commission_type?: CommissionType; group_commission_value?: number;
+  staff_salary?: number; deduct_on_failure?: boolean;
   criteria?: {
     type: CriterionType; label: string; unit?: string; goal_value: number;
     commission_type: CommissionType; commission_value?: number;
