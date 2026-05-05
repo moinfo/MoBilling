@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\StaffReport;
 use App\Models\StaffReportSettings;
+use App\Notifications\StaffReportReviewedNotification;
+use App\Notifications\StaffReportSubmittedNotification;
 use App\Traits\AuthorizesPermissions;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -73,7 +75,15 @@ class StaffReportsController extends Controller
         }
 
         $report = StaffReport::create($data);
-        return response()->json(['data' => $this->format($report->load(['user', 'reviewer']))], 201);
+        $report->load(['user', 'reviewer']);
+
+        // Notify supervisor of the new submission
+        $supervisor = $report->user->supervisor;
+        if ($supervisor) {
+            $supervisor->notify(new StaffReportSubmittedNotification($report->user->tenant, $report));
+        }
+
+        return response()->json(['data' => $this->format($report)], 201);
     }
 
     public function update(Request $request, StaffReport $staffReport)
@@ -130,7 +140,14 @@ class StaffReportsController extends Controller
             'review_notes' => $data['review_notes'] ?? null,
         ]);
 
-        return response()->json(['data' => $this->format($staffReport->load(['user', 'reviewer']))]);
+        $staffReport->load(['user', 'reviewer']);
+
+        // Notify the staff member that their report was reviewed
+        $staffReport->user->notify(
+            new StaffReportReviewedNotification($staffReport->user->tenant, $staffReport)
+        );
+
+        return response()->json(['data' => $this->format($staffReport)]);
     }
 
     public function dashboard()

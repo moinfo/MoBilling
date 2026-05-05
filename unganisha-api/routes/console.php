@@ -10,3 +10,4 @@ Schedule::command('invoices:process-overdue')->dailyAt('08:30')->withoutOverlapp
 Schedule::command('bills:generate-recurring')->dailyAt('09:00')->withoutOverlapping();
 Schedule::command('subscriptions:suspend-unpaid')->dailyAt('09:30')->withoutOverlapping();
 Schedule::command('satisfaction-calls:schedule')->dailyAt('07:15')->withoutOverlapping();
+Schedule::command('staff-reports:send-reminders')->dailyAt('09:45')->withoutOverlapping();

@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\StaffTarget;
 use App\Models\StaffTargetCriterion;
 use App\Models\User;
+use App\Notifications\StaffTargetAssignedNotification;
+use App\Notifications\StaffTargetSelfReportedNotification;
+use App\Notifications\StaffTargetVerifiedNotification;
 use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
 
@@ -24,7 +27,6 @@ class StaffTargetsController extends Controller
             ->orderBy('created_at', 'desc');
 
         if ($user->hasPermission('staff_targets.manage') || $user->hasPermission('staff_targets.verify')) {
-            // Supervisors/managers see their assigned subordinates (or all with view_all)
             if (!$user->hasPermission('staff_reports.view_all')) {
                 $subordinateIds = User::where('tenant_id', $user->tenant_id)
                     ->where('supervisor_id', $user->id)
@@ -50,30 +52,37 @@ class StaffTargetsController extends Controller
         $user = auth()->user();
 
         $data = $request->validate([
-            'user_id'              => 'required|uuid',
-            'title'                => 'required|string|max:255',
-            'description'          => 'nullable|string|max:2000',
-            'period_start'         => 'required|date',
-            'period_end'           => 'required|date|after_or_equal:period_start',
-            'criteria'             => 'required|array|min:1',
-            'criteria.*.type'      => 'required|in:customer_count,revenue,item_sales,custom',
-            'criteria.*.label'     => 'required|string|max:255',
-            'criteria.*.unit'      => 'nullable|string|max:50',
-            'criteria.*.goal_value'       => 'required|numeric|min:0',
-            'criteria.*.commission_type'  => 'required|in:none,fixed,percentage',
-            'criteria.*.commission_value' => 'nullable|numeric|min:0',
+            'user_id'                => 'required|uuid',
+            'title'                  => 'required|string|max:255',
+            'description'            => 'nullable|string|max:2000',
+            'period_start'           => 'required|date',
+            'period_end'             => 'required|date|after_or_equal:period_start',
+            'group_commission_type'  => 'nullable|in:none,fixed,percentage',
+            'group_commission_value' => 'nullable|numeric|min:0',
+            'staff_salary'           => 'nullable|numeric|min:0',
+            'deduct_on_failure'      => 'nullable|boolean',
+            'criteria'               => 'required|array|min:1',
+            'criteria.*.type'        => 'required|in:customer_count,revenue,item_sales,custom',
+            'criteria.*.label'       => 'required|string|max:255',
+            'criteria.*.unit'        => 'nullable|string|max:50',
+            'criteria.*.goal_value'        => 'required|numeric|min:0',
+            'criteria.*.commission_type'   => 'required|in:none,fixed,percentage',
+            'criteria.*.commission_value'  => 'nullable|numeric|min:0',
         ]);
 
-        // Ensure target staff belongs to this tenant
         $targetUser = User::where('tenant_id', $user->tenant_id)->findOrFail($data['user_id']);
 
         $target = StaffTarget::create([
-            'user_id'      => $targetUser->id,
-            'assigned_by'  => $user->id,
-            'title'        => $data['title'],
-            'description'  => $data['description'] ?? null,
-            'period_start' => $data['period_start'],
-            'period_end'   => $data['period_end'],
+            'user_id'               => $targetUser->id,
+            'assigned_by'           => $user->id,
+            'title'                 => $data['title'],
+            'description'           => $data['description'] ?? null,
+            'period_start'          => $data['period_start'],
+            'period_end'            => $data['period_end'],
+            'group_commission_type' => $data['group_commission_type'] ?? 'none',
+            'group_commission_value'=> $data['group_commission_value'] ?? null,
+            'staff_salary'          => $data['staff_salary'] ?? null,
+            'deduct_on_failure'     => $data['deduct_on_failure'] ?? false,
         ]);
 
         foreach ($data['criteria'] as $c) {
@@ -88,10 +97,14 @@ class StaffTargetsController extends Controller
             ]);
         }
 
-        return response()->json(['data' => $this->format($target->load(['user', 'assignedBy', 'criteria']))], 201);
+        $target->load(['user', 'assignedBy', 'criteria']);
+
+        $targetUser->notify(new StaffTargetAssignedNotification($targetUser->tenant, $target));
+
+        return response()->json(['data' => $this->format($target)], 201);
     }
 
-    // ── Update (admin edits target while still active) ────────────────────────
+    // ── Update ────────────────────────────────────────────────────────────────
 
     public function update(Request $request, StaffTarget $staffTarget)
     {
@@ -102,25 +115,39 @@ class StaffTargetsController extends Controller
         }
 
         $data = $request->validate([
-            'title'       => 'sometimes|string|max:255',
-            'description' => 'nullable|string|max:2000',
-            'period_start'=> 'sometimes|date',
-            'period_end'  => 'sometimes|date',
-            'criteria'    => 'sometimes|array|min:1',
-            'criteria.*.type'             => 'required_with:criteria|in:customer_count,revenue,item_sales,custom',
-            'criteria.*.label'            => 'required_with:criteria|string|max:255',
-            'criteria.*.unit'             => 'nullable|string|max:50',
-            'criteria.*.goal_value'       => 'required_with:criteria|numeric|min:0',
-            'criteria.*.commission_type'  => 'required_with:criteria|in:none,fixed,percentage',
-            'criteria.*.commission_value' => 'nullable|numeric|min:0',
+            'title'                  => 'sometimes|string|max:255',
+            'description'            => 'nullable|string|max:2000',
+            'period_start'           => 'sometimes|date',
+            'period_end'             => 'sometimes|date',
+            'group_commission_type'  => 'nullable|in:none,fixed,percentage',
+            'group_commission_value' => 'nullable|numeric|min:0',
+            'staff_salary'           => 'nullable|numeric|min:0',
+            'deduct_on_failure'      => 'nullable|boolean',
+            'criteria'               => 'sometimes|array|min:1',
+            'criteria.*.type'        => 'required_with:criteria|in:customer_count,revenue,item_sales,custom',
+            'criteria.*.label'       => 'required_with:criteria|string|max:255',
+            'criteria.*.unit'        => 'nullable|string|max:50',
+            'criteria.*.goal_value'        => 'required_with:criteria|numeric|min:0',
+            'criteria.*.commission_type'   => 'required_with:criteria|in:none,fixed,percentage',
+            'criteria.*.commission_value'  => 'nullable|numeric|min:0',
         ]);
 
-        $staffTarget->update(array_filter([
-            'title'        => $data['title']       ?? null,
-            'description'  => $data['description'] ?? null,
-            'period_start' => $data['period_start']?? null,
-            'period_end'   => $data['period_end']  ?? null,
-        ], fn ($v) => $v !== null));
+        $patch = array_filter([
+            'title'                 => $data['title']        ?? null,
+            'description'           => $data['description']  ?? null,
+            'period_start'          => $data['period_start'] ?? null,
+            'period_end'            => $data['period_end']   ?? null,
+            'group_commission_type' => $data['group_commission_type']  ?? null,
+            'group_commission_value'=> $data['group_commission_value'] ?? null,
+            'staff_salary'          => $data['staff_salary']           ?? null,
+            'deduct_on_failure'     => $data['deduct_on_failure']      ?? null,
+        ], fn ($v) => $v !== null);
+
+        if (isset($data['deduct_on_failure'])) {
+            $patch['deduct_on_failure'] = $data['deduct_on_failure'];
+        }
+
+        $staffTarget->update($patch);
 
         if (!empty($data['criteria'])) {
             $staffTarget->criteria()->delete();
@@ -154,7 +181,7 @@ class StaffTargetsController extends Controller
         return response()->json(null, 204);
     }
 
-    // ── Self-report: staff enters achieved values ─────────────────────────────
+    // ── Self-report ───────────────────────────────────────────────────────────
 
     public function selfReport(Request $request, StaffTarget $staffTarget)
     {
@@ -170,10 +197,9 @@ class StaffTargetsController extends Controller
         }
 
         $data = $request->validate([
-            'criteria'             => 'required|array',
-            'criteria.*.id'        => 'required|uuid',
-            'criteria.*.achieved_value' => 'required|numeric|min:0',
-            'notes'                => 'nullable|string|max:2000',
+            'criteria'                   => 'required|array',
+            'criteria.*.id'              => 'required|uuid',
+            'criteria.*.achieved_value'  => 'required|numeric|min:0',
         ]);
 
         foreach ($data['criteria'] as $entry) {
@@ -183,11 +209,17 @@ class StaffTargetsController extends Controller
         }
 
         $staffTarget->update(['status' => 'self_reported']);
+        $staffTarget->load(['user', 'assignedBy', 'criteria']);
 
-        return response()->json(['data' => $this->format($staffTarget->load(['user', 'assignedBy', 'criteria']))]);
+        $supervisor = $staffTarget->user->supervisor;
+        if ($supervisor) {
+            $supervisor->notify(new StaffTargetSelfReportedNotification($staffTarget->user->tenant, $staffTarget));
+        }
+
+        return response()->json(['data' => $this->format($staffTarget)]);
     }
 
-    // ── Verify: supervisor confirms values and calculates commission ───────────
+    // ── Verify ────────────────────────────────────────────────────────────────
 
     public function verify(Request $request, StaffTarget $staffTarget)
     {
@@ -198,10 +230,10 @@ class StaffTargetsController extends Controller
         }
 
         $data = $request->validate([
-            'criteria'                   => 'required|array',
-            'criteria.*.id'              => 'required|uuid',
-            'criteria.*.verified_value'  => 'required|numeric|min:0',
-            'supervisor_notes'           => 'nullable|string|max:2000',
+            'criteria'                  => 'required|array',
+            'criteria.*.id'             => 'required|uuid',
+            'criteria.*.verified_value' => 'required|numeric|min:0',
+            'supervisor_notes'          => 'nullable|string|max:2000',
         ]);
 
         foreach ($data['criteria'] as $entry) {
@@ -209,24 +241,50 @@ class StaffTargetsController extends Controller
                 ->where('id', $entry['id'])
                 ->firstOrFail();
 
-            $verified  = (float) $entry['verified_value'];
-            $goalMet   = $verified >= $criterion->goal_value;
+            $verified = (float) $entry['verified_value'];
+            $goalMet  = $verified >= $criterion->goal_value;
             $criterion->update([
-                'verified_value'   => $verified,
-                'goal_met'         => $goalMet,
-                'commission_earned'=> $criterion->fill(['verified_value' => $verified, 'goal_met' => $goalMet])
-                                                ->calculateCommission(),
+                'verified_value'    => $verified,
+                'goal_met'          => $goalMet,
+                'commission_earned' => $criterion->fill(['verified_value' => $verified, 'goal_met' => $goalMet])
+                                                  ->calculateCommission(),
             ]);
         }
 
+        // Reload criteria to check all-goals-met after updates
+        $staffTarget->load('criteria');
+        $allGoalsMet = $staffTarget->criteria->every(fn ($c) => $c->goal_met === true);
+
+        // Group bonus (fires only when ALL goals met)
+        $groupCommissionEarned = 0.0;
+        if ($staffTarget->group_commission_type !== 'none' && $allGoalsMet) {
+            $groupCommissionEarned = $staffTarget->group_commission_type === 'fixed'
+                ? (float) ($staffTarget->group_commission_value ?? 0)
+                : round((float) ($staffTarget->group_commission_value ?? 0) / 100 * (float) ($staffTarget->staff_salary ?? 0), 2);
+        }
+
+        // Salary deduction (fires when any goal is missed)
+        $salaryDeductionEarned = 0.0;
+        if (!$allGoalsMet && $staffTarget->deduct_on_failure && $staffTarget->staff_salary) {
+            $salaryDeductionEarned = round((float) $staffTarget->staff_salary / 2, 2);
+        }
+
         $staffTarget->update([
-            'status'           => 'verified',
-            'supervisor_notes' => $data['supervisor_notes'] ?? null,
-            'verified_by'      => auth()->id(),
-            'verified_at'      => now(),
+            'status'                  => 'verified',
+            'supervisor_notes'        => $data['supervisor_notes'] ?? null,
+            'verified_by'             => auth()->id(),
+            'verified_at'             => now(),
+            'group_commission_earned' => $groupCommissionEarned,
+            'salary_deduction_earned' => $salaryDeductionEarned,
         ]);
 
-        return response()->json(['data' => $this->format($staffTarget->load(['user', 'assignedBy', 'verifiedBy', 'criteria']))]);
+        $staffTarget->load(['user', 'assignedBy', 'verifiedBy', 'criteria']);
+
+        $staffTarget->user->notify(
+            new StaffTargetVerifiedNotification($staffTarget->user->tenant, $staffTarget)
+        );
+
+        return response()->json(['data' => $this->format($staffTarget)]);
     }
 
     // ── Commission summary ────────────────────────────────────────────────────
@@ -254,11 +312,12 @@ class StaffTargetsController extends Controller
 
         $targets = $query->get();
 
-        // Group commission totals per user
         $grouped = $targets->groupBy('user_id')->map(function ($userTargets) {
             $u = User::find($userTargets->first()->user_id);
             return [
                 'user'              => ['id' => $u->id, 'name' => $u->name],
+                'gross_commission'  => $userTargets->sum(fn ($t) => $t->grossCommission()),
+                'salary_deductions' => $userTargets->sum(fn ($t) => (float) ($t->salary_deduction_earned ?? 0)),
                 'total_commission'  => $userTargets->sum(fn ($t) => $t->totalCommissionEarned()),
                 'targets_count'     => $userTargets->count(),
                 'targets'           => $userTargets->map(fn ($t) => [
@@ -266,6 +325,7 @@ class StaffTargetsController extends Controller
                     'title'            => $t->title,
                     'period'           => $t->period_start->format('d M') . ' – ' . $t->period_end->format('d M Y'),
                     'commission_earned'=> $t->totalCommissionEarned(),
+                    'salary_deduction' => (float) ($t->salary_deduction_earned ?? 0),
                 ]),
             ];
         })->values();
@@ -279,7 +339,7 @@ class StaffTargetsController extends Controller
     {
         return match ($type) {
             'customer_count' => 'customers',
-            'revenue'        => 'KES',
+            'revenue'        => 'units',
             'item_sales'     => 'units',
             default          => 'units',
         };
@@ -287,6 +347,10 @@ class StaffTargetsController extends Controller
 
     private function format(StaffTarget $t): array
     {
+        $allGoalsMet = $t->status === 'verified'
+            ? $t->criteria->every(fn ($c) => $c->goal_met === true)
+            : null;
+
         return [
             'id'               => $t->id,
             'user'             => ['id' => $t->user->id, 'name' => $t->user->name],
@@ -299,8 +363,17 @@ class StaffTargetsController extends Controller
             'supervisor_notes' => $t->supervisor_notes,
             'verified_by'      => $t->verifiedBy ? ['id' => $t->verifiedBy->id, 'name' => $t->verifiedBy->name] : null,
             'verified_at'      => $t->verified_at?->toISOString(),
-            'total_commission' => $t->totalCommissionEarned(),
-            'criteria'         => $t->criteria->map(fn ($c) => [
+            // Commission fields
+            'group_commission_type'   => $t->group_commission_type,
+            'group_commission_value'  => $t->group_commission_value,
+            'group_commission_earned' => $t->group_commission_earned,
+            'staff_salary'            => $t->staff_salary,
+            'deduct_on_failure'       => (bool) $t->deduct_on_failure,
+            'salary_deduction_earned' => $t->salary_deduction_earned,
+            'all_goals_met'           => $allGoalsMet,
+            'gross_commission'        => $t->grossCommission(),
+            'total_commission'        => $t->totalCommissionEarned(),
+            'criteria'                => $t->criteria->map(fn ($c) => [
                 'id'               => $c->id,
                 'type'             => $c->type,
                 'label'            => $c->label,
