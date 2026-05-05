@@ -461,6 +461,13 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:served.read')->get('/served/weekly-summary', [\App\Http\Controllers\ServedCustomersController::class, 'weeklyTargetSummary']);
     Route::middleware('permission:served.read')->get('/served/report', [\App\Http\Controllers\ServedCustomersController::class, 'report']);
 
+    // ── Staff Reports ────────────────────────────────────────────────────────
+    Route::get('/staff-reports',                        [\App\Http\Controllers\StaffReportsController::class, 'index']);
+    Route::post('/staff-reports',                       [\App\Http\Controllers\StaffReportsController::class, 'store']);
+    Route::put('/staff-reports/{staffReport}',          [\App\Http\Controllers\StaffReportsController::class, 'update']);
+    Route::delete('/staff-reports/{staffReport}',       [\App\Http\Controllers\StaffReportsController::class, 'destroy']);
+    Route::post('/staff-reports/{staffReport}/review',  [\App\Http\Controllers\StaffReportsController::class, 'review']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/clients/{client}/portal-users', [ClientPortalUserController::class, 'index']);
