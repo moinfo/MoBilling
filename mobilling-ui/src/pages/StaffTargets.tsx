@@ -200,85 +200,36 @@ function ManagedTargetsTab({ targets }: { targets: StaffTarget[] }) {
         </Paper>
       </SimpleGrid>
 
+      <Text size="xs" c="dimmed">Click any target to expand goals, progress, and commission breakdown.</Text>
       <Stack gap="sm">
-        {targets.map(t => {
-          const goalsMet = t.criteria.filter(c => c.goal_met === true).length;
-          const totalCriteria = t.criteria.length;
-          const allMet = totalCriteria > 0 && goalsMet === totalCriteria;
-          const cfg = STATUS_CONFIG[t.status];
-          return (
-            <Paper key={t.id} withBorder p="sm" radius="md">
-              <Group justify="space-between" wrap="nowrap" mb="xs">
-                <div>
-                  <Group gap="xs">
-                    <Text fw={600}>{t.title}</Text>
-                    <Badge size="xs" color={cfg.color}>{cfg.label}</Badge>
-                  </Group>
-                  <Text size="xs" c="dimmed">
-                    Staff: {t.user.name} · {dayjs(t.period_start).format('D MMM')} – {dayjs(t.period_end).format('D MMM YYYY')}
-                  </Text>
-                </div>
-                <Stack gap={2} align="flex-end">
-                  {t.manager_commission_type !== 'none' && (
-                    <Text size="xs" c="dimmed">
-                      Your commission: {t.manager_commission_type === 'fixed'
-                        ? `${formatCurrency(t.manager_commission_value ?? 0)} (fixed)`
-                        : `${t.manager_commission_value}% of gross`}
-                    </Text>
-                  )}
-                  {t.status === 'verified' && (t.manager_commission_earned ?? 0) > 0 && (
-                    <Badge color="green" variant="filled">
-                      Earned {formatCurrency(t.manager_commission_earned!)}
-                    </Badge>
-                  )}
-                  {t.status === 'verified' && (t.manager_commission_earned ?? 0) === 0 && t.manager_commission_type !== 'none' && (
-                    <Badge color="gray">Not earned</Badge>
-                  )}
-                </Stack>
+        {targets.map(t => (
+          <TargetCard key={t.id} target={t}
+            actions={
+              <Group gap={4} wrap="nowrap">
+                {t.manager_commission_type !== 'none' && (
+                  <Badge size="xs" variant="light" color="violet">
+                    Your override: {t.manager_commission_type === 'fixed'
+                      ? formatCurrency(t.manager_commission_value ?? 0)
+                      : `${t.manager_commission_value}%`}
+                  </Badge>
+                )}
+                {t.status === 'verified' && (t.manager_commission_earned ?? 0) > 0 && (
+                  <Badge size="xs" color="green" variant="filled">
+                    Earned {formatCurrency(t.manager_commission_earned!)}
+                  </Badge>
+                )}
+                {t.status === 'verified' && (t.manager_commission_earned ?? 0) === 0 && t.manager_commission_type !== 'none' && (
+                  <Badge size="xs" color="gray">Not earned</Badge>
+                )}
               </Group>
-              {totalCriteria > 0 && (
-                <Group gap="xs" wrap="nowrap" mb="xs">
-                  <Progress value={(goalsMet / totalCriteria) * 100} size="sm" style={{ flex: 1 }}
-                    color={allMet ? 'green' : t.status === 'verified' ? 'orange' : 'blue'} />
-                  <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
-                    {goalsMet}/{totalCriteria} goals
-                  </Text>
-                </Group>
-              )}
-              {/* Staff commission breakdown — visible to manager */}
-              {t.status === 'verified' && (
-                <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs">
-                  <div>
-                    <Text size="xs" c="dimmed">Staff gross</Text>
-                    <Text size="sm" fw={500}>{formatCurrency(t.gross_commission)}</Text>
-                  </div>
-                  {(t.salary_deduction_earned ?? 0) > 0 && (
-                    <div>
-                      <Text size="xs" c="dimmed">Salary deduction</Text>
-                      <Text size="sm" fw={500} c="red">−{formatCurrency(t.salary_deduction_earned!)}</Text>
-                    </div>
-                  )}
-                  <div>
-                    <Text size="xs" c="dimmed">Staff total</Text>
-                    <Text size="sm" fw={500} c={t.total_commission > 0 ? 'green' : undefined}>
-                      {formatCurrency(t.total_commission)}
-                    </Text>
-                  </div>
-                  <div>
-                    <Text size="xs" c="dimmed">Your override</Text>
-                    <Text size="sm" fw={500} c={(t.manager_commission_earned ?? 0) > 0 ? 'green' : 'dimmed'}>
-                      {formatCurrency(t.manager_commission_earned ?? 0)}
-                    </Text>
-                  </div>
-                </SimpleGrid>
-              )}
-            </Paper>
-          );
-        })}
+            }
+          />
+        ))}
       </Stack>
     </Stack>
   );
 }
+
 
 // ── Dashboard Tab ──────────────────────────────────────────────────────────────
 
