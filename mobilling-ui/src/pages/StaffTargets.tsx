@@ -237,13 +237,40 @@ function ManagedTargetsTab({ targets }: { targets: StaffTarget[] }) {
                 </Stack>
               </Group>
               {totalCriteria > 0 && (
-                <Group gap="xs" wrap="nowrap">
+                <Group gap="xs" wrap="nowrap" mb="xs">
                   <Progress value={(goalsMet / totalCriteria) * 100} size="sm" style={{ flex: 1 }}
                     color={allMet ? 'green' : t.status === 'verified' ? 'orange' : 'blue'} />
                   <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
                     {goalsMet}/{totalCriteria} goals
                   </Text>
                 </Group>
+              )}
+              {/* Staff commission breakdown — visible to manager */}
+              {t.status === 'verified' && (
+                <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="xs">
+                  <div>
+                    <Text size="xs" c="dimmed">Staff gross</Text>
+                    <Text size="sm" fw={500}>{formatCurrency(t.gross_commission)}</Text>
+                  </div>
+                  {(t.salary_deduction_earned ?? 0) > 0 && (
+                    <div>
+                      <Text size="xs" c="dimmed">Salary deduction</Text>
+                      <Text size="sm" fw={500} c="red">−{formatCurrency(t.salary_deduction_earned!)}</Text>
+                    </div>
+                  )}
+                  <div>
+                    <Text size="xs" c="dimmed">Staff total</Text>
+                    <Text size="sm" fw={500} c={t.total_commission > 0 ? 'green' : undefined}>
+                      {formatCurrency(t.total_commission)}
+                    </Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed">Your override</Text>
+                    <Text size="sm" fw={500} c={(t.manager_commission_earned ?? 0) > 0 ? 'green' : 'dimmed'}>
+                      {formatCurrency(t.manager_commission_earned ?? 0)}
+                    </Text>
+                  </div>
+                </SimpleGrid>
               )}
             </Paper>
           );
@@ -268,6 +295,12 @@ function DashboardTab() {
   const activeTargets   = targets.filter(t => t.status === 'active' || t.status === 'self_reported');
   const verifiedTargets = targets.filter(t => t.status === 'verified');
 
+  // Distinct managers across the user's active targets
+  const managersByTarget = activeTargets.filter(t => t.manager).map(t => ({
+    target_title: t.title,
+    manager: t.manager!,
+  }));
+
   const totalEarned    = verifiedTargets.reduce((s, t) => s + t.total_commission, 0);
   const totalDeducted  = verifiedTargets.reduce((s, t) => s + (t.salary_deduction_earned ?? 0), 0);
 
@@ -291,6 +324,44 @@ function DashboardTab() {
           <StatCard label="Deductions" value={formatCurrency(totalDeducted)} color="red" icon={<IconAlertTriangle size={18} />} />
         )}
       </SimpleGrid>
+
+      {/* Your team — supervisor + per-target managers */}
+      {(user?.supervisor || managersByTarget.length > 0) && (
+        <Paper withBorder p="sm" radius="md">
+          <Group gap="xs" mb="xs">
+            <ThemeIcon size="sm" variant="light" color="blue" radius="xl">
+              <IconUsers size={14} />
+            </ThemeIcon>
+            <Text fw={600} size="sm">Your team</Text>
+          </Group>
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+            {user?.supervisor && (
+              <div>
+                <Text size="xs" c="dimmed">Supervisor</Text>
+                <Text size="sm" fw={500}>{user.supervisor.name}</Text>
+                {user.supervisor.email && (
+                  <Text size="xs" c="dimmed">{user.supervisor.email}</Text>
+                )}
+              </div>
+            )}
+            {managersByTarget.length > 0 && (
+              <div>
+                <Text size="xs" c="dimmed">
+                  {managersByTarget.length === 1 ? 'Target manager' : 'Target managers'}
+                </Text>
+                <Stack gap={2}>
+                  {managersByTarget.map((m, i) => (
+                    <Text key={i} size="sm">
+                      <Text span fw={500}>{m.manager.name}</Text>
+                      <Text span c="dimmed" size="xs"> — {m.target_title}</Text>
+                    </Text>
+                  ))}
+                </Stack>
+              </div>
+            )}
+          </SimpleGrid>
+        </Paper>
+      )}
 
       {/* Active targets progress */}
       {activeTargets.length > 0 && (

@@ -8,6 +8,8 @@ export interface User {
   role: 'super_admin' | 'admin' | 'user';
   role_id: string | null;
   is_active: boolean;
+  supervisor_id?: string | null;
+  supervisor?: { id: string; name: string; email: string | null } | null;
   tenant?: {
     id: string;
     name: string;

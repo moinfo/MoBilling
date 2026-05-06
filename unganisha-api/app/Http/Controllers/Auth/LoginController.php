@@ -211,6 +211,9 @@ class LoginController extends Controller
         if ($user->role_id) {
             $user->load('role.permissions');
         }
+        if ($user->supervisor_id) {
+            $user->load('supervisor:id,name,email');
+        }
 
         $response = [
             'user' => $user,
