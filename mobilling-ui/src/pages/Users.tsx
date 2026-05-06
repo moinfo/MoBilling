@@ -63,9 +63,13 @@ export default function Users() {
 
   const loginAsMutation = useMutation({
     mutationFn: async (user: TenantUser) => {
-      // Super-admin impersonating within a tenant uses the admin endpoint.
-      // Tenant admins use the regular tenant-scoped endpoint.
-      const res = isImpersonating
+      // Real super-admin (with own session) uses the admin endpoint.
+      // Anyone else — tenant admin in their own session, or a super-admin
+      // who has already impersonated a tenant admin — uses the tenant
+      // endpoint, since `auth()->user()` server-side is no longer the
+      // super admin once impersonation has begun.
+      const isRealSuperAdmin = currentUser?.role === 'super_admin' && !isImpersonating;
+      const res = isRealSuperAdmin
         ? await impersonateUser(currentUser!.tenant!.id, user.id)
         : await impersonateUserAsTenantAdmin(user.id);
       const { user: impUser, token, subscription_status, days_remaining } = res.data;
