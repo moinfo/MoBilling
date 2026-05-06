@@ -70,7 +70,7 @@ export interface CommissionSummaryEntry {
   }[];
 }
 
-export const getTargets = (params?: { user_id?: string; status?: string }) =>
+export const getTargets = (params?: { user_id?: string; status?: string; managed_only?: boolean }) =>
   api.get<{ data: StaffTarget[] }>('/staff-targets', { params });
 
 export const createTarget = (data: {

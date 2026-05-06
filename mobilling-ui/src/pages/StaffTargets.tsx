@@ -85,6 +85,15 @@ export default function StaffTargets() {
   const canViewTeam = canManage || canVerify || can('staff_reports.view_all');
   const canSubmit  = can('staff_targets.submit');
 
+  // Show "Managed Targets" tab only if the user is a manager on at least one target
+  const { data: managedData } = useQuery({
+    queryKey: ['staff-targets-managed'],
+    queryFn: () => getTargets({ managed_only: true }),
+    enabled: canSubmit,
+  });
+  const managedTargets: StaffTarget[] = managedData?.data?.data ?? [];
+  const hasManagedTargets = managedTargets.length > 0;
+
   return (
     <Stack>
       <Title order={2}>Staff Targets & Commission</Title>
@@ -95,6 +104,9 @@ export default function StaffTargets() {
           )}
           {canSubmit && (
             <Tabs.Tab value="mine" leftSection={<IconTarget size={15} />}>My Targets</Tabs.Tab>
+          )}
+          {hasManagedTargets && (
+            <Tabs.Tab value="managed" leftSection={<IconClipboardCheck size={15} />}>Managed Targets</Tabs.Tab>
           )}
           {canViewTeam && (
             <Tabs.Tab value="team" leftSection={<IconUsers size={15} />}>Team Targets</Tabs.Tab>
@@ -114,6 +126,11 @@ export default function StaffTargets() {
             <MyTargetsTab can={can} />
           </Tabs.Panel>
         )}
+        {hasManagedTargets && (
+          <Tabs.Panel value="managed" pt="md">
+            <ManagedTargetsTab targets={managedTargets} />
+          </Tabs.Panel>
+        )}
         {canViewTeam && (
           <Tabs.Panel value="team" pt="md">
             <TeamTargetsTab canManage={canManage} canVerify={canVerify} />
@@ -125,6 +142,90 @@ export default function StaffTargets() {
           </Tabs.Panel>
         )}
       </Tabs>
+    </Stack>
+  );
+}
+
+// ── Managed Targets Tab ────────────────────────────────────────────────────────
+
+function ManagedTargetsTab({ targets }: { targets: StaffTarget[] }) {
+  const totalEarned = targets
+    .filter(t => t.status === 'verified')
+    .reduce((sum, t) => sum + (t.manager_commission_earned ?? 0), 0);
+  const verifiedCount = targets.filter(t => t.status === 'verified').length;
+  const activeCount   = targets.filter(t => t.status === 'active' || t.status === 'self_reported').length;
+
+  return (
+    <Stack>
+      <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+        <Paper withBorder p="sm" radius="md">
+          <Text size="xs" c="dimmed">Targets you manage</Text>
+          <Text size="xl" fw={700}>{targets.length}</Text>
+          <Text size="xs" c="dimmed">{activeCount} active · {verifiedCount} verified</Text>
+        </Paper>
+        <Paper withBorder p="sm" radius="md">
+          <Text size="xs" c="dimmed">Manager commission earned</Text>
+          <Text size="xl" fw={700} c={totalEarned > 0 ? 'green' : undefined}>
+            {formatCurrency(totalEarned)}
+          </Text>
+          <Text size="xs" c="dimmed">From verified targets only</Text>
+        </Paper>
+        <Paper withBorder p="sm" radius="md">
+          <Text size="xs" c="dimmed">Pending verification</Text>
+          <Text size="xl" fw={700}>{activeCount}</Text>
+          <Text size="xs" c="dimmed">Will be calculated on verify</Text>
+        </Paper>
+      </SimpleGrid>
+
+      <Stack gap="sm">
+        {targets.map(t => {
+          const goalsMet = t.criteria.filter(c => c.goal_met === true).length;
+          const totalCriteria = t.criteria.length;
+          const allMet = totalCriteria > 0 && goalsMet === totalCriteria;
+          const cfg = STATUS_CONFIG[t.status];
+          return (
+            <Paper key={t.id} withBorder p="sm" radius="md">
+              <Group justify="space-between" wrap="nowrap" mb="xs">
+                <div>
+                  <Group gap="xs">
+                    <Text fw={600}>{t.title}</Text>
+                    <Badge size="xs" color={cfg.color}>{cfg.label}</Badge>
+                  </Group>
+                  <Text size="xs" c="dimmed">
+                    Staff: {t.user.name} · {dayjs(t.period_start).format('D MMM')} – {dayjs(t.period_end).format('D MMM YYYY')}
+                  </Text>
+                </div>
+                <Stack gap={2} align="flex-end">
+                  {t.manager_commission_type !== 'none' && (
+                    <Text size="xs" c="dimmed">
+                      Your commission: {t.manager_commission_type === 'fixed'
+                        ? `${formatCurrency(t.manager_commission_value ?? 0)} (fixed)`
+                        : `${t.manager_commission_value}% of gross`}
+                    </Text>
+                  )}
+                  {t.status === 'verified' && (t.manager_commission_earned ?? 0) > 0 && (
+                    <Badge color="green" variant="filled">
+                      Earned {formatCurrency(t.manager_commission_earned!)}
+                    </Badge>
+                  )}
+                  {t.status === 'verified' && (t.manager_commission_earned ?? 0) === 0 && t.manager_commission_type !== 'none' && (
+                    <Badge color="gray">Not earned</Badge>
+                  )}
+                </Stack>
+              </Group>
+              {totalCriteria > 0 && (
+                <Group gap="xs" wrap="nowrap">
+                  <Progress value={(goalsMet / totalCriteria) * 100} size="sm" style={{ flex: 1 }}
+                    color={allMet ? 'green' : t.status === 'verified' ? 'orange' : 'blue'} />
+                  <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+                    {goalsMet}/{totalCriteria} goals
+                  </Text>
+                </Group>
+              )}
+            </Paper>
+          );
+        })}
+      </Stack>
     </Stack>
   );
 }

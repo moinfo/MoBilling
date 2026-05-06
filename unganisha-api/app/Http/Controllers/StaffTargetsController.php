@@ -25,7 +25,7 @@ class StaffTargetsController extends Controller
         $this->authorizePermission('staff_targets.submit');
         $user = auth()->user();
 
-        $query = StaffTarget::with(['user', 'assignedBy', 'verifiedBy', 'criteria'])
+        $query = StaffTarget::with(['user', 'assignedBy', 'verifiedBy', 'manager', 'criteria'])
             ->orderBy('period_start', 'desc')
             ->orderBy('created_at', 'desc');
 
@@ -34,15 +34,25 @@ class StaffTargetsController extends Controller
                 $subordinateIds = User::where('tenant_id', $user->tenant_id)
                     ->where('supervisor_id', $user->id)
                     ->pluck('id')
-                    ->push($user->id);
-                $query->whereIn('user_id', $subordinateIds);
+                    ->push($user->id)
+                    ->all();
+                $query->where(function ($q) use ($subordinateIds, $user) {
+                    $q->whereIn('user_id', $subordinateIds)
+                      ->orWhere('manager_id', $user->id);
+                });
             }
         } else {
-            $query->where('user_id', $user->id);
+            $query->where(function ($q) use ($user) {
+                $q->where('user_id', $user->id)
+                  ->orWhere('manager_id', $user->id);
+            });
         }
 
         if ($request->user_id) $query->where('user_id', $request->user_id);
         if ($request->status)  $query->where('status', $request->status);
+        if ($request->boolean('managed_only')) {
+            $query->where('manager_id', $user->id);
+        }
 
         return response()->json(['data' => $query->get()->map(fn ($t) => $this->format($t))]);
     }
