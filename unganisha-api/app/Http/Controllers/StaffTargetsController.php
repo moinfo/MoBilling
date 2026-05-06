@@ -6,6 +6,7 @@ use App\Models\StaffTarget;
 use App\Models\StaffTargetCriterion;
 use App\Models\User;
 use App\Notifications\StaffTargetAssignedNotification;
+use App\Notifications\StaffTargetAssignedSupervisorNotification;
 use App\Notifications\StaffTargetSelfReportedNotification;
 use App\Notifications\StaffTargetVerifiedNotification;
 use App\Traits\AuthorizesPermissions;
@@ -97,9 +98,14 @@ class StaffTargetsController extends Controller
             ]);
         }
 
-        $target->load(['user', 'assignedBy', 'criteria']);
+        $target->load(['user.supervisor', 'assignedBy', 'criteria']);
 
         $targetUser->notify(new StaffTargetAssignedNotification($targetUser->tenant, $target));
+
+        $supervisor = $targetUser->supervisor;
+        if ($supervisor && $supervisor->id !== $targetUser->id) {
+            $supervisor->notify(new StaffTargetAssignedSupervisorNotification($targetUser->tenant, $target));
+        }
 
         return response()->json(['data' => $this->format($target)], 201);
     }

@@ -10,7 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class StaffTargetAssignedNotification extends Notification implements ShouldQueue
+class StaffTargetAssignedSupervisorNotification extends Notification implements ShouldQueue
 {
     use Queueable, HasTenantBranding;
 
@@ -21,26 +21,21 @@ class StaffTargetAssignedNotification extends Notification implements ShouldQueu
 
     public function via($notifiable): array
     {
-        $channels = ['database'];
-
-        if ($this->tenant->email_enabled && $this->tenant->reminder_email_enabled) {
-            $channels[] = 'mail';
-        }
-
-        return $channels;
+        return ['database'];
     }
 
     public function toMail($notifiable): MailMessage
     {
-        $assignedBy  = $this->target->assignedBy->name;
-        $periodStart = $this->target->period_start->format('d M Y');
-        $periodEnd   = $this->target->period_end->format('d M Y');
+        $staffName     = $this->target->user->name;
+        $assignedBy    = $this->target->assignedBy->name;
+        $periodStart   = $this->target->period_start->format('d M Y');
+        $periodEnd     = $this->target->period_end->format('d M Y');
         $criteriaCount = $this->target->criteria->count();
 
         $mail = (new MailMessage)
-            ->subject("New target assigned: {$this->target->title} — {$this->tenant->name}")
+            ->subject("Target assigned to {$staffName}: {$this->target->title} — {$this->tenant->name}")
             ->greeting("Hi {$notifiable->name},")
-            ->line("{$assignedBy} has assigned you a new target: **{$this->target->title}**.")
+            ->line("{$assignedBy} has assigned a new target to **{$staffName}**: **{$this->target->title}**.")
             ->line("Period: **{$periodStart}** to **{$periodEnd}**")
             ->line("This target has **{$criteriaCount}** criterion/criteria to achieve.");
 
@@ -49,12 +44,7 @@ class StaffTargetAssignedNotification extends Notification implements ShouldQueu
         }
 
         $mail->action('View Target', url('/staff-targets'))
-             ->line('Good luck — you can do it!');
-
-        $supervisor = $notifiable->supervisor;
-        if ($supervisor && $supervisor->id !== $notifiable->id && filter_var($supervisor->email, FILTER_VALIDATE_EMAIL)) {
-            $mail->cc($supervisor->email, $supervisor->name);
-        }
+             ->line("You will be notified when {$staffName} self-reports their progress for verification.");
 
         $this->applyBranding($mail, $this->tenant);
 
@@ -63,10 +53,12 @@ class StaffTargetAssignedNotification extends Notification implements ShouldQueu
 
     public function toArray($notifiable): array
     {
+        $staffName = $this->target->user->name;
+
         return [
-            'type'      => 'staff_target_assigned',
-            'title'     => 'New target assigned',
-            'message'   => "You have been assigned a new target: {$this->target->title}.",
+            'type'      => 'staff_target_assigned_supervisor',
+            'title'     => 'Target assigned to your staff',
+            'message'   => "{$staffName} has been assigned a new target: {$this->target->title}.",
             'target_id' => $this->target->id,
             'url'       => '/staff-targets',
         ];
