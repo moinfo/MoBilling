@@ -85,14 +85,15 @@ export default function StaffTargets() {
   const canViewTeam = canManage || canVerify || can('staff_reports.view_all');
   const canSubmit  = can('staff_targets.submit');
 
-  // Show "Managed Targets" tab only if the user is a manager on at least one target
+  // Show "Managed Targets" tab when the user manages at least one target,
+  // OR for admins (canManage) so they can see the feature without waiting for assignment.
   const { data: managedData } = useQuery({
     queryKey: ['staff-targets-managed'],
     queryFn: () => getTargets({ managed_only: true }),
     enabled: canSubmit,
   });
   const managedTargets: StaffTarget[] = managedData?.data?.data ?? [];
-  const hasManagedTargets = managedTargets.length > 0;
+  const showManagedTab = canManage || managedTargets.length > 0;
 
   return (
     <Stack>
@@ -105,7 +106,7 @@ export default function StaffTargets() {
           {canSubmit && (
             <Tabs.Tab value="mine" leftSection={<IconTarget size={15} />}>My Targets</Tabs.Tab>
           )}
-          {hasManagedTargets && (
+          {showManagedTab && (
             <Tabs.Tab value="managed" leftSection={<IconClipboardCheck size={15} />}>Managed Targets</Tabs.Tab>
           )}
           {canViewTeam && (
@@ -126,7 +127,7 @@ export default function StaffTargets() {
             <MyTargetsTab can={can} />
           </Tabs.Panel>
         )}
-        {hasManagedTargets && (
+        {showManagedTab && (
           <Tabs.Panel value="managed" pt="md">
             <ManagedTargetsTab targets={managedTargets} />
           </Tabs.Panel>
@@ -149,6 +150,28 @@ export default function StaffTargets() {
 // ── Managed Targets Tab ────────────────────────────────────────────────────────
 
 function ManagedTargetsTab({ targets }: { targets: StaffTarget[] }) {
+  if (targets.length === 0) {
+    return (
+      <Paper withBorder p="xl" radius="md">
+        <Stack align="center" gap="xs">
+          <ThemeIcon size="xl" radius="xl" variant="light" color="gray">
+            <IconClipboardCheck size={24} />
+          </ThemeIcon>
+          <Text fw={600}>You aren't managing any targets yet</Text>
+          <Text size="sm" c="dimmed" ta="center" maw={520}>
+            When someone assigns you as a manager on a target (in the
+            "Manager / Team-Lead Commission" section), it will appear here
+            with your override commission and the staff's progress.
+          </Text>
+          <Text size="xs" c="dimmed" ta="center" maw={520}>
+            To assign yourself or another colleague as manager: open
+            "Team Targets" → edit a target → set the Manager field.
+          </Text>
+        </Stack>
+      </Paper>
+    );
+  }
+
   const totalEarned = targets
     .filter(t => t.status === 'verified')
     .reduce((sum, t) => sum + (t.manager_commission_earned ?? 0), 0);
