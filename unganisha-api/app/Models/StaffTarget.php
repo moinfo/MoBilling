@@ -18,6 +18,7 @@ class StaffTarget extends Model
         'supervisor_notes', 'verified_by', 'verified_at',
         'group_commission_type', 'group_commission_value', 'group_commission_earned',
         'staff_salary', 'deduct_on_failure', 'salary_deduction_earned',
+        'manager_id', 'manager_commission_type', 'manager_commission_value', 'manager_commission_earned',
     ];
 
     protected $casts = [
@@ -29,11 +30,14 @@ class StaffTarget extends Model
         'group_commission_earned'=> 'float',
         'staff_salary'          => 'float',
         'salary_deduction_earned'=> 'float',
+        'manager_commission_value'  => 'float',
+        'manager_commission_earned' => 'float',
     ];
 
     public function user(): BelongsTo       { return $this->belongsTo(User::class); }
     public function assignedBy(): BelongsTo { return $this->belongsTo(User::class, 'assigned_by'); }
     public function verifiedBy(): BelongsTo { return $this->belongsTo(User::class, 'verified_by'); }
+    public function manager(): BelongsTo    { return $this->belongsTo(User::class, 'manager_id'); }
     public function criteria(): HasMany     { return $this->hasMany(StaffTargetCriterion::class, 'target_id'); }
 
     public function grossCommission(): float
@@ -45,5 +49,17 @@ class StaffTarget extends Model
     public function totalCommissionEarned(): float
     {
         return max(0, $this->grossCommission() - (float) ($this->salary_deduction_earned ?? 0));
+    }
+
+    public function calculateManagerCommission(bool $allGoalsMet): float
+    {
+        if (!$allGoalsMet || $this->manager_commission_type === 'none' || !$this->manager_id) {
+            return 0.0;
+        }
+        $value = (float) ($this->manager_commission_value ?? 0);
+        if ($this->manager_commission_type === 'fixed') {
+            return round($value, 2);
+        }
+        return round($value / 100 * $this->grossCommission(), 2);
     }
 }

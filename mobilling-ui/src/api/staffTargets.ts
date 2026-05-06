@@ -39,6 +39,11 @@ export interface StaffTarget {
   staff_salary:            number | null;
   deduct_on_failure:       boolean;
   salary_deduction_earned: number | null;
+  // Manager (team-lead override)
+  manager:                  { id: string; name: string } | null;
+  manager_commission_type:  CommissionType;
+  manager_commission_value: number | null;
+  manager_commission_earned: number | null;
   // Totals
   gross_commission:  number;
   total_commission:  number;
@@ -51,11 +56,17 @@ export interface CommissionSummaryEntry {
   gross_commission:  number;
   salary_deductions: number;
   total_commission:  number;
+  manager_commission: number;
   targets_count:     number;
   targets:           {
     id: string; title: string; period: string;
     commission_earned: number;
     salary_deduction:  number;
+  }[];
+  managed_targets:   {
+    id: string; title: string; period: string;
+    staff: { id: string; name: string };
+    commission_earned: number;
   }[];
 }
 
@@ -67,6 +78,9 @@ export const createTarget = (data: {
   period_start: string; period_end: string;
   group_commission_type?: CommissionType; group_commission_value?: number;
   staff_salary?: number; deduct_on_failure?: boolean;
+  manager_id?: string | null;
+  manager_commission_type?: CommissionType;
+  manager_commission_value?: number;
   criteria: {
     type: CriterionType; label: string; unit?: string; goal_value: number;
     commission_type: CommissionType; commission_value?: number;
@@ -78,6 +92,9 @@ export const updateTarget = (id: string, data: {
   period_start?: string; period_end?: string;
   group_commission_type?: CommissionType; group_commission_value?: number;
   staff_salary?: number; deduct_on_failure?: boolean;
+  manager_id?: string | null;
+  manager_commission_type?: CommissionType;
+  manager_commission_value?: number;
   criteria?: {
     type: CriterionType; label: string; unit?: string; goal_value: number;
     commission_type: CommissionType; commission_value?: number;

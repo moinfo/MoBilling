@@ -741,6 +741,28 @@ function TargetCard({ target: t, actions }: { target: StaffTarget; actions?: Rea
               </Paper>
             )}
 
+            {t.manager && (
+              <Paper withBorder p="xs" radius="sm">
+                <Group gap="xs" wrap="nowrap">
+                  <Text size="xs" fw={500} style={{ flexShrink: 0 }}>Manager:</Text>
+                  <Text size="xs">{t.manager.name}</Text>
+                  {t.manager_commission_type !== 'none' && (
+                    <Text size="xs" c="dimmed">
+                      · {t.manager_commission_type === 'fixed'
+                        ? `${formatCurrency(t.manager_commission_value ?? 0)} if ALL goals met`
+                        : `${t.manager_commission_value}% of gross commission if ALL goals met`}
+                    </Text>
+                  )}
+                  {(t.manager_commission_earned ?? 0) > 0 && (
+                    <Badge size="xs" color="green">Earned: {formatCurrency(t.manager_commission_earned!)}</Badge>
+                  )}
+                  {t.status === 'verified' && t.manager_commission_type !== 'none' && (t.manager_commission_earned ?? 0) === 0 && (
+                    <Badge size="xs" color="gray">Not earned</Badge>
+                  )}
+                </Group>
+              </Paper>
+            )}
+
             {t.supervisor_notes && (
               <Paper withBorder p="xs" radius="sm" bg="green.0">
                 <Group gap="xs">
@@ -996,6 +1018,27 @@ function VerifyModal({ target, opened, onClose, onSaved }: {
                 </Text>
               </Group>
             )}
+            {target.manager && target.manager_commission_type !== 'none' && (() => {
+              const grossPreview = criteriaCommission + groupBonus;
+              const managerEarned = allGoalsMet
+                ? (target.manager_commission_type === 'fixed'
+                    ? (target.manager_commission_value ?? 0)
+                    : (target.manager_commission_value ?? 0) / 100 * grossPreview)
+                : 0;
+              return (
+                <Group justify="space-between">
+                  <Group gap="xs">
+                    <Text size="xs" c="dimmed">Manager ({target.manager.name}):</Text>
+                    <Badge size="xs" color={allGoalsMet ? 'green' : 'gray'} variant="light">
+                      {allGoalsMet ? 'All goals ✓' : 'Not earned'}
+                    </Badge>
+                  </Group>
+                  <Text size="xs" fw={500} c={allGoalsMet ? 'green' : 'dimmed'}>
+                    {allGoalsMet ? formatCurrency(managerEarned) : '—'}
+                  </Text>
+                </Group>
+              );
+            })()}
             <Divider />
             <Group justify="space-between">
               <Text size="sm" fw={700}>Net payable:</Text>
@@ -1044,7 +1087,7 @@ function TargetFormModal({ opened, onClose, existing, onSaved }: {
   const { data: usersData } = useQuery({
     queryKey: ['staff-supervisors'],
     queryFn: () => import('../api/staffReports').then(m => m.getSupervisors()),
-    enabled: opened && !existing,
+    enabled: opened,
   });
   const userOptions = (usersData?.data?.data ?? []).map((u: any) => ({ value: u.id, label: u.name }));
 
@@ -1054,6 +1097,9 @@ function TargetFormModal({ opened, onClose, existing, onSaved }: {
   const [groupCommValue, setGroupCommValue] = useState<number | ''>('');
   const [staffSalary, setStaffSalary]   = useState<number | ''>('');
   const [deductOnFail, setDeductOnFail] = useState(false);
+  const [managerId, setManagerId]               = useState<string | null>(null);
+  const [managerCommType, setManagerCommType]   = useState<CommissionType>('none');
+  const [managerCommValue, setManagerCommValue] = useState<number | ''>('');
 
   const form = useForm({
     initialValues: { user_id: '', title: '', description: '' },
@@ -1078,6 +1124,9 @@ function TargetFormModal({ opened, onClose, existing, onSaved }: {
         setGroupCommValue(existing.group_commission_value ?? '');
         setStaffSalary(existing.staff_salary ?? '');
         setDeductOnFail(existing.deduct_on_failure ?? false);
+        setManagerId(existing.manager?.id ?? null);
+        setManagerCommType(existing.manager_commission_type ?? 'none');
+        setManagerCommValue(existing.manager_commission_value ?? '');
       } else {
         form.reset();
         setPeriodDates([null, null]);
@@ -1086,6 +1135,9 @@ function TargetFormModal({ opened, onClose, existing, onSaved }: {
         setGroupCommValue('');
         setStaffSalary('');
         setDeductOnFail(false);
+        setManagerId(null);
+        setManagerCommType('none');
+        setManagerCommValue('');
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1103,6 +1155,9 @@ function TargetFormModal({ opened, onClose, existing, onSaved }: {
         group_commission_value: groupCommValue !== '' ? Number(groupCommValue) : undefined,
         staff_salary:          staffSalary !== '' ? Number(staffSalary) : undefined,
         deduct_on_failure:     deductOnFail,
+        manager_id:               managerId,
+        manager_commission_type:  managerId ? managerCommType : 'none',
+        manager_commission_value: managerId && managerCommValue !== '' ? Number(managerCommValue) : undefined,
         criteria: criteria.map(c => ({
           type: c.type, label: c.label,
           unit: c.unit || DEFAULT_UNITS[c.type],
@@ -1295,6 +1350,54 @@ function TargetFormModal({ opened, onClose, existing, onSaved }: {
               {deductOnFail && staffSalary !== '' && Number(staffSalary) > 0 && (
                 <Text size="xs" c="red">
                   If any goal missed: {formatCurrency(Number(staffSalary) / 2)} deducted from pay.
+                </Text>
+              )}
+            </Stack>
+          </Paper>
+
+          {/* Manager (team-lead override commission) */}
+          <Divider label="Manager / Team-Lead Commission (optional)" labelPosition="left" />
+          <Paper withBorder p="sm" radius="md">
+            <Stack gap="sm">
+              <Text size="xs" c="dimmed">
+                Assign a colleague to oversee this target. They earn an override commission only when ALL goals are met.
+              </Text>
+              <Select
+                label="Manager"
+                placeholder="Select a manager (optional)"
+                data={userOptions.filter((u: any) => u.value !== form.values.user_id)}
+                value={managerId}
+                onChange={v => { setManagerId(v); if (!v) { setManagerCommType('none'); setManagerCommValue(''); } }}
+                searchable clearable
+              />
+              {managerId && (
+                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                  <Select
+                    label="Commission type"
+                    data={[
+                      { value: 'none', label: 'No override commission' },
+                      { value: 'fixed', label: `Fixed amount (${getTenantCurrency()})` },
+                      { value: 'percentage', label: "% of staff's gross commission" },
+                    ]}
+                    value={managerCommType}
+                    onChange={v => { setManagerCommType(v as CommissionType); setManagerCommValue(''); }}
+                  />
+                  {managerCommType !== 'none' && (
+                    <NumberInput
+                      label={managerCommType === 'fixed' ? `Amount (${getTenantCurrency()})` : 'Percentage (%)'}
+                      min={0} max={managerCommType === 'percentage' ? 100 : undefined}
+                      suffix={managerCommType === 'percentage' ? '%' : undefined}
+                      value={managerCommValue === '' ? undefined : managerCommValue}
+                      onChange={v => setManagerCommValue(v === undefined ? '' : Number(v))}
+                    />
+                  )}
+                </SimpleGrid>
+              )}
+              {managerId && managerCommType !== 'none' && managerCommValue !== '' && (
+                <Text size="xs" c="green">
+                  If all goals met: manager earns {managerCommType === 'fixed'
+                    ? formatCurrency(Number(managerCommValue))
+                    : `${managerCommValue}% of staff's gross commission`}
                 </Text>
               )}
             </Stack>

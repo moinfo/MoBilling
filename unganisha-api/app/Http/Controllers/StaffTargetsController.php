@@ -7,6 +7,8 @@ use App\Models\StaffTargetCriterion;
 use App\Models\User;
 use App\Notifications\StaffTargetAssignedNotification;
 use App\Notifications\StaffTargetAssignedSupervisorNotification;
+use App\Notifications\StaffTargetManagerAssignedNotification;
+use App\Notifications\StaffTargetManagerVerifiedNotification;
 use App\Notifications\StaffTargetSelfReportedNotification;
 use App\Notifications\StaffTargetVerifiedNotification;
 use App\Traits\AuthorizesPermissions;
@@ -62,6 +64,9 @@ class StaffTargetsController extends Controller
             'group_commission_value' => 'nullable|numeric|min:0',
             'staff_salary'           => 'nullable|numeric|min:0',
             'deduct_on_failure'      => 'nullable|boolean',
+            'manager_id'             => 'nullable|uuid|different:user_id',
+            'manager_commission_type'  => 'nullable|in:none,fixed,percentage',
+            'manager_commission_value' => 'nullable|numeric|min:0',
             'criteria'               => 'required|array|min:1',
             'criteria.*.type'        => 'required|in:customer_count,revenue,item_sales,custom',
             'criteria.*.label'       => 'required|string|max:255',
@@ -72,6 +77,11 @@ class StaffTargetsController extends Controller
         ]);
 
         $targetUser = User::where('tenant_id', $user->tenant_id)->findOrFail($data['user_id']);
+
+        $manager = null;
+        if (!empty($data['manager_id'])) {
+            $manager = User::where('tenant_id', $user->tenant_id)->findOrFail($data['manager_id']);
+        }
 
         $target = StaffTarget::create([
             'user_id'               => $targetUser->id,
@@ -84,6 +94,9 @@ class StaffTargetsController extends Controller
             'group_commission_value'=> $data['group_commission_value'] ?? null,
             'staff_salary'          => $data['staff_salary'] ?? null,
             'deduct_on_failure'     => $data['deduct_on_failure'] ?? false,
+            'manager_id'                => $manager?->id,
+            'manager_commission_type'   => $manager ? ($data['manager_commission_type'] ?? 'none') : 'none',
+            'manager_commission_value'  => $manager ? ($data['manager_commission_value'] ?? null) : null,
         ]);
 
         foreach ($data['criteria'] as $c) {
@@ -98,13 +111,17 @@ class StaffTargetsController extends Controller
             ]);
         }
 
-        $target->load(['user.supervisor', 'assignedBy', 'criteria']);
+        $target->load(['user.supervisor', 'assignedBy', 'manager', 'criteria']);
 
         $targetUser->notify(new StaffTargetAssignedNotification($targetUser->tenant, $target));
 
         $supervisor = $targetUser->supervisor;
         if ($supervisor && $supervisor->id !== $targetUser->id) {
             $supervisor->notify(new StaffTargetAssignedSupervisorNotification($targetUser->tenant, $target));
+        }
+
+        if ($manager && $manager->id !== $targetUser->id) {
+            $manager->notify(new StaffTargetManagerAssignedNotification($targetUser->tenant, $target));
         }
 
         return response()->json(['data' => $this->format($target)], 201);
@@ -129,6 +146,9 @@ class StaffTargetsController extends Controller
             'group_commission_value' => 'nullable|numeric|min:0',
             'staff_salary'           => 'nullable|numeric|min:0',
             'deduct_on_failure'      => 'nullable|boolean',
+            'manager_id'                 => 'nullable|uuid',
+            'manager_commission_type'    => 'nullable|in:none,fixed,percentage',
+            'manager_commission_value'   => 'nullable|numeric|min:0',
             'criteria'               => 'sometimes|array|min:1',
             'criteria.*.type'        => 'required_with:criteria|in:customer_count,revenue,item_sales,custom',
             'criteria.*.label'       => 'required_with:criteria|string|max:255',
@@ -137,6 +157,8 @@ class StaffTargetsController extends Controller
             'criteria.*.commission_type'   => 'required_with:criteria|in:none,fixed,percentage',
             'criteria.*.commission_value'  => 'nullable|numeric|min:0',
         ]);
+
+        $previousManagerId = $staffTarget->manager_id;
 
         $patch = array_filter([
             'title'                 => $data['title']        ?? null,
@@ -153,7 +175,34 @@ class StaffTargetsController extends Controller
             $patch['deduct_on_failure'] = $data['deduct_on_failure'];
         }
 
+        if (array_key_exists('manager_id', $data)) {
+            if (!empty($data['manager_id']) && $data['manager_id'] === $staffTarget->user_id) {
+                abort(422, 'A staff member cannot manage their own target.');
+            }
+            $patch['manager_id']               = $data['manager_id'] ?: null;
+            $patch['manager_commission_type']  = $data['manager_id']
+                ? ($data['manager_commission_type'] ?? 'none')
+                : 'none';
+            $patch['manager_commission_value'] = $data['manager_id']
+                ? ($data['manager_commission_value'] ?? null)
+                : null;
+        } else {
+            if (array_key_exists('manager_commission_type', $data)) {
+                $patch['manager_commission_type'] = $data['manager_commission_type'];
+            }
+            if (array_key_exists('manager_commission_value', $data)) {
+                $patch['manager_commission_value'] = $data['manager_commission_value'];
+            }
+        }
+
         $staffTarget->update($patch);
+
+        if (!empty($patch['manager_id']) && $patch['manager_id'] !== $previousManagerId) {
+            $staffTarget->load(['user', 'assignedBy', 'manager']);
+            $staffTarget->manager?->notify(
+                new StaffTargetManagerAssignedNotification($staffTarget->user->tenant, $staffTarget)
+            );
+        }
 
         if (!empty($data['criteria'])) {
             $staffTarget->criteria()->delete();
@@ -170,7 +219,7 @@ class StaffTargetsController extends Controller
             }
         }
 
-        return response()->json(['data' => $this->format($staffTarget->load(['user', 'assignedBy', 'criteria']))]);
+        return response()->json(['data' => $this->format($staffTarget->load(['user', 'assignedBy', 'manager', 'criteria']))]);
     }
 
     // ── Delete ────────────────────────────────────────────────────────────────
@@ -284,11 +333,20 @@ class StaffTargetsController extends Controller
             'salary_deduction_earned' => $salaryDeductionEarned,
         ]);
 
-        $staffTarget->load(['user', 'assignedBy', 'verifiedBy', 'criteria']);
+        $managerCommissionEarned = $staffTarget->fresh()->load('criteria')->calculateManagerCommission($allGoalsMet);
+        $staffTarget->update(['manager_commission_earned' => $managerCommissionEarned]);
+
+        $staffTarget->load(['user', 'assignedBy', 'verifiedBy', 'manager', 'criteria']);
 
         $staffTarget->user->notify(
             new StaffTargetVerifiedNotification($staffTarget->user->tenant, $staffTarget)
         );
+
+        if ($staffTarget->manager && $staffTarget->manager->id !== $staffTarget->user_id) {
+            $staffTarget->manager->notify(
+                new StaffTargetManagerVerifiedNotification($staffTarget->user->tenant, $staffTarget)
+            );
+        }
 
         return response()->json(['data' => $this->format($staffTarget)]);
     }
@@ -300,43 +358,95 @@ class StaffTargetsController extends Controller
         $this->authorizePermission('staff_targets.submit');
         $user = auth()->user();
 
-        $query = StaffTarget::with('criteria')->where('status', 'verified');
-
+        $relevantUserIds = null;
         if ($user->hasPermission('staff_targets.manage') || $user->hasPermission('staff_targets.verify')) {
             if (!$user->hasPermission('staff_reports.view_all')) {
-                $subordinateIds = User::where('tenant_id', $user->tenant_id)
+                $relevantUserIds = User::where('tenant_id', $user->tenant_id)
                     ->where('supervisor_id', $user->id)
                     ->pluck('id')
-                    ->push($user->id);
-                $query->whereIn('user_id', $subordinateIds);
+                    ->push($user->id)
+                    ->all();
             }
         } else {
-            $query->where('user_id', $user->id);
+            $relevantUserIds = [$user->id];
         }
 
-        if ($request->user_id) $query->where('user_id', $request->user_id);
+        $query = StaffTarget::with(['criteria', 'user', 'manager'])->where('status', 'verified');
+        if ($relevantUserIds !== null) {
+            $query->where(function ($q) use ($relevantUserIds) {
+                $q->whereIn('user_id', $relevantUserIds)
+                  ->orWhereIn('manager_id', $relevantUserIds);
+            });
+        }
+        if ($request->user_id) {
+            $query->where(function ($q) use ($request) {
+                $q->where('user_id', $request->user_id)
+                  ->orWhere('manager_id', $request->user_id);
+            });
+        }
 
         $targets = $query->get();
+        $entries = [];
 
-        $grouped = $targets->groupBy('user_id')->map(function ($userTargets) {
-            $u = User::find($userTargets->first()->user_id);
-            return [
-                'user'              => ['id' => $u->id, 'name' => $u->name],
-                'gross_commission'  => $userTargets->sum(fn ($t) => $t->grossCommission()),
-                'salary_deductions' => $userTargets->sum(fn ($t) => (float) ($t->salary_deduction_earned ?? 0)),
-                'total_commission'  => $userTargets->sum(fn ($t) => $t->totalCommissionEarned()),
-                'targets_count'     => $userTargets->count(),
-                'targets'           => $userTargets->map(fn ($t) => [
-                    'id'               => $t->id,
-                    'title'            => $t->title,
-                    'period'           => $t->period_start->format('d M') . ' – ' . $t->period_end->format('d M Y'),
-                    'commission_earned'=> $t->totalCommissionEarned(),
-                    'salary_deduction' => (float) ($t->salary_deduction_earned ?? 0),
-                ]),
-            ];
-        })->values();
+        foreach ($targets as $t) {
+            $period = $t->period_start->format('d M') . ' – ' . $t->period_end->format('d M Y');
 
-        return response()->json(['data' => $grouped]);
+            // Staff (assignee) bucket
+            if ($relevantUserIds === null || in_array($t->user_id, $relevantUserIds, true) || ($request->user_id && $t->user_id === $request->user_id)) {
+                $uid = $t->user_id;
+                $entries[$uid] ??= $this->emptyEntry($t->user);
+                $entries[$uid]['gross_commission']  += $t->grossCommission();
+                $entries[$uid]['salary_deductions'] += (float) ($t->salary_deduction_earned ?? 0);
+                $entries[$uid]['total_commission']  += $t->totalCommissionEarned();
+                $entries[$uid]['targets_count']++;
+                $entries[$uid]['targets'][] = [
+                    'id'                => $t->id,
+                    'title'              => $t->title,
+                    'period'             => $period,
+                    'commission_earned'  => $t->totalCommissionEarned(),
+                    'salary_deduction'   => (float) ($t->salary_deduction_earned ?? 0),
+                ];
+            }
+
+            // Manager (override commission) bucket
+            if ($t->manager_id && (
+                $relevantUserIds === null
+                || in_array($t->manager_id, $relevantUserIds, true)
+                || ($request->user_id && $t->manager_id === $request->user_id)
+            )) {
+                $mid = $t->manager_id;
+                $entries[$mid] ??= $this->emptyEntry($t->manager);
+                $entries[$mid]['manager_commission'] += (float) ($t->manager_commission_earned ?? 0);
+                $entries[$mid]['managed_targets'][] = [
+                    'id'                => $t->id,
+                    'title'             => $t->title,
+                    'period'            => $period,
+                    'staff'             => ['id' => $t->user->id, 'name' => $t->user->name],
+                    'commission_earned' => (float) ($t->manager_commission_earned ?? 0),
+                ];
+            }
+        }
+
+        // Roll manager commission into the user's total
+        foreach ($entries as &$e) {
+            $e['total_commission'] = round($e['total_commission'] + $e['manager_commission'], 2);
+        }
+
+        return response()->json(['data' => array_values($entries)]);
+    }
+
+    private function emptyEntry($u): array
+    {
+        return [
+            'user'               => ['id' => $u->id, 'name' => $u->name],
+            'gross_commission'   => 0.0,
+            'salary_deductions'  => 0.0,
+            'total_commission'   => 0.0,
+            'manager_commission' => 0.0,
+            'targets_count'      => 0,
+            'targets'            => [],
+            'managed_targets'    => [],
+        ];
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -376,6 +486,11 @@ class StaffTargetsController extends Controller
             'staff_salary'            => $t->staff_salary,
             'deduct_on_failure'       => (bool) $t->deduct_on_failure,
             'salary_deduction_earned' => $t->salary_deduction_earned,
+            // Manager (team-lead) fields
+            'manager'                  => $t->manager ? ['id' => $t->manager->id, 'name' => $t->manager->name] : null,
+            'manager_commission_type'  => $t->manager_commission_type,
+            'manager_commission_value' => $t->manager_commission_value,
+            'manager_commission_earned'=> $t->manager_commission_earned,
             'all_goals_met'           => $allGoalsMet,
             'gross_commission'        => $t->grossCommission(),
             'total_commission'        => $t->totalCommissionEarned(),
