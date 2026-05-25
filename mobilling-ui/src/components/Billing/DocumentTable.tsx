@@ -227,7 +227,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                         Restore
                       </Menu.Item>
                     )}
-                    {can('documents.delete') && (
+                    {can('documents.delete') && ['draft', 'rejected', 'cancelled'].includes(doc.status) && (
                       <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={() => onDelete(doc)}>Delete</Menu.Item>
                     )}
                   </Menu.Dropdown>

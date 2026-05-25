@@ -122,7 +122,10 @@ export default function DocumentForm({ clients, productServices, type, onSubmit,
 
   const calcLineDiscount = (item: any) => {
     const base = item.quantity * item.price;
-    return Math.min(item.discount_value || 0, base);
+    if (item.discount_type === 'percent') {
+      return Math.min(base * ((Number(item.discount_value) || 0) / 100), base);
+    }
+    return Math.min(Number(item.discount_value) || 0, base);
   };
 
   const calcLineTotal = (item: any) => {

@@ -49,7 +49,7 @@ export default function DocumentListPage({ type, title }: Props) {
   useEffect(() => {
     const previewId = searchParams.get('preview');
     if (previewId) {
-      getDocument(previewId).then((res) => setViewDoc(res.data.data)).catch(() => {});
+      getDocument(previewId).then((res) => setViewDoc(res.data.data)).catch((err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Could not open that document — it may have been deleted.', color: 'red' }));
       searchParams.delete('preview');
       setSearchParams(searchParams, { replace: true });
     }
@@ -128,6 +128,11 @@ export default function DocumentListPage({ type, title }: Props) {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       notifications.show({ title: 'Success', message: 'Document deleted', color: 'green' });
     },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to delete document',
+      color: 'red',
+    }),
   });
 
   const cancelMutation = useMutation({

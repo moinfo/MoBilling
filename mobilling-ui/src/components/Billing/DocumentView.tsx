@@ -114,8 +114,8 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           await convertDocument(doc.id, target);
           notifications.show({ title: 'Success', message: `Converted to ${target}`, color: 'green' });
           onRefresh();
-        } catch {
-          notifications.show({ title: 'Error', message: 'Conversion failed', color: 'red' });
+        } catch (err: any) {
+          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Conversion failed', color: 'red' });
         } finally {
           setLoading('');
         }
@@ -133,8 +133,18 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
       link.download = `${doc.document_number}.pdf`;
       link.click();
       window.URL.revokeObjectURL(url);
-    } catch {
-      notifications.show({ title: 'Error', message: 'PDF download failed', color: 'red' });
+    } catch (err: any) {
+      let msg = 'PDF download failed';
+      try {
+        const data = err?.response?.data;
+        if (data instanceof Blob) {
+          const txt = await data.text();
+          msg = JSON.parse(txt)?.message || msg;
+        } else if (data?.message) {
+          msg = data.message;
+        }
+      } catch { /* keep default msg */ }
+      notifications.show({ title: 'Error', message: msg, color: 'red' });
     } finally {
       setLoading('');
     }
@@ -169,8 +179,8 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
       notifications.show({ title: 'Success', message: 'Payment recorded', color: 'green' });
       setShowPayment(false);
       onRefresh();
-    } catch {
-      notifications.show({ title: 'Error', message: 'Payment failed', color: 'red' });
+    } catch (err: any) {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Payment failed', color: 'red' });
     } finally {
       setLoading('');
     }
@@ -442,7 +452,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
             </Button>
           </>
         )}
-        {can('documents.send') && doc.status !== 'draft' && doc.status !== 'pending_approval' && (
+        {can('documents.send') && doc.status !== 'draft' && doc.status !== 'pending_approval' && doc.status !== 'cancelled' && (
           <Button variant="light" leftSection={<IconSend size={16} />}
             onClick={() => { setSendEmail(true); setShowSendConfirm(true); }} loading={loading === 'send'}>
             Send Email

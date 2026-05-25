@@ -27,12 +27,14 @@ class RecurringInvoiceService
 
     public function processAll(): array
     {
-        $invoicesCreated = $this->processUpcomingBills();
-        $remindersSent = $this->processReminders();
+        $invoices = $this->processUpcomingBills();
+        $reminders = $this->processReminders();
 
         return [
-            'invoices_created' => $invoicesCreated,
-            'reminders_sent' => $remindersSent,
+            'invoices_created' => $invoices['created'],
+            'invoices_failed' => $invoices['failed'],
+            'reminders_sent' => $reminders['sent'],
+            'reminders_failed' => $reminders['failed'],
         ];
     }
 
@@ -40,11 +42,12 @@ class RecurringInvoiceService
      * Find active subscriptions whose next bill date falls within 30 days,
      * group by client, and create one invoice per client.
      */
-    private function processUpcomingBills(): int
+    private function processUpcomingBills(): array
     {
         $today = Carbon::today();
         $targetDate = $today->copy()->addDays(30);
         $count = 0;
+        $failed = 0;
 
         $subscriptions = ClientSubscription::withoutGlobalScopes()
             ->where('status', 'active')
@@ -135,15 +138,16 @@ class RecurringInvoiceService
 
                 $count++;
             } catch (\Throwable $e) {
+                $failed++;
                 Log::error('RecurringInvoice: failed to create invoice', [
                     'tenant_id' => $firstSub->tenant_id,
                     'client_id' => $firstSub->client_id,
-                    'error' => $e->getMessage(),
+                    'exception' => $e,
                 ]);
             }
         }
 
-        return $count;
+        return ['created' => $count, 'failed' => $failed];
     }
 
     /**
@@ -166,7 +170,7 @@ class RecurringInvoiceService
      */
     private function createInvoice(Tenant $tenant, Client $client, array $items, Carbon $dueDate): Document
     {
-        return DB::transaction(function () use ($tenant, $client, $items, $dueDate) {
+        $document = DB::transaction(function () use ($tenant, $client, $items, $dueDate) {
             $docNumber = app(DocumentNumberService::class)->generate('invoice', $tenant->id);
 
             $subtotal = 0;
@@ -226,21 +230,33 @@ class RecurringInvoiceService
                 $document->items()->create($lineItem);
             }
 
-            // Send to client (email + SMS if tenant allows)
             $document->load('items', 'client');
-            $client->notify(new InvoiceSentNotification($document));
 
             return $document;
         });
+
+        // Send to client (email + SMS if tenant allows) AFTER the transaction commits,
+        // so an async queue cannot pick up the job before the invoice row is persisted.
+        try {
+            $client->notifyNow(new InvoiceSentNotification($document));
+        } catch (\Throwable $e) {
+            Log::error('RecurringInvoice: invoice created but send failed', [
+                'document_id' => $document->id,
+                'exception' => $e,
+            ]);
+        }
+
+        return $document;
     }
 
     /**
      * Send reminders for unpaid auto-invoices at 21, 14, 7, 3, 1 days before due.
      */
-    private function processReminders(): int
+    private function processReminders(): array
     {
         $today = Carbon::today();
         $count = 0;
+        $failed = 0;
 
         $logs = RecurringInvoiceLog::withoutGlobalScopes()
             ->whereNotNull('document_id')
@@ -302,14 +318,15 @@ class RecurringInvoiceService
                 $processed[$log->document_id] = true;
                 $count++;
             } catch (\Throwable $e) {
+                $failed++;
                 Log::error('RecurringInvoice: failed to send reminder', [
                     'log_id' => $log->id,
                     'days_remaining' => $daysUntilDue,
-                    'error' => $e->getMessage(),
+                    'exception' => $e,
                 ]);
             }
         }
 
-        return $count;
+        return ['sent' => $count, 'failed' => $failed];
     }
 }
