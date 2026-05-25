@@ -28,10 +28,12 @@ class ProcessOverdueInvoices extends Command
         $terminationWarnings = 0;
 
         try {
-            // Get all unpaid invoices that are past due
+            // Get all unpaid invoices that are past due. Exclude draft and
+            // pending_approval: an invoice that hasn't been sent/approved must never
+            // be dunned (late fees, reminders) or flipped to overdue.
             $overdueInvoices = Document::withoutGlobalScopes()
                 ->where('type', 'invoice')
-                ->whereNotIn('status', ['paid', 'draft', 'cancelled'])
+                ->whereNotIn('status', ['paid', 'draft', 'pending_approval', 'cancelled'])
                 ->whereNotNull('due_date')
                 ->where('due_date', '<', $today->toDateString())
                 ->with('client')

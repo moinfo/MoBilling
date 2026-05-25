@@ -2,11 +2,6 @@
 
 namespace App\Providers;
 
-use App\Listeners\LogNotification;
-use App\Listeners\LogNotificationFailure;
-use Illuminate\Notifications\Events\NotificationFailed;
-use Illuminate\Notifications\Events\NotificationSent;
-use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -21,10 +16,15 @@ class AppServiceProvider extends ServiceProvider
 
     /**
      * Bootstrap any application services.
+     *
+     * NOTE: LogNotification and LogNotificationFailure are registered
+     * automatically via Laravel's listener auto-discovery (they live in
+     * app/Listeners with typed handle() methods). Do NOT also register them
+     * manually here — that double-binds the listeners and writes every
+     * communication_log row twice.
      */
     public function boot(): void
     {
-        Event::listen(NotificationSent::class, LogNotification::class);
-        Event::listen(NotificationFailed::class, LogNotificationFailure::class);
+        //
     }
 }
