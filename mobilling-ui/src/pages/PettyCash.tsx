@@ -66,7 +66,6 @@ export default function PettyCash() {
       type: 'top_up' as 'top_up' | 'return',
       amount: 0,
       transaction_date: new Date(),
-      reference: '',
       notes: '',
       given_by_name: '',
       received_by_name: '',
@@ -82,7 +81,6 @@ export default function PettyCash() {
         type: values.type,
         amount: values.amount,
         transaction_date: dayjs(values.transaction_date).format('YYYY-MM-DD'),
-        reference: values.reference || undefined,
         notes: values.notes || undefined,
         given_by_name: values.given_by_name || undefined,
         received_by_name: values.received_by_name || undefined,
@@ -362,7 +360,6 @@ export default function PettyCash() {
               <TextInput label="Given by" placeholder="Name of giver" {...topUpForm.getInputProps('given_by_name')} />
               <TextInput label="Received by" placeholder="Name of receiver / custodian" {...topUpForm.getInputProps('received_by_name')} />
             </Group>
-            <TextInput label="Reference" placeholder="Voucher #, receipt #, etc." {...topUpForm.getInputProps('reference')} />
             <Textarea label="Notes" {...topUpForm.getInputProps('notes')} />
             <Box>
               <Text size="xs" c="dimmed">

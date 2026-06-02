@@ -109,7 +109,6 @@ class PettyCashController extends Controller
                 'type' => 'required|in:top_up,return',
                 'amount' => 'required|numeric|min:0.01',
                 'transaction_date' => 'required|date|before_or_equal:today',
-                'reference' => 'nullable|string|max:255',
                 'notes' => 'nullable|string|max:2000',
                 'given_by_name' => 'nullable|string|max:255',
                 'received_by_name' => 'nullable|string|max:255',
@@ -117,13 +116,18 @@ class PettyCashController extends Controller
 
             $account = $this->getOrCreateAccount();
 
+            // Reference is auto-generated per tenant (PC-YYYY-NNNN). Reconciliation
+            // adjustments set their own explicit reference, so this only runs for
+            // user-initiated top-ups and returns.
+            $reference = $this->generateReference(auth()->user()->tenant_id);
+
             $tx = PettyCashTransaction::create([
                 'petty_cash_account_id' => $account->id,
                 'created_by' => auth()->id(),
                 'type' => $validated['type'],
                 'amount' => $validated['amount'],
                 'transaction_date' => $validated['transaction_date'],
-                'reference' => $validated['reference'] ?? null,
+                'reference' => $reference,
                 'notes' => $validated['notes'] ?? null,
                 'given_by_name' => $validated['given_by_name'] ?? null,
                 'received_by_name' => $validated['received_by_name'] ?? null,
@@ -291,6 +295,30 @@ class PettyCashController extends Controller
      * Lazy-creates the tenant's single petty cash account on first access.
      * Single-pool design: the UNIQUE(tenant_id) constraint guarantees one row.
      */
+    /**
+     * Auto-generate a per-tenant petty cash transaction reference in the form
+     * PC-YYYY-NNNN, mirroring the per-tenant sequencing used by document
+     * numbers. Looks at the latest reference for this tenant + year and
+     * increments. Soft-deleted rows are included so deleting one doesn't
+     * recycle its number.
+     */
+    private function generateReference(string $tenantId): string
+    {
+        $year = now()->format('Y');
+        $pattern = "PC-{$year}-";
+
+        $last = PettyCashTransaction::withoutGlobalScopes()
+            ->withTrashed()
+            ->where('tenant_id', $tenantId)
+            ->where('reference', 'LIKE', "{$pattern}%")
+            ->orderByDesc('reference')
+            ->value('reference');
+
+        $seq = $last ? ((int) substr($last, strlen($pattern))) + 1 : 1;
+
+        return $pattern . str_pad((string) $seq, 4, '0', STR_PAD_LEFT);
+    }
+
     private function getOrCreateAccount(): PettyCashAccount
     {
         if (!auth()->user()) {

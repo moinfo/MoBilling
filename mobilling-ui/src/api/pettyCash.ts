@@ -50,11 +50,12 @@ export interface PettyCashIndexResponse {
 export const getPettyCash = () =>
   api.get<PettyCashIndexResponse>('/petty-cash');
 
+// Reference is auto-generated server-side (PC-YYYY-NNNN per tenant), so
+// the caller doesn't pass one.
 export const createPettyCashTransaction = (data: {
   type: 'top_up' | 'return';
   amount: number;
   transaction_date: string;
-  reference?: string;
   notes?: string;
   given_by_name?: string;
   received_by_name?: string;
