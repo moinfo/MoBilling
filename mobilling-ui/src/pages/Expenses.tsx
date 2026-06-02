@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle } from '@tabler/icons-react';
 import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, Expense } from '../api/expenses';
 import { getExpenseCategories, ExpenseCategory } from '../api/expenseCategories';
 import { getPettyCash } from '../api/pettyCash';
@@ -96,8 +96,11 @@ export default function Expenses() {
     setUploadingFor(e.id);
     try {
       await uploadExpenseVoucher(e.id, file);
-      notifications.show({ title: 'Uploaded', message: 'Signed voucher attached.', color: 'green' });
+      notifications.show({ title: 'Uploaded', message: 'Signed voucher attached — verified balance updated.', color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      // Attaching a voucher moves this expense from pending → signed in the
+      // strict imprest model, so the petty-cash balance card needs to refresh.
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
     } catch (err: any) {
       notifications.show({
         title: 'Error',
@@ -259,6 +262,34 @@ export default function Expenses() {
                         <Badge color="violet" variant="light" size="sm" leftSection={<IconCash size={10} />}>PC</Badge>
                       </Tooltip>
                     )}
+                    {/* Voucher state — persistent visual confirmation. The
+                        "Signed" badge is a link that opens the uploaded PDF;
+                        "Unsigned" reminds the user paperwork is missing and
+                        that the expense isn't reducing verified balance yet. */}
+                    {e.petty_cash_account_id && (
+                      e.voucher_attachment_url ? (
+                        <Tooltip label="Voucher signed and on file — click to view">
+                          <Badge
+                            component="a"
+                            href={e.voucher_attachment_url}
+                            target="_blank"
+                            color="green"
+                            variant="light"
+                            size="sm"
+                            leftSection={<IconCheck size={10} />}
+                            style={{ cursor: 'pointer' }}
+                          >
+                            Signed
+                          </Badge>
+                        </Tooltip>
+                      ) : (
+                        <Tooltip label="Print the voucher, get it signed by both parties, then upload it via the purple icon">
+                          <Badge color="yellow" variant="light" size="sm" leftSection={<IconAlertTriangle size={10} />}>
+                            Unsigned
+                          </Badge>
+                        </Tooltip>
+                      )
+                    )}
                   </Group>
                 </Table.Td>
                 <Table.Td>{e.control_number || '—'}</Table.Td>
@@ -288,7 +319,7 @@ export default function Expenses() {
                           {canUpdate && (
                             <FileButton onChange={(f) => handleUploadVoucher(e, f)} accept="application/pdf,image/*">
                               {(props) => (
-                                <Tooltip label="Upload signed voucher">
+                                <Tooltip label={e.voucher_attachment_url ? 'Replace signed voucher' : 'Upload signed voucher'}>
                                   <ActionIcon variant="light" color="violet" loading={uploadingFor === e.id} {...props}>
                                     <IconUpload size={16} />
                                   </ActionIcon>
