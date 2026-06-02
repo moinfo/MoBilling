@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreExpenseRequest;
 use App\Http\Resources\ExpenseResource;
 use App\Models\Expense;
+use App\Models\PettyCashAccount;
 use App\Services\PdfService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 
 class ExpenseController extends Controller
 {
@@ -40,6 +42,12 @@ class ExpenseController extends Controller
     public function store(StoreExpenseRequest $request)
     {
         $data = $request->safe()->except('attachment');
+
+        // Insufficient-funds guard for petty cash — runs BEFORE the file
+        // upload so a rejected expense doesn't orphan an attachment.
+        if (!empty($data['petty_cash_account_id'])) {
+            $this->assertPettyCashFunds($data['petty_cash_account_id'], (float) $data['amount']);
+        }
 
         $storedPath = null;
         if ($request->hasFile('attachment')) {
@@ -76,6 +84,14 @@ class ExpenseController extends Controller
     public function update(StoreExpenseRequest $request, Expense $expense)
     {
         $data = $request->safe()->except('attachment');
+
+        // Insufficient-funds guard for petty cash — same pre-upload check
+        // as store(). Pass the existing expense so its current amount is
+        // credited back into the available balance (we're replacing it,
+        // not stacking).
+        if (!empty($data['petty_cash_account_id'])) {
+            $this->assertPettyCashFunds($data['petty_cash_account_id'], (float) $data['amount'], $expense);
+        }
 
         $newPath = null;
         $oldPath = null;
@@ -121,6 +137,44 @@ class ExpenseController extends Controller
         $expense->delete();
 
         return response()->json(['message' => 'Expense deleted']);
+    }
+
+    /**
+     * Hard-block: a new (or updated) petty cash expense cannot exceed the
+     * account's committed balance — the cash that is actually still in the
+     * till after subtracting pending-voucher expenses. The user can't issue
+     * petty cash that isn't there.
+     *
+     * On update, the existing expense's own amount is credited back into
+     * the available balance because we are replacing it, not stacking.
+     */
+    private function assertPettyCashFunds(string $accountId, float $newAmount, ?Expense $existingExpense = null): void
+    {
+        $account = PettyCashAccount::find($accountId);
+        if (!$account) {
+            throw ValidationException::withMessages([
+                'petty_cash_account_id' => 'Petty cash account not found.',
+            ]);
+        }
+
+        $committed = (float) $account->balances()['committed'];
+
+        // If editing an expense already tagged to THIS account, its old
+        // amount is already counted in committed — free it up for the check.
+        if ($existingExpense && $existingExpense->petty_cash_account_id === $accountId) {
+            $committed += (float) $existingExpense->amount;
+        }
+
+        // Tiny epsilon to absorb decimal rounding noise.
+        if ($newAmount > $committed + 0.0001) {
+            throw ValidationException::withMessages([
+                'amount' => sprintf(
+                    'Insufficient petty cash balance. Available: %s, requested: %s.',
+                    number_format($committed, 2),
+                    number_format($newAmount, 2)
+                ),
+            ]);
+        }
     }
 
     /**

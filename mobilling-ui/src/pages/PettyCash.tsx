@@ -56,7 +56,10 @@ export default function PettyCash() {
     retry: 1,
   });
 
-  const balance = parseFloat(data?.balance ?? '0') || 0;
+  const balance = parseFloat(data?.balance ?? '0') || 0;                              // verified
+  const committedBalance = parseFloat(data?.committed_balance ?? '0') || 0;            // physical
+  const pendingCount = data?.pending_vouchers?.count ?? 0;
+  const pendingTotal = parseFloat(data?.pending_vouchers?.total ?? '0') || 0;
   const history = data?.history ?? [];
   const reconciliations = data?.reconciliations ?? [];
 
@@ -107,7 +110,10 @@ export default function PettyCash() {
       notes: '',
     },
   });
-  const difference = (reconcileForm.values.counted_balance || 0) - balance;
+  // Reconciliation compares the physical count against the COMMITTED balance
+  // (what should be in the till including pending-voucher expenses), not the
+  // verified one — the user is counting cash, not paperwork.
+  const difference = (reconcileForm.values.counted_balance || 0) - committedBalance;
 
   const reconcileMutation = useMutation({
     mutationFn: (values: typeof reconcileForm.values) =>
@@ -191,7 +197,9 @@ export default function PettyCash() {
           {canReconcile && (
             <Button variant="light" leftSection={<IconChecklist size={16} />}
               onClick={() => {
-                reconcileForm.setFieldValue('counted_balance', balance);
+                // Pre-fill with the committed (physical) balance — that's
+                // what the user is counting against, not the verified one.
+                reconcileForm.setFieldValue('counted_balance', committedBalance);
                 setReconcileOpen(true);
               }}>
               Reconcile
@@ -203,7 +211,7 @@ export default function PettyCash() {
       <Card withBorder padding="lg">
         <Group justify="space-between" align="flex-start">
           <Stack gap={4}>
-            <Text size="sm" c="dimmed" tt="uppercase">Current Balance</Text>
+            <Text size="sm" c="dimmed" tt="uppercase">Verified Balance</Text>
             <Group gap="xs" align="baseline">
               <IconCash size={28} />
               <Text fw={700} size="32px">{formatCurrency(balance)}</Text>
@@ -211,9 +219,20 @@ export default function PettyCash() {
             <Text size="xs" c="dimmed">
               {data?.account.name} · opening balance {formatCurrency(parseFloat(data?.account?.opening_balance ?? '0') || 0)}
             </Text>
+            {pendingCount > 0 && (
+              <Text size="xs" c="dimmed">
+                Cash physically left (committed): <Text span fw={600}>{formatCurrency(committedBalance)}</Text>
+              </Text>
+            )}
           </Stack>
         </Group>
       </Card>
+
+      {pendingCount > 0 && (
+        <Alert color="yellow" icon={<IconAlertTriangle size={16} />} title={`${pendingCount} expense${pendingCount === 1 ? '' : 's'} awaiting signed voucher`}>
+          {formatCurrency(pendingTotal)} of petty cash has been spent but the signed vouchers haven't been uploaded yet, so they aren't reducing the verified balance. Open the Expenses page to attach the signed PDFs.
+        </Alert>
+      )}
 
       <Tabs defaultValue="history">
         <Tabs.List>
@@ -250,7 +269,15 @@ export default function PettyCash() {
                     </Table.Td>
                     <Table.Td>
                       {item.kind === 'expense' ? (
-                        <Text size="xs" c="dimmed">on Expense page</Text>
+                        <Stack gap={2}>
+                          {item.voucher_attached ? (
+                            <Badge color="green" variant="light" leftSection={<IconCheck size={12} />}>Verified</Badge>
+                          ) : (
+                            <Tooltip label="Signed voucher not yet attached — open the Expenses page to upload it. Until then this expense does not reduce the verified balance.">
+                              <Badge color="yellow" variant="light" leftSection={<IconAlertTriangle size={12} />}>Pending voucher</Badge>
+                            </Tooltip>
+                          )}
+                        </Stack>
                       ) : (
                         <Stack gap={0}>
                           <Text size="xs">Given: {(item as any).given_by_name || '—'}</Text>
@@ -380,9 +407,14 @@ export default function PettyCash() {
           <Stack>
             <Card withBorder padding="sm">
               <Group justify="space-between">
-                <Text size="sm" c="dimmed">Ledger balance</Text>
-                <Text fw={600}>{formatCurrency(balance)}</Text>
+                <Text size="sm" c="dimmed">Expected cash in till (committed)</Text>
+                <Text fw={600}>{formatCurrency(committedBalance)}</Text>
               </Group>
+              {pendingCount > 0 && (
+                <Text size="xs" c="dimmed" mt={4}>
+                  Includes {pendingCount} pending-voucher expense{pendingCount === 1 ? '' : 's'} totalling {formatCurrency(pendingTotal)} — the cash has already left the till, just awaiting paperwork.
+                </Text>
+              )}
             </Card>
             <NumberInput
               label="Counted (physical) balance" required min={0} decimalScale={2}

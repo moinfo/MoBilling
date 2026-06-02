@@ -24,7 +24,7 @@ class PettyCashController extends Controller
     {
         $account = $this->getOrCreateAccount();
 
-        $balance = $this->computeBalance($account);
+        $balances = $account->balances();
 
         $transactions = PettyCashTransaction::where('petty_cash_account_id', $account->id)
             ->with('createdBy:id,name')
@@ -70,6 +70,9 @@ class PettyCashController extends Controller
             'notes' => $e->notes,
             'category' => $e->subCategory?->category?->name,
             'sub_category' => $e->subCategory?->name,
+            // Strict-imprest flag: expense only deducts the verified balance
+            // once its signed voucher has been attached.
+            'voucher_attached' => !empty($e->voucher_attachment_path),
             'created_at' => $e->created_at?->toIso8601String(),
         ]);
 
@@ -91,7 +94,16 @@ class PettyCashController extends Controller
                 'opening_balance' => number_format((float) $account->opening_balance, 2, '.', ''),
                 'is_active' => (bool) $account->is_active,
             ],
-            'balance' => number_format($balance, 2, '.', ''),
+            // 'balance' = the official remaining float (verified). Expenses
+            // only reduce it once their signed voucher is attached.
+            'balance' => number_format($balances['verified'], 2, '.', ''),
+            // 'committed' = physically remaining cash (what the insufficient-funds
+            // guard uses). Equals verified minus pending-voucher expenses.
+            'committed_balance' => number_format($balances['committed'], 2, '.', ''),
+            'pending_vouchers' => [
+                'count' => $balances['pending_count'],
+                'total' => number_format($balances['pending_total'], 2, '.', ''),
+            ],
             'history' => $history,
             'reconciliations' => $reconciliations,
         ]);
@@ -136,7 +148,7 @@ class PettyCashController extends Controller
             return response()->json([
                 'message' => $validated['type'] === 'top_up' ? 'Top-up recorded.' : 'Return recorded.',
                 'data' => $tx,
-                'balance' => $this->computeBalance($account),
+                'balance' => $account->balances()['verified'],
             ]);
         } catch (ValidationException $e) {
             throw $e;
@@ -237,7 +249,11 @@ class PettyCashController extends Controller
             ]);
 
             $account = $this->getOrCreateAccount();
-            $ledger = $this->computeBalance($account);
+            // Reconciliation compares the physical cash count against the
+            // committed balance (what should be in the till including
+            // pending-voucher expenses), not the verified one — the user
+            // is counting actual notes, not paperwork.
+            $ledger = $account->balances()['committed'];
             $counted = round((float) $validated['counted_balance'], 2);
             $diff = round($counted - $ledger, 2);
 
@@ -276,7 +292,7 @@ class PettyCashController extends Controller
             return response()->json([
                 'message' => 'Reconciliation recorded.',
                 'data' => $reconciliation->fresh(),
-                'balance' => $this->computeBalance($account),
+                'balance' => $account->balances()['verified'],
             ]);
         } catch (ValidationException $e) {
             throw $e;
@@ -337,23 +353,7 @@ class PettyCashController extends Controller
         }
     }
 
-    /**
-     * Balance = opening + (top_up + adjustment_in) - (return + adjustment_out) - expenses tagged to this account.
-     * One round-trip per group; cheap enough to compute on every read.
-     */
-    private function computeBalance(PettyCashAccount $account): float
-    {
-        $opening = (float) $account->opening_balance;
-
-        $tx = PettyCashTransaction::where('petty_cash_account_id', $account->id)
-            ->selectRaw("
-                COALESCE(SUM(CASE WHEN type IN ('top_up','adjustment_in') THEN amount ELSE 0 END), 0) AS additions,
-                COALESCE(SUM(CASE WHEN type IN ('return','adjustment_out') THEN amount ELSE 0 END), 0) AS subtractions
-            ")
-            ->first();
-
-        $spent = (float) Expense::where('petty_cash_account_id', $account->id)->sum('amount');
-
-        return round($opening + (float) $tx->additions - (float) $tx->subtractions - $spent, 2);
-    }
+    // Balance computation lives on PettyCashAccount::balances() — single
+    // source of truth used by both this controller and the ExpenseController's
+    // insufficient-funds guard.
 }

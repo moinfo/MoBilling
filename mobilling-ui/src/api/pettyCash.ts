@@ -27,6 +27,10 @@ export interface PettyCashHistoryItem {
   sub_category?: string | null;
   created_by?: string | null;
   created_at: string;
+  // Strict-imprest flag — present on expense items only. When false, the
+  // expense's voucher hasn't been signed/attached yet, so it does NOT
+  // reduce the verified balance (but DOES count toward committed cash).
+  voucher_attached?: boolean;
 }
 
 export interface PettyCashReconciliation {
@@ -42,7 +46,18 @@ export interface PettyCashReconciliation {
 
 export interface PettyCashIndexResponse {
   account: PettyCashAccount;
+  // Verified balance — the official remaining float. Only signed-voucher
+  // expenses reduce this. Shown as the headline number.
   balance: string;
+  // Committed balance — what is physically left in the till after ALL
+  // expenses (signed or pending). Used by the insufficient-funds guard.
+  committed_balance: string;
+  // Sum of expenses that have not yet had their signed voucher attached.
+  // verified - pending = committed.
+  pending_vouchers: {
+    count: number;
+    total: string;
+  };
   history: PettyCashHistoryItem[];
   reconciliations: PettyCashReconciliation[];
 }
