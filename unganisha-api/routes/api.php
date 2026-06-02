@@ -28,6 +28,7 @@ use App\Http\Controllers\Portal\PortalSubscriptionController;
 use App\Http\Controllers\EmailSettingsController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ExpenseCategoryController;
+use App\Http\Controllers\PettyCashController;
 use App\Http\Controllers\ExpenseController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
@@ -279,6 +280,16 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:expenses.create')->post('/expenses', [ExpenseController::class, 'store']);
     Route::middleware('permission:expenses.update')->put('/expenses/{expense}', [ExpenseController::class, 'update']);
     Route::middleware('permission:expenses.delete')->delete('/expenses/{expense}', [ExpenseController::class, 'destroy']);
+    // Petty cash voucher per expense (download PDF / upload signed copy)
+    Route::middleware('permission:expenses.read')->get('/expenses/{expense}/voucher', [ExpenseController::class, 'downloadVoucher']);
+    Route::middleware('permission:expenses.update')->post('/expenses/{expense}/voucher', [ExpenseController::class, 'uploadVoucher']);
+
+    // Petty Cash (single pool per tenant)
+    Route::middleware('permission:petty_cash.read')->get('/petty-cash', [PettyCashController::class, 'index']);
+    Route::middleware('permission:petty_cash.topup')->post('/petty-cash/transactions', [PettyCashController::class, 'storeTransaction']);
+    Route::middleware('permission:petty_cash.reconcile')->post('/petty-cash/reconciliations', [PettyCashController::class, 'storeReconciliation']);
+    Route::middleware('permission:petty_cash.read')->get('/petty-cash/transactions/{transaction}/voucher', [PettyCashController::class, 'downloadTransactionVoucher']);
+    Route::middleware('permission:petty_cash.topup,petty_cash.reconcile')->post('/petty-cash/transactions/{transaction}/voucher', [PettyCashController::class, 'uploadTransactionVoucher']);
 
     // Dashboard
     Route::middleware('permission:menu.dashboard')->get('/dashboard/summary', [DashboardController::class, 'summary']);

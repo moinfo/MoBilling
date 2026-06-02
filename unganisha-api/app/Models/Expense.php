@@ -13,9 +13,11 @@ class Expense extends Model
     use HasFactory, HasUuids, SoftDeletes, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'sub_expense_category_id', 'description', 'amount',
+        'tenant_id', 'sub_expense_category_id', 'petty_cash_account_id',
+        'description', 'amount',
         'expense_date', 'payment_method', 'control_number', 'reference',
         'notes', 'attachment_path',
+        'given_by_name', 'received_by_name', 'voucher_attachment_path',
     ];
 
     protected $casts = [
@@ -26,5 +28,10 @@ class Expense extends Model
     public function subCategory()
     {
         return $this->belongsTo(SubExpenseCategory::class, 'sub_expense_category_id');
+    }
+
+    public function pettyCashAccount()
+    {
+        return $this->belongsTo(PettyCashAccount::class, 'petty_cash_account_id');
     }
 }

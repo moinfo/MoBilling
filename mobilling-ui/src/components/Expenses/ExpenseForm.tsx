@@ -1,7 +1,7 @@
-import { Button, Group, NumberInput, Select, Stack, TextInput, Textarea, Anchor, Text, FileInput } from '@mantine/core';
+import { Button, Group, NumberInput, Select, Stack, TextInput, Textarea, Anchor, Text, FileInput, Checkbox, Divider, Alert } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
-import { IconUpload } from '@tabler/icons-react';
+import { IconUpload, IconCash } from '@tabler/icons-react';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import dayjs from 'dayjs';
 import { Expense } from '../../api/expenses';
@@ -12,9 +12,12 @@ interface Props {
   categories: ExpenseCategory[];
   onSubmit: (values: any) => void;
   loading?: boolean;
+  // Parent passes the tenant's petty cash account id (once fetched).
+  // When null, the "Paid from petty cash" toggle is hidden.
+  pettyCashAccountId?: string | null;
 }
 
-export default function ExpenseForm({ expense, categories, onSubmit, loading }: Props) {
+export default function ExpenseForm({ expense, categories, onSubmit, loading, pettyCashAccountId }: Props) {
   const { methods: paymentMethods } = usePaymentMethods();
   const form = useForm({
     initialValues: {
@@ -27,6 +30,9 @@ export default function ExpenseForm({ expense, categories, onSubmit, loading }: 
       reference: expense?.reference || '',
       notes: expense?.notes || '',
       attachment: null as File | null,
+      paid_from_petty_cash: !!expense?.petty_cash_account_id,
+      given_by_name: expense?.given_by_name || '',
+      received_by_name: expense?.received_by_name || '',
     },
   });
 
@@ -48,6 +54,11 @@ export default function ExpenseForm({ expense, categories, onSubmit, loading }: 
       ...values,
       sub_expense_category_id: values.sub_expense_category_id || null,
       expense_date: dayjs(values.expense_date).format('YYYY-MM-DD'),
+      // Only attach the petty cash linkage if the user toggled it on AND
+      // the parent provided an account id. Otherwise leave it null.
+      petty_cash_account_id: values.paid_from_petty_cash && pettyCashAccountId ? pettyCashAccountId : null,
+      given_by_name: values.paid_from_petty_cash ? values.given_by_name : undefined,
+      received_by_name: values.paid_from_petty_cash ? values.received_by_name : undefined,
     });
   };
 
@@ -84,7 +95,7 @@ export default function ExpenseForm({ expense, categories, onSubmit, loading }: 
         <Textarea label="Notes" {...form.getInputProps('notes')} />
 
         <FileInput
-          label="Attachment"
+          label="Attachment (receipt)"
           placeholder="Upload receipt or document"
           leftSection={<IconUpload size={16} />}
           accept="image/*,.pdf,.doc,.docx,.xls,.xlsx"
@@ -97,6 +108,35 @@ export default function ExpenseForm({ expense, categories, onSubmit, loading }: 
               View attachment
             </Anchor>
           </Text>
+        )}
+
+        {pettyCashAccountId && (
+          <>
+            <Divider my="xs" />
+            <Checkbox
+              label={<Group gap="xs"><IconCash size={14} /> <span>Paid from petty cash</span></Group>}
+              {...form.getInputProps('paid_from_petty_cash', { type: 'checkbox' })}
+            />
+            {form.values.paid_from_petty_cash && (
+              <Stack gap="xs">
+                <Group grow>
+                  <TextInput label="Given by" placeholder="Name of giver / custodian" {...form.getInputProps('given_by_name')} />
+                  <TextInput label="Received by" placeholder="Name of receiver / vendor" {...form.getInputProps('received_by_name')} />
+                </Group>
+                <Alert color="blue" variant="light">
+                  After saving, you'll be able to download a printable voucher PDF for both parties to sign, then upload the scanned copy back.
+                </Alert>
+                {expense?.voucher_attachment_url && (
+                  <Text size="sm">
+                    Signed voucher on file:{' '}
+                    <Anchor href={expense.voucher_attachment_url} target="_blank" size="sm">
+                      View signed voucher
+                    </Anchor>
+                  </Text>
+                )}
+              </Stack>
+            )}
+          </>
         )}
 
         <Group justify="flex-end">

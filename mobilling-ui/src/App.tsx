@@ -44,6 +44,7 @@ import RolesAdmin from './pages/admin/Roles';
 import TemplatesAdmin from './pages/admin/Templates';
 import ExpenseCategories from './pages/ExpenseCategories';
 import Expenses from './pages/Expenses';
+import PettyCash from './pages/PettyCash';
 import Statutories from './pages/Statutories';
 import StatutorySchedule from './pages/StatutorySchedule';
 import Sms from './pages/Sms';
@@ -170,6 +171,7 @@ export default function App() {
                   <Route path="/payments-out" element={<PaymentsOut />} />
                   <Route path="/expense-categories" element={<ExpenseCategories />} />
                   <Route path="/expenses" element={<Expenses />} />
+                  <Route path="/petty-cash" element={<PettyCash />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/roles" element={<Roles />} />
                   <Route path="/sms" element={<Sms />} />

@@ -32,7 +32,7 @@ export default function AppLayout() {
   // Determine which section the current route belongs to
   const billingPaths = ['/clients', '/product-services', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
-  const expensePaths = ['/expense-categories', '/expenses'];
+  const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
 
   const getActiveSection = () => {
@@ -70,7 +70,7 @@ export default function AppLayout() {
   // Check if any billing sub-items are visible
   const showBilling = canAny(['menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills']);
   const showStatutory = canAny(['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out']);
-  const showExpenses = canAny(['menu.expense_categories', 'menu.expenses']);
+  const showExpenses = canAny(['menu.expense_categories', 'menu.expenses', 'menu.petty_cash']);
   const showReports = can('menu.reports');
 
   return (
@@ -254,6 +254,10 @@ export default function AppLayout() {
               {can('menu.expenses') && (
                 <NavLink label="Expenses" leftSection={<IconReceipt2 size={16} />}
                   active={isActive('/expenses')} onClick={() => navigateAndClose('/expenses')} />
+              )}
+              {can('menu.petty_cash') && (
+                <NavLink label="Petty Cash" leftSection={<IconCash size={16} />}
+                  active={isActive('/petty-cash')} onClick={() => navigateAndClose('/petty-cash')} />
               )}
             </NavLink>
           )}

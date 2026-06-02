@@ -28,6 +28,10 @@ class ExpenseResource extends JsonResource
             'reference' => $this->reference,
             'notes' => $this->notes,
             'attachment_url' => $this->attachment_path ? asset('storage/' . $this->attachment_path) : null,
+            'petty_cash_account_id' => $this->petty_cash_account_id,
+            'given_by_name' => $this->given_by_name,
+            'received_by_name' => $this->received_by_name,
+            'voucher_attachment_url' => $this->voucher_attachment_path ? asset('storage/' . $this->voucher_attachment_path) : null,
             'created_at' => $this->created_at,
         ];
     }

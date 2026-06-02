@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor, Tooltip, FileButton } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useDebouncedValue } from '@mantine/hooks';
 import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload } from '@tabler/icons-react';
-import { getExpenses, createExpense, updateExpense, deleteExpense, Expense } from '../api/expenses';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash } from '@tabler/icons-react';
+import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, Expense } from '../api/expenses';
 import { getExpenseCategories, ExpenseCategory } from '../api/expenseCategories';
+import { getPettyCash } from '../api/pettyCash';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import ExpenseForm from '../components/Expenses/ExpenseForm';
@@ -53,37 +54,103 @@ export default function Expenses() {
     queryFn: getExpenseCategories,
   });
 
+  // Fetch the tenant's petty cash account once — its id is what the form
+  // sends when "Paid from petty cash" is toggled on. Skipped if the user
+  // doesn't have petty_cash.read.
+  const canReadPettyCash = can('petty_cash.read');
+  const { data: pettyCashData } = useQuery({
+    queryKey: ['petty-cash'],
+    queryFn: async () => (await getPettyCash()).data,
+    enabled: canReadPettyCash,
+  });
+  const pettyCashAccountId = pettyCashData?.account?.id ?? null;
+
   const expenses: Expense[] = data?.data?.data || [];
   const meta = data?.data?.meta;
   const categories: ExpenseCategory[] = catData?.data?.data || [];
+
+  const [uploadingFor, setUploadingFor] = useState<string | null>(null);
+
+  const handleDownloadVoucher = async (e: Expense) => {
+    try {
+      const res = await downloadExpenseVoucher(e.id);
+      const url = window.URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const link = window.document.createElement('a');
+      link.href = url;
+      link.download = `voucher-${e.id.slice(0, 8)}.pdf`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      let msg = 'Failed to download voucher';
+      try {
+        const d = err?.response?.data;
+        if (d instanceof Blob) msg = JSON.parse(await d.text())?.message || msg;
+        else if (d?.message) msg = d.message;
+      } catch { /* keep default */ }
+      notifications.show({ title: 'Error', message: msg, color: 'red' });
+    }
+  };
+
+  const handleUploadVoucher = async (e: Expense, file: File | null) => {
+    if (!file) return;
+    setUploadingFor(e.id);
+    try {
+      await uploadExpenseVoucher(e.id, file);
+      notifications.show({ title: 'Uploaded', message: 'Signed voucher attached.', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+    } catch (err: any) {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to upload voucher',
+        color: 'red',
+      });
+    } finally {
+      setUploadingFor(null);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: (values: any) => createExpense(values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       closeForm();
       notifications.show({ title: 'Success', message: 'Expense created', color: 'green' });
     },
-    onError: () => notifications.show({ title: 'Error', message: 'Failed to create expense', color: 'red' }),
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to create expense',
+      color: 'red',
+    }),
   });
 
   const updateMutation = useMutation({
     mutationFn: (values: any) => updateExpense(editing!.id, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       closeForm();
       notifications.show({ title: 'Success', message: 'Expense updated', color: 'green' });
     },
-    onError: () => notifications.show({ title: 'Error', message: 'Failed to update expense', color: 'red' }),
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to update expense',
+      color: 'red',
+    }),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteExpense(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       notifications.show({ title: 'Success', message: 'Expense deleted', color: 'green' });
     },
-    onError: () => notifications.show({ title: 'Error', message: 'Failed to delete expense', color: 'red' }),
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to delete expense',
+      color: 'red',
+    }),
   });
 
   const closeForm = () => {
@@ -185,7 +252,14 @@ export default function Expenses() {
                 <Table.Td>{formatCurrency(e.amount)}</Table.Td>
                 <Table.Td>{formatDate(e.expense_date)}</Table.Td>
                 <Table.Td>
-                  <Badge variant="light" size="sm">{methodLabels[e.payment_method] || e.payment_method}</Badge>
+                  <Group gap={4} wrap="nowrap">
+                    <Badge variant="light" size="sm">{methodLabels[e.payment_method] || e.payment_method}</Badge>
+                    {e.petty_cash_account_id && (
+                      <Tooltip label="Paid from petty cash">
+                        <Badge color="violet" variant="light" size="sm" leftSection={<IconCash size={10} />}>PC</Badge>
+                      </Tooltip>
+                    )}
+                  </Group>
                 </Table.Td>
                 <Table.Td>{e.control_number || '—'}</Table.Td>
                 <Table.Td>
@@ -197,11 +271,32 @@ export default function Expenses() {
                 </Table.Td>
                 {(canUpdate || canDelete) && (
                   <Table.Td>
-                    <Group gap="xs">
+                    <Group gap="xs" wrap="nowrap">
                       {canUpdate && (
                         <ActionIcon variant="light" onClick={() => openEdit(e)}>
                           <IconEdit size={16} />
                         </ActionIcon>
+                      )}
+                      {/* Voucher actions: only meaningful for petty cash expenses */}
+                      {e.petty_cash_account_id && (
+                        <>
+                          <Tooltip label="Download voucher PDF">
+                            <ActionIcon variant="light" color="blue" onClick={() => handleDownloadVoucher(e)}>
+                              <IconFileDownload size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          {canUpdate && (
+                            <FileButton onChange={(f) => handleUploadVoucher(e, f)} accept="application/pdf,image/*">
+                              {(props) => (
+                                <Tooltip label="Upload signed voucher">
+                                  <ActionIcon variant="light" color="violet" loading={uploadingFor === e.id} {...props}>
+                                    <IconUpload size={16} />
+                                  </ActionIcon>
+                                </Tooltip>
+                              )}
+                            </FileButton>
+                          )}
+                        </>
                       )}
                       {canDelete && (
                         <ActionIcon variant="light" color="red" onClick={() => handleDelete(e)}>
@@ -230,6 +325,7 @@ export default function Expenses() {
           categories={categories}
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}
+          pettyCashAccountId={pettyCashAccountId}
         />
       </Modal>
     </>
