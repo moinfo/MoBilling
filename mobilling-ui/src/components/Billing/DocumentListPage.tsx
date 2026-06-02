@@ -304,6 +304,13 @@ export default function DocumentListPage({ type, title }: Props) {
   const handleEdit = async (doc: Document) => {
     const res = await getDocument(doc.id);
     const full = res.data.data;
+    if (full.status !== 'draft') {
+      notifications.show({
+        title: 'Editing a non-draft document',
+        message: `${full.document_number} has status "${full.status}". Saving will recompute paid/partial status from existing payments and the new total.`,
+        color: 'yellow',
+      });
+    }
     setEditDoc(full);
     setFormOpen(true);
   };
@@ -536,6 +543,10 @@ export default function DocumentListPage({ type, title }: Props) {
             document={viewDoc}
             onRefresh={handleRefresh}
             onClose={() => setViewDoc(null)}
+            onEdit={(d) => {
+              setViewDoc(null);
+              handleEdit(d);
+            }}
           />
         )}
       </Drawer>

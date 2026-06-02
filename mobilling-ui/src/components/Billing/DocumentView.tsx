@@ -3,9 +3,9 @@ import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash, IconCopy, IconBrandWhatsapp, IconLink, IconCheck, IconArrowBack } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash, IconCopy, IconBrandWhatsapp, IconLink, IconCheck, IconArrowBack, IconEdit, IconArrowBackUp } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem, submitForApproval, approveDocument, rejectDocument } from '../../api/documents';
+import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem, submitForApproval, approveDocument, rejectDocument, returnDocumentToDraft } from '../../api/documents';
 import { usePermissions } from '../../hooks/usePermissions';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import { useAuth } from '../../context/AuthContext';
@@ -17,6 +17,7 @@ interface Props {
   document: Document;
   onRefresh: () => void;
   onClose: () => void;
+  onEdit?: (doc: Document) => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -28,7 +29,7 @@ const statusLabels: Record<string, string> = {
   pending_approval: 'Pending Approval',
 };
 
-export default function DocumentView({ document: doc, onRefresh, onClose: _onClose }: Props) {
+export default function DocumentView({ document: doc, onRefresh, onClose: _onClose, onEdit }: Props) {
   const { methods: paymentMethods, getMethodDetails } = usePaymentMethods();
   const { user } = useAuth();
   const { can } = usePermissions();
@@ -162,6 +163,26 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     } finally {
       setLoading('');
     }
+  };
+
+  const handleReturnToDraft = () => {
+    modals.openConfirmModal({
+      title: 'Return to Draft',
+      children: `Return ${doc.document_number} to draft so it can be edited? Note: invoices with recorded payments cannot be returned to draft — you'll need to remove the payments first.`,
+      labels: { confirm: 'Return to Draft', cancel: 'Cancel' },
+      onConfirm: async () => {
+        try {
+          setLoading('returnToDraft');
+          await returnDocumentToDraft(doc.id);
+          notifications.show({ title: 'Returned to draft', message: 'The document is now editable.', color: 'green' });
+          onRefresh();
+        } catch (err: any) {
+          notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to return to draft', color: 'red' });
+        } finally {
+          setLoading('');
+        }
+      },
+    });
   };
 
   const handlePayment = async (values: any) => {
@@ -434,6 +455,12 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
             Download PDF
           </Button>
         )}
+        {can('documents.update') && doc.status !== 'cancelled' && onEdit && (
+          <Button variant="light" leftSection={<IconEdit size={16} />}
+            onClick={() => onEdit(doc)}>
+            Edit
+          </Button>
+        )}
         {doc.status === 'draft' && can('documents.send') && (
           <Button color="violet" leftSection={<IconSend size={16} />}
             onClick={handleSubmitForApproval} loading={loading === 'submitApproval'}>
@@ -456,6 +483,12 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           <Button variant="light" leftSection={<IconSend size={16} />}
             onClick={() => { setSendEmail(true); setShowSendConfirm(true); }} loading={loading === 'send'}>
             Send Email
+          </Button>
+        )}
+        {can('documents.update') && ['sent', 'overdue', 'partial', 'pending_approval'].includes(doc.status) && (
+          <Button variant="light" leftSection={<IconArrowBackUp size={16} />}
+            onClick={handleReturnToDraft} loading={loading === 'returnToDraft'}>
+            Return to Draft
           </Button>
         )}
         {can('documents.convert') && canConvert && (

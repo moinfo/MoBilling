@@ -129,8 +129,12 @@ class DocumentController extends Controller
 
     public function update(StoreDocumentRequest $request, Document $document)
     {
-        if ($document->status !== 'draft') {
-            return response()->json(['message' => 'Only draft documents can be edited. Return to draft first.'], 422);
+        // Editing is gated by the documents.update permission (route middleware).
+        // Cancelled documents are a deliberate void state — they must be restored
+        // before editing, otherwise "edit a voided document" has no defensible
+        // accounting meaning.
+        if ($document->status === 'cancelled') {
+            return response()->json(['message' => 'A cancelled document cannot be edited. Restore it first.'], 422);
         }
 
         return DB::transaction(function () use ($request, $document) {
@@ -158,6 +162,25 @@ class DocumentController extends Controller
             }
             unset($item);
 
+            $newTotal = round($subtotal - $discountTotal + $taxAmount, 2);
+
+            // Recompute status from payments so paid/partial/sent stays consistent
+            // after a totals-changing edit. Workflow states (draft, pending_approval,
+            // accepted, rejected) are preserved — only the financial group is rederived.
+            $paidAmount = (float) $document->payments()->sum('amount');
+            $newStatus = $document->status;
+            if (in_array($document->status, ['sent', 'overdue', 'partial', 'paid'], true)) {
+                if ($paidAmount > 0 && $paidAmount >= $newTotal) {
+                    $newStatus = 'paid';
+                } elseif ($paidAmount > 0) {
+                    $newStatus = 'partial';
+                } else {
+                    // No payments left on a financial-state doc: drop back to sent
+                    // (the overdue cron will re-flip it on next run if due_date warrants).
+                    $newStatus = 'sent';
+                }
+            }
+
             $document->update([
                 'client_id' => $request->client_id,
                 'date' => $request->date,
@@ -165,8 +188,9 @@ class DocumentController extends Controller
                 'subtotal' => round($subtotal, 2),
                 'discount_amount' => round($discountTotal, 2),
                 'tax_amount' => round($taxAmount, 2),
-                'total' => round($subtotal - $discountTotal + $taxAmount, 2),
+                'total' => $newTotal,
                 'notes' => $request->notes,
+                'status' => $newStatus,
             ]);
 
             $document->items()->delete();

@@ -152,7 +152,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                   </Menu.Target>
                   <Menu.Dropdown>
                     <Menu.Item leftSection={<IconEye size={14} />} onClick={() => onView(doc)}>View</Menu.Item>
-                    {can('documents.update') && doc.status === 'draft' && (
+                    {can('documents.update') && doc.status !== 'cancelled' && (
                       <Menu.Item leftSection={<IconEdit size={14} />} onClick={() => onEdit(doc)}>Edit</Menu.Item>
                     )}
                     {can('documents.send') && onSubmitForApproval && doc.status === 'draft' && (
