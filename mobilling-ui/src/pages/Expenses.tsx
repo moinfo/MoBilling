@@ -6,7 +6,7 @@ import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle, IconEye } from '@tabler/icons-react';
 import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, Expense } from '../api/expenses';
 import { getExpenseCategories, ExpenseCategory } from '../api/expenseCategories';
 import { getPettyCash } from '../api/pettyCash';
@@ -308,14 +308,29 @@ export default function Expenses() {
                           <IconEdit size={16} />
                         </ActionIcon>
                       )}
-                      {/* Voucher actions: only meaningful for petty cash expenses */}
+                      {/* Voucher actions: only meaningful for petty cash expenses.
+                          Three distinct actions: download BLANK template,
+                          VIEW already-signed (when uploaded), UPLOAD/replace. */}
                       {e.petty_cash_account_id && (
                         <>
-                          <Tooltip label="Download voucher PDF">
+                          <Tooltip label="Download blank voucher PDF (for printing)">
                             <ActionIcon variant="light" color="blue" onClick={() => handleDownloadVoucher(e)}>
                               <IconFileDownload size={16} />
                             </ActionIcon>
                           </Tooltip>
+                          {e.voucher_attachment_url && (
+                            <Tooltip label="View signed voucher">
+                              <ActionIcon
+                                component="a"
+                                variant="light"
+                                color="green"
+                                href={e.voucher_attachment_url}
+                                target="_blank"
+                              >
+                                <IconEye size={16} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
                           {canUpdate && (
                             <FileButton onChange={(f) => handleUploadVoucher(e, f)} accept="application/pdf,image/*">
                               {(props) => (

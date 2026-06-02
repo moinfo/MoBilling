@@ -56,6 +56,12 @@ class PettyCashController extends Controller
             'reference' => $t->reference,
             'notes' => $t->notes,
             'reconciliation_id' => $t->reconciliation_id,
+            'given_by_name' => $t->given_by_name,
+            'received_by_name' => $t->received_by_name,
+            'voucher_attached' => !empty($t->voucher_attachment_path),
+            'voucher_attachment_url' => $t->voucher_attachment_path
+                ? asset('storage/' . $t->voucher_attachment_path)
+                : null,
             'created_by' => $t->createdBy?->name,
             'created_at' => $t->created_at?->toIso8601String(),
         ]);
@@ -73,6 +79,9 @@ class PettyCashController extends Controller
             // Strict-imprest flag: expense only deducts the verified balance
             // once its signed voucher has been attached.
             'voucher_attached' => !empty($e->voucher_attachment_path),
+            'voucher_attachment_url' => $e->voucher_attachment_path
+                ? asset('storage/' . $e->voucher_attachment_path)
+                : null,
             'created_at' => $e->created_at?->toIso8601String(),
         ]);
 

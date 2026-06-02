@@ -27,10 +27,17 @@ export interface PettyCashHistoryItem {
   sub_category?: string | null;
   created_by?: string | null;
   created_at: string;
-  // Strict-imprest flag — present on expense items only. When false, the
-  // expense's voucher hasn't been signed/attached yet, so it does NOT
-  // reduce the verified balance (but DOES count toward committed cash).
+  // For expenses, voucher_attached gates the strict-imprest balance rule
+  // (verified only drops once the signed voucher is on file). For
+  // transactions (top-up/return/adjustment), voucher_attached is similarly
+  // tracked for audit but does NOT affect the balance math.
   voucher_attached?: boolean;
+  voucher_attachment_url?: string | null;
+  // Signatories — present on transaction items (top-up/return) for the
+  // voucher PDF. Expense items use their own given_by/received_by from
+  // the expense record itself.
+  given_by_name?: string | null;
+  received_by_name?: string | null;
 }
 
 export interface PettyCashReconciliation {

@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconCash, IconArrowsExchange, IconChecklist, IconFileDownload, IconUpload,
-  IconCheck, IconAlertTriangle,
+  IconCheck, IconAlertTriangle, IconEye,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
@@ -280,8 +280,8 @@ export default function PettyCash() {
                         </Stack>
                       ) : (
                         <Stack gap={0}>
-                          <Text size="xs">Given: {(item as any).given_by_name || '—'}</Text>
-                          <Text size="xs">Received: {(item as any).received_by_name || '—'}</Text>
+                          <Text size="xs">Given: {item.given_by_name || '—'}</Text>
+                          <Text size="xs">Received: {item.received_by_name || '—'}</Text>
                         </Stack>
                       )}
                     </Table.Td>
@@ -291,26 +291,46 @@ export default function PettyCash() {
                       </Text>
                     </Table.Td>
                     <Table.Td>
-                      {item.kind !== 'expense' && (
-                        <Group gap="xs">
-                          <Tooltip label="Download voucher PDF">
-                            <ActionIcon variant="light" onClick={() => handleDownloadVoucher(item)}>
+                      <Group gap="xs">
+                        {/* Download BLANK voucher template — only for transactions
+                            (top-up/return/adjustment). Expense vouchers download
+                            from the Expenses page. */}
+                        {item.kind !== 'expense' && (
+                          <Tooltip label="Download blank voucher PDF (for printing)">
+                            <ActionIcon variant="light" color="blue" onClick={() => handleDownloadVoucher(item)}>
                               <IconFileDownload size={16} />
                             </ActionIcon>
                           </Tooltip>
-                          {canTopUp && (
-                            <FileButton onChange={(f) => handleUploadVoucher(item, f)} accept="application/pdf,image/*">
-                              {(props) => (
-                                <Tooltip label="Upload signed voucher">
-                                  <ActionIcon variant="light" color="violet" loading={uploadingFor === item.id} {...props}>
-                                    <IconUpload size={16} />
-                                  </ActionIcon>
-                                </Tooltip>
-                              )}
-                            </FileButton>
-                          )}
-                        </Group>
-                      )}
+                        )}
+                        {/* VIEW already-signed voucher — works for both expenses
+                            and transactions whenever a scan is attached. */}
+                        {item.voucher_attachment_url && (
+                          <Tooltip label="View signed voucher">
+                            <ActionIcon
+                              component="a"
+                              variant="light"
+                              color="green"
+                              href={item.voucher_attachment_url}
+                              target="_blank"
+                            >
+                              <IconEye size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {/* Upload/Replace for transaction rows only — expense
+                            voucher uploads happen on the Expenses page. */}
+                        {item.kind !== 'expense' && canTopUp && (
+                          <FileButton onChange={(f) => handleUploadVoucher(item, f)} accept="application/pdf,image/*">
+                            {(props) => (
+                              <Tooltip label={item.voucher_attachment_url ? 'Replace signed voucher' : 'Upload signed voucher'}>
+                                <ActionIcon variant="light" color="violet" loading={uploadingFor === item.id} {...props}>
+                                  <IconUpload size={16} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )}
+                          </FileButton>
+                        )}
+                      </Group>
                     </Table.Td>
                   </Table.Tr>
                 ))}
