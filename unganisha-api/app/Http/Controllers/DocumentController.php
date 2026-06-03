@@ -14,6 +14,7 @@ use App\Services\DocumentNumberService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class DocumentController extends Controller
 {
@@ -128,8 +129,12 @@ class DocumentController extends Controller
 
     public function update(StoreDocumentRequest $request, Document $document)
     {
-        if ($document->status !== 'draft') {
-            return response()->json(['message' => 'Only draft documents can be edited. Return to draft first.'], 422);
+        // Editing is gated by the documents.update permission (route middleware).
+        // Cancelled documents are a deliberate void state — they must be restored
+        // before editing, otherwise "edit a voided document" has no defensible
+        // accounting meaning.
+        if ($document->status === 'cancelled') {
+            return response()->json(['message' => 'A cancelled document cannot be edited. Restore it first.'], 422);
         }
 
         return DB::transaction(function () use ($request, $document) {
@@ -157,6 +162,25 @@ class DocumentController extends Controller
             }
             unset($item);
 
+            $newTotal = round($subtotal - $discountTotal + $taxAmount, 2);
+
+            // Recompute status from payments so paid/partial/sent stays consistent
+            // after a totals-changing edit. Workflow states (draft, pending_approval,
+            // accepted, rejected) are preserved — only the financial group is rederived.
+            $paidAmount = (float) $document->payments()->sum('amount');
+            $newStatus = $document->status;
+            if (in_array($document->status, ['sent', 'overdue', 'partial', 'paid'], true)) {
+                if ($paidAmount > 0 && $paidAmount >= $newTotal) {
+                    $newStatus = 'paid';
+                } elseif ($paidAmount > 0) {
+                    $newStatus = 'partial';
+                } else {
+                    // No payments left on a financial-state doc: drop back to sent
+                    // (the overdue cron will re-flip it on next run if due_date warrants).
+                    $newStatus = 'sent';
+                }
+            }
+
             $document->update([
                 'client_id' => $request->client_id,
                 'date' => $request->date,
@@ -164,8 +188,9 @@ class DocumentController extends Controller
                 'subtotal' => round($subtotal, 2),
                 'discount_amount' => round($discountTotal, 2),
                 'tax_amount' => round($taxAmount, 2),
-                'total' => round($subtotal - $discountTotal + $taxAmount, 2),
+                'total' => $newTotal,
                 'notes' => $request->notes,
+                'status' => $newStatus,
             ]);
 
             $document->items()->delete();
@@ -179,6 +204,22 @@ class DocumentController extends Controller
 
     public function destroy(Document $document)
     {
+        // Never delete a document that has money recorded against it — that would
+        // orphan the payments and silently drop the invoice from totals.
+        if ($document->payments()->exists()) {
+            return response()->json([
+                'message' => 'Cannot delete a document that has payments recorded. Remove the payments first.',
+            ], 422);
+        }
+
+        // Only documents that never became (or are no longer) a live financial record
+        // may be deleted. A sent/accepted/paid/overdue invoice must be cancelled first.
+        if (!in_array($document->status, ['draft', 'rejected', 'cancelled'], true)) {
+            return response()->json([
+                'message' => 'Only draft, rejected, or cancelled documents can be deleted. Cancel it first.',
+            ], 422);
+        }
+
         $document->delete();
         return response()->json(['message' => 'Document deleted']);
     }
@@ -206,16 +247,40 @@ class DocumentController extends Controller
     {
         $document->load('client');
 
-        // Update status before sending so PDF shows correct status
-        $document->update(['status' => 'sent']);
-        $document->refresh();
+        if ($document->status === 'cancelled') {
+            return response()->json(['message' => 'Cannot send a cancelled document.'], 422);
+        }
+
+        // Advance to "sent" so the PDF shows the right status — but never downgrade a
+        // document that already carries a financial status (a resend must not wipe
+        // "paid"/"partial"/"overdue").
+        $priorStatus = $document->status;
+        $statusAdvanced = false;
+        if (!in_array($document->status, ['paid', 'partial', 'overdue'], true)) {
+            $document->update(['status' => 'sent']);
+            $document->refresh();
+            $statusAdvanced = true;
+        }
 
         if ($request->boolean('send_email', true)) {
             if (!$document->client->email) {
                 return response()->json(['message' => 'Client has no email address. Document status updated.'], 422);
             }
 
-            $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
+            // Send synchronously so a delivery failure surfaces to the user instead of
+            // silently landing in failed_jobs after we've already reported success.
+            try {
+                $document->client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            } catch (\Throwable $e) {
+                // Roll back the status bump we applied so the document doesn't claim to
+                // have been sent when delivery failed.
+                if ($statusAdvanced) {
+                    $document->update(['status' => $priorStatus]);
+                }
+                Log::error('Document send failed', ['document_id' => $document->id, 'exception' => $e]);
+
+                return response()->json(['message' => 'Could not send the document: '.$e->getMessage()], 502);
+            }
 
             // Confirm to the sending user via in-app notification
             $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
@@ -264,7 +329,18 @@ class DocumentController extends Controller
 
         // Approve and optionally send to client
         if ($request->boolean('send_email', true) && $document->client->email) {
-            $document->client->notify(new \App\Notifications\InvoiceSentNotification($document));
+            // Approval is a legitimate state change independent of delivery, so a send
+            // failure must not undo it — surface the failure but keep the document approved.
+            try {
+                $document->client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            } catch (\Throwable $e) {
+                Log::error('Document send failed', ['document_id' => $document->id, 'exception' => $e]);
+
+                return response()->json([
+                    'data' => new DocumentResource($document->fresh()->load('items', 'client')),
+                    'message' => "{$document->document_number} approved, but the email could not be sent: {$e->getMessage()}",
+                ]);
+            }
 
             $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
 
@@ -468,8 +544,9 @@ class DocumentController extends Controller
             ], 422);
         }
 
-        return DB::transaction(function () use ($documents) {
-            $client = $documents->first()->client;
+        $client = $documents->first()->client;
+
+        $mergedDoc = DB::transaction(function () use ($documents, $client) {
             $tenant = auth()->user()->tenant;
 
             // Gather all line items and calculate totals
@@ -535,15 +612,26 @@ class DocumentController extends Controller
                 $doc->update(['status' => 'cancelled']);
             }
 
-            // Send merged invoice to client
             $mergedDoc->load('items', 'client');
-            $client->notify(new \App\Notifications\InvoiceSentNotification($mergedDoc));
+            $mergedDoc->mergedCount = count($mergedNumbers);
 
-            return response()->json([
-                'data' => new DocumentResource($mergedDoc),
-                'message' => "Merged " . count($mergedNumbers) . " invoices into {$mergedDoc->document_number}.",
-            ]);
+            return $mergedDoc;
         });
+
+        // Send merged invoice to client AFTER the transaction commits, so a queued job
+        // can't race an uncommitted row and a delivery failure can't roll back the merge.
+        $message = "Merged {$mergedDoc->mergedCount} invoices into {$mergedDoc->document_number}.";
+        try {
+            $client->notifyNow(new \App\Notifications\InvoiceSentNotification($mergedDoc));
+        } catch (\Throwable $e) {
+            Log::error('Document send failed', ['document_id' => $mergedDoc->id, 'exception' => $e]);
+            $message = "Merged {$mergedDoc->mergedCount} invoices into {$mergedDoc->document_number}, but the email could not be sent: {$e->getMessage()}";
+        }
+
+        return response()->json([
+            'data' => new DocumentResource($mergedDoc),
+            'message' => $message,
+        ]);
     }
 
     public function remindUnpaid(Request $request)

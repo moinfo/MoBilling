@@ -49,7 +49,7 @@ export default function DocumentListPage({ type, title }: Props) {
   useEffect(() => {
     const previewId = searchParams.get('preview');
     if (previewId) {
-      getDocument(previewId).then((res) => setViewDoc(res.data.data)).catch(() => {});
+      getDocument(previewId).then((res) => setViewDoc(res.data.data)).catch((err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Could not open that document — it may have been deleted.', color: 'red' }));
       searchParams.delete('preview');
       setSearchParams(searchParams, { replace: true });
     }
@@ -128,6 +128,11 @@ export default function DocumentListPage({ type, title }: Props) {
       queryClient.invalidateQueries({ queryKey: ['documents'] });
       notifications.show({ title: 'Success', message: 'Document deleted', color: 'green' });
     },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to delete document',
+      color: 'red',
+    }),
   });
 
   const cancelMutation = useMutation({
@@ -299,6 +304,13 @@ export default function DocumentListPage({ type, title }: Props) {
   const handleEdit = async (doc: Document) => {
     const res = await getDocument(doc.id);
     const full = res.data.data;
+    if (full.status !== 'draft') {
+      notifications.show({
+        title: 'Editing a non-draft document',
+        message: `${full.document_number} has status "${full.status}". Saving will recompute paid/partial status from existing payments and the new total.`,
+        color: 'yellow',
+      });
+    }
     setEditDoc(full);
     setFormOpen(true);
   };
@@ -531,6 +543,10 @@ export default function DocumentListPage({ type, title }: Props) {
             document={viewDoc}
             onRefresh={handleRefresh}
             onClose={() => setViewDoc(null)}
+            onEdit={(d) => {
+              setViewDoc(null);
+              handleEdit(d);
+            }}
           />
         )}
       </Drawer>

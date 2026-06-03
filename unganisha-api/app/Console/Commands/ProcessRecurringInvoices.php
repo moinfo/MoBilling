@@ -23,12 +23,19 @@ class ProcessRecurringInvoices extends Command
             $this->info("Invoices created: {$result['invoices_created']}");
             $this->info("Reminders sent: {$result['reminders_sent']}");
 
+            $hasFailures = ($result['invoices_failed'] > 0 || $result['reminders_failed'] > 0);
+            if ($hasFailures) {
+                $this->warn("{$result['invoices_failed']} invoices and {$result['reminders_failed']} reminders FAILED — check logs");
+            }
+
             CronLog::create([
                 'tenant_id' => null,
                 'command' => $this->signature,
-                'description' => "Created {$result['invoices_created']} invoices, sent {$result['reminders_sent']} reminders",
+                'description' => "Created {$result['invoices_created']} invoices ({$result['invoices_failed']} failed), sent {$result['reminders_sent']} reminders ({$result['reminders_failed']} failed)",
                 'results' => $result,
-                'status' => 'success',
+                // cron_logs.status enum is success|failed — a partially-failed run is
+                // flagged 'failed' so it surfaces in the admin log; counts are in the description.
+                'status' => $hasFailures ? 'failed' : 'success',
                 'started_at' => $startedAt,
                 'finished_at' => now(),
             ]);

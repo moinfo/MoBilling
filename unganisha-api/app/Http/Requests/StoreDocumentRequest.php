@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreDocumentRequest extends FormRequest
@@ -32,5 +33,21 @@ class StoreDocumentRequest extends FormRequest
             'items.*.service_from' => 'nullable|date',
             'items.*.service_to' => 'nullable|date',
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            foreach ($this->input('items', []) as $i => $item) {
+                $discountType = $item['discount_type'] ?? null;
+                $discountValue = $item['discount_value'] ?? null;
+                if ($discountType === 'percent' && is_numeric($discountValue) && $discountValue > 100) {
+                    $validator->errors()->add(
+                        "items.{$i}.discount_value",
+                        'Percentage discount cannot exceed 100%.'
+                    );
+                }
+            }
+        });
     }
 }

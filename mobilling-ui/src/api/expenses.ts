@@ -16,6 +16,11 @@ export interface Expense {
   reference: string | null;
   notes: string | null;
   attachment_url: string | null;
+  // Petty cash linkage (nullable when not paid from petty cash)
+  petty_cash_account_id: string | null;
+  given_by_name: string | null;
+  received_by_name: string | null;
+  voucher_attachment_url: string | null;
 }
 
 export const getExpenses = (params?: {
@@ -30,7 +35,7 @@ export const getExpenses = (params?: {
 export const getExpense = (id: string) =>
   api.get<{ data: Expense }>(`/expenses/${id}`);
 
-export const createExpense = (data: {
+export interface ExpensePayload {
   sub_expense_category_id?: string | null;
   description: string;
   amount: number;
@@ -40,48 +45,51 @@ export const createExpense = (data: {
   reference?: string;
   notes?: string;
   attachment?: File | null;
-}) => {
-  const formData = new FormData();
-  if (data.sub_expense_category_id) formData.append('sub_expense_category_id', data.sub_expense_category_id);
-  formData.append('description', data.description);
-  formData.append('amount', String(data.amount));
-  formData.append('expense_date', data.expense_date);
-  formData.append('payment_method', data.payment_method);
-  if (data.control_number) formData.append('control_number', data.control_number);
-  if (data.reference) formData.append('reference', data.reference);
-  if (data.notes) formData.append('notes', data.notes);
-  if (data.attachment) formData.append('attachment', data.attachment);
-  return api.post('/expenses', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
-  });
+  // Petty cash linkage — pass these when the expense is paid from petty cash.
+  petty_cash_account_id?: string | null;
+  given_by_name?: string;
+  received_by_name?: string;
+}
+
+const buildExpenseFormData = (data: ExpensePayload, includeMethodOverride = false) => {
+  const fd = new FormData();
+  if (includeMethodOverride) fd.append('_method', 'PUT');
+  if (data.sub_expense_category_id) fd.append('sub_expense_category_id', data.sub_expense_category_id);
+  if (data.petty_cash_account_id) fd.append('petty_cash_account_id', data.petty_cash_account_id);
+  fd.append('description', data.description);
+  fd.append('amount', String(data.amount));
+  fd.append('expense_date', data.expense_date);
+  fd.append('payment_method', data.payment_method);
+  if (data.control_number) fd.append('control_number', data.control_number);
+  if (data.reference) fd.append('reference', data.reference);
+  if (data.notes) fd.append('notes', data.notes);
+  if (data.given_by_name !== undefined) fd.append('given_by_name', data.given_by_name);
+  if (data.received_by_name !== undefined) fd.append('received_by_name', data.received_by_name);
+  if (data.attachment) fd.append('attachment', data.attachment);
+  return fd;
 };
 
-export const updateExpense = (id: string, data: {
-  sub_expense_category_id?: string | null;
-  description: string;
-  amount: number;
-  expense_date: string;
-  payment_method: string;
-  control_number?: string;
-  reference?: string;
-  notes?: string;
-  attachment?: File | null;
-}) => {
-  const formData = new FormData();
-  formData.append('_method', 'PUT');
-  if (data.sub_expense_category_id) formData.append('sub_expense_category_id', data.sub_expense_category_id);
-  formData.append('description', data.description);
-  formData.append('amount', String(data.amount));
-  formData.append('expense_date', data.expense_date);
-  formData.append('payment_method', data.payment_method);
-  if (data.control_number) formData.append('control_number', data.control_number);
-  if (data.reference) formData.append('reference', data.reference);
-  if (data.notes) formData.append('notes', data.notes);
-  if (data.attachment) formData.append('attachment', data.attachment);
-  return api.post(`/expenses/${id}`, formData, {
+export const createExpense = (data: ExpensePayload) =>
+  api.post('/expenses', buildExpenseFormData(data), {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
-};
+
+export const updateExpense = (id: string, data: ExpensePayload) =>
+  api.post(`/expenses/${id}`, buildExpenseFormData(data, true), {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
 
 export const deleteExpense = (id: string) =>
   api.delete(`/expenses/${id}`);
+
+// Petty cash voucher per expense
+export const downloadExpenseVoucher = (id: string) =>
+  api.get(`/expenses/${id}/voucher`, { responseType: 'blob' });
+
+export const uploadExpenseVoucher = (id: string, file: File) => {
+  const fd = new FormData();
+  fd.append('voucher', file);
+  return api.post(`/expenses/${id}/voucher`, fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
