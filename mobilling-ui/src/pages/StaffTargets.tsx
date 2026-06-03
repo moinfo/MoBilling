@@ -119,7 +119,7 @@ export default function StaffTargets() {
 
         {canSubmit && (
           <Tabs.Panel value="dashboard" pt="md">
-            <DashboardTab />
+            <DashboardTab managedTargets={managedTargets} />
           </Tabs.Panel>
         )}
         {canSubmit && (
@@ -233,7 +233,7 @@ function ManagedTargetsTab({ targets }: { targets: StaffTarget[] }) {
 
 // ── Dashboard Tab ──────────────────────────────────────────────────────────────
 
-function DashboardTab() {
+function DashboardTab({ managedTargets = [] }: { managedTargets?: StaffTarget[] }) {
   const { user } = useAuth();
   const { data, isLoading } = useQuery({
     queryKey: ['staff-targets-mine'],
@@ -251,6 +251,22 @@ function DashboardTab() {
     target_title: t.title,
     manager: t.manager!,
   }));
+
+  // Manager-side metrics (only when user manages ≥1 target)
+  const managedActive   = managedTargets.filter(t => t.status === 'active' || t.status === 'self_reported');
+  const managedVerified = managedTargets.filter(t => t.status === 'verified');
+  const managerEarned   = managedVerified.reduce((s, t) => s + (t.manager_commission_earned ?? 0), 0);
+  // Theoretical potential: assume all goals would be met across active targets
+  const managerPotential = managedActive.reduce((s, t) => {
+    if (t.manager_commission_type === 'fixed') return s + (t.manager_commission_value ?? 0);
+    if (t.manager_commission_type === 'percentage') {
+      const critPotential = t.criteria.reduce((cs, c) => cs + criterionPotential(c), 0);
+      const groupPotential = groupBonusPotential(t);
+      return s + (t.manager_commission_value ?? 0) / 100 * (critPotential + groupPotential);
+    }
+    return s;
+  }, 0);
+  const pendingVerifications = managedTargets.filter(t => t.status === 'self_reported').length;
 
   const totalEarned    = verifiedTargets.reduce((s, t) => s + t.total_commission, 0);
   const totalDeducted  = verifiedTargets.reduce((s, t) => s + (t.salary_deduction_earned ?? 0), 0);
@@ -351,7 +367,7 @@ function DashboardTab() {
         </>
       )}
 
-      {activeTargets.length === 0 && verifiedTargets.length === 0 && (
+      {activeTargets.length === 0 && verifiedTargets.length === 0 && managedTargets.length === 0 && (
         <Center py="xl">
           <Stack align="center" gap="xs">
             <ThemeIcon size="xl" variant="light" color="gray" radius="xl">
@@ -360,6 +376,80 @@ function DashboardTab() {
             <Text c="dimmed">No targets assigned to you yet.</Text>
           </Stack>
         </Center>
+      )}
+
+      {/* As Manager — only when user manages ≥1 target */}
+      {managedTargets.length > 0 && (
+        <>
+          <Divider my="sm"
+            label={
+              <Group gap="xs">
+                <IconClipboardCheck size={14} />
+                <Text size="sm" fw={600}>As Manager — your team-lead overrides</Text>
+              </Group>
+            }
+            labelPosition="left"
+          />
+
+          <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+            <StatCard label="Targets you manage" value={String(managedTargets.length)} color="violet" icon={<IconUsers size={18} />} />
+            <StatCard label="Override commission" value={formatCurrency(managerEarned)} color="green" icon={<IconCoin size={18} />} />
+            <StatCard label="Potential override" value={formatCurrency(managerPotential)} color="violet" icon={<IconTrendingUp size={18} />} />
+            <StatCard label="Pending verification" value={String(pendingVerifications)} color={pendingVerifications > 0 ? 'orange' : 'gray'} icon={<IconClipboardCheck size={18} />} />
+          </SimpleGrid>
+
+          {managedActive.length > 0 && (
+            <>
+              <Text fw={600} size="sm" mt="xs">Staff progress on your watch</Text>
+              <Stack gap="xs">
+                {managedActive.slice(0, 5).map(t => {
+                  const metCount = t.criteria.filter(c => (c.achieved_value ?? 0) >= c.goal_value).length;
+                  const overallPct = t.criteria.length > 0
+                    ? Math.round(t.criteria.reduce((s, c) => s + Math.min(100, (c.achieved_value ?? 0) / c.goal_value * 100), 0) / t.criteria.length)
+                    : 0;
+                  const daysLeft = dayjs(t.period_end).diff(dayjs(), 'day');
+                  return (
+                    <Paper key={t.id} withBorder p="sm" radius="md">
+                      <Group justify="space-between" wrap="nowrap" mb={6}>
+                        <Group gap="xs" wrap="nowrap" style={{ flex: 1, minWidth: 0 }}>
+                          <Badge size="xs" color={STATUS_CONFIG[t.status].color} variant="dot">
+                            {STATUS_CONFIG[t.status].label}
+                          </Badge>
+                          <Text size="sm" fw={600} truncate>{t.user.name}</Text>
+                          <Text size="xs" c="dimmed" truncate>· {t.title}</Text>
+                        </Group>
+                        <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+                          {t.manager_commission_type !== 'none' && (
+                            <Badge size="xs" variant="light" color="violet">
+                              {t.manager_commission_type === 'fixed'
+                                ? formatCurrency(t.manager_commission_value ?? 0)
+                                : `${t.manager_commission_value}%`}
+                            </Badge>
+                          )}
+                          <Text size="xs" c={daysLeft <= 2 ? 'red' : daysLeft <= 5 ? 'orange' : 'dimmed'}>
+                            {daysLeft > 0 ? `${daysLeft}d left` : 'Ended'}
+                          </Text>
+                        </Group>
+                      </Group>
+                      <Group gap="xs" wrap="nowrap">
+                        <Progress value={overallPct} size="sm" style={{ flex: 1 }}
+                          color={overallPct >= 100 ? 'green' : overallPct >= 60 ? 'blue' : 'orange'} />
+                        <Text size="xs" c="dimmed" style={{ flexShrink: 0 }}>
+                          {metCount}/{t.criteria.length} goals · {overallPct}%
+                        </Text>
+                      </Group>
+                    </Paper>
+                  );
+                })}
+                {managedActive.length > 5 && (
+                  <Text size="xs" c="dimmed" ta="center">
+                    +{managedActive.length - 5} more — see "Managed Targets" tab for the full list
+                  </Text>
+                )}
+              </Stack>
+            </>
+          )}
+        </>
       )}
     </Stack>
   );
