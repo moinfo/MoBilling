@@ -91,6 +91,16 @@ deploy_ui() {
     # Use Node 20
     export PATH="$NODE_BIN:$PATH"
 
+    # This box has limited RAM (~2GB). The Vite/Rollup build was getting
+    # OOM-killed ("Killed"). Ensure the build swapfile is active for headroom...
+    if [ -f /swapfile_build ] && ! swapon --show=NAME --noheadings | grep -q "/swapfile_build"; then
+        log "Activating build swapfile for extra memory headroom..."
+        swapon /swapfile_build 2>&1 || warn "Could not activate /swapfile_build"
+    fi
+
+    # ...and cap node's heap so it GCs instead of ballooning past available RAM.
+    export NODE_OPTIONS="--max-old-space-size=1536"
+
     # Install dependencies
     log "Installing npm dependencies..."
     npm ci --silent 2>&1
