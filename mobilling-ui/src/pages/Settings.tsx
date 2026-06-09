@@ -7,8 +7,11 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock, IconStack2, IconBuildingBank, IconAdjustments } from '@tabler/icons-react';
 import LateFeeTab from '../components/Settings/LateFeeTab';
+import Systems from './Systems';
+import BankAccounts from './BankAccounts';
+import SystemProperties from './SystemProperties';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import {
@@ -35,6 +38,12 @@ export default function Settings() {
   const canReminders = can('settings.reminders');
   const canTemplates = can('settings.templates');
   const canPaymentMethods = can('settings.payment_methods');
+  // New CRUDs moved into Settings — already gated to admin via the
+  // restrict_system_settings_to_admin_role migration. We re-check at the
+  // UI layer so the tabs simply don't render for non-admin users.
+  const canSystems = can('menu.systems');
+  const canBankAccounts = can('menu.bank_accounts');
+  const canSystemProperties = can('menu.system_properties');
 
   return (
     <>
@@ -74,6 +83,21 @@ export default function Settings() {
               Late Fees
             </Tabs.Tab>
           )}
+          {canSystems && (
+            <Tabs.Tab value="systems" leftSection={<IconStack2 size={16} />}>
+              Systems
+            </Tabs.Tab>
+          )}
+          {canSystemProperties && (
+            <Tabs.Tab value="system-properties" leftSection={<IconAdjustments size={16} />}>
+              System Properties
+            </Tabs.Tab>
+          )}
+          {canBankAccounts && (
+            <Tabs.Tab value="bank-accounts" leftSection={<IconBuildingBank size={16} />}>
+              Bank Accounts
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="company">
@@ -102,6 +126,15 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="late-fee">
           <LateFeeTab isAdmin={canReminders} />
+        </Tabs.Panel>
+        <Tabs.Panel value="systems">
+          <Systems />
+        </Tabs.Panel>
+        <Tabs.Panel value="system-properties">
+          <SystemProperties />
+        </Tabs.Panel>
+        <Tabs.Panel value="bank-accounts">
+          <BankAccounts />
         </Tabs.Panel>
       </Tabs>
     </>

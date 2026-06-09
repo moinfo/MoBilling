@@ -44,10 +44,9 @@ import RolesAdmin from './pages/admin/Roles';
 import TemplatesAdmin from './pages/admin/Templates';
 import ExpenseCategories from './pages/ExpenseCategories';
 import Expenses from './pages/Expenses';
-import Systems from './pages/Systems';
-import BankAccounts from './pages/BankAccounts';
-import SystemProperties from './pages/SystemProperties';
 import SystemRecords from './pages/SystemRecords';
+// Systems, Bank Accounts, System Properties are now accessed via the
+// Settings page tabs (Settings.tsx) — no standalone routes needed.
 import PettyCash from './pages/PettyCash';
 import Statutories from './pages/Statutories';
 import StatutorySchedule from './pages/StatutorySchedule';
@@ -177,9 +176,6 @@ export default function App() {
                   <Route path="/expenses" element={<Expenses />} />
                   <Route path="/petty-cash" element={<PettyCash />} />
                   <Route path="/system-records" element={<SystemRecords />} />
-                  <Route path="/systems" element={<Systems />} />
-                  <Route path="/system-properties" element={<SystemProperties />} />
-                  <Route path="/bank-accounts" element={<BankAccounts />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/roles" element={<Roles />} />
                   <Route path="/sms" element={<Sms />} />
