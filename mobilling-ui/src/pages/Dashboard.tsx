@@ -116,14 +116,18 @@ export default function Dashboard() {
             </SimpleGrid>
           )}
 
-          {can('system_records.read') && summary.system_records && (
+          {(can('dashboard.system_records_breakdown') || can('dashboard.bank_account_breakdown')) && summary.system_records && (
             <SimpleGrid cols={{ base: 1, md: 2 }}>
-              <SystemRecordsBreakdown data={summary.system_records} periodLabel={periodLabel} />
-              <BankAccountBreakdown
-                data={summary.system_records.by_bank || []}
-                total={summary.system_records.total}
-                periodLabel={periodLabel}
-              />
+              {can('dashboard.system_records_breakdown') && (
+                <SystemRecordsBreakdown data={summary.system_records} periodLabel={periodLabel} />
+              )}
+              {can('dashboard.bank_account_breakdown') && (
+                <BankAccountBreakdown
+                  data={summary.system_records.by_bank || []}
+                  total={summary.system_records.total}
+                  periodLabel={periodLabel}
+                />
+              )}
             </SimpleGrid>
           )}
         </>
