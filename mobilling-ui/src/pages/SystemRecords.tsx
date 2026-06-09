@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Stack, Textarea } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Stack, Textarea, FileInput, Anchor } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconUpload, IconDownload } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import { getSystemRecords, createSystemRecord, updateSystemRecord, deleteSystemRecord, SystemRecord } from '../api/systemRecords';
 import { getSystems, System } from '../api/systems';
@@ -67,18 +67,27 @@ export default function SystemRecords() {
       record_date: new Date(),
       amount: 0,
       notes: '',
+      receipt: null as File | null,
     },
     validate: {
       system_id: (v) => (v ? null : 'Required'),
       system_property_id: (v) => (v ? null : 'Required'),
       amount: (v) => (v >= 0 ? null : 'Must be 0 or greater'),
+      // The browser-level required attribute handles the create case but
+      // we double-check at form-validate time too in case JS-only paths
+      // (e.g. drag-drop replacement) bypass the native control.
+      receipt: (v) => {
+        // When editing, receipt is optional (one's already attached).
+        if (editing) return null;
+        return v ? null : 'Receipt is required';
+      },
     },
   });
 
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ system_id: '', system_property_id: '', record_date: new Date(), amount: 0, notes: '' });
+    form.setValues({ system_id: '', system_property_id: '', record_date: new Date(), amount: 0, notes: '', receipt: null });
     setFormOpen(true);
   };
   const openEdit = (r: SystemRecord) => {
@@ -89,6 +98,7 @@ export default function SystemRecords() {
       record_date: new Date(r.record_date),
       amount: parseFloat(r.amount) || 0,
       notes: r.notes || '',
+      receipt: null,
     });
     setFormOpen(true);
   };
@@ -99,6 +109,7 @@ export default function SystemRecords() {
     record_date: dayjs(v.record_date).format('YYYY-MM-DD'),
     amount: v.amount,
     notes: v.notes || undefined,
+    receipt: v.receipt,
   });
 
   const createMutation = useMutation({
@@ -175,6 +186,7 @@ export default function SystemRecords() {
                 <Table.Th>System</Table.Th>
                 <Table.Th>System Property</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Amount</Table.Th>
+                <Table.Th>Receipt</Table.Th>
                 <Table.Th>Notes</Table.Th>
                 {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
               </Table.Tr>
@@ -186,6 +198,15 @@ export default function SystemRecords() {
                   <Table.Td fw={500}>{r.system?.name || '—'}</Table.Td>
                   <Table.Td>{r.system_property?.name || '—'}</Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} fw={600}>{formatCurrency(r.amount)}</Table.Td>
+                  <Table.Td>
+                    {r.receipt_attachment_url ? (
+                      <Anchor href={r.receipt_attachment_url} target="_blank" size="sm">
+                        <Group gap={4}><IconDownload size={14} /> View</Group>
+                      </Anchor>
+                    ) : (
+                      <Text size="xs" c="dimmed">—</Text>
+                    )}
+                  </Table.Td>
                   <Table.Td>
                     <Text size="sm" c="dimmed" lineClamp={2}>{r.notes || '—'}</Text>
                   </Table.Td>
@@ -219,6 +240,20 @@ export default function SystemRecords() {
               placeholder="Choose a property" {...form.getInputProps('system_property_id')} />
             <DateInput label="Date" required {...form.getInputProps('record_date')} />
             <NumberInput label="Amount" required min={0} decimalScale={2} {...form.getInputProps('amount')} />
+            <FileInput
+              label={editing ? 'Replace receipt (optional)' : 'Receipt'}
+              required={!editing}
+              placeholder={editing ? 'Upload a new receipt to replace the current one' : 'Upload receipt (PDF, image)'}
+              leftSection={<IconUpload size={16} />}
+              accept="image/*,.pdf"
+              {...form.getInputProps('receipt')}
+            />
+            {editing?.receipt_attachment_url && !form.values.receipt && (
+              <Text size="sm">
+                Current receipt:{' '}
+                <Anchor href={editing.receipt_attachment_url} target="_blank" size="sm">View attachment</Anchor>
+              </Text>
+            )}
             <Textarea label="Notes" placeholder="Optional notes" {...form.getInputProps('notes')} />
             <Group justify="flex-end">
               <Button variant="default" onClick={closeForm}>Cancel</Button>

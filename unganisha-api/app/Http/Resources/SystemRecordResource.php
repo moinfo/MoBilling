@@ -24,6 +24,9 @@ class SystemRecordResource extends JsonResource
             'record_date' => $this->record_date?->format('Y-m-d'),
             'amount' => $this->amount,
             'notes' => $this->notes,
+            'receipt_attachment_url' => $this->receipt_attachment_path
+                ? asset('storage/' . $this->receipt_attachment_path)
+                : null,
             'created_by' => $this->when($this->relationLoaded('createdBy') && $this->createdBy, fn () => [
                 'id' => $this->createdBy->id,
                 'name' => $this->createdBy->name,

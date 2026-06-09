@@ -14,7 +14,7 @@ class SystemRecord extends Model
 
     protected $fillable = [
         'tenant_id', 'system_id', 'system_property_id', 'created_by',
-        'record_date', 'amount', 'notes',
+        'record_date', 'amount', 'notes', 'receipt_attachment_path',
     ];
 
     protected $casts = [

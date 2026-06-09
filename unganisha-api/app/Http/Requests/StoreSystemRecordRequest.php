@@ -16,6 +16,11 @@ class StoreSystemRecordRequest extends FormRequest
     {
         $tenantId = auth()->user()?->tenant_id;
 
+        // Required on create, nullable on update — the existing record
+        // already has a receipt on file from when it was created.
+        $isUpdate = $this->route('system_record') !== null;
+        $receiptRule = [$isUpdate ? 'nullable' : 'required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'];
+
         return [
             // Tenant-scoped exists checks so a UUID from another tenant
             // cannot be linked into this tenant's records.
@@ -30,6 +35,7 @@ class StoreSystemRecordRequest extends FormRequest
             'record_date' => 'required|date|before_or_equal:today',
             'amount' => 'required|numeric|min:0',
             'notes' => 'nullable|string|max:2000',
+            'receipt' => $receiptRule,
         ];
     }
 }
