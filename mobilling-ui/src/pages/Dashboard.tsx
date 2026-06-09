@@ -15,6 +15,7 @@ import UpcomingBills from '../components/Dashboard/UpcomingBills';
 import UrgentObligations from '../components/Dashboard/UrgentObligations';
 import UpcomingRenewals from '../components/Dashboard/UpcomingRenewals';
 import ActivityCalendar from '../components/Dashboard/ActivityCalendar';
+import SystemRecordsBreakdown from '../components/Dashboard/SystemRecordsBreakdown';
 
 export default function Dashboard() {
   const { can } = usePermissions();
@@ -112,6 +113,10 @@ export default function Dashboard() {
               {can('dashboard.urgent_obligations') && <UrgentObligations obligations={summary.urgent_obligations || []} />}
               {can('dashboard.upcoming_renewals') && <UpcomingRenewals data={summary.upcoming_renewals} />}
             </SimpleGrid>
+          )}
+
+          {can('system_records.read') && summary.system_records && (
+            <SystemRecordsBreakdown data={summary.system_records} periodLabel={periodLabel} />
           )}
         </>
       )}
