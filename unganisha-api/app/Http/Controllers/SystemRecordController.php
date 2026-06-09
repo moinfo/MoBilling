@@ -13,13 +13,21 @@ class SystemRecordController extends Controller
 {
     public function index(Request $request)
     {
-        $query = SystemRecord::with(['system:id,name', 'systemProperty:id,name', 'createdBy:id,name']);
+        $query = SystemRecord::with([
+            'system:id,name',
+            'systemProperty:id,name',
+            'bankAccount:id,bank_name,account_number',
+            'createdBy:id,name',
+        ]);
 
         if ($request->filled('system_id')) {
             $query->where('system_id', $request->system_id);
         }
         if ($request->filled('system_property_id')) {
             $query->where('system_property_id', $request->system_property_id);
+        }
+        if ($request->filled('bank_account_id')) {
+            $query->where('bank_account_id', $request->bank_account_id);
         }
         if ($request->filled('date_from')) {
             $query->where('record_date', '>=', $request->date_from);
@@ -66,12 +74,12 @@ class SystemRecordController extends Controller
             throw $e;
         }
 
-        return new SystemRecordResource($record->load('system', 'systemProperty', 'createdBy'));
+        return new SystemRecordResource($record->load('system', 'systemProperty', 'bankAccount', 'createdBy'));
     }
 
     public function show(SystemRecord $system_record)
     {
-        return new SystemRecordResource($system_record->load('system', 'systemProperty', 'createdBy'));
+        return new SystemRecordResource($system_record->load('system', 'systemProperty', 'bankAccount', 'createdBy'));
     }
 
     public function update(StoreSystemRecordRequest $request, SystemRecord $system_record)
@@ -108,7 +116,7 @@ class SystemRecordController extends Controller
             Storage::disk('public')->delete($oldPath);
         }
 
-        return new SystemRecordResource($system_record->load('system', 'systemProperty', 'createdBy'));
+        return new SystemRecordResource($system_record->load('system', 'systemProperty', 'bankAccount', 'createdBy'));
     }
 
     public function destroy(SystemRecord $system_record)

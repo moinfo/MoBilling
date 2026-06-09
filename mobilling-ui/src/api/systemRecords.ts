@@ -6,6 +6,8 @@ export interface SystemRecord {
   system?: { id: string; name: string };
   system_property_id: string;
   system_property?: { id: string; name: string };
+  bank_account_id: string | null;
+  bank_account?: { id: string; bank_name: string; account_number: string };
   record_date: string;
   amount: string;
   notes: string | null;
@@ -17,6 +19,7 @@ export interface SystemRecord {
 export interface SystemRecordPayload {
   system_id: string;
   system_property_id: string;
+  bank_account_id?: string | null;
   record_date: string;
   amount: number;
   notes?: string;
@@ -28,6 +31,7 @@ const buildFormData = (data: SystemRecordPayload, includeMethodOverride = false)
   if (includeMethodOverride) fd.append('_method', 'PUT');
   fd.append('system_id', data.system_id);
   fd.append('system_property_id', data.system_property_id);
+  if (data.bank_account_id) fd.append('bank_account_id', data.bank_account_id);
   fd.append('record_date', data.record_date);
   fd.append('amount', String(data.amount));
   if (data.notes) fd.append('notes', data.notes);
@@ -41,6 +45,7 @@ export const getSystemRecords = (params?: {
   per_page?: number;
   system_id?: string;
   system_property_id?: string;
+  bank_account_id?: string;
   date_from?: string;
   date_to?: string;
 }) => api.get('/system-records', { params });

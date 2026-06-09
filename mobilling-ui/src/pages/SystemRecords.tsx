@@ -11,6 +11,7 @@ import dayjs from 'dayjs';
 import { getSystemRecords, createSystemRecord, updateSystemRecord, deleteSystemRecord, SystemRecord } from '../api/systemRecords';
 import { getSystems, System } from '../api/systems';
 import { getSystemProperties, SystemProperty } from '../api/systemProperties';
+import { getBankAccounts, BankAccount } from '../api/bankAccounts';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import { usePermissions } from '../hooks/usePermissions';
@@ -27,6 +28,7 @@ export default function SystemRecords() {
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [filterSystem, setFilterSystem] = useState<string | null>(null);
   const [filterProperty, setFilterProperty] = useState<string | null>(null);
+  const [filterBank, setFilterBank] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -41,18 +43,28 @@ export default function SystemRecords() {
     queryKey: ['system-properties-all'],
     queryFn: () => getSystemProperties({ per_page: 200 }),
   });
+  const { data: banksData } = useQuery({
+    queryKey: ['bank-accounts-all'],
+    queryFn: () => getBankAccounts({ per_page: 200 }),
+  });
   const systems: System[] = systemsData?.data?.data || [];
   const properties: SystemProperty[] = propsData?.data?.data || [];
+  const banks: BankAccount[] = banksData?.data?.data || [];
   const systemOptions = systems.filter((s) => s.is_active).map((s) => ({ value: s.id, label: s.name }));
   const propertyOptions = properties.filter((p) => p.is_active).map((p) => ({ value: p.id, label: p.name }));
+  const bankOptions = banks.filter((b) => b.is_active).map((b) => ({
+    value: b.id,
+    label: `${b.bank_name} · ${b.account_number}`,
+  }));
 
   const { data } = useQuery({
-    queryKey: ['system-records', page, debouncedSearch, filterSystem, filterProperty, dateFrom, dateTo],
+    queryKey: ['system-records', page, debouncedSearch, filterSystem, filterProperty, filterBank, dateFrom, dateTo],
     queryFn: () => getSystemRecords({
       page,
       search: debouncedSearch || undefined,
       system_id: filterSystem || undefined,
       system_property_id: filterProperty || undefined,
+      bank_account_id: filterBank || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
     }),
@@ -64,6 +76,7 @@ export default function SystemRecords() {
     initialValues: {
       system_id: '',
       system_property_id: '',
+      bank_account_id: '',
       record_date: new Date(),
       amount: 0,
       notes: '',
@@ -87,7 +100,7 @@ export default function SystemRecords() {
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ system_id: '', system_property_id: '', record_date: new Date(), amount: 0, notes: '', receipt: null });
+    form.setValues({ system_id: '', system_property_id: '', bank_account_id: '', record_date: new Date(), amount: 0, notes: '', receipt: null });
     setFormOpen(true);
   };
   const openEdit = (r: SystemRecord) => {
@@ -95,6 +108,7 @@ export default function SystemRecords() {
     form.setValues({
       system_id: r.system_id,
       system_property_id: r.system_property_id,
+      bank_account_id: r.bank_account_id || '',
       record_date: new Date(r.record_date),
       amount: parseFloat(r.amount) || 0,
       notes: r.notes || '',
@@ -106,6 +120,7 @@ export default function SystemRecords() {
   const buildPayload = (v: typeof form.values) => ({
     system_id: v.system_id,
     system_property_id: v.system_property_id,
+    bank_account_id: v.bank_account_id || null,
     record_date: dayjs(v.record_date).format('YYYY-MM-DD'),
     amount: v.amount,
     notes: v.notes || undefined,
@@ -167,6 +182,8 @@ export default function SystemRecords() {
           value={filterSystem} onChange={(v) => { setFilterSystem(v); setPage(1); }} maw={220} />
         <Select placeholder="All properties" data={propertyOptions} clearable searchable
           value={filterProperty} onChange={(v) => { setFilterProperty(v); setPage(1); }} maw={220} />
+        <Select placeholder="All bank accounts" data={bankOptions} clearable searchable
+          value={filterBank} onChange={(v) => { setFilterBank(v); setPage(1); }} maw={240} />
         <DateInput placeholder="From" clearable
           value={dateFrom ? new Date(dateFrom) : null}
           onChange={(v) => { setDateFrom(v ? dayjs(v).format('YYYY-MM-DD') : null); setPage(1); }} maw={160} />
@@ -185,6 +202,7 @@ export default function SystemRecords() {
                 <Table.Th>Date</Table.Th>
                 <Table.Th>System</Table.Th>
                 <Table.Th>System Property</Table.Th>
+                <Table.Th>Bank Account</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Amount</Table.Th>
                 <Table.Th>Receipt</Table.Th>
                 <Table.Th>Notes</Table.Th>
@@ -197,6 +215,16 @@ export default function SystemRecords() {
                   <Table.Td>{formatDate(r.record_date)}</Table.Td>
                   <Table.Td fw={500}>{r.system?.name || '—'}</Table.Td>
                   <Table.Td>{r.system_property?.name || '—'}</Table.Td>
+                  <Table.Td>
+                    {r.bank_account ? (
+                      <Text size="sm">
+                        {r.bank_account.bank_name}
+                        <Text span size="xs" c="dimmed"> · {r.bank_account.account_number}</Text>
+                      </Text>
+                    ) : (
+                      <Text size="xs" c="dimmed">—</Text>
+                    )}
+                  </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} fw={600}>{formatCurrency(r.amount)}</Table.Td>
                   <Table.Td>
                     {r.receipt_attachment_url ? (
@@ -238,6 +266,9 @@ export default function SystemRecords() {
               placeholder="Choose a system" {...form.getInputProps('system_id')} />
             <Select label="System Property" required data={propertyOptions} searchable
               placeholder="Choose a property" {...form.getInputProps('system_property_id')} />
+            <Select label="Bank Account" data={bankOptions} searchable clearable
+              placeholder="Choose a bank account (optional)"
+              {...form.getInputProps('bank_account_id')} />
             <DateInput label="Date" required {...form.getInputProps('record_date')} />
             <NumberInput label="Amount" required min={0} decimalScale={2} {...form.getInputProps('amount')} />
             <FileInput

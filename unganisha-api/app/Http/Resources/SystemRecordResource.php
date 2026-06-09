@@ -21,6 +21,12 @@ class SystemRecordResource extends JsonResource
                 'id' => $this->systemProperty->id,
                 'name' => $this->systemProperty->name,
             ]),
+            'bank_account_id' => $this->bank_account_id,
+            'bank_account' => $this->when($this->relationLoaded('bankAccount') && $this->bankAccount, fn () => [
+                'id' => $this->bankAccount->id,
+                'bank_name' => $this->bankAccount->bank_name,
+                'account_number' => $this->bankAccount->account_number,
+            ]),
             'record_date' => $this->record_date?->format('Y-m-d'),
             'amount' => $this->amount,
             'notes' => $this->notes,

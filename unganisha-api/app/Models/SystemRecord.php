@@ -13,7 +13,7 @@ class SystemRecord extends Model
     use HasFactory, HasUuids, SoftDeletes, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'system_id', 'system_property_id', 'created_by',
+        'tenant_id', 'system_id', 'system_property_id', 'bank_account_id', 'created_by',
         'record_date', 'amount', 'notes', 'receipt_attachment_path',
     ];
 
@@ -30,6 +30,11 @@ class SystemRecord extends Model
     public function systemProperty()
     {
         return $this->belongsTo(SystemProperty::class);
+    }
+
+    public function bankAccount()
+    {
+        return $this->belongsTo(BankAccount::class);
     }
 
     public function createdBy()
