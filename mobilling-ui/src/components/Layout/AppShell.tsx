@@ -34,7 +34,7 @@ export default function AppLayout() {
   const billingPaths = ['/clients', '/product-services', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
-  const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
+  const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
 
   const getActiveSection = () => {
     if (billingPaths.some((p) => location.pathname === p)) return 'billing';
@@ -285,6 +285,10 @@ export default function AppLayout() {
                 active={isActive('/reports/payment-collection')} onClick={() => navigateAndClose('/reports/payment-collection')} />
               <NavLink label="Expense Report" leftSection={<IconWalletReport size={16} />}
                 active={isActive('/reports/expenses')} onClick={() => navigateAndClose('/reports/expenses')} />
+              {can('menu.report_system_records') && (
+                <NavLink label="System Records Report" leftSection={<IconDatabase size={16} />}
+                  active={isActive('/reports/system-records')} onClick={() => navigateAndClose('/reports/system-records')} />
+              )}
               <NavLink label="Profit & Loss" leftSection={<IconScale size={16} />}
                 active={isActive('/reports/profit-loss')} onClick={() => navigateAndClose('/reports/profit-loss')} />
               <NavLink label="Statutory Compliance" leftSection={<IconShieldCheck size={16} />}

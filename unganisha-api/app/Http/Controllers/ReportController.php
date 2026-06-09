@@ -16,6 +16,7 @@ use App\Models\Statutory;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
@@ -888,6 +889,74 @@ class ReportController extends Controller
             'total_failed' => $totalFailed,
             'overall_delivery_rate' => $total > 0 ? round(($totalSent / $total) * 100, 1) : 0,
             'messages' => $messages,
+        ]);
+    }
+
+    /**
+     * System Records report — daily breakdown for the selected period.
+     *
+     * One SQL aggregation joined across systems + system_properties, then PHP
+     * nests the rows into:
+     *   days[] = { date, day_total, systems[] = { name, subtotal, properties[] = { name, total } } }
+     *   system_totals[] = { name, total }      // for the whole period
+     *   grand_total                            // sum of all rows
+     */
+    public function systemRecordsReport(Request $request): JsonResponse
+    {
+        [$start, $end] = $this->dateRange($request);
+        $tenantId = auth()->user()->tenant_id;
+
+        $rows = DB::table('system_records as sr')
+            ->join('systems as s', 's.id', '=', 'sr.system_id')
+            ->join('system_properties as sp', 'sp.id', '=', 'sr.system_property_id')
+            ->where('sr.tenant_id', $tenantId)
+            ->whereNull('sr.deleted_at')
+            ->whereBetween('sr.record_date', [$start->toDateString(), $end->toDateString()])
+            ->selectRaw('sr.record_date, s.name as system_name, sp.name as system_property_name, SUM(sr.amount) as total')
+            ->groupBy('sr.record_date', 's.name', 'sp.name')
+            ->orderBy('sr.record_date')
+            ->orderBy('s.name')
+            ->orderBy('sp.name')
+            ->get();
+
+        // Day → System → Property tree.
+        $days = collect($rows)
+            ->groupBy('record_date')
+            ->map(fn ($dayRows, $date) => [
+                'date' => is_string($date) ? substr($date, 0, 10) : (string) $date,
+                'day_total' => round((float) $dayRows->sum('total'), 2),
+                'systems' => $dayRows
+                    ->groupBy('system_name')
+                    ->map(fn ($sysRows, $sysName) => [
+                        'name' => $sysName,
+                        'subtotal' => round((float) $sysRows->sum('total'), 2),
+                        'properties' => $sysRows->map(fn ($r) => [
+                            'name' => $r->system_property_name,
+                            'total' => round((float) $r->total, 2),
+                        ])->values(),
+                    ])
+                    ->values(),
+            ])
+            ->values();
+
+        // Per-system totals across the whole period.
+        $systemTotals = collect($rows)
+            ->groupBy('system_name')
+            ->map(fn ($sysRows, $sysName) => [
+                'name' => $sysName,
+                'total' => round((float) $sysRows->sum('total'), 2),
+            ])
+            ->sortByDesc('total')
+            ->values();
+
+        $grandTotal = round((float) collect($rows)->sum('total'), 2);
+
+        return response()->json([
+            'period_start' => $start->toDateString(),
+            'period_end'   => $end->toDateString(),
+            'days'         => $days,
+            'system_totals'=> $systemTotals,
+            'grand_total'  => $grandTotal,
         ]);
     }
 }

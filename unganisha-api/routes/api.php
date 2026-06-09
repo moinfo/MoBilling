@@ -410,6 +410,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::middleware('permission:reports.client_statement')->get('/client-statement', [ReportController::class, 'clientStatement']);
         Route::middleware('permission:reports.payment_collection')->get('/payment-collection', [ReportController::class, 'paymentCollection']);
         Route::middleware('permission:reports.expense')->get('/expense-report', [ReportController::class, 'expenseReport']);
+        Route::middleware('permission:reports.system_records')->get('/system-records-report', [ReportController::class, 'systemRecordsReport']);
         Route::middleware('permission:reports.profit_loss')->get('/profit-loss', [ReportController::class, 'profitLoss']);
         Route::middleware('permission:reports.statutory')->get('/statutory-compliance', [ReportController::class, 'statutoryCompliance']);
         Route::middleware('permission:reports.subscription')->get('/subscription-report', [ReportController::class, 'subscriptionReport']);

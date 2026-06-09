@@ -408,3 +408,38 @@ export interface CommunicationLogReport {
 
 export const getCommunicationLog = (params: DateRange) =>
   api.get<CommunicationLogReport>('/reports/communication-log', { params });
+
+// ─── System Records Report ─────────────────────────────────────
+
+export interface SystemRecordsReportProperty {
+  name: string;
+  total: number;
+}
+
+export interface SystemRecordsReportSystem {
+  name: string;
+  subtotal: number;
+  properties: SystemRecordsReportProperty[];
+}
+
+export interface SystemRecordsReportDay {
+  date: string;
+  day_total: number;
+  systems: SystemRecordsReportSystem[];
+}
+
+export interface SystemRecordsReportSystemTotal {
+  name: string;
+  total: number;
+}
+
+export interface SystemRecordsReport {
+  period_start: string;
+  period_end: string;
+  days: SystemRecordsReportDay[];
+  system_totals: SystemRecordsReportSystemTotal[];
+  grand_total: number;
+}
+
+export const getSystemRecordsReport = (params: DateRange) =>
+  api.get<SystemRecordsReport>('/reports/system-records-report', { params });

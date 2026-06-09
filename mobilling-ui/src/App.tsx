@@ -78,6 +78,7 @@ import OutstandingAging from './pages/reports/OutstandingAging';
 import ClientStatementReport from './pages/reports/ClientStatementReport';
 import PaymentCollectionReport from './pages/reports/PaymentCollectionReport';
 import ExpenseReportPage from './pages/reports/ExpenseReportPage';
+import SystemRecordsReportPage from './pages/reports/SystemRecordsReportPage';
 import ProfitLossReport from './pages/reports/ProfitLossReport';
 import StatutoryComplianceReport from './pages/reports/StatutoryComplianceReport';
 import SubscriptionReportPage from './pages/reports/SubscriptionReportPage';
@@ -197,6 +198,7 @@ export default function App() {
                   <Route path="/reports/client-statement" element={<ClientStatementReport />} />
                   <Route path="/reports/payment-collection" element={<PaymentCollectionReport />} />
                   <Route path="/reports/expenses" element={<ExpenseReportPage />} />
+                  <Route path="/reports/system-records" element={<SystemRecordsReportPage />} />
                   <Route path="/reports/profit-loss" element={<ProfitLossReport />} />
                   <Route path="/reports/statutory" element={<StatutoryComplianceReport />} />
                   <Route path="/reports/subscriptions" element={<SubscriptionReportPage />} />
