@@ -12,6 +12,7 @@ import {
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
+  IconDatabase, IconBuildingBank, IconAdjustments, IconListDetails, IconStack2,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -33,12 +34,14 @@ export default function AppLayout() {
   const billingPaths = ['/clients', '/product-services', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
+  const systemRecordsPaths = ['/system-records', '/systems', '/system-properties', '/bank-accounts'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
 
   const getActiveSection = () => {
     if (billingPaths.some((p) => location.pathname === p)) return 'billing';
     if (statutoryPaths.some((p) => location.pathname === p)) return 'statutory';
     if (expensePaths.some((p) => location.pathname === p)) return 'expenses';
+    if (systemRecordsPaths.some((p) => location.pathname === p)) return 'system_records';
     if (reportPaths.some((p) => location.pathname === p)) return 'reports';
     return null;
   };
@@ -71,6 +74,7 @@ export default function AppLayout() {
   const showBilling = canAny(['menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills']);
   const showStatutory = canAny(['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out']);
   const showExpenses = canAny(['menu.expense_categories', 'menu.expenses', 'menu.petty_cash']);
+  const showSystemRecords = canAny(['menu.system_records', 'menu.systems', 'menu.system_properties', 'menu.bank_accounts']);
   const showReports = can('menu.reports');
 
   return (
@@ -258,6 +262,28 @@ export default function AppLayout() {
               {can('menu.petty_cash') && (
                 <NavLink label="Petty Cash" leftSection={<IconCash size={16} />}
                   active={isActive('/petty-cash')} onClick={() => navigateAndClose('/petty-cash')} />
+              )}
+            </NavLink>
+          )}
+
+          {showSystemRecords && (
+            <NavLink label="System Records" leftSection={<IconDatabase size={18} />}
+              opened={openSection === 'system_records'} onChange={() => toggleSection('system_records')}>
+              {can('menu.system_records') && (
+                <NavLink label="Records" leftSection={<IconListDetails size={16} />}
+                  active={isActive('/system-records')} onClick={() => navigateAndClose('/system-records')} />
+              )}
+              {can('menu.systems') && (
+                <NavLink label="Systems" leftSection={<IconStack2 size={16} />}
+                  active={isActive('/systems')} onClick={() => navigateAndClose('/systems')} />
+              )}
+              {can('menu.system_properties') && (
+                <NavLink label="System Properties" leftSection={<IconAdjustments size={16} />}
+                  active={isActive('/system-properties')} onClick={() => navigateAndClose('/system-properties')} />
+              )}
+              {can('menu.bank_accounts') && (
+                <NavLink label="Bank Accounts" leftSection={<IconBuildingBank size={16} />}
+                  active={isActive('/bank-accounts')} onClick={() => navigateAndClose('/bank-accounts')} />
               )}
             </NavLink>
           )}

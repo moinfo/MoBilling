@@ -30,6 +30,10 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\PettyCashController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\SystemController;
+use App\Http\Controllers\BankAccountController;
+use App\Http\Controllers\SystemPropertyController;
+use App\Http\Controllers\SystemRecordController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\CollectionController;
@@ -283,6 +287,34 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // Petty cash voucher per expense (download PDF / upload signed copy)
     Route::middleware('permission:expenses.read')->get('/expenses/{expense}/voucher', [ExpenseController::class, 'downloadVoucher']);
     Route::middleware('permission:expenses.update')->post('/expenses/{expense}/voucher', [ExpenseController::class, 'uploadVoucher']);
+
+    // Systems (reference list)
+    Route::middleware('permission:systems.read')->get('/systems', [SystemController::class, 'index']);
+    Route::middleware('permission:systems.read')->get('/systems/{system}', [SystemController::class, 'show']);
+    Route::middleware('permission:systems.create')->post('/systems', [SystemController::class, 'store']);
+    Route::middleware('permission:systems.update')->put('/systems/{system}', [SystemController::class, 'update']);
+    Route::middleware('permission:systems.delete')->delete('/systems/{system}', [SystemController::class, 'destroy']);
+
+    // Bank Accounts (reference list)
+    Route::middleware('permission:bank_accounts.read')->get('/bank-accounts', [BankAccountController::class, 'index']);
+    Route::middleware('permission:bank_accounts.read')->get('/bank-accounts/{bank_account}', [BankAccountController::class, 'show']);
+    Route::middleware('permission:bank_accounts.create')->post('/bank-accounts', [BankAccountController::class, 'store']);
+    Route::middleware('permission:bank_accounts.update')->put('/bank-accounts/{bank_account}', [BankAccountController::class, 'update']);
+    Route::middleware('permission:bank_accounts.delete')->delete('/bank-accounts/{bank_account}', [BankAccountController::class, 'destroy']);
+
+    // System Properties (reference list)
+    Route::middleware('permission:system_properties.read')->get('/system-properties', [SystemPropertyController::class, 'index']);
+    Route::middleware('permission:system_properties.read')->get('/system-properties/{system_property}', [SystemPropertyController::class, 'show']);
+    Route::middleware('permission:system_properties.create')->post('/system-properties', [SystemPropertyController::class, 'store']);
+    Route::middleware('permission:system_properties.update')->put('/system-properties/{system_property}', [SystemPropertyController::class, 'update']);
+    Route::middleware('permission:system_properties.delete')->delete('/system-properties/{system_property}', [SystemPropertyController::class, 'destroy']);
+
+    // System Records (the main data-entry CRUD that joins the above)
+    Route::middleware('permission:system_records.read')->get('/system-records', [SystemRecordController::class, 'index']);
+    Route::middleware('permission:system_records.read')->get('/system-records/{system_record}', [SystemRecordController::class, 'show']);
+    Route::middleware('permission:system_records.create')->post('/system-records', [SystemRecordController::class, 'store']);
+    Route::middleware('permission:system_records.update')->put('/system-records/{system_record}', [SystemRecordController::class, 'update']);
+    Route::middleware('permission:system_records.delete')->delete('/system-records/{system_record}', [SystemRecordController::class, 'destroy']);
 
     // Petty Cash (single pool per tenant)
     Route::middleware('permission:petty_cash.read')->get('/petty-cash', [PettyCashController::class, 'index']);
