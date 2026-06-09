@@ -424,9 +424,32 @@ class DashboardController extends Controller
             ])
             ->values();
 
+        // Same period, grouped by bank account instead of system. LEFT JOIN
+        // so records with no bank_account_id (cash / untagged) still appear
+        // in the total — otherwise the bank breakdown would silently
+        // disagree with the system breakdown for the same period.
+        $bankRows = DB::table('system_records as sr')
+            ->leftJoin('bank_accounts as ba', 'ba.id', '=', 'sr.bank_account_id')
+            ->where('sr.tenant_id', $tenantId)
+            ->whereNull('sr.deleted_at')
+            ->whereBetween('sr.record_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ->selectRaw('sr.bank_account_id, MAX(ba.bank_name) as bank_name, MAX(ba.account_number) as account_number, SUM(sr.amount) as total')
+            ->groupBy('sr.bank_account_id')
+            ->orderByRaw('CASE WHEN sr.bank_account_id IS NULL THEN 1 ELSE 0 END')
+            ->orderBy('bank_name')
+            ->get();
+
+        $byBank = collect($bankRows)->map(fn ($r) => [
+            'bank_account_id' => $r->bank_account_id,
+            'bank_name' => $r->bank_name ?? 'Untagged / Cash',
+            'account_number' => $r->account_number,
+            'total' => round((float) $r->total, 2),
+        ])->values();
+
         $systemRecords = [
             'total' => round((float) collect($systemRecordRows)->sum('total'), 2),
             'systems' => $systemRecordsBreakdown,
+            'by_bank' => $byBank,
         ];
 
         return response()->json([

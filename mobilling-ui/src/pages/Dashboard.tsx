@@ -16,6 +16,7 @@ import UrgentObligations from '../components/Dashboard/UrgentObligations';
 import UpcomingRenewals from '../components/Dashboard/UpcomingRenewals';
 import ActivityCalendar from '../components/Dashboard/ActivityCalendar';
 import SystemRecordsBreakdown from '../components/Dashboard/SystemRecordsBreakdown';
+import BankAccountBreakdown from '../components/Dashboard/BankAccountBreakdown';
 
 export default function Dashboard() {
   const { can } = usePermissions();
@@ -116,7 +117,14 @@ export default function Dashboard() {
           )}
 
           {can('system_records.read') && summary.system_records && (
-            <SystemRecordsBreakdown data={summary.system_records} periodLabel={periodLabel} />
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              <SystemRecordsBreakdown data={summary.system_records} periodLabel={periodLabel} />
+              <BankAccountBreakdown
+                data={summary.system_records.by_bank || []}
+                total={summary.system_records.total}
+                periodLabel={periodLabel}
+              />
+            </SimpleGrid>
           )}
         </>
       )}

@@ -73,9 +73,17 @@ export interface SystemRecordSystemBreakdown {
   properties: SystemRecordPropertyTotal[];
 }
 
+export interface SystemRecordBankTotal {
+  bank_account_id: string | null;
+  bank_name: string;
+  account_number: string | null;
+  total: number;
+}
+
 export interface SystemRecordsBreakdown {
   total: number;
   systems: SystemRecordSystemBreakdown[];
+  by_bank: SystemRecordBankTotal[];
 }
 
 export interface DashboardSummary {
