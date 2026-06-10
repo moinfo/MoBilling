@@ -34,6 +34,7 @@ use App\Http\Controllers\SystemController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\SystemPropertyController;
 use App\Http\Controllers\SystemRecordController;
+use App\Http\Controllers\SystemVerificationController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\CollectionController;
@@ -316,6 +317,18 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:system_records.update')->put('/system-records/{system_record}', [SystemRecordController::class, 'update']);
     Route::middleware('permission:system_records.delete')->delete('/system-records/{system_record}', [SystemRecordController::class, 'destroy']);
 
+    // System Verifications — admin CRUD on registered systems
+    Route::middleware('permission:system_verifications.read')->get('/system-verifications', [SystemVerificationController::class, 'index']);
+    Route::middleware('permission:system_verifications.read')->get('/system-verifications/{system_verification}', [SystemVerificationController::class, 'show']);
+    Route::middleware('permission:system_verifications.create')->post('/system-verifications', [SystemVerificationController::class, 'store']);
+    Route::middleware('permission:system_verifications.update')->put('/system-verifications/{system_verification}', [SystemVerificationController::class, 'update']);
+    Route::middleware('permission:system_verifications.delete')->delete('/system-verifications/{system_verification}', [SystemVerificationController::class, 'destroy']);
+    Route::middleware('permission:system_verification_reports.read')->get('/system-verifications/{system_verification}/reports', [SystemVerificationController::class, 'listReports']);
+
+    // Staff: see my assigned systems, and submit today's check-in
+    Route::middleware('permission:menu.my_verifications')->get('/my-verifications', [SystemVerificationController::class, 'mine']);
+    Route::middleware('permission:system_verification_reports.submit')->post('/system-verifications/{system_verification}/reports', [SystemVerificationController::class, 'submitReport']);
+
     // Petty Cash (single pool per tenant)
     Route::middleware('permission:petty_cash.read')->get('/petty-cash', [PettyCashController::class, 'index']);
     Route::middleware('permission:petty_cash.topup')->post('/petty-cash/transactions', [PettyCashController::class, 'storeTransaction']);
@@ -411,6 +424,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::middleware('permission:reports.payment_collection')->get('/payment-collection', [ReportController::class, 'paymentCollection']);
         Route::middleware('permission:reports.expense')->get('/expense-report', [ReportController::class, 'expenseReport']);
         Route::middleware('permission:reports.system_records')->get('/system-records-report', [ReportController::class, 'systemRecordsReport']);
+        Route::middleware('permission:reports.system_verifications')->get('/system-verifications-report', [ReportController::class, 'systemVerificationsReport']);
         Route::middleware('permission:reports.profit_loss')->get('/profit-loss', [ReportController::class, 'profitLoss']);
         Route::middleware('permission:reports.statutory')->get('/statutory-compliance', [ReportController::class, 'statutoryCompliance']);
         Route::middleware('permission:reports.subscription')->get('/subscription-report', [ReportController::class, 'subscriptionReport']);

@@ -443,3 +443,39 @@ export interface SystemRecordsReport {
 
 export const getSystemRecordsReport = (params: DateRange) =>
   api.get<SystemRecordsReport>('/reports/system-records-report', { params });
+
+// ─── System Verifications Report ──────────────────────────────
+
+export interface SystemVerificationReportRow {
+  system_id: string;
+  system_name: string;
+  domain_name: string | null;
+  assigned_user: { id: string; name: string } | null;
+  total_days: number;
+  completed_days: number;
+  ok_count: number;
+  issue_count: number;
+  missed_days: number;
+  submission_rate: number;
+}
+
+export interface SystemVerificationStaffRow {
+  staff_name: string;
+  systems_assigned: number;
+  total_days_possible: number;
+  completed_days: number;
+  missed_days: number;
+  issue_count: number;
+  submission_rate: number;
+}
+
+export interface SystemVerificationsReport {
+  period_start: string;
+  period_end: string;
+  total_days: number;
+  systems: SystemVerificationReportRow[];
+  by_staff: SystemVerificationStaffRow[];
+}
+
+export const getSystemVerificationsReport = (params: DateRange) =>
+  api.get<SystemVerificationsReport>('/reports/system-verifications-report', { params });

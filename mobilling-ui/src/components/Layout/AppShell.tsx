@@ -34,7 +34,7 @@ export default function AppLayout() {
   const billingPaths = ['/clients', '/product-services', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
-  const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
+  const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
 
   const getActiveSection = () => {
     if (billingPaths.some((p) => location.pathname === p)) return 'billing';
@@ -272,6 +272,15 @@ export default function AppLayout() {
               active={isActive('/system-records')} onClick={() => navigateAndClose('/system-records')} />
           )}
 
+          {can('menu.my_verifications') && (
+            <NavLink label="My Verifications" leftSection={<IconShieldCheck size={18} />}
+              active={isActive('/my-verifications')} onClick={() => navigateAndClose('/my-verifications')} />
+          )}
+          {can('menu.system_verifications') && (
+            <NavLink label="System Verifications" leftSection={<IconShieldCheck size={18} />}
+              active={isActive('/system-verifications')} onClick={() => navigateAndClose('/system-verifications')} />
+          )}
+
           {showReports && (
             <NavLink label="Reports" leftSection={<IconReportAnalytics size={18} />}
               opened={openSection === 'reports'} onChange={() => toggleSection('reports')}>
@@ -288,6 +297,10 @@ export default function AppLayout() {
               {can('menu.report_system_records') && (
                 <NavLink label="System Records Report" leftSection={<IconDatabase size={16} />}
                   active={isActive('/reports/system-records')} onClick={() => navigateAndClose('/reports/system-records')} />
+              )}
+              {can('menu.report_system_verifications') && (
+                <NavLink label="System Verifications Report" leftSection={<IconShieldCheck size={16} />}
+                  active={isActive('/reports/system-verifications')} onClick={() => navigateAndClose('/reports/system-verifications')} />
               )}
               <NavLink label="Profit & Loss" leftSection={<IconScale size={16} />}
                 active={isActive('/reports/profit-loss')} onClick={() => navigateAndClose('/reports/profit-loss')} />

@@ -13,6 +13,8 @@ use App\Models\PaymentIn;
 use App\Models\PaymentOut;
 use App\Models\SatisfactionCall;
 use App\Models\Statutory;
+use App\Models\SystemVerification;
+use App\Models\SystemVerificationReport;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -889,6 +891,90 @@ class ReportController extends Controller
             'total_failed' => $totalFailed,
             'overall_delivery_rate' => $total > 0 ? round(($totalSent / $total) * 100, 1) : 0,
             'messages' => $messages,
+        ]);
+    }
+
+    /**
+     * System Verifications report — per-system completion stats for the
+     * selected period. Defaults to current month.
+     *
+     * For each active assigned system: total possible days in period,
+     * days completed (ok + issue counts), days missed (no report), and
+     * the issue-rate breakdown. Shows admins who's keeping up and who
+     * has gaps.
+     */
+    public function systemVerificationsReport(Request $request): JsonResponse
+    {
+        [$start, $end] = $this->dateRange($request);
+        $tenantId = auth()->user()->tenant_id;
+
+        // Inclusive day count between start and end.
+        $totalDays = $start->diffInDays($end) + 1;
+
+        $systems = SystemVerification::query()
+            ->with('assignedUser:id,name')
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
+
+        $rows = $systems->map(function ($sv) use ($start, $end, $totalDays) {
+            $reports = SystemVerificationReport::query()
+                ->where('system_verification_id', $sv->id)
+                ->whereBetween('report_date', [$start->toDateString(), $end->toDateString()])
+                ->selectRaw('status, COUNT(*) as count')
+                ->groupBy('status')
+                ->pluck('count', 'status');
+
+            $okCount = (int) ($reports['ok'] ?? 0);
+            $issueCount = (int) ($reports['issue'] ?? 0);
+            $completed = $okCount + $issueCount;
+            $missed = max(0, $totalDays - $completed);
+
+            return [
+                'system_id' => $sv->id,
+                'system_name' => $sv->name,
+                'domain_name' => $sv->domain_name,
+                'assigned_user' => $sv->assignedUser ? [
+                    'id' => $sv->assignedUser->id,
+                    'name' => $sv->assignedUser->name,
+                ] : null,
+                'total_days' => $totalDays,
+                'completed_days' => $completed,
+                'ok_count' => $okCount,
+                'issue_count' => $issueCount,
+                'missed_days' => $missed,
+                'submission_rate' => $totalDays > 0 ? round(($completed / $totalDays) * 100, 1) : 0,
+            ];
+        })->values();
+
+        // Per-staff rollup
+        $byStaff = $rows
+            ->filter(fn ($r) => $r['assigned_user'])
+            ->groupBy(fn ($r) => $r['assigned_user']['name'])
+            ->map(function ($group, $name) use ($totalDays) {
+                $systemCount = $group->count();
+                return [
+                    'staff_name' => $name,
+                    'systems_assigned' => $systemCount,
+                    'total_days_possible' => $totalDays * $systemCount,
+                    'completed_days' => $group->sum('completed_days'),
+                    'missed_days' => $group->sum('missed_days'),
+                    'issue_count' => $group->sum('issue_count'),
+                    'submission_rate' => ($totalDays * $systemCount) > 0
+                        ? round(($group->sum('completed_days') / ($totalDays * $systemCount)) * 100, 1)
+                        : 0,
+                ];
+            })
+            ->sortByDesc('submission_rate')
+            ->values();
+
+        return response()->json([
+            'period_start' => $start->toDateString(),
+            'period_end' => $end->toDateString(),
+            'total_days' => $totalDays,
+            'systems' => $rows,
+            'by_staff' => $byStaff,
         ]);
     }
 

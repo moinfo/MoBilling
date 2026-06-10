@@ -11,3 +11,9 @@ Schedule::command('bills:generate-recurring')->dailyAt('09:00')->withoutOverlapp
 Schedule::command('subscriptions:suspend-unpaid')->dailyAt('09:30')->withoutOverlapping();
 Schedule::command('satisfaction-calls:schedule')->dailyAt('07:15')->withoutOverlapping();
 Schedule::command('staff-reports:send-reminders')->dailyAt('09:45')->withoutOverlapping();
+
+// Daily system verification reminders. Africa/Dar_es_Salaam = UTC+3 — set
+// explicitly so the schedule isn't sensitive to APP_TIMEZONE drifting.
+// First reminder at 20:00 (saa mbili usiku); final at 22:00.
+Schedule::command('verifications:send-reminders')->dailyAt('20:00')->timezone('Africa/Dar_es_Salaam')->withoutOverlapping();
+Schedule::command('verifications:send-reminders --second-reminder')->dailyAt('22:00')->timezone('Africa/Dar_es_Salaam')->withoutOverlapping();
