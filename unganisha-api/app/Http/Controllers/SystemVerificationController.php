@@ -19,7 +19,7 @@ class SystemVerificationController extends Controller
 
     public function index(Request $request)
     {
-        $query = SystemVerification::with(['assignedUser:id,name', 'todaysReport']);
+        $query = SystemVerification::with(['assignedUser:id,name', 'client:id,name,email', 'todaysReport']);
 
         if ($request->filled('search')) {
             $query->where(function ($q) use ($request) {
@@ -37,13 +37,13 @@ class SystemVerificationController extends Controller
     public function store(StoreSystemVerificationRequest $request)
     {
         $sv = SystemVerification::create($request->validated());
-        return new SystemVerificationResource($sv->load('assignedUser', 'todaysReport'));
+        return new SystemVerificationResource($sv->load('assignedUser', 'client', 'todaysReport'));
     }
 
     public function show(SystemVerification $system_verification)
     {
         return new SystemVerificationResource(
-            $system_verification->load('assignedUser', 'todaysReport')
+            $system_verification->load('assignedUser', 'client', 'todaysReport')
         );
     }
 
@@ -51,7 +51,7 @@ class SystemVerificationController extends Controller
     {
         $system_verification->update($request->validated());
         return new SystemVerificationResource(
-            $system_verification->load('assignedUser', 'todaysReport')
+            $system_verification->load('assignedUser', 'client', 'todaysReport')
         );
     }
 

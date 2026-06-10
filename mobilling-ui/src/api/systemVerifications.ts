@@ -12,6 +12,7 @@ export interface SystemVerification {
   name: string;
   domain_name: string | null;
   client_id: string | null;
+  client?: { id: string; name: string; email: string | null };
   is_active: boolean;
   assigned_user_id: string | null;
   assigned_user?: { id: string; name: string };

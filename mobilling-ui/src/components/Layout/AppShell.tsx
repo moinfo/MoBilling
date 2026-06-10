@@ -276,10 +276,9 @@ export default function AppLayout() {
             <NavLink label="My Verifications" leftSection={<IconShieldCheck size={18} />}
               active={isActive('/my-verifications')} onClick={() => navigateAndClose('/my-verifications')} />
           )}
-          {can('menu.system_verifications') && (
-            <NavLink label="System Verifications" leftSection={<IconShieldCheck size={18} />}
-              active={isActive('/system-verifications')} onClick={() => navigateAndClose('/system-verifications')} />
-          )}
+          {/* System Verifications (admin CRUD) lives inside Settings → tab.
+              See pages/Settings.tsx — it's gated by menu.system_verifications
+              which is admin-only after 2026_06_10_100003. */}
 
           {showReports && (
             <NavLink label="Reports" leftSection={<IconReportAnalytics size={18} />}

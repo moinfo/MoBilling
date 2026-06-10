@@ -26,6 +26,11 @@ class SystemVerification extends Model
         return $this->belongsTo(User::class, 'assigned_user_id');
     }
 
+    public function client()
+    {
+        return $this->belongsTo(Client::class);
+    }
+
     public function reports()
     {
         return $this->hasMany(SystemVerificationReport::class);

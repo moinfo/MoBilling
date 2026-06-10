@@ -14,6 +14,11 @@ class SystemVerificationResource extends JsonResource
             'name' => $this->name,
             'domain_name' => $this->domain_name,
             'client_id' => $this->client_id,
+            'client' => $this->when($this->relationLoaded('client') && $this->client, fn () => [
+                'id' => $this->client->id,
+                'name' => $this->client->name,
+                'email' => $this->client->email,
+            ]),
             'is_active' => (bool) $this->is_active,
             'assigned_user_id' => $this->assigned_user_id,
             'assigned_user' => $this->when($this->relationLoaded('assignedUser') && $this->assignedUser, fn () => [

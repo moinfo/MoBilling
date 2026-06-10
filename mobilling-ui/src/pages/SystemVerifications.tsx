@@ -13,11 +13,13 @@ import {
   getSystemVerificationReports, SystemVerification, SystemVerificationReport,
 } from '../api/systemVerifications';
 import { getUsers } from '../api/users';
+import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatDate } from '../utils/formatDate';
 import dayjs from 'dayjs';
 
 interface UserOption { id: string; name: string }
+interface ClientOption { id: string; name: string; email?: string | null }
 
 export default function SystemVerifications() {
   const queryClient = useQueryClient();
@@ -41,10 +43,19 @@ export default function SystemVerifications() {
     queryKey: ['users-all'],
     queryFn: () => getUsers({ per_page: 500 }),
   });
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients-all-for-sv'],
+    queryFn: () => getClients({ per_page: 500 }),
+  });
   const items: SystemVerification[] = data?.data?.data || [];
   const meta = data?.data?.meta;
   const users: UserOption[] = usersData?.data?.data || [];
+  const clients: ClientOption[] = clientsData?.data?.data || [];
   const userOptions = users.map((u) => ({ value: u.id, label: u.name }));
+  const clientOptions = clients.map((c) => ({
+    value: c.id,
+    label: c.email ? `${c.name} (${c.email})` : c.name,
+  }));
 
   const form = useForm<{
     name: string;
@@ -78,6 +89,7 @@ export default function SystemVerifications() {
   const buildPayload = (v: typeof form.values) => ({
     name: v.name,
     domain_name: v.domain_name || null,
+    // client_id is now a FK UUID to clients.id, set when picked from the dropdown.
     client_id: v.client_id || null,
     assigned_user_id: v.assigned_user_id || null,
     is_active: v.is_active,
@@ -148,7 +160,7 @@ export default function SystemVerifications() {
               <Table.Tr>
                 <Table.Th>Name</Table.Th>
                 <Table.Th>Domain</Table.Th>
-                <Table.Th>Client ID</Table.Th>
+                <Table.Th>Client</Table.Th>
                 <Table.Th>Assigned Staff</Table.Th>
                 <Table.Th>Today's Status</Table.Th>
                 <Table.Th>Active</Table.Th>
@@ -165,8 +177,11 @@ export default function SystemVerifications() {
                     ) : <Text size="xs" c="dimmed">—</Text>}
                   </Table.Td>
                   <Table.Td>
-                    {s.client_id ? (
-                      <Text size="sm" ff="monospace">{s.client_id}</Text>
+                    {s.client ? (
+                      <Box>
+                        <Text size="sm" fw={500}>{s.client.name}</Text>
+                        {s.client.email && <Text size="xs" c="dimmed">{s.client.email}</Text>}
+                      </Box>
                     ) : <Text size="xs" c="dimmed">—</Text>}
                   </Table.Td>
                   <Table.Td>{s.assigned_user?.name || <Text size="xs" c="dimmed">unassigned</Text>}</Table.Td>
@@ -212,7 +227,9 @@ export default function SystemVerifications() {
           <Stack>
             <TextInput label="Name" required placeholder="e.g. Sehemu ya hesabu" {...form.getInputProps('name')} />
             <TextInput label="Domain Name" placeholder="e.g. moinfotech.co.tz" {...form.getInputProps('domain_name')} />
-            <TextInput label="Client ID" placeholder="External client identifier" {...form.getInputProps('client_id')} />
+            <Select label="Client" data={clientOptions} searchable clearable
+              placeholder="Link to an existing client (optional)"
+              {...form.getInputProps('client_id')} />
             <Select label="Assigned Staff" data={userOptions} searchable clearable
               placeholder="Pick a staff member to monitor this system"
               {...form.getInputProps('assigned_user_id')} />

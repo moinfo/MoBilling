@@ -45,7 +45,7 @@ import TemplatesAdmin from './pages/admin/Templates';
 import ExpenseCategories from './pages/ExpenseCategories';
 import Expenses from './pages/Expenses';
 import SystemRecords from './pages/SystemRecords';
-import SystemVerifications from './pages/SystemVerifications';
+// SystemVerifications is now mounted as a tab inside Settings.tsx — no standalone route.
 import MyVerifications from './pages/MyVerifications';
 // Systems, Bank Accounts, System Properties are now accessed via the
 // Settings page tabs (Settings.tsx) — no standalone routes needed.
@@ -180,7 +180,6 @@ export default function App() {
                   <Route path="/expenses" element={<Expenses />} />
                   <Route path="/petty-cash" element={<PettyCash />} />
                   <Route path="/system-records" element={<SystemRecords />} />
-                  <Route path="/system-verifications" element={<SystemVerifications />} />
                   <Route path="/my-verifications" element={<MyVerifications />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/roles" element={<Roles />} />

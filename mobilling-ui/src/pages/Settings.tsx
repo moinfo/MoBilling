@@ -7,11 +7,12 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock, IconStack2, IconBuildingBank, IconAdjustments } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock, IconStack2, IconBuildingBank, IconAdjustments, IconShieldCheck } from '@tabler/icons-react';
 import LateFeeTab from '../components/Settings/LateFeeTab';
 import Systems from './Systems';
 import BankAccounts from './BankAccounts';
 import SystemProperties from './SystemProperties';
+import SystemVerifications from './SystemVerifications';
 import { useAuth } from '../context/AuthContext';
 import { usePermissions } from '../hooks/usePermissions';
 import {
@@ -44,6 +45,7 @@ export default function Settings() {
   const canSystems = can('menu.systems');
   const canBankAccounts = can('menu.bank_accounts');
   const canSystemProperties = can('menu.system_properties');
+  const canSystemVerifications = can('menu.system_verifications');
 
   return (
     <>
@@ -98,6 +100,11 @@ export default function Settings() {
               Bank Accounts
             </Tabs.Tab>
           )}
+          {canSystemVerifications && (
+            <Tabs.Tab value="system-verifications" leftSection={<IconShieldCheck size={16} />}>
+              System Verifications
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="company">
@@ -135,6 +142,9 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="bank-accounts">
           <BankAccounts />
+        </Tabs.Panel>
+        <Tabs.Panel value="system-verifications">
+          <SystemVerifications />
         </Tabs.Panel>
       </Tabs>
     </>
