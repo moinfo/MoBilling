@@ -30,6 +30,11 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ExpenseCategoryController;
 use App\Http\Controllers\PettyCashController;
 use App\Http\Controllers\ExpenseController;
+use App\Http\Controllers\SystemController;
+use App\Http\Controllers\BankAccountController;
+use App\Http\Controllers\SystemPropertyController;
+use App\Http\Controllers\SystemRecordController;
+use App\Http\Controllers\SystemVerificationController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\CollectionController;
@@ -284,6 +289,46 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:expenses.read')->get('/expenses/{expense}/voucher', [ExpenseController::class, 'downloadVoucher']);
     Route::middleware('permission:expenses.update')->post('/expenses/{expense}/voucher', [ExpenseController::class, 'uploadVoucher']);
 
+    // Systems (reference list)
+    Route::middleware('permission:systems.read')->get('/systems', [SystemController::class, 'index']);
+    Route::middleware('permission:systems.read')->get('/systems/{system}', [SystemController::class, 'show']);
+    Route::middleware('permission:systems.create')->post('/systems', [SystemController::class, 'store']);
+    Route::middleware('permission:systems.update')->put('/systems/{system}', [SystemController::class, 'update']);
+    Route::middleware('permission:systems.delete')->delete('/systems/{system}', [SystemController::class, 'destroy']);
+
+    // Bank Accounts (reference list)
+    Route::middleware('permission:bank_accounts.read')->get('/bank-accounts', [BankAccountController::class, 'index']);
+    Route::middleware('permission:bank_accounts.read')->get('/bank-accounts/{bank_account}', [BankAccountController::class, 'show']);
+    Route::middleware('permission:bank_accounts.create')->post('/bank-accounts', [BankAccountController::class, 'store']);
+    Route::middleware('permission:bank_accounts.update')->put('/bank-accounts/{bank_account}', [BankAccountController::class, 'update']);
+    Route::middleware('permission:bank_accounts.delete')->delete('/bank-accounts/{bank_account}', [BankAccountController::class, 'destroy']);
+
+    // System Properties (reference list)
+    Route::middleware('permission:system_properties.read')->get('/system-properties', [SystemPropertyController::class, 'index']);
+    Route::middleware('permission:system_properties.read')->get('/system-properties/{system_property}', [SystemPropertyController::class, 'show']);
+    Route::middleware('permission:system_properties.create')->post('/system-properties', [SystemPropertyController::class, 'store']);
+    Route::middleware('permission:system_properties.update')->put('/system-properties/{system_property}', [SystemPropertyController::class, 'update']);
+    Route::middleware('permission:system_properties.delete')->delete('/system-properties/{system_property}', [SystemPropertyController::class, 'destroy']);
+
+    // System Records (the main data-entry CRUD that joins the above)
+    Route::middleware('permission:system_records.read')->get('/system-records', [SystemRecordController::class, 'index']);
+    Route::middleware('permission:system_records.read')->get('/system-records/{system_record}', [SystemRecordController::class, 'show']);
+    Route::middleware('permission:system_records.create')->post('/system-records', [SystemRecordController::class, 'store']);
+    Route::middleware('permission:system_records.update')->put('/system-records/{system_record}', [SystemRecordController::class, 'update']);
+    Route::middleware('permission:system_records.delete')->delete('/system-records/{system_record}', [SystemRecordController::class, 'destroy']);
+
+    // System Verifications — admin CRUD on registered systems
+    Route::middleware('permission:system_verifications.read')->get('/system-verifications', [SystemVerificationController::class, 'index']);
+    Route::middleware('permission:system_verifications.read')->get('/system-verifications/{system_verification}', [SystemVerificationController::class, 'show']);
+    Route::middleware('permission:system_verifications.create')->post('/system-verifications', [SystemVerificationController::class, 'store']);
+    Route::middleware('permission:system_verifications.update')->put('/system-verifications/{system_verification}', [SystemVerificationController::class, 'update']);
+    Route::middleware('permission:system_verifications.delete')->delete('/system-verifications/{system_verification}', [SystemVerificationController::class, 'destroy']);
+    Route::middleware('permission:system_verification_reports.read')->get('/system-verifications/{system_verification}/reports', [SystemVerificationController::class, 'listReports']);
+
+    // Staff: see my assigned systems, and submit today's check-in
+    Route::middleware('permission:menu.my_verifications')->get('/my-verifications', [SystemVerificationController::class, 'mine']);
+    Route::middleware('permission:system_verification_reports.submit')->post('/system-verifications/{system_verification}/reports', [SystemVerificationController::class, 'submitReport']);
+
     // Petty Cash (single pool per tenant)
     Route::middleware('permission:petty_cash.read')->get('/petty-cash', [PettyCashController::class, 'index']);
     Route::middleware('permission:petty_cash.topup')->post('/petty-cash/transactions', [PettyCashController::class, 'storeTransaction']);
@@ -378,6 +423,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::middleware('permission:reports.client_statement')->get('/client-statement', [ReportController::class, 'clientStatement']);
         Route::middleware('permission:reports.payment_collection')->get('/payment-collection', [ReportController::class, 'paymentCollection']);
         Route::middleware('permission:reports.expense')->get('/expense-report', [ReportController::class, 'expenseReport']);
+        Route::middleware('permission:reports.system_records')->get('/system-records-report', [ReportController::class, 'systemRecordsReport']);
+        Route::middleware('permission:reports.system_verifications')->get('/system-verifications-report', [ReportController::class, 'systemVerificationsReport']);
         Route::middleware('permission:reports.profit_loss')->get('/profit-loss', [ReportController::class, 'profitLoss']);
         Route::middleware('permission:reports.statutory')->get('/statutory-compliance', [ReportController::class, 'statutoryCompliance']);
         Route::middleware('permission:reports.subscription')->get('/subscription-report', [ReportController::class, 'subscriptionReport']);

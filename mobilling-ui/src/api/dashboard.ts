@@ -62,6 +62,30 @@ export interface CalendarDay {
   items: CalendarItem[];
 }
 
+export interface SystemRecordPropertyTotal {
+  name: string;
+  total: number;
+}
+
+export interface SystemRecordSystemBreakdown {
+  name: string;
+  subtotal: number;
+  properties: SystemRecordPropertyTotal[];
+}
+
+export interface SystemRecordBankTotal {
+  bank_account_id: string | null;
+  bank_name: string;
+  account_number: string | null;
+  total: number;
+}
+
+export interface SystemRecordsBreakdown {
+  total: number;
+  systems: SystemRecordSystemBreakdown[];
+  by_bank: SystemRecordBankTotal[];
+}
+
 export interface DashboardSummary {
   total_expenses: number;
   total_receivable: number;
@@ -99,6 +123,7 @@ export interface DashboardSummary {
   statutory_stats: StatutoryStats;
   urgent_obligations: UrgentObligation[];
   calendar: CalendarDay[];
+  system_records: SystemRecordsBreakdown;
 }
 
 export const getDashboardSummary = (month: number, year: number) =>

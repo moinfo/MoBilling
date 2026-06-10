@@ -12,6 +12,7 @@ import {
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
+  IconDatabase,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -33,7 +34,7 @@ export default function AppLayout() {
   const billingPaths = ['/clients', '/product-services', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
-  const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
+  const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
 
   const getActiveSection = () => {
     if (billingPaths.some((p) => location.pathname === p)) return 'billing';
@@ -71,6 +72,10 @@ export default function AppLayout() {
   const showBilling = canAny(['menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills']);
   const showStatutory = canAny(['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out']);
   const showExpenses = canAny(['menu.expense_categories', 'menu.expenses', 'menu.petty_cash']);
+  // The three reference CRUDs (Systems / Bank Accounts / System Properties)
+  // are accessed via the Settings page tabs, not the sidebar. Only the
+  // top-level data-entry CRUD (System Records) appears here.
+  const showSystemRecords = can('menu.system_records');
   const showReports = can('menu.reports');
 
   return (
@@ -262,6 +267,19 @@ export default function AppLayout() {
             </NavLink>
           )}
 
+          {showSystemRecords && (
+            <NavLink label="System Records" leftSection={<IconDatabase size={18} />}
+              active={isActive('/system-records')} onClick={() => navigateAndClose('/system-records')} />
+          )}
+
+          {can('menu.my_verifications') && (
+            <NavLink label="My Verifications" leftSection={<IconShieldCheck size={18} />}
+              active={isActive('/my-verifications')} onClick={() => navigateAndClose('/my-verifications')} />
+          )}
+          {/* System Verifications (admin CRUD) lives inside Settings → tab.
+              See pages/Settings.tsx — it's gated by menu.system_verifications
+              which is admin-only after 2026_06_10_100003. */}
+
           {showReports && (
             <NavLink label="Reports" leftSection={<IconReportAnalytics size={18} />}
               opened={openSection === 'reports'} onChange={() => toggleSection('reports')}>
@@ -275,6 +293,14 @@ export default function AppLayout() {
                 active={isActive('/reports/payment-collection')} onClick={() => navigateAndClose('/reports/payment-collection')} />
               <NavLink label="Expense Report" leftSection={<IconWalletReport size={16} />}
                 active={isActive('/reports/expenses')} onClick={() => navigateAndClose('/reports/expenses')} />
+              {can('menu.report_system_records') && (
+                <NavLink label="System Records Report" leftSection={<IconDatabase size={16} />}
+                  active={isActive('/reports/system-records')} onClick={() => navigateAndClose('/reports/system-records')} />
+              )}
+              {can('menu.report_system_verifications') && (
+                <NavLink label="System Verifications Report" leftSection={<IconShieldCheck size={16} />}
+                  active={isActive('/reports/system-verifications')} onClick={() => navigateAndClose('/reports/system-verifications')} />
+              )}
               <NavLink label="Profit & Loss" leftSection={<IconScale size={16} />}
                 active={isActive('/reports/profit-loss')} onClick={() => navigateAndClose('/reports/profit-loss')} />
               <NavLink label="Statutory Compliance" leftSection={<IconShieldCheck size={16} />}
