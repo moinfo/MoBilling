@@ -11,11 +11,14 @@ import {
   IconStar, IconTool, IconLogin, IconMail, IconKey, IconBan, IconWorldWww,
   IconExternalLink, IconRefresh, IconArrowLeft, IconFolders, IconDatabase,
   IconClock, IconChartBar, IconArrowForward, IconServer, IconArchive,
+  IconArrowUp, IconListDetails,
 } from '@tabler/icons-react';
 import {
   getPortalHostingDetail, portalHostingSso, refreshPortalHostingUsage,
   changePortalHostingPassword, requestPortalHostingCancellation,
+  getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow,
 } from '../../api/portal';
+import { Tooltip } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -49,6 +52,7 @@ export default function PortalServiceDetails() {
   const isPortalAdmin = (user as any)?.role === 'admin';
 
   const [pwOpen, setPwOpen] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [cancelOpen, setCancelOpen] = useState(false);
   const [ssoBusy, setSsoBusy] = useState<string | null>(null);
 
@@ -122,6 +126,14 @@ export default function PortalServiceDetails() {
                 <NavLink label="Change Password" leftSection={<IconKey size={16} />}
                   disabled={d.status !== 'active'}
                   onClick={() => setPwOpen(true)} />
+                <NavLink label="Upgrade/Downgrade" leftSection={<IconArrowUp size={16} />}
+                  disabled={d.status !== 'active'}
+                  onClick={() => setUpgradeOpen(true)} />
+                <Tooltip label="No configurable options are available for this product" position="right">
+                  <div>
+                    <NavLink label="Upgrade/Downgrade Options" leftSection={<IconListDetails size={16} />} disabled />
+                  </div>
+                </Tooltip>
                 <NavLink label="Request Cancellation" leftSection={<IconBan size={16} />} c="red"
                   onClick={() => setCancelOpen(true)} />
               </Paper>
@@ -225,6 +237,8 @@ export default function PortalServiceDetails() {
       )}
 
       <ChangePasswordModal id={d.id} opened={pwOpen} onClose={() => setPwOpen(false)} />
+      <UpgradeModal id={d.id} opened={upgradeOpen} onClose={() => setUpgradeOpen(false)}
+        onInvoiced={() => navigate('/portal/invoices')} />
       <CancellationModal id={d.id} domain={d.domain} opened={cancelOpen} onClose={() => setCancelOpen(false)} />
     </Stack>
   );
@@ -310,6 +324,86 @@ function CancellationModal({ id, domain, opened, onClose }: {
           <Button color="red" disabled={!reason.trim()} loading={mutation.isPending}
             onClick={() => mutation.mutate()}>
             Submit Request
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function UpgradeModal({ id, opened, onClose, onInvoiced }: {
+  id: string; opened: boolean; onClose: () => void; onInvoiced: () => void;
+}) {
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['portal-upgrade-options', id],
+    queryFn: () => getPortalUpgradeOptions(id),
+    enabled: opened,
+  });
+  const options = data?.data?.data;
+  const plans: UpgradePlanRow[] = options?.plans ?? [];
+  const chosen = plans.find((p) => p.id === selected);
+
+  const mutation = useMutation({
+    mutationFn: () => requestPortalUpgrade(id, selected!),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['portal-hosting-detail', id] });
+      qc.invalidateQueries({ queryKey: ['portal-subscriptions'] });
+      notifications.show({ title: 'Plan change', message: res?.data?.message, color: 'green', autoClose: 9000 });
+      setSelected(null);
+      onClose();
+      if (res?.data?.data?.document_id) onInvoiced();
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Plan change failed.', color: 'red',
+    }),
+  });
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Upgrade/Downgrade" centered size="lg">
+      <Stack gap="sm" pos="relative">
+        <LoadingOverlay visible={isLoading} />
+        {options && (
+          <Text size="sm" c="dimmed">
+            Current plan: <Text span fw={600}>{options.current_plan}</Text>
+            {options.next_due && <> · paid through {options.next_due}</>}
+          </Text>
+        )}
+        <Radio.Group value={selected} onChange={setSelected}>
+          <Stack gap="xs">
+            {plans.map((p) => (
+              <Paper key={p.id} withBorder p="sm" radius="md"
+                style={{ opacity: p.is_current ? 0.55 : 1 }}>
+                <Group justify="space-between" wrap="nowrap">
+                  <Radio value={p.id} disabled={p.is_current}
+                    label={<Text fw={600}>{p.name}{p.is_current ? ' (current)' : ''}</Text>} />
+                  <Stack gap={0} align="flex-end">
+                    <Text size="sm" fw={600}>Tsh.{fmt(p.price)}/yr</Text>
+                    {!p.is_current && (
+                      <Text size="xs" c={p.due_now > 0 ? 'orange' : 'green'}>
+                        {p.due_now > 0
+                          ? `Due today: Tsh.${fmt(p.due_now)} (prorated)`
+                          : 'No charge — applies immediately'}
+                      </Text>
+                    )}
+                  </Stack>
+                </Group>
+              </Paper>
+            ))}
+          </Stack>
+        </Radio.Group>
+        {chosen && chosen.due_now === 0 && chosen.price < (plans.find((p) => p.is_current)?.price ?? 0) && (
+          <Text size="xs" c="dimmed">
+            Downgrades apply immediately; no credit is issued for the unused portion of your current plan.
+          </Text>
+        )}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button disabled={!selected || chosen?.is_current} loading={mutation.isPending}
+            onClick={() => mutation.mutate()}>
+            {chosen && chosen.due_now > 0 ? `Upgrade — Pay Tsh.${fmt(chosen.due_now)}` : 'Change Plan'}
           </Button>
         </Group>
       </Stack>

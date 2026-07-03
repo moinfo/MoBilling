@@ -29,6 +29,20 @@ class DocumentObserver
             ->whereNotNull('meta->pending_action')
             ->get();
 
+        // Plan upgrades: apply the pending change once its invoice is paid.
+        $pendingChanges = \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('metadata->pending_plan_change->document_id', $document->id)
+            ->get();
+
+        foreach ($pendingChanges as $sub) {
+            $newProduct = \App\Models\ProductService::withoutGlobalScopes()
+                ->find($sub->metadata['pending_plan_change']['product_service_id'] ?? null);
+            if ($newProduct) {
+                app(\App\Services\Hosting\PlanChangeService::class)->apply($sub, $newProduct);
+            }
+        }
+
         foreach ($domains as $domain) {
             // Unmanaged domains (gTLDs — no registrar driver yet): keep the paid
             // order flagged for MANUAL fulfilment at the upstream registrar

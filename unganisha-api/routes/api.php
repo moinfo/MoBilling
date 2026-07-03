@@ -634,6 +634,8 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::post('/hosting/{hostingAccount}/refresh-usage', [\App\Http\Controllers\Portal\PortalHostingController::class, 'refreshUsage']);
     Route::post('/hosting/{hostingAccount}/change-password', [\App\Http\Controllers\Portal\PortalHostingController::class, 'changePassword']);
     Route::post('/hosting/{hostingAccount}/request-cancellation', [\App\Http\Controllers\Portal\PortalHostingController::class, 'requestCancellation']);
+    Route::get('/hosting/{hostingAccount}/upgrade-options', [\App\Http\Controllers\Portal\PortalHostingController::class, 'upgradeOptions']);
+    Route::post('/hosting/{hostingAccount}/upgrade', [\App\Http\Controllers\Portal\PortalHostingController::class, 'upgrade']);
     Route::get('/domains', [\App\Http\Controllers\Portal\PortalDomainController::class, 'index']);
     Route::get('/domains/check', [\App\Http\Controllers\Portal\PortalDomainController::class, 'check']);
     Route::post('/domains/order', [\App\Http\Controllers\Portal\PortalDomainController::class, 'order']);

@@ -222,6 +222,17 @@ export const changePortalHostingPassword = (id: string, password: string, passwo
 export const requestPortalHostingCancellation = (id: string, reason: string, when: 'immediate' | 'end_of_period') =>
   api.post(`/portal/hosting/${id}/request-cancellation`, { reason, when });
 
+export interface UpgradePlanRow {
+  id: string; name: string; price: number; billing_cycle: string | null;
+  is_current: boolean; due_now: number;
+}
+
+export const getPortalUpgradeOptions = (id: string) =>
+  api.get<{ data: { current_plan: string; next_due: string | null; plans: UpgradePlanRow[] } }>(`/portal/hosting/${id}/upgrade-options`);
+
+export const requestPortalUpgrade = (id: string, productServiceId: string) =>
+  api.post(`/portal/hosting/${id}/upgrade`, { product_service_id: productServiceId });
+
 // ── Domains ───────────────────────────────────────────────────────────────────
 
 export interface PortalDomain {

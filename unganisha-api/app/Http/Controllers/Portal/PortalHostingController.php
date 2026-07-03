@@ -138,6 +138,116 @@ class PortalHostingController extends Controller
         }
     }
 
+    /** Available plans for upgrade/downgrade with the prorated charge for each. */
+    public function upgradeOptions(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        $sub = $hostingAccount->subscription?->load('productService');
+        abort_unless($sub && $sub->productService, 422, 'Subscription data missing.');
+
+        $svc = app(\App\Services\Hosting\PlanChangeService::class);
+
+        $plans = \App\Models\ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $request->user()->tenant_id)
+            ->where('is_active', true)
+            ->where('portal_visible', true)
+            ->where('provisioning_type', 'whm_cpanel')
+            ->where('category', $sub->productService->category)
+            // exclude WHMCS billing-variant records (same rule as the catalog)
+            ->where(fn ($q) => $q->whereNull('code')->orWhere('code', 'not like', 'WHMCS-P%-%'))
+            ->orderBy('price')
+            ->get()
+            ->unique('name')
+            ->values()
+            ->map(fn ($p) => [
+                'id'            => $p->id,
+                'name'          => $p->name,
+                'price'         => (float) $p->price,
+                'billing_cycle' => $p->billing_cycle,
+                'is_current'    => $p->id === $sub->product_service_id,
+                'due_now'       => $p->id === $sub->product_service_id ? 0.0 : $svc->proratedCharge($sub, $p),
+            ]);
+
+        return response()->json(['data' => [
+            'current_plan' => $sub->productService->name,
+            'next_due'     => $sub->expire_date?->toDateString(),
+            'plans'        => $plans,
+        ]]);
+    }
+
+    /** Request the plan change: free/downgrade applies now; upgrade creates a prorated invoice. */
+    public function upgrade(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+        abort_unless($hostingAccount->status === 'active', 422, 'This hosting account is not active.');
+
+        $user = $request->user();
+        $data = $request->validate([
+            'product_service_id' => ['required', 'uuid',
+                \Illuminate\Validation\Rule::exists('product_services', 'id')
+                    ->where('tenant_id', $user->tenant_id)->where('is_active', true)
+                    ->where('provisioning_type', 'whm_cpanel')],
+        ]);
+
+        $sub = $hostingAccount->subscription?->load('productService');
+        abort_unless($sub, 422, 'Subscription data missing.');
+        abort_if($sub->product_service_id === $data['product_service_id'], 422, 'That is already your current plan.');
+
+        $new = \App\Models\ProductService::withoutGlobalScopes()->find($data['product_service_id']);
+        $svc = app(\App\Services\Hosting\PlanChangeService::class);
+        $charge = $svc->proratedCharge($sub, $new);
+
+        if ($charge <= 0) {
+            $svc->apply($sub, $new);
+
+            return response()->json([
+                'message' => "Plan changed to {$new->name} — your hosting package is being updated now.",
+            ]);
+        }
+
+        $document = \Illuminate\Support\Facades\DB::transaction(function () use ($user, $sub, $new, $charge) {
+            $document = \App\Models\Document::withoutGlobalScopes()->create([
+                'tenant_id'       => $user->tenant_id,
+                'client_id'       => $user->client_id,
+                'type'            => 'invoice',
+                'document_number' => app(\App\Services\DocumentNumberService::class)->generate('invoice', $user->tenant_id),
+                'date'            => now()->toDateString(),
+                'due_date'        => now()->toDateString(),
+                'subtotal'        => $charge,
+                'discount_amount' => 0,
+                'tax_amount'      => 0,
+                'total'           => $charge,
+                'status'          => 'sent',
+                'notes'           => "Plan upgrade: {$sub->productService->name} -> {$new->name} ({$sub->label})",
+            ]);
+
+            $document->items()->create([
+                'item_type'   => 'service',
+                'description' => "Upgrade to {$new->name} — prorated until " . ($sub->expire_date?->toDateString() ?? 'renewal'),
+                'quantity'    => 1,
+                'price'       => $charge,
+                'tax_percent' => 0,
+                'tax_amount'  => 0,
+                'total'       => $charge,
+            ]);
+
+            $sub->update(['metadata' => array_merge($sub->metadata ?? [], [
+                'pending_plan_change' => [
+                    'product_service_id' => $new->id,
+                    'document_id'        => $document->id,
+                ],
+            ])]);
+
+            return $document;
+        });
+
+        return response()->json([
+            'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+            'message' => "Upgrade invoice {$document->document_number} created (Tsh." . number_format($charge, 2) . ' prorated) — the upgrade applies automatically when it is paid.',
+        ], 201);
+    }
+
     /** Change the cPanel password (portal admins only). */
     public function changePassword(Request $request, HostingAccount $hostingAccount)
     {
