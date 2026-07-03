@@ -162,13 +162,19 @@ class PortalDashboardController extends Controller
         return response()->json([
             'services_count' => $servicesCount,
             'domains_count' => $domainsCount,
-            'tickets_count' => 0, // no ticket module yet
+            'tickets_count' => \App\Models\Ticket::where('client_id', $clientId)->where('status', '!=', 'closed')->count(),
             'unpaid_invoices_count' => $unpaidCount,
             'client_info' => $clientInfo,
             'recent_services' => $recentServices,
             'expiring_domains_count' => $expiringDomainsCount,
             'contacts' => $contacts,
-            'recent_tickets' => [],      // no ticket module yet
+            'recent_tickets' => \App\Models\Ticket::where('client_id', $clientId)
+                ->orderByDesc('last_reply_at')->limit(5)
+                ->get(['id', 'ticket_number', 'subject', 'status', 'last_reply_at'])
+                ->map(fn ($t) => [
+                    'id' => $t->id, 'ticket_number' => $t->ticket_number, 'subject' => $t->subject,
+                    'status' => $t->status, 'last_reply_at' => $t->last_reply_at?->toISOString(),
+                ]),
             'announcements' => [],       // no announcements module yet
             'total_invoiced' => $totalInvoiced,
             'total_paid' => $totalPaid,

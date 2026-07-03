@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Stack, SimpleGrid, Paper, Text, Badge, LoadingOverlay, Group, Title, Button,
-  TextInput, Divider, NavLink, Grid, Tooltip,
+  TextInput, Divider, NavLink, Grid,
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -227,14 +227,31 @@ export default function PortalDashboard() {
                 <Paper withBorder radius="md" p="lg">
                   <Group justify="space-between" mb="sm">
                     <Group gap="xs"><IconMessageCircle size={18} /><Text fw={700}>Recent Support Tickets</Text></Group>
-                    <Tooltip label="Ticketing is coming soon — contact us by email or phone for now">
-                      <Button size="xs" variant="light" leftSection={<IconPlus size={12} />} disabled>
-                        Open New Ticket
-                      </Button>
-                    </Tooltip>
+                    <Button size="xs" variant="light" leftSection={<IconPlus size={12} />}
+                      onClick={() => navigate('/portal/tickets?new=1')}>
+                      Open New Ticket
+                    </Button>
                   </Group>
-                  {(d.recent_tickets ?? []).length === 0 && (
+                  {(d.recent_tickets ?? []).length === 0 ? (
                     <Text size="sm" c="dimmed" ta="center" py="xs">No Recent Tickets Found</Text>
+                  ) : (
+                    <Stack gap="xs">
+                      {d.recent_tickets.map((t: any) => (
+                        <Group key={t.id} justify="space-between" wrap="nowrap"
+                          style={{ cursor: 'pointer' }} onClick={() => navigate('/portal/tickets')}>
+                          <div style={{ minWidth: 0 }}>
+                            <Text size="sm" fw={600} truncate>{t.ticket_number} — {t.subject}</Text>
+                            <Text size="xs" c="dimmed">
+                              Last Updated: {t.last_reply_at ? new Date(t.last_reply_at).toLocaleString('en-GB') : '—'}
+                            </Text>
+                          </div>
+                          <Badge size="xs" radius="xl" variant="filled"
+                            color={t.status === 'closed' ? 'gray' : t.status === 'answered' ? 'blue' : 'green'}>
+                            {t.status === 'customer_reply' ? 'Replied' : t.status}
+                          </Badge>
+                        </Group>
+                      ))}
+                    </Stack>
                   )}
                 </Paper>
               </Stack>

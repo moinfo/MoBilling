@@ -59,6 +59,7 @@ import Broadcast from './pages/Broadcast';
 import WhatsappContacts from './pages/WhatsappContacts';
 import HostingAccounts from './pages/HostingAccounts';
 import Domains from './pages/Domains';
+import Tickets from './pages/Tickets';
 import FieldMarketing from './pages/FieldMarketing';
 import SocialMedia from './pages/SocialMedia';
 import ServedCustomers from './pages/ServedCustomers';
@@ -76,6 +77,7 @@ import PortalStatement from './pages/portal/PortalStatement';
 import PortalSubscriptions from './pages/portal/PortalSubscriptions';
 import PortalHosting from './pages/portal/PortalHosting';
 import PortalDomains from './pages/portal/PortalDomains';
+import PortalTickets from './pages/portal/PortalTickets';
 import PortalProductServices from './pages/portal/PortalProductServices';
 import PortalProfile from './pages/portal/PortalProfile';
 import PortalUsers from './pages/portal/PortalUsers';
@@ -198,6 +200,7 @@ export default function App() {
                   <Route path="/whatsapp-contacts" element={<WhatsappContacts />} />
                   <Route path="/hosting" element={<HostingAccounts />} />
                   <Route path="/domains" element={<Domains />} />
+                  <Route path="/tickets" element={<Tickets />} />
                   <Route path="/field-marketing" element={<FieldMarketing />} />
                   <Route path="/social-media" element={<SocialMedia />} />
                   <Route path="/served-customers" element={<ServedCustomers />} />
@@ -236,6 +239,7 @@ export default function App() {
                   <Route path="/portal/subscriptions" element={<PortalSubscriptions />} />
                   <Route path="/portal/hosting" element={<PortalHosting />} />
                   <Route path="/portal/domains" element={<PortalDomains />} />
+                  <Route path="/portal/tickets" element={<PortalTickets />} />
                   <Route path="/portal/profile" element={<PortalProfile />} />
                   <Route path="/portal/users" element={<PortalUsers />} />
                 </Route>

@@ -503,6 +503,16 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::delete('/domain-tlds/{domainTld}',   [\App\Http\Controllers\DomainTldController::class, 'destroy']);
     });
 
+    // ── Support Tickets ──────────────────────────────────────────────────────
+    Route::middleware('permission:tickets.read')->group(function () {
+        Route::get('/tickets',          [\App\Http\Controllers\TicketController::class, 'index']);
+        Route::get('/tickets/stats',    [\App\Http\Controllers\TicketController::class, 'stats']);
+        Route::get('/tickets/{ticket}', [\App\Http\Controllers\TicketController::class, 'show']);
+    });
+    Route::middleware('permission:tickets.reply')->post('/tickets/{ticket}/reply', [\App\Http\Controllers\TicketController::class, 'reply']);
+    Route::middleware('permission:tickets.manage')->post('/tickets/{ticket}/status', [\App\Http\Controllers\TicketController::class, 'updateStatus']);
+    Route::middleware('permission:tickets.manage')->post('/tickets/{ticket}/assign', [\App\Http\Controllers\TicketController::class, 'assign']);
+
     // ── Field Marketing (Door-to-Door) ───────────────────────────────────────
     Route::middleware('permission:field_sessions.read')->get('/field-visits-report', [\App\Http\Controllers\FieldMarketingController::class, 'allVisits']);
     Route::middleware('permission:field_sessions.read')->get('/field-sessions', [\App\Http\Controllers\FieldMarketingController::class, 'sessions']);
@@ -623,6 +633,11 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/domains/check', [\App\Http\Controllers\Portal\PortalDomainController::class, 'check']);
     Route::post('/domains/order', [\App\Http\Controllers\Portal\PortalDomainController::class, 'order']);
     Route::post('/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'renew']);
+    Route::get('/tickets',                  [\App\Http\Controllers\Portal\PortalTicketController::class, 'index']);
+    Route::post('/tickets',                 [\App\Http\Controllers\Portal\PortalTicketController::class, 'store']);
+    Route::get('/tickets/{ticket}',         [\App\Http\Controllers\Portal\PortalTicketController::class, 'show']);
+    Route::post('/tickets/{ticket}/reply',  [\App\Http\Controllers\Portal\PortalTicketController::class, 'reply']);
+    Route::post('/tickets/{ticket}/close',  [\App\Http\Controllers\Portal\PortalTicketController::class, 'close']);
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
     Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);

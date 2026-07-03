@@ -225,3 +225,24 @@ export const portalCheckDomain = (name: string) =>
 
 export const portalOrderDomain = (data: { name: string; years: number; action: 'register' | 'transfer'; auth_info?: string }) =>
   api.post('/portal/domains/order', data);
+
+// ── Support Tickets ───────────────────────────────────────────────────────────
+
+export interface PortalTicket {
+  id: string;
+  ticket_number: string;
+  subject: string;
+  status: 'open' | 'answered' | 'customer_reply' | 'closed';
+  priority: string;
+  replies_count: number | null;
+  last_reply_at: string | null;
+  created_at: string;
+  replies?: { id: string; author_type: 'staff' | 'client'; author_name: string; message: string; created_at: string }[];
+}
+
+export const getPortalTickets = () => api.get<{ data: PortalTicket[] }>('/portal/tickets');
+export const openPortalTicket = (data: { subject: string; message: string; priority?: string }) =>
+  api.post('/portal/tickets', data);
+export const getPortalTicket = (id: string) => api.get<{ data: PortalTicket }>(`/portal/tickets/${id}`);
+export const replyPortalTicket = (id: string, message: string) => api.post<{ data: PortalTicket }>(`/portal/tickets/${id}/reply`, { message });
+export const closePortalTicket = (id: string) => api.post(`/portal/tickets/${id}/close`);

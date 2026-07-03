@@ -7,7 +7,7 @@ import {
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
   IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
-  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww,
+  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww, IconMessageCircle,
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
@@ -183,6 +183,11 @@ export default function AppLayout() {
           {can('menu.domains') && (
             <NavLink label="Domains" leftSection={<IconWorldWww size={18} />}
               active={isActive('/domains')} onClick={() => navigateAndClose('/domains')} />
+          )}
+
+          {can('menu.tickets') && (
+            <NavLink label="Support Tickets" leftSection={<IconMessageCircle size={18} />}
+              active={isActive('/tickets')} onClick={() => navigateAndClose('/tickets')} />
           )}
 
           {can('menu.satisfaction_calls') && (
