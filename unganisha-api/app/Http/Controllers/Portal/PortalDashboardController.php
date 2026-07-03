@@ -34,6 +34,43 @@ class PortalDashboardController extends Controller
         $domainsCount  = \App\Models\Domain::where('client_id', $clientId)->whereIn('status', ['active', 'pending'])->count();
         $unpaidCount   = (clone $invoices)->whereIn('status', ['sent', 'overdue', 'partial'])->count();
 
+        // Client-area home widgets
+        $client = $clientUser->client;
+        $clientInfo = [
+            'company' => $client?->name,
+            'contact' => $clientUser->name,
+            'address' => $client?->address,
+            'email'   => $client?->email,
+            'phone'   => $client?->phone,
+        ];
+
+        $recentServices = ClientSubscription::where('client_id', $clientId)
+            ->where('status', '!=', 'cancelled')
+            ->with(['productService:id,name', 'hostingAccount:id,client_subscription_id,status'])
+            ->orderByRaw("CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
+            ->orderByDesc('start_date')
+            ->limit(4)
+            ->get()
+            ->map(fn ($s) => [
+                'id'                 => $s->id,
+                'product'            => $s->productService?->name,
+                'label'              => $s->label,
+                'status'             => $s->status,
+                'hosting_account_id' => $s->hostingAccount && $s->hostingAccount->status === 'active'
+                                            ? $s->hostingAccount->id : null,
+            ]);
+
+        $expiringDomainsCount = \App\Models\Domain::where('client_id', $clientId)
+            ->where('status', 'active')
+            ->whereNotNull('expires_at')
+            ->whereDate('expires_at', '<=', now()->addDays(45))
+            ->count();
+
+        $contacts = \App\Models\ClientUser::where('client_id', $clientId)
+            ->where('id', '!=', $clientUser->id)
+            ->get(['id', 'name', 'email', 'role'])
+            ->map(fn ($u) => ['id' => $u->id, 'name' => $u->name, 'email' => $u->email, 'role' => $u->role]);
+
         $recentInvoices = Document::where('client_id', $clientId)
             ->where('type', 'invoice')
             ->whereNotIn('status', ['draft', 'cancelled'])
@@ -127,6 +164,12 @@ class PortalDashboardController extends Controller
             'domains_count' => $domainsCount,
             'tickets_count' => 0, // no ticket module yet
             'unpaid_invoices_count' => $unpaidCount,
+            'client_info' => $clientInfo,
+            'recent_services' => $recentServices,
+            'expiring_domains_count' => $expiringDomainsCount,
+            'contacts' => $contacts,
+            'recent_tickets' => [],      // no ticket module yet
+            'announcements' => [],       // no announcements module yet
             'total_invoiced' => $totalInvoiced,
             'total_paid' => $totalPaid,
             'total_balance' => $totalBalance,

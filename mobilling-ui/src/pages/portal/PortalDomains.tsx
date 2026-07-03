@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Group, Text,
   SimpleGrid, Modal, TextInput, NumberInput, Alert, Tooltip, Menu,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconWorldWww, IconRefresh, IconPlus, IconArrowRight, IconLock, IconLockOpen,
   IconCheck, IconX, IconChevronDown,
@@ -25,8 +25,21 @@ const statusColor: Record<string, string> = {
 
 export default function PortalDomains() {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [renewFor, setRenewFor] = useState<PortalDomain | null>(null);
   const [orderAction, setOrderAction] = useState<'register' | 'transfer' | null>(null);
+  const [prefillName, setPrefillName] = useState('');
+
+  // Deep link from the dashboard: /portal/domains?order=register&name=example.co.tz
+  useEffect(() => {
+    const order = searchParams.get('order');
+    if (order === 'register' || order === 'transfer') {
+      setPrefillName(searchParams.get('name') ?? '');
+      setOrderAction(order);
+      setSearchParams({}, { replace: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data, isLoading } = useQuery({ queryKey: ['portal-domains'], queryFn: getPortalDomains });
   const domains: PortalDomain[] = data?.data?.data ?? [];
@@ -151,7 +164,7 @@ export default function PortalDomains() {
 
       <RenewModal domain={renewFor} onClose={() => setRenewFor(null)}
         onDone={() => navigate('/portal/invoices')} />
-      <OrderModal action={orderAction} onClose={() => setOrderAction(null)}
+      <OrderModal action={orderAction} prefillName={prefillName} onClose={() => { setOrderAction(null); setPrefillName(''); }}
         onDone={() => navigate('/portal/invoices')} />
     </Stack>
   );
@@ -194,11 +207,16 @@ function RenewModal({ domain, onClose, onDone }: {
   );
 }
 
-function OrderModal({ action, onClose, onDone }: {
-  action: 'register' | 'transfer' | null; onClose: () => void; onDone: () => void;
+function OrderModal({ action, prefillName = '', onClose, onDone }: {
+  action: 'register' | 'transfer' | null; prefillName?: string; onClose: () => void; onDone: () => void;
 }) {
   const qc = useQueryClient();
   const [name, setName] = useState('');
+
+  useEffect(() => {
+    if (action && prefillName) setName(prefillName);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [action, prefillName]);
   const [years, setYears] = useState(1);
   const [authInfo, setAuthInfo] = useState('');
   const [checked, setChecked] = useState<any>(null);
