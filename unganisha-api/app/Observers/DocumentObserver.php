@@ -30,6 +30,16 @@ class DocumentObserver
             ->get();
 
         foreach ($domains as $domain) {
+            // Unmanaged domains (gTLDs — no registrar driver yet): keep the paid
+            // order flagged for MANUAL fulfilment at the upstream registrar
+            // instead of firing EPP that would fail and mark the domain failed.
+            if ($domain->meta['unmanaged'] ?? false) {
+                \Illuminate\Support\Facades\Log::info(
+                    "Domain order paid but unmanaged (manual fulfilment needed): {$domain->name}"
+                );
+                continue;
+            }
+
             match ($domain->meta['pending_action'] ?? null) {
                 'register' => RegisterDomainJob::dispatch($domain),
                 'transfer' => TransferDomainJob::dispatch($domain),
