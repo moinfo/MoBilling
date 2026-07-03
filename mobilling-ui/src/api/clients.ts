@@ -122,3 +122,11 @@ export const portalLoginAsClient = (clientId: string) =>
 
 export const changePortalPassword = (clientId: string, password: string, portalUserId?: string) =>
   api.post<{ message: string }>(`/clients/${clientId}/portal-password`, { password, portal_user_id: portalUserId });
+
+// ── Client credit (staff) ─────────────────────────────────────────────────────
+
+export const getClientCredit = (clientId: string) =>
+  api.get<{ data: { balance: number; ledger: { id: string; type: string; amount: number; balance_after: number; notes: string | null; created_at: string }[] } }>(`/clients/${clientId}/credit`);
+
+export const adjustClientCredit = (clientId: string, amount: number, notes: string) =>
+  api.post(`/clients/${clientId}/credit/adjust`, { amount, notes });

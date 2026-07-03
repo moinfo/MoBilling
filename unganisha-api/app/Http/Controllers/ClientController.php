@@ -179,6 +179,53 @@ class ClientController extends Controller
                 'created_at' => $log->created_at?->toISOString(),
             ]);
 
+        // WHMCS-style billing breakdown by status
+        $breakdownRaw = Document::where('client_id', $client->id)
+            ->where('type', 'invoice')
+            ->selectRaw('status, COUNT(*) as n, SUM(total) as sum')
+            ->groupBy('status')->get()->keyBy('status');
+        $breakdown = collect(['paid', 'sent', 'partial', 'overdue', 'draft', 'cancelled'])
+            ->mapWithKeys(fn ($st) => [$st => [
+                'count' => (int) ($breakdownRaw[$st]->n ?? 0),
+                'total' => (float) ($breakdownRaw[$st]->sum ?? 0),
+            ]]);
+
+        // Domains
+        $domains = \App\Models\Domain::where('client_id', $client->id)
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($d) => [
+                'id'            => $d->id,
+                'name'          => $d->name,
+                'registrar'     => ($d->meta['unmanaged'] ?? false) ? 'External (gTLD)' : 'FRED (.TZ Registry)',
+                'registered_at' => $d->registered_at?->format('Y-m-d'),
+                'expires_at'    => $d->expires_at?->format('Y-m-d'),
+                'auto_renew'    => $d->auto_renew,
+                'status'        => $d->status,
+            ]);
+
+        // Tickets
+        $tickets = \App\Models\Ticket::where('client_id', $client->id)
+            ->orderByDesc('last_reply_at')->limit(10)
+            ->get()
+            ->map(fn ($t) => [
+                'id'            => $t->id,
+                'ticket_number' => $t->ticket_number,
+                'subject'       => $t->subject,
+                'status'        => $t->status,
+                'last_reply_at' => $t->last_reply_at?->toISOString(),
+            ]);
+
+        // Hosting accounts
+        $hosting = \App\Models\HostingAccount::whereHas('subscription', fn ($q) => $q->where('client_id', $client->id))
+            ->get()
+            ->map(fn ($h) => [
+                'id'              => $h->id,
+                'domain'          => $h->domain,
+                'cpanel_username' => $h->cpanel_username,
+                'status'          => $h->status,
+            ]);
+
         // Summary stats
         $totalInvoiced = Document::where('client_id', $client->id)
             ->where('type', 'invoice')
@@ -203,7 +250,14 @@ class ClientController extends Controller
                     'tax_id' => $client->tax_id,
                     'created_at' => $client->created_at,
                 ],
-                'summary' => [
+                'billing_breakdown' => $breakdown,
+            'domains' => $domains,
+            'tickets' => $tickets,
+            'hosting_accounts' => $hosting,
+            'credit_balance' => (float) $client->credit_balance,
+            'client_since' => $client->created_at?->format('Y-m-d'),
+            'client_status' => $client->status ?? 'active',
+            'summary' => [
                     'total_invoiced' => round((float) $totalInvoiced, 2),
                     'total_paid' => round((float) $totalPaid, 2),
                     'balance' => round((float) $totalInvoiced - (float) $totalPaid, 2),

@@ -4,6 +4,7 @@ import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
   Anchor, Loader, Center, ThemeIcon, Modal, Button, TextInput,
   PasswordInput, Select, Switch, ActionIcon, Tooltip, SegmentedControl,
+  NumberInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -14,12 +15,14 @@ import {
   IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend, IconPhoneCall,
   IconHeartHandshake, IconUserPlus, IconEdit, IconTrash, IconShieldLock,
   IconArrowUp, IconArrowDown, IconArrowsSort,
+  IconLogin, IconWallet, IconWorldWww, IconMessageCircle, IconServer,
 } from '@tabler/icons-react';
 import { Rating } from '@mantine/core';
 import {
   getClientProfile, ClientProfile as ClientProfileType, ClientCommunicationLog,
   getClientPortalUsers, createClientPortalUser, updateClientPortalUser, deleteClientPortalUser,
   ClientPortalUser,
+  portalLoginAsClient, getClientCredit, adjustClientCredit,
 } from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
@@ -68,6 +71,22 @@ const outcomeLabels: Record<string, string> = {
 };
 
 export default function ClientProfile() {
+  const handlePortalLogin = async () => {
+    try {
+      const res = await portalLoginAsClient(clientId!);
+      const { token, user, user_type, permissions } = res.data;
+      const currentToken = localStorage.getItem('token');
+      const currentUser = localStorage.getItem('user');
+      if (currentToken) localStorage.setItem('impersonate_return_token', currentToken);
+      if (currentUser) localStorage.setItem('impersonate_return_user', currentUser);
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify({ ...user, user_type, permissions }));
+      window.location.href = '/portal/dashboard';
+    } catch (err: any) {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'No portal user found', color: 'red' });
+    }
+  };
+  const [creditOpen, setCreditOpen] = useState(false);
   const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const { can } = usePermissions();
@@ -143,8 +162,54 @@ export default function ClientProfile() {
           {client.address && (
             <Group gap={4} mt={2}><IconMapPin size={14} color="gray" /><Text size="sm" c="dimmed">{client.address}</Text></Group>
           )}
+          <Group gap="xs" mt={6}>
+            <Badge size="sm" variant="light" color={((profile as any).client_status ?? 'active') === 'active' ? 'green' : 'gray'}>
+              {(profile as any).client_status ?? 'active'}
+            </Badge>
+            {(profile as any).client_since && (
+              <Text size="xs" c="dimmed">
+                Client since {new Date((profile as any).client_since).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                {' '}({Math.max(1, Math.round((Date.now() - new Date((profile as any).client_since).getTime()) / (30.44 * 86400000)))} months)
+              </Text>
+            )}
+          </Group>
         </div>
+        <Group gap="xs">
+          {can('clients.portal_login') && (
+            <Button size="xs" variant="light" color="violet" leftSection={<IconLogin size={14} />}
+              onClick={handlePortalLogin}>
+              Login as Owner
+            </Button>
+          )}
+          {can('credit.manage') && (
+            <Button size="xs" variant="light" color="teal" leftSection={<IconWallet size={14} />}
+              onClick={() => setCreditOpen(true)}>
+              Credit: {formatCurrency((profile as any).credit_balance ?? 0)}
+            </Button>
+          )}
+        </Group>
       </Group>
+
+      {/* WHMCS-style billing breakdown */}
+      {(profile as any).billing_breakdown && (
+        <Paper withBorder p="md" radius="md">
+          <Group justify="space-between" wrap="wrap" gap="lg">
+            {Object.entries((profile as any).billing_breakdown as Record<string, { count: number; total: number }>).map(([st, v]) => (
+              <div key={st}>
+                <Text size="xs" c="dimmed" tt="capitalize">{st === 'sent' ? 'Unpaid/Due' : st}</Text>
+                <Text size="sm" fw={700}
+                  c={st === 'paid' ? 'green' : ['sent', 'overdue', 'partial'].includes(st) && v.count > 0 ? 'red' : undefined}>
+                  {v.count} ({formatCurrency(v.total)})
+                </Text>
+              </div>
+            ))}
+            <div>
+              <Text size="xs" c="dimmed">Gross Revenue</Text>
+              <Text size="sm" fw={700}>{formatCurrency(summary.total_paid)}</Text>
+            </div>
+          </Group>
+        </Paper>
+      )}
 
       {/* Summary Cards */}
       <SimpleGrid cols={{ base: 2, sm: 5 }}>
@@ -208,6 +273,100 @@ export default function ClientProfile() {
           </Table.ScrollContainer>
         )}
       </Paper>
+
+      {/* Domains */}
+      {((profile as any).domains ?? []).length > 0 && (
+        <Paper withBorder p="md" radius="md">
+          <Group gap="xs" mb="sm"><IconWorldWww size={18} /><Title order={4}>Domains</Title></Group>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Domain</Table.Th>
+                <Table.Th>Registrar</Table.Th>
+                <Table.Th>Registered</Table.Th>
+                <Table.Th>Expiry</Table.Th>
+                <Table.Th>Auto Renew</Table.Th>
+                <Table.Th>Status</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {(profile as any).domains.map((d: any) => (
+                <Table.Tr key={d.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/domains')}>
+                  <Table.Td fw={500}>{d.name}</Table.Td>
+                  <Table.Td><Text size="sm" c="dimmed">{d.registrar}</Text></Table.Td>
+                  <Table.Td>{d.registered_at ?? '—'}</Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c={d.status === 'expired' ? 'red' : undefined}>{d.expires_at ?? '—'}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge size="xs" variant="light" color={d.auto_renew ? 'teal' : 'gray'}>
+                      {d.auto_renew ? 'Yes' : 'No'}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge size="sm" variant="light"
+                      color={d.status === 'active' ? 'green' : d.status === 'expired' ? 'red' : 'gray'}>
+                      {d.status}
+                    </Badge>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Paper>
+      )}
+
+      {/* Hosting accounts */}
+      {((profile as any).hosting_accounts ?? []).length > 0 && (
+        <Paper withBorder p="md" radius="md">
+          <Group gap="xs" mb="sm"><IconServer size={18} /><Title order={4}>Hosting Accounts</Title></Group>
+          <Group gap="sm" wrap="wrap">
+            {(profile as any).hosting_accounts.map((h: any) => (
+              <Badge key={h.id} size="lg" variant="light"
+                color={h.status === 'active' ? 'green' : h.status === 'suspended' ? 'orange' : 'gray'}
+                style={{ cursor: 'pointer' }} onClick={() => navigate('/hosting')}>
+                {h.domain} ({h.cpanel_username})
+              </Badge>
+            ))}
+          </Group>
+        </Paper>
+      )}
+
+      {/* Support tickets */}
+      {((profile as any).tickets ?? []).length > 0 && (
+        <Paper withBorder p="md" radius="md">
+          <Group gap="xs" mb="sm"><IconMessageCircle size={18} /><Title order={4}>Support Tickets</Title></Group>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>#</Table.Th>
+                <Table.Th>Subject</Table.Th>
+                <Table.Th>Last activity</Table.Th>
+                <Table.Th>Status</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {(profile as any).tickets.map((t: any) => (
+                <Table.Tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/tickets')}>
+                  <Table.Td fw={600}>{t.ticket_number}</Table.Td>
+                  <Table.Td>{t.subject}</Table.Td>
+                  <Table.Td>
+                    <Text size="xs" c="dimmed">{t.last_reply_at ? new Date(t.last_reply_at).toLocaleString('en-GB') : '—'}</Text>
+                  </Table.Td>
+                  <Table.Td>
+                    <Badge size="sm" variant="light"
+                      color={t.status === 'closed' ? 'gray' : t.status === 'answered' ? 'blue' : 'green'}>
+                      {t.status}
+                    </Badge>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Paper>
+      )}
+
+      <CreditModal clientId={clientId!} opened={creditOpen} onClose={() => setCreditOpen(false)} />
 
       {/* Invoices */}
       <Paper withBorder p="md" radius="md">
@@ -821,5 +980,77 @@ function SummaryCard({ icon, label, value, color }: { icon: React.ReactNode; lab
         </div>
       </Group>
     </Paper>
+  );
+}
+
+function CreditModal({ clientId, opened, onClose }: { clientId: string; opened: boolean; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [amount, setAmount] = useState<number>(0);
+  const [notes, setNotes] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['client-credit', clientId],
+    queryFn: () => getClientCredit(clientId),
+    enabled: opened,
+  });
+  const wallet = data?.data?.data;
+
+  const mutation = useMutation({
+    mutationFn: () => adjustClientCredit(clientId, amount, notes.trim()),
+    onSuccess: (res: any) => {
+      qc.invalidateQueries({ queryKey: ['client-credit', clientId] });
+      qc.invalidateQueries({ queryKey: ['client-profile', clientId] });
+      notifications.show({ message: res?.data?.message ?? 'Credit updated.', color: 'green' });
+      setAmount(0); setNotes('');
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Adjustment failed.', color: 'red',
+    }),
+  });
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Manage Credit" centered size="lg">
+      <Stack gap="sm">
+        <Group justify="space-between">
+          <Text fw={700}>Balance: {formatCurrency(wallet?.balance ?? 0)}</Text>
+        </Group>
+        <Group align="flex-end" gap="xs">
+          <NumberInput label="Adjustment (+ add / − remove)" style={{ flex: 1 }}
+            value={amount} onChange={(v) => setAmount(Number(v) || 0)} />
+          <TextInput label="Reason" required style={{ flex: 2 }}
+            value={notes} onChange={(e) => setNotes(e.currentTarget.value)} />
+          <Button disabled={amount === 0 || !notes.trim()} loading={mutation.isPending}
+            onClick={() => mutation.mutate()}>
+            Apply
+          </Button>
+        </Group>
+        {isLoading ? null : (
+          <Table striped>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Type</Table.Th>
+                <Table.Th ta="right">Amount</Table.Th>
+                <Table.Th ta="right">Balance</Table.Th>
+                <Table.Th>Notes</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {(wallet?.ledger ?? []).map((l) => (
+                <Table.Tr key={l.id}>
+                  <Table.Td><Text size="xs">{new Date(l.created_at).toLocaleString('en-GB')}</Text></Table.Td>
+                  <Table.Td><Badge size="xs" variant="light">{l.type}</Badge></Table.Td>
+                  <Table.Td ta="right" c={l.amount >= 0 ? 'green' : 'red'} fw={600}>
+                    {formatCurrency(l.amount)}
+                  </Table.Td>
+                  <Table.Td ta="right">{formatCurrency(l.balance_after)}</Table.Td>
+                  <Table.Td><Text size="xs" c="dimmed">{l.notes ?? '—'}</Text></Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+      </Stack>
+    </Modal>
   );
 }
