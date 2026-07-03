@@ -183,9 +183,11 @@ class SatisfactionCallController extends Controller
             'appointment_status' => !empty($data['appointment_date']) ? 'pending' : null,
         ]);
 
-        // Auto-schedule follow-up if client didn't answer
+        // Auto-schedule follow-up if client didn't answer — but only once per call,
+        // so re-logging a completed call can't spawn duplicate follow-ups.
         $followUp = null;
-        if (in_array($data['outcome'], ['no_answer', 'unreachable'])) {
+        if (in_array($data['outcome'], ['no_answer', 'unreachable'])
+            && !$satisfactionCall->followUp()->exists()) {
             $nextDate = $this->nextBusinessDay(now()->addDay());
 
             $followUp = SatisfactionCall::create([
