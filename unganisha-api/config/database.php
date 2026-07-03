@@ -63,6 +63,20 @@ return [
             ]) : [],
         ],
 
+        // Read-only source for the one-time WHMCS migration (docs/IMPLEMENTATION_PLAN.md §C).
+        'whmcs' => [
+            'driver' => 'mysql',
+            'host' => env('WHMCS_DB_HOST', '127.0.0.1'),
+            'port' => env('WHMCS_DB_PORT', '3306'),
+            'database' => env('WHMCS_DB_DATABASE', 'moinfote_billing'),
+            'username' => env('WHMCS_DB_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('WHMCS_DB_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+            'strict' => false,
+        ],
+
         'mariadb' => [
             'driver' => 'mariadb',
             'url' => env('DB_URL'),

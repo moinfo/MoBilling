@@ -15,7 +15,7 @@ class Client extends Model
 
     protected $fillable = [
         'tenant_id', 'name', 'email', 'phone',
-        'address', 'tax_id',
+        'address', 'tax_id', 'status', 'notes', 'legacy_id',
     ];
 
     public function documents()
