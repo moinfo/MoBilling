@@ -27,6 +27,8 @@ export interface WhatsappContact {
   client_id: string | null;
   client: { id: string; name: string } | null;
   assigned_user: { id: string; name: string } | null;
+  created_by: string | null;
+  creator: { id: string; name: string } | null;
   created_at: string;
 }
 
@@ -85,3 +87,16 @@ export const deleteContact = (id: string) =>
 
 export const convertToClient = (id: string, data: { client_id?: string; client_name?: string; client_email?: string; client_phone?: string }) =>
   api.post<WhatsappContact>(`/whatsapp-contacts/${id}/convert`, data);
+
+// Claim a shared/unowned contact for the current user.
+export const claimContact = (id: string) =>
+  api.post<WhatsappContact>(`/whatsapp-contacts/${id}/claim`);
+
+// Claim many unowned contacts in one request. Pass the ids currently shown;
+// omit to claim every unowned contact in the tenant.
+export const claimBulkContacts = (ids?: string[]) =>
+  api.post<{ claimed: number }>('/whatsapp-contacts/claim-bulk', { ids });
+
+// Admin: reassign a contact to a specific user.
+export const assignContact = (id: string, userId: string) =>
+  api.post<WhatsappContact>(`/whatsapp-contacts/${id}/assign`, { user_id: userId });

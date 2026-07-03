@@ -1,19 +1,21 @@
 import { useState } from 'react';
 import {
   Title, Stack, Group, Button, Badge, Table, Text, ActionIcon, Tooltip,
-  Select, TextInput, SimpleGrid, Card, ThemeIcon, Anchor, Tabs,
+  Select, TextInput, SimpleGrid, Card, ThemeIcon, Anchor, Tabs, Modal,
 } from '@mantine/core';
 import {
   IconBrandWhatsapp, IconPlus, IconEdit, IconTrash, IconStar, IconStarFilled,
   IconUserCheck, IconSearch, IconUsers, IconChartBar, IconSpeakerphone, IconPhone,
+  IconUserPlus, IconUserCog,
 } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePermissions } from '../hooks/usePermissions';
 import { notifications } from '@mantine/notifications';
 import {
-  getContacts, getStats, deleteContact, updateContact,
+  getContacts, getStats, deleteContact, updateContact, claimContact, claimBulkContacts, assignContact,
   LABEL_META, LABEL_ORDER, SOURCE_META, WhatsappContact, WaSource,
 } from '../api/whatsappContacts';
+import { getUsers, TenantUser } from '../api/users';
 import { getCampaigns, deleteCampaign } from '../api/whatsappCampaigns';
 import { WhatsappCampaign } from '../api/whatsappCampaigns';
 import WhatsappContactForm from '../components/WhatsApp/WhatsappContactForm';
@@ -44,6 +46,8 @@ export default function WhatsappContacts() {
   const [campaignFormOpened, setCampaignFormOpened] = useState(false);
   const [editCampaign, setEditCampaign] = useState<WhatsappCampaign | null>(null);
   const [followupContact, setFollowupContact] = useState<WhatsappContact | null>(null);
+  const [reassignContact, setReassignContact] = useState<WhatsappContact | null>(null);
+  const [reassignUserId, setReassignUserId] = useState<string | null>(null);
 
   const params: Record<string, string> = {};
   if (search) params.search = search;
@@ -78,6 +82,48 @@ export default function WhatsappContacts() {
     },
   });
 
+  const claimMutation = useMutation({
+    mutationFn: claimContact,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      qc.invalidateQueries({ queryKey: ['whatsapp-stats'] });
+      notifications.show({ message: 'Contact assigned to you.', color: 'green' });
+    },
+    onError: () => notifications.show({ message: 'Could not assign contact.', color: 'red' }),
+  });
+
+  // Bulk "claim my customers": claim every currently-shown unowned contact in one request.
+  const bulkClaimMutation = useMutation({
+    mutationFn: (ids: string[]) => claimBulkContacts(ids),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      qc.invalidateQueries({ queryKey: ['whatsapp-stats'] });
+      const n = res.data.claimed;
+      notifications.show({ message: `Claimed ${n} contact${n !== 1 ? 's' : ''}.`, color: 'green' });
+    },
+    onError: () => notifications.show({ message: 'Could not claim contacts.', color: 'red' }),
+  });
+
+  // Admin only: list of tenant users to reassign a contact to.
+  const { data: usersData } = useQuery({
+    queryKey: ['tenant-users-for-assign'],
+    queryFn: () => getUsers({ per_page: 200 }),
+    enabled: can('whatsapp_contacts.view_all'),
+  });
+  const userOptions = (usersData?.data?.data ?? []).map((u: TenantUser) => ({ value: u.id, label: u.name }));
+
+  const assignMutation = useMutation({
+    mutationFn: ({ id, userId }: { id: string; userId: string }) => assignContact(id, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      qc.invalidateQueries({ queryKey: ['whatsapp-stats'] });
+      notifications.show({ message: 'Contact reassigned.', color: 'green' });
+      setReassignContact(null);
+      setReassignUserId(null);
+    },
+    onError: () => notifications.show({ message: 'Could not reassign contact.', color: 'red' }),
+  });
+
   const deleteCampaignMutation = useMutation({
     mutationFn: deleteCampaign,
     onSuccess: () => {
@@ -101,10 +147,24 @@ export default function WhatsappContacts() {
           </ThemeIcon>
           <Title order={2}>WhatsApp Marketing</Title>
         </Group>
-        {tab === 'contacts' && can('whatsapp_contacts.create') && (
-          <Button leftSection={<IconPlus size={16} />} color="green" onClick={() => { setEditContact(null); setFormOpened(true); }}>
-            Add Contact
-          </Button>
+        {tab === 'contacts' && (
+          <Group gap="xs">
+            {can('whatsapp_contacts.update') && contacts.some((c) => !c.creator) && (
+              <Button
+                variant="light"
+                leftSection={<IconUserPlus size={16} />}
+                loading={bulkClaimMutation.isPending}
+                onClick={() => bulkClaimMutation.mutate(contacts.filter((c) => !c.creator).map((c) => c.id))}
+              >
+                Claim my customers ({contacts.filter((c) => !c.creator).length})
+              </Button>
+            )}
+            {can('whatsapp_contacts.create') && (
+              <Button leftSection={<IconPlus size={16} />} color="green" onClick={() => { setEditContact(null); setFormOpened(true); }}>
+                Add Contact
+              </Button>
+            )}
+          </Group>
         )}
         {tab === 'campaigns' && can('whatsapp_campaigns.create') && (
           <Button leftSection={<IconPlus size={16} />} color="green" onClick={() => { setEditCampaign(null); setCampaignFormOpened(true); }}>
@@ -211,14 +271,15 @@ export default function WhatsappContacts() {
                     <Table.Th>Campaign</Table.Th>
                     <Table.Th>Follow-up</Table.Th>
                     <Table.Th>Client</Table.Th>
+                    <Table.Th>Registered By</Table.Th>
                     <Table.Th></Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
                   {isLoading ? (
-                    <Table.Tr><Table.Td colSpan={11}><Text c="dimmed" ta="center" py="md">Loading...</Text></Table.Td></Table.Tr>
+                    <Table.Tr><Table.Td colSpan={12}><Text c="dimmed" ta="center" py="md">Loading...</Text></Table.Td></Table.Tr>
                   ) : contacts.length === 0 ? (
-                    <Table.Tr><Table.Td colSpan={11}><Text c="dimmed" ta="center" py="md">No contacts found</Text></Table.Td></Table.Tr>
+                    <Table.Tr><Table.Td colSpan={12}><Text c="dimmed" ta="center" py="md">No contacts found</Text></Table.Td></Table.Tr>
                   ) : contacts.map((c, idx) => (
                     <Table.Tr key={c.id}>
                       <Table.Td><Text size="sm" c="dimmed">{idx + 1}</Text></Table.Td>
@@ -258,7 +319,25 @@ export default function WhatsappContacts() {
                           : <Text size="sm" c="dimmed">—</Text>}
                       </Table.Td>
                       <Table.Td>
+                        <Text size="sm" c="dimmed">{c.creator?.name ?? '—'}</Text>
+                      </Table.Td>
+                      <Table.Td>
                         <Group gap={4} justify="flex-end">
+                          {can('whatsapp_contacts.update') && !c.creator && (
+                            <Tooltip label="Assign to me">
+                              <ActionIcon variant="light" color="blue" onClick={() => claimMutation.mutate(c.id)}>
+                                <IconUserPlus size={15} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                          {can('whatsapp_contacts.view_all') && (
+                            <Tooltip label={c.creator ? `Owner: ${c.creator.name} — reassign` : 'Assign to a user'}>
+                              <ActionIcon variant="light" color="grape"
+                                onClick={() => { setReassignContact(c); setReassignUserId(c.created_by); }}>
+                                <IconUserCog size={15} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
                           {can('whatsapp_contacts.log') && (
                             <Tooltip label="Log Call / Follow-up">
                               <ActionIcon variant="light" color="teal" onClick={() => setFollowupContact(c)}>
@@ -358,6 +437,39 @@ export default function WhatsappContacts() {
       <ConvertToClientModal contact={convertContact} onClose={() => setConvertContact(null)} />
       <CampaignForm opened={campaignFormOpened} onClose={() => setCampaignFormOpened(false)} campaign={editCampaign} />
       <FollowupDrawer contact={followupContact} onClose={() => setFollowupContact(null)} />
+
+      <Modal
+        opened={!!reassignContact}
+        onClose={() => { setReassignContact(null); setReassignUserId(null); }}
+        title="Reassign contact"
+        centered
+      >
+        <Stack>
+          <Text size="sm">
+            Assign <Text span fw={600}>{reassignContact?.name}</Text> to a user. They will see it as their own contact.
+          </Text>
+          <Select
+            label="User"
+            placeholder="Select a user"
+            searchable
+            data={userOptions}
+            value={reassignUserId}
+            onChange={setReassignUserId}
+            nothingFoundMessage="No users"
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => { setReassignContact(null); setReassignUserId(null); }}>Cancel</Button>
+            <Button
+              color="grape"
+              disabled={!reassignUserId}
+              loading={assignMutation.isPending}
+              onClick={() => reassignContact && reassignUserId && assignMutation.mutate({ id: reassignContact.id, userId: reassignUserId })}
+            >
+              Reassign
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

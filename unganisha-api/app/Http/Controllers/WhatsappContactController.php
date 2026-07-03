@@ -11,8 +11,21 @@ class WhatsappContactController extends Controller
 {
     public function index(Request $request)
     {
-        $query = WhatsappContact::with(['client:id,name', 'assignedUser:id,name', 'campaign:id,name'])
-            ->latest();
+        $user = auth()->user();
+
+        $query = WhatsappContact::with([
+            'client:id,name', 'assignedUser:id,name', 'campaign:id,name', 'creator:id,name',
+        ])->latest();
+
+        // Users only see the contacts they registered, unless granted view_all.
+        // Legacy contacts with no recorded creator are treated as shared so
+        // they don't disappear for staff after per-user visibility was added.
+        if (!$user->hasPermission('whatsapp_contacts.view_all')) {
+            $query->where(function ($q) use ($user) {
+                $q->where('created_by', $user->id)
+                  ->orWhereNull('created_by');
+            });
+        }
 
         if ($request->label) {
             $query->where('label', $request->label);
@@ -27,7 +40,7 @@ class WhatsappContactController extends Controller
             });
         }
 
-        return response()->json($query->with(['campaign:id,name'])->get());
+        return response()->json($query->get());
     }
 
     public function store(Request $request)
@@ -57,9 +70,9 @@ class WhatsappContactController extends Controller
             ->where('phone', $data['phone'])
             ->first(['id', 'name', 'email', 'phone']);
 
-        $contact = WhatsappContact::create($data);
+        $contact = WhatsappContact::create($data + ['created_by' => auth()->id()]);
 
-        $response = $contact->load(['client:id,name', 'assignedUser:id,name', 'campaign:id,name']);
+        $response = $contact->load(['client:id,name', 'assignedUser:id,name', 'campaign:id,name', 'creator:id,name']);
 
         return response()->json([
             'contact'          => $response,
@@ -67,8 +80,26 @@ class WhatsappContactController extends Controller
         ], 201);
     }
 
+    /**
+     * A user may only act on contacts they registered, unless they hold the
+     * view_all permission.
+     */
+    private function authorizeAccess(WhatsappContact $contact): void
+    {
+        $user = auth()->user();
+        // Allow: admins (view_all), the owner, or any legacy/shared contact
+        // that has no recorded creator.
+        if (!$user->hasPermission('whatsapp_contacts.view_all')
+            && !is_null($contact->created_by)
+            && $contact->created_by !== $user->id) {
+            abort(403, 'You can only manage contacts you registered.');
+        }
+    }
+
     public function update(Request $request, WhatsappContact $whatsappContact)
     {
+        $this->authorizeAccess($whatsappContact);
+
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
@@ -91,11 +122,13 @@ class WhatsappContactController extends Controller
 
         $whatsappContact->update($data);
 
-        return response()->json($whatsappContact->load(['client:id,name', 'assignedUser:id,name', 'campaign:id,name']));
+        return response()->json($whatsappContact->load(['client:id,name', 'assignedUser:id,name', 'campaign:id,name', 'creator:id,name']));
     }
 
     public function destroy(WhatsappContact $whatsappContact)
     {
+        $this->authorizeAccess($whatsappContact);
+
         $whatsappContact->delete();
         return response()->json(null, 204);
     }
@@ -103,6 +136,8 @@ class WhatsappContactController extends Controller
     // Convert lead to client
     public function convertToClient(Request $request, WhatsappContact $whatsappContact)
     {
+        $this->authorizeAccess($whatsappContact);
+
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
@@ -135,12 +170,86 @@ class WhatsappContactController extends Controller
         return response()->json($whatsappContact->load(['client:id,name', 'assignedUser:id,name']));
     }
 
+    /**
+     * Claim a shared/unowned contact — assign it to the current user so it
+     * becomes part of "their" contacts.
+     */
+    public function claim(WhatsappContact $whatsappContact)
+    {
+        $user = auth()->user();
+
+        // Non-admins may only claim contacts not already owned by someone else.
+        if (!$user->hasPermission('whatsapp_contacts.view_all')
+            && !is_null($whatsappContact->created_by)
+            && $whatsappContact->created_by !== $user->id) {
+            abort(403, 'This contact is already assigned to another user.');
+        }
+
+        $whatsappContact->update(['created_by' => $user->id]);
+
+        return response()->json(
+            $whatsappContact->load(['client:id,name', 'assignedUser:id,name', 'campaign:id,name', 'creator:id,name'])
+        );
+    }
+
+    /**
+     * Claim many shared/unowned contacts for the current user in a single query.
+     * Optionally scoped to a set of ids (the ones currently shown); otherwise
+     * claims every unowned contact in the tenant. The whereNull guard ensures a
+     * user can never take contacts already owned by someone else.
+     */
+    public function claimBulk(Request $request)
+    {
+        $data = $request->validate([
+            'ids'   => 'nullable|array',
+            'ids.*' => 'uuid',
+        ]);
+
+        $query = WhatsappContact::whereNull('created_by');
+        if (!empty($data['ids'])) {
+            $query->whereIn('id', $data['ids']);
+        }
+
+        $claimed = $query->update(['created_by' => auth()->id()]);
+
+        return response()->json(['claimed' => $claimed]);
+    }
+
+    /**
+     * Admin: reassign a contact to a specific user (owner = that user).
+     * Route is gated by whatsapp_contacts.view_all.
+     */
+    public function assign(Request $request, WhatsappContact $whatsappContact)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'user_id' => ['required', 'uuid', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
+        ]);
+
+        $whatsappContact->update(['created_by' => $data['user_id']]);
+
+        return response()->json(
+            $whatsappContact->load(['client:id,name', 'assignedUser:id,name', 'campaign:id,name', 'creator:id,name'])
+        );
+    }
+
     public function stats()
     {
-        $total     = WhatsappContact::count();
-        $byLabel   = WhatsappContact::selectRaw('label, COUNT(*) as count')->groupBy('label')->pluck('count', 'label');
-        $bySource  = WhatsappContact::selectRaw('source, COUNT(*) as count')->groupBy('source')->pluck('count', 'source');
-        $converted = WhatsappContact::whereNotNull('client_id')->count();
+        $user    = auth()->user();
+        $viewAll = $user->hasPermission('whatsapp_contacts.view_all');
+        // Each stat query starts from a base scoped to the user's own contacts
+        // unless they can view all.
+        $base = fn () => $viewAll
+            ? WhatsappContact::query()
+            : WhatsappContact::query()->where(function ($q) use ($user) {
+                $q->where('created_by', $user->id)->orWhereNull('created_by');
+            });
+
+        $total     = $base()->count();
+        $byLabel   = $base()->selectRaw('label, COUNT(*) as count')->groupBy('label')->pluck('count', 'label');
+        $bySource  = $base()->selectRaw('source, COUNT(*) as count')->groupBy('source')->pluck('count', 'source');
+        $converted = $base()->whereNotNull('client_id')->count();
 
         return response()->json([
             'total'     => $total,

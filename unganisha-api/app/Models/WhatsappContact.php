@@ -23,6 +23,7 @@ class WhatsappContact extends Model
         'assigned_to',
         'client_id',
         'services',
+        'created_by',
     ];
 
     protected $casts = [
@@ -49,5 +50,10 @@ class WhatsappContact extends Model
     public function assignedUser()
     {
         return $this->belongsTo(User::class, 'assigned_to');
+    }
+
+    public function creator()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 }
