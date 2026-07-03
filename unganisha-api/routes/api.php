@@ -619,6 +619,10 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/subscriptions', [PortalSubscriptionController::class, 'index']);
     Route::get('/hosting', [\App\Http\Controllers\Portal\PortalHostingController::class, 'index']);
     Route::post('/hosting/{hostingAccount}/sso', [\App\Http\Controllers\Portal\PortalHostingController::class, 'sso']);
+    Route::get('/domains', [\App\Http\Controllers\Portal\PortalDomainController::class, 'index']);
+    Route::get('/domains/check', [\App\Http\Controllers\Portal\PortalDomainController::class, 'check']);
+    Route::post('/domains/order', [\App\Http\Controllers\Portal\PortalDomainController::class, 'order']);
+    Route::post('/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'renew']);
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
     Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);

@@ -34,7 +34,8 @@ export default function PortalDashboard() {
           <SimpleGrid cols={{ base: 2, md: 4 }}>
             <CountCard label="Services" value={(d as any).services_count ?? 0} icon={<IconServer size={22} />} color="blue"
               onClick={() => navigate('/portal/subscriptions')} />
-            <CountCard label="Domains" value={(d as any).domains_count ?? 0} icon={<IconWorldWww size={22} />} color="teal" />
+            <CountCard label="Domains" value={(d as any).domains_count ?? 0} icon={<IconWorldWww size={22} />} color="teal"
+              onClick={() => navigate('/portal/domains')} />
             <CountCard label="Tickets" value={(d as any).tickets_count ?? 0} icon={<IconTicket size={22} />} color="grape" />
             <CountCard label="Unpaid Invoices" value={(d as any).unpaid_invoices_count ?? 0} icon={<IconReceipt size={22} />} color="orange"
               onClick={() => navigate('/portal/invoices')} />

@@ -191,3 +191,37 @@ export const getPortalHosting = () =>
 
 export const portalHostingSso = (id: string) =>
   api.post<{ url: string }>(`/portal/hosting/${id}/sso`);
+
+// ── Domains ───────────────────────────────────────────────────────────────────
+
+export interface PortalDomain {
+  id: string;
+  name: string;
+  status: 'pending' | 'active' | 'expired' | 'failed';
+  registered_at: string | null;
+  expires_at: string | null;
+  auto_renew: boolean;
+  expiring_soon: boolean;
+  unmanaged: boolean;
+  ssl_valid: boolean | null;
+  ssl_expires_at: string | null;
+}
+
+export interface PortalDomainStats {
+  active: number;
+  expired: number;
+  expiring_soon: number;
+  pending: number;
+}
+
+export const getPortalDomains = () =>
+  api.get<{ data: PortalDomain[]; stats: PortalDomainStats }>('/portal/domains');
+
+export const portalRenewDomain = (id: string, years: number) =>
+  api.post(`/portal/domains/${id}/renew`, { years });
+
+export const portalCheckDomain = (name: string) =>
+  api.get('/portal/domains/check', { params: { name } });
+
+export const portalOrderDomain = (data: { name: string; years: number; action: 'register' | 'transfer'; auth_info?: string }) =>
+  api.post('/portal/domains/order', data);

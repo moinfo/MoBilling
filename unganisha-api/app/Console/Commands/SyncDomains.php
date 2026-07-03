@@ -62,7 +62,7 @@ class SyncDomains extends Command
                     'registrant_handle' => $info['registrant'] ?? $domain->registrant_handle,
                     'nsset_handle'      => $info['nsset'] ?? $domain->nsset_handle,
                     'keyset_handle'     => $info['keyset'] ?? $domain->keyset_handle,
-                    'meta'              => array_merge($domain->meta ?? [], ['last_synced_at' => now()->toIso8601String()]),
+                    'meta'              => array_merge($domain->meta ?? [], ['last_synced_at' => now()->toIso8601String()], $this->probeSsl($domain->name)),
                 ]);
                 $synced++;
             } catch (\Throwable $e) {
@@ -116,5 +116,40 @@ class SyncDomains extends Command
         ]);
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Best-effort TLS certificate check on the domain's website (port 443).
+     * Shown to clients in the portal ("Valid SSL, expires ..."). Failures are
+     * normal (no site / no SSL) and recorded as ssl_valid=false.
+     */
+    private function probeSsl(string $domain): array
+    {
+        try {
+            $ctx = stream_context_create(['ssl' => [
+                'capture_peer_cert' => true,
+                'verify_peer'       => true,
+                'verify_peer_name'  => true,
+                'SNI_enabled'       => true,
+            ]]);
+            $sock = @stream_socket_client("ssl://{$domain}:443", $errno, $errstr, 6, STREAM_CLIENT_CONNECT, $ctx);
+            if (!$sock) {
+                return ['ssl_valid' => false, 'ssl_expires_at' => null];
+            }
+            $cert = stream_context_get_params($sock)['options']['ssl']['peer_certificate'] ?? null;
+            fclose($sock);
+            if (!$cert) {
+                return ['ssl_valid' => false, 'ssl_expires_at' => null];
+            }
+            $parsed = openssl_x509_parse($cert);
+            $validTo = isset($parsed['validTo_time_t']) ? date('Y-m-d', $parsed['validTo_time_t']) : null;
+
+            return [
+                'ssl_valid'      => $validTo !== null && $parsed['validTo_time_t'] > time(),
+                'ssl_expires_at' => $validTo,
+            ];
+        } catch (\Throwable) {
+            return ['ssl_valid' => false, 'ssl_expires_at' => null];
+        }
     }
 }

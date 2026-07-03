@@ -75,6 +75,7 @@ import PortalPayments from './pages/portal/PortalPayments';
 import PortalStatement from './pages/portal/PortalStatement';
 import PortalSubscriptions from './pages/portal/PortalSubscriptions';
 import PortalHosting from './pages/portal/PortalHosting';
+import PortalDomains from './pages/portal/PortalDomains';
 import PortalProductServices from './pages/portal/PortalProductServices';
 import PortalProfile from './pages/portal/PortalProfile';
 import PortalUsers from './pages/portal/PortalUsers';
@@ -234,6 +235,7 @@ export default function App() {
                   <Route path="/portal/products-services" element={<PortalProductServices />} />
                   <Route path="/portal/subscriptions" element={<PortalSubscriptions />} />
                   <Route path="/portal/hosting" element={<PortalHosting />} />
+                  <Route path="/portal/domains" element={<PortalDomains />} />
                   <Route path="/portal/profile" element={<PortalProfile />} />
                   <Route path="/portal/users" element={<PortalUsers />} />
                 </Route>
