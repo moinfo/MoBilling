@@ -25,6 +25,9 @@ class ProvisionHostingAccount extends BaseHostingJob
         if ($sub->hostingAccount()->exists()) {
             return; // already provisioned/adopted
         }
+        if ($sub->metadata['not_on_whm'] ?? $sub->metadata['hosted_elsewhere'] ?? false) {
+            return; // customer hosted outside WHM (local systems) — never auto-create
+        }
 
         $meta   = $sub->metadata ?? [];
         $domain = $meta['domain'] ?? $sub->label;

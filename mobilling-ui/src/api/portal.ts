@@ -246,3 +246,26 @@ export const openPortalTicket = (data: { subject: string; message: string; prior
 export const getPortalTicket = (id: string) => api.get<{ data: PortalTicket }>(`/portal/tickets/${id}`);
 export const replyPortalTicket = (id: string, message: string) => api.post<{ data: PortalTicket }>(`/portal/tickets/${id}/reply`, { message });
 export const closePortalTicket = (id: string) => api.post(`/portal/tickets/${id}/close`);
+
+// ── Order New Services (shopping cart) ────────────────────────────────────────
+
+export interface CatalogProduct {
+  id: string;
+  name: string;
+  features: string[];
+  price: number;
+  billing_cycle: string | null;
+  needs_domain: boolean;
+}
+
+export interface CatalogGroup {
+  name: string;
+  order: number;
+  products: CatalogProduct[];
+}
+
+export const getPortalCatalog = () =>
+  api.get<{ data: CatalogGroup[] }>('/portal/catalog');
+
+export const placePortalOrder = (data: { product_service_id: string; label?: string }) =>
+  api.post('/portal/orders', data);

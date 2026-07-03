@@ -17,7 +17,7 @@ class ProductService extends Model
     protected $fillable = [
         'tenant_id', 'type', 'name', 'code', 'description',
         'price', 'tax_percent', 'unit', 'category', 'billing_cycle', 'is_active', 'legacy_id',
-        'provisioning_type', 'server_id', 'cpanel_package', 'auto_provision',
+        'provisioning_type', 'server_id', 'cpanel_package', 'auto_provision', 'portal_visible',
     ];
 
     protected $casts = [
