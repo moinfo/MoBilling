@@ -6,7 +6,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { useCallback } from 'react';
 import {
   IconDashboard, IconFileInvoice, IconFileText, IconCash, IconReceipt,
-  IconCalendarRepeat, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
+  IconCalendarRepeat, IconWorld, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
   IconLock, IconPackage,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -42,6 +42,7 @@ export default function PortalShell() {
     { icon: IconReceipt, label: 'Statement', path: '/portal/statement' },
     { icon: IconPackage, label: 'Products & Services', path: '/portal/products-services' },
     { icon: IconCalendarRepeat, label: 'Subscriptions', path: '/portal/subscriptions' },
+    { icon: IconWorld, label: 'My Hosting', path: '/portal/hosting' },
     { icon: IconUser, label: 'Profile', path: '/portal/profile' },
   ];
 

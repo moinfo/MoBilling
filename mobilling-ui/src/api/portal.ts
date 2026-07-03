@@ -171,3 +171,23 @@ export const updatePortalUser = (id: string, data: Partial<PortalUser>) =>
 
 export const deletePortalUser = (id: string) =>
   api.delete(`/portal/users/${id}`);
+
+// ── Hosting ───────────────────────────────────────────────────────────────────
+
+export interface PortalHostingAccount {
+  id: string;
+  domain: string;
+  cpanel_username: string;
+  package: string | null;
+  status: 'pending' | 'active' | 'suspended' | 'failed';
+  disk_used: string | null;
+  disk_limit: string | null;
+  server_hostname: string | null;
+  expires_at: string | null;
+}
+
+export const getPortalHosting = () =>
+  api.get<{ data: PortalHostingAccount[] }>('/portal/hosting');
+
+export const portalHostingSso = (id: string) =>
+  api.post<{ url: string }>(`/portal/hosting/${id}/sso`);
