@@ -12,13 +12,13 @@ class WhmcsImport extends Command
 {
     protected $signature = 'whmcs:import
         {--tenant= : Target tenant UUID (required)}
-        {--stage=all : all|products|clients|users|services|invoices|payments}
+        {--stage=all : all|products|clients|users|services|invoices|payments|domains}
         {--dry-run : Run inside a transaction and roll back}
         {--limit= : Limit rows per source table (testing)}';
 
     protected $description = 'One-time WHMCS -> MoBilling data import (docs/IMPLEMENTATION_PLAN.md §C1)';
 
-    private const STAGES = ['products', 'clients', 'users', 'services', 'invoices', 'payments'];
+    private const STAGES = ['products', 'clients', 'users', 'services', 'invoices', 'payments', 'domains'];
 
     public function handle(): int
     {

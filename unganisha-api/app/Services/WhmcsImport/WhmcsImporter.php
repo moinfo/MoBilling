@@ -521,6 +521,74 @@ class WhmcsImporter
         }
     }
 
+    // ── Stage: domains ─────────────────────────────────────────────────────────
+
+    private const DOMAIN_STATUS_MAP = [
+        'Pending'              => 'pending',
+        'Pending Registration' => 'pending',
+        'Pending Transfer'     => 'pending',
+        'Active'               => 'active',
+        'Expired'              => 'expired',
+        'Cancelled'            => 'cancelled',
+        'Fraud'                => 'cancelled',
+        'Transferred Away'     => 'transferred_out',
+    ];
+
+    public function importDomains(): void
+    {
+        $clientMap = $this->legacyMap(\App\Models\Client::class);
+
+        $platformAccount = \App\Models\RegistrarAccount::whereNull('tenant_id')
+            ->where('is_active', true)->first();
+
+        // WHMCS keeps re-registration history rows for the same name; our table has a
+        // global unique(name). Keep the best row per name: Active > Pending > Expired
+        // > Cancelled, tie-break latest id.
+        $rank = ['Active' => 0, 'Pending' => 1, 'Pending Registration' => 1, 'Pending Transfer' => 1, 'Expired' => 2];
+        $rows = DB::connection('whmcs')->table('tbldomains')->orderBy('id')->get()
+            ->groupBy(fn ($d) => strtolower(trim($d->domain)))
+            ->map(function ($group) use ($rank) {
+                $best = $group->sortBy([
+                    fn ($a, $b) => ($rank[$a->status] ?? 3) <=> ($rank[$b->status] ?? 3),
+                    fn ($a, $b) => $b->id <=> $a->id,
+                ])->first();
+                foreach ($group as $g) {
+                    if ($g->id !== $best->id) {
+                        $this->skip('domains', 'duplicate name - kept best row', "tbldomains.id={$g->id} {$g->domain} (kept {$best->id})");
+                    }
+                }
+                return $best;
+            });
+
+        foreach ($rows as $d) {
+            $clientId = $clientMap[$d->userid] ?? null;
+            if (!$clientId) {
+                $this->skip('domains', 'client not imported', "tbldomains.id={$d->id} {$d->domain}");
+                continue;
+            }
+
+            \App\Models\Domain::withoutGlobalScopes()->updateOrCreate(
+                ['tenant_id' => $this->tenantId, 'legacy_id' => $d->id],
+                [
+                    'client_id'            => $clientId,
+                    'registrar_account_id' => $platformAccount?->id,
+                    'name'                 => strtolower(trim($d->domain)),
+                    'status'               => self::DOMAIN_STATUS_MAP[$d->status] ?? 'cancelled',
+                    'registered_at'        => $this->date($d->registrationdate),
+                    'expires_at'           => $this->date($d->expirydate),
+                    'auto_renew'           => !((int) ($d->donotrenew ?? 0)),
+                    'meta'                 => [
+                        'whmcs_status'        => $d->status,
+                        'whmcs_registrar'     => $d->registrar ?: null,
+                        'whmcs_nextduedate'   => $this->date($d->nextduedate),
+                        'whmcs_recurring_amt' => (float) $d->recurringamount,
+                    ],
+                ]
+            );
+            $this->ok('domains');
+        }
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     /** [whmcs_id => uuid] for already-imported rows of a model. */
