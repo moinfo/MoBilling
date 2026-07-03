@@ -621,6 +621,7 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/dashboard', [PortalDashboardController::class, 'summary']);
     Route::get('/documents', [PortalDocumentController::class, 'index']);
     Route::get('/documents/{document}', [PortalDocumentController::class, 'show']);
+    Route::get('/documents/{document}/pdf', [PortalDocumentController::class, 'downloadPdf']);
     Route::post('/documents/{document}/resend', [PortalDocumentController::class, 'resend']);
     Route::get('/payments', [PortalPaymentController::class, 'index']);
     Route::get('/payments/{payment}/receipt', [PortalPaymentController::class, 'downloadReceipt']);

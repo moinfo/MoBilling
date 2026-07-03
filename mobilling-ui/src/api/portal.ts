@@ -285,5 +285,8 @@ export interface DomainAddonRow {
   id: string; name: string; description: string | null; price: number; is_free: boolean;
 }
 
+export const downloadPortalDocumentPdf = (id: string) =>
+  api.get(`/portal/documents/${id}/pdf`, { responseType: 'blob' });
+
 export const getPortalDomainAddons = () =>
   api.get<{ data: DomainAddonRow[] }>('/portal/domain-addons');

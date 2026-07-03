@@ -47,6 +47,18 @@ class PortalDocumentController extends Controller
         return response()->json($paginated);
     }
 
+    public function downloadPdf(Request $request, Document $document)
+    {
+        abort_unless($document->client_id === $request->user()->client_id, 404);
+        abort_if(in_array($document->status, ['draft']), 404);
+
+        $document->load('items', 'client', 'tenant');
+
+        $pdf = app(\App\Services\PdfService::class)->generate($document);
+
+        return $pdf->download("{$document->document_number}.pdf");
+    }
+
     public function show(Request $request, Document $document)
     {
         $clientId = $request->user()->client_id;

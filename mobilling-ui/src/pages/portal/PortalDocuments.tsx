@@ -7,10 +7,10 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import {
-  IconSearch, IconCreditCard, IconCheck, IconMail, IconArrowUp, IconArrowDown,
+  IconSearch, IconCreditCard, IconCheck, IconMail, IconDownload, IconArrowUp, IconArrowDown,
   IconArrowsSort, IconAlertTriangle, IconCash, IconFileInvoice,
 } from '@tabler/icons-react';
-import { getPortalDocuments, getPortalDocument, resendPortalDocument } from '../../api/portal';
+import { getPortalDocuments, getPortalDocument, resendPortalDocument , downloadPortalDocumentPdf } from '../../api/portal';
 import { portalCheckoutInvoice, getPaymentStatusByTracking } from '../../api/payment';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -506,6 +506,26 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
             )}
 
             {/* Actions */}
+            <Button
+              variant="light"
+              fullWidth
+              leftSection={<IconDownload size={18} />}
+              onClick={async () => {
+                try {
+                  const res = await downloadPortalDocumentPdf(detail.id);
+                  const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `${detail.document_number}.pdf`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                } catch {
+                  notifications.show({ title: 'Error', message: 'Failed to download PDF.', color: 'red' });
+                }
+              }}
+            >
+              Download PDF
+            </Button>
             <Button
               variant="light"
               fullWidth
