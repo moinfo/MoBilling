@@ -14,13 +14,17 @@ class StorePaymentInRequest extends FormRequest
 
     public function rules(): array
     {
-        $methods = $this->allowedPaymentMethods();
+        $methods  = $this->allowedPaymentMethods();
+        $tenantId = auth()->user()?->tenant_id;
 
         return [
-            'client_id' => 'required|uuid|exists:clients,id',
-            'document_id' => 'nullable|uuid|exists:documents,id',
+            // Scope existence checks to the current tenant — the raw `exists` rule
+            // bypasses the BelongsToTenant global scope, so without this a foreign
+            // client/document id would validate.
+            'client_id' => ['required', 'uuid', Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
+            'document_id' => ['nullable', 'uuid', Rule::exists('documents', 'id')->where('tenant_id', $tenantId)],
             'amount' => 'required|numeric|min:0.01',
-            'payment_date' => 'required|date',
+            'payment_date' => 'required|date|before_or_equal:today',
             'payment_method' => ['required', 'string', Rule::in($methods)],
             'reference' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:1000',

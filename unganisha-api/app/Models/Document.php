@@ -15,7 +15,7 @@ class Document extends Model
     protected $fillable = [
         'tenant_id', 'client_id', 'type', 'document_number',
         'parent_id', 'date', 'due_date', 'subtotal', 'discount_amount',
-        'tax_amount', 'total', 'notes', 'status', 'overdue_stage', 'created_by',
+        'tax_amount', 'total', 'notes', 'status', 'overdue_stage', 'created_by', 'legacy_id',
     ];
 
     protected $casts = [
@@ -65,6 +65,12 @@ class Document extends Model
 
     public function getPaidAmountAttribute()
     {
+        // Prefer an eager-loaded sum (->withSum('payments', 'amount')) to avoid
+        // running one SUM query per document when listing many invoices.
+        if (array_key_exists('payments_sum_amount', $this->attributes)) {
+            return (float) ($this->attributes['payments_sum_amount'] ?? 0);
+        }
+
         return $this->payments()->sum('amount');
     }
 

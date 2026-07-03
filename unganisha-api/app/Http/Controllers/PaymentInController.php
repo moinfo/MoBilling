@@ -11,6 +11,7 @@ use App\Models\RecurringInvoiceLog;
 use App\Notifications\PaymentReceiptNotification;
 use App\Services\PdfService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class PaymentInController extends Controller
 {
@@ -48,29 +49,37 @@ class PaymentInController extends Controller
 
     public function store(StorePaymentInRequest $request)
     {
-        $payment = PaymentIn::create(array_merge($request->validated(), [
-            'received_by' => auth()->id(),
-        ]));
+        // Insert the payment and recompute the invoice status atomically.
+        // lockForUpdate serialises concurrent payments on the same invoice so
+        // the running total can't be computed against stale data.
+        $payment = DB::transaction(function () use ($request) {
+            $payment = PaymentIn::create(array_merge($request->validated(), [
+                'received_by' => auth()->id(),
+            ]));
 
-        // Update document status if linked to an invoice
-        if ($request->document_id) {
-            $document = Document::find($request->document_id);
-            $totalPaid = $document->payments()->sum('amount');
+            if ($request->document_id) {
+                $document = Document::whereKey($request->document_id)->lockForUpdate()->first();
+                if ($document) {
+                    $totalPaid = $document->payments()->sum('amount');
 
-            if ($totalPaid >= $document->total) {
-                $document->update(['status' => 'paid']);
-                $this->activateLinkedSubscriptions($document);
-            } else {
-                $document->update(['status' => 'partial']);
+                    if ($totalPaid >= $document->total) {
+                        $document->update(['status' => 'paid']);
+                        $this->activateLinkedSubscriptions($document);
+                    } else {
+                        $document->update(['status' => 'partial']);
+                    }
+                }
             }
 
-            // Send payment receipt email to client if requested
-            if ($request->boolean('send_email', true)) {
-                $document->refresh();
-                $document->load('client');
-                if ($document->client?->email) {
-                    $document->client->notify(new PaymentReceiptNotification($payment, $document));
-                }
+            return $payment;
+        });
+
+        // Send the receipt email outside the transaction — network I/O should
+        // not hold the row lock open.
+        if ($request->document_id && $request->boolean('send_email', true)) {
+            $document = Document::with('client')->find($request->document_id);
+            if ($document?->client?->email) {
+                $document->client->notify(new PaymentReceiptNotification($payment, $document));
             }
         }
 
@@ -84,19 +93,21 @@ class PaymentInController extends Controller
 
     public function update(StorePaymentInRequest $request, PaymentIn $payments_in)
     {
-        $payments_in->update($request->validated());
-
-        $this->recalcDocumentStatus($payments_in->document_id);
+        DB::transaction(function () use ($request, $payments_in) {
+            $payments_in->update($request->validated());
+            $this->recalcDocumentStatus($payments_in->document_id);
+        });
 
         return new PaymentInResource($payments_in);
     }
 
     public function destroy(PaymentIn $payments_in)
     {
-        $documentId = $payments_in->document_id;
-        $payments_in->delete();
-
-        $this->recalcDocumentStatus($documentId);
+        DB::transaction(function () use ($payments_in) {
+            $documentId = $payments_in->document_id;
+            $payments_in->delete();
+            $this->recalcDocumentStatus($documentId);
+        });
 
         return response()->json(['message' => 'Payment deleted']);
     }
@@ -127,7 +138,7 @@ class PaymentInController extends Controller
 
     private function recalcDocumentStatus(string $documentId): void
     {
-        $document = Document::find($documentId);
+        $document = Document::whereKey($documentId)->lockForUpdate()->first();
         if (!$document) return;
 
         $totalPaid = $document->payments()->sum('amount');

@@ -18,6 +18,7 @@ class CollectionController extends Controller
 
         // --- Today's due invoices (unpaid with due_date = today) ---
         $todayDue = Document::with('client')
+            ->withSum('payments', 'amount')
             ->where('type', 'invoice')
             ->whereDate('due_date', $today)
             ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
@@ -35,6 +36,7 @@ class CollectionController extends Controller
 
         // --- Overdue invoices (due_date < today, still unpaid) ---
         $overdue = Document::with('client')
+            ->withSum('payments', 'amount')
             ->where('type', 'invoice')
             ->whereDate('due_date', '<', $today)
             ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
@@ -55,6 +57,7 @@ class CollectionController extends Controller
 
         // --- Upcoming due (next 30 days, excluding today) ---
         $upcoming = Document::with('client')
+            ->withSum('payments', 'amount')
             ->where('type', 'invoice')
             ->whereDate('due_date', '>', $today)
             ->whereDate('due_date', '<=', $today->copy()->addDays(30))
@@ -115,7 +118,8 @@ class CollectionController extends Controller
             ->whereNotIn('status', ['draft', 'cancelled', 'pending_approval'])
             ->sum('total');
 
-        $overdueCarryOver = (float) Document::where('type', 'invoice')
+        $overdueCarryOver = (float) Document::withSum('payments', 'amount')
+            ->where('type', 'invoice')
             ->whereDate('due_date', '<', $monthStart)
             ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->get()
@@ -128,7 +132,9 @@ class CollectionController extends Controller
             ->sum('amount');
 
         // --- Total outstanding (all unpaid invoices) ---
-        $allUnpaid = Document::where('type', 'invoice')
+        $allUnpaid = Document::with('client')
+            ->withSum('payments', 'amount')
+            ->where('type', 'invoice')
             ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->get();
 
