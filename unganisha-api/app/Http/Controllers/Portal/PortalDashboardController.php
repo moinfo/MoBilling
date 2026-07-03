@@ -176,7 +176,15 @@ class PortalDashboardController extends Controller
                     'id' => $t->id, 'ticket_number' => $t->ticket_number, 'subject' => $t->subject,
                     'status' => $t->status, 'last_reply_at' => $t->last_reply_at?->toISOString(),
                 ]),
-            'announcements' => [],       // no announcements module yet
+            'announcements' => \App\Models\Announcement::withoutGlobalScopes()
+                ->where('tenant_id', $clientUser->tenant_id)->published()
+                ->orderByDesc('published_at')->limit(3)
+                ->get(['id', 'title', 'body', 'published_at'])
+                ->map(fn ($a) => [
+                    'id' => $a->id, 'title' => $a->title,
+                    'excerpt' => \Illuminate\Support\Str::limit(strip_tags($a->body), 140),
+                    'published_at' => $a->published_at->toISOString(),
+                ]),
             'total_invoiced' => $totalInvoiced,
             'total_paid' => $totalPaid,
             'total_balance' => $totalBalance,

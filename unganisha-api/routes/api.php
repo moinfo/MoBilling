@@ -520,6 +520,14 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/documents/{document}/apply-credit', [\App\Http\Controllers\ClientCreditController::class, 'applyToInvoice']);
     });
 
+    // ── Announcements ────────────────────────────────────────────────────────
+    Route::middleware('permission:announcements.manage')->group(function () {
+        Route::get('/announcements',                   [\App\Http\Controllers\AnnouncementController::class, 'index']);
+        Route::post('/announcements',                  [\App\Http\Controllers\AnnouncementController::class, 'store']);
+        Route::put('/announcements/{announcement}',    [\App\Http\Controllers\AnnouncementController::class, 'update']);
+        Route::delete('/announcements/{announcement}', [\App\Http\Controllers\AnnouncementController::class, 'destroy']);
+    });
+
     // ── Field Marketing (Door-to-Door) ───────────────────────────────────────
     Route::middleware('permission:field_sessions.read')->get('/field-visits-report', [\App\Http\Controllers\FieldMarketingController::class, 'allVisits']);
     Route::middleware('permission:field_sessions.read')->get('/field-sessions', [\App\Http\Controllers\FieldMarketingController::class, 'sessions']);
@@ -659,6 +667,7 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/credit',                       [\App\Http\Controllers\Portal\PortalCreditController::class, 'show']);
     Route::post('/credit/topup',                [\App\Http\Controllers\Portal\PortalCreditController::class, 'topup']);
     Route::post('/documents/{document}/apply-credit', [\App\Http\Controllers\Portal\PortalCreditController::class, 'applyToInvoice']);
+    Route::get('/announcements', [\App\Http\Controllers\Portal\PortalAnnouncementController::class, 'index']);
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
     Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);

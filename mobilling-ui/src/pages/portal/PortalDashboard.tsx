@@ -9,7 +9,7 @@ import {
   IconServer, IconWorldWww, IconTicket, IconReceipt, IconUser, IconPencil,
   IconShoppingCart, IconLogout, IconExternalLink, IconRefresh, IconBox,
   IconMessageCircle, IconPlus, IconUsers, IconFileInvoice, IconCash,
-  IconAlertTriangle, IconClock, IconWallet,
+  IconAlertTriangle, IconClock, IconWallet, IconNews,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { getPortalDashboard, portalHostingSso, portalCreditTopup } from '../../api/portal';
@@ -256,6 +256,31 @@ export default function PortalDashboard() {
                             {t.status === 'customer_reply' ? 'Replied' : t.status}
                           </Badge>
                         </Group>
+                      ))}
+                    </Stack>
+                  )}
+                </Paper>
+
+                {/* 9 ── Recent News */}
+                <Paper withBorder radius="md" p="lg">
+                  <Group justify="space-between" mb="sm">
+                    <Group gap="xs"><IconNews size={18} /><Text fw={700}>Recent News</Text></Group>
+                    <Button size="xs" variant="default" onClick={() => navigate('/portal/announcements')}>
+                      View All
+                    </Button>
+                  </Group>
+                  {((d as any).announcements ?? []).length === 0 ? (
+                    <Text size="sm" c="dimmed" ta="center" py="xs">No announcements yet.</Text>
+                  ) : (
+                    <Stack gap="sm">
+                      {(d as any).announcements.map((a: any) => (
+                        <div key={a.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/portal/announcements')}>
+                          <Text size="sm" fw={600}>{a.title}</Text>
+                          <Text size="xs" c="dimmed" lineClamp={2}>{a.excerpt}</Text>
+                          <Text size="xs" c="dimmed" mt={2}>
+                            {new Date(a.published_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          </Text>
+                        </div>
                       ))}
                     </Stack>
                   )}
