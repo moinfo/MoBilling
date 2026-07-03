@@ -1,6 +1,6 @@
 import { Stack, SimpleGrid, Paper, Text, Table, Badge, LoadingOverlay, Group, Title } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { IconFileInvoice, IconCash, IconAlertTriangle, IconClock, IconCalendarRepeat } from '@tabler/icons-react';
+import { IconFileInvoice, IconCash, IconAlertTriangle, IconClock, IconCalendarRepeat, IconServer, IconWorldWww, IconTicket, IconReceipt } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { getPortalDashboard } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
@@ -31,6 +31,15 @@ export default function PortalDashboard() {
 
       {d && (
         <>
+          <SimpleGrid cols={{ base: 2, md: 4 }}>
+            <CountCard label="Services" value={(d as any).services_count ?? 0} icon={<IconServer size={22} />} color="blue"
+              onClick={() => navigate('/portal/subscriptions')} />
+            <CountCard label="Domains" value={(d as any).domains_count ?? 0} icon={<IconWorldWww size={22} />} color="teal" />
+            <CountCard label="Tickets" value={(d as any).tickets_count ?? 0} icon={<IconTicket size={22} />} color="grape" />
+            <CountCard label="Unpaid Invoices" value={(d as any).unpaid_invoices_count ?? 0} icon={<IconReceipt size={22} />} color="orange"
+              onClick={() => navigate('/portal/invoices')} />
+          </SimpleGrid>
+
           <SimpleGrid cols={{ base: 1, xs: 2, md: 4 }}>
             <StatCard label="Total Invoiced" value={fmt(d.total_invoiced)} icon={<IconFileInvoice size={24} />} color="blue" />
             <StatCard label="Total Paid" value={fmt(d.total_paid)} icon={<IconCash size={24} />} color="green" />
@@ -178,6 +187,22 @@ export default function PortalDashboard() {
         </>
       )}
     </Stack>
+  );
+}
+
+function CountCard({ label, value, icon, color, onClick }: {
+  label: string; value: number; icon: React.ReactNode; color: string; onClick?: () => void;
+}) {
+  return (
+    <Paper withBorder p="md" style={onClick ? { cursor: 'pointer' } : undefined} onClick={onClick}>
+      <Group justify="space-between" align="center" wrap="nowrap">
+        <div>
+          <Text size="xl" fw={800} lh={1.1}>{value}</Text>
+          <Text size="sm" c="dimmed">{label}</Text>
+        </div>
+        <Text c={color} style={{ display: 'flex' }}>{icon}</Text>
+      </Group>
+    </Paper>
   );
 }
 

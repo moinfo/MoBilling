@@ -29,6 +29,11 @@ class PortalDashboardController extends Controller
             ->where('due_date', '<', now())
             ->count();
 
+        // WHMCS-style overview counters
+        $servicesCount = ClientSubscription::where('client_id', $clientId)->where('status', 'active')->count();
+        $domainsCount  = \App\Models\Domain::where('client_id', $clientId)->whereIn('status', ['active', 'pending'])->count();
+        $unpaidCount   = (clone $invoices)->whereIn('status', ['sent', 'overdue', 'partial'])->count();
+
         $recentInvoices = Document::where('client_id', $clientId)
             ->where('type', 'invoice')
             ->whereNotIn('status', ['draft', 'cancelled'])
@@ -118,6 +123,10 @@ class PortalDashboardController extends Controller
             ->values();
 
         return response()->json([
+            'services_count' => $servicesCount,
+            'domains_count' => $domainsCount,
+            'tickets_count' => 0, // no ticket module yet
+            'unpaid_invoices_count' => $unpaidCount,
             'total_invoiced' => $totalInvoiced,
             'total_paid' => $totalPaid,
             'total_balance' => $totalBalance,
