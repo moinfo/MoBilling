@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Tooltip } from '@mantine/core';
+import { Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Tooltip, SegmentedControl, Group, Text, Alert } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { IconFileInvoice } from '@tabler/icons-react';
+import { IconFileInvoice, IconAlertCircle } from '@tabler/icons-react';
 import { getPortalSubscriptions, generateSubscriptionInvoice } from '../../api/portal';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -30,7 +30,16 @@ export default function PortalSubscriptions() {
     queryFn: () => getPortalSubscriptions(),
   });
 
-  const subs = data?.data?.data || [];
+  const allSubs = data?.data?.data || [];
+  const [statusFilter, setStatusFilter] = useState('current');
+  const subs = allSubs.filter((s: any) =>
+    statusFilter === 'all' ? true :
+    statusFilter === 'suspended' ? s.status === 'suspended' :
+    ['active', 'pending'].includes(s.status));
+  const counts = {
+    active: allSubs.filter((s: any) => s.status === 'active').length,
+    suspended: allSubs.filter((s: any) => s.status === 'suspended').length,
+  };
 
   const handleGenerateInvoice = async (subId: string) => {
     setGeneratingId(subId);
@@ -56,7 +65,29 @@ export default function PortalSubscriptions() {
   return (
     <Stack gap="lg" pos="relative">
       <LoadingOverlay visible={isLoading} />
-      <Title order={3}>Subscriptions</Title>
+      <Group justify="space-between" align="center">
+        <Group gap="sm">
+          <Title order={3}>Subscriptions</Title>
+          <Badge variant="light" color="green">{counts.active} active</Badge>
+          {counts.suspended > 0 && <Badge variant="light" color="orange">{counts.suspended} suspended</Badge>}
+        </Group>
+        <SegmentedControl
+          size="xs"
+          value={statusFilter}
+          onChange={setStatusFilter}
+          data={[
+            { value: 'current', label: 'Current' },
+            { value: 'suspended', label: `Suspended (${counts.suspended})` },
+            { value: 'all', label: 'All' },
+          ]}
+        />
+      </Group>
+
+      {statusFilter === 'suspended' && counts.suspended > 0 && (
+        <Alert icon={<IconAlertCircle size={16} />} color="orange" variant="light">
+          Suspended services usually have an unpaid invoice — check the Invoices page or contact us to restore them.
+        </Alert>
+      )}
 
       <Paper withBorder p="md">
         <Table.ScrollContainer minWidth={700}>
@@ -77,6 +108,13 @@ export default function PortalSubscriptions() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
+              {subs.length === 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={11}>
+                    <Text c="dimmed" ta="center" py="md" size="sm">Nothing here.</Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
               {subs.map((s: any) => {
                 const daysLeft = s.status === 'active' && s.next_invoice_date
                   ? Math.ceil((new Date(s.next_invoice_date).getTime() - Date.now()) / 86400000)

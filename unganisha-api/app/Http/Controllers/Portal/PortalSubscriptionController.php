@@ -27,7 +27,12 @@ class PortalSubscriptionController extends Controller
         $clientId = $request->user()->client_id;
 
         $subscriptions = ClientSubscription::where('client_id', $clientId)
+            // Cancelled subscriptions (incl. migration de-dup artifacts) are
+            // internal history — never shown to clients.
+            ->where('status', '!=', 'cancelled')
             ->with('productService:id,name,type,price,billing_cycle')
+            ->orderByRaw("CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
+            ->orderBy('label')
             ->orderBy('expire_date')
             ->get()
             ->map(function ($sub) {
