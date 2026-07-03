@@ -55,6 +55,7 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
       category: '',
       billing_cycle: '',
       is_active: true,
+      portal_visible: true,
       provisioning_type: 'none',
       server_id: null,
       cpanel_package: '',
@@ -148,7 +149,12 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
             )}
           </>
         )}
-        <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
+        <Group>
+          <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
+          <Switch label="Show in portal catalog"
+            description="Clients can order this from the portal Shopping Cart"
+            {...form.getInputProps('portal_visible', { type: 'checkbox' })} />
+        </Group>
         <Group justify="flex-end">
           <Button type="submit" loading={loading}>Save</Button>
         </Group>

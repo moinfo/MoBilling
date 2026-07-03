@@ -135,6 +135,7 @@ export default function ProductServices() {
             category: editing.category || '',
             billing_cycle: editing.billing_cycle || '',
             is_active: editing.is_active,
+            portal_visible: editing.portal_visible ?? true,
             provisioning_type: editing.provisioning_type || 'none',
             server_id: editing.server_id || null,
             cpanel_package: editing.cpanel_package || '',

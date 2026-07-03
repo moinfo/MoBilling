@@ -16,6 +16,7 @@ export interface ProductService {
   server_id: string | null;
   cpanel_package: string | null;
   auto_provision: boolean;
+  portal_visible: boolean;
   created_at: string;
 }
 
@@ -34,6 +35,7 @@ export interface ProductServiceFormData {
   server_id?: string | null;
   cpanel_package?: string;
   auto_provision?: boolean;
+  portal_visible?: boolean;
 }
 
 export const getProductServices = (params?: { search?: string; type?: string; page?: number; active_only?: boolean; per_page?: number }) =>

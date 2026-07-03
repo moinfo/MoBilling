@@ -33,6 +33,7 @@ class StoreProductServiceRequest extends FormRequest
             ],
             'cpanel_package' => 'nullable|string|max:255|required_if:provisioning_type,whm_cpanel',
             'auto_provision' => 'nullable|boolean',
+            'portal_visible' => 'nullable|boolean',
         ];
     }
 }
