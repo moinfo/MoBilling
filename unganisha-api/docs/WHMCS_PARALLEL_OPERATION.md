@@ -135,7 +135,9 @@ Tracked in `WHM_CPANEL_INTEGRATION.md` §3; the notable ones:
 ~~support tickets~~ (BUILT 2026-07-03: full helpdesk, staff + portal),
 ~~client self-service domain ordering~~ (BUILT 2026-07-03: portal register/
 transfer/renew), ~~client self-service hosting ordering~~ (BUILT 2026-07-03:
-Shopping Cart catalog -> order -> pay -> auto-provision), gTLD registrar
-driver, announcements/news module,
-promo codes / proration / client credit wallet, WHMCS addon-module features.
+Shopping Cart catalog -> order -> pay -> auto-provision), ~~client credit
+wallet~~ (BUILT 2026-07-04: ledger + Add Funds + apply-to-invoice; WHMCS
+balances imported), ~~plan upgrade/downgrade~~ (BUILT 2026-07-04: prorated
+upgrades, immediate downgrades), gTLD registrar driver, announcements/news
+module, promo codes, WHMCS addon-module features.
 Completing these (or accepting their absence) is the trigger for cutover.
