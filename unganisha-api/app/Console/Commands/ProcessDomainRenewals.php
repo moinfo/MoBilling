@@ -30,6 +30,8 @@ class ProcessDomainRenewals extends Command
 
         $domains = Domain::withoutGlobalScopes()
             ->with('client')
+            // Parallel mode: WHMCS invoices renewals of imported domains.
+            ->when(config('whmcs.parallel_mode'), fn ($q) => $q->whereNull('legacy_id'))
             ->where('status', 'active')
             ->where('auto_renew', true)
             ->whereNotNull('expires_at')

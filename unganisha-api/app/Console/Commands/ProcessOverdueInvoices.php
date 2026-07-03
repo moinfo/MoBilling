@@ -33,6 +33,8 @@ class ProcessOverdueInvoices extends Command
             // be dunned (late fees, reminders) or flipped to overdue.
             $overdueInvoices = Document::withoutGlobalScopes()
                 ->where('type', 'invoice')
+                // Parallel mode: WHMCS runs its own dunning for imported invoices.
+                ->when(config('whmcs.parallel_mode'), fn ($q) => $q->whereNull('legacy_id'))
                 ->whereNotIn('status', ['paid', 'draft', 'pending_approval', 'cancelled'])
                 ->whereNotNull('due_date')
                 ->where('due_date', '<', $today->toDateString())

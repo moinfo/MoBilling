@@ -51,6 +51,8 @@ class RecurringInvoiceService
 
         $subscriptions = ClientSubscription::withoutGlobalScopes()
             ->where('status', 'active')
+            // Parallel mode: WHMCS still bills its own (imported) subscriptions.
+            ->when(config('whmcs.parallel_mode'), fn ($q) => $q->whereNull('legacy_id'))
             ->with(['productService', 'client'])
             ->whereHas('productService', fn ($q) => $q
                 ->where('is_active', true)
@@ -261,6 +263,9 @@ class RecurringInvoiceService
         $logs = RecurringInvoiceLog::withoutGlobalScopes()
             ->whereNotNull('document_id')
             ->whereNotNull('invoice_created_at')
+            // Parallel mode: WHMCS sends its own reminders for imported invoices.
+            ->when(config('whmcs.parallel_mode'), fn ($q) => $q
+                ->whereHas('document', fn ($d) => $d->whereNull('legacy_id')))
             ->get();
 
         // Deduplicate by document_id so we only remind once per invoice

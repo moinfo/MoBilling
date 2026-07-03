@@ -28,6 +28,8 @@ class SuspendUnpaidSubscriptions extends Command
             // 1. Load all active subscriptions (bypass tenant scope)
             $subscriptions = ClientSubscription::withoutGlobalScopes()
                 ->whereNull('deleted_at')
+                // Parallel mode: WHMCS manages suspension of imported services.
+                ->when(config('whmcs.parallel_mode'), fn ($q) => $q->whereNull('legacy_id'))
                 ->where('status', 'active')
                 ->get();
 
