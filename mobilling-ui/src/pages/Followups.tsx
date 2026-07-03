@@ -40,6 +40,15 @@ const statusColors: Record<string, string> = {
   cancelled: 'gray',
 };
 
+// Backend validates promise_date / next_followup_override as `after:today`,
+// so the earliest selectable date is tomorrow.
+const startOfTomorrow = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + 1);
+  return d;
+};
+
 export default function Followups() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
@@ -65,7 +74,7 @@ export default function Followups() {
     queryFn: getFollowupDashboard,
   });
 
-  const { data: historyData, isLoading: histLoading } = useQuery({
+  const { data: historyData, isLoading: histLoading, isError: histError } = useQuery({
     queryKey: ['followups', filterStatus, filterOutcome, page],
     queryFn: () => getFollowups({
       status: filterStatus,
@@ -118,24 +127,55 @@ export default function Followups() {
     setSelectedFollowup(null);
   };
 
+  const handleOutcomeChange = (v: string) => {
+    setOutcome(v);
+    // Drop any promise details when the outcome no longer involves a promise.
+    if (v !== 'promised' && v !== 'partial_payment') {
+      setPromiseDate(null);
+      setPromiseAmount(undefined);
+    }
+  };
+
   const openPreview = async (docId: string) => {
     try {
       const res = await getDocument(docId);
       setViewDoc(res.data.data);
-    } catch { /* ignore */ }
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to load invoice.', color: 'red' });
+    }
   };
 
   const handleDocRefresh = async () => {
-    if (viewDoc) {
-      const res = await getDocument(viewDoc.id);
-      setViewDoc(res.data.data);
+    try {
+      if (viewDoc) {
+        const res = await getDocument(viewDoc.id);
+        setViewDoc(res.data.data);
+      }
+    } catch {
+      notifications.show({ title: 'Error', message: 'Failed to refresh invoice.', color: 'red' });
     }
     queryClient.invalidateQueries({ queryKey: ['followup-dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['followups'] });
   };
 
+  // Mirror the backend required_if rules: a promise needs a date + amount;
+  // a partial payment needs an amount.
+  const promiseDetailsMissing =
+    (outcome === 'promised' && (!promiseDate || !promiseAmount)) ||
+    (outcome === 'partial_payment' && !promiseAmount);
+
   const handleLogCall = () => {
     if (!selectedFollowup || !outcome || !notes) return;
+    if (promiseDetailsMissing) {
+      notifications.show({
+        title: 'Missing details',
+        message: outcome === 'promised'
+          ? 'Enter the promise date and amount for a "Promised to Pay" outcome.'
+          : 'Enter the partial payment amount.',
+        color: 'red',
+      });
+      return;
+    }
     logMutation.mutate({
       id: selectedFollowup.id,
       data: {
@@ -374,6 +414,8 @@ export default function Followups() {
 
         {histLoading ? (
           <Center py="md"><Loader size="sm" /></Center>
+        ) : histError ? (
+          <Text c="red" size="sm">Failed to load follow-up history. Please try again.</Text>
         ) : !history?.data?.length ? (
           <Text c="dimmed" size="sm">No follow-up records yet.</Text>
         ) : (
@@ -484,7 +526,7 @@ export default function Followups() {
               placeholder="What happened?"
               required
               value={outcome}
-              onChange={(v) => setOutcome(v || '')}
+              onChange={(v) => handleOutcomeChange(v || '')}
               data={[
                 { value: 'promised', label: 'Promised to Pay' },
                 { value: 'no_answer', label: 'No Answer' },
@@ -508,16 +550,18 @@ export default function Followups() {
                 <DateInput
                   label="Promise Date"
                   placeholder="When will they pay?"
+                  required={outcome === 'promised'}
                   value={promiseDate}
                   onChange={setPromiseDate}
-                  minDate={new Date()}
+                  minDate={startOfTomorrow()}
                 />
                 <NumberInput
                   label="Promise Amount"
                   placeholder="How much?"
+                  required
                   value={promiseAmount}
                   onChange={(v) => setPromiseAmount(v as number)}
-                  min={0}
+                  min={0.01}
                   decimalScale={2}
                 />
               </Group>
@@ -529,7 +573,7 @@ export default function Followups() {
               placeholder="Custom date"
               value={nextOverride}
               onChange={setNextOverride}
-              minDate={new Date()}
+              minDate={startOfTomorrow()}
               clearable
             />
 
@@ -540,7 +584,7 @@ export default function Followups() {
                 leftSection={<IconCheck size={16} />}
                 onClick={handleLogCall}
                 loading={logMutation.isPending}
-                disabled={!outcome || !notes}
+                disabled={!outcome || !notes || promiseDetailsMissing}
               >
                 Log Call
               </Button>

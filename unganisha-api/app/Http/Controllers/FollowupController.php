@@ -18,19 +18,32 @@ class FollowupController extends Controller
 
         $notCancelled = fn ($q) => $q->where('status', '!=', 'cancelled');
 
-        $dueToday = Followup::with(['client', 'document', 'user'])
+        $withDocSum = ['client', 'document' => fn ($q) => $q->withSum('payments', 'amount'), 'user'];
+
+        $dueToday = Followup::with($withDocSum)
             ->whereHas('document', $notCancelled)
             ->dueToday()
             ->orderBy('next_followup')
             ->get();
 
-        $overdueFollowups = Followup::with(['client', 'document', 'user'])
+        $overdueFollowups = Followup::with($withDocSum)
             ->whereHas('document', $notCancelled)
             ->overdue()
             ->orderBy('next_followup')
             ->get();
 
-        $format = function ($f) {
+        // Pre-compute call counts per invoice in a single grouped query — avoids
+        // running one COUNT per followup row across both lists (N+1).
+        $callCounts = Followup::whereIn(
+                'document_id',
+                $dueToday->pluck('document_id')->merge($overdueFollowups->pluck('document_id'))->unique()->all()
+            )
+            ->whereNotNull('call_date')
+            ->selectRaw('document_id, COUNT(*) as aggregate')
+            ->groupBy('document_id')
+            ->pluck('aggregate', 'document_id');
+
+        $format = function ($f) use ($callCounts) {
             return [
                 'id' => $f->id,
                 'document_id' => $f->document_id,
@@ -49,9 +62,7 @@ class FollowupController extends Controller
                 'promise_amount' => $f->promise_amount ? (float) $f->promise_amount : null,
                 'next_followup' => $f->next_followup?->toDateString(),
                 'status' => $f->status,
-                'call_count' => Followup::where('document_id', $f->document_id)
-                    ->whereNotNull('call_date')
-                    ->count(),
+                'call_count' => (int) ($callCounts[$f->document_id] ?? 0),
             ];
         };
 
@@ -73,7 +84,7 @@ class FollowupController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Followup::with(['client', 'document', 'user'])
+        $query = Followup::with(['client', 'document' => fn ($q) => $q->withSum('payments', 'amount'), 'user'])
             ->whereHas('document', fn ($q) => $q->where('status', '!=', 'cancelled'))
             ->orderByDesc('created_at');
 
@@ -179,8 +190,10 @@ class FollowupController extends Controller
         $data = $request->validate([
             'outcome' => 'required|in:promised,declined,no_answer,disputed,partial_payment',
             'notes' => 'required|string|max:2000',
-            'promise_date' => 'nullable|date|after:today',
-            'promise_amount' => 'nullable|numeric|min:0',
+            // A "promised" outcome drives next_followup off promise_date, so require it.
+            // Both "promised" and "partial_payment" should carry a real amount.
+            'promise_date' => 'required_if:outcome,promised|nullable|date|after:today',
+            'promise_amount' => 'required_if:outcome,promised,partial_payment|nullable|numeric|min:0.01',
             'next_followup_override' => 'nullable|date|after:today',
         ]);
 
