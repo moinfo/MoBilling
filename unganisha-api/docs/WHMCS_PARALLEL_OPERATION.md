@@ -134,7 +134,8 @@ php artisan config:clear
 Tracked in `WHM_CPANEL_INTEGRATION.md` §3; the notable ones:
 ~~support tickets~~ (BUILT 2026-07-03: full helpdesk, staff + portal),
 ~~client self-service domain ordering~~ (BUILT 2026-07-03: portal register/
-transfer/renew), client self-service HOSTING ordering (portal is view+pay
-only for hosting), gTLD registrar driver, announcements/news module,
+transfer/renew), ~~client self-service hosting ordering~~ (BUILT 2026-07-03:
+Shopping Cart catalog -> order -> pay -> auto-provision), gTLD registrar
+driver, announcements/news module,
 promo codes / proration / client credit wallet, WHMCS addon-module features.
 Completing these (or accepting their absence) is the trigger for cutover.
