@@ -1,5 +1,5 @@
-import { Table, Badge, ActionIcon, Group, Switch, Text } from '@mantine/core';
-import { IconEdit, IconTrash } from '@tabler/icons-react';
+import { Table, Badge, ActionIcon, Group, Switch, Text, Tooltip } from '@mantine/core';
+import { IconEdit, IconTrash, IconServer } from '@tabler/icons-react';
 import { ProductService } from '../../api/productServices';
 import { formatCurrency } from '../../utils/formatCurrency';
 
@@ -25,6 +25,7 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
             <Table.Th>Price</Table.Th>
             <Table.Th>Tax %</Table.Th>
             <Table.Th>Unit</Table.Th>
+            <Table.Th>WHM</Table.Th>
             <Table.Th>Active</Table.Th>
             <Table.Th w={100}>Actions</Table.Th>
           </Table.Tr>
@@ -42,6 +43,17 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
             <Table.Td>{formatCurrency(item.price)}</Table.Td>
             <Table.Td>{item.tax_percent}%</Table.Td>
             <Table.Td>{item.unit}</Table.Td>
+            <Table.Td>
+              {item.provisioning_type === 'whm_cpanel' ? (
+                <Tooltip label={`cPanel package: ${item.cpanel_package ?? '—'}${item.auto_provision ? ' · auto-provision' : ''}`}>
+                  <Badge size="xs" variant="light" color="teal" leftSection={<IconServer size={10} />}>
+                    {item.cpanel_package ?? 'WHM'}
+                  </Badge>
+                </Tooltip>
+              ) : (
+                <Text size="xs" c="dimmed">—</Text>
+              )}
+            </Table.Td>
             <Table.Td><Switch checked={item.is_active} readOnly size="xs" /></Table.Td>
             <Table.Td>
               <Group gap="xs">
