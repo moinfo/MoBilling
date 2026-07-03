@@ -16,14 +16,21 @@ class ProductService extends Model
 
     protected $fillable = [
         'tenant_id', 'type', 'name', 'code', 'description',
-        'price', 'tax_percent', 'unit', 'category', 'billing_cycle', 'is_active',
+        'price', 'tax_percent', 'unit', 'category', 'billing_cycle', 'is_active', 'legacy_id',
+        'provisioning_type', 'server_id', 'cpanel_package', 'auto_provision',
     ];
 
     protected $casts = [
+        'auto_provision' => 'boolean',
         'price' => 'decimal:2',
         'tax_percent' => 'decimal:2',
         'is_active' => 'boolean',
     ];
+
+    public function server()
+    {
+        return $this->belongsTo(Server::class);
+    }
 
     public function scopeProducts($query)
     {

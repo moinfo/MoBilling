@@ -12,6 +12,10 @@ export interface ProductService {
   category: string | null;
   billing_cycle: string | null;
   is_active: boolean;
+  provisioning_type: 'none' | 'whm_cpanel';
+  server_id: string | null;
+  cpanel_package: string | null;
+  auto_provision: boolean;
   created_at: string;
 }
 
@@ -26,6 +30,10 @@ export interface ProductServiceFormData {
   category: string;
   billing_cycle: string;
   is_active: boolean;
+  provisioning_type?: 'none' | 'whm_cpanel';
+  server_id?: string | null;
+  cpanel_package?: string;
+  auto_provision?: boolean;
 }
 
 export const getProductServices = (params?: { search?: string; type?: string; page?: number; active_only?: boolean; per_page?: number }) =>

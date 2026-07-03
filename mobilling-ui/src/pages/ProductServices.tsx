@@ -135,6 +135,10 @@ export default function ProductServices() {
             category: editing.category || '',
             billing_cycle: editing.billing_cycle || '',
             is_active: editing.is_active,
+            provisioning_type: editing.provisioning_type || 'none',
+            server_id: editing.server_id || null,
+            cpanel_package: editing.cpanel_package || '',
+            auto_provision: editing.auto_provision ?? true,
           } : undefined}
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}

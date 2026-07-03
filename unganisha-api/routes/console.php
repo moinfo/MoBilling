@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Schedule;
 
+Schedule::command('hosting:reconcile')->dailyAt('05:30')->withoutOverlapping();
 Schedule::command('subscriptions:expire')->dailyAt('06:00')->withoutOverlapping();
 Schedule::command('invoices:process-recurring')->dailyAt('07:00')->withoutOverlapping();
 Schedule::command('followups:process')->dailyAt('07:30')->withoutOverlapping();

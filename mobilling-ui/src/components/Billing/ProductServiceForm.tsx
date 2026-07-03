@@ -1,6 +1,9 @@
-import { TextInput, NumberInput, Select, Textarea, Button, Group, SegmentedControl, Switch, Stack } from '@mantine/core';
+import { TextInput, NumberInput, Select, Textarea, Button, Group, SegmentedControl, Switch, Stack, Divider, Text } from '@mantine/core';
 import { useForm } from '@mantine/form';
+import { useQuery } from '@tanstack/react-query';
 import { ProductServiceFormData } from '../../api/productServices';
+import { getServers } from '../../api/hosting';
+import { usePermissions } from '../../hooks/usePermissions';
 
 interface Props {
   initialValues?: ProductServiceFormData;
@@ -37,6 +40,9 @@ const billingCycleOptions = [
 ];
 
 export default function ProductServiceForm({ initialValues, onSubmit, loading }: Props) {
+  const { can } = usePermissions();
+  const canHosting = can('hosting.settings');
+
   const form = useForm<ProductServiceFormData>({
     initialValues: initialValues || {
       type: 'product',
@@ -49,6 +55,10 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
       category: '',
       billing_cycle: '',
       is_active: true,
+      provisioning_type: 'none',
+      server_id: null,
+      cpanel_package: '',
+      auto_provision: true,
     },
     validate: {
       name: (v) => (v.length > 0 ? null : 'Name is required'),
@@ -57,6 +67,16 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
   });
 
   const unitOptions = form.values.type === 'product' ? productUnits : serviceUnits;
+
+  const showProvisioning = canHosting && form.values.type === 'service';
+  const { data: serversData } = useQuery({
+    queryKey: ['servers'],
+    queryFn: getServers,
+    enabled: showProvisioning,
+  });
+  const serverOptions = (serversData?.data?.data ?? [])
+    .filter((s) => s.is_active)
+    .map((s) => ({ value: s.id, label: `${s.name} (${s.hostname})` }));
 
   return (
     <form onSubmit={form.onSubmit(onSubmit)}>
@@ -87,6 +107,47 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
           clearable
           {...form.getInputProps('billing_cycle')}
         />
+        {showProvisioning && (
+          <>
+            <Divider label="Hosting Provisioning" labelPosition="left" />
+            <Select
+              label="Provisioning"
+              description="Automatically manage a cPanel account for subscriptions of this service"
+              data={[
+                { value: 'none', label: 'None' },
+                { value: 'whm_cpanel', label: 'WHM / cPanel' },
+              ]}
+              {...form.getInputProps('provisioning_type')}
+            />
+            {form.values.provisioning_type === 'whm_cpanel' && (
+              <>
+                <Group grow>
+                  <Select
+                    label="Server"
+                    placeholder="Select WHM server"
+                    data={serverOptions}
+                    required
+                    {...form.getInputProps('server_id')}
+                  />
+                  <TextInput
+                    label="cPanel package"
+                    placeholder="WHM package/plan name"
+                    required
+                    {...form.getInputProps('cpanel_package')}
+                  />
+                </Group>
+                <Switch
+                  label="Auto-provision on activation"
+                  description="Create the cPanel account automatically when the subscription becomes active (first payment)"
+                  {...form.getInputProps('auto_provision', { type: 'checkbox' })}
+                />
+                {serverOptions.length === 0 && (
+                  <Text size="xs" c="orange">No active WHM servers — add one in Settings → Hosting Servers first.</Text>
+                )}
+              </>
+            )}
+          </>
+        )}
         <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
         <Group justify="flex-end">
           <Button type="submit" loading={loading}>Save</Button>

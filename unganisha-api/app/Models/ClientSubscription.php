@@ -15,7 +15,7 @@ class ClientSubscription extends Model
     protected $fillable = [
         'tenant_id', 'client_id', 'product_service_id',
         'label', 'quantity', 'discount_type', 'discount_value',
-        'start_date', 'expire_date', 'status', 'metadata',
+        'start_date', 'expire_date', 'status', 'metadata', 'legacy_id',
     ];
 
     protected $casts = [
@@ -34,6 +34,11 @@ class ClientSubscription extends Model
     public function productService()
     {
         return $this->belongsTo(ProductService::class);
+    }
+
+    public function hostingAccount()
+    {
+        return $this->hasOne(HostingAccount::class);
     }
 
     public function scopeActive($query)

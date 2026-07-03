@@ -57,6 +57,7 @@ import Subscription from './pages/Subscription';
 import Automation from './pages/Automation';
 import Broadcast from './pages/Broadcast';
 import WhatsappContacts from './pages/WhatsappContacts';
+import HostingAccounts from './pages/HostingAccounts';
 import FieldMarketing from './pages/FieldMarketing';
 import SocialMedia from './pages/SocialMedia';
 import ServedCustomers from './pages/ServedCustomers';
@@ -192,6 +193,7 @@ export default function App() {
                   <Route path="/automation" element={<Automation />} />
                   <Route path="/broadcast" element={<Broadcast />} />
                   <Route path="/whatsapp-contacts" element={<WhatsappContacts />} />
+                  <Route path="/hosting" element={<HostingAccounts />} />
                   <Route path="/field-marketing" element={<FieldMarketing />} />
                   <Route path="/social-media" element={<SocialMedia />} />
                   <Route path="/served-customers" element={<ServedCustomers />} />

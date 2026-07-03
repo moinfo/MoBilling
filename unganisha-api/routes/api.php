@@ -454,12 +454,32 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:whatsapp_contacts.read')->get('/whatsapp-contacts/stats', [\App\Http\Controllers\WhatsappContactController::class, 'stats']);
     Route::middleware('permission:whatsapp_contacts.read')->get('/whatsapp-contacts', [\App\Http\Controllers\WhatsappContactController::class, 'index']);
     Route::middleware('permission:whatsapp_contacts.create')->post('/whatsapp-contacts', [\App\Http\Controllers\WhatsappContactController::class, 'store']);
+    Route::middleware('permission:whatsapp_contacts.update')->post('/whatsapp-contacts/claim-bulk', [\App\Http\Controllers\WhatsappContactController::class, 'claimBulk']);
     Route::middleware('permission:whatsapp_contacts.update')->put('/whatsapp-contacts/{whatsappContact}', [\App\Http\Controllers\WhatsappContactController::class, 'update']);
     Route::middleware('permission:whatsapp_contacts.delete')->delete('/whatsapp-contacts/{whatsappContact}', [\App\Http\Controllers\WhatsappContactController::class, 'destroy']);
     Route::middleware('permission:whatsapp_contacts.convert')->post('/whatsapp-contacts/{whatsappContact}/convert', [\App\Http\Controllers\WhatsappContactController::class, 'convertToClient']);
+    Route::middleware('permission:whatsapp_contacts.update')->post('/whatsapp-contacts/{whatsappContact}/claim', [\App\Http\Controllers\WhatsappContactController::class, 'claim']);
+    Route::middleware('permission:whatsapp_contacts.view_all')->post('/whatsapp-contacts/{whatsappContact}/assign', [\App\Http\Controllers\WhatsappContactController::class, 'assign']);
     Route::middleware('permission:whatsapp_contacts.log')->get('/whatsapp-contacts/{whatsappContact}/followups', [\App\Http\Controllers\WhatsappFollowupController::class, 'index']);
     Route::middleware('permission:whatsapp_contacts.log')->post('/whatsapp-contacts/{whatsappContact}/followups', [\App\Http\Controllers\WhatsappFollowupController::class, 'store']);
     Route::middleware('permission:whatsapp_contacts.log')->delete('/whatsapp-contacts/{whatsappContact}/followups/{followup}', [\App\Http\Controllers\WhatsappFollowupController::class, 'destroy']);
+
+    // ── Hosting (WHM/cPanel provisioning) ────────────────────────────────────
+    Route::middleware('permission:hosting.settings')->group(function () {
+        Route::get('/servers',                    [\App\Http\Controllers\ServerController::class, 'index']);
+        Route::post('/servers',                   [\App\Http\Controllers\ServerController::class, 'store']);
+        Route::put('/servers/{server}',           [\App\Http\Controllers\ServerController::class, 'update']);
+        Route::delete('/servers/{server}',        [\App\Http\Controllers\ServerController::class, 'destroy']);
+        Route::post('/servers/{server}/test',     [\App\Http\Controllers\ServerController::class, 'test']);
+    });
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts', [\App\Http\Controllers\HostingAccountController::class, 'index']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
+    Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);
+    Route::middleware('permission:hosting.suspend')->post('/hosting-accounts/{hostingAccount}/suspend', [\App\Http\Controllers\HostingAccountController::class, 'suspend']);
+    Route::middleware('permission:hosting.suspend')->post('/hosting-accounts/{hostingAccount}/unsuspend', [\App\Http\Controllers\HostingAccountController::class, 'unsuspend']);
+    Route::middleware('permission:hosting.terminate')->post('/hosting-accounts/{hostingAccount}/terminate', [\App\Http\Controllers\HostingAccountController::class, 'terminate']);
+    Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/{hostingAccount}/change-package', [\App\Http\Controllers\HostingAccountController::class, 'changePackage']);
+    Route::middleware('permission:hosting.sso')->post('/hosting-accounts/{hostingAccount}/sso', [\App\Http\Controllers\HostingAccountController::class, 'sso']);
 
     // ── Field Marketing (Door-to-Door) ───────────────────────────────────────
     Route::middleware('permission:field_sessions.read')->get('/field-visits-report', [\App\Http\Controllers\FieldMarketingController::class, 'allVisits']);

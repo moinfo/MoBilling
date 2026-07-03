@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\ClientSubscription;
+use App\Observers\ClientSubscriptionObserver;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -25,6 +27,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        // Hosting provisioning: subscription status transitions -> WHM jobs
+        ClientSubscription::observe(ClientSubscriptionObserver::class);
     }
 }

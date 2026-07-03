@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreProductServiceRequest extends FormRequest
 {
@@ -24,6 +25,14 @@ class StoreProductServiceRequest extends FormRequest
             'category' => 'nullable|string|max:100',
             'billing_cycle' => 'nullable|in:once,monthly,quarterly,half_yearly,yearly',
             'is_active' => 'nullable|boolean',
+            // WHM/cPanel provisioning (tenant-scoped server check — never bare exists)
+            'provisioning_type' => 'nullable|in:none,whm_cpanel',
+            'server_id' => [
+                'nullable', 'uuid', 'required_if:provisioning_type,whm_cpanel',
+                Rule::exists('servers', 'id')->where('tenant_id', auth()->user()?->tenant_id),
+            ],
+            'cpanel_package' => 'nullable|string|max:255|required_if:provisioning_type,whm_cpanel',
+            'auto_provision' => 'nullable|boolean',
         ];
     }
 }

@@ -7,7 +7,7 @@ import {
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
   IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
-  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall,
+  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld,
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
@@ -173,6 +173,11 @@ export default function AppLayout() {
           {can('menu.followups') && (
             <NavLink label="Follow-ups" leftSection={<IconPhoneCall size={18} />}
               active={isActive('/followups')} onClick={() => navigateAndClose('/followups')} />
+          )}
+
+          {can('menu.hosting') && (
+            <NavLink label="Hosting" leftSection={<IconWorld size={18} />}
+              active={isActive('/hosting')} onClick={() => navigateAndClose('/hosting')} />
           )}
 
           {can('menu.satisfaction_calls') && (
