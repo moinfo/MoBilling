@@ -20,6 +20,8 @@ class StaffReportsController extends Controller
 
         $user  = auth()->user();
         $query = StaffReport::with(['user', 'reviewer'])
+            // hide reports belonging to deactivated/inactive staff
+            ->whereHas('user', fn ($q) => $q->where('is_active', true))
             ->orderBy('period_date', 'desc')
             ->orderBy('created_at', 'desc');
 
@@ -29,6 +31,7 @@ class StaffReportsController extends Controller
             // see only assigned subordinates' reports (plus own)
             $subordinateIds = \App\Models\User::where('tenant_id', $user->tenant_id)
                 ->where('supervisor_id', $user->id)
+                ->where('is_active', true)
                 ->pluck('id')
                 ->push($user->id);
             $query->whereIn('user_id', $subordinateIds);
@@ -193,12 +196,14 @@ class StaffReportsController extends Controller
             // Determine which users to show
             if ($user->hasPermission('staff_reports.view_all')) {
                 $visibleUsers = \App\Models\User::where('tenant_id', $user->tenant_id)
+                    ->where('is_active', true)
                     ->orderBy('name')
                     ->get(['id', 'name']);
             } else {
                 // Supervisor: only their assigned subordinates
                 $visibleUsers = \App\Models\User::where('tenant_id', $user->tenant_id)
                     ->where('supervisor_id', $user->id)
+                    ->where('is_active', true)
                     ->orderBy('name')
                     ->get(['id', 'name']);
             }

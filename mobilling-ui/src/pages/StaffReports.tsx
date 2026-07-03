@@ -3,7 +3,7 @@ import {
   Title, Tabs, Stack, Group, Button, Badge, Text, Paper, ActionIcon,
   Textarea, Modal, Loader, Center, ThemeIcon, Select, Divider,
   SegmentedControl, Avatar, ScrollArea, RingProgress, SimpleGrid,
-  NumberInput, Alert,
+  NumberInput, Alert, TextInput,
 } from '@mantine/core';
 import { DatePickerInput, MonthPickerInput, TimeInput } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
@@ -15,7 +15,8 @@ import {
   IconPlus, IconEdit, IconTrash, IconCalendar, IconCheck,
   IconClipboardList, IconUsers, IconStar, IconAlertCircle,
   IconSettings, IconChartBar, IconAlertTriangle, IconMoodHappy,
-  IconClock, IconTarget, IconTrendingUp,
+  IconClock, IconTarget, IconTrendingUp, IconEye, IconArrowLeft,
+  IconSearch,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
@@ -526,10 +527,24 @@ function MyReportsTab({ can }: { can: (p: string) => boolean }) {
 
 // ── Team Reports Tab ──────────────────────────────────────────────────────────
 
+type TeamUser = StaffReport['user'];
+
+interface StaffSummary {
+  user:     TeamUser;
+  reports:  StaffReport[];
+  total:    number;
+  pending:  number;
+  reviewed: number;
+  late:     number;
+  lastDate: string; // ISO of most recent submission
+}
+
 function TeamReportsTab({ can }: { can: (p: string) => boolean }) {
   const qc = useQueryClient();
   const [typeFilter, setTypeFilter]     = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch]             = useState('');
+  const [selectedId, setSelectedId]     = useState<string | null>(null);
   const [reviewing, setReviewing]       = useState<StaffReport | null>(null);
   const [reviewModal, { open: openReview, close: closeReview }] = useDisclosure(false);
 
@@ -542,14 +557,114 @@ function TeamReportsTab({ can }: { can: (p: string) => boolean }) {
   });
   const reports: StaffReport[] = data?.data?.data ?? [];
 
-  const grouped = reports.reduce<Record<string, StaffReport[]>>((acc, r) => {
-    (acc[r.user.id] ??= []).push(r);
-    return acc;
-  }, {});
+  // Group reports by staff member and build a per-staff summary
+  const summaries: StaffSummary[] = Object.values(
+    reports.reduce<Record<string, StaffSummary>>((acc, r) => {
+      const s = (acc[r.user.id] ??= {
+        user: r.user, reports: [], total: 0, pending: 0, reviewed: 0, late: 0, lastDate: '',
+      });
+      s.reports.push(r);
+      s.total += 1;
+      if (r.status === 'submitted') s.pending  += 1;
+      if (r.status === 'reviewed')  s.reviewed += 1;
+      if (r.is_late)                s.late     += 1;
+      if (!s.lastDate || r.created_at > s.lastDate) s.lastDate = r.created_at;
+      return acc;
+    }, {})
+  ).sort((a, b) => b.pending - a.pending || a.user.name.localeCompare(b.user.name));
 
+  const filtered = summaries.filter(s =>
+    s.user.name.toLowerCase().includes(search.trim().toLowerCase())
+  );
+
+  const selected = selectedId ? summaries.find(s => s.user.id === selectedId) : null;
+
+  const reviewActions = (r: StaffReport) =>
+    r.status === 'submitted' && can('staff_reports.review') ? (
+      <Button size="xs" variant="light" color="green"
+        leftSection={<IconCheck size={13} />}
+        onClick={() => { setReviewing(r); openReview(); }}>
+        Review
+      </Button>
+    ) : r.status === 'reviewed' && can('staff_reports.review') ? (
+      <Button size="xs" variant="subtle" color="gray"
+        onClick={() => { setReviewing(r); openReview(); }}>
+        Edit review
+      </Button>
+    ) : null;
+
+  // ── Detail view: one staff member's reports ───────────────────────────────
+  if (selected) {
+    const ordered = [...selected.reports]; // already period-desc from the API
+    return (
+      <Stack>
+        <Group justify="space-between" wrap="nowrap">
+          <Group gap="xs" wrap="nowrap">
+            <Button size="xs" variant="subtle" leftSection={<IconArrowLeft size={14} />}
+              onClick={() => setSelectedId(null)}>
+              All staff
+            </Button>
+            <Avatar size="sm" radius="xl" color="blue">{selected.user.name[0]}</Avatar>
+            <Text size="sm" fw={700}>{selected.user.name}</Text>
+          </Group>
+          <Group gap="xs">
+            {selected.pending > 0 && (
+              <Badge size="sm" color="orange" variant="light">{selected.pending} pending</Badge>
+            )}
+            {selected.late > 0 && (
+              <Badge size="sm" color="red" variant="light">{selected.late} late</Badge>
+            )}
+            <Badge size="sm" color="green" variant="light">{selected.reviewed} reviewed</Badge>
+          </Group>
+        </Group>
+
+        {/* Keep type/status filters available inside the detail view too */}
+        <Group gap="xs">
+          <SegmentedControl size="xs" value={typeFilter} onChange={setTypeFilter}
+            data={[
+              { value: '',        label: 'All types' },
+              { value: 'daily',   label: 'Daily'     },
+              { value: 'weekly',  label: 'Weekly'    },
+              { value: 'monthly', label: 'Monthly'   },
+            ]}
+          />
+          <Select size="xs" placeholder="All statuses" clearable
+            value={statusFilter} onChange={v => setStatusFilter(v ?? '')}
+            data={[
+              { value: 'submitted', label: 'Pending Review' },
+              { value: 'reviewed',  label: 'Reviewed'       },
+            ]}
+            style={{ width: 160 }}
+          />
+          <Text size="xs" c="dimmed">{ordered.length} report{ordered.length !== 1 ? 's' : ''}</Text>
+        </Group>
+
+        {ordered.length === 0 ? (
+          <Center py="xl"><Text c="dimmed">No reports for this staff member.</Text></Center>
+        ) : (
+          <Stack gap="xs">
+            {ordered.map(r => (
+              <ReportCard key={r.id} report={r} actions={reviewActions(r)} />
+            ))}
+          </Stack>
+        )}
+
+        {reviewing && (
+          <ReviewModal report={reviewing} opened={reviewModal}
+            onClose={() => { closeReview(); setReviewing(null); }}
+            onSaved={() => {
+              qc.invalidateQueries({ queryKey: ['staff-reports-team'] });
+              qc.invalidateQueries({ queryKey: ['staff-reports-dashboard'] });
+            }} />
+        )}
+      </Stack>
+    );
+  }
+
+  // ── Summary view: one row per staff member ────────────────────────────────
   return (
     <Stack>
-      <Group gap="xs">
+      <Group gap="xs" wrap="wrap">
         <SegmentedControl size="xs" value={typeFilter} onChange={setTypeFilter}
           data={[
             { value: '',        label: 'All types' },
@@ -566,57 +681,61 @@ function TeamReportsTab({ can }: { can: (p: string) => boolean }) {
           ]}
           style={{ width: 160 }}
         />
-        <Text size="xs" c="dimmed">{reports.length} report{reports.length !== 1 ? 's' : ''}</Text>
+        <TextInput size="xs" placeholder="Find staff…" leftSection={<IconSearch size={13} />}
+          value={search} onChange={e => setSearch(e.currentTarget.value)}
+          style={{ width: 200 }} />
+        <Text size="xs" c="dimmed">
+          {filtered.length} staff · {reports.length} report{reports.length !== 1 ? 's' : ''}
+        </Text>
       </Group>
 
       {isLoading ? (
         <Center py="xl"><Loader /></Center>
-      ) : reports.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <Center py="xl"><Text c="dimmed">No reports found.</Text></Center>
       ) : (
-        <Stack gap="lg">
-          {Object.entries(grouped).map(([, userReports]) => {
-            const user = userReports[0].user;
-            return (
-              <div key={user.id}>
-                <Group gap="xs" mb="xs">
-                  <Avatar size="sm" radius="xl" color="blue">{user.name[0]}</Avatar>
-                  <Text size="sm" fw={700}>{user.name}</Text>
-                  <Badge size="sm" variant="light">{userReports.length}</Badge>
+        <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
+          <Stack gap={0}>
+            {filtered.map((s, i) => (
+              <Group
+                key={s.user.id}
+                justify="space-between"
+                wrap="nowrap"
+                p="sm"
+                style={{
+                  borderBottom: i < filtered.length - 1 ? '1px solid var(--mantine-color-default-border)' : undefined,
+                }}
+              >
+                <Group gap="xs" wrap="nowrap" style={{ minWidth: 0 }}>
+                  <Avatar size="sm" radius="xl" color="blue">{s.user.name[0]}</Avatar>
+                  <div style={{ minWidth: 0 }}>
+                    <Text size="sm" fw={600} truncate>{s.user.name}</Text>
+                    <Text size="xs" c="dimmed">
+                      {s.total} report{s.total !== 1 ? 's' : ''}
+                      {s.lastDate ? ` · last ${dayjs(s.lastDate).format('D MMM YYYY')}` : ''}
+                    </Text>
+                  </div>
                 </Group>
-                <Stack gap="xs" pl="md">
-                  {userReports.map(r => (
-                    <ReportCard key={r.id} report={r}
-                      actions={
-                        r.status === 'submitted' && can('staff_reports.review') ? (
-                          <Button size="xs" variant="light" color="green"
-                            leftSection={<IconCheck size={13} />}
-                            onClick={() => { setReviewing(r); openReview(); }}>
-                            Review
-                          </Button>
-                        ) : r.status === 'reviewed' && can('staff_reports.review') ? (
-                          <Button size="xs" variant="subtle" color="gray"
-                            onClick={() => { setReviewing(r); openReview(); }}>
-                            Edit review
-                          </Button>
-                        ) : null
-                      }
-                    />
-                  ))}
-                </Stack>
-              </div>
-            );
-          })}
-        </Stack>
-      )}
 
-      {reviewing && (
-        <ReviewModal report={reviewing} opened={reviewModal}
-          onClose={() => { closeReview(); setReviewing(null); }}
-          onSaved={() => {
-            qc.invalidateQueries({ queryKey: ['staff-reports-team'] });
-            qc.invalidateQueries({ queryKey: ['staff-reports-dashboard'] });
-          }} />
+                <Group gap="xs" wrap="nowrap">
+                  {s.pending > 0 && (
+                    <Badge size="sm" color="orange" variant="light">{s.pending} pending</Badge>
+                  )}
+                  {s.late > 0 && (
+                    <Badge size="sm" color="red" variant="light">{s.late} late</Badge>
+                  )}
+                  {s.reviewed > 0 && (
+                    <Badge size="sm" color="green" variant="light">{s.reviewed} reviewed</Badge>
+                  )}
+                  <Button size="xs" variant="light" leftSection={<IconEye size={13} />}
+                    onClick={() => setSelectedId(s.user.id)}>
+                    View
+                  </Button>
+                </Group>
+              </Group>
+            ))}
+          </Stack>
+        </Paper>
       )}
     </Stack>
   );

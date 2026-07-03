@@ -18,6 +18,7 @@ class StaffSupervisorController extends Controller
 
         $users = User::with('supervisor:id,name')
             ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
             ->orderBy('name')
             ->get(['id', 'name', 'supervisor_id']);
 
