@@ -27,9 +27,22 @@ class SyncDomains extends Command
             ->whereIn('status', ['active', 'expired', 'pending'])
             ->get();
 
+        $unmanaged = 0;
+        $purged = 0;
+
         foreach ($domains as $domain) {
             // Never touch orders still awaiting payment.
             if ($domain->status === 'pending' && ($domain->meta['pending_action'] ?? null)) {
+                continue;
+            }
+
+            // The FRED driver only serves .tz — gTLDs imported from WHMCS are
+            // unmanaged until a gTLD registrar driver exists. Flag once, skip after.
+            if (!str_ends_with($domain->name, '.tz')) {
+                if (!($domain->meta['unmanaged'] ?? false)) {
+                    $domain->update(['meta' => array_merge($domain->meta ?? [], ['unmanaged' => true])]);
+                }
+                $unmanaged++;
                 continue;
             }
 
@@ -53,6 +66,20 @@ class SyncDomains extends Command
                 ]);
                 $synced++;
             } catch (\Throwable $e) {
+                // EPP 2303 = object does not exist: the registry purged it
+                // (lapsed long ago). Close it out instead of erroring nightly.
+                if (str_contains($e->getMessage(), '2303')) {
+                    $domain->update([
+                        'status' => 'cancelled',
+                        'meta'   => array_merge($domain->meta ?? [], [
+                            'registry_missing' => true,
+                            'closed_by_sync_at' => now()->toIso8601String(),
+                        ]),
+                    ]);
+                    $purged++;
+                    $this->line("Purged at registry — closed: {$domain->name}");
+                    continue;
+                }
                 $errors++;
                 $this->warn("Sync failed {$domain->name}: {$e->getMessage()}");
             }
@@ -76,13 +103,13 @@ class SyncDomains extends Command
             $this->warn("Credit check failed: {$e->getMessage()}");
         }
 
-        $this->info("Synced {$synced}, errors {$errors}" . ($lowCredit ? ', LOW CREDIT: ' . implode(' | ', $lowCredit) : ''));
+        $this->info("Synced {$synced}, unmanaged(gTLD) {$unmanaged}, purged {$purged}, errors {$errors}" . ($lowCredit ? ', LOW CREDIT: ' . implode(' | ', $lowCredit) : ''));
 
         CronLog::create([
             'tenant_id'   => null,
             'command'     => $this->signature,
-            'description' => "Synced {$synced} domains ({$errors} errors)" . ($lowCredit ? ' — LOW CREDIT: ' . implode(' | ', $lowCredit) : ''),
-            'results'     => ['synced' => $synced, 'errors' => $errors, 'low_credit' => $lowCredit],
+            'description' => "Synced {$synced} domains ({$unmanaged} unmanaged gTLDs, {$purged} purged, {$errors} errors)" . ($lowCredit ? ' — LOW CREDIT: ' . implode(' | ', $lowCredit) : ''),
+            'results'     => ['synced' => $synced, 'unmanaged' => $unmanaged, 'purged' => $purged, 'errors' => $errors, 'low_credit' => $lowCredit],
             'status'      => $errors > 0 ? 'failed' : 'success',
             'started_at'  => $startedAt,
             'finished_at' => now(),
