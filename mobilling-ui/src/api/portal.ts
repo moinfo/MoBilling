@@ -267,5 +267,10 @@ export interface CatalogGroup {
 export const getPortalCatalog = () =>
   api.get<{ data: CatalogGroup[] }>('/portal/catalog');
 
-export const placePortalOrder = (data: { product_service_id: string; label?: string }) =>
-  api.post('/portal/orders', data);
+export const placePortalOrder = (data: {
+  product_service_id: string; label?: string;
+  domain_mode?: 'register' | 'transfer' | 'existing'; auth_info?: string;
+}) => api.post('/portal/orders', data);
+
+export const getPortalDomainTlds = () =>
+  api.get<{ data: { tld: string; register_price: number; transfer_price: number }[] }>('/portal/domain-tlds');

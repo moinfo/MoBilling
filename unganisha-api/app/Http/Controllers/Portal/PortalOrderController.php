@@ -60,6 +60,24 @@ class PortalOrderController extends Controller
         return response()->json(['data' => $groups]);
     }
 
+    /** Offered TLDs for the domain chooser dropdown. */
+    public function tlds(Request $request)
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $rows = \App\Models\DomainTld::where('is_active', true)
+            ->where(fn ($q) => $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id'))
+            ->orderBy('tld')->orderByRaw('tenant_id IS NULL')
+            ->get()->unique('tld')->values()
+            ->map(fn ($t) => [
+                'tld'            => $t->tld,
+                'register_price' => (float) $t->register_price,
+                'transfer_price' => (float) $t->transfer_price,
+            ]);
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** Place an order: pending subscription + invoice to pay. */
     public function store(Request $request)
     {
@@ -69,16 +87,45 @@ class PortalOrderController extends Controller
         $data = $request->validate([
             'product_service_id' => ['required', 'uuid',
                 Rule::exists('product_services', 'id')->where('tenant_id', $tenantId)->where('is_active', true)],
-            'label' => 'nullable|string|max:255',
+            'label'       => 'nullable|string|max:255',
+            'domain_mode' => 'nullable|in:register,transfer,existing',
+            'auth_info'   => 'required_if:domain_mode,transfer|nullable|string|max:255',
         ]);
 
         $product = ProductService::withoutGlobalScopes()->find($data['product_service_id']);
+        $mode    = $data['domain_mode'] ?? 'existing';
+        $domain  = strtolower(trim((string) ($data['label'] ?? '')));
 
-        if ($product->provisioning_type === 'whm_cpanel' && empty($data['label'])) {
+        if ($product->provisioning_type === 'whm_cpanel' && $domain === '') {
             return response()->json(['message' => 'Please enter the domain for this hosting service.'], 422);
         }
 
-        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data) {
+        // Bundled domain registration/transfer: validate against the registry
+        // and the TLD catalog BEFORE creating anything.
+        $domainPricing = null;
+        if (in_array($mode, ['register', 'transfer']) && $domain !== '') {
+            if (\App\Models\Domain::withoutGlobalScopes()->where('name', $domain)->exists()) {
+                return response()->json(['message' => "{$domain} already exists in our system — choose \"use my existing domain\" instead."], 422);
+            }
+            $tld = strtolower(explode('.', $domain, 2)[1] ?? '');
+            $domainPricing = \App\Models\DomainTld::priceFor($tenantId, $tld);
+            if (!$domainPricing) {
+                return response()->json(['message' => "We don't currently offer .{$tld} — please contact us."], 422);
+            }
+            try {
+                $check = app(\App\Services\Registrar\DomainRegistrarManager::class)->driverFor($tenantId)->check($domain);
+                if ($mode === 'register' && !$check['available']) {
+                    return response()->json(['message' => "{$domain} is not available to register."], 422);
+                }
+                if ($mode === 'transfer' && $check['available']) {
+                    return response()->json(['message' => "{$domain} is not registered — nothing to transfer."], 422);
+                }
+            } catch (\App\Exceptions\RegistrarApiException) {
+                return response()->json(['message' => 'Could not verify the domain right now — please try again.'], 422);
+            }
+        }
+
+        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing) {
             $start = now()->startOfDay();
             $expire = match ($product->billing_cycle) {
                 'monthly'     => $start->copy()->addMonth(),
@@ -105,7 +152,11 @@ class PortalOrderController extends Controller
 
             $lineBase = (float) $product->price;
             $lineTax  = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
-            $total    = round($lineBase + $lineTax, 2);
+            $domainPrice = 0.0;
+            if ($domainPricing && in_array($mode, ['register', 'transfer'])) {
+                $domainPrice = (float) ($mode === 'register' ? $domainPricing->register_price : $domainPricing->transfer_price);
+            }
+            $total = round($lineBase + $lineTax + $domainPrice, 2);
 
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $tenantId,
@@ -114,7 +165,7 @@ class PortalOrderController extends Controller
                 'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
                 'date'            => now()->toDateString(),
                 'due_date'        => now()->toDateString(),
-                'subtotal'        => round($lineBase, 2),
+                'subtotal'        => round($lineBase + $domainPrice, 2),
                 'discount_amount' => 0,
                 'tax_amount'      => round($lineTax, 2),
                 'total'           => $total,
@@ -130,21 +181,57 @@ class PortalOrderController extends Controller
                 'price'              => $product->price,
                 'tax_percent'        => $product->tax_percent ?? 0,
                 'tax_amount'         => round($lineTax, 2),
-                'total'              => $total,
+                'total'              => round($lineBase + $lineTax, 2),
             ]);
+
+            if ($domainPricing && in_array($mode, ['register', 'transfer'])) {
+                $document->items()->create([
+                    'item_type'   => 'service',
+                    'description' => ucfirst($mode) . " domain {$domain} — 1 year",
+                    'quantity'    => 1,
+                    'price'       => $domainPrice,
+                    'tax_percent' => 0,
+                    'tax_amount'  => 0,
+                    'total'       => $domainPrice,
+                ]);
+
+                \App\Models\Domain::create([
+                    'tenant_id'            => $tenantId,
+                    'client_id'            => $user->client_id,
+                    'registrar_account_id' => app(\App\Services\Registrar\DomainRegistrarManager::class)->accountFor($tenantId)->id,
+                    'name'                 => $domain,
+                    'status'               => 'pending',
+                    'auto_renew'           => true,
+                    'epp_auth_info'        => $data['auth_info'] ?? null,
+                    'client_subscription_id' => $subscription->id,
+                    'meta'                 => [
+                        'pending_action'    => $mode,
+                        'pending_years'     => 1,
+                        'order_document_id' => $document->id,
+                        'portal_order'      => true,
+                    ],
+                ]);
+            }
 
             // Mark the first cycle as invoiced so the recurring engine doesn't
             // bill it again, and so payment activates this subscription.
-            RecurringInvoiceLog::withoutGlobalScopes()->create([
-                'tenant_id'              => $tenantId,
-                'client_id'              => $user->client_id,
-                'product_service_id'     => $product->id,
-                'client_subscription_id' => $subscription->id,
-                'document_id'            => $document->id,
-                'next_bill_date'         => $start->toDateString(),
-                'invoice_created_at'     => now(),
-                'reminders_sent'         => [],
-            ]);
+            // updateOrCreate: the (tenant, client, product, date) unique key may
+            // already hold a historical row (e.g. seeded WHMCS history) — the
+            // newest order takes over the linkage so payment activates THIS sub.
+            RecurringInvoiceLog::withoutGlobalScopes()->updateOrCreate(
+                [
+                    'tenant_id'          => $tenantId,
+                    'client_id'          => $user->client_id,
+                    'product_service_id' => $product->id,
+                    'next_bill_date'     => $start->toDateString(),
+                ],
+                [
+                    'client_subscription_id' => $subscription->id,
+                    'document_id'            => $document->id,
+                    'invoice_created_at'     => now(),
+                    'reminders_sent'         => [],
+                ]
+            );
 
             return [$subscription, $document];
         });
