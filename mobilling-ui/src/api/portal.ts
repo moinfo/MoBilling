@@ -189,8 +189,38 @@ export interface PortalHostingAccount {
 export const getPortalHosting = () =>
   api.get<{ data: PortalHostingAccount[] }>('/portal/hosting');
 
-export const portalHostingSso = (id: string) =>
-  api.post<{ url: string }>(`/portal/hosting/${id}/sso`);
+export const portalHostingSso = (id: string, opts?: { service?: 'cpanel' | 'webmail'; goto?: string }) =>
+  api.post<{ url: string }>(`/portal/hosting/${id}/sso`, opts ?? {});
+
+export interface PortalHostingDetail {
+  id: string;
+  domain: string;
+  cpanel_username: string;
+  status: string;
+  package: string | null;
+  product_name: string | null;
+  product_group: string | null;
+  price: number;
+  billing_cycle: string | null;
+  registered_at: string | null;
+  next_due: string | null;
+  disk_used: string | null;
+  disk_limit: string | null;
+  last_synced_at: string | null;
+  shortcuts: string[];
+}
+
+export const getPortalHostingDetail = (id: string) =>
+  api.get<{ data: PortalHostingDetail }>(`/portal/hosting/${id}`);
+
+export const refreshPortalHostingUsage = (id: string) =>
+  api.post<{ data: { disk_used: string | null; disk_limit: string | null; last_synced_at: string } }>(`/portal/hosting/${id}/refresh-usage`);
+
+export const changePortalHostingPassword = (id: string, password: string, password_confirmation: string) =>
+  api.post(`/portal/hosting/${id}/change-password`, { password, password_confirmation });
+
+export const requestPortalHostingCancellation = (id: string, reason: string, when: 'immediate' | 'end_of_period') =>
+  api.post(`/portal/hosting/${id}/request-cancellation`, { reason, when });
 
 // ── Domains ───────────────────────────────────────────────────────────────────
 

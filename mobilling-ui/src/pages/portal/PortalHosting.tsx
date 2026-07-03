@@ -4,6 +4,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { IconExternalLink, IconWorld } from '@tabler/icons-react';
 import { getPortalHosting, portalHostingSso, PortalHostingAccount } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
@@ -17,6 +18,7 @@ const statusColor: Record<string, string> = {
 
 export default function PortalHosting() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [openingId, setOpeningId] = useState<string | null>(null);
   const isPortalAdmin = (user as any)?.role === 'admin';
 
@@ -69,7 +71,8 @@ export default function PortalHosting() {
               </Table.Thead>
               <Table.Tbody>
                 {accounts.map((a) => (
-                  <Table.Tr key={a.id}>
+                  <Table.Tr key={a.id} style={{ cursor: 'pointer' }}
+                    onClick={() => navigate(`/portal/hosting/${a.id}`)}>
                     <Table.Td fw={500}>{a.domain}</Table.Td>
                     <Table.Td><Code>{a.cpanel_username}</Code></Table.Td>
                     <Table.Td>{a.package ?? '—'}</Table.Td>
@@ -89,7 +92,7 @@ export default function PortalHosting() {
                         <Button size="xs" variant="light"
                           leftSection={<IconExternalLink size={13} />}
                           loading={openingId === a.id}
-                          onClick={() => openCpanel(a.id)}>
+                          onClick={(e) => { e.stopPropagation(); openCpanel(a.id); }}>
                           Login to cPanel
                         </Button>
                       )}

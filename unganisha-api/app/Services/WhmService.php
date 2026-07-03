@@ -131,13 +131,19 @@ class WhmService
         return $this->call('passwd', ['user' => $user, 'password' => $password], sensitiveKeys: ['password']);
     }
 
-    /** One-time cPanel SSO login URL. */
-    public function ssoUrl(string $user): string
+    /**
+     * One-time SSO login URL. service: cpaneld (cPanel) or webmaild (Webmail).
+     * $goto deep-links to a specific cPanel tool after login.
+     */
+    public function ssoUrl(string $user, string $service = 'cpaneld', ?string $goto = null): string
     {
-        $res = $this->call('create_user_session', ['user' => $user, 'service' => 'cpaneld']);
+        $res = $this->call('create_user_session', ['user' => $user, 'service' => $service]);
         $url = data_get($res, 'data.url');
         if (!$url) {
             throw new WhmApiException('create_user_session', 'No session URL returned');
+        }
+        if ($goto) {
+            $url .= (str_contains($url, '?') ? '&' : '?') . 'goto_uri=' . urlencode($goto);
         }
         return $url;
     }
