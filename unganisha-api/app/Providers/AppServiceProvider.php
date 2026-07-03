@@ -3,7 +3,9 @@
 namespace App\Providers;
 
 use App\Models\ClientSubscription;
+use App\Models\Document;
 use App\Observers\ClientSubscriptionObserver;
+use App\Observers\DocumentObserver;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -29,5 +31,7 @@ class AppServiceProvider extends ServiceProvider
     {
         // Hosting provisioning: subscription status transitions -> WHM jobs
         ClientSubscription::observe(ClientSubscriptionObserver::class);
+        // Domain orders: invoice paid -> register/transfer/renew at the registry
+        Document::observe(DocumentObserver::class);
     }
 }

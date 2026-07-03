@@ -168,53 +168,16 @@ class DomainController extends Controller
         ], 201);
     }
 
-    /** Manual renewal order: creates the renewal invoice (EPP renew fires on payment — B3). */
-    public function renew(Request $request, Domain $domain)
+    /** Manual renewal order: creates the renewal invoice (EPP renew fires on payment). */
+    public function renew(Request $request, Domain $domain, \App\Services\Registrar\DomainBillingService $billing)
     {
         $data = $request->validate(['years' => 'required|integer|min:1|max:10']);
 
-        $pricing = DomainTld::priceFor($domain->tenant_id, $this->tldOf($domain->name));
-        if (!$pricing) {
-            return response()->json(['message' => 'No pricing configured for this TLD.'], 422);
+        try {
+            $document = $billing->createRenewalInvoice($domain, $data['years'], auth()->id());
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
-
-        $total = round($pricing->renew_price * $data['years'], 2);
-
-        $document = DB::transaction(function () use ($domain, $data, $total, $pricing) {
-            $document = Document::create([
-                'tenant_id'       => $domain->tenant_id,
-                'client_id'       => $domain->client_id,
-                'type'            => 'invoice',
-                'document_number' => app(DocumentNumberService::class)->generate('invoice', $domain->tenant_id),
-                'date'            => now()->toDateString(),
-                'due_date'        => now()->addDays(7)->toDateString(),
-                'subtotal'        => $total,
-                'discount_amount' => 0,
-                'tax_amount'      => 0,
-                'total'           => $total,
-                'status'          => 'sent',
-                'notes'           => "Domain renewal: {$domain->name} ({$data['years']} year(s))",
-                'created_by'      => auth()->id(),
-            ]);
-
-            $document->items()->create([
-                'item_type'   => 'service',
-                'description' => "Renew domain {$domain->name} — {$data['years']} year(s)",
-                'quantity'    => $data['years'],
-                'price'       => $pricing->renew_price,
-                'tax_percent' => 0,
-                'tax_amount'  => 0,
-                'total'       => $total,
-            ]);
-
-            $domain->update(['meta' => array_merge($domain->meta ?? [], [
-                'pending_action'      => 'renew',
-                'pending_years'       => $data['years'],
-                'renewal_document_id' => $document->id,
-            ])]);
-
-            return $document;
-        });
 
         return response()->json([
             'document' => ['id' => $document->id, 'document_number' => $document->document_number, 'total' => $document->total],
