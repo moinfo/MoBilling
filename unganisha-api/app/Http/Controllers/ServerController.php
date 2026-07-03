@@ -63,9 +63,14 @@ class ServerController extends Controller
     {
         $required = $updating ? 'sometimes' : 'required';
 
+        // Normalize hostname: users paste with stray spaces/commas/schemes.
+        if ($request->filled('hostname')) {
+            $request->merge(['hostname' => trim(preg_replace('#^https?://#i', '', $request->hostname), " ,;/")]);
+        }
+
         return $request->validate([
             'name'       => "{$required}|string|max:255",
-            'hostname'   => "{$required}|string|max:255",
+            'hostname'   => ["{$required}", 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]*[a-z0-9]$/i'],
             'port'       => 'integer|min:1|max:65535',
             'username'   => "{$required}|string|max:255",
             'api_token'  => ($updating ? 'nullable' : 'required') . '|string',
