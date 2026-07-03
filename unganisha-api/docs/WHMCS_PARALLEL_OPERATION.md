@@ -132,7 +132,9 @@ php artisan config:clear
 ## 4. Known gaps vs WHMCS (why we're still parallel)
 
 Tracked in `WHM_CPANEL_INTEGRATION.md` §3; the notable ones:
-support tickets/helpdesk (absent in MoBilling), client self-service ordering
-(cart/checkout — MoBilling portal is view+pay only), gTLD registrar driver,
+~~support tickets~~ (BUILT 2026-07-03: full helpdesk, staff + portal),
+~~client self-service domain ordering~~ (BUILT 2026-07-03: portal register/
+transfer/renew), client self-service HOSTING ordering (portal is view+pay
+only for hosting), gTLD registrar driver, announcements/news module,
 promo codes / proration / client credit wallet, WHMCS addon-module features.
 Completing these (or accepting their absence) is the trigger for cutover.
