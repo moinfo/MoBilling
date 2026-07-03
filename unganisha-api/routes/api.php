@@ -481,6 +481,28 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/{hostingAccount}/change-package', [\App\Http\Controllers\HostingAccountController::class, 'changePackage']);
     Route::middleware('permission:hosting.sso')->post('/hosting-accounts/{hostingAccount}/sso', [\App\Http\Controllers\HostingAccountController::class, 'sso']);
 
+    // ── Domains (.tz registrar) ──────────────────────────────────────────────
+    Route::middleware('permission:domains.read')->group(function () {
+        Route::get('/domains/check',            [\App\Http\Controllers\DomainController::class, 'check']);
+        Route::get('/domains',                  [\App\Http\Controllers\DomainController::class, 'index']);
+        Route::get('/domains/{domain}',         [\App\Http\Controllers\DomainController::class, 'show']);
+        Route::get('/domains/{domain}/logs',    [\App\Http\Controllers\DomainController::class, 'logs']);
+    });
+    Route::middleware('permission:domains.create')->post('/domains/order', [\App\Http\Controllers\DomainController::class, 'order']);
+    Route::middleware('permission:domains.renew')->post('/domains/{domain}/renew', [\App\Http\Controllers\DomainController::class, 'renew']);
+    Route::middleware('permission:domains.transfer')->get('/domains/{domain}/auth-info', [\App\Http\Controllers\DomainController::class, 'authInfo']);
+    Route::middleware('permission:domains.settings')->group(function () {
+        Route::get('/registrar-accounts',                       [\App\Http\Controllers\RegistrarAccountController::class, 'index']);
+        Route::post('/registrar-accounts',                      [\App\Http\Controllers\RegistrarAccountController::class, 'store']);
+        Route::put('/registrar-accounts/{registrarAccount}',    [\App\Http\Controllers\RegistrarAccountController::class, 'update']);
+        Route::delete('/registrar-accounts/{registrarAccount}', [\App\Http\Controllers\RegistrarAccountController::class, 'destroy']);
+        Route::post('/registrar-accounts/{registrarAccount}/test', [\App\Http\Controllers\RegistrarAccountController::class, 'test']);
+        Route::get('/domain-tlds',                  [\App\Http\Controllers\DomainTldController::class, 'index']);
+        Route::post('/domain-tlds',                 [\App\Http\Controllers\DomainTldController::class, 'store']);
+        Route::put('/domain-tlds/{domainTld}',      [\App\Http\Controllers\DomainTldController::class, 'update']);
+        Route::delete('/domain-tlds/{domainTld}',   [\App\Http\Controllers\DomainTldController::class, 'destroy']);
+    });
+
     // ── Field Marketing (Door-to-Door) ───────────────────────────────────────
     Route::middleware('permission:field_sessions.read')->get('/field-visits-report', [\App\Http\Controllers\FieldMarketingController::class, 'allVisits']);
     Route::middleware('permission:field_sessions.read')->get('/field-sessions', [\App\Http\Controllers\FieldMarketingController::class, 'sessions']);
