@@ -130,3 +130,6 @@ export const getClientCredit = (clientId: string) =>
 
 export const adjustClientCredit = (clientId: string, amount: number, notes: string) =>
   api.post(`/clients/${clientId}/credit/adjust`, { amount, notes });
+
+export const updateClientNotes = (clientId: string, notes: string) =>
+  api.put(`/clients/${clientId}/notes`, { notes });

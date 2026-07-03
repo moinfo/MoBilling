@@ -4,7 +4,7 @@ import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
   Anchor, Loader, Center, ThemeIcon, Modal, Button, TextInput,
   PasswordInput, Select, Switch, ActionIcon, Tooltip, SegmentedControl,
-  NumberInput,
+  NumberInput, Textarea,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -15,14 +15,14 @@ import {
   IconFileInvoice, IconCash, IconCalendarDue, IconRepeat, IconSend, IconPhoneCall,
   IconHeartHandshake, IconUserPlus, IconEdit, IconTrash, IconShieldLock,
   IconArrowUp, IconArrowDown, IconArrowsSort,
-  IconLogin, IconWallet, IconWorldWww, IconMessageCircle, IconServer,
+  IconLogin, IconWallet, IconWorldWww, IconMessageCircle, IconServer, IconNote,
 } from '@tabler/icons-react';
 import { Rating } from '@mantine/core';
 import {
   getClientProfile, ClientProfile as ClientProfileType, ClientCommunicationLog,
   getClientPortalUsers, createClientPortalUser, updateClientPortalUser, deleteClientPortalUser,
   ClientPortalUser,
-  portalLoginAsClient, getClientCredit, adjustClientCredit,
+  portalLoginAsClient, getClientCredit, adjustClientCredit, updateClientNotes,
 } from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
@@ -209,6 +209,11 @@ export default function ClientProfile() {
             </div>
           </Group>
         </Paper>
+      )}
+
+      {/* Admin notes (staff-only) */}
+      {can('clients.update') && (
+        <AdminNotesCard clientId={clientId!} initial={(profile as any).admin_notes ?? ''} />
       )}
 
       {/* Summary Cards */}
@@ -1052,5 +1057,46 @@ function CreditModal({ clientId, opened, onClose }: { clientId: string; opened: 
         )}
       </Stack>
     </Modal>
+  );
+}
+
+function AdminNotesCard({ clientId, initial }: { clientId: string; initial: string }) {
+  const qc = useQueryClient();
+  const [notes, setNotes] = useState(initial);
+  const [dirty, setDirty] = useState(false);
+
+  const mutation = useMutation({
+    mutationFn: () => updateClientNotes(clientId, notes),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['client-profile', clientId] });
+      setDirty(false);
+      notifications.show({ message: 'Admin notes saved.', color: 'green' });
+    },
+    onError: () => notifications.show({ message: 'Failed to save notes.', color: 'red' }),
+  });
+
+  return (
+    <Paper withBorder p="md" radius="md" bg="var(--mantine-color-yellow-light)">
+      <Group justify="space-between" mb="xs">
+        <Group gap="xs"><IconNote size={18} /><Title order={4}>Admin Notes</Title></Group>
+        <Text size="xs" c="dimmed">Staff only — never visible to the client</Text>
+      </Group>
+      <Textarea
+        placeholder="Internal notes about this client…"
+        minRows={2} autosize maxRows={8}
+        value={notes}
+        onChange={(e) => { setNotes(e.currentTarget.value); setDirty(true); }}
+      />
+      {dirty && (
+        <Group justify="flex-end" mt="xs">
+          <Button size="xs" variant="default" onClick={() => { setNotes(initial); setDirty(false); }}>
+            Discard
+          </Button>
+          <Button size="xs" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Save Notes
+          </Button>
+        </Group>
+      )}
+    </Paper>
   );
 }

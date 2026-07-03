@@ -190,6 +190,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:clients.read')->get('/clients/{client}/profile', [ClientController::class, 'profile']);
     Route::middleware('permission:clients.create')->post('/clients', [ClientController::class, 'store']);
     Route::middleware('permission:clients.update')->put('/clients/{client}', [ClientController::class, 'update']);
+    Route::middleware('permission:clients.update')->put('/clients/{client}/notes', [ClientController::class, 'updateNotes']);
     Route::middleware('permission:clients.delete')->delete('/clients/{client}', [ClientController::class, 'destroy']);
 
     // Client Subscriptions

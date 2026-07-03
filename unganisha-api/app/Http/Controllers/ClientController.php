@@ -67,6 +67,15 @@ class ClientController extends Controller
         return response()->json(['message' => 'Client deleted successfully']);
     }
 
+    /** Staff-only admin notes (never shown to the client). */
+    public function updateNotes(\Illuminate\Http\Request $request, Client $client)
+    {
+        $data = $request->validate(['notes' => 'nullable|string|max:10000']);
+        $client->update(['notes' => $data['notes'] ?? null]);
+
+        return response()->json(['message' => 'Notes saved.']);
+    }
+
     public function profile(Client $client)
     {
         $cycleIntervals = [
@@ -257,6 +266,7 @@ class ClientController extends Controller
             'credit_balance' => (float) $client->credit_balance,
             'client_since' => $client->created_at?->format('Y-m-d'),
             'client_status' => $client->status ?? 'active',
+            'admin_notes' => $client->notes,
             'summary' => [
                     'total_invoiced' => round((float) $totalInvoiced, 2),
                     'total_paid' => round((float) $totalPaid, 2),
