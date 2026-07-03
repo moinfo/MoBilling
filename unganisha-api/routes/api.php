@@ -513,6 +513,13 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:tickets.manage')->post('/tickets/{ticket}/status', [\App\Http\Controllers\TicketController::class, 'updateStatus']);
     Route::middleware('permission:tickets.manage')->post('/tickets/{ticket}/assign', [\App\Http\Controllers\TicketController::class, 'assign']);
 
+    // ── Client Credit (wallet) ───────────────────────────────────────────────
+    Route::middleware('permission:credit.manage')->group(function () {
+        Route::get('/clients/{client}/credit',        [\App\Http\Controllers\ClientCreditController::class, 'show']);
+        Route::post('/clients/{client}/credit/adjust', [\App\Http\Controllers\ClientCreditController::class, 'adjust']);
+        Route::post('/documents/{document}/apply-credit', [\App\Http\Controllers\ClientCreditController::class, 'applyToInvoice']);
+    });
+
     // ── Field Marketing (Door-to-Door) ───────────────────────────────────────
     Route::middleware('permission:field_sessions.read')->get('/field-visits-report', [\App\Http\Controllers\FieldMarketingController::class, 'allVisits']);
     Route::middleware('permission:field_sessions.read')->get('/field-sessions', [\App\Http\Controllers\FieldMarketingController::class, 'sessions']);
@@ -649,6 +656,9 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/domain-tlds', [\App\Http\Controllers\Portal\PortalOrderController::class, 'tlds']);
     Route::get('/domain-addons', [\App\Http\Controllers\Portal\PortalOrderController::class, 'domainAddons']);
     Route::post('/orders',  [\App\Http\Controllers\Portal\PortalOrderController::class, 'store']);
+    Route::get('/credit',                       [\App\Http\Controllers\Portal\PortalCreditController::class, 'show']);
+    Route::post('/credit/topup',                [\App\Http\Controllers\Portal\PortalCreditController::class, 'topup']);
+    Route::post('/documents/{document}/apply-credit', [\App\Http\Controllers\Portal\PortalCreditController::class, 'applyToInvoice']);
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
     Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Stack, SimpleGrid, Paper, Text, Badge, LoadingOverlay, Group, Title, Button,
-  TextInput, Divider, NavLink, Grid,
+  TextInput, Divider, NavLink, Grid, Modal, NumberInput,
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -9,10 +9,10 @@ import {
   IconServer, IconWorldWww, IconTicket, IconReceipt, IconUser, IconPencil,
   IconShoppingCart, IconLogout, IconExternalLink, IconRefresh, IconBox,
   IconMessageCircle, IconPlus, IconUsers, IconFileInvoice, IconCash,
-  IconAlertTriangle, IconClock,
+  IconAlertTriangle, IconClock, IconWallet,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { getPortalDashboard, portalHostingSso } from '../../api/portal';
+import { getPortalDashboard, portalHostingSso, portalCreditTopup } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -25,6 +25,9 @@ export default function PortalDashboard() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [domainQuery, setDomainQuery] = useState('');
+  const [fundsOpen, setFundsOpen] = useState(false);
+  const [fundsAmount, setFundsAmount] = useState<number>(50000);
+  const [fundsBusy, setFundsBusy] = useState(false);
   const [ssoLoading, setSsoLoading] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -164,7 +167,8 @@ export default function PortalDashboard() {
                 </Paper>
 
                 {/* Money summary */}
-                <SimpleGrid cols={{ base: 2, md: 4 }}>
+                <SimpleGrid cols={{ base: 2, md: 5 }}>
+                  <MiniStat label="Credit Balance" value={fmt((d as any).credit_balance ?? 0)} icon={<IconCash size={20} />} color="teal" />
                   <MiniStat label="Total Invoiced" value={fmt(d.total_invoiced)} icon={<IconFileInvoice size={20} />} color="blue" />
                   <MiniStat label="Total Paid" value={fmt(d.total_paid)} icon={<IconCash size={20} />} color="green" />
                   <MiniStat label="Balance" value={fmt(d.total_balance)} icon={<IconAlertTriangle size={20} />} color="orange" />
@@ -220,6 +224,8 @@ export default function PortalDashboard() {
                     onClick={() => navigate('/portal/products-services')} />
                   <NavLink label="Register a New Domain" leftSection={<IconWorldWww size={16} />}
                     onClick={() => navigate('/portal/domains?order=register')} />
+                  <NavLink label="Add Funds" leftSection={<IconWallet size={16} />}
+                    onClick={() => setFundsOpen(true)} />
                   <NavLink label="Logout" leftSection={<IconLogout size={16} />} onClick={handleLogout} />
                 </Paper>
 
@@ -259,6 +265,35 @@ export default function PortalDashboard() {
           </Grid>
         </>
       )}
+
+      <Modal opened={fundsOpen} onClose={() => setFundsOpen(false)} title="Add Funds" centered>
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">
+            Top up your account credit — it can be used to pay any future invoice instantly.
+          </Text>
+          <NumberInput label="Amount (TZS)" min={5000} max={10000000} step={5000}
+            value={fundsAmount} onChange={(v) => setFundsAmount(Number(v) || 0)} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setFundsOpen(false)}>Cancel</Button>
+            <Button color="teal" disabled={fundsAmount < 5000} loading={fundsBusy}
+              onClick={async () => {
+                setFundsBusy(true);
+                try {
+                  const res = await portalCreditTopup(fundsAmount);
+                  notifications.show({ title: 'Top-up invoice created', message: res.data?.message, color: 'green', autoClose: 9000 });
+                  setFundsOpen(false);
+                  navigate('/portal/invoices');
+                } catch (e: any) {
+                  notifications.show({ message: e?.response?.data?.message ?? 'Top-up failed.', color: 'red' });
+                } finally {
+                  setFundsBusy(false);
+                }
+              }}>
+              Create Top-up Invoice
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

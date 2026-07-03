@@ -10,7 +10,7 @@ import {
   IconSearch, IconCreditCard, IconCheck, IconMail, IconDownload, IconArrowUp, IconArrowDown,
   IconArrowsSort, IconAlertTriangle, IconCash, IconFileInvoice,
 } from '@tabler/icons-react';
-import { getPortalDocuments, getPortalDocument, resendPortalDocument , downloadPortalDocumentPdf } from '../../api/portal';
+import { getPortalDocuments, getPortalDocument, resendPortalDocument , downloadPortalDocumentPdf , portalApplyCredit, getPortalCredit } from '../../api/portal';
 import { portalCheckoutInvoice, getPaymentStatusByTracking } from '../../api/payment';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -29,10 +29,13 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
   const [search, setSearch] = useState('');
   const [viewId, setViewId] = useState<string | null>(null);
   const [paying, setPaying] = useState(false);
+  const [applyingCredit, setApplyingCredit] = useState(false);
   const [sending, setSending] = useState(false);
   const [paymentDone, setPaymentDone] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
+  const { data: creditData } = useQuery({ queryKey: ['portal-credit'], queryFn: getPortalCredit });
+  const creditBalance: number = creditData?.data?.data?.balance ?? 0;
 
   const title = type === 'invoice' ? 'Invoices' : 'Quotations';
   const isInvoice = type === 'invoice';
@@ -467,6 +470,33 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
                 onClick={() => handlePay(detail.id)}
               >
                 Pay {fmt(detail.balance_due ?? 0)} Now
+              </Button>
+            )}
+
+            {/* Apply account credit */}
+            {isInvoice && (detail.balance_due ?? 0) > 0 && (creditBalance ?? 0) > 0 && (
+              <Button
+                fullWidth
+                variant="light"
+                color="teal"
+                leftSection={<IconCash size={18} />}
+                loading={applyingCredit}
+                onClick={async () => {
+                  setApplyingCredit(true);
+                  try {
+                    const res = await portalApplyCredit(detail.id);
+                    notifications.show({ title: 'Credit applied', message: res.data?.message, color: 'green' });
+                    queryClient.invalidateQueries({ queryKey: ['portal-documents'] });
+                    queryClient.invalidateQueries({ queryKey: ['portal-credit'] });
+                    setViewId(null);
+                  } catch (e: any) {
+                    notifications.show({ message: e?.response?.data?.message ?? 'Could not apply credit.', color: 'red' });
+                  } finally {
+                    setApplyingCredit(false);
+                  }
+                }}
+              >
+                Use Credit Balance ({fmt(Math.min(creditBalance ?? 0, detail.balance_due ?? 0))})
               </Button>
             )}
 

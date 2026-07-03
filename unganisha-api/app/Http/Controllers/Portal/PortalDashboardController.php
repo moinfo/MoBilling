@@ -160,6 +160,7 @@ class PortalDashboardController extends Controller
             ->values();
 
         return response()->json([
+            'credit_balance' => (float) ($client?->credit_balance ?? 0),
             'services_count' => $servicesCount,
             'domains_count' => $domainsCount,
             'tickets_count' => \App\Models\Ticket::where('client_id', $clientId)->where('status', '!=', 'closed')->count(),

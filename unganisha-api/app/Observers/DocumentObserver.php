@@ -29,6 +29,24 @@ class DocumentObserver
             ->whereNotNull('meta->pending_action')
             ->get();
 
+        // Add-funds top-ups: deposit the credit once the invoice is paid.
+        $pendingTopups = \App\Models\ClientCredit::withoutGlobalScopes()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('type', 'topup_pending')
+            ->where('document_id', $document->id)
+            ->get();
+
+        foreach ($pendingTopups as $topup) {
+            $topup->update(['type' => 'topup_consumed']);
+            $client = \App\Models\Client::withoutGlobalScopes()->find($topup->client_id);
+            if ($client) {
+                app(\App\Services\CreditService::class)->adjust(
+                    $client, (float) $topup->amount, 'deposit',
+                    "Add funds — invoice {$document->document_number}", $document->id
+                );
+            }
+        }
+
         // Plan upgrades: apply the pending change once its invoice is paid.
         $pendingChanges = \App\Models\ClientSubscription::withoutGlobalScopes()
             ->where('tenant_id', $document->tenant_id)

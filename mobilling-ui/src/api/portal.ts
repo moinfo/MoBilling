@@ -331,3 +331,22 @@ export const downloadPortalDocumentPdf = (id: string) =>
 
 export const getPortalDomainAddons = () =>
   api.get<{ data: DomainAddonRow[] }>('/portal/domain-addons');
+
+// ── Credit wallet ─────────────────────────────────────────────────────────────
+
+export interface CreditLedgerRow {
+  id: string;
+  type: string;
+  amount: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export const getPortalCredit = () =>
+  api.get<{ data: { balance: number; ledger: CreditLedgerRow[] } }>('/portal/credit');
+
+export const portalCreditTopup = (amount: number) =>
+  api.post('/portal/credit/topup', { amount });
+
+export const portalApplyCredit = (documentId: string) =>
+  api.post(`/portal/documents/${documentId}/apply-credit`);
