@@ -270,7 +270,20 @@ export const getPortalCatalog = () =>
 export const placePortalOrder = (data: {
   product_service_id: string; label?: string;
   domain_mode?: 'register' | 'transfer' | 'existing'; auth_info?: string;
+  years?: number; addons?: string[];
 }) => api.post('/portal/orders', data);
 
+export interface PortalTldRow {
+  tld: string; register_price: number; transfer_price: number;
+  years_min: number; years_max: number;
+}
+
 export const getPortalDomainTlds = () =>
-  api.get<{ data: { tld: string; register_price: number; transfer_price: number }[] }>('/portal/domain-tlds');
+  api.get<{ data: PortalTldRow[] }>('/portal/domain-tlds');
+
+export interface DomainAddonRow {
+  id: string; name: string; description: string | null; price: number; is_free: boolean;
+}
+
+export const getPortalDomainAddons = () =>
+  api.get<{ data: DomainAddonRow[] }>('/portal/domain-addons');

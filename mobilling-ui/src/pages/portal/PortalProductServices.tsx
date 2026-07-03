@@ -2,17 +2,18 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   SimpleGrid, Modal, TextInput, Badge, Divider, Center, Radio, Select, Alert,
+  Checkbox, UnstyledButton,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { useNavigate } from 'react-router-dom';
 import {
   IconShoppingCart, IconRefresh, IconWorldWww, IconArrowRight, IconReceipt,
-  IconCheck, IconPlus,
+  IconCheck, IconPlus, IconArrowLeft,
 } from '@tabler/icons-react';
 import {
-  getPortalCatalog, placePortalOrder, getPortalDomainTlds, portalCheckDomain,
-  CatalogGroup, CatalogProduct,
+  getPortalCatalog, placePortalOrder, getPortalDomainTlds, getPortalDomainAddons,
+  portalCheckDomain, CatalogGroup, CatalogProduct, DomainAddonRow,
 } from '../../api/portal';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -137,6 +138,9 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
   const [label, setLabel] = useState('');           // non-hosting reference
   const [checking, setChecking] = useState(false);
   const [checkResult, setCheckResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [step, setStep] = useState<'choose' | 'configure'>('choose');
+  const [years, setYears] = useState(1);
+  const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
 
   const { data: tldsData } = useQuery({
     queryKey: ['portal-domain-tlds'],
@@ -144,6 +148,12 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
     enabled: !!product?.needs_domain,
   });
   const tlds = tldsData?.data?.data ?? [];
+  const { data: addonsData } = useQuery({
+    queryKey: ['portal-domain-addons'],
+    queryFn: getPortalDomainAddons,
+    enabled: !!product?.needs_domain,
+  });
+  const addons: DomainAddonRow[] = addonsData?.data?.data ?? [];
   const tldOptions = tlds.map((t) => ({ value: t.tld, label: `.${t.tld}` }));
   const activeTld = tlds.find((t) => t.tld === tld);
 
@@ -151,9 +161,13 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
     ? (sld.trim() ? `${sld.trim().toLowerCase().replace(/^www\./, '')}.${tld}` : '')
     : fullDomain.trim().toLowerCase().replace(/^www\./, '');
 
-  const domainPrice = mode === 'register' ? (activeTld?.register_price ?? 0)
-    : mode === 'transfer' ? (tlds.find((t) => domain.endsWith(`.${t.tld}`))?.transfer_price ?? 0)
+  const matchedTld = mode === 'register' ? activeTld : tlds.find((t) => domain.endsWith(`.${t.tld}`));
+  const domainUnit = mode === 'register' ? (matchedTld?.register_price ?? 0)
+    : mode === 'transfer' ? (matchedTld?.transfer_price ?? 0)
     : 0;
+  const domainPrice = domainUnit * years;
+  const addonsPrice = addons.filter((a) => selectedAddons.includes(a.id) && !a.is_free)
+    .reduce((sum, a) => sum + Number(a.price), 0);
 
   const resetCheck = () => setCheckResult(null);
 
@@ -186,6 +200,8 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
       label: product!.needs_domain ? domain : (label.trim() || undefined),
       domain_mode: product!.needs_domain ? mode : undefined,
       auth_info: mode === 'transfer' ? authInfo : undefined,
+      years: product!.needs_domain && mode !== 'existing' ? years : undefined,
+      addons: product!.needs_domain && mode !== 'existing' ? selectedAddons : undefined,
     }),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['portal-subscriptions'] });
@@ -202,7 +218,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
 
   const handleClose = () => {
     setMode('register'); setSld(''); setFullDomain(''); setAuthInfo(''); setLabel('');
-    setCheckResult(null);
+    setCheckResult(null); setStep('choose'); setYears(1); setSelectedAddons([]);
     onClose();
   };
 
@@ -215,13 +231,69 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
         : (domainValid && checkResult?.ok === true && (mode !== 'transfer' || authInfo.trim().length > 0))
   );
 
-  const total = (product?.price ?? 0) + (product?.needs_domain && mode !== 'existing' && checkResult?.ok ? domainPrice : 0);
+  const total = (product?.price ?? 0)
+    + (product?.needs_domain && mode !== 'existing' && checkResult?.ok ? domainPrice + addonsPrice : 0);
+  const canContinue = product?.needs_domain && (
+    mode === 'existing' ? domainValid
+      : (domainValid && checkResult?.ok === true && (mode !== 'transfer' || authInfo.trim().length > 0)));
+  const yearOptions = Array.from(
+    { length: Math.max(1, (matchedTld?.years_max ?? 10) - (matchedTld?.years_min ?? 1) + 1) },
+    (_, i) => String((matchedTld?.years_min ?? 1) + i),
+  ).map((y) => ({ value: y, label: `${y} Year/s — Tsh.${fmt(domainUnit * Number(y))}` }));
 
   return (
     <Modal opened={!!product} onClose={handleClose} title={`Order — ${product?.name}`} centered size="lg">
       {product && (
         <Stack gap="sm">
-          {product.needs_domain ? (
+          {product.needs_domain && step === 'configure' && mode !== 'existing' ? (
+            <Paper withBorder radius="md" p="md" bg="var(--mantine-color-default-hover)">
+              <Text fw={700}>Domains Configuration</Text>
+              <Text size="xs" c="dimmed" mb="sm">
+                Please review your domain name selection and any addons that are available for it.
+              </Text>
+              <Divider label={<Text c="blue" fw={600} size="sm">{domain}</Text>} labelPosition="center" mb="sm" />
+              <Group grow mb="md">
+                <div>
+                  <Text size="xs" c="dimmed">Registration Period</Text>
+                  <Select mt={4} data={yearOptions} value={String(years)}
+                    onChange={(v) => setYears(Number(v) || 1)} />
+                </div>
+                <div>
+                  <Text size="xs" c="dimmed">Hosting</Text>
+                  <Text mt={10} size="sm" fw={600} c="green">[Has Hosting]</Text>
+                </div>
+              </Group>
+              <Stack gap="sm">
+                {addons.map((a) => {
+                  const on = selectedAddons.includes(a.id);
+                  return (
+                    <Paper key={a.id} withBorder radius="md" style={{ overflow: 'hidden' }}>
+                      <Stack gap={4} p="sm" align="center">
+                        <Checkbox checked={on} label={<Text fw={700}>{a.name}</Text>}
+                          onChange={() => setSelectedAddons((cur) =>
+                            on ? cur.filter((x) => x !== a.id) : [...cur, a.id])} />
+                        {a.description && <Text size="xs" c="dimmed" ta="center">{a.description}</Text>}
+                      </Stack>
+                      <Text ta="center" size="sm" fw={600} py={6} bg="var(--mantine-color-default-hover)">
+                        {a.is_free ? 'FREE!' : `Tsh.${fmt(Number(a.price))}`} / 1 Year/s
+                      </Text>
+                      <UnstyledButton w="100%" py={8}
+                        style={{ background: on ? 'var(--mantine-color-green-6)' : 'var(--mantine-color-gray-2)', textAlign: 'center' }}
+                        onClick={() => setSelectedAddons((cur) =>
+                          on ? cur.filter((x) => x !== a.id) : [...cur, a.id])}>
+                        <Group gap={6} justify="center">
+                          <IconShoppingCart size={14} color={on ? 'white' : 'gray'} />
+                          <Text size="sm" fw={600} c={on ? 'white' : 'dimmed'}>
+                            {on ? 'Added to Cart (Remove)' : 'Add to Cart'}
+                          </Text>
+                        </Group>
+                      </UnstyledButton>
+                    </Paper>
+                  );
+                })}
+              </Stack>
+            </Paper>
+          ) : product.needs_domain ? (
             <Paper withBorder radius="md" p="md" bg="var(--mantine-color-default-hover)">
               <Text fw={700} mb="sm">Choose a Domain…</Text>
               <Radio.Group value={mode} onChange={(v) => { setMode(v as any); resetCheck(); }}>
@@ -282,10 +354,18 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
               <Text size="sm" fw={600}>Tsh.{fmt(product.price)}</Text>
             </Group>
             {product.needs_domain && mode !== 'existing' && checkResult?.ok && (
-              <Group justify="space-between" mt={4}>
-                <Text size="sm">{mode === 'register' ? 'Register' : 'Transfer'} {domain} — 1 year</Text>
-                <Text size="sm" fw={600}>Tsh.{fmt(domainPrice)}</Text>
-              </Group>
+              <>
+                <Group justify="space-between" mt={4}>
+                  <Text size="sm">{mode === 'register' ? 'Register' : 'Transfer'} {domain} — {years} year(s)</Text>
+                  <Text size="sm" fw={600}>Tsh.{fmt(domainPrice)}</Text>
+                </Group>
+                {addons.filter((a) => selectedAddons.includes(a.id)).map((a) => (
+                  <Group key={a.id} justify="space-between" mt={2}>
+                    <Text size="xs" c="dimmed">{a.name}</Text>
+                    <Text size="xs" c="dimmed">{a.is_free ? 'FREE' : `Tsh.${fmt(Number(a.price))}`}</Text>
+                  </Group>
+                ))}
+              </>
             )}
             <Divider my={6} />
             <Group justify="space-between">
@@ -300,10 +380,24 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
 
           <Group justify="flex-end">
             <Button variant="default" onClick={handleClose}>Cancel</Button>
-            <Button color="green" disabled={!canSubmit} loading={mutation.isPending}
-              onClick={() => mutation.mutate()}>
-              Place Order
-            </Button>
+            {product.needs_domain && step === 'choose' && mode !== 'existing' ? (
+              <Button disabled={!canContinue} onClick={() => setStep('configure')}>
+                Continue →
+              </Button>
+            ) : (
+              <>
+                {product.needs_domain && step === 'configure' && (
+                  <Button variant="subtle" leftSection={<IconArrowLeft size={14} />}
+                    onClick={() => setStep('choose')}>
+                    Back
+                  </Button>
+                )}
+                <Button color="green" disabled={!canSubmit} loading={mutation.isPending}
+                  onClick={() => mutation.mutate()}>
+                  Place Order
+                </Button>
+              </>
+            )}
           </Group>
         </Stack>
       )}

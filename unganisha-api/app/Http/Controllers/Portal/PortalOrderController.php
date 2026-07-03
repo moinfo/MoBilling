@@ -73,7 +73,23 @@ class PortalOrderController extends Controller
                 'tld'            => $t->tld,
                 'register_price' => (float) $t->register_price,
                 'transfer_price' => (float) $t->transfer_price,
+                'years_min'      => $t->years_min,
+                'years_max'      => $t->years_max,
             ]);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** Domain addons offered on the configuration step. */
+    public function domainAddons(Request $request)
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $rows = DB::table('domain_addons')
+            ->where('is_active', true)
+            ->where(fn ($q) => $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id'))
+            ->orderBy('sort')
+            ->get(['id', 'name', 'description', 'price', 'is_free']);
 
         return response()->json(['data' => $rows]);
     }
@@ -90,6 +106,9 @@ class PortalOrderController extends Controller
             'label'       => 'nullable|string|max:255',
             'domain_mode' => 'nullable|in:register,transfer,existing',
             'auth_info'   => 'required_if:domain_mode,transfer|nullable|string|max:255',
+            'years'       => 'nullable|integer|min:1|max:10',
+            'addons'      => 'nullable|array',
+            'addons.*'    => 'uuid',
         ]);
 
         $product = ProductService::withoutGlobalScopes()->find($data['product_service_id']);
@@ -112,6 +131,10 @@ class PortalOrderController extends Controller
             if (!$domainPricing) {
                 return response()->json(['message' => "We don't currently offer .{$tld} — please contact us."], 422);
             }
+            $years = (int) ($data['years'] ?? 1);
+            if ($years < $domainPricing->years_min || $years > $domainPricing->years_max) {
+                return response()->json(['message' => "Registration period must be between {$domainPricing->years_min} and {$domainPricing->years_max} years."], 422);
+            }
             try {
                 $check = app(\App\Services\Registrar\DomainRegistrarManager::class)->driverFor($tenantId)->check($domain);
                 if ($mode === 'register' && !$check['available']) {
@@ -125,7 +148,15 @@ class PortalOrderController extends Controller
             }
         }
 
-        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing) {
+        $years  = (int) ($data['years'] ?? 1);
+        $addons = collect();
+        if (!empty($data['addons']) && in_array($mode, ['register', 'transfer'])) {
+            $addons = DB::table('domain_addons')->where('is_active', true)
+                ->where(fn ($q) => $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id'))
+                ->whereIn('id', $data['addons'])->get();
+        }
+
+        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing, $years, $addons) {
             $start = now()->startOfDay();
             $expire = match ($product->billing_cycle) {
                 'monthly'     => $start->copy()->addMonth(),
@@ -154,9 +185,11 @@ class PortalOrderController extends Controller
             $lineTax  = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
             $domainPrice = 0.0;
             if ($domainPricing && in_array($mode, ['register', 'transfer'])) {
-                $domainPrice = (float) ($mode === 'register' ? $domainPricing->register_price : $domainPricing->transfer_price);
+                $unit = (float) ($mode === 'register' ? $domainPricing->register_price : $domainPricing->transfer_price);
+                $domainPrice = round($unit * $years, 2);
             }
-            $total = round($lineBase + $lineTax + $domainPrice, 2);
+            $addonsPrice = round((float) $addons->sum(fn ($a) => $a->is_free ? 0 : $a->price), 2);
+            $total = round($lineBase + $lineTax + $domainPrice + $addonsPrice, 2);
 
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $tenantId,
@@ -165,7 +198,7 @@ class PortalOrderController extends Controller
                 'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
                 'date'            => now()->toDateString(),
                 'due_date'        => now()->toDateString(),
-                'subtotal'        => round($lineBase + $domainPrice, 2),
+                'subtotal'        => round($lineBase + $domainPrice + $addonsPrice, 2),
                 'discount_amount' => 0,
                 'tax_amount'      => round($lineTax, 2),
                 'total'           => $total,
@@ -187,13 +220,27 @@ class PortalOrderController extends Controller
             if ($domainPricing && in_array($mode, ['register', 'transfer'])) {
                 $document->items()->create([
                     'item_type'   => 'service',
-                    'description' => ucfirst($mode) . " domain {$domain} — 1 year",
-                    'quantity'    => 1,
-                    'price'       => $domainPrice,
+                    'description' => ucfirst($mode) . " domain {$domain} — {$years} year(s)",
+                    'quantity'    => $years,
+                    'price'       => round($domainPrice / max($years, 1), 2),
                     'tax_percent' => 0,
                     'tax_amount'  => 0,
                     'total'       => $domainPrice,
                 ]);
+
+                foreach ($addons as $addon) {
+                    if (!$addon->is_free && (float) $addon->price > 0) {
+                        $document->items()->create([
+                            'item_type'   => 'service',
+                            'description' => "{$addon->name} — {$domain}",
+                            'quantity'    => 1,
+                            'price'       => $addon->price,
+                            'tax_percent' => 0,
+                            'tax_amount'  => 0,
+                            'total'       => $addon->price,
+                        ]);
+                    }
+                }
 
                 \App\Models\Domain::create([
                     'tenant_id'            => $tenantId,
@@ -206,9 +253,10 @@ class PortalOrderController extends Controller
                     'client_subscription_id' => $subscription->id,
                     'meta'                 => [
                         'pending_action'    => $mode,
-                        'pending_years'     => 1,
+                        'pending_years'     => $years,
                         'order_document_id' => $document->id,
                         'portal_order'      => true,
+                        'addons'            => $addons->pluck('name')->values()->all(),
                     ],
                 ]);
             }

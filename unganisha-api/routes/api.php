@@ -640,6 +640,7 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::post('/tickets/{ticket}/close',  [\App\Http\Controllers\Portal\PortalTicketController::class, 'close']);
     Route::get('/catalog',  [\App\Http\Controllers\Portal\PortalOrderController::class, 'catalog']);
     Route::get('/domain-tlds', [\App\Http\Controllers\Portal\PortalOrderController::class, 'tlds']);
+    Route::get('/domain-addons', [\App\Http\Controllers\Portal\PortalOrderController::class, 'domainAddons']);
     Route::post('/orders',  [\App\Http\Controllers\Portal\PortalOrderController::class, 'store']);
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
