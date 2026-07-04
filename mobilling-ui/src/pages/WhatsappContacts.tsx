@@ -6,13 +6,14 @@ import {
 import {
   IconBrandWhatsapp, IconPlus, IconEdit, IconTrash, IconStar, IconStarFilled,
   IconUserCheck, IconSearch, IconUsers, IconChartBar, IconSpeakerphone, IconPhone,
-  IconUserPlus, IconUserCog,
+  IconUserPlus, IconUserCog, IconUserMinus,
 } from '@tabler/icons-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 import { notifications } from '@mantine/notifications';
 import {
-  getContacts, getStats, deleteContact, updateContact, claimContact, claimBulkContacts, assignContact,
+  getContacts, getStats, deleteContact, updateContact, claimContact, unclaimContact, claimBulkContacts, assignContact,
   LABEL_META, LABEL_ORDER, SOURCE_META, WhatsappContact, WaSource,
 } from '../api/whatsappContacts';
 import { getUsers, TenantUser } from '../api/users';
@@ -36,6 +37,8 @@ const SOURCE_OPTIONS = [
 export default function WhatsappContacts() {
   const qc = useQueryClient();
   const { can } = usePermissions();
+  const { user } = useAuth();
+  const myId = (user as any)?.id;
   const [tab, setTab] = useState<string>('contacts');
   const [search, setSearch] = useState('');
   const [labelFilter, setLabelFilter] = useState('');
@@ -90,6 +93,18 @@ export default function WhatsappContacts() {
       notifications.show({ message: 'Contact assigned to you.', color: 'green' });
     },
     onError: () => notifications.show({ message: 'Could not assign contact.', color: 'red' }),
+  });
+
+  const unclaimMutation = useMutation({
+    mutationFn: unclaimContact,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['whatsapp-contacts'] });
+      qc.invalidateQueries({ queryKey: ['whatsapp-stats'] });
+      notifications.show({ message: 'Contact released back to the shared pool.', color: 'gray' });
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not unassign contact.', color: 'red',
+    }),
   });
 
   // Bulk "claim my customers": claim every currently-shown unowned contact in one request.
@@ -149,7 +164,7 @@ export default function WhatsappContacts() {
         </Group>
         {tab === 'contacts' && (
           <Group gap="xs">
-            {can('whatsapp_contacts.update') && contacts.some((c) => !c.creator) && (
+            {can('whatsapp_contacts.view_all') && contacts.some((c) => !c.creator) && (
               <Button
                 variant="light"
                 leftSection={<IconUserPlus size={16} />}
@@ -327,6 +342,18 @@ export default function WhatsappContacts() {
                             <Tooltip label="Assign to me">
                               <ActionIcon variant="light" color="blue" onClick={() => claimMutation.mutate(c.id)}>
                                 <IconUserPlus size={15} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                          {can('whatsapp_contacts.update') && c.creator
+                            && (c.created_by === myId || can('whatsapp_contacts.view_all')) && (
+                            <Tooltip label={c.created_by === myId
+                              ? 'Unassign from me (release to shared pool)'
+                              : `Unassign from ${c.creator.name}`}>
+                              <ActionIcon variant="light" color="orange"
+                                loading={unclaimMutation.isPending && unclaimMutation.variables === c.id}
+                                onClick={() => unclaimMutation.mutate(c.id)}>
+                                <IconUserMinus size={15} />
                               </ActionIcon>
                             </Tooltip>
                           )}

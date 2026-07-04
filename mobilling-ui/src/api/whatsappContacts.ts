@@ -92,6 +92,10 @@ export const convertToClient = (id: string, data: { client_id?: string; client_n
 export const claimContact = (id: string) =>
   api.post<WhatsappContact>(`/whatsapp-contacts/${id}/claim`);
 
+// Release a contact back to the shared pool (own mistake, or admin cleanup).
+export const unclaimContact = (id: string) =>
+  api.post<WhatsappContact>(`/whatsapp-contacts/${id}/unclaim`);
+
 // Claim many unowned contacts in one request. Pass the ids currently shown;
 // omit to claim every unowned contact in the tenant.
 export const claimBulkContacts = (ids?: string[]) =>

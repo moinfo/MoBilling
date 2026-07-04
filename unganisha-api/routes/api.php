@@ -456,11 +456,12 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:whatsapp_contacts.read')->get('/whatsapp-contacts/stats', [\App\Http\Controllers\WhatsappContactController::class, 'stats']);
     Route::middleware('permission:whatsapp_contacts.read')->get('/whatsapp-contacts', [\App\Http\Controllers\WhatsappContactController::class, 'index']);
     Route::middleware('permission:whatsapp_contacts.create')->post('/whatsapp-contacts', [\App\Http\Controllers\WhatsappContactController::class, 'store']);
-    Route::middleware('permission:whatsapp_contacts.update')->post('/whatsapp-contacts/claim-bulk', [\App\Http\Controllers\WhatsappContactController::class, 'claimBulk']);
+    Route::middleware('permission:whatsapp_contacts.view_all')->post('/whatsapp-contacts/claim-bulk', [\App\Http\Controllers\WhatsappContactController::class, 'claimBulk']);
     Route::middleware('permission:whatsapp_contacts.update')->put('/whatsapp-contacts/{whatsappContact}', [\App\Http\Controllers\WhatsappContactController::class, 'update']);
     Route::middleware('permission:whatsapp_contacts.delete')->delete('/whatsapp-contacts/{whatsappContact}', [\App\Http\Controllers\WhatsappContactController::class, 'destroy']);
     Route::middleware('permission:whatsapp_contacts.convert')->post('/whatsapp-contacts/{whatsappContact}/convert', [\App\Http\Controllers\WhatsappContactController::class, 'convertToClient']);
     Route::middleware('permission:whatsapp_contacts.update')->post('/whatsapp-contacts/{whatsappContact}/claim', [\App\Http\Controllers\WhatsappContactController::class, 'claim']);
+    Route::middleware('permission:whatsapp_contacts.update')->post('/whatsapp-contacts/{whatsappContact}/unclaim', [\App\Http\Controllers\WhatsappContactController::class, 'unclaim']);
     Route::middleware('permission:whatsapp_contacts.view_all')->post('/whatsapp-contacts/{whatsappContact}/assign', [\App\Http\Controllers\WhatsappContactController::class, 'assign']);
     Route::middleware('permission:whatsapp_contacts.log')->get('/whatsapp-contacts/{whatsappContact}/followups', [\App\Http\Controllers\WhatsappFollowupController::class, 'index']);
     Route::middleware('permission:whatsapp_contacts.log')->post('/whatsapp-contacts/{whatsappContact}/followups', [\App\Http\Controllers\WhatsappFollowupController::class, 'store']);

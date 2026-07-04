@@ -193,10 +193,31 @@ class WhatsappContactController extends Controller
     }
 
     /**
+     * Release a contact back to the shared pool — for when a user claimed one
+     * by mistake. Owners can release their own; admins (view_all) can release any.
+     */
+    public function unclaim(WhatsappContact $whatsappContact)
+    {
+        $user = auth()->user();
+
+        if ($whatsappContact->created_by !== $user->id
+            && !$user->hasPermission('whatsapp_contacts.view_all')) {
+            abort(403, 'You can only unassign contacts assigned to you.');
+        }
+
+        $whatsappContact->update(['created_by' => null]);
+
+        return response()->json(
+            $whatsappContact->load(['client:id,name', 'assignedUser:id,name', 'campaign:id,name', 'creator:id,name'])
+        );
+    }
+
+    /**
      * Claim many shared/unowned contacts for the current user in a single query.
      * Optionally scoped to a set of ids (the ones currently shown); otherwise
      * claims every unowned contact in the tenant. The whereNull guard ensures a
      * user can never take contacts already owned by someone else.
+     * Route is admin-gated (whatsapp_contacts.view_all).
      */
     public function claimBulk(Request $request)
     {
