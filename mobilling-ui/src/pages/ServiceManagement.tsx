@@ -18,7 +18,8 @@ import {
   getClientServices, getServiceDetail, updateService, changeHostingPassword,
   refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
-  ServiceListItem, ServiceDetail,
+  getUpgradeOptions, applyUpgrade,
+  ServiceListItem, ServiceDetail, UpgradePlan,
 } from '../api/hosting';
 import { deleteClientSubscription } from '../api/clientSubscriptions';
 
@@ -136,6 +137,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   const [recalc, setRecalc] = useState('no');
   const [busy, setBusy] = useState<string | null>(null);
   const [pwModal, setPwModal] = useState(false);
+  const [upgradeOpen, setUpgradeOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['service-detail', subId],
@@ -266,8 +268,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
                 onClick={() => navigate(d.order_document_id ? `/invoices/${d.order_document_id}` : '/invoices')}>
                 View Invoices
               </Menu.Item>
-              <Menu.Item leftSection={<IconArrowsUpDown size={14} />}
-                onClick={() => navigate(`/client-subscriptions?client_id=${d.client.id}`)}>
+              <Menu.Item leftSection={<IconArrowsUpDown size={14} />} onClick={() => setUpgradeOpen(true)}>
                 Upgrade / Downgrade
               </Menu.Item>
               <Menu.Item leftSection={<IconUserShare size={14} />} onClick={() => navigate(`/clients/${d.client.id}`)}>
@@ -429,7 +430,107 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       </Group>
 
       <ChangePasswordModal opened={pwModal} onClose={() => setPwModal(false)} accountId={ha?.id ?? null} />
+      <UpgradeModal opened={upgradeOpen} onClose={() => setUpgradeOpen(false)} subId={subId}
+        navigate={navigate} onApplied={() => { qc.invalidateQueries({ queryKey: ['service-detail', subId] }); qc.invalidateQueries({ queryKey: ['client-services'] }); }} />
     </Paper>
+  );
+}
+
+function UpgradeModal({ opened, onClose, subId, navigate, onApplied }: {
+  opened: boolean; onClose: () => void; subId: string; navigate: (p: string) => void; onApplied: () => void;
+}) {
+  const [picked, setPicked] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['upgrade-options', subId],
+    queryFn: () => getUpgradeOptions(subId),
+    enabled: opened,
+  });
+  const o = data?.data?.data;
+  const plan: UpgradePlan | undefined = o?.plans.find((p) => p.id === picked);
+
+  const mutate = useMutation({
+    mutationFn: (mode: 'invoice' | 'immediate') => applyUpgrade(subId, picked!, mode),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Plan change', message: res.data.message, color: 'green', autoClose: 9000 });
+      onApplied();
+      onClose();
+      setPicked(null);
+      if (res.data.document) navigate(`/invoices/${res.data.document.id}`);
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Plan change failed.', color: 'red' }),
+  });
+
+  const money = (n: number) => `Tsh.${n.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Upgrade / Downgrade" centered size="lg">
+      {isLoading || !o ? (
+        <Center py="xl"><Loader /></Center>
+      ) : (
+        <Stack gap="sm">
+          <Group gap="xs">
+            <Text size="sm">Current plan:</Text>
+            <Badge variant="light">{o.current_plan.name}</Badge>
+            <Text size="sm" c="dimmed">{money(o.current_plan.price)} / {o.billing_cycle} · next due {o.next_due_date ?? '—'}</Text>
+          </Group>
+
+          <Table striped withTableBorder fz="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th w={36}></Table.Th>
+                <Table.Th>Plan</Table.Th>
+                <Table.Th ta="right">Recurring</Table.Th>
+                <Table.Th ta="center">Change</Table.Th>
+                <Table.Th ta="right">Due Now (prorated)</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {o.plans.filter((p) => !p.is_current).map((p) => (
+                <Table.Tr key={p.id} style={{ cursor: 'pointer' }} onClick={() => setPicked(p.id)}>
+                  <Table.Td>
+                    <input type="radio" checked={picked === p.id} onChange={() => setPicked(p.id)} />
+                  </Table.Td>
+                  <Table.Td fw={500}>{p.name}</Table.Td>
+                  <Table.Td ta="right">{money(p.price)}</Table.Td>
+                  <Table.Td ta="center">
+                    <Badge size="xs" variant="light" color={p.direction === 'upgrade' ? 'blue' : 'orange'}>
+                      {p.direction}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td ta="right" fw={600} c={p.prorated_due > 0 ? 'blue' : 'green'}>
+                    {p.prorated_due > 0 ? money(p.prorated_due) : 'Free'}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+
+          {plan && (
+            <Text size="xs" c="dimmed">
+              {plan.direction === 'upgrade' && plan.prorated_due > 0
+                ? `An upgrade invoice for ${money(plan.prorated_due)} (prorated for the remaining term) will be created; the package changes automatically when it is paid. Or apply now without charge.`
+                : `This is a ${plan.direction}. Applying switches the plan now and updates the recurring amount to ${money(plan.price)}. No credit is issued for a downgrade.`}
+            </Text>
+          )}
+
+          <Group justify="flex-end" mt="xs">
+            <Button variant="default" onClick={onClose}>Cancel</Button>
+            {plan && plan.prorated_due > 0 && (
+              <Button variant="light" color="gray" disabled={!picked} loading={mutate.isPending}
+                onClick={() => mutate.mutate('immediate')}>
+                Apply Now (no charge)
+              </Button>
+            )}
+            <Button disabled={!picked} loading={mutate.isPending}
+              color={plan && plan.prorated_due > 0 ? 'blue' : 'orange'}
+              onClick={() => mutate.mutate(plan && plan.prorated_due > 0 ? 'invoice' : 'immediate')}>
+              {plan && plan.prorated_due > 0 ? 'Create Prorated Invoice' : 'Apply Change'}
+            </Button>
+          </Group>
+        </Stack>
+      )}
+    </Modal>
   );
 }
 

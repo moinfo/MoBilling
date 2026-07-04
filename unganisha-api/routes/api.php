@@ -494,6 +494,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:client_subscriptions.read')->get('/hosting-services', [\App\Http\Controllers\HostingServiceController::class, 'forClient']);
     Route::middleware('permission:client_subscriptions.read')->get('/hosting-services/{clientSubscription}', [\App\Http\Controllers\HostingServiceController::class, 'show']);
     Route::middleware('permission:client_subscriptions.update')->put('/hosting-services/{clientSubscription}', [\App\Http\Controllers\HostingServiceController::class, 'update']);
+    Route::middleware('permission:client_subscriptions.read')->get('/hosting-services/{clientSubscription}/upgrade-options', [\App\Http\Controllers\HostingServiceController::class, 'upgradeOptions']);
+    Route::middleware('permission:client_subscriptions.update')->post('/hosting-services/{clientSubscription}/upgrade', [\App\Http\Controllers\HostingServiceController::class, 'upgrade']);
 
     // ── Domains (.tz registrar) ──────────────────────────────────────────────
     Route::middleware('permission:domains.read')->group(function () {

@@ -141,3 +141,18 @@ export const changeHostingPassword = (accountId: string, password: string) =>
 
 export const refreshHostingUsage = (accountId: string) =>
   api.post<{ data: ServiceMetric[] }>(`/hosting-accounts/${accountId}/refresh-usage`);
+
+export interface UpgradePlan {
+  id: string; name: string; price: number; billing_cycle: string;
+  is_current: boolean; direction: 'upgrade' | 'downgrade' | 'same'; prorated_due: number;
+}
+export interface UpgradeOptions {
+  current_plan: { id: string; name: string; price: number };
+  billing_cycle: string; next_due_date: string | null; quantity: number;
+  plans: UpgradePlan[];
+}
+export const getUpgradeOptions = (subscriptionId: string) =>
+  api.get<{ data: UpgradeOptions }>(`/hosting-services/${subscriptionId}/upgrade-options`);
+export const applyUpgrade = (subscriptionId: string, productServiceId: string, mode: 'invoice' | 'immediate') =>
+  api.post<{ applied: boolean; document?: { id: string; number: string; total: number }; message: string }>(
+    `/hosting-services/${subscriptionId}/upgrade`, { product_service_id: productServiceId, mode });

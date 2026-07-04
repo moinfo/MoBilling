@@ -35,7 +35,11 @@ class PlanChangeService
         return round($diff * $remaining / $cycleDays, 2);
     }
 
-    /** Switch the subscription to the new plan and change the cPanel package. */
+    /**
+     * Switch the subscription to the new plan and change the cPanel package.
+     * The recurring amount is re-derived from the new product (WHMCS updates
+     * the recurring on a plan change), so any manual override is cleared.
+     */
     public function apply(ClientSubscription $sub, ProductService $new): void
     {
         $meta = $sub->metadata ?? [];
@@ -44,6 +48,7 @@ class PlanChangeService
 
         $sub->update([
             'product_service_id' => $new->id,
+            'recurring_amount'   => null, // re-derive from the new product's price
             'metadata'           => $meta,
         ]);
 

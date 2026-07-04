@@ -178,6 +178,116 @@ class HostingServiceController extends Controller
         return $this->show($clientSubscription->fresh());
     }
 
+    /** WHMCS-style upgrade/downgrade options: every product + prorated charge. */
+    public function upgradeOptions(ClientSubscription $clientSubscription)
+    {
+        $sub = $clientSubscription->load('productService');
+        abort_unless($sub->productService, 422, 'Subscription has no product.');
+
+        $svc = app(\App\Services\Hosting\PlanChangeService::class);
+        $current = $sub->productService;
+
+        $plans = ProductService::where('type', 'service')->where('is_active', true)
+            ->where('tenant_id', $sub->tenant_id)
+            // same product group as the current plan (WHMCS upgrade paths)
+            ->when($current->category, fn ($q) => $q->where('category', $current->category))
+            ->where(fn ($q) => $q->whereNull('code')->orWhere('code', 'not like', 'WHMCS-P%-%'))
+            ->orderBy('price')->get()
+            ->unique('name')->values()
+            ->map(fn ($p) => [
+                'id'            => $p->id,
+                'name'          => $p->name,
+                'price'         => (float) $p->price,
+                'billing_cycle' => $p->billing_cycle,
+                'is_current'    => $p->id === $sub->product_service_id,
+                'direction'     => (float) $p->price > (float) $current->price ? 'upgrade'
+                    : ((float) $p->price < (float) $current->price ? 'downgrade' : 'same'),
+                'prorated_due'  => $p->id === $sub->product_service_id ? 0.0 : $svc->proratedCharge($sub, $p),
+            ]);
+
+        return response()->json(['data' => [
+            'current_plan'    => ['id' => $current->id, 'name' => $current->name, 'price' => (float) $current->price],
+            'billing_cycle'   => $current->billing_cycle,
+            'next_due_date'   => $sub->expire_date?->toDateString(),
+            'quantity'        => (int) $sub->quantity,
+            'plans'           => $plans,
+        ]]);
+    }
+
+    /**
+     * Apply an admin upgrade/downgrade.
+     *   mode=invoice   → create the prorated invoice; the change applies when
+     *                    it is paid (DocumentObserver → PlanChangeService::apply).
+     *   mode=immediate → switch now with no charge (admin override / downgrade).
+     */
+    public function upgrade(Request $request, ClientSubscription $clientSubscription)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'product_service_id' => ['required', 'uuid',
+                Rule::exists('product_services', 'id')->where('tenant_id', $tenantId)->where('is_active', true)],
+            'mode' => 'required|in:invoice,immediate',
+        ]);
+
+        $sub = $clientSubscription->load('productService', 'hostingAccount');
+        abort_if($sub->product_service_id === $data['product_service_id'], 422, 'That is already the current plan.');
+
+        $new = ProductService::findOrFail($data['product_service_id']);
+        $svc = app(\App\Services\Hosting\PlanChangeService::class);
+        $charge = $svc->proratedCharge($sub, $new);
+
+        // Immediate: switch now, no invoice (downgrades or admin override).
+        if ($data['mode'] === 'immediate' || $charge <= 0) {
+            $svc->apply($sub, $new);
+            return response()->json([
+                'applied' => true,
+                'message' => "Plan changed to {$new->name}" . ($sub->hostingAccount ? ' — cPanel package update dispatched.' : '.'),
+            ]);
+        }
+
+        // Invoice: create the prorated charge and mark the pending change.
+        $document = \Illuminate\Support\Facades\DB::transaction(function () use ($tenantId, $sub, $new, $charge) {
+            $document = \App\Models\Document::withoutGlobalScopes()->create([
+                'tenant_id'       => $tenantId,
+                'client_id'       => $sub->client_id,
+                'type'            => 'invoice',
+                'document_number' => app(\App\Services\DocumentNumberService::class)->generate('invoice', $tenantId),
+                'date'            => now()->toDateString(),
+                'due_date'        => now()->toDateString(),
+                'subtotal'        => $charge,
+                'discount_amount' => 0,
+                'tax_amount'      => 0,
+                'total'           => $charge,
+                'status'          => 'sent',
+                'notes'           => "Plan change: {$sub->productService->name} -> {$new->name} ({$sub->label})",
+                'created_by'      => auth()->id(),
+            ]);
+
+            $document->items()->create([
+                'item_type'   => 'service',
+                'description' => "Upgrade to {$new->name} — prorated until " . ($sub->expire_date?->toDateString() ?? 'renewal'),
+                'quantity'    => 1,
+                'price'       => $charge,
+                'tax_percent' => 0,
+                'tax_amount'  => 0,
+                'total'       => $charge,
+            ]);
+
+            $sub->update(['metadata' => array_merge($sub->metadata ?? [], [
+                'pending_plan_change' => ['product_service_id' => $new->id, 'document_id' => $document->id],
+            ])]);
+
+            return $document;
+        });
+
+        return response()->json([
+            'applied'  => false,
+            'document' => ['id' => $document->id, 'number' => $document->document_number, 'total' => (float) $document->total],
+            'message'  => "Prorated invoice {$document->document_number} created (Tsh." . number_format($charge, 2) . ') — the change applies automatically when it is paid.',
+        ], 201);
+    }
+
     /** Module command: set the cPanel password on the server. */
     public function changePassword(Request $request, HostingAccount $hostingAccount)
     {
