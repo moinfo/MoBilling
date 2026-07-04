@@ -144,7 +144,8 @@ export const refreshHostingUsage = (accountId: string) =>
 
 export interface UpgradePlan {
   id: string; name: string; price: number; billing_cycle: string;
-  is_current: boolean; direction: 'upgrade' | 'downgrade' | 'same'; prorated_due: number;
+  is_current: boolean; direction: 'upgrade' | 'downgrade' | 'same';
+  prorated_due: number; prorated_credit: number;
 }
 export interface UpgradeOptions {
   current_plan: { id: string; name: string; price: number };

@@ -167,6 +167,8 @@ class PortalHostingController extends Controller
                 'billing_cycle' => $p->billing_cycle,
                 'is_current'    => $p->id === $sub->product_service_id,
                 'due_now'       => $p->id === $sub->product_service_id ? 0.0 : $svc->proratedCharge($sub, $p),
+                'credit'        => ($p->id === $sub->product_service_id || !config('whmcs.credit_on_downgrade'))
+                    ? 0.0 : $svc->proratedCredit($sub, $p),
             ]);
 
         return response()->json(['data' => [

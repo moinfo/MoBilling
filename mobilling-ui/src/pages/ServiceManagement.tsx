@@ -482,7 +482,7 @@ function UpgradeModal({ opened, onClose, subId, navigate, onApplied }: {
                 <Table.Th>Plan</Table.Th>
                 <Table.Th ta="right">Recurring</Table.Th>
                 <Table.Th ta="center">Change</Table.Th>
-                <Table.Th ta="right">Due Now (prorated)</Table.Th>
+                <Table.Th ta="right">Due Now / Credit</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -498,8 +498,10 @@ function UpgradeModal({ opened, onClose, subId, navigate, onApplied }: {
                       {p.direction}
                     </Badge>
                   </Table.Td>
-                  <Table.Td ta="right" fw={600} c={p.prorated_due > 0 ? 'blue' : 'green'}>
-                    {p.prorated_due > 0 ? money(p.prorated_due) : 'Free'}
+                  <Table.Td ta="right" fw={600}
+                    c={p.prorated_due > 0 ? 'blue' : p.prorated_credit > 0 ? 'teal' : 'green'}>
+                    {p.prorated_due > 0 ? money(p.prorated_due)
+                      : p.prorated_credit > 0 ? `+${money(p.prorated_credit)} credit` : 'Free'}
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -510,7 +512,9 @@ function UpgradeModal({ opened, onClose, subId, navigate, onApplied }: {
             <Text size="xs" c="dimmed">
               {plan.direction === 'upgrade' && plan.prorated_due > 0
                 ? `An upgrade invoice for ${money(plan.prorated_due)} (prorated for the remaining term) will be created; the package changes automatically when it is paid. Or apply now without charge.`
-                : `This is a ${plan.direction}. Applying switches the plan now and updates the recurring amount to ${money(plan.price)}. No credit is issued for a downgrade.`}
+                : plan.prorated_credit > 0
+                  ? `This downgrade switches the plan now, sets recurring to ${money(plan.price)}, and credits ${money(plan.prorated_credit)} for the unused term to the client's wallet.`
+                  : `This is a ${plan.direction}. Applying switches the plan now and updates the recurring amount to ${money(plan.price)}.`}
             </Text>
           )}
 

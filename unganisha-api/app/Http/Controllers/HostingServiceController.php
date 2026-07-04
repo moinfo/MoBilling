@@ -202,9 +202,11 @@ class HostingServiceController extends Controller
                 'price'         => (float) $p->price,
                 'billing_cycle' => $p->billing_cycle,
                 'is_current'    => $p->id === $sub->product_service_id,
-                'direction'     => (float) $p->price > (float) $current->price ? 'upgrade'
+                'direction'      => (float) $p->price > (float) $current->price ? 'upgrade'
                     : ((float) $p->price < (float) $current->price ? 'downgrade' : 'same'),
-                'prorated_due'  => $p->id === $sub->product_service_id ? 0.0 : $svc->proratedCharge($sub, $p),
+                'prorated_due'    => $p->id === $sub->product_service_id ? 0.0 : $svc->proratedCharge($sub, $p),
+                'prorated_credit' => ($p->id === $sub->product_service_id || !config('whmcs.credit_on_downgrade'))
+                    ? 0.0 : $svc->proratedCredit($sub, $p),
             ]);
 
         return response()->json(['data' => [

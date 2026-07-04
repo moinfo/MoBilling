@@ -13,4 +13,11 @@ return [
     | Flip to false at FINAL CUTOVER (after the delta import + WHMCS cron off).
     */
     'parallel_mode' => env('WHMCS_PARALLEL_MODE', true),
+
+    /*
+    | Credit the client's wallet for the unused portion when they downgrade
+    | to a cheaper plan (WHMCS "Automatically Credit on Product Downgrade").
+    | Credit = (old_price - new_price) × remaining-term-fraction × quantity.
+    */
+    'credit_on_downgrade' => env('WHMCS_CREDIT_ON_DOWNGRADE', true),
 ];

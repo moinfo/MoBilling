@@ -224,7 +224,7 @@ export const requestPortalHostingCancellation = (id: string, reason: string, whe
 
 export interface UpgradePlanRow {
   id: string; name: string; price: number; billing_cycle: string | null;
-  is_current: boolean; due_now: number;
+  is_current: boolean; due_now: number; credit: number;
 }
 
 export const getPortalUpgradeOptions = (id: string) =>

@@ -382,10 +382,12 @@ function UpgradeModal({ id, opened, onClose, onInvoiced }: {
                   <Stack gap={0} align="flex-end">
                     <Text size="sm" fw={600}>Tsh.{fmt(p.price)}/yr</Text>
                     {!p.is_current && (
-                      <Text size="xs" c={p.due_now > 0 ? 'orange' : 'green'}>
+                      <Text size="xs" c={p.due_now > 0 ? 'orange' : p.credit > 0 ? 'teal' : 'green'}>
                         {p.due_now > 0
                           ? `Due today: Tsh.${fmt(p.due_now)} (prorated)`
-                          : 'No charge — applies immediately'}
+                          : p.credit > 0
+                            ? `Credit: Tsh.${fmt(p.credit)} to your wallet`
+                            : 'No charge — applies immediately'}
                       </Text>
                     )}
                   </Stack>
@@ -396,7 +398,9 @@ function UpgradeModal({ id, opened, onClose, onInvoiced }: {
         </Radio.Group>
         {chosen && chosen.due_now === 0 && chosen.price < (plans.find((p) => p.is_current)?.price ?? 0) && (
           <Text size="xs" c="dimmed">
-            Downgrades apply immediately; no credit is issued for the unused portion of your current plan.
+            {chosen.credit > 0
+              ? `This downgrade applies immediately and Tsh.${fmt(chosen.credit)} for the unused term is credited to your wallet.`
+              : 'Downgrades apply immediately.'}
           </Text>
         )}
         <Group justify="flex-end">
