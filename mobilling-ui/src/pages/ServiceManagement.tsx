@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Button, Select, Table, Badge, Grid, TextInput,
-  NumberInput, PasswordInput, SegmentedControl, Menu,
+  NumberInput, PasswordInput, SegmentedControl, Menu, Textarea,
   Tooltip, Loader, Center, Box, Modal, Alert,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -11,14 +11,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconLock, IconLockOpen, IconExternalLink, IconChevronDown,
   IconFileInvoice, IconArrowsUpDown, IconUserShare, IconTrash,
-  IconRefresh, IconDeviceFloppy,
+  IconRefresh, IconDeviceFloppy, IconMail, IconMailForward,
 } from '@tabler/icons-react';
 import { getClients } from '../api/clients';
 import {
   getClientServices, getServiceDetail, updateService, changeHostingPassword,
   refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
-  getUpgradeOptions, applyUpgrade,
+  getUpgradeOptions, applyUpgrade, resendWelcomeEmail, sendClientMessage,
   ServiceListItem, ServiceDetail, UpgradePlan,
 } from '../api/hosting';
 import { deleteClientSubscription } from '../api/clientSubscriptions';
@@ -138,6 +138,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   const [busy, setBusy] = useState<string | null>(null);
   const [pwModal, setPwModal] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
+  const [msgOpen, setMsgOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['service-detail', subId],
@@ -273,6 +274,14 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
               </Menu.Item>
               <Menu.Item leftSection={<IconUserShare size={14} />} onClick={() => navigate(`/clients/${d.client.id}`)}>
                 Client Profile
+              </Menu.Item>
+              <Menu.Divider />
+              <Menu.Item leftSection={<IconMail size={14} />} onClick={() => setMsgOpen(true)}>
+                Send Message
+              </Menu.Item>
+              <Menu.Item leftSection={<IconMailForward size={14} />} disabled={!ha}
+                onClick={() => runModule('Resend Welcome Email', () => resendWelcomeEmail(subId))}>
+                Resend Welcome Email
               </Menu.Item>
               <Menu.Divider />
               <Menu.Item leftSection={<IconTrash size={14} />} color="red"
@@ -432,7 +441,35 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       <ChangePasswordModal opened={pwModal} onClose={() => setPwModal(false)} accountId={ha?.id ?? null} />
       <UpgradeModal opened={upgradeOpen} onClose={() => setUpgradeOpen(false)} subId={subId}
         navigate={navigate} onApplied={() => { qc.invalidateQueries({ queryKey: ['service-detail', subId] }); qc.invalidateQueries({ queryKey: ['client-services'] }); }} />
+      <SendMessageModal opened={msgOpen} onClose={() => setMsgOpen(false)} subId={subId} clientName={d.client.name} />
     </Paper>
+  );
+}
+
+function SendMessageModal({ opened, onClose, subId, clientName }: {
+  opened: boolean; onClose: () => void; subId: string; clientName: string;
+}) {
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const mutation = useMutation({
+    mutationFn: () => sendClientMessage(subId, subject.trim(), body.trim()),
+    onSuccess: (res) => { notifications.show({ message: res.data.message, color: 'green' }); setSubject(''); setBody(''); onClose(); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not send.', color: 'red' }),
+  });
+  return (
+    <Modal opened={opened} onClose={onClose} title={`Send Message — ${clientName}`} centered size="lg">
+      <Stack>
+        <TextInput label="Subject" required value={subject} onChange={(e) => setSubject(e.currentTarget.value)} />
+        <Textarea label="Message" required autosize minRows={6} maxRows={16}
+          value={body} onChange={(e) => setBody(e.currentTarget.value)}
+          description="Emailed to the client under your company branding." />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button leftSection={<IconMail size={15} />} disabled={!subject.trim() || !body.trim()}
+            loading={mutation.isPending} onClick={() => mutation.mutate()}>Send</Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
 

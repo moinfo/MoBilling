@@ -312,6 +312,44 @@ class HostingServiceController extends Controller
         ], 201);
     }
 
+    /** Resend the WHMCS-style hosting welcome email (without the password). */
+    public function resendWelcome(ClientSubscription $clientSubscription)
+    {
+        $ha = $clientSubscription->hostingAccount;
+        abort_unless($ha, 422, 'This service has no hosting account to send a welcome email for.');
+
+        $client = $clientSubscription->client;
+        abort_unless($client?->email, 422, 'The client has no email address on file.');
+
+        try {
+            $client->notify(new \App\Notifications\HostingAccountProvisionedNotification($ha, null));
+            return response()->json(['message' => "Welcome email sent to {$client->email}."]);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Could not send the email: ' . $e->getMessage()], 422);
+        }
+    }
+
+    /** Send a free-form message (email) to the client. */
+    public function sendMessage(Request $request, ClientSubscription $clientSubscription)
+    {
+        $data = $request->validate([
+            'subject' => 'required|string|max:255',
+            'body'    => 'required|string|max:20000',
+        ]);
+
+        $client = $clientSubscription->client;
+        abort_unless($client?->email, 422, 'The client has no email address on file.');
+
+        try {
+            $client->notify(new \App\Notifications\ClientMessageNotification(
+                auth()->user()->tenant, $data['subject'], $data['body']
+            ));
+            return response()->json(['message' => "Message sent to {$client->email}."]);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Could not send the message: ' . $e->getMessage()], 422);
+        }
+    }
+
     /** Module command: set the cPanel password on the server. */
     public function changePassword(Request $request, HostingAccount $hostingAccount)
     {

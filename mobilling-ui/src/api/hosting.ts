@@ -157,3 +157,8 @@ export const getUpgradeOptions = (subscriptionId: string) =>
 export const applyUpgrade = (subscriptionId: string, productServiceId: string, mode: 'invoice' | 'immediate') =>
   api.post<{ applied: boolean; document?: { id: string; number: string; total: number }; message: string }>(
     `/hosting-services/${subscriptionId}/upgrade`, { product_service_id: productServiceId, mode });
+
+export const resendWelcomeEmail = (subscriptionId: string) =>
+  api.post<{ message: string }>(`/hosting-services/${subscriptionId}/resend-welcome`);
+export const sendClientMessage = (subscriptionId: string, subject: string, body: string) =>
+  api.post<{ message: string }>(`/hosting-services/${subscriptionId}/send-message`, { subject, body });
