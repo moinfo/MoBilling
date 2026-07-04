@@ -98,6 +98,9 @@ export const orderDomain = (data: {
   action: 'register' | 'transfer'; auth_info?: string;
 }) => api.post('/domains/order', data);
 
+export const setDomainAutoRenew = (id: string, enabled: boolean) =>
+  api.put<{ data: { auto_renew: boolean }; message: string }>(`/domains/${id}/auto-renew`, { enabled });
+
 export const renewDomain = (id: string, years: number) =>
   api.post(`/domains/${id}/renew`, { years });
 

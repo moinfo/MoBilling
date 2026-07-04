@@ -75,6 +75,30 @@ class DomainController extends Controller
         return response()->json(['data' => $query->paginate($request->get('per_page', 20))]);
     }
 
+    /** Staff toggle: same policy as the portal — wallet-funded when ON. */
+    public function setAutoRenew(Request $request, Domain $domain)
+    {
+        $data = $request->validate(['enabled' => 'required|boolean']);
+
+        if ($data['enabled']) {
+            if ($domain->meta['unmanaged'] ?? false) {
+                return response()->json(['message' => 'Unmanaged gTLD — auto-renew is not available (renew manually at its registrar).'], 422);
+            }
+            if (!in_array($domain->status, ['active', 'expired'])) {
+                return response()->json(['message' => 'Auto-renew is only available for active domains.'], 422);
+            }
+        }
+
+        $domain->update(['auto_renew' => $data['enabled']]);
+
+        return response()->json([
+            'data'    => ['auto_renew' => $domain->auto_renew],
+            'message' => $data['enabled']
+                ? "Auto-renew ON for {$domain->name} — renewals are paid from the client's wallet balance."
+                : "Auto-renew OFF for {$domain->name}.",
+        ]);
+    }
+
     /** The platform registrar handle at the registry (e.g. REG-MOINFOTECH). */
     private function ourRegistrarHandle(): ?string
     {

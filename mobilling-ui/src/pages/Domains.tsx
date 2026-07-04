@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Stack, Group, Table, Badge, ActionIcon, Tooltip, Text, Paper, Select,
   TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code, NumberInput,
-  Alert, CopyButton, SimpleGrid, ThemeIcon,
+  Alert, CopyButton, SimpleGrid, ThemeIcon, Switch,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -13,7 +13,8 @@ import {
 } from '@tabler/icons-react';
 import {
   checkDomain, getDomains, getDomainStats, getDomainLogs, orderDomain, renewDomain,
-  getDomainAuthInfo, DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
+  getDomainAuthInfo, setDomainAutoRenew, DomainRecord, DomainCheckResult, DomainLogRow,
+  DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
@@ -44,6 +45,8 @@ function DomainStatCard({ icon, color, label, value, active, onClick }: {
 
 export default function Domains() {
   const { can } = usePermissions();
+  const qc = useQueryClient();
+  const [togglingId, setTogglingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [expiringOnly, setExpiringOnly] = useState(false);
   const [oursFilter, setOursFilter] = useState<'' | '1' | '0'>('');
@@ -90,6 +93,20 @@ export default function Domains() {
     queryFn: getDomainStats,
   });
   const stats = statsData?.data?.data;
+
+  const toggleAutoRenew = async (d: DomainRecord, enabled: boolean) => {
+    setTogglingId(d.id);
+    try {
+      const res = await setDomainAutoRenew(d.id, enabled);
+      qc.invalidateQueries({ queryKey: ['domains'] });
+      qc.invalidateQueries({ queryKey: ['domain-stats'] });
+      notifications.show({ message: res.data.message, color: enabled ? 'teal' : 'gray' });
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Could not change auto-renew.', color: 'red' });
+    } finally {
+      setTogglingId(null);
+    }
+  };
   const domains: DomainRecord[] = data?.data?.data?.data ?? [];
   const lastPage: number = data?.data?.data?.last_page ?? 1;
 
@@ -206,7 +223,13 @@ export default function Domains() {
                         </Text>
                       </Table.Td>
                       <Table.Td>
-                        {d.auto_renew
+                        {can('domains.renew') && !d.meta?.unmanaged && ['active', 'expired'].includes(d.status) ? (
+                          <Tooltip label="When ON, renewals are invoiced and paid from the client's wallet balance automatically">
+                            <Switch size="xs" checked={d.auto_renew}
+                              disabled={togglingId === d.id}
+                              onChange={(e) => toggleAutoRenew(d, e.currentTarget.checked)} />
+                          </Tooltip>
+                        ) : d.auto_renew
                           ? <IconCheck size={15} color="var(--mantine-color-green-6)" />
                           : <IconX size={15} color="var(--mantine-color-gray-5)" />}
                       </Table.Td>
