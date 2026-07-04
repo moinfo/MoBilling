@@ -271,9 +271,14 @@ function ProductMockup({ dark }: { dark: boolean }) {
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function Landing() {
-  const { toggleColorScheme } = useMantineColorScheme();
   // White-label domains never show the MoBilling marketing site.
+  // Checked before any hook so hook order stays stable (rules of hooks).
   if (isBrandedHost()) return <Navigate to="/portal/login" replace />;
+  return <LandingContent />;
+}
+
+function LandingContent() {
+  const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const theme = useMantineTheme();
   const dark = computedColorScheme === 'dark';

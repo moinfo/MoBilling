@@ -11,40 +11,52 @@ export interface Branding {
   name?: string;
   logo_url?: string | null;
   website?: string | null;
-  email?: string | null;
-  phone?: string | null;
 }
 
 const DEFAULT_HOSTS = ['mobilling.co.tz', 'www.mobilling.co.tz', 'localhost', '127.0.0.1'];
 const CACHE_KEY = 'wl_branding_v1';
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 min — a rename/logo change shows within half an hour
 
 export const isBrandedHost = () => !DEFAULT_HOSTS.includes(window.location.hostname);
+
+/** Read a still-fresh cached brand for THIS host (used to avoid a flash of default). */
+function cachedBranding(): Branding | null {
+  try {
+    const raw = sessionStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const { host, at, data } = JSON.parse(raw);
+    if (host !== window.location.hostname || Date.now() - at > CACHE_TTL_MS) return null;
+    return data as Branding;
+  } catch { return null; }
+}
 
 let inFlight: Promise<Branding> | null = null;
 
 export function loadBranding(): Promise<Branding> {
   if (!isBrandedHost()) return Promise.resolve({ branded: false });
 
-  // session cache avoids logo flicker on every navigation
-  try {
-    const cached = sessionStorage.getItem(CACHE_KEY);
-    if (cached) return Promise.resolve(JSON.parse(cached));
-  } catch { /* ignore */ }
+  const cached = cachedBranding();
+  if (cached) return Promise.resolve(cached);
 
   if (!inFlight) {
     inFlight = api.get<Branding>('/public/branding')
       .then((res) => {
         const b = res.data?.branded ? res.data : { branded: false };
-        try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(b)); } catch { /* ignore */ }
+        try {
+          sessionStorage.setItem(CACHE_KEY, JSON.stringify({ host: window.location.hostname, at: Date.now(), data: b }));
+        } catch { /* ignore */ }
         return b;
       })
-      .catch(() => ({ branded: false as const }));
+      .catch(() => ({ branded: false as const }))
+      .finally(() => { inFlight = null; });
   }
   return inFlight;
 }
 
 export function useBranding(): Branding {
-  const [branding, setBranding] = useState<Branding>({ branded: false });
+  // Seed synchronously from a fresh cache so a branded portal never flashes
+  // the default MoBilling brand on navigation.
+  const [branding, setBranding] = useState<Branding>(() => cachedBranding() ?? { branded: false });
 
   useEffect(() => {
     let alive = true;

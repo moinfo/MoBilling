@@ -19,6 +19,12 @@ class SettingsController extends Controller
 
         $tenant = $request->user()->tenant;
 
+        // Platform-owned hosts a tenant may never claim (would hijack signups).
+        $reserved = array_map('strtolower', config('portal.reserved_hostnames', []));
+        if ($frontendHost = parse_url((string) config('app.frontend_url'), PHP_URL_HOST)) {
+            $reserved[] = strtolower($frontendHost);
+        }
+
         $validated = $request->validate([
             'name'                 => 'required|string|max:255',
             'email'                => 'required|email|max:255',
@@ -29,6 +35,11 @@ class SettingsController extends Controller
             'website'              => 'nullable|url|max:255',
             'custom_domain'        => ['nullable', 'string', 'max:253',
                 'regex:/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i',
+                function ($attr, $value, $fail) use ($reserved) {
+                    if (in_array(strtolower(trim($value)), $reserved, true)) {
+                        $fail('This domain is reserved and cannot be used.');
+                    }
+                },
                 \Illuminate\Validation\Rule::unique('tenants', 'custom_domain')->ignore($tenant->id)],
             'bank_name'            => 'nullable|string|max:255',
             'bank_account_name'    => 'nullable|string|max:255',

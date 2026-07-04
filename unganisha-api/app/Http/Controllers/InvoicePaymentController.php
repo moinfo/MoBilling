@@ -96,12 +96,13 @@ class InvoicePaymentController extends Controller
         // Submit to Pesapal
         $pesapal = new TenantPesapalService($tenant);
 
-        // Determine callback URL based on context (portal vs public)
+        // Determine callback URL based on context (portal vs public).
+        // Use the tenant's white-label portal domain when set, so branded
+        // clients return to their own domain (and keep their session).
         $isPortal = $request->user() !== null;
-        $frontendUrl = config('app.frontend_url', 'https://mobilling.co.tz');
         $callbackUrl = $isPortal
-            ? "{$frontendUrl}/portal/invoices"
-            : "{$frontendUrl}/pay/{$doc->id}";
+            ? $tenant->portalUrl('/portal/invoices')
+            : $tenant->portalUrl("/pay/{$doc->id}");
 
         $result = $pesapal->submitOrder(
             $merchantRef,

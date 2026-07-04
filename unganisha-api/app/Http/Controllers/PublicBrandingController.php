@@ -16,7 +16,9 @@ class PublicBrandingController extends Controller
 {
     public function show(Request $request)
     {
-        $host = strtolower(trim($request->query('host', $request->getHost())));
+        // Resolve strictly from the real Host — no query override, so this
+        // can't be used to enumerate other tenants' branding.
+        $host = strtolower(trim($request->getHost()));
 
         $tenant = $host
             ? Tenant::where('custom_domain', $host)->where('is_active', true)->first()
@@ -26,13 +28,12 @@ class PublicBrandingController extends Controller
             return response()->json(['branded' => false]);
         }
 
+        // Presentation fields only — no contact details on this public endpoint.
         return response()->json([
             'branded'  => true,
             'name'     => $tenant->name,
             'logo_url' => $tenant->logo_url,
             'website'  => $tenant->website,
-            'email'    => $tenant->email,
-            'phone'    => $tenant->phone,
         ]);
     }
 }

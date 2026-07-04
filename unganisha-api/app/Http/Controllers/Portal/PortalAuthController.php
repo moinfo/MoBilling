@@ -39,8 +39,14 @@ class PortalAuthController extends Controller
             ->where('is_active', true)->first();
 
         // Find client by email (within the branded tenant when applicable).
+        // On the default domain the same email can exist under several tenants —
+        // prefer the configured default tenant, then oldest, so it's deterministic.
+        $defaultTenantId = config('portal.default_tenant_id');
         $client = Client::where('email', $email)
             ->when($hostTenant, fn ($q) => $q->where('tenant_id', $hostTenant->id))
+            ->when(!$hostTenant && $defaultTenantId, fn ($q) => $q
+                ->orderByRaw('tenant_id = ? desc', [$defaultTenantId]))
+            ->orderBy('created_at')
             ->first();
 
         // Unknown email: allowed as a brand-new signup (client created after
