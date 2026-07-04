@@ -11,10 +11,12 @@ import {
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useBranding } from '../../branding';
 
 export default function PortalShell() {
   const [opened, { toggle, close }] = useDisclosure();
   const { user, logout, permissions } = useAuth();
+  const branding = useBranding();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const navigate = useNavigate();
@@ -59,8 +61,13 @@ export default function PortalShell() {
         <Group h="100%" px="md" justify="space-between">
           <Group gap="sm">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Image src="/moinfotech-logo.png" h={32} w="auto" alt="MoBilling" />
-            <Text fw={700} size="lg" visibleFrom="sm">Client Portal</Text>
+            {(branding.branded ? branding.logo_url : '/moinfotech-logo.png') && (
+              <Image src={branding.branded ? branding.logo_url! : '/moinfotech-logo.png'} h={32} w="auto"
+                alt={branding.branded ? branding.name : 'MoBilling'} />
+            )}
+            <Text fw={700} size="lg" visibleFrom="sm">
+              {branding.branded ? `${branding.name} — Client Portal` : 'Client Portal'}
+            </Text>
           </Group>
           <Group gap="xs">
             <ActionIcon variant="default" size="lg" onClick={toggleColorScheme}>

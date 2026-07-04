@@ -9,6 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { IconSun, IconMoon, IconArrowLeft, IconCheck, IconUserPlus } from '@tabler/icons-react';
 import { requestPortalOtp, verifyAndRegisterPortal } from '../../api/auth';
+import { useBranding } from '../../branding';
 
 export default function PortalRegister() {
   const navigate = useNavigate();
@@ -16,6 +17,9 @@ export default function PortalRegister() {
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
+  const branding = useBranding();
+  const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
+  const brandLogo = branding.branded ? branding.logo_url : '/moinfotech-logo.png';
 
   const [step, setStep] = useState<'details' | 'verify' | 'done'>('details');
   const [otpValue, setOtpValue] = useState('');
@@ -129,8 +133,8 @@ export default function PortalRegister() {
 
       <Box w="100%" maw={560}>
         <Group justify="center" gap={8} mb="md">
-          <Image src="/moinfotech-logo.png" h={40} w="auto" alt="Moinfotech" />
-          <Text size="xl" fw={800}>Moinfotech</Text>
+          {brandLogo && <Image src={brandLogo} h={40} w="auto" alt={brandName} />}
+          <Text size="xl" fw={800}>{brandName}</Text>
         </Group>
 
         {step === 'done' ? (

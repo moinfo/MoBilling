@@ -73,6 +73,9 @@ Route::post('/auth/forgot-password', [PasswordResetController::class, 'forgotPas
 Route::post('/auth/verify-reset-otp', [PasswordResetController::class, 'verifyOtp']);
 Route::post('/auth/reset-password', [PasswordResetController::class, 'resetPassword']);
 
+// White-label branding by hostname (public)
+Route::get('/public/branding', [\App\Http\Controllers\PublicBrandingController::class, 'show']);
+
 // Portal self-registration (public)
 Route::post('/portal/request-otp', [PortalAuthController::class, 'requestOtp']);
 Route::post('/portal/verify-register', [PortalAuthController::class, 'verifyAndRegister']);

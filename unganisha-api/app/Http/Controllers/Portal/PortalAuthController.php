@@ -34,12 +34,18 @@ class PortalAuthController extends Controller
             ]);
         }
 
-        // Find client by email
-        $client = Client::where('email', $email)->first();
+        // White-label: a custom-domain visit scopes everything to that tenant.
+        $hostTenant = \App\Models\Tenant::where('custom_domain', strtolower($request->getHost()))
+            ->where('is_active', true)->first();
+
+        // Find client by email (within the branded tenant when applicable).
+        $client = Client::where('email', $email)
+            ->when($hostTenant, fn ($q) => $q->where('tenant_id', $hostTenant->id))
+            ->first();
 
         // Unknown email: allowed as a brand-new signup (client created after
-        // OTP verification) when a default tenant is configured.
-        $signupTenantId = config('portal.default_tenant_id');
+        // OTP verification) under the branded tenant or the configured default.
+        $signupTenantId = $hostTenant?->id ?? config('portal.default_tenant_id');
         if (!$client && !$signupTenantId) {
             throw ValidationException::withMessages([
                 'email' => ['No client account found with this email. Please contact your service provider.'],

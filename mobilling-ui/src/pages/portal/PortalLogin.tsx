@@ -6,6 +6,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useAuth } from '../../context/AuthContext';
+import { useBranding } from '../../branding';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   IconWorldWww, IconServer, IconHeadset, IconSun, IconMoon, IconArrowLeft,
@@ -23,6 +24,9 @@ export default function PortalLogin() {
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
+  const branding = useBranding();
+  const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
+  const brandLogo = branding.branded ? branding.logo_url : '/moinfotech-logo.png';
 
   const form = useForm({
     initialValues: { identifier: '', password: '' },
@@ -78,8 +82,8 @@ export default function PortalLogin() {
           filter: isDark ? 'blur(40px)' : undefined,
         }} />
         <Group gap={12} mb={rem(48)}>
-          <Image src="/moinfotech-logo.png" h={44} w="auto" alt="Moinfotech" />
-          <Text size={rem(26)} fw={800} c="white">Moinfotech</Text>
+          {brandLogo && <Image src={brandLogo} h={44} w="auto" alt={brandName} />}
+          <Text size={rem(26)} fw={800} c="white">{brandName}</Text>
         </Group>
 
         <Title order={2} c="white" fw={700} mb="sm" style={{ lineHeight: 1.3 }}>
@@ -103,7 +107,7 @@ export default function PortalLogin() {
         </List>
 
         <Text size="xs" c="rgba(255,255,255,0.25)" mt="auto" pt={rem(60)}>
-          &copy; {new Date().getFullYear()} Moinfotech Company Limited. All rights reserved.
+          &copy; {new Date().getFullYear()} {branding.branded ? brandName : 'Moinfotech Company Limited'}. All rights reserved.
         </Text>
       </Box>
 
@@ -113,10 +117,12 @@ export default function PortalLogin() {
         alignItems: 'center', padding: rem(24), position: 'relative',
       }}>
         <Group style={{ position: 'absolute', top: rem(20), right: rem(20) }} gap="xs">
-          <Button component="a" href="https://moinfo.co.tz" variant="subtle" size="compact-sm"
-            leftSection={<IconArrowLeft size={14} />}>
-            moinfo.co.tz
-          </Button>
+          {(!branding.branded || branding.website) && (
+            <Button component="a" href={branding.branded ? branding.website! : 'https://moinfo.co.tz'}
+              variant="subtle" size="compact-sm" leftSection={<IconArrowLeft size={14} />}>
+              {branding.branded ? branding.website!.replace(/^https?:\/\//, '') : 'moinfo.co.tz'}
+            </Button>
+          )}
           <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
             {isDark ? <IconSun size={18} /> : <IconMoon size={18} />}
           </ActionIcon>
@@ -124,8 +130,8 @@ export default function PortalLogin() {
 
         <Box w="100%" maw={400}>
           <Group justify="center" gap={8} mb="md" hiddenFrom="md">
-            <Image src="/moinfotech-logo.png" h={36} w="auto" alt="Moinfotech" />
-            <Text size="xl" fw={800}>Moinfotech</Text>
+            {brandLogo && <Image src={brandLogo} h={36} w="auto" alt={brandName} />}
+            <Text size="xl" fw={800}>{brandName}</Text>
           </Group>
 
           <Title order={2} ta="center" mb={4}>Client Area Login</Title>
@@ -149,7 +155,7 @@ export default function PortalLogin() {
           </Paper>
 
           <Text c="dimmed" size="sm" ta="center" mt="lg">
-            New to Moinfotech?{' '}
+            New to {brandName}?{' '}
             <Anchor component={Link} to="/portal/register" size="sm" fw={600}>
               Create an account
             </Anchor>

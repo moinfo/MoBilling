@@ -201,6 +201,7 @@ function CompanyTab({ user, isAdmin, refreshUser }: {
       tax_id: user?.tenant?.tax_id || '',
       currency: user?.tenant?.currency || 'TZS',
       website: user?.tenant?.website || '',
+      custom_domain: (user?.tenant as any)?.custom_domain || '',
       bank_name: user?.tenant?.bank_name || '',
       bank_account_name: user?.tenant?.bank_account_name || '',
       bank_account_number: user?.tenant?.bank_account_number || '',
@@ -279,6 +280,15 @@ function CompanyTab({ user, isAdmin, refreshUser }: {
           <TextInput label="Email" required disabled={!isAdmin} {...form.getInputProps('email')} />
           <TextInput label="Phone" disabled={!isAdmin} {...form.getInputProps('phone')} />
           <TextInput label="Website" placeholder="https://example.com" disabled={!isAdmin} {...form.getInputProps('website')} />
+
+          <Divider label="White-Label Portal" labelPosition="left" mt="sm" />
+          <TextInput
+            label="Custom Portal Domain"
+            placeholder="clients.yourbusiness.co.tz"
+            description="Your clients will use this domain for their portal, branded with your name and logo. Point the domain's DNS (A record) at MoBilling, then contact support to activate SSL."
+            disabled={!isAdmin}
+            {...form.getInputProps('custom_domain')}
+          />
           <Textarea label="Address" autosize minRows={2} disabled={!isAdmin} {...form.getInputProps('address')} />
           <TextInput label="KRA PIN / Tax ID" disabled={!isAdmin} {...form.getInputProps('tax_id')} />
           <Select label="Currency" required data={currencyOptions} searchable disabled={!isAdmin} {...form.getInputProps('currency')} />

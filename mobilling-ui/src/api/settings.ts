@@ -2,6 +2,7 @@ import api from './axios';
 import { User } from './auth';
 
 export interface CompanyData {
+  custom_domain?: string;
   name: string;
   email: string;
   phone?: string | null;

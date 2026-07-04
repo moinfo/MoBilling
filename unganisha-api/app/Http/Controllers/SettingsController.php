@@ -17,6 +17,8 @@ class SettingsController extends Controller
     {
         $this->authorizePermission('settings.company');
 
+        $tenant = $request->user()->tenant;
+
         $validated = $request->validate([
             'name'                 => 'required|string|max:255',
             'email'                => 'required|email|max:255',
@@ -25,6 +27,9 @@ class SettingsController extends Controller
             'tax_id'               => 'nullable|string|max:100',
             'currency'             => 'required|string|max:10',
             'website'              => 'nullable|url|max:255',
+            'custom_domain'        => ['nullable', 'string', 'max:253',
+                'regex:/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i',
+                \Illuminate\Validation\Rule::unique('tenants', 'custom_domain')->ignore($tenant->id)],
             'bank_name'            => 'nullable|string|max:255',
             'bank_account_name'    => 'nullable|string|max:255',
             'bank_account_number'  => 'nullable|string|max:100',
@@ -32,7 +37,12 @@ class SettingsController extends Controller
             'payment_instructions' => 'nullable|string|max:2000',
         ]);
 
-        $tenant = $request->user()->tenant;
+        if (array_key_exists('custom_domain', $validated)) {
+            $validated['custom_domain'] = $validated['custom_domain']
+                ? strtolower(trim($validated['custom_domain']))
+                : null;
+        }
+
         $tenant->update($validated);
 
         return response()->json(['tenant' => $tenant->fresh()]);

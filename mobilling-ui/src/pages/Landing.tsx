@@ -17,10 +17,11 @@ import {
   IconServer, IconWorldWww, IconRepeat, IconTicket,
   IconLayoutDashboard, IconPalette, IconLock, IconRefresh,
 } from '@tabler/icons-react';
-import { Link } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getPublicPlans, SubscriptionPlan } from '../api/subscription';
+import { isBrandedHost } from '../branding';
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
@@ -271,6 +272,8 @@ function ProductMockup({ dark }: { dark: boolean }) {
 
 export default function Landing() {
   const { toggleColorScheme } = useMantineColorScheme();
+  // White-label domains never show the MoBilling marketing site.
+  if (isBrandedHost()) return <Navigate to="/portal/login" replace />;
   const computedColorScheme = useComputedColorScheme('light');
   const theme = useMantineTheme();
   const dark = computedColorScheme === 'dark';
