@@ -82,6 +82,9 @@ export interface DomainStats {
   failed: number;
   expiring_soon: number;
   auto_renew: number;
+  our_registrar: string | null;
+  ours: number;
+  external: number;
 }
 
 export const getDomainStats = () =>

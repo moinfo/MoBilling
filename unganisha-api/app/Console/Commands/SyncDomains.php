@@ -62,7 +62,11 @@ class SyncDomains extends Command
                     'registrant_handle' => $info['registrant'] ?? $domain->registrant_handle,
                     'nsset_handle'      => $info['nsset'] ?? $domain->nsset_handle,
                     'keyset_handle'     => $info['keyset'] ?? $domain->keyset_handle,
-                    'meta'              => array_merge($domain->meta ?? [], ['last_synced_at' => now()->toIso8601String()], $this->probeSsl($domain->name)),
+                    'meta'              => array_merge($domain->meta ?? [], [
+                        'last_synced_at'       => now()->toIso8601String(),
+                        // sponsoring registrar at the registry — proves whether the domain is under OUR account
+                        'sponsoring_registrar' => $info['cl_id'] ?? ($domain->meta['sponsoring_registrar'] ?? null),
+                    ], $this->probeSsl($domain->name)),
                 ]);
                 $synced++;
             } catch (\Throwable $e) {

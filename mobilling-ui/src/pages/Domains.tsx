@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconWorldWww, IconPlus, IconHistory, IconRefresh, IconKey,
   IconCheck, IconX, IconCopy, IconWorld, IconClockExclamation, IconAlertTriangle,
-  IconHourglass, IconRepeat,
+  IconHourglass, IconRepeat, IconShieldCheck, IconShieldOff,
 } from '@tabler/icons-react';
 import {
   checkDomain, getDomains, getDomainStats, getDomainLogs, orderDomain, renewDomain,
@@ -46,6 +46,7 @@ export default function Domains() {
   const { can } = usePermissions();
   const [statusFilter, setStatusFilter] = useState('');
   const [expiringOnly, setExpiringOnly] = useState(false);
+  const [oursFilter, setOursFilter] = useState<'' | '1' | '0'>('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -56,17 +57,26 @@ export default function Domains() {
   const params: Record<string, string> = { page: String(page) };
   if (statusFilter) params.status = statusFilter;
   if (expiringOnly) params.expiring = '1';
+  if (oursFilter) params.ours = oursFilter;
   if (search) params.search = search;
 
   // stat card click: toggle the corresponding filter
   const filterByStatus = (status: string) => {
     setExpiringOnly(false);
+    setOursFilter('');
     setStatusFilter((cur) => (cur === status && !expiringOnly ? '' : status));
     setPage(1);
   };
   const filterExpiring = () => {
     setStatusFilter('');
+    setOursFilter('');
     setExpiringOnly((v) => !v);
+    setPage(1);
+  };
+  const filterOurs = (v: '1' | '0') => {
+    setStatusFilter('');
+    setExpiringOnly(false);
+    setOursFilter((cur) => (cur === v ? '' : v));
     setPage(1);
   };
 
@@ -106,13 +116,20 @@ export default function Domains() {
         )}
       </Group>
 
-      <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="sm">
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} spacing="sm">
         <DomainStatCard icon={<IconWorld size={20} />} color="blue" label="Total Domains"
-          value={stats?.total ?? '—'} active={!statusFilter && !expiringOnly}
-          onClick={() => { setStatusFilter(''); setExpiringOnly(false); setPage(1); }} />
+          value={stats?.total ?? '—'} active={!statusFilter && !expiringOnly && !oursFilter}
+          onClick={() => { setStatusFilter(''); setExpiringOnly(false); setOursFilter(''); setPage(1); }} />
         <DomainStatCard icon={<IconCheck size={20} />} color="green" label="Active"
           value={stats?.active ?? '—'} active={statusFilter === 'active' && !expiringOnly}
           onClick={() => filterByStatus('active')} />
+        <DomainStatCard icon={<IconShieldCheck size={20} />} color="teal"
+          label={`On ${stats?.our_registrar ?? 'Our Registrar'}`}
+          value={stats?.ours ?? '—'} active={oursFilter === '1'}
+          onClick={() => filterOurs('1')} />
+        <DomainStatCard icon={<IconShieldOff size={20} />} color="gray" label="External / Unconfirmed"
+          value={stats?.external ?? '—'} active={oursFilter === '0'}
+          onClick={() => filterOurs('0')} />
         <DomainStatCard icon={<IconClockExclamation size={20} />} color="orange" label="Expiring ≤ 45 Days"
           value={stats?.expiring_soon ?? '—'} active={expiringOnly}
           onClick={filterExpiring} />
@@ -162,9 +179,25 @@ export default function Domains() {
               <Table.Tbody>
                 {domains.map((d) => {
                   const expiringSoon = d.expires_at && dayjs(d.expires_at).diff(dayjs(), 'day') <= 45;
+                  const sponsor = d.meta?.sponsoring_registrar as string | undefined;
+                  const isOurs = !!sponsor && sponsor === stats?.our_registrar;
                   return (
                     <Table.Tr key={d.id}>
-                      <Table.Td fw={500}>{d.name}</Table.Td>
+                      <Table.Td fw={500}>
+                        <Group gap={6} wrap="nowrap">
+                          {d.name}
+                          {isOurs && (
+                            <Tooltip label={`Registry-confirmed on ${sponsor}`}>
+                              <IconShieldCheck size={15} color="var(--mantine-color-teal-6)" />
+                            </Tooltip>
+                          )}
+                          {sponsor && !isOurs && (
+                            <Tooltip label="Sponsored by another registrar at the registry">
+                              <Badge size="xs" color="gray" variant="light">{sponsor}</Badge>
+                            </Tooltip>
+                          )}
+                        </Group>
+                      </Table.Td>
                       <Table.Td><Text size="sm">{d.client?.name ?? '—'}</Text></Table.Td>
                       <Table.Td><Text size="sm" c="dimmed">{d.registered_at ?? '—'}</Text></Table.Td>
                       <Table.Td>

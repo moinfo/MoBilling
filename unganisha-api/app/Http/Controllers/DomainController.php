@@ -63,8 +63,23 @@ class DomainController extends Controller
                 ->where('expires_at', '<=', now()->addDays(45))
                 ->orderBy('expires_at');
         }
+        if ($request->filled('ours')) {
+            $handle = $this->ourRegistrarHandle();
+            $request->boolean('ours')
+                ? $query->where('meta->sponsoring_registrar', $handle)
+                : $query->whereIn('status', ['active', 'expired'])->where(fn ($q) => $q
+                    ->whereNull('meta->sponsoring_registrar')
+                    ->orWhere('meta->sponsoring_registrar', '!=', $handle));
+        }
 
         return response()->json(['data' => $query->paginate($request->get('per_page', 20))]);
+    }
+
+    /** The platform registrar handle at the registry (e.g. REG-MOINFOTECH). */
+    private function ourRegistrarHandle(): ?string
+    {
+        return \App\Models\RegistrarAccount::whereNull('tenant_id')
+            ->where('is_active', true)->value('registrar_id');
     }
 
     /** Summary numbers for the Domains page dashboard strip. */
@@ -73,17 +88,25 @@ class DomainController extends Controller
         $byStatus = Domain::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
 
         $active = Domain::where('status', 'active');
+        $handle = $this->ourRegistrarHandle();
+        $live   = Domain::whereIn('status', ['active', 'expired']);
 
         return response()->json(['data' => [
-            'total'         => (int) $byStatus->sum(),
-            'active'        => (int) ($byStatus['active'] ?? 0),
-            'pending'       => (int) ($byStatus['pending'] ?? 0),
-            'expired'       => (int) ($byStatus['expired'] ?? 0),
-            'cancelled'     => (int) ($byStatus['cancelled'] ?? 0),
-            'failed'        => (int) ($byStatus['failed'] ?? 0),
-            'expiring_soon' => (clone $active)->whereNotNull('expires_at')
+            'total'          => (int) $byStatus->sum(),
+            'active'         => (int) ($byStatus['active'] ?? 0),
+            'pending'        => (int) ($byStatus['pending'] ?? 0),
+            'expired'        => (int) ($byStatus['expired'] ?? 0),
+            'cancelled'      => (int) ($byStatus['cancelled'] ?? 0),
+            'failed'         => (int) ($byStatus['failed'] ?? 0),
+            'expiring_soon'  => (clone $active)->whereNotNull('expires_at')
                 ->where('expires_at', '<=', now()->addDays(45))->count(),
-            'auto_renew'    => (clone $active)->where('auto_renew', true)->count(),
+            'auto_renew'     => (clone $active)->where('auto_renew', true)->count(),
+            // registry-confirmed sponsorship (set by domains:sync from EPP cl_id)
+            'our_registrar'  => $handle,
+            'ours'           => $handle ? (clone $live)->where('meta->sponsoring_registrar', $handle)->count() : 0,
+            'external'       => $handle ? (clone $live)->where(fn ($q) => $q
+                ->whereNull('meta->sponsoring_registrar')
+                ->orWhere('meta->sponsoring_registrar', '!=', $handle))->count() : 0,
         ]]);
     }
 
