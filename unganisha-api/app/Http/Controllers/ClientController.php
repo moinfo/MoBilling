@@ -39,9 +39,46 @@ class ClientController extends Controller
             });
         }
 
+        // Filter: only clients with (or without) active subscriptions
+        if ($request->filled('has_subscriptions')) {
+            $activeSubs = fn ($q) => $q->where('status', 'active');
+            $request->boolean('has_subscriptions')
+                ? $query->whereHas('subscriptions', $activeSubs)
+                : $query->whereDoesntHave('subscriptions', $activeSubs);
+        }
+
+        $query->orderBy(...match ($request->get('sort')) {
+            'subscriptions' => ['active_subscriptions_count', 'desc'],
+            'amount'        => ['subscription_total', 'desc'],
+            'newest'        => ['clients.created_at', 'desc'],
+            default         => ['name', 'asc'],
+        })->orderBy('name');
+
         return ClientResource::collection(
-            $query->orderBy('name')->paginate($request->per_page ?? 20)
+            $query->paginate($request->per_page ?? 20)
         );
+    }
+
+    /** Summary numbers for the Clients page dashboard strip. */
+    public function stats(Request $request)
+    {
+        $stats = [
+            'total_clients'        => Client::count(),
+            'with_subscriptions'   => Client::whereHas('subscriptions', fn ($q) => $q->where('status', 'active'))->count(),
+            'active_subscriptions' => ClientSubscription::where('status', 'active')->count(),
+            'new_this_month'       => Client::where('created_at', '>=', now()->startOfMonth())->count(),
+        ];
+        $stats['without_subscriptions'] = $stats['total_clients'] - $stats['with_subscriptions'];
+
+        if ($request->user()->hasPermission('client_profile.subscription_value')) {
+            $stats['subscription_value'] = (float) ClientSubscription::where('client_subscriptions.status', 'active')
+                ->join('product_services', 'client_subscriptions.product_service_id', '=', 'product_services.id')
+                ->selectRaw('COALESCE(SUM(client_subscriptions.quantity * product_services.price), 0) as v')
+                ->value('v');
+            $stats['credit_balance_total'] = (float) Client::sum('credit_balance');
+        }
+
+        return response()->json(['data' => $stats]);
     }
 
     public function store(StoreClientRequest $request)

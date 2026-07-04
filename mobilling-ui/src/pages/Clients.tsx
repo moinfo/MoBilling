@@ -1,15 +1,39 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Pagination, Stack, PasswordInput, Text } from '@mantine/core';
+import {
+  Title, Group, Button, TextInput, Modal, Pagination, Stack, PasswordInput, Text,
+  Select, SegmentedControl, SimpleGrid, Paper, ThemeIcon,
+} from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch, IconDownload, IconAddressBook } from '@tabler/icons-react';
-import { getClients, createClient, updateClient, deleteClient, portalLoginAsClient, changePortalPassword, Client, ClientFormData } from '../api/clients';
+import {
+  IconPlus, IconSearch, IconDownload, IconAddressBook, IconUsers, IconUserCheck,
+  IconUserOff, IconRepeat, IconUserPlus, IconCoins,
+} from '@tabler/icons-react';
+import { getClients, getClientStats, createClient, updateClient, deleteClient, portalLoginAsClient, changePortalPassword, Client, ClientFormData } from '../api/clients';
 import ClientTable from '../components/Billing/ClientTable';
 import ClientForm from '../components/Billing/ClientForm';
 import { usePermissions } from '../hooks/usePermissions';
+import { formatCurrency } from '../utils/formatCurrency';
+
+type SortKey = 'name' | 'subscriptions' | 'amount' | 'newest';
+type SubsFilter = 'all' | 'with' | 'without';
+
+function StatCard({ icon, color, label, value }: { icon: React.ReactNode; color: string; label: string; value: string | number }) {
+  return (
+    <Paper withBorder radius="md" p="sm">
+      <Group gap="sm" wrap="nowrap">
+        <ThemeIcon variant="light" color={color} size={38} radius="md">{icon}</ThemeIcon>
+        <div style={{ minWidth: 0 }}>
+          <Text size="lg" fw={700} lh={1.2} truncate>{value}</Text>
+          <Text size="xs" c="dimmed" truncate>{label}</Text>
+        </div>
+      </Group>
+    </Paper>
+  );
+}
 
 export default function Clients() {
   const queryClient = useQueryClient();
@@ -17,14 +41,28 @@ export default function Clients() {
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<SortKey>('name');
+  const [subsFilter, setSubsFilter] = useState<SubsFilter>('all');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [passwordClient, setPasswordClient] = useState<Client | null>(null);
 
+  const listParams = {
+    search: debouncedSearch || undefined,
+    sort,
+    has_subscriptions: subsFilter === 'all' ? undefined : subsFilter === 'with' ? (1 as const) : (0 as const),
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['clients', debouncedSearch, page],
-    queryFn: () => getClients({ search: debouncedSearch || undefined, page }),
+    queryKey: ['clients', debouncedSearch, page, sort, subsFilter],
+    queryFn: () => getClients({ ...listParams, page }),
   });
+
+  const { data: statsData } = useQuery({
+    queryKey: ['client-stats'],
+    queryFn: getClientStats,
+  });
+  const stats = statsData?.data?.data;
 
   const clients = data?.data?.data || [];
   const meta = data?.data?.meta;
@@ -75,13 +113,19 @@ export default function Clients() {
 
   const handleExportCsv = async () => {
     try {
-      const res = await getClients({ per_page: 10000 });
+      const res = await getClients({ ...listParams, per_page: 10000 });
       const allClients: Client[] = res.data?.data || [];
+      const canSeeValue = can('client_profile.subscription_value');
+      const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const header = ['Name', 'Email', 'Phone', 'Address', 'TIN', 'Active Subscriptions'];
+      if (canSeeValue) header.push('Subscription Amount');
       const csvRows = [
-        ['Name', 'Email', 'Phone'].join(','),
-        ...allClients.map((c) =>
-          [`"${(c.name || '').replace(/"/g, '""')}"`, `"${c.email || ''}"`, `"${c.phone || ''}"`].join(',')
-        ),
+        header.join(','),
+        ...allClients.map((c) => {
+          const row = [esc(c.name), esc(c.email), esc(c.phone), esc(c.address), esc(c.tax_id), c.active_subscriptions_count ?? 0];
+          if (canSeeValue) row.push(Number(c.subscription_total ?? 0));
+          return row.join(',');
+        }),
       ];
       const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
@@ -90,6 +134,7 @@ export default function Clients() {
       a.download = `clients-${new Date().toISOString().slice(0, 10)}.csv`;
       a.click();
       URL.revokeObjectURL(url);
+      notifications.show({ title: 'Exported', message: `${allClients.length} clients exported to CSV`, color: 'green' });
     } catch {
       notifications.show({ title: 'Error', message: 'Failed to export clients', color: 'red' });
     }
@@ -97,7 +142,7 @@ export default function Clients() {
 
   const handleExportVcf = async () => {
     try {
-      const res = await getClients({ per_page: 10000 });
+      const res = await getClients({ ...listParams, per_page: 10000 });
       const allClients: Client[] = res.data?.data || [];
       const vcards = allClients.map((c) => {
         const nameParts = (c.name || '').trim().split(/\s+/);
@@ -193,14 +238,49 @@ export default function Clients() {
         </Group>
       </Group>
 
-      <TextInput
-        placeholder="Search clients..."
-        leftSection={<IconSearch size={16} />}
-        value={search}
-        onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
-        mb="md"
-        maw={300}
-      />
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: stats?.subscription_value !== undefined ? 6 : 5 }} spacing="sm" mb="md">
+        <StatCard icon={<IconUsers size={20} />} color="blue" label="Total Clients" value={stats?.total_clients ?? '—'} />
+        <StatCard icon={<IconUserCheck size={20} />} color="green" label="With Subscriptions" value={stats?.with_subscriptions ?? '—'} />
+        <StatCard icon={<IconUserOff size={20} />} color="gray" label="Without Subscriptions" value={stats?.without_subscriptions ?? '—'} />
+        <StatCard icon={<IconRepeat size={20} />} color="violet" label="Active Subscriptions" value={stats?.active_subscriptions ?? '—'} />
+        <StatCard icon={<IconUserPlus size={20} />} color="teal" label="New This Month" value={stats?.new_this_month ?? '—'} />
+        {stats?.subscription_value !== undefined && (
+          <StatCard icon={<IconCoins size={20} />} color="orange" label="Subscription Value" value={formatCurrency(stats.subscription_value)} />
+        )}
+      </SimpleGrid>
+
+      <Group mb="md" gap="sm" wrap="wrap">
+        <TextInput
+          placeholder="Search clients..."
+          leftSection={<IconSearch size={16} />}
+          value={search}
+          onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
+          maw={300}
+        />
+        <SegmentedControl
+          size="sm"
+          value={subsFilter}
+          onChange={(v) => { setSubsFilter(v as SubsFilter); setPage(1); }}
+          data={[
+            { label: 'All', value: 'all' },
+            { label: 'With Subscriptions', value: 'with' },
+            { label: 'No Subscriptions', value: 'without' },
+          ]}
+        />
+        <Select
+          size="sm"
+          w={210}
+          value={sort}
+          onChange={(v) => { setSort((v as SortKey) ?? 'name'); setPage(1); }}
+          data={[
+            { label: 'Sort: Name (A–Z)', value: 'name' },
+            { label: 'Sort: Most Subscriptions', value: 'subscriptions' },
+            { label: 'Sort: Highest Sub. Amount', value: 'amount' },
+            { label: 'Sort: Newest First', value: 'newest' },
+          ]}
+          allowDeselect={false}
+        />
+      </Group>
 
       <ClientTable
         clients={clients}

@@ -20,8 +20,26 @@ export interface ClientFormData {
   tax_id: string;
 }
 
-export const getClients = (params?: { search?: string; page?: number; per_page?: number }) =>
-  api.get('/clients', { params });
+export const getClients = (params?: {
+  search?: string;
+  page?: number;
+  per_page?: number;
+  sort?: 'name' | 'subscriptions' | 'amount' | 'newest';
+  has_subscriptions?: 1 | 0;
+}) => api.get('/clients', { params });
+
+export interface ClientStats {
+  total_clients: number;
+  with_subscriptions: number;
+  without_subscriptions: number;
+  active_subscriptions: number;
+  new_this_month: number;
+  subscription_value?: number;
+  credit_balance_total?: number;
+}
+
+export const getClientStats = () =>
+  api.get<{ data: ClientStats }>('/clients/stats');
 
 export const getClient = (id: string) =>
   api.get<{ data: Client }>(`/clients/${id}`);
