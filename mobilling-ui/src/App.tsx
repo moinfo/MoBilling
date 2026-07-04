@@ -82,6 +82,7 @@ import PortalDomains from './pages/portal/PortalDomains';
 import PortalTickets from './pages/portal/PortalTickets';
 import PortalServiceDetails from './pages/portal/PortalServiceDetails';
 import PortalDomainDetails from './pages/portal/PortalDomainDetails';
+import PortalInvoiceView from './pages/portal/PortalInvoiceView';
 import PortalAnnouncements from './pages/portal/PortalAnnouncements';
 import PortalProductServices from './pages/portal/PortalProductServices';
 import PortalProfile from './pages/portal/PortalProfile';
@@ -239,6 +240,7 @@ export default function App() {
                 >
                   <Route path="/portal/dashboard" element={<PortalDashboard />} />
                   <Route path="/portal/invoices" element={<PortalDocuments type="invoice" />} />
+                  <Route path="/portal/invoices/:id" element={<PortalInvoiceView />} />
                   <Route path="/portal/quotations" element={<PortalDocuments type="quotation" />} />
                   <Route path="/portal/payments" element={<PortalPayments />} />
                   <Route path="/portal/statement" element={<PortalStatement />} />

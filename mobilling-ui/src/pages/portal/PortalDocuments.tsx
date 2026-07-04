@@ -5,7 +5,7 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   IconSearch, IconCreditCard, IconCheck, IconMail, IconDownload, IconArrowUp, IconArrowDown,
   IconArrowsSort, IconAlertTriangle, IconCash, IconFileInvoice,
@@ -33,6 +33,7 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
   const [sending, setSending] = useState(false);
   const [paymentDone, setPaymentDone] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: creditData } = useQuery({ queryKey: ['portal-credit'], queryFn: getPortalCredit });
   const creditBalance: number = creditData?.data?.data?.balance ?? 0;
@@ -240,7 +241,9 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
                 const desc = doc.items?.[0]?.description || doc.notes || '-';
                 const hasBalance = (doc.balance_due || 0) > 0;
                 return (
-                  <Table.Tr key={doc.id} onClick={() => setViewId(doc.id)} style={{ cursor: 'pointer' }}>
+                  <Table.Tr key={doc.id}
+                    onClick={() => (isInvoice ? navigate(`/portal/invoices/${doc.id}`) : setViewId(doc.id))}
+                    style={{ cursor: 'pointer' }}>
                     <Table.Td><Text size="sm" c="dimmed">{index + 1}</Text></Table.Td>
                     <Table.Td fw={600}>{doc.document_number}</Table.Td>
                     <Table.Td c="dimmed" maw={180} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>

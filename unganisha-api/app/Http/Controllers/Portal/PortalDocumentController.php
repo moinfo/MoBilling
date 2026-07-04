@@ -67,12 +67,41 @@ class PortalDocumentController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
-        $document->load('items', 'payments');
+        $document->load('items', 'payments', 'client', 'tenant');
+        $client = $document->client;
+        $tenant = $document->tenant;
+        // never serialize the full relations — client.notes / tenant config are staff-only
+        $document->unsetRelation('client');
+        $document->unsetRelation('tenant');
+
+        $lateFee = $document->items
+            ->filter(fn ($item) => str_contains($item->description ?? '', 'Late payment fee'))
+            ->sum('total');
 
         return response()->json([
             'data' => array_merge($document->toArray(), [
                 'paid_amount' => (float) $document->paid_amount,
                 'balance_due' => (float) $document->balance_due,
+                'late_fee'    => round($lateFee, 2),
+                // WHMCS-style invoice view panels
+                'invoiced_to' => [
+                    'name'    => $client?->name,
+                    'address' => $client?->address,
+                    'email'   => $client?->email,
+                    'phone'   => $client?->phone,
+                    'tax_id'  => $client?->tax_id,
+                ],
+                'pay_to' => [
+                    'name'    => $tenant?->name,
+                    'address' => $tenant?->address,
+                    'email'   => $tenant?->email,
+                    'phone'   => $tenant?->phone,
+                    'tax_id'  => $tenant?->tax_id,
+                ],
+                // Offline payment instructions (bank / mobile money details)
+                'payment_methods' => collect($tenant?->payment_methods ?? [])
+                    ->filter(fn ($m) => !empty($m['details']))
+                    ->values(),
             ]),
         ]);
     }
