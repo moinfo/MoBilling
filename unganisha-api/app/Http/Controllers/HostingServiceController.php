@@ -350,6 +350,45 @@ class HostingServiceController extends Controller
         }
     }
 
+    /**
+     * Reset the cPanel password to a fresh strong value on the server, then
+     * email the full welcome including the new password. Returns the password
+     * once so the admin can note it.
+     */
+    public function resetPasswordAndWelcome(HostingAccount $hostingAccount)
+    {
+        abort_unless($hostingAccount->cpanel_username && $hostingAccount->server, 422,
+            'This account is not linked to a server.');
+
+        $password = \Illuminate\Support\Str::password(18, symbols: false) . '#7Za'; // cPanel-safe strength
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->resetPassword($hostingAccount->cpanel_username, $password);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the password reset: ' . $e->getMessage()], 422);
+        }
+
+        $client = $hostingAccount->subscription?->client;
+        $emailed = false;
+        if ($client?->email) {
+            try {
+                $client->notify(new \App\Notifications\HostingAccountProvisionedNotification($hostingAccount, $password));
+                $emailed = true;
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning("Welcome email failed after reset for {$hostingAccount->domain}: {$e->getMessage()}");
+            }
+        }
+
+        return response()->json([
+            'password' => $password,
+            'message'  => $emailed
+                ? "Password reset and welcome email sent to {$client->email}."
+                : 'Password reset on the server, but the welcome email could not be sent (no client email or mail error).',
+        ]);
+    }
+
     /** Module command: set the cPanel password on the server. */
     public function changePassword(Request $request, HostingAccount $hostingAccount)
     {

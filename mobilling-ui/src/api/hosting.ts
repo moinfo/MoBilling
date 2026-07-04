@@ -162,3 +162,5 @@ export const resendWelcomeEmail = (subscriptionId: string) =>
   api.post<{ message: string }>(`/hosting-services/${subscriptionId}/resend-welcome`);
 export const sendClientMessage = (subscriptionId: string, subject: string, body: string) =>
   api.post<{ message: string }>(`/hosting-services/${subscriptionId}/send-message`, { subject, body });
+export const resetPasswordAndWelcome = (accountId: string) =>
+  api.post<{ password: string; message: string }>(`/hosting-accounts/${accountId}/reset-welcome`);

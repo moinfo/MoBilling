@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Button, Select, Table, Badge, Grid, TextInput,
   NumberInput, PasswordInput, SegmentedControl, Menu, Textarea,
-  Tooltip, Loader, Center, Box, Modal, Alert,
+  Tooltip, Loader, Center, Box, Modal, Alert, Code, CopyButton,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { modals } from '@mantine/modals';
@@ -11,14 +11,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconLock, IconLockOpen, IconExternalLink, IconChevronDown,
   IconFileInvoice, IconArrowsUpDown, IconUserShare, IconTrash,
-  IconRefresh, IconDeviceFloppy, IconMail, IconMailForward,
+  IconRefresh, IconDeviceFloppy, IconMail, IconMailForward, IconKey, IconCopy,
 } from '@tabler/icons-react';
 import { getClients } from '../api/clients';
 import {
   getClientServices, getServiceDetail, updateService, changeHostingPassword,
   refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
-  getUpgradeOptions, applyUpgrade, resendWelcomeEmail, sendClientMessage,
+  getUpgradeOptions, applyUpgrade, resendWelcomeEmail, sendClientMessage, resetPasswordAndWelcome,
   ServiceListItem, ServiceDetail, UpgradePlan,
 } from '../api/hosting';
 import { deleteClientSubscription } from '../api/clientSubscriptions';
@@ -139,6 +139,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   const [pwModal, setPwModal] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [msgOpen, setMsgOpen] = useState(false);
+  const [resetPw, setResetPw] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['service-detail', subId],
@@ -282,6 +283,24 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
               <Menu.Item leftSection={<IconMailForward size={14} />} disabled={!ha}
                 onClick={() => runModule('Resend Welcome Email', () => resendWelcomeEmail(subId))}>
                 Resend Welcome Email
+              </Menu.Item>
+              <Menu.Item leftSection={<IconKey size={14} />} disabled={!ha}
+                onClick={() => modals.openConfirmModal({
+                  title: 'Reset Password & Send Welcome',
+                  children: <Text size="sm">This sets a NEW cPanel password on the server and emails the client the welcome message with the new password. Continue?</Text>,
+                  labels: { confirm: 'Reset & Send', cancel: 'Cancel' },
+                  onConfirm: async () => {
+                    setBusy('reset-welcome');
+                    try {
+                      const res = await resetPasswordAndWelcome(ha!.id);
+                      setResetPw(res.data.password);
+                      notifications.show({ message: res.data.message, color: 'green', autoClose: 9000 });
+                    } catch (e: any) {
+                      notifications.show({ message: e?.response?.data?.message ?? 'Reset failed.', color: 'red' });
+                    } finally { setBusy(null); }
+                  },
+                })}>
+                Reset Password &amp; Send Welcome
               </Menu.Item>
               <Menu.Divider />
               <Menu.Item leftSection={<IconTrash size={14} />} color="red"
@@ -442,6 +461,24 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       <UpgradeModal opened={upgradeOpen} onClose={() => setUpgradeOpen(false)} subId={subId}
         navigate={navigate} onApplied={() => { qc.invalidateQueries({ queryKey: ['service-detail', subId] }); qc.invalidateQueries({ queryKey: ['client-services'] }); }} />
       <SendMessageModal opened={msgOpen} onClose={() => setMsgOpen(false)} subId={subId} clientName={d.client.name} />
+
+      <Modal opened={!!resetPw} onClose={() => setResetPw(null)} title="New cPanel Password" centered size="sm">
+        <Stack>
+          <Text size="sm">The password below was set on the server and emailed to the client. Note it now — it will not be shown again.</Text>
+          <Group>
+            <Code fz="md">{resetPw}</Code>
+            <CopyButton value={resetPw ?? ''}>
+              {({ copied, copy }) => (
+                <Button size="xs" variant="light" color={copied ? 'green' : 'blue'}
+                  leftSection={<IconCopy size={13} />} onClick={copy}>
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+              )}
+            </CopyButton>
+          </Group>
+          <Group justify="flex-end"><Button onClick={() => setResetPw(null)}>Done</Button></Group>
+        </Stack>
+      </Modal>
     </Paper>
   );
 }

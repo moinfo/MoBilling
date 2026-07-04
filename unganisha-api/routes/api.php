@@ -488,6 +488,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/{hostingAccount}/change-package', [\App\Http\Controllers\HostingAccountController::class, 'changePackage']);
     Route::middleware('permission:hosting.sso')->post('/hosting-accounts/{hostingAccount}/sso', [\App\Http\Controllers\HostingAccountController::class, 'sso']);
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/{hostingAccount}/password', [\App\Http\Controllers\HostingServiceController::class, 'changePassword']);
+    Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/{hostingAccount}/reset-welcome', [\App\Http\Controllers\HostingServiceController::class, 'resetPasswordAndWelcome']);
     Route::middleware('permission:hosting.read')->post('/hosting-accounts/{hostingAccount}/refresh-usage', [\App\Http\Controllers\HostingServiceController::class, 'refreshUsage']);
 
     // Admin service management (WHMCS Client Profile → Products/Services)
