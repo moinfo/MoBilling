@@ -99,6 +99,109 @@ class DomainController extends Controller
         ]);
     }
 
+    /** Live nameserver list for a domain (registry truth). */
+    public function nameservers(Domain $domain)
+    {
+        if (($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz')) {
+            return response()->json(['message' => 'Nameservers for this domain are managed at its external registrar.'], 422);
+        }
+        if (!$domain->nsset_handle) {
+            return response()->json(['data' => ['nsset' => null, 'nameservers' => [], 'shared_with' => 0]]);
+        }
+
+        try {
+            $info = $this->registrar->driverFor($domain->tenant_id, $domain->id)->nssetInfo($domain->nsset_handle);
+        } catch (\App\Exceptions\RegistrarApiException) {
+            return response()->json(['message' => 'Could not reach the registry — try again shortly.'], 422);
+        }
+
+        return response()->json(['data' => [
+            'nsset'       => $domain->nsset_handle,
+            'nameservers' => collect($info['nameservers'] ?? [])->pluck('name')->all(),
+            'tech'        => $info['tech'] ?? [],
+            // other domains pointing at the same nsset — editing in place would move them too
+            'shared_with' => Domain::withoutGlobalScopes()
+                ->where('nsset_handle', $domain->nsset_handle)
+                ->where('id', '!=', $domain->id)
+                ->whereIn('status', ['active', 'expired', 'pending'])->count(),
+        ]]);
+    }
+
+    /**
+     * Change the domain's nameservers. NSsets are shared objects at the FRED
+     * registry — if any other domain uses this one, we create a NEW nsset and
+     * repoint only this domain; an exclusive nsset is updated in place.
+     * All operations are free EPP calls (no registry credit).
+     */
+    public function updateNameservers(Request $request, Domain $domain)
+    {
+        abort_if(($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz'), 422,
+            'Nameservers for this domain are managed at its external registrar.');
+        abort_unless(in_array($domain->status, ['active', 'expired']), 422, 'Domain is not active at the registry.');
+        abort_unless($domain->nsset_handle, 422, 'This domain has no nameserver set at the registry yet — contact TZNIC support.');
+
+        $data = $request->validate([
+            'nameservers'   => 'required|array|min:2|max:9',
+            'nameservers.*' => ['required', 'string', 'max:253', 'distinct',
+                'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i'],
+        ]);
+        $new = collect($data['nameservers'])->map(fn ($n) => strtolower(trim($n)))->unique()->values();
+
+        $driver = $this->registrar->driverFor($domain->tenant_id, $domain->id);
+
+        try {
+            $info = $driver->nssetInfo($domain->nsset_handle);
+            $current = collect($info['nameservers'] ?? [])->pluck('name')->map(fn ($n) => strtolower($n))->values();
+
+            if ($new->sort()->values()->all() === $current->sort()->values()->all()) {
+                return response()->json(['message' => 'No changes — those are already the nameservers.']);
+            }
+
+            $sharedWith = Domain::withoutGlobalScopes()
+                ->where('nsset_handle', $domain->nsset_handle)
+                ->where('id', '!=', $domain->id)
+                ->whereIn('status', ['active', 'expired', 'pending'])->count();
+
+            if ($sharedWith > 0) {
+                // Never mutate a shared nsset: new nsset + repoint this domain only.
+                // Tech contact: keep the current one, else the domain's registrant.
+                $tech = ($info['tech'] ?? []) ?: array_filter([$domain->registrant_handle]);
+                abort_if(empty($tech), 422, 'No registry contact available for the new nameserver set — contact support.');
+
+                $newHandle = 'NSSET-' . strtoupper(bin2hex(random_bytes(4)));
+                $driver->nssetCreate(
+                    $newHandle,
+                    $new->map(fn ($n) => ['name' => $n, 'addrs' => []])->all(),
+                    $tech,
+                );
+                $driver->updateDomain($domain->name, ['nsset_id' => $newHandle]);
+                $domain->update(['nsset_handle' => $newHandle]);
+            } else {
+                $driver->nssetUpdate(
+                    $domain->nsset_handle,
+                    $new->diff($current)->map(fn ($n) => ['name' => $n, 'addrs' => []])->values()->all(),
+                    $current->diff($new)->values()->all(),
+                );
+            }
+        } catch (\App\Exceptions\RegistrarApiException $e) {
+            return response()->json(['message' => 'Registry error: ' . $e->getMessage()], 422);
+        }
+
+        DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'nameservers_changed',
+            'request'   => ['from' => $current->all(), 'to' => $new->all(), 'by_user' => auth()->id(),
+                            'mode' => $sharedWith > 0 ? 'new_nsset' : 'in_place'],
+            'status'    => 'success',
+        ]);
+
+        return response()->json([
+            'data'    => ['nsset' => $domain->fresh()->nsset_handle, 'nameservers' => $new->all()],
+            'message' => 'Nameservers updated at the registry. DNS changes can take up to a few hours to propagate.',
+        ]);
+    }
+
     /** The platform registrar handle at the registry (e.g. REG-MOINFOTECH). */
     private function ourRegistrarHandle(): ?string
     {

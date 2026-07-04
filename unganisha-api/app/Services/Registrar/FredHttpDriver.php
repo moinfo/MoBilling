@@ -95,6 +95,24 @@ class FredHttpDriver implements RegistrarDriver
         return $this->call('get', '/api/billing/credit/')['credits'] ?? [];
     }
 
+    /** Live nameserver list for an NSset. */
+    public function nssetInfo(string $nssetId): array
+    {
+        return $this->call('get', "/api/dns/nssets/{$nssetId}/");
+    }
+
+    /**
+     * Change nameservers in an NSset (free EPP operation — no registry credit).
+     * $add: [['name' => 'ns1.x.tz', 'addrs' => []], ...]; $remove: hostnames.
+     */
+    public function nssetUpdate(string $nssetId, array $add, array $remove): array
+    {
+        return $this->call('put', "/api/dns/nssets/{$nssetId}/update/", [
+            'add_nameservers' => $add,
+            'rem_nameservers' => $remove,
+        ]);
+    }
+
     // ── Paid / mutating (payment-gated jobs ONLY) ─────────────────────────────
 
     public function register(string $domain, int $years = 1, array $nameservers = []): array
@@ -121,6 +139,16 @@ class FredHttpDriver implements RegistrarDriver
 
     public function updateDomain(string $domain, array $changes): array
     {
-        return $this->call('post', "/api/domains/{$domain}/update/", $changes);
+        return $this->call('put', "/api/domains/{$domain}/update/", $changes);
+    }
+
+    /** Create a new NSset (free EPP operation). Returns the handle used. */
+    public function nssetCreate(string $nssetId, array $nameservers, array $techContacts): array
+    {
+        return $this->call('post', '/api/dns/nssets/create/', [
+            'nsset_id'      => $nssetId,
+            'nameservers'   => $nameservers,
+            'tech_contacts' => $techContacts,
+        ]);
     }
 }

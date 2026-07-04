@@ -79,6 +79,10 @@ export const getDomain = (id: string) =>
 // FredHttpDriver logs raw API paths as the action — translate to something readable.
 export const describeDomainAction = (action: string): string => {
   if (action === 'auth_info_revealed') return 'Transfer code viewed';
+  if (action === 'nameservers_changed') return 'Nameservers changed';
+  if (action.includes('/nssets/') && action.includes('/update/')) return 'Nameserver set updated';
+  if (action.includes('/nssets/create')) return 'Nameserver set created';
+  if (action.includes('/nssets/')) return 'Nameserver lookup';
   if (action.includes('/info/')) return 'Registry sync check';
   if (action.includes('/renew/')) return 'Registry renewal';
   if (action.includes('/register/')) return 'Domain registration';
@@ -112,6 +116,19 @@ export const orderDomain = (data: {
   name: string; client_id: string; years: number;
   action: 'register' | 'transfer'; auth_info?: string;
 }) => api.post('/domains/order', data);
+
+export interface DomainNameservers {
+  nsset: string | null;
+  nameservers: string[];
+  tech?: string[];
+  shared_with: number;
+}
+
+export const getDomainNameservers = (id: string) =>
+  api.get<{ data: DomainNameservers }>(`/domains/${id}/nameservers`);
+
+export const updateDomainNameservers = (id: string, nameservers: string[]) =>
+  api.put<{ data: { nsset: string; nameservers: string[] }; message: string }>(`/domains/${id}/nameservers`, { nameservers });
 
 export const setDomainAutoRenew = (id: string, enabled: boolean) =>
   api.put<{ data: { auto_renew: boolean }; message: string }>(`/domains/${id}/auto-renew`, { enabled });

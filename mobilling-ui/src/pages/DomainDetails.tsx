@@ -2,18 +2,19 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Button, Grid, Anchor, Code,
   CopyButton, Modal, NumberInput, Center, Loader, Switch, Tooltip, Timeline,
-  ActionIcon,
+  ActionIcon, TextInput, Alert,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconWorld, IconRefresh, IconKey, IconCopy, IconLock, IconLockOpen,
-  IconShieldCheck, IconArrowLeft, IconHistory,
+  IconShieldCheck, IconArrowLeft, IconHistory, IconServer,
 } from '@tabler/icons-react';
 import {
   getDomain, getDomainLogs, renewDomain, getDomainAuthInfo, setDomainAutoRenew,
-  describeDomainAction, DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
+  getDomainNameservers, updateDomainNameservers, describeDomainAction,
+  DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { usePermissions } from '../hooks/usePermissions';
 import dayjs from 'dayjs';
@@ -205,6 +206,12 @@ export default function DomainDetails() {
           </Stack>
         </Grid.Col>
 
+        {!meta.unmanaged && d.name.endsWith('.tz') && (
+          <Grid.Col span={12}>
+            <NameserversCard domainId={d.id} domainStatus={d.status} />
+          </Grid.Col>
+        )}
+
         <Grid.Col span={12}>
           <Paper withBorder radius="md" p="lg">
             <Group gap="xs" mb="md"><IconHistory size={18} /><Title order={5}>Activity</Title></Group>
@@ -235,6 +242,103 @@ export default function DomainDetails() {
         <StaffRenewForm domainId={d.id} onDone={() => setRenewOpen(false)} />
       </Modal>
     </Stack>
+  );
+}
+
+function NameserversCard({ domainId, domainStatus }: { domainId: string; domainStatus: string }) {
+  const qc = useQueryClient();
+  const { can } = usePermissions();
+  const [editing, setEditing] = useState(false);
+  const [values, setValues] = useState<string[]>([]);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['domain-nameservers', domainId],
+    queryFn: () => getDomainNameservers(domainId),
+  });
+  const ns = data?.data?.data;
+
+  const saveMutation = useMutation({
+    mutationFn: () => updateDomainNameservers(domainId, values.map((v) => v.trim()).filter(Boolean)),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domain-nameservers', domainId] });
+      qc.invalidateQueries({ queryKey: ['domain', domainId] });
+      qc.invalidateQueries({ queryKey: ['domain-logs', domainId] });
+      notifications.show({ title: 'Nameservers updated', message: res.data.message, color: 'green', autoClose: 9000 });
+      setEditing(false);
+    },
+    onError: (e: any) => notifications.show({
+      title: 'Update failed',
+      message: e?.response?.data?.message ?? Object.values(e?.response?.data?.errors ?? {}).flat().join(' ') ?? 'Registry error.',
+      color: 'red',
+    }),
+  });
+
+  const startEdit = () => {
+    const current = ns?.nameservers ?? [];
+    setValues([...current, ...Array(Math.max(0, Math.max(2, current.length) - current.length)).fill('')]);
+    setEditing(true);
+  };
+
+  const filled = values.map((v) => v.trim()).filter(Boolean);
+  const canSave = filled.length >= 2 && new Set(filled).size === filled.length;
+  const canEdit = can('domains.manage_dns') && ['active', 'expired'].includes(domainStatus) && !!ns?.nsset;
+
+  return (
+    <Paper withBorder radius="md" p="lg">
+      <Group justify="space-between" mb="md">
+        <Group gap="xs"><IconServer size={18} /><Title order={5}>Nameservers (DNS)</Title></Group>
+        {!editing && canEdit && (
+          <Button size="xs" variant="light" onClick={startEdit}>Change Nameservers</Button>
+        )}
+      </Group>
+
+      {isLoading ? (
+        <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">Fetching live from the registry…</Text></Group>
+      ) : isError || !ns ? (
+        <Text size="sm" c="dimmed">Could not reach the registry — try again shortly.</Text>
+      ) : !ns.nsset ? (
+        <Text size="sm" c="dimmed">This domain has no nameserver set at the registry.</Text>
+      ) : !editing ? (
+        <Stack gap={6}>
+          {ns.nameservers.map((n, i) => (
+            <Group key={n} gap="xs">
+              <Text size="sm" c="dimmed" w={40}>NS{i + 1}</Text>
+              <Code fz="sm">{n}</Code>
+            </Group>
+          ))}
+          <Text size="xs" c="dimmed" mt={4}>
+            Registry set: <Code fz="xs">{ns.nsset}</Code>
+            {ns.shared_with > 0 && ` — shared with ${ns.shared_with} other domain(s); changes here are applied safely to this domain only`}
+          </Text>
+        </Stack>
+      ) : (
+        <Stack gap="xs">
+          {values.map((v, i) => (
+            <TextInput key={i} size="sm" label={`NS${i + 1}`} placeholder={i < 2 ? 'required' : 'optional'}
+              value={v}
+              onChange={(e) => setValues(values.map((x, j) => (j === i ? e.currentTarget.value.toLowerCase() : x)))} />
+          ))}
+          {values.length < 5 && (
+            <Button size="compact-xs" variant="subtle" w="fit-content" onClick={() => setValues([...values, ''])}>
+              + add another
+            </Button>
+          )}
+          {(ns.shared_with ?? 0) > 0 && (
+            <Alert color="blue" variant="light" p="xs">
+              This nameserver set is shared with {ns.shared_with} other domain(s). Saving creates a new set
+              for this domain only — the others are not affected.
+            </Alert>
+          )}
+          <Group justify="flex-end" mt="xs">
+            <Button size="xs" variant="default" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="xs" color="green" disabled={!canSave} loading={saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}>
+              Save to Registry
+            </Button>
+          </Group>
+        </Stack>
+      )}
+    </Paper>
   );
 }
 

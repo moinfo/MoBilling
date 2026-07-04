@@ -109,6 +109,7 @@ class PortalDomainController extends Controller
             'activity'       => $domain->logs()->orderByDesc('created_at')
                 ->where('action', 'not like', '%/info/%')
                 ->where('action', 'not like', '%/check/%')
+                ->where('action', 'not like', '%/nssets/%')
                 ->limit(30)->get()
                 ->map(fn ($l) => [
                     'action'     => self::friendlyAction($l->action),
@@ -123,6 +124,7 @@ class PortalDomainController extends Controller
     {
         return match (true) {
             $action === 'auth_info_revealed'      => 'Transfer code viewed',
+            $action === 'nameservers_changed'     => 'Nameservers changed',
             str_contains($action, '/renew/')      => 'Domain renewed',
             str_contains($action, '/register/')   => 'Domain registered',
             str_contains($action, '/transfer/')   => 'Transfer requested',
