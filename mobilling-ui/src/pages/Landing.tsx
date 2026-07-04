@@ -7,13 +7,15 @@ import {
 import { useDisclosure, useWindowScroll } from '@mantine/hooks';
 import {
   IconFileInvoice, IconFileText, IconCalendarDue,
-  IconCash, IconUsers, IconBuildingCommunity,
-  IconSun, IconMoon, IconArrowRight, IconShieldCheck,
-  IconDeviceMobile, IconChartBar, IconCheck,
+  IconCash, IconBuildingCommunity,
+  IconSun, IconMoon, IconArrowRight,
+  IconDeviceMobile, IconCheck,
   IconMail, IconPhone, IconMapPin, IconBrandWhatsapp,
   IconWorld, IconBrandWhatsappFilled, IconWalk, IconMessage2,
   IconRocket, IconTrendingUp, IconHeadset, IconStar,
   IconChevronUp, IconCurrencyDollar, IconQuote,
+  IconServer, IconWorldWww, IconRepeat, IconTicket,
+  IconLayoutDashboard, IconPalette, IconLock, IconRefresh,
 } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -23,28 +25,43 @@ import { getPublicPlans, SubscriptionPlan } from '../api/subscription';
 // ── Data ─────────────────────────────────────────────────────────────────────
 
 const features = [
-  { icon: IconFileInvoice,         color: 'blue',   title: 'Invoicing',              description: 'Professional invoices with automatic numbering, tax calculations, and real-time payment status.' },
+  { icon: IconFileInvoice,         color: 'blue',   title: 'Invoicing & Recurring Billing', description: 'Professional invoices with automatic numbering, tax, recurring cycles, late fees and dunning — on autopilot.' },
   { icon: IconFileText,            color: 'violet', title: 'Quotations & Proformas', description: 'Win business with polished quotes and proforma invoices that convert to final invoices in one click.' },
   { icon: IconCalendarDue,         color: 'orange', title: 'Statutory Bills',        description: 'Never miss NHIF, NSSF, PAYE, or VAT deadlines with automated tracking and due-date reminders.' },
-  { icon: IconCash,                color: 'green',  title: 'Payment Tracking',       description: 'Record M-Pesa, bank transfers, cash, and cheque payments — reconcile everything instantly.' },
+  { icon: IconCash,                color: 'green',  title: 'Payments & Wallet',      description: 'M-Pesa, Pesapal, bank, cash & cheque — plus a client credit wallet with top-ups and auto-pay.' },
+  { icon: IconLayoutDashboard,     color: 'indigo', title: 'Client Portal',          description: 'Your clients log in to order services, pay invoices, open tickets and manage everything themselves.' },
+  { icon: IconTicket,              color: 'red',    title: 'Support Helpdesk',       description: 'A full ticketing system — departments, priorities, email notifications — for you and your clients.' },
   { icon: IconBrandWhatsappFilled, color: 'teal',   title: 'WhatsApp Marketing',     description: 'Track leads from WhatsApp & social ads through a full pipeline. Log calls, schedule follow-ups, convert to clients.' },
   { icon: IconWalk,                color: 'cyan',   title: 'Field Marketing',        description: 'Manage door-to-door campaigns. Log visits, track conversion per officer, and measure ROI per session.' },
-  { icon: IconUsers,               color: 'indigo', title: 'Client Management',      description: 'Full client directory with contacts, billing history, and service records at a glance.' },
-  { icon: IconMessage2,            color: 'pink',   title: 'SMS Notifications',      description: 'Automatic payment reminders and invoice notifications sent directly to clients via SMS.' },
-  { icon: IconBuildingCommunity,   color: 'grape',  title: 'Multi-tenant',           description: 'Isolated workspaces per business — your data never mixes with anyone else\'s.' },
+  { icon: IconMessage2,            color: 'pink',   title: 'SMS & Email Notifications', description: 'Automatic payment reminders, invoice and renewal notices sent to clients via SMS and email.' },
+];
+
+const hostingFeatures = [
+  { icon: IconServer,   color: 'blue',   title: 'cPanel Hosting Automation', description: 'Connect your WHM server: accounts are created the moment an invoice is paid, suspended on non-payment, upgraded with prorated billing — hands-free.' },
+  { icon: IconWorldWww, color: 'teal',   title: '.tz Domain Registrar',      description: 'Register, renew and transfer .tz domains directly at the TCRA/tzNIC registry over EPP. Live availability search, your own pricing per TLD.' },
+  { icon: IconRefresh,  color: 'violet', title: 'Auto-Renewals from Wallet', description: 'Clients opt in to auto-renew — renewals invoice themselves and pay from the client\'s credit balance automatically.' },
+  { icon: IconLock,     color: 'green',  title: 'SSL & DNS Management',      description: 'Nightly SSL monitoring on every domain, self-service nameserver changes, EPP transfer codes — all from the portal.' },
+  { icon: IconLayoutDashboard, color: 'orange', title: 'One-Click cPanel Login', description: 'Clients jump into cPanel, webmail, file manager or phpMyAdmin from their portal — no passwords to share.' },
+  { icon: IconRepeat,   color: 'grape',  title: 'Order → Pay → Provision',   description: 'A WHMCS-style shopping cart: clients choose a plan, pick a domain, pay online — and the service goes live automatically.' },
+];
+
+const resellerPoints = [
+  { icon: IconPalette,          title: 'Your brand, your prices',    desc: 'Run the whole platform under your own business name and logo. Set your own hosting plans and per-TLD domain pricing — keep the margin.' },
+  { icon: IconServer,           title: 'We run the machinery',       desc: 'Registry connections, cPanel automation, billing engine, portal, SSL monitoring — maintained for you. You focus on selling.' },
+  { icon: IconBuildingCommunity,title: 'Isolated tenant workspace',  desc: 'Your clients, invoices and services live in your own isolated workspace. Your customers only ever see your brand.' },
 ];
 
 const howItWorks = [
   { num: '01', color: 'blue',  step: 'Create your account',    desc: 'Sign up in seconds. Set up your business profile, logo, and invite your team members.' },
-  { num: '02', color: 'teal',  step: 'Add clients & services', desc: 'Import your client list, define your services, set pricing and tax rates.' },
-  { num: '03', color: 'green', step: 'Invoice & get paid',     desc: 'Generate professional invoices, track payments, and stay on top of statutory deadlines.' },
+  { num: '02', color: 'teal',  step: 'Add services & pricing', desc: 'Import clients, define hosting plans, domain pricing and services — connect your WHM server if you host.' },
+  { num: '03', color: 'green', step: 'Sell on autopilot',      desc: 'Clients order and pay in your portal; provisioning, renewals, reminders and dunning run themselves.' },
 ];
 
 const socialProof = [
-  { value: '500+',   label: 'Businesses onboarded' },
-  { value: '50K+',   label: 'Invoices generated'   },
-  { value: '99.9%',  label: 'Uptime'               },
-  { value: '< 2min', label: 'Average setup time'   },
+  { value: '500+',  label: 'Businesses onboarded'        },
+  { value: '50K+',  label: 'Invoices generated'          },
+  { value: '300+',  label: 'Domains & hosting automated' },
+  { value: '99.9%', label: 'Uptime'                      },
 ];
 
 const testimonials = [
@@ -61,7 +78,7 @@ const testimonials = [
     company: 'Ochieng IT Solutions, Nairobi',
     avatar: 'DO',
     color: 'blue',
-    text: 'The WhatsApp marketing module is incredible. We track every lead from our ads, log follow-up calls, and convert prospects directly to clients inside the same system.',
+    text: 'We moved our whole hosting business off WHMCS. Domains register themselves when clients pay, cPanel accounts provision automatically, and we stopped paying license fees. Unbelievable.',
     stars: 5,
   },
   {
@@ -75,29 +92,32 @@ const testimonials = [
 ];
 
 const faqs = [
+  { q: 'Is MoBilling a WHMCS alternative?',         a: 'Yes. MoBilling does what WHMCS does — client portal, shopping cart, cPanel/WHM auto-provisioning, domain registration & renewals, tickets, recurring billing and dunning — with no separate license fee, and built for East African payments like M-Pesa and Pesapal.' },
+  { q: 'Can I sell hosting and domains?',           a: 'Absolutely. Connect your own WHM/cPanel server and MoBilling provisions, suspends and upgrades accounts automatically. .tz domains register and renew directly at the TCRA/tzNIC registry, with your own retail pricing per TLD.' },
+  { q: 'What is the white-label reseller program?', a: 'You run MoBilling under your own brand: your logo, your domain pricing, your hosting plans, your client portal. We operate the registry connections, automation and infrastructure behind the scenes — your customers only ever see your business.' },
   { q: 'Is there a free trial?',                    a: 'Yes! You can start completely free. No credit card required. When you\'re ready, choose a plan that fits your business.' },
-  { q: 'Which payment methods are supported?',      a: 'M-Pesa, bank transfers, cash, cheques, and mobile money. We support all common East African payment methods.' },
+  { q: 'Which payment methods are supported?',      a: 'M-Pesa, Pesapal, bank transfers, cash, cheques, and mobile money — plus a client credit wallet for prepaid balances and auto-renewals.' },
   { q: 'Is MoBilling compliant with TRA/KRA?',      a: 'Yes. MoBilling supports VAT, PAYE, NHIF, NSSF, and other statutory requirements for Tanzania and Kenya.' },
   { q: 'Can I use it on my phone?',                 a: 'Absolutely. MoBilling is fully responsive and works on any device — phone, tablet, or desktop.' },
-  { q: 'How many users can I add?',                 a: 'Depends on your plan. Starter supports 1-2 users, Professional allows up to 5, Business and Enterprise have multi-user access with role-based permissions.' },
-  { q: 'Can I import my existing client data?',     a: 'Yes. You can add clients manually or contact our support team to help you import data from Excel or your existing system.' },
+  { q: 'Can I import my existing client data?',     a: 'Yes — including from WHMCS. We migrate clients, services, invoices, payments and domains; your clients even keep their old portal passwords.' },
   { q: 'Do you offer support in Swahili?',          a: 'Kabisa! Our support team speaks both Swahili and English. Reach us on WhatsApp, phone, or email any time.' },
 ];
 
 const trustBadges = [
-  { icon: IconShieldCheck,  label: 'TRA Compliant'      },
-  { icon: IconDeviceMobile, label: 'M-Pesa Ready'       },
-  { icon: IconChartBar,     label: 'Real-time Reports'  },
-  { icon: IconHeadset,      label: 'Local Support Team' },
+  { icon: IconWorldWww,     label: '.tz Registry Connected' },
+  { icon: IconServer,       label: 'cPanel Automation'      },
+  { icon: IconDeviceMobile, label: 'M-Pesa & Pesapal Ready' },
+  { icon: IconHeadset,      label: 'Local Support Team'     },
 ];
 
 const planColors = ['blue', 'teal', 'violet', 'orange'];
 
 const NAV_LINKS = [
-  { label: 'Features',     href: '#features'     },
-  { label: 'How it Works', href: '#how-it-works' },
-  { label: 'Pricing',      href: '#pricing'      },
-  { label: 'Contact',      href: '#contact'      },
+  { label: 'Features',          href: '#features'        },
+  { label: 'Hosting & Domains', href: '#hosting-domains' },
+  { label: 'Reseller',          href: '#reseller'        },
+  { label: 'Pricing',           href: '#pricing'         },
+  { label: 'Contact',           href: '#contact'         },
 ];
 
 // ── Hero product mockup ───────────────────────────────────────────────────────
@@ -143,8 +163,8 @@ function ProductMockup({ dark }: { dark: boolean }) {
           <Group gap={12} grow>
             {[
               { label: 'Revenue', value: 'TZS 4.2M', color: 'blue' },
-              { label: 'Invoices', value: '127', color: 'teal' },
-              { label: 'Clients', value: '38', color: 'violet' },
+              { label: 'Hosting', value: '109', color: 'teal' },
+              { label: 'Domains', value: '147', color: 'violet' },
             ].map(s => (
               <Box key={s.label} style={{ background: cardBg, borderRadius: 8, padding: '8px 10px', border: `1px solid ${border}` }}>
                 <Text size="xs" c="dimmed">{s.label}</Text>
@@ -213,6 +233,32 @@ function ProductMockup({ dark }: { dark: boolean }) {
             <div>
               <Text size="xs" fw={700}>Payment Received</Text>
               <Text size="xs" c="dimmed">TZS 450,000 via M-Pesa</Text>
+            </div>
+          </Group>
+        </Paper>
+      </motion.div>
+
+      {/* Floating domain-registered card */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, delay: 1.5 }}
+        style={{ position: 'absolute', top: 52, right: -28, zIndex: 10 }}
+      >
+        <Paper
+          withBorder
+          p="sm"
+          radius="lg"
+          shadow="lg"
+          style={{ background: dark ? theme.colors.dark[6] : 'white', minWidth: 210 }}
+        >
+          <Group gap={10}>
+            <ThemeIcon size={34} radius="xl" color="teal" variant="light">
+              <IconWorldWww size={18} />
+            </ThemeIcon>
+            <div>
+              <Text size="xs" fw={700}>Domain Registered ✓</Text>
+              <Text size="xs" c="dimmed">amina-traders.co.tz · auto</Text>
             </div>
           </Group>
         </Paper>
@@ -408,21 +454,22 @@ export default function Landing() {
                 transition={{ duration: 0.65 }}
               >
                 <Badge size="xl" variant="gradient" gradient={{ from: 'blue', to: 'cyan' }} mb="lg" px="lg" radius="xl">
-                  Built for East African Businesses
+                  The WHMCS-style platform built for East Africa
                 </Badge>
 
                 <Title order={1} fw={900} style={{ fontSize: 'clamp(2.2rem, 4.5vw, 3.6rem)', lineHeight: 1.1 }}>
-                  Billing &{' '}
+                  Billing,{' '}
                   <Text component="span" inherit variant="gradient" gradient={{ from: 'blue', to: 'cyan', deg: 90 }}>
-                    Statutory
+                    Hosting & Domains
                   </Text>
-                  {' '}Compliance,{' '}
-                  <Text component="span" inherit style={{ fontStyle: 'italic' }}>Simplified</Text>
+                  {' '}on{' '}
+                  <Text component="span" inherit style={{ fontStyle: 'italic' }}>Autopilot</Text>
                 </Title>
 
                 <Text size="lg" c="dimmed" mt="lg" lh={1.8}>
-                  Invoices, quotations, statutory bills, WhatsApp marketing,
-                  and payment tracking — all in one place designed for East Africa.
+                  Invoices, statutory bills, a client portal, cPanel hosting automation and a
+                  direct .tz domain registrar — everything WHMCS does plus East African billing,
+                  in one platform. White-label it and sell under your own brand.
                 </Text>
 
                 <Group mt={{ base: 28, sm: 36 }} gap="md" wrap="wrap">
@@ -624,6 +671,92 @@ export default function Landing() {
         </Container>
       </Box>
 
+      {/* ── Hosting & Domains (WHMCS parity) ── */}
+      <Box id="hosting-domains" py={{ base: 64, sm: 96 }}>
+        <Container size="lg">
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
+            <Stack align="center" mb={64}>
+              <Badge variant="light" size="lg" color="teal" radius="xl">Hosting & Domains</Badge>
+              <Title order={2} ta="center" style={{ fontSize: 'clamp(1.5rem, 3vw, 2.2rem)' }}>
+                Everything WHMCS does — built in
+              </Title>
+              <Text c="dimmed" ta="center" maw={560}>
+                Sell cPanel hosting and .tz domains with end-to-end automation: order, pay,
+                provision, renew, suspend — no license fees, no plugins, no cron babysitting.
+              </Text>
+            </Stack>
+          </motion.div>
+
+          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="xl">
+            {hostingFeatures.map((f, i) => (
+              <motion.div
+                key={f.title}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-40px' }}
+                transition={{ duration: 0.4, delay: i * 0.07 }}
+              >
+                <Paper
+                  withBorder
+                  p="xl"
+                  radius="xl"
+                  h="100%"
+                  style={{ transition: 'transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease', cursor: 'default' }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.transform = 'translateY(-6px)';
+                    e.currentTarget.style.boxShadow = theme.shadows.xl;
+                    e.currentTarget.style.borderColor = `var(--mantine-color-${f.color}-5)`;
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = '';
+                    e.currentTarget.style.borderColor = '';
+                  }}
+                >
+                  <ThemeIcon size={56} radius="xl" variant="gradient" gradient={{ from: f.color, to: 'cyan', deg: 135 }}>
+                    <f.icon size={30} />
+                  </ThemeIcon>
+                  <Text size="lg" fw={700} mt="md">{f.title}</Text>
+                  <Text size="sm" c="dimmed" mt={6} lh={1.7}>{f.description}</Text>
+                </Paper>
+              </motion.div>
+            ))}
+          </SimpleGrid>
+
+          {/* Migration strip */}
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5, delay: 0.15 }}>
+            <Paper withBorder radius="xl" p="xl" mt={48}>
+              <Group justify="space-between" wrap="wrap" gap="lg">
+                <Group gap="md" style={{ flex: '1 1 420px' }}>
+                  <ThemeIcon size={52} radius="xl" variant="gradient" gradient={{ from: 'orange', to: 'red', deg: 135 }}>
+                    <IconRocket size={28} />
+                  </ThemeIcon>
+                  <div style={{ flex: 1 }}>
+                    <Text fw={700} size="lg">Migrating from WHMCS?</Text>
+                    <Text size="sm" c="dimmed" lh={1.7}>
+                      We import your clients, services, invoices, payments and domains — your
+                      clients even keep their existing portal passwords. Zero-downtime cutover.
+                    </Text>
+                  </div>
+                </Group>
+                <Button
+                  size="md"
+                  radius="xl"
+                  variant="gradient"
+                  gradient={{ from: 'orange', to: 'red' }}
+                  component="a"
+                  href="https://wa.me/255689011111?text=I%20want%20to%20migrate%20from%20WHMCS"
+                  target="_blank"
+                  leftSection={<IconBrandWhatsapp size={18} />}
+                >
+                  Ask About Migration
+                </Button>
+              </Group>
+            </Paper>
+          </motion.div>
+        </Container>
+      </Box>
+
       {/* ── Why MoBilling strip ── */}
       <Box
         py={{ base: 56, sm: 80 }}
@@ -714,6 +847,88 @@ export default function Landing() {
               </motion.div>
             ))}
           </SimpleGrid>
+        </Container>
+      </Box>
+
+      {/* ── White-label reseller ── */}
+      <Box
+        id="reseller"
+        py={{ base: 64, sm: 96 }}
+        style={{
+          background: dark
+            ? `linear-gradient(135deg, ${theme.colors.violet[9]}55 0%, ${theme.colors.blue[9]}44 100%)`
+            : `linear-gradient(135deg, ${theme.colors.violet[6]} 0%, ${theme.colors.blue[6]} 100%)`,
+        }}
+      >
+        <Container size="lg">
+          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
+            <Stack align="center" mb={56}>
+              <Badge size="lg" radius="xl" variant="white" c="violet">White-Label Reseller</Badge>
+              <Title order={2} ta="center" c="white" style={{ fontSize: 'clamp(1.5rem, 3vw, 2.2rem)' }}>
+                Your brand. Our engine.
+              </Title>
+              <Text ta="center" maw={560} style={{ color: 'rgba(255,255,255,0.8)' }}>
+                Start your own hosting & domains business without building any infrastructure.
+                Resell under your name — MoBilling runs the registry, servers and billing behind the scenes.
+              </Text>
+            </Stack>
+          </motion.div>
+
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xl">
+            {resellerPoints.map((p, i) => (
+              <motion.div
+                key={p.title}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-40px' }}
+                transition={{ duration: 0.4, delay: i * 0.1 }}
+              >
+                <Paper
+                  p="xl"
+                  radius="xl"
+                  h="100%"
+                  style={{
+                    background: 'rgba(255,255,255,0.10)',
+                    border: '1px solid rgba(255,255,255,0.22)',
+                    backdropFilter: 'blur(8px)',
+                  }}
+                >
+                  <ThemeIcon size={52} radius="xl" variant="white" style={{ color: theme.colors.violet[6] }}>
+                    <p.icon size={28} />
+                  </ThemeIcon>
+                  <Text fw={700} size="lg" mt="md" c="white">{p.title}</Text>
+                  <Text size="sm" mt={6} lh={1.7} style={{ color: 'rgba(255,255,255,0.78)' }}>{p.desc}</Text>
+                </Paper>
+              </motion.div>
+            ))}
+          </SimpleGrid>
+
+          <Group justify="center" mt={48} gap="md" wrap="wrap">
+            <Button
+              size="lg"
+              radius="xl"
+              variant="white"
+              c="violet"
+              rightSection={<IconArrowRight size={18} />}
+              component={Link}
+              to="/register"
+            >
+              Become a Reseller
+            </Button>
+            <Button
+              size="lg"
+              radius="xl"
+              variant="outline"
+              color="white"
+              styles={{ root: { borderColor: 'rgba(255,255,255,0.55)', color: 'white' } }}
+              leftSection={<IconBrandWhatsapp size={18} />}
+              component="a"
+              href="https://wa.me/255689011111?text=I%20want%20to%20know%20about%20the%20white-label%20reseller%20program"
+              target="_blank"
+            >
+              Talk to Sales
+            </Button>
+          </Group>
         </Container>
       </Box>
 
@@ -873,7 +1088,8 @@ export default function Landing() {
                 <Text fw={800} variant="gradient" gradient={{ from: 'blue', to: 'cyan' }}>MoBilling</Text>
               </Group>
               <Text size="sm" c="dimmed" maw={260} lh={1.6}>
-                Billing & Statutory Compliance platform built for East African businesses.
+                Billing, hosting automation & .tz domain registrar — the WHMCS-style
+                platform built for East African businesses. White-label ready.
               </Text>
               <Group gap={8} mt={4}>
                 <ActionIcon variant="light" color="teal" size="lg" radius="xl" component="a" href="https://wa.me/255689011111" target="_blank">
