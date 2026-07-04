@@ -177,7 +177,12 @@ export default function AppLayout() {
 
           {can('menu.hosting') && (
             <NavLink label="Hosting" leftSection={<IconWorld size={18} />}
-              active={isActive('/hosting')} onClick={() => navigateAndClose('/hosting')} />
+              defaultOpened={isActive('/hosting')}>
+              <NavLink label="Accounts" active={location.pathname === '/hosting'}
+                onClick={() => navigateAndClose('/hosting')} />
+              <NavLink label="Manage Services" active={location.pathname.startsWith('/hosting/services')}
+                onClick={() => navigateAndClose('/hosting/services')} />
+            </NavLink>
           )}
 
           {can('menu.domains') && (

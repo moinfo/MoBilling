@@ -486,6 +486,13 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:hosting.terminate')->post('/hosting-accounts/{hostingAccount}/terminate', [\App\Http\Controllers\HostingAccountController::class, 'terminate']);
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/{hostingAccount}/change-package', [\App\Http\Controllers\HostingAccountController::class, 'changePackage']);
     Route::middleware('permission:hosting.sso')->post('/hosting-accounts/{hostingAccount}/sso', [\App\Http\Controllers\HostingAccountController::class, 'sso']);
+    Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/{hostingAccount}/password', [\App\Http\Controllers\HostingServiceController::class, 'changePassword']);
+    Route::middleware('permission:hosting.read')->post('/hosting-accounts/{hostingAccount}/refresh-usage', [\App\Http\Controllers\HostingServiceController::class, 'refreshUsage']);
+
+    // Admin service management (WHMCS Client Profile → Products/Services)
+    Route::middleware('permission:client_subscriptions.read')->get('/hosting-services', [\App\Http\Controllers\HostingServiceController::class, 'forClient']);
+    Route::middleware('permission:client_subscriptions.read')->get('/hosting-services/{clientSubscription}', [\App\Http\Controllers\HostingServiceController::class, 'show']);
+    Route::middleware('permission:client_subscriptions.update')->put('/hosting-services/{clientSubscription}', [\App\Http\Controllers\HostingServiceController::class, 'update']);
 
     // ── Domains (.tz registrar) ──────────────────────────────────────────────
     Route::middleware('permission:domains.read')->group(function () {

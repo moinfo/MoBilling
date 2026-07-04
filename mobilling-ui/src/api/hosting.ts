@@ -73,3 +73,70 @@ export const terminateHosting = (id: string) => api.post(`/hosting-accounts/${id
 export const changeHostingPackage = (id: string, pkg: string) =>
   api.post(`/hosting-accounts/${id}/change-package`, { package: pkg });
 export const getHostingSso = (id: string) => api.post<{ url: string }>(`/hosting-accounts/${id}/sso`);
+
+// ── Admin service management (Client Profile → Products/Services) ──────────────
+
+export interface ServiceListItem {
+  id: string;
+  product_name: string;
+  domain: string | null;
+  status: string;
+  has_account: boolean;
+}
+
+export interface ServiceMetric {
+  metric: string;
+  enabled: boolean;
+  usage: string | number | null;
+  last_update: string | null;
+}
+
+export interface ServiceDetail {
+  id: string;
+  client: { id: string; name: string };
+  order_document_id: string | null;
+  product_service_id: string;
+  server_id: string | null;
+  domain: string | null;
+  dedicated_ip: string | null;
+  username: string | null;
+  package: string | null;
+  status: string;
+  start_date: string | null;
+  quantity: number;
+  first_payment_amount: number | null;
+  recurring_amount: number | null;
+  next_due_date: string | null;
+  termination_date: string | null;
+  billing_cycle: string | null;
+  payment_method: string | null;
+  promo_code: string | null;
+  hosting_account: {
+    id: string; status: string; server_id: string | null; server_host: string | null;
+    last_synced_at: string | null; not_on_whm: boolean;
+  } | null;
+  ssl: { valid: boolean | null; issuer: string | null; expires_at: string | null };
+  metrics: ServiceMetric[];
+  options: {
+    servers: { id: string; label: string; hostname: string }[];
+    products: { id: string; name: string; price: string; billing_cycle: string; cpanel_package: string | null }[];
+    statuses: string[];
+    billing_cycles: string[];
+    payment_methods: string[];
+  };
+}
+
+export const getClientServices = (clientId: string) =>
+  api.get<{ data: ServiceListItem[] }>('/hosting-services', { params: { client_id: clientId } });
+
+export const getServiceDetail = (subscriptionId: string) =>
+  api.get<{ data: ServiceDetail }>(`/hosting-services/${subscriptionId}`);
+
+export const updateService = (subscriptionId: string, data: Record<string, unknown>) =>
+  api.put<{ data: ServiceDetail }>(`/hosting-services/${subscriptionId}`, data);
+
+export const changeHostingPassword = (accountId: string, password: string) =>
+  api.post<{ message: string }>(`/hosting-accounts/${accountId}/password`, { password });
+
+export const refreshHostingUsage = (accountId: string) =>
+  api.post<{ data: ServiceMetric[] }>(`/hosting-accounts/${accountId}/refresh-usage`);

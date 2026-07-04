@@ -16,6 +16,7 @@ class ClientSubscription extends Model
         'tenant_id', 'client_id', 'product_service_id',
         'label', 'quantity', 'discount_type', 'discount_value',
         'start_date', 'expire_date', 'status', 'metadata', 'legacy_id',
+        'first_payment_amount', 'recurring_amount', 'payment_method', 'promo_code',
     ];
 
     protected $casts = [
@@ -24,6 +25,8 @@ class ClientSubscription extends Model
         'metadata' => 'array',
         'quantity' => 'integer',
         'discount_value' => 'decimal:2',
+        'first_payment_amount' => 'decimal:2',
+        'recurring_amount' => 'decimal:2',
     ];
 
     public function client()
