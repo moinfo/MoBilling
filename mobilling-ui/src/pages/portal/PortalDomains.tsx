@@ -132,7 +132,8 @@ export default function PortalDomains() {
                 <Table.Tr><Table.Td colSpan={5}><Text c="dimmed" ta="center" py="md" size="sm">No domains yet.</Text></Table.Td></Table.Tr>
               )}
               {domains.map((d) => (
-                <Table.Tr key={d.id}>
+                <Table.Tr key={d.id} style={{ cursor: 'pointer' }}
+                  onClick={() => navigate(`/portal/domains/${d.id}`)}>
                   <Table.Td>
                     <Group gap={6} wrap="nowrap">
                       {d.ssl_valid !== null && (
@@ -152,6 +153,7 @@ export default function PortalDomains() {
                               label="When ON, we renew this domain automatically before it expires and charge your account credit — keep enough balance in your wallet.">
                               <Switch size="xs" label="Auto Renew" checked={d.auto_renew}
                                 disabled={togglingId === d.id}
+                                onClick={(e) => e.stopPropagation()}
                                 onChange={(e) => toggleAutoRenew(d, e.currentTarget.checked)}
                                 styles={{ label: { fontSize: 11, color: 'var(--mantine-color-dimmed)' } }} />
                             </Tooltip>
@@ -182,7 +184,7 @@ export default function PortalDomains() {
                     {!d.unmanaged && ['active', 'expired'].includes(d.status) && (
                       <Button size="xs" variant="light" color={d.expiring_soon || d.status === 'expired' ? 'orange' : 'blue'}
                         leftSection={<IconRefresh size={13} />}
-                        onClick={() => setRenewFor(d)}>
+                        onClick={(e) => { e.stopPropagation(); setRenewFor(d); }}>
                         Renew
                       </Button>
                     )}

@@ -261,6 +261,42 @@ export const getPortalDomains = () =>
 export const portalRenewDomain = (id: string, years: number) =>
   api.post(`/portal/domains/${id}/renew`, { years });
 
+export interface PortalDomainDetail {
+  id: string;
+  name: string;
+  status: string;
+  registered_at: string | null;
+  expires_at: string | null;
+  auto_renew: boolean;
+  unmanaged: boolean;
+  billing: {
+    first_payment: number | null;
+    recurring: number | null;
+    cycle: string;
+    payment_method: string | null;
+  };
+  ssl: {
+    valid: boolean | null;
+    issuer: string | null;
+    starts_at: string | null;
+    expires_at: string | null;
+    checked_at: string | null;
+  };
+  registry: {
+    registrant_handle: string | null;
+    admin_handle: string | null;
+    nsset_handle: string | null;
+  };
+  has_epp_code: boolean;
+  activity: { action: string; status: string; created_at: string }[];
+}
+
+export const getPortalDomainDetail = (id: string) =>
+  api.get<{ data: PortalDomainDetail }>(`/portal/domains/${id}`);
+
+export const portalGetEppCode = (id: string) =>
+  api.post<{ auth_info: string }>(`/portal/domains/${id}/epp-code`);
+
 export const portalSetAutoRenew = (id: string, enabled: boolean) =>
   api.put<{ data: { auto_renew: boolean }; message: string }>(`/portal/domains/${id}/auto-renew`, { enabled });
 

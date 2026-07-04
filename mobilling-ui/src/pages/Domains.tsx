@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Stack, Group, Table, Badge, ActionIcon, Tooltip, Text, Paper, Select,
   TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code, NumberInput,
-  Alert, CopyButton, SimpleGrid, ThemeIcon, Switch,
+  Alert, CopyButton, SimpleGrid, ThemeIcon, Switch, Anchor,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -202,7 +202,7 @@ export default function Domains() {
                     <Table.Tr key={d.id}>
                       <Table.Td fw={500}>
                         <Group gap={6} wrap="nowrap">
-                          {d.name}
+                          <Anchor size="sm" fw={600} onClick={() => setLogsFor(d)}>{d.name}</Anchor>
                           {isOurs && (
                             <Tooltip label={`Registry-confirmed on ${sponsor}`}>
                               <IconShieldCheck size={15} color="var(--mantine-color-teal-6)" />
@@ -279,8 +279,55 @@ export default function Domains() {
       <RenewModal domain={renewFor} onClose={() => setRenewFor(null)} />
 
       <Drawer opened={!!logsFor} onClose={() => setLogsFor(null)}
-        title={`Registry log — ${logsFor?.name ?? ''}`} position="right" size="md">
-        {logsFor && <DomainLogsList domainId={logsFor.id} />}
+        title={<Text fw={700}>{logsFor?.name ?? ''}</Text>} position="right" size="md">
+        {logsFor && (
+          <Stack gap="md">
+            <Paper withBorder p="sm" radius="md">
+              <Stack gap={6}>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Client</Text>
+                  <Text size="sm" fw={500}>{logsFor.client?.name ?? '—'}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Status</Text>
+                  <Badge size="sm" color={DOMAIN_STATUS_COLORS[logsFor.status]} variant="light">{logsFor.status}</Badge>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Registered</Text>
+                  <Text size="sm">{logsFor.registered_at ?? '—'}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Expires</Text>
+                  <Text size="sm">{logsFor.expires_at ?? '—'}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Auto-renew</Text>
+                  <Text size="sm">{logsFor.auto_renew ? 'On (wallet-funded)' : 'Off'}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">Sponsoring registrar</Text>
+                  <Text size="sm">{logsFor.meta?.sponsoring_registrar ?? (logsFor.meta?.unmanaged ? 'unmanaged gTLD' : 'unconfirmed')}</Text>
+                </Group>
+                <Group justify="space-between">
+                  <Text size="sm" c="dimmed">SSL</Text>
+                  <Text size="sm">
+                    {logsFor.meta?.ssl_valid
+                      ? `Valid${logsFor.meta?.ssl_issuer ? ` (${logsFor.meta.ssl_issuer})` : ''} until ${logsFor.meta?.ssl_expires_at ?? '?'}`
+                      : 'None detected'}
+                  </Text>
+                </Group>
+                {logsFor.meta?.last_synced_at && (
+                  <Group justify="space-between">
+                    <Text size="sm" c="dimmed">Last registry sync</Text>
+                    <Text size="sm">{dayjs(logsFor.meta.last_synced_at).format('D MMM YYYY HH:mm')}</Text>
+                  </Group>
+                )}
+              </Stack>
+            </Paper>
+            <Text size="sm" fw={700}>Activity</Text>
+            <DomainLogsList domainId={logsFor.id} />
+          </Stack>
+        )}
       </Drawer>
 
       <Modal opened={!!authInfoFor} onClose={() => setAuthInfoFor(null)}

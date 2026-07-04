@@ -50,6 +50,92 @@ class PortalDomainController extends Controller
         ]);
     }
 
+    /** Full detail for the Domain Management page. */
+    public function show(Request $request, Domain $domain)
+    {
+        abort_unless($domain->client_id === $request->user()->client_id, 404);
+
+        $meta = $domain->meta ?? [];
+        $tld  = strtolower(explode('.', $domain->name, 2)[1] ?? '');
+        $pricing = DomainTld::priceFor($request->user()->tenant_id, $tld);
+
+        // Recurring: native subscription price > imported WHMCS amount > TLD renew price.
+        $sub = $domain->subscription()->with('productService')->first();
+        $recurring = $sub?->productService?->price
+            ?? ($meta['whmcs_recurring_amt'] ?? null)
+            ?? $pricing?->renew_price;
+
+        // First payment: the original order invoice when we have it.
+        $orderDoc = ($meta['order_document_id'] ?? null)
+            ? Document::withoutGlobalScopes()->find($meta['order_document_id'])
+            : null;
+        $firstPayment = $orderDoc?->total ?? ($meta['whmcs_recurring_amt'] ?? null) ?? $pricing?->register_price;
+
+        // Payment method: how the most recent linked invoice was paid.
+        $linkedDocIds = array_filter([$meta['order_document_id'] ?? null, $meta['renewal_document_id'] ?? null]);
+        $lastPayment = $linkedDocIds
+            ? \App\Models\PaymentIn::withoutGlobalScopes()->whereIn('document_id', $linkedDocIds)
+                ->orderByDesc('payment_date')->first()
+            : null;
+
+        return response()->json(['data' => [
+            'id'             => $domain->id,
+            'name'           => $domain->name,
+            'status'         => $domain->status,
+            'registered_at'  => $domain->registered_at?->toDateString(),
+            'expires_at'     => $domain->expires_at?->toDateString(),
+            'auto_renew'     => $domain->auto_renew,
+            'unmanaged'      => (bool) ($meta['unmanaged'] ?? false),
+            'billing'        => [
+                'first_payment'  => $firstPayment !== null ? (float) $firstPayment : null,
+                'recurring'      => $recurring !== null ? (float) $recurring : null,
+                'cycle'          => 'Every 1 Year/s',
+                'payment_method' => $lastPayment?->payment_method,
+            ],
+            'ssl'            => [
+                'valid'      => $meta['ssl_valid'] ?? null,
+                'issuer'     => $meta['ssl_issuer'] ?? null,
+                'starts_at'  => $meta['ssl_starts_at'] ?? null,
+                'expires_at' => $meta['ssl_expires_at'] ?? null,
+                'checked_at' => $meta['last_synced_at'] ?? null,
+            ],
+            'registry'       => [
+                'registrant_handle' => $domain->registrant_handle,
+                'admin_handle'      => $domain->admin_handle,
+                'nsset_handle'      => $domain->nsset_handle,
+            ],
+            'has_epp_code'   => !empty($domain->epp_auth_info),
+            'activity'       => $domain->logs()->orderByDesc('created_at')->limit(30)->get()
+                ->map(fn ($l) => [
+                    'action'     => $l->action,
+                    'status'     => $l->status,
+                    'created_at' => $l->created_at->toISOString(),
+                ]),
+        ]]);
+    }
+
+    /** Reveal the EPP transfer code (portal admins; every access is logged). */
+    public function eppCode(Request $request, Domain $domain)
+    {
+        $user = $request->user();
+        abort_unless($domain->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can view the transfer code.');
+
+        if (empty($domain->epp_auth_info)) {
+            return response()->json(['message' => 'No transfer code is stored for this domain — please contact us.'], 422);
+        }
+
+        \App\Models\DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'auth_info_revealed',
+            'request'   => ['by_portal_user' => $user->id],
+            'status'    => 'success',
+        ]);
+
+        return response()->json(['auth_info' => $domain->epp_auth_info]);
+    }
+
     /**
      * Turn auto-renew on/off. When ON, the nightly job invoices the renewal
      * and pays it from the client's credit wallet automatically — so it only
