@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Group, Text,
-  SimpleGrid, Modal, TextInput, NumberInput, Alert, Tooltip, Menu, Switch,
+  SimpleGrid, Modal, TextInput, NumberInput, Alert, Tooltip, Menu, Switch, Anchor,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -188,7 +188,15 @@ export default function PortalDomains() {
                         Renew
                       </Button>
                     )}
-                    {d.unmanaged && <Text size="xs" c="dimmed">contact us to renew</Text>}
+                    {d.unmanaged && (
+                      <Anchor size="xs" c="dimmed" underline="always"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          navigate(`/portal/tickets/new?service=${encodeURIComponent(`Domain: ${d.name}`)}&subject=${encodeURIComponent(`Renewal request for ${d.name}`)}`);
+                        }}>
+                        contact us to renew
+                      </Anchor>
+                    )}
                   </Table.Td>
                 </Table.Tr>
               ))}

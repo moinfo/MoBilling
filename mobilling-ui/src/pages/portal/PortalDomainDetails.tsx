@@ -281,7 +281,15 @@ export default function PortalDomainDetails() {
                   <Alert color="gray" variant="light">Only portal administrators can change auto-renew.</Alert>
                 )}
                 {d.unmanaged && (
-                  <Alert color="orange" variant="light">This domain is renewed manually — please contact us.</Alert>
+                  <Alert color="orange" variant="light">
+                    <Group justify="space-between" wrap="wrap">
+                      This domain is renewed manually — please contact us.
+                      <Button size="compact-xs" variant="light" color="orange"
+                        onClick={() => navigate(`/portal/tickets/new?service=${encodeURIComponent(`Domain: ${d.name}`)}&subject=${encodeURIComponent(`Renewal request for ${d.name}`)}`)}>
+                        Contact Us
+                      </Button>
+                    </Group>
+                  </Alert>
                 )}
                 <Button variant="light" w="fit-content" onClick={() => navigate('/portal/dashboard')}>
                   Add Funds to Wallet
@@ -300,6 +308,10 @@ export default function PortalDomainDetails() {
                   No purchasable addons are available for this domain. DNS management and registrar-lock
                   are included with every domain we manage — contact us if you need changes.
                 </Alert>
+                <Button variant="light" w="fit-content"
+                  onClick={() => navigate(`/portal/tickets/new?service=${encodeURIComponent(`Domain: ${d.name}`)}&subject=${encodeURIComponent(`Addons enquiry for ${d.name}`)}`)}>
+                  Open a Support Ticket
+                </Button>
               </Stack>
             )}
 
@@ -322,7 +334,8 @@ export default function PortalDomainDetails() {
                   WHOIS contact details are held at the .tz registry. To update the registrant or admin
                   information, open a support ticket and we will submit the change to the registry.
                 </Alert>
-                <Button variant="light" w="fit-content" onClick={() => navigate('/portal/tickets')}>
+                <Button variant="light" w="fit-content"
+                  onClick={() => navigate(`/portal/tickets/new?service=${encodeURIComponent(`Domain: ${d.name}`)}&subject=${encodeURIComponent(`Update WHOIS contact information for ${d.name}`)}`)}>
                   Open a Support Ticket
                 </Button>
               </Stack>
