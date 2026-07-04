@@ -54,7 +54,7 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
             ->line('Please settle this invoice immediately to avoid service disruption.');
 
         if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
             $mail->action('Pay Now', $payUrl);
         }
 
@@ -77,7 +77,7 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
         $msg = "FINAL NOTICE: Invoice {$this->document->document_number} ({$currency} {$totalFormatted}) is unpaid. Service will be TERMINATED in 7 days if not cleared. Pay now. — {$this->tenant->name}";
 
         if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
             $msg .= " Pay: {$payUrl}";
         }
 

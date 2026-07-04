@@ -26,6 +26,7 @@ class DomainRegisteredNotification extends Notification
             ->greeting("Hello {$notifiable->name},")
             ->line("Your domain **{$this->domain->name}** has been registered successfully.")
             ->line("**Expires:** " . ($this->domain->expires_at?->format('d M Y') ?? '—'))
+            ->action('Manage Your Domain', $this->tenantPortalUrl($this->domain->tenant, "/portal/domains/{$this->domain->id}"))
             ->line('We will invoice you before it is due for renewal — nothing more to do for now.');
 
         return $this->applyBranding($mail, $this->domain->tenant);

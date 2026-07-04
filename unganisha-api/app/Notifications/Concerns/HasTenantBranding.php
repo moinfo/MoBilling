@@ -38,4 +38,12 @@ trait HasTenantBranding
 
         return $message;
     }
+
+    /** Link base for client-facing URLs — tenant custom domain when set. */
+    protected function tenantPortalUrl(?Tenant $tenant, string $path = ''): string
+    {
+        return $tenant
+            ? $tenant->portalUrl($path)
+            : rtrim(config('app.frontend_url', 'https://mobilling.co.tz'), '/') . $path;
+    }
 }

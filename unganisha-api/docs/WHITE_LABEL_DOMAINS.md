@@ -39,8 +39,9 @@ That's it — no rebuild or deploy needed. At runtime:
 
 ## Current limitations / future work
 
-- Email links (invoice notifications, OTPs) still point at mobilling.co.tz —
-  per-tenant portal URLs in notifications are a future enhancement.
+- ~~Email links point at mobilling.co.tz~~ (DONE 2026-07-04: pay links,
+  ticket-reply and domain emails use `Tenant::portalUrl()` — the custom
+  domain when set).
 - Staff area on a branded domain works but is unbranded by design; staff
   should keep using mobilling.co.tz.
 - SSL issuance is one manual script run per domain (needs DNS already

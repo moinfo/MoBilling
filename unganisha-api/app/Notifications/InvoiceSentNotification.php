@@ -49,7 +49,7 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             . ". — {$tenant->name}";
 
         if ($this->document->type === 'invoice' && $tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
             $msg .= " Pay: {$payUrl}";
         }
 
@@ -107,7 +107,7 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             && $tenant->pesapal_enabled
             && $this->document->balance_due > 0
         ) {
-            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
             $mail->action('Pay Now', $payUrl);
         }
 

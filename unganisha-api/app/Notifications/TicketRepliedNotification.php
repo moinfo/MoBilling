@@ -29,7 +29,8 @@ class TicketRepliedNotification extends Notification
                 ? "Your support ticket has been closed. You can reopen it any time by replying in the portal."
                 : "Our team has replied to your support ticket:")
             ->line('"' . \Illuminate\Support\Str::limit($this->replyExcerpt, 300) . '"')
-            ->line("View the full conversation and reply in your client portal → Support Tickets.");
+            ->action('View Conversation', $this->tenantPortalUrl($this->ticket->tenant, "/portal/tickets/{$this->ticket->id}"))
+            ->line('You can reply directly from your client portal.');
 
         return $this->applyBranding($mail, $this->ticket->tenant);
     }

@@ -59,7 +59,7 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
 
         // Add "Pay Now" button if tenant has Pesapal enabled and invoice has balance
         if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
             $mail->action('Pay Now', $payUrl);
         }
 
@@ -81,7 +81,7 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
         $msg = "OVERDUE: Invoice {$this->document->document_number} for {$currency} {$totalFormatted} is {$this->daysOverdue} days overdue. Please pay immediately. — {$this->tenant->name}";
 
         if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
             $msg .= " Pay: {$payUrl}";
         }
 
@@ -102,7 +102,7 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
             . "⚠️ Please make payment immediately to avoid service disruption.";
 
         if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = config('app.frontend_url', 'https://mobilling.co.tz') . "/pay/{$this->document->id}";
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
             $msg .= "\n\n💳 Pay online: {$payUrl}";
         }
 

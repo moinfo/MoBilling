@@ -26,6 +26,7 @@ class DomainRenewedNotification extends Notification
             ->greeting("Hello {$notifiable->name},")
             ->line("Your domain **{$this->domain->name}** has been renewed.")
             ->line("**New expiry:** " . ($this->domain->expires_at?->format('d M Y') ?? '—'))
+            ->action('Manage Your Domain', $this->tenantPortalUrl($this->domain->tenant, "/portal/domains/{$this->domain->id}"))
             ->line('Thank you for your payment.');
 
         return $this->applyBranding($mail, $this->domain->tenant);

@@ -79,6 +79,19 @@ class Tenant extends Model
 
     protected $appends = ['logo_url'];
 
+    /**
+     * Base URL clients should use for this tenant's portal — the white-label
+     * custom domain when configured, else the platform frontend URL.
+     */
+    public function portalUrl(string $path = ''): string
+    {
+        $base = $this->custom_domain
+            ? 'https://' . $this->custom_domain
+            : rtrim(config('app.frontend_url', 'https://mobilling.co.tz'), '/');
+
+        return $base . $path;
+    }
+
     public function getLogoUrlAttribute(): ?string
     {
         return $this->logo_path ? Storage::disk('public')->url($this->logo_path) : null;
