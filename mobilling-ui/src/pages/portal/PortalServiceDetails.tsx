@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   Badge, Divider, Modal, PasswordInput, Textarea, Radio, RingProgress,
-  SimpleGrid, UnstyledButton, Center, Anchor,
+  SimpleGrid, UnstyledButton, Center, Anchor, Alert,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -337,12 +337,14 @@ function UpgradeModal({ id, opened, onClose, onInvoiced }: {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['portal-upgrade-options', id],
     queryFn: () => getPortalUpgradeOptions(id),
     enabled: opened,
+    retry: false,
   });
   const options = data?.data?.data;
+  const errMsg = (error as any)?.response?.data?.message as string | undefined;
   const plans: UpgradePlanRow[] = options?.plans ?? [];
   const chosen = plans.find((p) => p.id === selected);
 
@@ -365,12 +367,18 @@ function UpgradeModal({ id, opened, onClose, onInvoiced }: {
     <Modal opened={opened} onClose={onClose} title="Upgrade/Downgrade" centered size="lg">
       <Stack gap="sm" pos="relative">
         <LoadingOverlay visible={isLoading} />
+        {!isLoading && (error || !options) && (
+          <Alert color="orange" variant="light">
+            {errMsg ?? 'Upgrade/downgrade is not available for this service right now.'}
+          </Alert>
+        )}
         {options && (
           <Text size="sm" c="dimmed">
             Current plan: <Text span fw={600}>{options.current_plan}</Text>
             {options.next_due && <> · paid through {options.next_due}</>}
           </Text>
         )}
+        {options && (
         <Radio.Group value={selected} onChange={setSelected}>
           <Stack gap="xs">
             {plans.map((p) => (
@@ -396,7 +404,8 @@ function UpgradeModal({ id, opened, onClose, onInvoiced }: {
             ))}
           </Stack>
         </Radio.Group>
-        {chosen && chosen.due_now === 0 && chosen.price < (plans.find((p) => p.is_current)?.price ?? 0) && (
+        )}
+        {options && chosen && chosen.due_now === 0 && chosen.price < (plans.find((p) => p.is_current)?.price ?? 0) && (
           <Text size="xs" c="dimmed">
             {chosen.credit > 0
               ? `This downgrade applies immediately and Tsh.${fmt(chosen.credit)} for the unused term is credited to your wallet.`
@@ -404,11 +413,13 @@ function UpgradeModal({ id, opened, onClose, onInvoiced }: {
           </Text>
         )}
         <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button disabled={!selected || chosen?.is_current} loading={mutation.isPending}
-            onClick={() => mutation.mutate()}>
-            {chosen && chosen.due_now > 0 ? `Upgrade — Pay Tsh.${fmt(chosen.due_now)}` : 'Change Plan'}
-          </Button>
+          <Button variant="default" onClick={onClose}>{options ? 'Cancel' : 'Close'}</Button>
+          {options && (
+            <Button disabled={!selected || chosen?.is_current} loading={mutation.isPending}
+              onClick={() => mutation.mutate()}>
+              {chosen && chosen.due_now > 0 ? `Upgrade — Pay Tsh.${fmt(chosen.due_now)}` : 'Change Plan'}
+            </Button>
+          )}
         </Group>
       </Stack>
     </Modal>

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Button, Select, Table, Badge, Grid, TextInput,
   NumberInput, PasswordInput, SegmentedControl, Menu,
-  Tooltip, Loader, Center, Box, Modal,
+  Tooltip, Loader, Center, Box, Modal, Alert,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { modals } from '@mantine/modals';
@@ -441,12 +441,14 @@ function UpgradeModal({ opened, onClose, subId, navigate, onApplied }: {
 }) {
   const [picked, setPicked] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ['upgrade-options', subId],
     queryFn: () => getUpgradeOptions(subId),
     enabled: opened,
+    retry: false,
   });
   const o = data?.data?.data;
+  const errMsg = (error as any)?.response?.data?.message as string | undefined;
   const plan: UpgradePlan | undefined = o?.plans.find((p) => p.id === picked);
 
   const mutate = useMutation({
@@ -465,8 +467,15 @@ function UpgradeModal({ opened, onClose, subId, navigate, onApplied }: {
 
   return (
     <Modal opened={opened} onClose={onClose} title="Upgrade / Downgrade" centered size="lg">
-      {isLoading || !o ? (
+      {isLoading ? (
         <Center py="xl"><Loader /></Center>
+      ) : error || !o ? (
+        <Stack gap="sm">
+          <Alert color="orange" variant="light">
+            {errMsg ?? 'Upgrade/downgrade is not available for this service.'}
+          </Alert>
+          <Group justify="flex-end"><Button variant="default" onClick={onClose}>Close</Button></Group>
+        </Stack>
       ) : (
         <Stack gap="sm">
           <Group gap="xs">
