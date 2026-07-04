@@ -37,7 +37,10 @@ class PortalAuthController extends Controller
         // Find client by email
         $client = Client::where('email', $email)->first();
 
-        if (!$client) {
+        // Unknown email: allowed as a brand-new signup (client created after
+        // OTP verification) when a default tenant is configured.
+        $signupTenantId = config('portal.default_tenant_id');
+        if (!$client && !$signupTenantId) {
             throw ValidationException::withMessages([
                 'email' => ['No client account found with this email. Please contact your service provider.'],
             ]);
@@ -61,8 +64,8 @@ class PortalAuthController extends Controller
         DB::table('portal_otps')->insert([
             'email' => $email,
             'otp' => $otp,
-            'client_id' => $client->id,
-            'tenant_id' => $client->tenant_id,
+            'client_id' => $client?->id,
+            'tenant_id' => $client?->tenant_id ?? $signupTenantId,
             'expires_at' => now()->addMinutes(10),
             'verified' => false,
             'created_at' => now(),
@@ -70,13 +73,13 @@ class PortalAuthController extends Controller
         ]);
 
         // Send OTP via email
-        $tenant = $client->tenant;
+        $tenant = $client?->tenant ?? \App\Models\Tenant::find($signupTenantId);
         $tenantName = $tenant?->name ?? 'MoBilling';
         Notification::route('mail', $email)
             ->notify(new PortalOtpNotification($otp, $tenantName));
 
         // Also send via SMS if phone available and tenant has SMS enabled
-        if ($client->phone && $tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
+        if ($client?->phone && $tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
             try {
                 app(SmsService::class)->send(
                     $tenant,
@@ -90,8 +93,9 @@ class PortalAuthController extends Controller
 
         return response()->json([
             'has_account' => false,
+            'new_client'  => !$client,
             'message' => 'Verification code sent to your email.',
-            'client_name' => $client->name,
+            'client_name' => $client?->name,
         ]);
     }
 
@@ -106,6 +110,8 @@ class PortalAuthController extends Controller
             'name' => 'required|string|max:255',
             'password' => 'required|min:8|confirmed',
             'phone' => 'nullable|string|max:20',
+            'company' => 'nullable|string|max:255',
+            'address' => 'nullable|string|max:255',
         ]);
 
         $record = DB::table('portal_otps')
@@ -139,11 +145,26 @@ class PortalAuthController extends Controller
             ->where('id', $record->id)
             ->update(['verified' => true]);
 
+        // Brand-new signup: create the client record first (company name if
+        // given, else the person's name).
+        $clientId = $record->client_id;
+        if (!$clientId) {
+            $client = Client::withoutGlobalScopes()->create([
+                'tenant_id' => $record->tenant_id,
+                'name'      => $request->company ?: $request->name,
+                'email'     => $request->email,
+                'phone'     => $request->phone,
+                'address'   => $request->address,
+                'status'    => 'active',
+            ]);
+            $clientId = $client->id;
+        }
+
         // Create client user (first user is admin)
-        $isFirst = ClientUser::where('client_id', $record->client_id)->count() === 0;
+        $isFirst = ClientUser::where('client_id', $clientId)->count() === 0;
 
         $clientUser = ClientUser::create([
-            'client_id' => $record->client_id,
+            'client_id' => $clientId,
             'tenant_id' => $record->tenant_id,
             'name' => $request->name,
             'email' => $request->email,

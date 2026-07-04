@@ -103,8 +103,9 @@ export const resetPassword = (data: {
 // Portal self-registration
 export interface OtpResponse {
   has_account: boolean;
+  new_client?: boolean;
   message: string;
-  client_name?: string;
+  client_name?: string | null;
 }
 
 export const requestPortalOtp = (email: string) =>
@@ -117,4 +118,6 @@ export const verifyAndRegisterPortal = (data: {
   password: string;
   password_confirmation: string;
   phone?: string;
+  company?: string;
+  address?: string;
 }) => api.post<AuthResponse>('/portal/verify-register', data);

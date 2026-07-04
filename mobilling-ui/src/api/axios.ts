@@ -18,7 +18,10 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // clients land on the client-area login; staff on the main login
+      window.location.href = window.location.pathname.startsWith('/portal')
+        ? '/portal/login'
+        : '/login';
     }
 
     // Subscription expired — redirect to payment page

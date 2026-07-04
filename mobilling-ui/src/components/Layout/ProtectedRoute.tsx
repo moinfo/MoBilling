@@ -14,7 +14,10 @@ export default function ProtectedRoute({ children, requiredRole, requiredUserTyp
   const location = useLocation();
 
   if (loading) return <LoadingOverlay visible />;
-  if (!user) return <Navigate to="/" replace />;
+  if (!user) {
+    // logged-out visitors to client-area URLs go to the portal login
+    return <Navigate to={location.pathname.startsWith('/portal') ? '/portal/login' : '/'} replace />;
+  }
 
   // User type routing
   if (requiredUserType === 'client' && userType !== 'client') {

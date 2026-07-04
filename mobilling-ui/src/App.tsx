@@ -85,6 +85,8 @@ import PortalDomainDetails from './pages/portal/PortalDomainDetails';
 import PortalInvoiceView from './pages/portal/PortalInvoiceView';
 import PortalTicketNew from './pages/portal/PortalTicketNew';
 import PortalTicketView from './pages/portal/PortalTicketView';
+import PortalLogin from './pages/portal/PortalLogin';
+import PortalRegister from './pages/portal/PortalRegister';
 import PortalAnnouncements from './pages/portal/PortalAnnouncements';
 import PortalProductServices from './pages/portal/PortalProductServices';
 import PortalProfile from './pages/portal/PortalProfile';
@@ -128,6 +130,8 @@ export default function App() {
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/portal/login" element={<PortalLogin />} />
+                <Route path="/portal/register" element={<PortalRegister />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/pesapal/callback" element={<PesapalCallback />} />
