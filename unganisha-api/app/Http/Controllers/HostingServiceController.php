@@ -183,6 +183,8 @@ class HostingServiceController extends Controller
     {
         $sub = $clientSubscription->load('productService');
         abort_unless($sub->productService, 422, 'Subscription has no product.');
+        abort_if(config('whmcs.parallel_mode') && $sub->legacy_id, 422,
+            'This service is billed in WHMCS during parallel operation — change it there until cutover.');
 
         $svc = app(\App\Services\Hosting\PlanChangeService::class);
         $current = $sub->productService;
@@ -231,9 +233,17 @@ class HostingServiceController extends Controller
         ]);
 
         $sub = $clientSubscription->load('productService', 'hostingAccount');
+        abort_if(config('whmcs.parallel_mode') && $sub->legacy_id, 422,
+            'This service is billed in WHMCS during parallel operation — change it there until cutover.');
+        abort_unless(in_array($sub->status, ['active', 'suspended']), 422,
+            'Only active or suspended services can be upgraded/downgraded.');
         abort_if($sub->product_service_id === $data['product_service_id'], 422, 'That is already the current plan.');
 
         $new = ProductService::findOrFail($data['product_service_id']);
+        // Constrain the target to the current plan's group (matches the offered list).
+        abort_if($sub->productService->category && $new->category !== $sub->productService->category, 422,
+            'Choose a plan from the same product group.');
+
         $svc = app(\App\Services\Hosting\PlanChangeService::class);
         $charge = $svc->proratedCharge($sub, $new);
 
@@ -246,8 +256,20 @@ class HostingServiceController extends Controller
             ]);
         }
 
-        // Invoice: create the prorated charge and mark the pending change.
-        $document = \Illuminate\Support\Facades\DB::transaction(function () use ($tenantId, $sub, $new, $charge) {
+        // Invoice: create the prorated charge (with tax) and mark the pending change.
+        $taxPercent = (float) ($new->tax_percent ?? 0);
+        $taxAmount  = round($charge * $taxPercent / 100, 2);
+        $total      = round($charge + $taxAmount, 2);
+
+        $document = \Illuminate\Support\Facades\DB::transaction(function () use ($tenantId, $sub, $new, $charge, $taxPercent, $taxAmount, $total) {
+            // Cancel any earlier unpaid plan-change invoice so it can't be paid
+            // to apply a superseded target (orphan-invoice guard).
+            $priorDocId = $sub->metadata['pending_plan_change']['document_id'] ?? null;
+            if ($priorDocId) {
+                \App\Models\Document::withoutGlobalScopes()->where('id', $priorDocId)
+                    ->whereNotIn('status', ['paid', 'cancelled'])->update(['status' => 'cancelled']);
+            }
+
             $document = \App\Models\Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $tenantId,
                 'client_id'       => $sub->client_id,
@@ -257,8 +279,8 @@ class HostingServiceController extends Controller
                 'due_date'        => now()->toDateString(),
                 'subtotal'        => $charge,
                 'discount_amount' => 0,
-                'tax_amount'      => 0,
-                'total'           => $charge,
+                'tax_amount'      => $taxAmount,
+                'total'           => $total,
                 'status'          => 'sent',
                 'notes'           => "Plan change: {$sub->productService->name} -> {$new->name} ({$sub->label})",
                 'created_by'      => auth()->id(),
@@ -269,9 +291,9 @@ class HostingServiceController extends Controller
                 'description' => "Upgrade to {$new->name} — prorated until " . ($sub->expire_date?->toDateString() ?? 'renewal'),
                 'quantity'    => 1,
                 'price'       => $charge,
-                'tax_percent' => 0,
-                'tax_amount'  => 0,
-                'total'       => $charge,
+                'tax_percent' => $taxPercent,
+                'tax_amount'  => $taxAmount,
+                'total'       => $total,
             ]);
 
             $sub->update(['metadata' => array_merge($sub->metadata ?? [], [
@@ -284,7 +306,7 @@ class HostingServiceController extends Controller
         return response()->json([
             'applied'  => false,
             'document' => ['id' => $document->id, 'number' => $document->document_number, 'total' => (float) $document->total],
-            'message'  => "Prorated invoice {$document->document_number} created (Tsh." . number_format($charge, 2) . ') — the change applies automatically when it is paid.',
+            'message'  => "Prorated invoice {$document->document_number} created (Tsh." . number_format($total, 2) . ') — the change applies automatically when it is paid.',
         ], 201);
     }
 

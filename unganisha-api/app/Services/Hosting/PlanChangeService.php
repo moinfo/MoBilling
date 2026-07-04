@@ -17,22 +17,39 @@ class PlanChangeService
         'monthly' => 30, 'quarterly' => 91, 'half_yearly' => 182, 'yearly' => 365,
     ];
 
-    /** Prorated amount due now for switching to $new (0 for downgrades). */
+    /** upgrade | downgrade | same, by product price. */
+    public function direction(ClientSubscription $sub, ProductService $new): string
+    {
+        $diff = (float) $new->price - (float) ($sub->productService?->price ?? 0);
+        return $diff > 0 ? 'upgrade' : ($diff < 0 ? 'downgrade' : 'same');
+    }
+
+    /**
+     * Prorated amount due now for switching to $new (0 for downgrades/same).
+     * The per-cycle price difference is scaled by the remaining term and by
+     * quantity (recurring bills price × qty). If the term has already lapsed
+     * (expired / due today), an upgrade is charged the FULL one-cycle
+     * difference — never free — since it starts a fresh term on the new plan.
+     */
     public function proratedCharge(ClientSubscription $sub, ProductService $new): float
     {
         $current = $sub->productService;
         $diff = (float) $new->price - (float) ($current?->price ?? 0);
         if ($diff <= 0) {
-            return 0.0;
+            return 0.0; // downgrade / same → no charge (WHMCS default: no credit)
         }
 
+        $qty = max(1, (int) $sub->quantity);
         $cycleDays = self::CYCLE_DAYS[$current?->billing_cycle ?? 'yearly'] ?? 365;
         $remaining = $sub->expire_date
-            ? max(0, now()->startOfDay()->diffInDays($sub->expire_date, false))
+            ? (int) now()->startOfDay()->diffInDays($sub->expire_date, false)
             : $cycleDays;
         $remaining = min($remaining, $cycleDays);
 
-        return round($diff * $remaining / $cycleDays, 2);
+        // Lapsed/at-due upgrade → full cycle difference, not free.
+        $factor = $remaining > 0 ? $remaining / $cycleDays : 1.0;
+
+        return round($diff * $qty * $factor, 2);
     }
 
     /**
@@ -53,8 +70,17 @@ class PlanChangeService
         ]);
 
         $account = $sub->hostingAccount;
-        if ($account && $new->cpanel_package && $account->package !== $new->cpanel_package) {
+        if (!$account) {
+            return;
+        }
+        if ($new->provisioning_type === 'whm_cpanel' && $new->cpanel_package && $account->package !== $new->cpanel_package) {
             ChangeHostingPackage::dispatch($account, $new->cpanel_package);
+        } else {
+            // Billing plan changed but the server package did not — surface it.
+            \Illuminate\Support\Facades\Log::info(
+                "PlanChange: {$sub->id} switched to {$new->name} without a cPanel package change" .
+                ($new->cpanel_package ? '' : ' (product has no cpanel_package)')
+            );
         }
     }
 }

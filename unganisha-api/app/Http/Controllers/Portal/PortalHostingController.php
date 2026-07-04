@@ -192,9 +192,15 @@ class PortalHostingController extends Controller
 
         $sub = $hostingAccount->subscription?->load('productService');
         abort_unless($sub, 422, 'Subscription data missing.');
+        abort_if(config('whmcs.parallel_mode') && $sub->legacy_id, 422,
+            'This service cannot be changed online yet — please contact us.');
         abort_if($sub->product_service_id === $data['product_service_id'], 422, 'That is already your current plan.');
 
         $new = \App\Models\ProductService::withoutGlobalScopes()->find($data['product_service_id']);
+        // Only within the same product group (matches the offered list).
+        abort_if($sub->productService->category && $new->category !== $sub->productService->category, 422,
+            'Please choose a plan from the same group.');
+
         $svc = app(\App\Services\Hosting\PlanChangeService::class);
         $charge = $svc->proratedCharge($sub, $new);
 
@@ -206,7 +212,18 @@ class PortalHostingController extends Controller
             ]);
         }
 
-        $document = \Illuminate\Support\Facades\DB::transaction(function () use ($user, $sub, $new, $charge) {
+        $taxPercent = (float) ($new->tax_percent ?? 0);
+        $taxAmount  = round($charge * $taxPercent / 100, 2);
+        $total      = round($charge + $taxAmount, 2);
+
+        $document = \Illuminate\Support\Facades\DB::transaction(function () use ($user, $sub, $new, $charge, $taxPercent, $taxAmount, $total) {
+            // Supersede any earlier unpaid plan-change invoice.
+            $priorDocId = $sub->metadata['pending_plan_change']['document_id'] ?? null;
+            if ($priorDocId) {
+                \App\Models\Document::withoutGlobalScopes()->where('id', $priorDocId)
+                    ->whereNotIn('status', ['paid', 'cancelled'])->update(['status' => 'cancelled']);
+            }
+
             $document = \App\Models\Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $user->tenant_id,
                 'client_id'       => $user->client_id,
@@ -216,8 +233,8 @@ class PortalHostingController extends Controller
                 'due_date'        => now()->toDateString(),
                 'subtotal'        => $charge,
                 'discount_amount' => 0,
-                'tax_amount'      => 0,
-                'total'           => $charge,
+                'tax_amount'      => $taxAmount,
+                'total'           => $total,
                 'status'          => 'sent',
                 'notes'           => "Plan upgrade: {$sub->productService->name} -> {$new->name} ({$sub->label})",
             ]);
@@ -227,9 +244,9 @@ class PortalHostingController extends Controller
                 'description' => "Upgrade to {$new->name} — prorated until " . ($sub->expire_date?->toDateString() ?? 'renewal'),
                 'quantity'    => 1,
                 'price'       => $charge,
-                'tax_percent' => 0,
-                'tax_amount'  => 0,
-                'total'       => $charge,
+                'tax_percent' => $taxPercent,
+                'tax_amount'  => $taxAmount,
+                'total'       => $total,
             ]);
 
             $sub->update(['metadata' => array_merge($sub->metadata ?? [], [
@@ -244,7 +261,7 @@ class PortalHostingController extends Controller
 
         return response()->json([
             'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
-            'message' => "Upgrade invoice {$document->document_number} created (Tsh." . number_format($charge, 2) . ' prorated) — the upgrade applies automatically when it is paid.',
+            'message' => "Upgrade invoice {$document->document_number} created (Tsh." . number_format($total, 2) . ' prorated) — the upgrade applies automatically when it is paid.',
         ], 201);
     }
 
