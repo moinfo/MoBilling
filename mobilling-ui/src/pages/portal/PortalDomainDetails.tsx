@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, LoadingOverlay, Button, Grid,
   UnstyledButton, Collapse, Anchor, Switch, Alert, Code, CopyButton, Modal,
-  NumberInput, Divider, Timeline, Center, Loader,
+  NumberInput, Divider, Timeline, Center, Loader, TextInput,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -15,7 +15,7 @@ import {
 } from '@tabler/icons-react';
 import {
   getPortalDomainDetail, portalRenewDomain, portalSetAutoRenew, portalGetEppCode,
-  PortalDomainDetail,
+  getPortalDomainNameservers, updatePortalDomainNameservers, PortalDomainDetail,
 } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
@@ -290,20 +290,7 @@ export default function PortalDomainDetails() {
             )}
 
             {section === 'nameservers' && (
-              <Stack gap="md">
-                <Title order={4}>Nameservers</Title>
-                <Field label="Nameserver Set (registry):">
-                  {d.registry.nsset_handle ? <Code>{d.registry.nsset_handle}</Code> : '—'}
-                </Field>
-                <Alert color="blue" variant="light">
-                  Nameservers for this domain are managed at the registry by our team. To change where
-                  your domain points, open a support ticket with the new nameservers and we will update
-                  them for you — usually within a few hours.
-                </Alert>
-                <Button variant="light" w="fit-content" onClick={() => navigate('/portal/tickets')}>
-                  Open a Support Ticket
-                </Button>
-              </Stack>
+              <NameserversSection domainId={d.id} isPortalAdmin={isPortalAdmin} />
             )}
 
             {section === 'addons' && (
@@ -381,6 +368,103 @@ export default function PortalDomainDetails() {
       <Modal opened={renewOpen} onClose={() => setRenewOpen(false)} title={`Renew ${d.name}`} centered>
         <RenewForm domainId={d.id} onDone={() => { setRenewOpen(false); navigate('/portal/invoices'); }} />
       </Modal>
+    </Stack>
+  );
+}
+
+function NameserversSection({ domainId, isPortalAdmin }: { domainId: string; isPortalAdmin: boolean }) {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [values, setValues] = useState<string[]>([]);
+
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['portal-domain-ns', domainId],
+    queryFn: () => getPortalDomainNameservers(domainId),
+  });
+  const ns = data?.data?.data;
+
+  const saveMutation = useMutation({
+    mutationFn: () => updatePortalDomainNameservers(domainId, values.map((v) => v.trim()).filter(Boolean)),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-domain-ns', domainId] });
+      notifications.show({ title: 'Nameservers updated', message: res.data.message, color: 'green', autoClose: 9000 });
+      setEditing(false);
+    },
+    onError: (e: any) => notifications.show({
+      title: 'Update failed',
+      message: e?.response?.data?.message
+        ?? Object.values(e?.response?.data?.errors ?? {}).flat().join(' ')
+        ?? 'Please check the hostnames and try again.',
+      color: 'red',
+    }),
+  });
+
+  const startEdit = () => {
+    const current = ns?.nameservers ?? [];
+    setValues(current.length >= 2 ? [...current] : [...current, ...Array(2 - current.length).fill('')]);
+    setEditing(true);
+  };
+
+  const filled = values.map((v) => v.trim()).filter(Boolean);
+  const canSave = filled.length >= 2 && new Set(filled).size === filled.length;
+
+  return (
+    <Stack gap="md">
+      <Group justify="space-between">
+        <Title order={4}>Nameservers</Title>
+        {!editing && isPortalAdmin && ns?.editable && (
+          <Button size="xs" variant="light" onClick={startEdit}>Change Nameservers</Button>
+        )}
+      </Group>
+      <Text size="sm" c="dimmed">
+        Nameservers control where your domain points — your website and email follow them.
+        Only change these if you know the nameservers of your new hosting provider.
+      </Text>
+
+      {isLoading ? (
+        <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">Fetching live from the registry…</Text></Group>
+      ) : isError ? (
+        <Alert color="orange" variant="light">Could not reach the registry — please try again shortly.</Alert>
+      ) : !ns || ns.nameservers.length === 0 ? (
+        <Alert color="blue" variant="light">
+          No nameservers are recorded for this domain — please contact us if your website is not working.
+        </Alert>
+      ) : !editing ? (
+        <Stack gap={6}>
+          {ns.nameservers.map((n, i) => (
+            <Group key={n} gap="xs">
+              <Text size="sm" c="dimmed" w={40}>NS{i + 1}</Text>
+              <Code fz="sm">{n}</Code>
+            </Group>
+          ))}
+          {!isPortalAdmin && (
+            <Text size="xs" c="dimmed" mt={4}>Only portal administrators can change nameservers.</Text>
+          )}
+        </Stack>
+      ) : (
+        <Stack gap="xs" maw={420}>
+          {values.map((v, i) => (
+            <TextInput key={i} size="sm" label={`NS${i + 1}`} placeholder={i < 2 ? 'required — e.g. ns1.example.com' : 'optional'}
+              value={v}
+              onChange={(e) => setValues(values.map((x, j) => (j === i ? e.currentTarget.value.toLowerCase() : x)))} />
+          ))}
+          {values.length < 5 && (
+            <Button size="compact-xs" variant="subtle" w="fit-content" onClick={() => setValues([...values, ''])}>
+              + add another
+            </Button>
+          )}
+          <Alert color="orange" variant="light" p="xs">
+            Wrong nameservers will take your website and email offline. Changes can take a few hours to propagate.
+          </Alert>
+          <Group justify="flex-end" mt="xs">
+            <Button size="xs" variant="default" onClick={() => setEditing(false)}>Cancel</Button>
+            <Button size="xs" color="green" disabled={!canSave} loading={saveMutation.isPending}
+              onClick={() => saveMutation.mutate()}>
+              Save Nameservers
+            </Button>
+          </Group>
+        </Stack>
+      )}
     </Stack>
   );
 }

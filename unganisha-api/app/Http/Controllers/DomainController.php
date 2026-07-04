@@ -110,21 +110,10 @@ class DomainController extends Controller
         }
 
         try {
-            $info = $this->registrar->driverFor($domain->tenant_id, $domain->id)->nssetInfo($domain->nsset_handle);
+            return response()->json(['data' => app(\App\Services\Registrar\NameserverService::class)->list($domain)]);
         } catch (\App\Exceptions\RegistrarApiException) {
             return response()->json(['message' => 'Could not reach the registry — try again shortly.'], 422);
         }
-
-        return response()->json(['data' => [
-            'nsset'       => $domain->nsset_handle,
-            'nameservers' => collect($info['nameservers'] ?? [])->pluck('name')->all(),
-            'tech'        => $info['tech'] ?? [],
-            // other domains pointing at the same nsset — editing in place would move them too
-            'shared_with' => Domain::withoutGlobalScopes()
-                ->where('nsset_handle', $domain->nsset_handle)
-                ->where('id', '!=', $domain->id)
-                ->whereIn('status', ['active', 'expired', 'pending'])->count(),
-        ]]);
     }
 
     /**
@@ -145,59 +134,21 @@ class DomainController extends Controller
             'nameservers.*' => ['required', 'string', 'max:253', 'distinct',
                 'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i'],
         ]);
-        $new = collect($data['nameservers'])->map(fn ($n) => strtolower(trim($n)))->unique()->values();
-
-        $driver = $this->registrar->driverFor($domain->tenant_id, $domain->id);
-
         try {
-            $info = $driver->nssetInfo($domain->nsset_handle);
-            $current = collect($info['nameservers'] ?? [])->pluck('name')->map(fn ($n) => strtolower($n))->values();
-
-            if ($new->sort()->values()->all() === $current->sort()->values()->all()) {
-                return response()->json(['message' => 'No changes — those are already the nameservers.']);
-            }
-
-            $sharedWith = Domain::withoutGlobalScopes()
-                ->where('nsset_handle', $domain->nsset_handle)
-                ->where('id', '!=', $domain->id)
-                ->whereIn('status', ['active', 'expired', 'pending'])->count();
-
-            if ($sharedWith > 0) {
-                // Never mutate a shared nsset: new nsset + repoint this domain only.
-                // Tech contact: keep the current one, else the domain's registrant.
-                $tech = ($info['tech'] ?? []) ?: array_filter([$domain->registrant_handle]);
-                abort_if(empty($tech), 422, 'No registry contact available for the new nameserver set — contact support.');
-
-                $newHandle = 'NSSET-' . strtoupper(bin2hex(random_bytes(4)));
-                $driver->nssetCreate(
-                    $newHandle,
-                    $new->map(fn ($n) => ['name' => $n, 'addrs' => []])->all(),
-                    $tech,
-                );
-                $driver->updateDomain($domain->name, ['nsset_id' => $newHandle]);
-                $domain->update(['nsset_handle' => $newHandle]);
-            } else {
-                $driver->nssetUpdate(
-                    $domain->nsset_handle,
-                    $new->diff($current)->map(fn ($n) => ['name' => $n, 'addrs' => []])->values()->all(),
-                    $current->diff($new)->values()->all(),
-                );
-            }
+            $result = app(\App\Services\Registrar\NameserverService::class)
+                ->update($domain, $data['nameservers'], ['by_user' => auth()->id()]);
         } catch (\App\Exceptions\RegistrarApiException $e) {
             return response()->json(['message' => 'Registry error: ' . $e->getMessage()], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        DomainLog::create([
-            'tenant_id' => $domain->tenant_id,
-            'domain_id' => $domain->id,
-            'action'    => 'nameservers_changed',
-            'request'   => ['from' => $current->all(), 'to' => $new->all(), 'by_user' => auth()->id(),
-                            'mode' => $sharedWith > 0 ? 'new_nsset' : 'in_place'],
-            'status'    => 'success',
-        ]);
+        if (!$result['changed']) {
+            return response()->json(['message' => 'No changes — those are already the nameservers.']);
+        }
 
         return response()->json([
-            'data'    => ['nsset' => $domain->fresh()->nsset_handle, 'nameservers' => $new->all()],
+            'data'    => ['nsset' => $result['nsset'], 'nameservers' => $data['nameservers']],
             'message' => 'Nameservers updated at the registry. DNS changes can take up to a few hours to propagate.',
         ]);
     }

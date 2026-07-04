@@ -297,6 +297,12 @@ export const getPortalDomainDetail = (id: string) =>
 export const portalGetEppCode = (id: string) =>
   api.post<{ auth_info: string }>(`/portal/domains/${id}/epp-code`);
 
+export const getPortalDomainNameservers = (id: string) =>
+  api.get<{ data: { nameservers: string[]; editable: boolean } }>(`/portal/domains/${id}/nameservers`);
+
+export const updatePortalDomainNameservers = (id: string, nameservers: string[]) =>
+  api.put<{ data: { nameservers: string[] }; message: string }>(`/portal/domains/${id}/nameservers`, { nameservers });
+
 export const portalSetAutoRenew = (id: string, enabled: boolean) =>
   api.put<{ data: { auto_renew: boolean }; message: string }>(`/portal/domains/${id}/auto-renew`, { enabled });
 

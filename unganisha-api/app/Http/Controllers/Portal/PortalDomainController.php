@@ -133,6 +133,61 @@ class PortalDomainController extends Controller
         };
     }
 
+    /** Live nameservers for the client's own domain. */
+    public function nameservers(Request $request, Domain $domain)
+    {
+        abort_unless($domain->client_id === $request->user()->client_id, 404);
+
+        if (($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz') || !$domain->nsset_handle) {
+            return response()->json(['data' => ['nameservers' => [], 'editable' => false]]);
+        }
+
+        try {
+            $info = app(\App\Services\Registrar\NameserverService::class)->list($domain);
+        } catch (\App\Exceptions\RegistrarApiException) {
+            return response()->json(['message' => 'Could not reach the registry — please try again shortly.'], 422);
+        }
+
+        return response()->json(['data' => [
+            'nameservers' => $info['nameservers'],
+            'editable'    => in_array($domain->status, ['active', 'expired']),
+        ]]);
+    }
+
+    /** Change nameservers (portal admins). Safe for shared nssets — this domain only. */
+    public function updateNameservers(Request $request, Domain $domain)
+    {
+        $user = $request->user();
+        abort_unless($domain->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can change nameservers.');
+        abort_if(($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz'), 422,
+            'Nameservers for this domain are managed manually — please contact us.');
+        abort_unless(in_array($domain->status, ['active', 'expired']), 422, 'This domain is not active at the registry.');
+        abort_unless($domain->nsset_handle, 422, 'This domain has no nameserver set yet — please contact us.');
+
+        $data = $request->validate([
+            'nameservers'   => 'required|array|min:2|max:9',
+            'nameservers.*' => ['required', 'string', 'max:253', 'distinct',
+                'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i'],
+        ]);
+
+        try {
+            $result = app(\App\Services\Registrar\NameserverService::class)
+                ->update($domain, $data['nameservers'], ['by_portal_user' => $user->id]);
+        } catch (\App\Exceptions\RegistrarApiException) {
+            return response()->json(['message' => 'The registry rejected the change — please check the hostnames or contact us.'], 422);
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data'    => ['nameservers' => $data['nameservers']],
+            'message' => $result['changed']
+                ? 'Nameservers updated. DNS changes can take up to a few hours to propagate worldwide.'
+                : 'No changes — those are already your nameservers.',
+        ]);
+    }
+
     /** Reveal the EPP transfer code (portal admins; every access is logged). */
     public function eppCode(Request $request, Domain $domain)
     {
