@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Group, Text,
-  SimpleGrid, Modal, TextInput, NumberInput, Alert, Tooltip, Menu,
+  SimpleGrid, Modal, TextInput, NumberInput, Alert, Tooltip, Menu, Switch,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -12,8 +12,9 @@ import {
 } from '@tabler/icons-react';
 import {
   getPortalDomains, portalRenewDomain, portalCheckDomain, portalOrderDomain,
-  PortalDomain,
+  portalSetAutoRenew, PortalDomain,
 } from '../../api/portal';
+import { useAuth } from '../../context/AuthContext';
 
 const fmtDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
@@ -25,10 +26,32 @@ const statusColor: Record<string, string> = {
 
 export default function PortalDomains() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  const isPortalAdmin = (user as any)?.role === 'admin';
   const [searchParams, setSearchParams] = useSearchParams();
   const [renewFor, setRenewFor] = useState<PortalDomain | null>(null);
   const [orderAction, setOrderAction] = useState<'register' | 'transfer' | null>(null);
   const [prefillName, setPrefillName] = useState('');
+  const [togglingId, setTogglingId] = useState<string | null>(null);
+
+  const toggleAutoRenew = async (d: PortalDomain, enabled: boolean) => {
+    setTogglingId(d.id);
+    try {
+      const res = await portalSetAutoRenew(d.id, enabled);
+      qc.invalidateQueries({ queryKey: ['portal-domains'] });
+      notifications.show({
+        title: enabled ? 'Auto-renew enabled' : 'Auto-renew disabled',
+        message: res.data.message,
+        color: enabled ? 'teal' : 'gray',
+        autoClose: 9000,
+      });
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Could not change auto-renew.', color: 'red' });
+    } finally {
+      setTogglingId(null);
+    }
+  };
 
   // Deep link from the dashboard: /portal/domains?order=register&name=example.co.tz
   useEffect(() => {
@@ -123,11 +146,21 @@ export default function PortalDomains() {
                       )}
                       <div>
                         <Text size="sm" fw={600}>{d.name}</Text>
-                        <Group gap={4}>
-                          <Badge size="xs" variant="light" color={d.auto_renew ? 'teal' : 'gray'}
-                            leftSection={d.auto_renew ? <IconCheck size={9} /> : <IconX size={9} />}>
-                            Auto Renew
-                          </Badge>
+                        <Group gap={6}>
+                          {isPortalAdmin && !d.unmanaged && ['active', 'expired'].includes(d.status) ? (
+                            <Tooltip multiline w={260}
+                              label="When ON, we renew this domain automatically before it expires and charge your account credit — keep enough balance in your wallet.">
+                              <Switch size="xs" label="Auto Renew" checked={d.auto_renew}
+                                disabled={togglingId === d.id}
+                                onChange={(e) => toggleAutoRenew(d, e.currentTarget.checked)}
+                                styles={{ label: { fontSize: 11, color: 'var(--mantine-color-dimmed)' } }} />
+                            </Tooltip>
+                          ) : (
+                            <Badge size="xs" variant="light" color={d.auto_renew ? 'teal' : 'gray'}
+                              leftSection={d.auto_renew ? <IconCheck size={9} /> : <IconX size={9} />}>
+                              Auto Renew
+                            </Badge>
+                          )}
                           {d.ssl_valid && (
                             <Text size="xs" c="dimmed">SSL until {new Date(d.ssl_expires_at!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</Text>
                           )}

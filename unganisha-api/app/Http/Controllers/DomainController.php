@@ -196,7 +196,8 @@ class DomainController extends Controller
                 'registrar_account_id' => $this->registrar->accountFor($tenantId)->id,
                 'name'                 => $name,
                 'status'               => 'pending',
-                'auto_renew'           => true,
+                // off by default — the client opts in via the portal
+                'auto_renew'           => false,
                 'epp_auth_info'        => $data['auth_info'] ?? null,
                 'meta'                 => [
                     'pending_action'    => $data['action'],

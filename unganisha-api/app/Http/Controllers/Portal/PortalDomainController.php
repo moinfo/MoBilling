@@ -50,6 +50,38 @@ class PortalDomainController extends Controller
         ]);
     }
 
+    /**
+     * Turn auto-renew on/off. When ON, the nightly job invoices the renewal
+     * and pays it from the client's credit wallet automatically — so it only
+     * completes while the wallet holds enough balance.
+     */
+    public function setAutoRenew(Request $request, Domain $domain)
+    {
+        $user = $request->user();
+        abort_unless($domain->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can change auto-renew.');
+
+        $data = $request->validate(['enabled' => 'required|boolean']);
+
+        if ($data['enabled']) {
+            if ($domain->meta['unmanaged'] ?? false) {
+                return response()->json(['message' => 'This domain is renewed manually — please contact us.'], 422);
+            }
+            if (!in_array($domain->status, ['active', 'expired'])) {
+                return response()->json(['message' => 'Auto-renew is only available for active domains.'], 422);
+            }
+        }
+
+        $domain->update(['auto_renew' => $data['enabled']]);
+
+        return response()->json([
+            'data'    => ['auto_renew' => $domain->auto_renew],
+            'message' => $data['enabled']
+                ? "Auto-renew is ON for {$domain->name}. Renewals are paid automatically from your account credit — keep enough balance in your wallet."
+                : "Auto-renew is OFF for {$domain->name}. You will need to renew it manually before it expires.",
+        ]);
+    }
+
     /** Client-initiated renewal: creates the invoice; registry renew fires on payment. */
     public function renew(Request $request, Domain $domain, DomainBillingService $billing)
     {
@@ -166,7 +198,8 @@ class PortalDomainController extends Controller
                 'registrar_account_id' => $registrar->accountFor($tenantId)->id,
                 'name'                 => $name,
                 'status'               => 'pending',
-                'auto_renew'           => true,
+                // off by default — the client opts in (renewals then draw from their wallet)
+                'auto_renew'           => false,
                 'epp_auth_info'        => $data['auth_info'] ?? null,
                 'meta'                 => [
                     'pending_action'    => $data['action'],

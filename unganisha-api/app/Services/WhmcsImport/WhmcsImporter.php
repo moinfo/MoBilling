@@ -567,24 +567,29 @@ class WhmcsImporter
                 continue;
             }
 
-            \App\Models\Domain::withoutGlobalScopes()->updateOrCreate(
+            $domain = \App\Models\Domain::withoutGlobalScopes()->firstOrNew(
                 ['tenant_id' => $this->tenantId, 'legacy_id' => $d->id],
-                [
-                    'client_id'            => $clientId,
-                    'registrar_account_id' => $platformAccount?->id,
-                    'name'                 => strtolower(trim($d->domain)),
-                    'status'               => self::DOMAIN_STATUS_MAP[$d->status] ?? 'cancelled',
-                    'registered_at'        => $this->date($d->registrationdate),
-                    'expires_at'           => $this->date($d->expirydate),
-                    'auto_renew'           => !((int) ($d->donotrenew ?? 0)),
-                    'meta'                 => [
-                        'whmcs_status'        => $d->status,
-                        'whmcs_registrar'     => $d->registrar ?: null,
-                        'whmcs_nextduedate'   => $this->date($d->nextduedate),
-                        'whmcs_recurring_amt' => (float) $d->recurringamount,
-                    ],
-                ]
             );
+            $domain->fill([
+                'client_id'            => $clientId,
+                'registrar_account_id' => $platformAccount?->id,
+                'name'                 => strtolower(trim($d->domain)),
+                'status'               => self::DOMAIN_STATUS_MAP[$d->status] ?? 'cancelled',
+                'registered_at'        => $this->date($d->registrationdate),
+                'expires_at'           => $this->date($d->expirydate),
+                // merge — never wipe sync-owned keys (sponsoring_registrar, ssl_*, …)
+                'meta'                 => array_merge($domain->meta ?? [], [
+                    'whmcs_status'        => $d->status,
+                    'whmcs_registrar'     => $d->registrar ?: null,
+                    'whmcs_nextduedate'   => $this->date($d->nextduedate),
+                    'whmcs_recurring_amt' => (float) $d->recurringamount,
+                ]),
+            ]);
+            if (!$domain->exists) {
+                // policy: auto-renew starts OFF; the client opts in via the portal
+                $domain->auto_renew = false;
+            }
+            $domain->save();
             $this->ok('domains');
         }
     }

@@ -261,6 +261,9 @@ export const getPortalDomains = () =>
 export const portalRenewDomain = (id: string, years: number) =>
   api.post(`/portal/domains/${id}/renew`, { years });
 
+export const portalSetAutoRenew = (id: string, enabled: boolean) =>
+  api.put<{ data: { auto_renew: boolean }; message: string }>(`/portal/domains/${id}/auto-renew`, { enabled });
+
 export const portalCheckDomain = (name: string) =>
   api.get('/portal/domains/check', { params: { name } });
 

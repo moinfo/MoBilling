@@ -658,6 +658,7 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/domains/check', [\App\Http\Controllers\Portal\PortalDomainController::class, 'check']);
     Route::post('/domains/order', [\App\Http\Controllers\Portal\PortalDomainController::class, 'order']);
     Route::post('/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'renew']);
+    Route::put('/domains/{domain}/auto-renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'setAutoRenew']);
     Route::get('/tickets',                  [\App\Http\Controllers\Portal\PortalTicketController::class, 'index']);
     Route::post('/tickets',                 [\App\Http\Controllers\Portal\PortalTicketController::class, 'store']);
     Route::get('/tickets/{ticket}',         [\App\Http\Controllers\Portal\PortalTicketController::class, 'show']);

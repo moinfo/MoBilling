@@ -19,6 +19,7 @@
 | 2026-07-03 | Domain registry live: fred-client Django service hardened (pinned Rajisi-CA TLS, `mobilling-service` token), 147/188 domains registry-synced (11 gTLDs unmanaged, 30 registry-purged closed), TLD pricing seeded (13 zones), payment-gated register/renew jobs |
 | 2026-07-03 | **De-duplication of the parallel-run overlap**: 63 duplicate imported subscriptions cancelled (native twin kept; hosting accounts relinked), 75 domains set `auto_renew=false` (billed via native 20,000/yr subs), 362 `RecurringInvoiceLog` rows seeded from WHMCS's own invoice history, 2 duplicate unpaid invoices cancelled (`WHMCS-1281`, `WHMCS-1291`), 4 unpaid WHMCS domain invoices wired to registry fulfilment |
 | 2026-07-03 | Business decision: **keep operating in WHMCS until feature-complete** → `WHMCS_PARALLEL_MODE` introduced and enabled |
+| 2026-07-04 | **Auto-renew policy**: ALL domains set `auto_renew=false`; clients opt in via a portal toggle; when ON, `domains:process-renewals` invoices AND pays from the client's credit wallet (full-balance only) → registry renewal fires automatically. New orders default OFF. Importer no longer overwrites `auto_renew`/`meta` on delta imports (protects the policy + `sponsoring_registrar`/SSL sync data at cutover) |
 
 Companion docs: `WHM_CPANEL_INTEGRATION.md` (design), `DOMAIN_REGISTRAR_INTEGRATION.md`
 (design), `IMPLEMENTATION_PLAN.md` (build checklist). Import reports:
