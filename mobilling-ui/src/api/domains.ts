@@ -73,6 +73,21 @@ export const checkDomain = (name: string) =>
 export const getDomains = (params?: Record<string, string>) =>
   api.get('/domains', { params });
 
+export const getDomain = (id: string) =>
+  api.get<{ data: DomainRecord & { subscription?: { id: string; label: string | null; expire_date: string | null } | null } }>(`/domains/${id}`);
+
+// FredHttpDriver logs raw API paths as the action — translate to something readable.
+export const describeDomainAction = (action: string): string => {
+  if (action === 'auth_info_revealed') return 'Transfer code viewed';
+  if (action.includes('/info/')) return 'Registry sync check';
+  if (action.includes('/renew/')) return 'Registry renewal';
+  if (action.includes('/register/')) return 'Domain registration';
+  if (action.includes('/transfer/')) return 'Transfer request';
+  if (action.includes('/check/')) return 'Availability check';
+  if (action.includes('/update/')) return 'Registry update';
+  return action.replace(/_/g, ' ');
+};
+
 export interface DomainStats {
   total: number;
   active: number;

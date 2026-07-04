@@ -28,15 +28,6 @@ const statusColor: Record<string, string> = {
   active: 'green', expired: 'red', pending: 'blue', failed: 'red', cancelled: 'gray',
 };
 
-const ACTIVITY_LABELS: Record<string, string> = {
-  auth_info_revealed: 'Transfer code viewed',
-  register: 'Domain registered',
-  renew: 'Domain renewed',
-  transfer_in: 'Transfer requested',
-  info: 'Registry check',
-  order: 'Order placed',
-};
-
 type Section = 'overview' | 'autorenew' | 'nameservers' | 'addons' | 'contacts' | 'epp';
 
 const SECTIONS: { key: Section; label: string; icon: React.ReactNode }[] = [
@@ -259,7 +250,7 @@ export default function PortalDomainDetails() {
                         {d.activity.map((a, i) => (
                           <Timeline.Item key={i}
                             color={a.status === 'success' ? 'teal' : 'red'}
-                            title={<Text size="sm">{ACTIVITY_LABELS[a.action] ?? a.action.replace(/_/g, ' ')}</Text>}>
+                            title={<Text size="sm">{a.action}</Text>}>
                             <Text size="xs" c="dimmed">
                               {new Date(a.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                               {a.status !== 'success' && ' — failed'}

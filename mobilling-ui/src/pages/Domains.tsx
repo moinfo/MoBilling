@@ -5,6 +5,7 @@ import {
   Alert, CopyButton, SimpleGrid, ThemeIcon, Switch, Anchor,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconWorldWww, IconPlus, IconHistory, IconRefresh, IconKey,
@@ -13,8 +14,8 @@ import {
 } from '@tabler/icons-react';
 import {
   checkDomain, getDomains, getDomainStats, getDomainLogs, orderDomain, renewDomain,
-  getDomainAuthInfo, setDomainAutoRenew, DomainRecord, DomainCheckResult, DomainLogRow,
-  DOMAIN_STATUS_COLORS,
+  getDomainAuthInfo, setDomainAutoRenew, describeDomainAction, DomainRecord,
+  DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
@@ -46,6 +47,7 @@ function DomainStatCard({ icon, color, label, value, active, onClick }: {
 export default function Domains() {
   const { can } = usePermissions();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [expiringOnly, setExpiringOnly] = useState(false);
@@ -202,7 +204,7 @@ export default function Domains() {
                     <Table.Tr key={d.id}>
                       <Table.Td fw={500}>
                         <Group gap={6} wrap="nowrap">
-                          <Anchor size="sm" fw={600} onClick={() => setLogsFor(d)}>{d.name}</Anchor>
+                          <Anchor size="sm" fw={600} onClick={() => navigate(`/domains/${d.id}`)}>{d.name}</Anchor>
                           {isOurs && (
                             <Tooltip label={`Registry-confirmed on ${sponsor}`}>
                               <IconShieldCheck size={15} color="var(--mantine-color-teal-6)" />
@@ -294,11 +296,11 @@ export default function Domains() {
                 </Group>
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">Registered</Text>
-                  <Text size="sm">{logsFor.registered_at ?? '—'}</Text>
+                  <Text size="sm">{logsFor.registered_at ? dayjs(logsFor.registered_at).format('D MMM YYYY') : '—'}</Text>
                 </Group>
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">Expires</Text>
-                  <Text size="sm">{logsFor.expires_at ?? '—'}</Text>
+                  <Text size="sm">{logsFor.expires_at ? dayjs(logsFor.expires_at).format('D MMM YYYY') : '—'}</Text>
                 </Group>
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">Auto-renew</Text>
@@ -541,7 +543,7 @@ function DomainLogsList({ domainId }: { domainId: string }) {
           <Group justify="space-between" wrap="nowrap">
             <Group gap="xs">
               <Badge size="xs" color={l.status === 'success' ? 'green' : 'red'} variant="light">{l.status}</Badge>
-              <Code>{l.action}</Code>
+              <Text size="sm">{describeDomainAction(l.action)}</Text>
             </Group>
             <Text size="xs" c="dimmed">{dayjs(l.created_at).format('D MMM YYYY HH:mm')}</Text>
           </Group>

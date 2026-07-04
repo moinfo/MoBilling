@@ -59,6 +59,7 @@ import Broadcast from './pages/Broadcast';
 import WhatsappContacts from './pages/WhatsappContacts';
 import HostingAccounts from './pages/HostingAccounts';
 import Domains from './pages/Domains';
+import DomainDetails from './pages/DomainDetails';
 import Tickets from './pages/Tickets';
 import Announcements from './pages/Announcements';
 import FieldMarketing from './pages/FieldMarketing';
@@ -204,6 +205,7 @@ export default function App() {
                   <Route path="/whatsapp-contacts" element={<WhatsappContacts />} />
                   <Route path="/hosting" element={<HostingAccounts />} />
                   <Route path="/domains" element={<Domains />} />
+                  <Route path="/domains/:id" element={<DomainDetails />} />
                   <Route path="/tickets" element={<Tickets />} />
                   <Route path="/announcements" element={<Announcements />} />
                   <Route path="/field-marketing" element={<FieldMarketing />} />

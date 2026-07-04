@@ -105,13 +105,30 @@ class PortalDomainController extends Controller
                 'nsset_handle'      => $domain->nsset_handle,
             ],
             'has_epp_code'   => !empty($domain->epp_auth_info),
-            'activity'       => $domain->logs()->orderByDesc('created_at')->limit(30)->get()
+            // Meaningful events only — routine nightly info checks are noise here.
+            'activity'       => $domain->logs()->orderByDesc('created_at')
+                ->where('action', 'not like', '%/info/%')
+                ->where('action', 'not like', '%/check/%')
+                ->limit(30)->get()
                 ->map(fn ($l) => [
-                    'action'     => $l->action,
+                    'action'     => self::friendlyAction($l->action),
                     'status'     => $l->status,
                     'created_at' => $l->created_at->toISOString(),
                 ]),
         ]]);
+    }
+
+    /** DomainLog actions are raw driver API paths — translate for clients. */
+    private static function friendlyAction(string $action): string
+    {
+        return match (true) {
+            $action === 'auth_info_revealed'      => 'Transfer code viewed',
+            str_contains($action, '/renew/')      => 'Domain renewed',
+            str_contains($action, '/register/')   => 'Domain registered',
+            str_contains($action, '/transfer/')   => 'Transfer requested',
+            str_contains($action, '/update/')     => 'Registry update',
+            default                               => str_replace('_', ' ', $action),
+        };
     }
 
     /** Reveal the EPP transfer code (portal admins; every access is logged). */
