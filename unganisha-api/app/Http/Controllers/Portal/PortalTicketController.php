@@ -29,20 +29,24 @@ class PortalTicketController extends Controller
         $user = $request->user();
 
         $data = $request->validate([
-            'subject'  => 'required|string|max:255',
-            'message'  => 'required|string|max:10000',
-            'priority' => ['nullable', Rule::in(Ticket::PRIORITIES)],
+            'subject'         => 'required|string|max:255',
+            'message'         => 'required|string|max:10000',
+            'priority'        => ['nullable', Rule::in(Ticket::PRIORITIES)],
+            'department'      => ['nullable', Rule::in(Ticket::DEPARTMENTS)],
+            'related_service' => 'nullable|string|max:255',
         ]);
 
         $ticket = Ticket::create([
-            'tenant_id'     => $user->tenant_id,
-            'client_id'     => $user->client_id,
-            'ticket_number' => Ticket::nextNumber($user->tenant_id),
-            'subject'       => $data['subject'],
-            'status'        => 'open',
-            'priority'      => $data['priority'] ?? 'medium',
-            'opened_by'     => $user->id,
-            'last_reply_at' => now(),
+            'tenant_id'       => $user->tenant_id,
+            'client_id'       => $user->client_id,
+            'ticket_number'   => Ticket::nextNumber($user->tenant_id),
+            'subject'         => $data['subject'],
+            'department'      => $data['department'] ?? 'support',
+            'related_service' => $data['related_service'] ?? null,
+            'status'          => 'open',
+            'priority'        => $data['priority'] ?? 'medium',
+            'opened_by'       => $user->id,
+            'last_reply_at'   => now(),
         ]);
 
         $ticket->replies()->create([
@@ -117,7 +121,9 @@ class PortalTicketController extends Controller
         $out = [
             'id'            => $t->id,
             'ticket_number' => $t->ticket_number,
-            'subject'       => $t->subject,
+            'subject'         => $t->subject,
+            'department'      => $t->department,
+            'related_service' => $t->related_service,
             'status'        => $t->status,
             'priority'      => $t->priority,
             'replies_count' => $t->replies_count ?? null,

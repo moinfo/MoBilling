@@ -318,6 +318,8 @@ export interface PortalTicket {
   id: string;
   ticket_number: string;
   subject: string;
+  department?: string | null;
+  related_service?: string | null;
   status: 'open' | 'answered' | 'customer_reply' | 'closed';
   priority: string;
   replies_count: number | null;
@@ -327,7 +329,7 @@ export interface PortalTicket {
 }
 
 export const getPortalTickets = () => api.get<{ data: PortalTicket[] }>('/portal/tickets');
-export const openPortalTicket = (data: { subject: string; message: string; priority?: string }) =>
+export const openPortalTicket = (data: { subject: string; message: string; priority?: string; department?: string; related_service?: string }) =>
   api.post('/portal/tickets', data);
 export const getPortalTicket = (id: string) => api.get<{ data: PortalTicket }>(`/portal/tickets/${id}`);
 export const replyPortalTicket = (id: string, message: string) => api.post<{ data: PortalTicket }>(`/portal/tickets/${id}/reply`, { message });

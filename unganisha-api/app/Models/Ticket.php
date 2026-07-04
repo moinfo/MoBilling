@@ -12,10 +12,11 @@ class Ticket extends Model
 
     public const STATUSES = ['open', 'answered', 'customer_reply', 'closed'];
     public const PRIORITIES = ['low', 'medium', 'high'];
+    public const DEPARTMENTS = ['support', 'billing', 'sales'];
 
     protected $fillable = [
-        'tenant_id', 'client_id', 'ticket_number', 'subject', 'status',
-        'priority', 'opened_by', 'assigned_to', 'last_reply_at',
+        'tenant_id', 'client_id', 'ticket_number', 'subject', 'department',
+        'related_service', 'status', 'priority', 'opened_by', 'assigned_to', 'last_reply_at',
     ];
 
     protected $casts = [

@@ -1,40 +1,63 @@
 import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Group, Text,
-  Modal, TextInput, Textarea, Select, Drawer, ScrollArea, Loader, Center,
+  SegmentedControl, TextInput,
 } from '@mantine/core';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { notifications } from '@mantine/notifications';
-import { useSearchParams } from 'react-router-dom';
-import { IconMessageCircle, IconPlus, IconSend, IconLock } from '@tabler/icons-react';
-import {
-  getPortalTickets, openPortalTicket, getPortalTicket, replyPortalTicket, closePortalTicket,
-  PortalTicket,
-} from '../../api/portal';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { IconMessageCircle, IconPlus, IconSearch } from '@tabler/icons-react';
+import { getPortalTickets, PortalTicket } from '../../api/portal';
 import dayjs from 'dayjs';
 
-const STATUS_META: Record<string, { label: string; color: string }> = {
-  open:           { label: 'Open',      color: 'green' },
-  answered:       { label: 'Answered',  color: 'blue' },
-  customer_reply: { label: 'Replied',   color: 'orange' },
-  closed:         { label: 'Closed',    color: 'gray' },
+export const TICKET_STATUS_META: Record<string, { label: string; color: string }> = {
+  open:           { label: 'Open',           color: 'green' },
+  answered:       { label: 'Answered',       color: 'blue' },
+  customer_reply: { label: 'Customer-Reply', color: 'orange' },
+  closed:         { label: 'Closed',         color: 'gray' },
 };
 
-export default function PortalTickets() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const [newOpen, setNewOpen] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
+export const TICKET_DEPARTMENTS = [
+  { value: 'support', label: 'Technical Support' },
+  { value: 'billing', label: 'Billing' },
+  { value: 'sales', label: 'Sales' },
+];
 
+export const departmentLabel = (v: string | null | undefined) =>
+  TICKET_DEPARTMENTS.find((d) => d.value === v)?.label ?? 'Technical Support';
+
+const priorityColor: Record<string, string> = { low: 'gray', medium: 'blue', high: 'red' };
+
+export default function PortalTickets() {
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [statusFilter, setStatusFilter] = useState('active');
+  const [search, setSearch] = useState('');
+
+  // Deep link: /portal/tickets?new=1 → the open-ticket page
   useEffect(() => {
     if (searchParams.get('new')) {
-      setNewOpen(true);
       setSearchParams({}, { replace: true });
+      navigate('/portal/tickets/new');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const { data, isLoading } = useQuery({ queryKey: ['portal-tickets'], queryFn: getPortalTickets });
   const tickets: PortalTicket[] = data?.data?.data ?? [];
+
+  const counts = {
+    active: tickets.filter((t) => t.status !== 'closed').length,
+    awaiting: tickets.filter((t) => t.status === 'answered').length,
+    closed: tickets.filter((t) => t.status === 'closed').length,
+  };
+
+  const filtered = tickets.filter((t) => {
+    if (statusFilter === 'active' && t.status === 'closed') return false;
+    if (statusFilter === 'awaiting' && t.status !== 'answered') return false;
+    if (statusFilter === 'closed' && t.status !== 'closed') return false;
+    if (search && !`${t.ticket_number} ${t.subject}`.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  });
 
   return (
     <Stack gap="lg" pos="relative">
@@ -44,40 +67,63 @@ export default function PortalTickets() {
           <IconMessageCircle size={22} />
           <Title order={3}>Support Tickets</Title>
         </Group>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => setNewOpen(true)}>
+        <Button leftSection={<IconPlus size={16} />} onClick={() => navigate('/portal/tickets/new')}>
           Open New Ticket
         </Button>
       </Group>
 
+      <Group gap="sm" wrap="wrap">
+        <SegmentedControl size="xs" value={statusFilter} onChange={setStatusFilter}
+          data={[
+            { label: `Active (${counts.active})`, value: 'active' },
+            { label: `Awaiting Your Reply (${counts.awaiting})`, value: 'awaiting' },
+            { label: `Closed (${counts.closed})`, value: 'closed' },
+            { label: 'All', value: 'all' },
+          ]} />
+        <TextInput size="xs" placeholder="Search tickets…" leftSection={<IconSearch size={13} />}
+          value={search} onChange={(e) => setSearch(e.currentTarget.value)} w={220} />
+      </Group>
+
       <Paper withBorder p="md">
-        <Table.ScrollContainer minWidth={620}>
+        <Table.ScrollContainer minWidth={720}>
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>#</Table.Th>
                 <Table.Th>Subject</Table.Th>
+                <Table.Th>Department</Table.Th>
+                <Table.Th>Priority</Table.Th>
                 <Table.Th>Last Updated</Table.Th>
                 <Table.Th>Status</Table.Th>
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {tickets.length === 0 && (
-                <Table.Tr><Table.Td colSpan={4}>
-                  <Text c="dimmed" ta="center" py="md" size="sm">No tickets yet — open one if you need help.</Text>
+              {filtered.length === 0 && (
+                <Table.Tr><Table.Td colSpan={6}>
+                  <Text c="dimmed" ta="center" py="md" size="sm">
+                    {tickets.length === 0 ? 'No tickets yet — open one if you need help.' : 'No tickets match this filter.'}
+                  </Text>
                 </Table.Td></Table.Tr>
               )}
-              {tickets.map((t) => (
-                <Table.Tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(t.id)}>
+              {filtered.map((t) => (
+                <Table.Tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/portal/tickets/${t.id}`)}>
                   <Table.Td><Text size="sm" fw={600}>{t.ticket_number}</Text></Table.Td>
-                  <Table.Td><Text size="sm">{t.subject}</Text></Table.Td>
+                  <Table.Td>
+                    <Text size="sm" fw={500}>{t.subject}</Text>
+                    {t.related_service && <Text size="xs" c="dimmed">{t.related_service}</Text>}
+                  </Table.Td>
+                  <Table.Td><Text size="sm">{departmentLabel(t.department)}</Text></Table.Td>
+                  <Table.Td>
+                    <Badge size="xs" variant="light" color={priorityColor[t.priority] ?? 'gray'}>{t.priority}</Badge>
+                  </Table.Td>
                   <Table.Td>
                     <Text size="xs" c="dimmed">
-                      {t.last_reply_at ? dayjs(t.last_reply_at).format('dddd, D MMM YYYY (HH:mm)') : '—'}
+                      {t.last_reply_at ? dayjs(t.last_reply_at).format('ddd, D MMM YYYY HH:mm') : '—'}
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Badge size="sm" color={STATUS_META[t.status]?.color ?? 'gray'} variant="filled" radius="xl">
-                      {STATUS_META[t.status]?.label ?? t.status}
+                    <Badge size="sm" color={TICKET_STATUS_META[t.status]?.color ?? 'gray'} variant="filled" radius="xl">
+                      {TICKET_STATUS_META[t.status]?.label ?? t.status}
                     </Badge>
                   </Table.Td>
                 </Table.Tr>
@@ -86,145 +132,6 @@ export default function PortalTickets() {
           </Table>
         </Table.ScrollContainer>
       </Paper>
-
-      <NewTicketModal opened={newOpen} onClose={() => setNewOpen(false)} onOpened={(id) => setOpenId(id)} />
-      <ThreadDrawer id={openId} onClose={() => setOpenId(null)} />
     </Stack>
-  );
-}
-
-function NewTicketModal({ opened, onClose, onOpened }: {
-  opened: boolean; onClose: () => void; onOpened: (id: string) => void;
-}) {
-  const qc = useQueryClient();
-  const [subject, setSubject] = useState('');
-  const [message, setMessage] = useState('');
-  const [priority, setPriority] = useState('medium');
-
-  const mutation = useMutation({
-    mutationFn: () => openPortalTicket({ subject: subject.trim(), message: message.trim(), priority }),
-    onSuccess: (res: any) => {
-      qc.invalidateQueries({ queryKey: ['portal-tickets'] });
-      qc.invalidateQueries({ queryKey: ['portal-dashboard'] });
-      notifications.show({ title: 'Ticket opened', message: res?.data?.message, color: 'green' });
-      setSubject(''); setMessage(''); setPriority('medium');
-      onClose();
-      if (res?.data?.data?.id) onOpened(res.data.data.id);
-    },
-    onError: (e: any) => notifications.show({
-      message: e?.response?.data?.message ?? 'Could not open the ticket.', color: 'red',
-    }),
-  });
-
-  return (
-    <Modal opened={opened} onClose={onClose} title="Open New Ticket" centered size="lg">
-      <Stack gap="sm">
-        <TextInput label="Subject" required value={subject}
-          onChange={(e) => setSubject(e.currentTarget.value)} />
-        <Select label="Priority" value={priority} onChange={(v) => setPriority(v ?? 'medium')}
-          data={[
-            { value: 'low', label: 'Low' },
-            { value: 'medium', label: 'Medium' },
-            { value: 'high', label: 'High' },
-          ]} />
-        <Textarea label="Message" required minRows={5} autosize maxRows={10}
-          placeholder="Describe your issue or question…"
-          value={message} onChange={(e) => setMessage(e.currentTarget.value)} />
-        <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button disabled={!subject.trim() || !message.trim()} loading={mutation.isPending}
-            onClick={() => mutation.mutate()}>
-            Submit Ticket
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}
-
-function ThreadDrawer({ id, onClose }: { id: string | null; onClose: () => void }) {
-  const qc = useQueryClient();
-  const [message, setMessage] = useState('');
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['portal-ticket', id],
-    queryFn: () => getPortalTicket(id!),
-    enabled: !!id,
-  });
-  const t = data?.data?.data;
-
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['portal-tickets'] });
-    qc.invalidateQueries({ queryKey: ['portal-ticket', id] });
-    qc.invalidateQueries({ queryKey: ['portal-dashboard'] });
-  };
-
-  const replyMutation = useMutation({
-    mutationFn: () => replyPortalTicket(id!, message.trim()),
-    onSuccess: () => { setMessage(''); invalidate(); },
-    onError: () => notifications.show({ message: 'Failed to send reply.', color: 'red' }),
-  });
-
-  const closeMutation = useMutation({
-    mutationFn: () => closePortalTicket(id!),
-    onSuccess: () => { invalidate(); notifications.show({ message: 'Ticket closed.', color: 'gray' }); },
-  });
-
-  return (
-    <Drawer opened={!!id} onClose={onClose} position="right" size="lg"
-      title={t ? `${t.ticket_number} — ${t.subject}` : 'Ticket'}>
-      {isLoading || !t ? (
-        <Center py="xl"><Loader /></Center>
-      ) : (
-        <Stack gap="sm" h="calc(100vh - 80px)">
-          <Group justify="space-between">
-            <Badge color={STATUS_META[t.status]?.color ?? 'gray'} variant="light">
-              {STATUS_META[t.status]?.label ?? t.status}
-            </Badge>
-            {t.status !== 'closed' && (
-              <Button size="xs" variant="subtle" color="gray" leftSection={<IconLock size={13} />}
-                onClick={() => closeMutation.mutate()}>
-                Close Ticket
-              </Button>
-            )}
-          </Group>
-
-          <ScrollArea style={{ flex: 1 }} offsetScrollbars>
-            <Stack gap="sm">
-              {(t.replies ?? []).map((r) => (
-                <Paper key={r.id} withBorder p="sm" radius="md"
-                  style={{
-                    background: r.author_type === 'staff' ? 'var(--mantine-color-blue-light)' : undefined,
-                    marginLeft: r.author_type === 'staff' ? 0 : 24,
-                    marginRight: r.author_type === 'staff' ? 24 : 0,
-                  }}>
-                  <Group justify="space-between" mb={4}>
-                    <Text size="xs" fw={700}>
-                      {r.author_type === 'staff' ? `${r.author_name} (Support)` : r.author_name}
-                    </Text>
-                    <Text size="xs" c="dimmed">{dayjs(r.created_at).format('D MMM YYYY HH:mm')}</Text>
-                  </Group>
-                  <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{r.message}</Text>
-                </Paper>
-              ))}
-            </Stack>
-          </ScrollArea>
-
-          <Stack gap="xs">
-            <Textarea
-              placeholder={t.status === 'closed' ? 'Replying will reopen this ticket…' : 'Write your reply…'}
-              minRows={3} autosize maxRows={6}
-              value={message} onChange={(e) => setMessage(e.currentTarget.value)} />
-            <Group justify="flex-end">
-              <Button size="sm" leftSection={<IconSend size={14} />}
-                disabled={!message.trim()} loading={replyMutation.isPending}
-                onClick={() => replyMutation.mutate()}>
-                Send Reply
-              </Button>
-            </Group>
-          </Stack>
-        </Stack>
-      )}
-    </Drawer>
   );
 }

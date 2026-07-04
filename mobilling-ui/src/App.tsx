@@ -83,6 +83,8 @@ import PortalTickets from './pages/portal/PortalTickets';
 import PortalServiceDetails from './pages/portal/PortalServiceDetails';
 import PortalDomainDetails from './pages/portal/PortalDomainDetails';
 import PortalInvoiceView from './pages/portal/PortalInvoiceView';
+import PortalTicketNew from './pages/portal/PortalTicketNew';
+import PortalTicketView from './pages/portal/PortalTicketView';
 import PortalAnnouncements from './pages/portal/PortalAnnouncements';
 import PortalProductServices from './pages/portal/PortalProductServices';
 import PortalProfile from './pages/portal/PortalProfile';
@@ -249,6 +251,8 @@ export default function App() {
                   <Route path="/portal/hosting" element={<PortalHosting />} />
                   <Route path="/portal/domains" element={<PortalDomains />} />
                   <Route path="/portal/tickets" element={<PortalTickets />} />
+                  <Route path="/portal/tickets/new" element={<PortalTicketNew />} />
+                  <Route path="/portal/tickets/:id" element={<PortalTicketView />} />
                   <Route path="/portal/hosting/:id" element={<PortalServiceDetails />} />
                   <Route path="/portal/domains/:id" element={<PortalDomainDetails />} />
                   <Route path="/portal/announcements" element={<PortalAnnouncements />} />
