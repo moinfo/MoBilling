@@ -228,6 +228,15 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:products.update')->put('/config-option-groups/{config_option_group}', [\App\Http\Controllers\ConfigOptionGroupController::class, 'update']);
     Route::middleware('permission:products.delete')->delete('/config-option-groups/{config_option_group}', [\App\Http\Controllers\ConfigOptionGroupController::class, 'destroy']);
 
+    // Promotions / Coupon codes (WHMCS-parity discount codes attachable to products)
+    Route::middleware('permission:products.read')->get('/coupons', [\App\Http\Controllers\CouponController::class, 'index']);
+    Route::middleware('permission:products.read')->get('/coupons/{coupon}/redemptions', [\App\Http\Controllers\CouponController::class, 'redemptions']);
+    Route::middleware('permission:products.create')->post('/coupons', [\App\Http\Controllers\CouponController::class, 'store']);
+    Route::middleware('permission:products.update')->put('/coupons/{coupon}', [\App\Http\Controllers\CouponController::class, 'update']);
+    Route::middleware('permission:products.update')->post('/coupons/{coupon}/products', [\App\Http\Controllers\CouponController::class, 'attachProducts']);
+    Route::middleware('permission:products.update')->delete('/coupons/{coupon}/products/{productServiceId}', [\App\Http\Controllers\CouponController::class, 'detachProduct']);
+    Route::middleware('permission:products.delete')->delete('/coupons/{coupon}', [\App\Http\Controllers\CouponController::class, 'destroy']);
+
     // Documents
     Route::middleware('permission:documents.read')->get('/documents', [DocumentController::class, 'index']);
     Route::middleware('permission:documents.read')->get('/documents/{document}', [DocumentController::class, 'show']);
@@ -725,6 +734,7 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/domain-addons', [\App\Http\Controllers\Portal\PortalOrderController::class, 'domainAddons']);
     Route::get('/products/{product}/addons', [\App\Http\Controllers\Portal\PortalOrderController::class, 'productAddons']);
     Route::get('/products/{product}/config-options', [\App\Http\Controllers\Portal\PortalOrderController::class, 'configOptions']);
+    Route::post('/coupons/validate', [\App\Http\Controllers\Portal\PortalOrderController::class, 'validateCoupon']);
     Route::post('/orders',  [\App\Http\Controllers\Portal\PortalOrderController::class, 'store']);
     Route::get('/credit',                       [\App\Http\Controllers\Portal\PortalCreditController::class, 'show']);
     Route::post('/credit/topup',                [\App\Http\Controllers\Portal\PortalCreditController::class, 'topup']);

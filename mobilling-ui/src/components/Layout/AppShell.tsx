@@ -31,7 +31,7 @@ export default function AppLayout() {
   const isActive = (path: string) => location.pathname === path;
 
   // Determine which section the current route belongs to
-  const billingPaths = ['/clients', '/product-services', '/product-addons', '/config-options', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
+  const billingPaths = ['/clients', '/product-services', '/product-addons', '/config-options', '/coupons', '/quotations', '/proformas', '/invoices', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
@@ -238,6 +238,10 @@ export default function AppLayout() {
               {can('menu.products') && (
                 <NavLink label="Configurable Options" leftSection={<IconPackages size={16} />}
                   active={isActive('/config-options')} onClick={() => navigateAndClose('/config-options')} />
+              )}
+              {can('menu.products') && (
+                <NavLink label="Promotions / Coupons" leftSection={<IconPackages size={16} />}
+                  active={isActive('/coupons')} onClick={() => navigateAndClose('/coupons')} />
               )}
               {can('menu.quotations') && (
                 <NavLink label="Quotations" leftSection={<IconFileDescription size={16} />}

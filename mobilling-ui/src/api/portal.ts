@@ -365,8 +365,20 @@ export const placePortalOrder = (data: {
   product_service_id: string; label?: string;
   domain_mode?: 'register' | 'transfer' | 'existing'; auth_info?: string;
   years?: number; addons?: string[]; product_addon_ids?: string[];
-  config_options?: OrderConfigOption[];
+  config_options?: OrderConfigOption[]; coupon_code?: string;
 }) => api.post('/portal/orders', data);
+
+export interface CouponValidateResult {
+  valid: boolean;
+  discount: number;
+  description?: string | null;
+  message: string;
+}
+
+export const validatePortalCoupon = (code: string, productServiceId: string) =>
+  api.post<CouponValidateResult>('/portal/coupons/validate', {
+    code, product_service_id: productServiceId,
+  });
 
 export interface ProductAddonRow {
   id: string; name: string; description: string | null; price: number; billing_cycle: string | null;

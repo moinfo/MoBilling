@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Client;
 use App\Models\ClientSubscription;
+use App\Models\Coupon;
+use App\Models\CouponRedemption;
 use App\Models\Document;
 use App\Models\ProductService;
 use App\Models\RecurringInvoiceLog;
@@ -179,7 +181,9 @@ class RecurringInvoiceService
 
             $subtotal = 0;
             $taxAmount = 0;
+            $discountTotal = 0;
             $lineItems = [];
+            $renewalRedemptions = []; // [coupon, client_id, discount] to audit after the doc exists
 
             foreach ($items as $item) {
                 $sub = $item['subscription'];
@@ -187,12 +191,34 @@ class RecurringInvoiceService
                 $qty = $sub->quantity;
 
                 $lineBase = $qty * (float) $product->price;
-                $lineTax = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
-                $lineTotal = $lineBase + $lineTax;
+
+                // Recurring coupon: re-apply the discount on each renewal cycle,
+                // re-checking the coupon is still active + within its window. The
+                // discount reduces the taxable base, consistent with the order.
+                // Renewals do NOT consume the coupon's max_uses order quota.
+                $lineDiscount = 0.0;
+                $applied = is_array($sub->metadata ?? null) ? ($sub->metadata['applied_coupon'] ?? null) : null;
+                $renewalCoupon = null;
+                if (is_array($applied) && !empty($applied['recurring']) && !empty($applied['coupon_id'])) {
+                    $renewalCoupon = Coupon::withoutGlobalScopes()
+                        ->where('tenant_id', $sub->tenant_id)
+                        ->whereKey($applied['coupon_id'])
+                        ->first();
+                    if ($renewalCoupon && $renewalCoupon->recurring && $renewalCoupon->isRedeemable()) {
+                        $lineDiscount = round(min((float) $renewalCoupon->discountFor($lineBase, $product), $lineBase), 2);
+                    }
+                }
+
+                $netBase = round($lineBase - $lineDiscount, 2);
+                $lineTax = $netBase * ((float) ($product->tax_percent ?? 0) / 100);
+                $lineTotal = $netBase + $lineTax;
 
                 $description = $product->name;
                 if ($sub->label) {
                     $description .= " — {$sub->label}";
+                }
+                if ($lineDiscount > 0 && $renewalCoupon) {
+                    $description .= " (promo {$renewalCoupon->code})";
                 }
 
                 $lineItems[] = [
@@ -201,8 +227,8 @@ class RecurringInvoiceService
                     'description' => $description,
                     'quantity' => $qty,
                     'price' => $product->price,
-                    'discount_type' => 'percent',
-                    'discount_value' => 0,
+                    'discount_type' => $renewalCoupon && $lineDiscount > 0 ? $renewalCoupon->type : 'percent',
+                    'discount_value' => $renewalCoupon && $lineDiscount > 0 ? (float) $renewalCoupon->value : 0,
                     'tax_percent' => $product->tax_percent ?? 0,
                     'tax_amount' => round($lineTax, 2),
                     'total' => round($lineTotal, 2),
@@ -213,6 +239,10 @@ class RecurringInvoiceService
 
                 $subtotal += $lineBase;
                 $taxAmount += $lineTax;
+                $discountTotal += $lineDiscount;
+                if ($lineDiscount > 0 && $renewalCoupon) {
+                    $renewalRedemptions[] = ['coupon' => $renewalCoupon, 'client_id' => $sub->client_id, 'discount' => $lineDiscount];
+                }
 
                 // Paid product add-ons attached to this service. Bill each active
                 // add-on whose cycle matches the product renewal cycle (so a
@@ -283,15 +313,26 @@ class RecurringInvoiceService
                 'date' => now()->format('Y-m-d'),
                 'due_date' => $dueDate->format('Y-m-d'),
                 'subtotal' => round($subtotal, 2),
-                'discount_amount' => 0,
+                'discount_amount' => round($discountTotal, 2),
                 'tax_amount' => round($taxAmount, 2),
-                'total' => round($subtotal + $taxAmount, 2),
+                'total' => round($subtotal - $discountTotal + $taxAmount, 2),
                 'notes' => 'Auto-generated recurring invoice',
                 'status' => 'sent',
             ]);
 
             foreach ($lineItems as $lineItem) {
                 $document->items()->create($lineItem);
+            }
+
+            // Audit each recurring-coupon discount applied on this renewal.
+            foreach ($renewalRedemptions as $r) {
+                CouponRedemption::withoutGlobalScopes()->create([
+                    'tenant_id'       => $r['coupon']->tenant_id,
+                    'coupon_id'       => $r['coupon']->id,
+                    'client_id'       => $r['client_id'],
+                    'document_id'     => $document->id,
+                    'discount_amount' => round($r['discount'], 2),
+                ]);
             }
 
             $document->load('items', 'client');

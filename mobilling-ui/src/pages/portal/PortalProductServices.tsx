@@ -14,6 +14,7 @@ import {
 import {
   getPortalCatalog, placePortalOrder, getPortalDomainTlds, getPortalDomainAddons,
   getPortalProductAddons, getPortalProductConfigOptions, portalCheckDomain,
+  validatePortalCoupon,
   CatalogGroup, CatalogProduct, DomainAddonRow, ProductAddonRow,
   PortalConfigGroup, OrderConfigOption,
 } from '../../api/portal';
@@ -146,6 +147,11 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
   const [selectedProductAddons, setSelectedProductAddons] = useState<string[]>([]);
   // Configurable option selections keyed by option id.
   const [configSel, setConfigSel] = useState<Record<string, { choice_id?: string; quantity?: number; on?: boolean }>>({});
+  // Promo code
+  const [promoInput, setPromoInput] = useState('');
+  const [promoChecking, setPromoChecking] = useState(false);
+  const [promo, setPromo] = useState<{ code: string; discount: number; message: string } | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
 
   const { data: tldsData } = useQuery({
     queryKey: ['portal-domain-tlds'],
@@ -239,6 +245,28 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
     }
   };
 
+  const applyPromo = async () => {
+    if (!product || !promoInput.trim()) return;
+    setPromoChecking(true);
+    setPromoError(null);
+    try {
+      const res = await validatePortalCoupon(promoInput.trim(), product.id);
+      if (res.data.valid) {
+        setPromo({ code: promoInput.trim().toUpperCase(), discount: Number(res.data.discount), message: res.data.message });
+      } else {
+        setPromo(null);
+        setPromoError(res.data.message);
+      }
+    } catch (e: any) {
+      setPromo(null);
+      setPromoError(e?.response?.data?.message ?? 'Could not validate promo code.');
+    } finally {
+      setPromoChecking(false);
+    }
+  };
+
+  const clearPromo = () => { setPromo(null); setPromoInput(''); setPromoError(null); };
+
   const mutation = useMutation({
     mutationFn: () => placePortalOrder({
       product_service_id: product!.id,
@@ -249,6 +277,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
       addons: product!.needs_domain && mode !== 'existing' ? selectedAddons : undefined,
       product_addon_ids: selectedProductAddons.length ? selectedProductAddons : undefined,
       config_options: configOptionsPayload.length ? configOptionsPayload : undefined,
+      coupon_code: promo ? promo.code : undefined,
     }),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['portal-subscriptions'] });
@@ -267,6 +296,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
     setMode('register'); setSld(''); setFullDomain(''); setAuthInfo(''); setLabel('');
     setCheckResult(null); setStep('choose'); setYears(1); setSelectedAddons([]);
     setSelectedProductAddons([]); setConfigSel({});
+    setPromoInput(''); setPromo(null); setPromoError(null); setPromoChecking(false);
     onClose();
   };
 
@@ -279,9 +309,11 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
         : (domainValid && checkResult?.ok === true && (mode !== 'transfer' || authInfo.trim().length > 0))
   );
 
+  const promoDiscount = promo ? Math.min(promo.discount, product?.price ?? 0) : 0;
   const total = (product?.price ?? 0)
     + (product?.needs_domain && mode !== 'existing' && checkResult?.ok ? domainPrice + addonsPrice : 0)
-    + productAddonsPrice + configOptionsPrice;
+    + productAddonsPrice + configOptionsPrice
+    - promoDiscount;
   const canContinue = product?.needs_domain && (
     mode === 'existing' ? domainValid
       : (domainValid && checkResult?.ok === true && (mode !== 'transfer' || authInfo.trim().length > 0)));
@@ -461,6 +493,28 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
             </Paper>
           ))}
 
+          <Paper withBorder radius="md" p="md" bg="var(--mantine-color-default-hover)">
+            <Text fw={700} mb={4}>Have a promo code?</Text>
+            {promo ? (
+              <Group justify="space-between" wrap="nowrap">
+                <div>
+                  <Badge color="green" variant="light">{promo.code}</Badge>
+                  <Text size="xs" c="green" mt={4}>{promo.message}</Text>
+                </div>
+                <Button size="xs" variant="subtle" color="red" onClick={clearPromo}>Remove</Button>
+              </Group>
+            ) : (
+              <>
+                <Group gap={6} wrap="nowrap" align="flex-end">
+                  <TextInput placeholder="Enter code" style={{ flex: 1 }} value={promoInput}
+                    onChange={(e) => setPromoInput(e.currentTarget.value.toUpperCase())} />
+                  <Button loading={promoChecking} disabled={!promoInput.trim()} onClick={applyPromo}>Apply</Button>
+                </Group>
+                {promoError && <Alert mt="sm" color="red" variant="light" py={6}>{promoError}</Alert>}
+              </>
+            )}
+          </Paper>
+
           <Paper withBorder p="sm" radius="md">
             <Group justify="space-between">
               <Text size="sm">{product.name}</Text>
@@ -516,6 +570,12 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
                   </Group>
                 ))}
               </>
+            )}
+            {promo && promoDiscount > 0 && (
+              <Group justify="space-between" mt={4}>
+                <Text size="sm" c="green">Promo {promo.code}</Text>
+                <Text size="sm" fw={600} c="green">− Tsh.{fmt(promoDiscount)}</Text>
+              </Group>
             )}
             <Divider my={6} />
             <Group justify="space-between">

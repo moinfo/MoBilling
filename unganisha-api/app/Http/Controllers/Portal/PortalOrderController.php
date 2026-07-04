@@ -167,6 +167,46 @@ class PortalOrderController extends Controller
         return response()->json(['data' => $groups]);
     }
 
+    /**
+     * Validate a promo code against a product before ordering, so the cart can
+     * show the discount up-front. The discount is always computed server-side
+     * off the product base — a client-sent discount is never trusted.
+     */
+    public function validateCoupon(Request $request)
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $data = $request->validate([
+            'code'               => 'required|string|max:64',
+            'product_service_id' => ['required', 'uuid',
+                Rule::exists('product_services', 'id')->where('tenant_id', $tenantId)->where('is_active', true)],
+        ]);
+
+        $product = ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->find($data['product_service_id']);
+
+        if (!$product) {
+            return response()->json(['valid' => false, 'discount' => 0, 'message' => 'Product not found.'], 404);
+        }
+
+        $orderBase = (float) $product->price;
+        $result = app(\App\Services\CouponService::class)->validateForOrder(
+            $data['code'], $tenantId, $product, $orderBase, $request->user()->client_id
+        );
+
+        if ($result['error']) {
+            return response()->json(['valid' => false, 'discount' => 0, 'message' => $result['error']]);
+        }
+
+        return response()->json([
+            'valid'       => true,
+            'discount'    => round($result['discount'], 2),
+            'description' => $result['coupon']->description,
+            'message'     => "Promo code applied — you save Tsh." . number_format($result['discount'], 2) . '.',
+        ]);
+    }
+
     /** Place an order: pending subscription + invoice to pay. */
     public function store(Request $request)
     {
@@ -188,9 +228,26 @@ class PortalOrderController extends Controller
             'config_options.*.option_id'  => 'required_with:config_options|uuid',
             'config_options.*.choice_id'  => 'nullable|uuid',
             'config_options.*.quantity'   => 'nullable|integer|min:1|max:10000',
+            'coupon_code' => 'nullable|string|max:64',
         ]);
 
         $product = ProductService::withoutGlobalScopes()->find($data['product_service_id']);
+
+        // Promo code: re-validate server-side against THIS product + its base.
+        // A tampered/expired code is rejected loudly (422) so the client is never
+        // surprised by a different total than the one shown in the cart.
+        $coupon = null;
+        $couponDiscount = 0.0;
+        if (!empty($data['coupon_code'])) {
+            $couponResult = app(\App\Services\CouponService::class)->validateForOrder(
+                $data['coupon_code'], $tenantId, $product, (float) $product->price, $user->client_id
+            );
+            if ($couponResult['error']) {
+                return response()->json(['message' => $couponResult['error']], 422);
+            }
+            $coupon = $couponResult['coupon'];
+            $couponDiscount = (float) $couponResult['discount'];
+        }
 
         // Paid product add-ons: only those this product actually offers, for this tenant.
         $productAddons = collect();
@@ -313,7 +370,8 @@ class PortalOrderController extends Controller
                 ->whereIn('id', $data['addons'])->get();
         }
 
-        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing, $years, $addons, $productAddons, $configSelections) {
+        try {
+            [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing, $years, $addons, $productAddons, $configSelections, $coupon, $couponDiscount) {
             $start = now()->startOfDay();
             $expire = match ($product->billing_cycle) {
                 'monthly'     => $start->copy()->addMonth(),
@@ -332,14 +390,26 @@ class PortalOrderController extends Controller
                 'start_date'         => $start,
                 'expire_date'        => $expire,
                 'status'             => 'pending',
+                // Keep the legacy free-text promo_code AND record the real coupon.
+                'promo_code'         => $coupon?->code,
                 'metadata'           => array_filter([
                     'portal_order' => true,
                     'domain'       => $product->provisioning_type === 'whm_cpanel' ? strtolower($data['label']) : null,
+                    'applied_coupon' => $coupon ? [
+                        'coupon_id' => $coupon->id,
+                        'code'      => $coupon->code,
+                        'discount'  => round($couponDiscount, 2),
+                        'recurring' => (bool) $coupon->recurring,
+                    ] : null,
                 ]),
             ]);
 
             $lineBase = (float) $product->price;
-            $lineTax  = $lineBase * ((float) ($product->tax_percent ?? 0) / 100);
+            // Coupon discount reduces the product's TAXABLE base (tax computed
+            // post-discount), then is also surfaced as the invoice discount.
+            $discount = round(min($couponDiscount, $lineBase), 2);
+            $netBase  = round($lineBase - $discount, 2);
+            $lineTax  = $netBase * ((float) ($product->tax_percent ?? 0) / 100);
             $domainPrice = 0.0;
             if ($domainPricing && in_array($mode, ['register', 'transfer'])) {
                 $unit = (float) ($mode === 'register' ? $domainPricing->register_price : $domainPricing->transfer_price);
@@ -360,7 +430,10 @@ class PortalOrderController extends Controller
                 fn ($c) => $c['unit_price'] * $c['quantity'] * ($c['tax_percent'] / 100)
             ), 2);
 
-            $total = round($lineBase + $lineTax + $domainPrice + $addonsPrice + $productAddonsBase + $productAddonsTax + $configBase + $configTax, 2);
+            // Subtotal stays the gross base (pre-discount); the discount is shown
+            // separately (WHMCS-style) and the total nets it out.
+            $grossBase = round($lineBase + $domainPrice + $addonsPrice + $productAddonsBase + $configBase, 2);
+            $total = round($grossBase - $discount + $lineTax + $productAddonsTax + $configTax, 2);
 
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $tenantId,
@@ -369,23 +442,27 @@ class PortalOrderController extends Controller
                 'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
                 'date'            => now()->toDateString(),
                 'due_date'        => now()->toDateString(),
-                'subtotal'        => round($lineBase + $domainPrice + $addonsPrice + $productAddonsBase + $configBase, 2),
-                'discount_amount' => 0,
+                'subtotal'        => $grossBase,
+                'discount_amount' => $discount,
                 'tax_amount'      => round($lineTax + $productAddonsTax + $configTax, 2),
                 'total'           => $total,
                 'status'          => 'sent',
-                'notes'           => 'Portal order: new subscription',
+                'notes'           => 'Portal order: new subscription'
+                                     . ($coupon ? " (promo {$coupon->code})" : ''),
             ]);
 
             $document->items()->create([
                 'product_service_id' => $product->id,
                 'item_type'          => $product->type,
-                'description'        => $product->name . ($data['label'] ? " — {$data['label']}" : ''),
+                'description'        => $product->name . ($data['label'] ? " — {$data['label']}" : '')
+                                        . ($discount > 0 ? " (promo {$coupon->code})" : ''),
                 'quantity'           => 1,
                 'price'              => $product->price,
+                'discount_type'      => $coupon ? $coupon->type : 'percent',
+                'discount_value'     => $coupon ? (float) $coupon->value : 0,
                 'tax_percent'        => $product->tax_percent ?? 0,
                 'tax_amount'         => round($lineTax, 2),
-                'total'              => round($lineBase + $lineTax, 2),
+                'total'              => round($netBase + $lineTax, 2),
             ]);
 
             foreach ($productAddons as $addon) {
@@ -503,8 +580,23 @@ class PortalOrderController extends Controller
                 ]
             );
 
+            // Consume one coupon use atomically. The conditional UPDATE inside
+            // redeem() guards against concurrent orders exceeding max_uses; if it
+            // just raced past the cap, abort the whole order so the client isn't
+            // charged a discounted total that the coupon can't back.
+            if ($coupon && $discount > 0) {
+                $ok = app(\App\Services\CouponService::class)
+                    ->redeem($coupon, $user->client_id, $document->id, $discount);
+                if (!$ok) {
+                    throw new \App\Exceptions\CouponUnavailableException();
+                }
+            }
+
             return [$subscription, $document];
         });
+        } catch (\App\Exceptions\CouponUnavailableException) {
+            return response()->json(['message' => 'This promo code has just reached its usage limit — please try again without it.'], 422);
+        }
 
         return response()->json([
             'data'    => [
