@@ -124,7 +124,7 @@ class DocumentController extends Controller
 
     public function show(Document $document)
     {
-        return new DocumentResource($document->load('items', 'client', 'payments'));
+        return new DocumentResource($document->load('items', 'client', 'payments', 'refunds', 'children'));
     }
 
     public function update(StoreDocumentRequest $request, Document $document)

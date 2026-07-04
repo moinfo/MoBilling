@@ -18,7 +18,7 @@ class FollowupController extends Controller
 
         $notCancelled = fn ($q) => $q->where('status', '!=', 'cancelled');
 
-        $withDocSum = ['client', 'document' => fn ($q) => $q->withSum('payments', 'amount'), 'user'];
+        $withDocSum = ['client', 'document' => fn ($q) => $q->withSum('payments', 'amount')->withSum('refunds', 'amount'), 'user'];
 
         $dueToday = Followup::with($withDocSum)
             ->whereHas('document', $notCancelled)
@@ -84,7 +84,7 @@ class FollowupController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Followup::with(['client', 'document' => fn ($q) => $q->withSum('payments', 'amount'), 'user'])
+        $query = Followup::with(['client', 'document' => fn ($q) => $q->withSum('payments', 'amount')->withSum('refunds', 'amount'), 'user'])
             ->whereHas('document', fn ($q) => $q->where('status', '!=', 'cancelled'))
             ->orderByDesc('created_at');
 

@@ -60,9 +60,10 @@ class PaymentInController extends Controller
             if ($request->document_id) {
                 $document = Document::whereKey($request->document_id)->lockForUpdate()->first();
                 if ($document) {
-                    $totalPaid = $document->payments()->sum('amount');
+                    // Net of any refunds (paid_amount = payments − refunds).
+                    $totalPaid = (float) $document->paid_amount;
 
-                    if ($totalPaid >= $document->total) {
+                    if ($totalPaid >= (float) $document->total) {
                         $document->update(['status' => 'paid']);
                         $this->activateLinkedSubscriptions($document);
                     } else {
@@ -141,9 +142,10 @@ class PaymentInController extends Controller
         $document = Document::whereKey($documentId)->lockForUpdate()->first();
         if (!$document) return;
 
-        $totalPaid = $document->payments()->sum('amount');
+        // Net of any refunds (paid_amount = payments − refunds).
+        $totalPaid = (float) $document->paid_amount;
 
-        if ($totalPaid >= $document->total) {
+        if ($totalPaid >= (float) $document->total) {
             $document->update(['status' => 'paid']);
             $this->activateLinkedSubscriptions($document);
         } elseif ($totalPaid > 0) {

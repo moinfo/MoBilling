@@ -257,6 +257,19 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:documents.extend_due_date')->patch('/documents/{document}/due-date', [DocumentController::class, 'updateDueDate']);
     Route::middleware('permission:documents.update')->patch('/documents/{document}/return-to-draft', [DocumentController::class, 'returnToDraft']);
 
+    // Refunds — refund money already paid on an invoice (wallet or external).
+    // Gated by payments_in permissions since a refund reverses a payment.
+    Route::middleware('permission:payments_in.read')->get('/refunds', [\App\Http\Controllers\RefundController::class, 'index']);
+    Route::middleware('permission:payments_in.create')->post('/documents/{invoice}/refunds', [\App\Http\Controllers\RefundController::class, 'store']);
+
+    // Credit Notes — reuse the documents CRUD permissions.
+    Route::middleware('permission:documents.read')->get('/credit-notes', [\App\Http\Controllers\CreditNoteController::class, 'index']);
+    Route::middleware('permission:documents.read')->get('/credit-notes/{creditNote}', [\App\Http\Controllers\CreditNoteController::class, 'show']);
+    Route::middleware('permission:documents.download')->get('/credit-notes/{creditNote}/pdf', [\App\Http\Controllers\CreditNoteController::class, 'downloadPdf']);
+    Route::middleware('permission:documents.create')->post('/credit-notes', [\App\Http\Controllers\CreditNoteController::class, 'store']);
+    Route::middleware('permission:documents.update')->post('/credit-notes/{creditNote}/issue', [\App\Http\Controllers\CreditNoteController::class, 'issue']);
+    Route::middleware('permission:documents.delete')->delete('/credit-notes/{creditNote}', [\App\Http\Controllers\CreditNoteController::class, 'destroy']);
+
     // Payments In
     Route::middleware('permission:payments_in.read')->get('/payments-in', [PaymentInController::class, 'index']);
     Route::middleware('permission:payments_in.read')->get('/payments-in/{payments_in}', [PaymentInController::class, 'show']);

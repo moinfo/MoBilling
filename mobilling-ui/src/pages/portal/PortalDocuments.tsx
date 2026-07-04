@@ -38,7 +38,7 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
   const { data: creditData } = useQuery({ queryKey: ['portal-credit'], queryFn: getPortalCredit });
   const creditBalance: number = creditData?.data?.data?.balance ?? 0;
 
-  const title = type === 'invoice' ? 'Invoices' : 'Quotations';
+  const title = type === 'invoice' ? 'Invoices' : type === 'credit_note' ? 'Credit Notes' : 'Quotations';
   const isInvoice = type === 'invoice';
 
   // Handle Pesapal callback

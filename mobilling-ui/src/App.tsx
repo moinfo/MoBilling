@@ -22,6 +22,7 @@ import Coupons from './pages/Coupons';
 import Quotations from './pages/Quotations';
 import Proformas from './pages/Proformas';
 import Invoices from './pages/Invoices';
+import CreditNotes from './pages/CreditNotes';
 import BillCategories from './pages/BillCategories';
 import Bills from './pages/Bills';
 import PaymentsIn from './pages/PaymentsIn';
@@ -196,6 +197,7 @@ export default function App() {
                   <Route path="/quotations" element={<Quotations />} />
                   <Route path="/proformas" element={<Proformas />} />
                   <Route path="/invoices" element={<Invoices />} />
+                  <Route path="/credit-notes" element={<CreditNotes />} />
                   <Route path="/payments-in" element={<PaymentsIn />} />
                   <Route path="/client-subscriptions" element={<ClientSubscriptions />} />
                   <Route path="/next-bills" element={<NextBills />} />
@@ -261,6 +263,7 @@ export default function App() {
                   <Route path="/portal/invoices" element={<PortalDocuments type="invoice" />} />
                   <Route path="/portal/invoices/:id" element={<PortalInvoiceView />} />
                   <Route path="/portal/quotations" element={<PortalDocuments type="quotation" />} />
+                  <Route path="/portal/credit-notes" element={<PortalDocuments type="credit_note" />} />
                   <Route path="/portal/payments" element={<PortalPayments />} />
                   <Route path="/portal/statement" element={<PortalStatement />} />
                   <Route path="/portal/products-services" element={<PortalProductServices />} />

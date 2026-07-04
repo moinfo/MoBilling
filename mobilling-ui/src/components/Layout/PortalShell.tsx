@@ -40,6 +40,7 @@ export default function PortalShell() {
     { icon: IconDashboard, label: 'Dashboard', path: '/portal/dashboard' },
     { icon: IconFileInvoice, label: 'Invoices', path: '/portal/invoices' },
     { icon: IconFileText, label: 'Quotations', path: '/portal/quotations' },
+    { icon: IconReceipt, label: 'Credit Notes', path: '/portal/credit-notes' },
     { icon: IconCash, label: 'Payments', path: '/portal/payments' },
     { icon: IconReceipt, label: 'Statement', path: '/portal/statement' },
     { icon: IconPackage, label: 'Products & Services', path: '/portal/products-services' },

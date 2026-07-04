@@ -18,9 +18,25 @@ export interface DocumentItem {
   service_to?: string | null;
 }
 
+export interface Refund {
+  id: string;
+  amount: number;
+  method: 'wallet' | 'cash' | 'bank' | 'mpesa' | 'pesapal' | 'other';
+  reference: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface LinkedCreditNote {
+  id: string;
+  document_number: string;
+  total: number;
+  status: string;
+}
+
 export interface Document {
   id: string;
-  type: 'quotation' | 'proforma' | 'invoice';
+  type: 'quotation' | 'proforma' | 'invoice' | 'credit_note';
   document_number: string;
   client: Client;
   client_id: string;
@@ -39,6 +55,8 @@ export interface Document {
   balance_due: number;
   items: DocumentItem[];
   payments?: Payment[];
+  refunds?: Refund[];
+  linked_credit_notes?: LinkedCreditNote[];
   created_at: string;
 }
 
@@ -153,6 +171,17 @@ export const resendInvoice = (documentId: string) =>
 
 export const remindUnpaid = (documentIds: string[], channel: 'email' | 'sms' | 'whatsapp' | 'both') =>
   api.post('/documents/remind-unpaid', { document_ids: documentIds, channel });
+
+// Refunds
+export const createRefund = (invoiceId: string, data: {
+  amount: number;
+  method: 'wallet' | 'cash' | 'bank' | 'mpesa' | 'pesapal' | 'other';
+  reference?: string;
+  reason?: string;
+}) => api.post(`/documents/${invoiceId}/refunds`, data);
+
+export const getRefunds = (params?: { document_id?: string; page?: number; per_page?: number }) =>
+  api.get('/refunds', { params });
 
 export const cancelDocument = (id: string) =>
   api.patch(`/documents/${id}/cancel`);

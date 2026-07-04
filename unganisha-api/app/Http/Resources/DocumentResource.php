@@ -30,6 +30,22 @@ class DocumentResource extends JsonResource
             'balance_due' => $this->balance_due,
             'items' => DocumentItemResource::collection($this->whenLoaded('items')),
             'payments' => PaymentInResource::collection($this->whenLoaded('payments')),
+            'refunds' => $this->whenLoaded('refunds', fn () => $this->refunds->map(fn ($r) => [
+                'id'          => $r->id,
+                'amount'      => (float) $r->amount,
+                'method'      => $r->method,
+                'reference'   => $r->reference,
+                'notes'       => $r->notes,
+                'created_at'  => $r->created_at?->toISOString(),
+            ])),
+            'linked_credit_notes' => $this->whenLoaded('children', fn () => $this->children
+                ->where('type', 'credit_note')
+                ->map(fn ($c) => [
+                    'id'              => $c->id,
+                    'document_number' => $c->document_number,
+                    'total'           => (float) $c->total,
+                    'status'          => $c->status,
+                ])->values()),
             'created_by' => $this->created_by,
             'created_at' => $this->created_at,
         ];

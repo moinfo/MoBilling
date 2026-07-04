@@ -73,21 +73,30 @@
 </head>
 <body>
     @php
-        $statusDisplay = match($document->status) {
-            'draft' => 'DRAFT',
-            'pending_approval' => 'DRAFT',
-            'sent', 'partial', 'overdue' => 'UNPAID',
-            'paid' => 'PAID',
-            'cancelled' => 'CANCELLED',
-            default => strtoupper($document->status),
-        };
-        $stampClass = match($document->status) {
-            'draft', 'pending_approval' => 'draft',
-            'sent', 'partial', 'overdue' => 'unpaid',
-            'paid' => 'paid',
-            'cancelled' => 'cancelled',
-            default => 'draft',
-        };
+        $isCreditNote = $document->type === 'credit_note';
+        $typeLabel = $isCreditNote ? 'Credit Note' : ucfirst($document->type);
+
+        if ($isCreditNote) {
+            // Credit notes have no "paid" concept: draft = not issued, sent = issued.
+            $statusDisplay = $document->status === 'draft' ? 'DRAFT' : 'CREDIT';
+            $stampClass = $document->status === 'draft' ? 'draft' : 'paid';
+        } else {
+            $statusDisplay = match($document->status) {
+                'draft' => 'DRAFT',
+                'pending_approval' => 'DRAFT',
+                'sent', 'partial', 'overdue' => 'UNPAID',
+                'paid' => 'PAID',
+                'cancelled' => 'CANCELLED',
+                default => strtoupper($document->status),
+            };
+            $stampClass = match($document->status) {
+                'draft', 'pending_approval' => 'draft',
+                'sent', 'partial', 'overdue' => 'unpaid',
+                'paid' => 'paid',
+                'cancelled' => 'cancelled',
+                default => 'draft',
+            };
+        }
     @endphp
 
     <div class="status-stamp {{ $stampClass }}">{{ $statusDisplay }}</div>
@@ -106,7 +115,7 @@
             @if($tenant->tax_id)<p>KRA PIN: {{ $tenant->tax_id }}</p>@endif
         </div>
         <div class="header-right">
-            <h1>{{ ucfirst($document->type) }}</h1>
+            <h1>{{ $typeLabel }}</h1>
             <p class="doc-number">{{ $document->document_number }}</p>
             <p>Date: {{ $document->date->format('d M Y') }}</p>
             @if($document->due_date)
@@ -119,7 +128,7 @@
     <div class="info-table">
         <div class="info-left">
             <div class="info-box">
-                <h3>Bill To</h3>
+                <h3>{{ $isCreditNote ? 'Credit To' : 'Bill To' }}</h3>
                 <p><strong>{{ $client->name }}</strong></p>
                 @if($client->address)<p>{{ $client->address }}</p>@endif
                 @if($client->email)<p>{{ $client->email }}</p>@endif
@@ -189,7 +198,7 @@
                 <td class="text-right">{{ $tenant->currency }} {{ number_format($document->tax_amount, 2) }}</td>
             </tr>
             <tr class="grand-total">
-                <td><strong>Total:</strong></td>
+                <td><strong>{{ $isCreditNote ? 'Credit Total:' : 'Total:' }}</strong></td>
                 <td class="text-right"><strong>{{ $tenant->currency }} {{ number_format($document->total, 2) }}</strong></td>
             </tr>
         </table>
@@ -208,7 +217,7 @@
         );
     @endphp
 
-    @if($methodsWithDetails->isNotEmpty())
+    @if(!$isCreditNote && $methodsWithDetails->isNotEmpty())
     <div class="bank-details">
         <h3>Payment Information</h3>
         <div style="display: table; width: 100%;">
@@ -224,7 +233,7 @@
             @endforeach
         </div>
     </div>
-    @elseif($tenant->bank_name || $tenant->bank_account_number)
+    @elseif(!$isCreditNote && ($tenant->bank_name || $tenant->bank_account_number))
     {{-- Fallback to old bank details if no payment methods configured --}}
     <div class="bank-details">
         <h3>Bank Details</h3>
@@ -235,7 +244,7 @@
     </div>
     @endif
 
-    @if($tenant->payment_instructions)
+    @if(!$isCreditNote && $tenant->payment_instructions)
     <div class="payment-instructions">
         <h3>Payment Instructions</h3>
         <p>{{ $tenant->payment_instructions }}</p>

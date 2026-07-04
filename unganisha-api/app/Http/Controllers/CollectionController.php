@@ -18,7 +18,7 @@ class CollectionController extends Controller
 
         // --- Today's due invoices (unpaid with due_date = today) ---
         $todayDue = Document::with('client')
-            ->withSum('payments', 'amount')
+            ->withSum('payments', 'amount')->withSum('refunds', 'amount')
             ->where('type', 'invoice')
             ->whereDate('due_date', $today)
             ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
@@ -36,7 +36,7 @@ class CollectionController extends Controller
 
         // --- Overdue invoices (due_date < today, still unpaid) ---
         $overdue = Document::with('client')
-            ->withSum('payments', 'amount')
+            ->withSum('payments', 'amount')->withSum('refunds', 'amount')
             ->where('type', 'invoice')
             ->whereDate('due_date', '<', $today)
             ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
@@ -57,7 +57,7 @@ class CollectionController extends Controller
 
         // --- Upcoming due (next 30 days, excluding today) ---
         $upcoming = Document::with('client')
-            ->withSum('payments', 'amount')
+            ->withSum('payments', 'amount')->withSum('refunds', 'amount')
             ->where('type', 'invoice')
             ->whereDate('due_date', '>', $today)
             ->whereDate('due_date', '<=', $today->copy()->addDays(30))
@@ -118,7 +118,7 @@ class CollectionController extends Controller
             ->whereNotIn('status', ['draft', 'cancelled', 'pending_approval'])
             ->sum('total');
 
-        $overdueCarryOver = (float) Document::withSum('payments', 'amount')
+        $overdueCarryOver = (float) Document::withSum('payments', 'amount')->withSum('refunds', 'amount')
             ->where('type', 'invoice')
             ->whereDate('due_date', '<', $monthStart)
             ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
@@ -133,7 +133,7 @@ class CollectionController extends Controller
 
         // --- Total outstanding (all unpaid invoices) ---
         $allUnpaid = Document::with('client')
-            ->withSum('payments', 'amount')
+            ->withSum('payments', 'amount')->withSum('refunds', 'amount')
             ->where('type', 'invoice')
             ->whereNotIn('status', ['paid', 'draft', 'cancelled', 'pending_approval'])
             ->get();

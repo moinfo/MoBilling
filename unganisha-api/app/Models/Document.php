@@ -42,6 +42,11 @@ class Document extends Model
         return $this->hasMany(PaymentIn::class);
     }
 
+    public function refunds()
+    {
+        return $this->hasMany(Refund::class);
+    }
+
     public function parent()
     {
         return $this->belongsTo(Document::class, 'parent_id');
@@ -65,13 +70,23 @@ class Document extends Model
 
     public function getPaidAmountAttribute()
     {
+        // Net paid = payments received − refunds returned. A refund correctly drops
+        // the paid amount so the invoice reverts to partial/sent and balance_due rises.
+        //
         // Prefer an eager-loaded sum (->withSum('payments', 'amount')) to avoid
-        // running one SUM query per document when listing many invoices.
+        // running one SUM query per document when listing many invoices. Refunds
+        // are rare, so ->withSum('refunds', 'amount') is optional: when it is not
+        // eager-loaded we fall back to a per-row query only for the refund side.
         if (array_key_exists('payments_sum_amount', $this->attributes)) {
-            return (float) ($this->attributes['payments_sum_amount'] ?? 0);
+            $paid = (float) ($this->attributes['payments_sum_amount'] ?? 0);
+            $refunded = array_key_exists('refunds_sum_amount', $this->attributes)
+                ? (float) ($this->attributes['refunds_sum_amount'] ?? 0)
+                : (float) $this->refunds()->sum('amount');
+
+            return round($paid - $refunded, 2);
         }
 
-        return $this->payments()->sum('amount');
+        return round((float) $this->payments()->sum('amount') - (float) $this->refunds()->sum('amount'), 2);
     }
 
     public function getBalanceDueAttribute()

@@ -3,9 +3,10 @@ import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
-import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash, IconCopy, IconBrandWhatsapp, IconLink, IconCheck, IconArrowBack, IconEdit, IconArrowBackUp } from '@tabler/icons-react';
+import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash, IconCopy, IconBrandWhatsapp, IconLink, IconCheck, IconArrowBack, IconEdit, IconArrowBackUp, IconReceiptRefund, IconFileInvoice } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem, submitForApproval, approveDocument, rejectDocument, returnDocumentToDraft } from '../../api/documents';
+import { useNavigate } from 'react-router-dom';
+import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem, submitForApproval, approveDocument, rejectDocument, returnDocumentToDraft, createRefund } from '../../api/documents';
 import { usePermissions } from '../../hooks/usePermissions';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import { useAuth } from '../../context/AuthContext';
@@ -33,9 +34,43 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
   const { methods: paymentMethods, getMethodDetails } = usePaymentMethods();
   const { user } = useAuth();
   const { can } = usePermissions();
+  const navigate = useNavigate();
   const tenant = user?.tenant;
   const [showPayment, setShowPayment] = useState(false);
+  const [showRefund, setShowRefund] = useState(false);
   const [loading, setLoading] = useState('');
+
+  const refundForm = useForm({
+    initialValues: {
+      amount: doc.paid_amount,
+      method: 'wallet' as 'wallet' | 'cash' | 'bank' | 'mpesa' | 'pesapal' | 'other',
+      reference: '',
+      reason: '',
+    },
+  });
+
+  const handleRefund = async (values: typeof refundForm.values) => {
+    try {
+      setLoading('refund');
+      const res = await createRefund(doc.id, {
+        amount: values.amount,
+        method: values.method,
+        reference: values.reference || undefined,
+        reason: values.reason || undefined,
+      });
+      notifications.show({ title: 'Refund recorded', message: res.data.message, color: 'green' });
+      setShowRefund(false);
+      onRefresh();
+    } catch (err: any) {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Refund failed', color: 'red' });
+    } finally {
+      setLoading('');
+    }
+  };
+
+  const handleCreditThisInvoice = () => {
+    navigate(`/credit-notes?from=${doc.id}`);
+  };
   const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [showApproveConfirm, setShowApproveConfirm] = useState(false);
   const [sendEmail, setSendEmail] = useState(true);
@@ -503,6 +538,18 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
             Record Payment
           </Button>
         )}
+        {can('payments_in.create') && isInvoice && doc.paid_amount > 0 && (
+          <Button variant="light" color="orange" leftSection={<IconReceiptRefund size={16} />}
+            onClick={() => { refundForm.setValues({ amount: doc.paid_amount, method: 'wallet', reference: '', reason: '' }); setShowRefund(true); }}>
+            Refund
+          </Button>
+        )}
+        {can('documents.create') && isInvoice && !['draft', 'pending_approval'].includes(doc.status) && (
+          <Button variant="light" color="grape" leftSection={<IconFileInvoice size={16} />}
+            onClick={handleCreditThisInvoice}>
+            Credit Note
+          </Button>
+        )}
         {can('documents.update') && canCancel && (
           <Button variant="light" color="red" leftSection={<IconX size={16} />}
             onClick={handleCancel} loading={loading === 'cancel'}>
@@ -787,6 +834,98 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           </Group>
         </Stack>
       </Modal>
+
+      {/* Refund Modal */}
+      <Modal opened={showRefund} onClose={() => setShowRefund(false)} title="Refund Payment" size="md">
+        <form onSubmit={refundForm.onSubmit(handleRefund)}>
+          <Stack>
+            <Alert variant="light" color="orange" p="xs">
+              <Text size="xs">
+                Refundable (amount paid): <Text span fw={700}>{formatCurrency(doc.paid_amount)}</Text>.
+                A <Text span fw={600}>wallet</Text> refund adds reusable account credit; other methods
+                record an external refund (money returned outside the system). Either way the invoice
+                paid amount is reduced.
+              </Text>
+            </Alert>
+            <NumberInput label="Refund Amount" min={0.01} max={doc.paid_amount} decimalScale={2} required
+              {...refundForm.getInputProps('amount')} />
+            <Select label="Method" required
+              data={[
+                { value: 'wallet', label: 'Account Credit (wallet)' },
+                { value: 'cash', label: 'Cash' },
+                { value: 'bank', label: 'Bank Transfer' },
+                { value: 'mpesa', label: 'M-Pesa' },
+                { value: 'pesapal', label: 'Pesapal' },
+                { value: 'other', label: 'Other' },
+              ]}
+              {...refundForm.getInputProps('method')} />
+            <TextInput label="Reference" placeholder="Transaction ref (optional)" {...refundForm.getInputProps('reference')} />
+            <Textarea label="Reason / Notes" placeholder="Why is this being refunded?" {...refundForm.getInputProps('reason')} />
+            <Group justify="flex-end">
+              <Button variant="light" onClick={() => setShowRefund(false)}>Cancel</Button>
+              <Button type="submit" color="orange" loading={loading === 'refund'}>Record Refund</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      {/* Refunds */}
+      {doc.refunds && doc.refunds.length > 0 && (
+        <Card withBorder>
+          <Text fw={600} mb="md">Refunds</Text>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Amount</Table.Th>
+                <Table.Th>Method</Table.Th>
+                <Table.Th>Reference</Table.Th>
+                <Table.Th>Reason</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {doc.refunds.map((r) => (
+                <Table.Tr key={r.id}>
+                  <Table.Td>{formatDate(r.created_at)}</Table.Td>
+                  <Table.Td fw={500} c="orange">-{formatCurrency(r.amount)}</Table.Td>
+                  <Table.Td>{r.method === 'wallet' ? 'Account Credit' : r.method}</Table.Td>
+                  <Table.Td>{r.reference || '—'}</Table.Td>
+                  <Table.Td>{r.notes || '—'}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Card>
+      )}
+
+      {/* Linked Credit Notes */}
+      {doc.linked_credit_notes && doc.linked_credit_notes.length > 0 && (
+        <Card withBorder>
+          <Text fw={600} mb="md">Credit Notes</Text>
+          <Table>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Number</Table.Th>
+                <Table.Th>Amount</Table.Th>
+                <Table.Th>Status</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {doc.linked_credit_notes.map((cn) => (
+                <Table.Tr key={cn.id} style={{ cursor: 'pointer' }} onClick={() => navigate(`/credit-notes?preview=${cn.id}`)}>
+                  <Table.Td fw={500}>{cn.document_number}</Table.Td>
+                  <Table.Td>{formatCurrency(cn.total)}</Table.Td>
+                  <Table.Td>
+                    <Badge size="sm" color={cn.status === 'draft' ? 'gray' : 'grape'}>
+                      {cn.status === 'draft' ? 'Draft' : 'Issued'}
+                    </Badge>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Card>
+      )}
 
       {/* Payment History */}
       {doc.payments && doc.payments.length > 0 && (

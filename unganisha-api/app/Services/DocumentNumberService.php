@@ -12,6 +12,7 @@ class DocumentNumberService
             'quotation' => 'QUO',
             'proforma' => 'PRO',
             'invoice' => 'INV',
+            'credit_note' => 'CN',
             default => throw new \InvalidArgumentException("Unsupported document type: {$type}"),
         };
 
