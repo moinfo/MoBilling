@@ -7,7 +7,7 @@ import {
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
   IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
-  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww, IconMessageCircle, IconNews,
+  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww, IconMessageCircle, IconNews, IconBook,
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
@@ -198,6 +198,11 @@ export default function AppLayout() {
           {can('menu.announcements') && (
             <NavLink label="Announcements" leftSection={<IconNews size={18} />}
               active={isActive('/announcements')} onClick={() => navigateAndClose('/announcements')} />
+          )}
+
+          {can('menu.announcements') && (
+            <NavLink label="Knowledgebase" leftSection={<IconBook size={18} />}
+              active={isActive('/knowledgebase')} onClick={() => navigateAndClose('/knowledgebase')} />
           )}
 
           {can('menu.satisfaction_calls') && (

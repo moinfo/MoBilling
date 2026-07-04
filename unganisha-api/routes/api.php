@@ -561,6 +561,16 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/announcements',                  [\App\Http\Controllers\AnnouncementController::class, 'store']);
         Route::put('/announcements/{announcement}',    [\App\Http\Controllers\AnnouncementController::class, 'update']);
         Route::delete('/announcements/{announcement}', [\App\Http\Controllers\AnnouncementController::class, 'destroy']);
+
+        // Knowledgebase
+        Route::get('/kb/categories',                 [\App\Http\Controllers\KbCategoryController::class, 'index']);
+        Route::post('/kb/categories',                [\App\Http\Controllers\KbCategoryController::class, 'store']);
+        Route::put('/kb/categories/{kbCategory}',    [\App\Http\Controllers\KbCategoryController::class, 'update']);
+        Route::delete('/kb/categories/{kbCategory}', [\App\Http\Controllers\KbCategoryController::class, 'destroy']);
+        Route::get('/kb/articles',                   [\App\Http\Controllers\KbArticleController::class, 'index']);
+        Route::post('/kb/articles',                  [\App\Http\Controllers\KbArticleController::class, 'store']);
+        Route::put('/kb/articles/{kbArticle}',       [\App\Http\Controllers\KbArticleController::class, 'update']);
+        Route::delete('/kb/articles/{kbArticle}',    [\App\Http\Controllers\KbArticleController::class, 'destroy']);
     });
 
     // ── Field Marketing (Door-to-Door) ───────────────────────────────────────
@@ -710,6 +720,8 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::post('/credit/topup',                [\App\Http\Controllers\Portal\PortalCreditController::class, 'topup']);
     Route::post('/documents/{document}/apply-credit', [\App\Http\Controllers\Portal\PortalCreditController::class, 'applyToInvoice']);
     Route::get('/announcements', [\App\Http\Controllers\Portal\PortalAnnouncementController::class, 'index']);
+    Route::get('/knowledgebase',        [\App\Http\Controllers\Portal\PortalKnowledgebaseController::class, 'index']);
+    Route::get('/knowledgebase/{slug}', [\App\Http\Controllers\Portal\PortalKnowledgebaseController::class, 'show']);
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
     Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);

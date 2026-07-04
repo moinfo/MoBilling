@@ -65,6 +65,7 @@ import Domains from './pages/Domains';
 import DomainDetails from './pages/DomainDetails';
 import Tickets from './pages/Tickets';
 import Announcements from './pages/Announcements';
+import Knowledgebase from './pages/Knowledgebase';
 import FieldMarketing from './pages/FieldMarketing';
 import SocialMedia from './pages/SocialMedia';
 import ServedCustomers from './pages/ServedCustomers';
@@ -91,6 +92,7 @@ import PortalTicketView from './pages/portal/PortalTicketView';
 import PortalLogin from './pages/portal/PortalLogin';
 import PortalRegister from './pages/portal/PortalRegister';
 import PortalAnnouncements from './pages/portal/PortalAnnouncements';
+import PortalKnowledgebase from './pages/portal/PortalKnowledgebase';
 import PortalProductServices from './pages/portal/PortalProductServices';
 import PortalProfile from './pages/portal/PortalProfile';
 import PortalUsers from './pages/portal/PortalUsers';
@@ -221,6 +223,7 @@ export default function App() {
                   <Route path="/domains/:id" element={<DomainDetails />} />
                   <Route path="/tickets" element={<Tickets />} />
                   <Route path="/announcements" element={<Announcements />} />
+                  <Route path="/knowledgebase" element={<Knowledgebase />} />
                   <Route path="/field-marketing" element={<FieldMarketing />} />
                   <Route path="/social-media" element={<SocialMedia />} />
                   <Route path="/served-customers" element={<ServedCustomers />} />
@@ -266,6 +269,7 @@ export default function App() {
                   <Route path="/portal/hosting/:id" element={<PortalServiceDetails />} />
                   <Route path="/portal/domains/:id" element={<PortalDomainDetails />} />
                   <Route path="/portal/announcements" element={<PortalAnnouncements />} />
+                  <Route path="/portal/knowledgebase" element={<PortalKnowledgebase />} />
                   <Route path="/portal/profile" element={<PortalProfile />} />
                   <Route path="/portal/users" element={<PortalUsers />} />
                 </Route>

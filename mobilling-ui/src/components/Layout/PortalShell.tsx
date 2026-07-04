@@ -6,7 +6,7 @@ import { useDisclosure } from '@mantine/hooks';
 import { useCallback } from 'react';
 import {
   IconDashboard, IconFileInvoice, IconFileText, IconCash, IconReceipt,
-  IconCalendarRepeat, IconWorld, IconWorldWww, IconMessageCircle, IconNews, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
+  IconCalendarRepeat, IconWorld, IconWorldWww, IconMessageCircle, IconNews, IconBook, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
   IconLock, IconPackage,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -48,6 +48,7 @@ export default function PortalShell() {
     { icon: IconWorldWww, label: 'My Domains', path: '/portal/domains' },
     { icon: IconMessageCircle, label: 'Support Tickets', path: '/portal/tickets' },
     { icon: IconNews, label: 'News', path: '/portal/announcements' },
+    { icon: IconBook, label: 'Knowledgebase', path: '/portal/knowledgebase' },
     { icon: IconUser, label: 'Profile', path: '/portal/profile' },
   ];
 
