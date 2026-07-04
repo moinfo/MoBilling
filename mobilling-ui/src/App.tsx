@@ -64,6 +64,7 @@ import ServiceManagement from './pages/ServiceManagement';
 import Domains from './pages/Domains';
 import DomainDetails from './pages/DomainDetails';
 import Tickets from './pages/Tickets';
+import CannedReplies from './pages/CannedReplies';
 import Announcements from './pages/Announcements';
 import Knowledgebase from './pages/Knowledgebase';
 import FieldMarketing from './pages/FieldMarketing';
@@ -222,6 +223,7 @@ export default function App() {
                   <Route path="/domains" element={<Domains />} />
                   <Route path="/domains/:id" element={<DomainDetails />} />
                   <Route path="/tickets" element={<Tickets />} />
+                  <Route path="/canned-replies" element={<CannedReplies />} />
                   <Route path="/announcements" element={<Announcements />} />
                   <Route path="/knowledgebase" element={<Knowledgebase />} />
                   <Route path="/field-marketing" element={<FieldMarketing />} />

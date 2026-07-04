@@ -7,7 +7,7 @@ import {
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
   IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
-  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww, IconMessageCircle, IconNews, IconBook,
+  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww, IconMessageCircle, IconMessageDots, IconNews, IconBook,
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
@@ -193,6 +193,11 @@ export default function AppLayout() {
           {can('menu.tickets') && (
             <NavLink label="Support Tickets" leftSection={<IconMessageCircle size={18} />}
               active={isActive('/tickets')} onClick={() => navigateAndClose('/tickets')} />
+          )}
+
+          {can('menu.tickets') && (
+            <NavLink label="Canned Replies" leftSection={<IconMessageDots size={18} />}
+              active={isActive('/canned-replies')} onClick={() => navigateAndClose('/canned-replies')} />
           )}
 
           {can('menu.announcements') && (

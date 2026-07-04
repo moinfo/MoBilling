@@ -3,14 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\Models\Ticket;
+use App\Models\TicketAttachment;
 use App\Models\User;
 use App\Notifications\TicketRepliedNotification;
+use App\Traits\HandlesTicketAttachments;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class TicketController extends Controller
 {
+    use HandlesTicketAttachments;
+
     public function index(Request $request)
     {
         $query = Ticket::with(['client:id,name', 'assignee:id,name'])
@@ -41,21 +46,26 @@ class TicketController extends Controller
 
     public function show(Ticket $ticket)
     {
-        $ticket->load(['client:id,name,email', 'assignee:id,name', 'openedBy:id,name', 'replies.user:id,name', 'replies.clientUser:id,name']);
+        $ticket->load(['client:id,name,email', 'assignee:id,name', 'openedBy:id,name', 'replies.user:id,name', 'replies.clientUser:id,name', 'replies.attachments']);
 
         return response()->json(['data' => $this->format($ticket, withReplies: true)]);
     }
 
     public function reply(Request $request, Ticket $ticket)
     {
-        $data = $request->validate(['message' => 'required|string|max:10000']);
+        $data = $request->validate(array_merge(
+            ['message' => 'required|string|max:10000'],
+            $this->attachmentValidationRules(),
+        ));
 
-        $ticket->replies()->create([
+        $reply = $ticket->replies()->create([
             'tenant_id'   => $ticket->tenant_id,
             'author_type' => 'staff',
             'user_id'     => auth()->id(),
             'message'     => $data['message'],
         ]);
+
+        $this->storeReplyAttachments($request, $ticket, $reply);
 
         $ticket->update([
             'status'        => 'answered',
@@ -65,7 +75,18 @@ class TicketController extends Controller
 
         $this->notifyClient($ticket, $data['message']);
 
-        return response()->json(['data' => $this->format($ticket->fresh(['replies.user:id,name', 'replies.clientUser:id,name', 'client:id,name,email', 'assignee:id,name']), withReplies: true)]);
+        return response()->json(['data' => $this->format($ticket->fresh(['replies.user:id,name', 'replies.clientUser:id,name', 'replies.attachments', 'client:id,name,email', 'assignee:id,name']), withReplies: true)]);
+    }
+
+    /** Stream a ticket attachment, scoped to the staff member's tenant. */
+    public function downloadAttachment(TicketAttachment $attachment)
+    {
+        // The tenant global scope on TicketAttachment already blocks other
+        // tenants; this is a defensive re-check.
+        abort_unless($attachment->tenant_id === auth()->user()->tenant_id, 404);
+        abort_unless(Storage::disk('local')->exists($attachment->path), 404);
+
+        return Storage::disk('local')->download($attachment->path, $attachment->original_name);
     }
 
     public function updateStatus(Request $request, Ticket $ticket)
@@ -128,6 +149,15 @@ class TicketController extends Controller
                 'author_name' => $r->authorName(),
                 'message'     => $r->message,
                 'created_at'  => $r->created_at->toISOString(),
+                'attachments' => $r->attachments->map(fn ($a) => [
+                    'id'            => $a->id,
+                    'original_name' => $a->original_name,
+                    'mime'          => $a->mime,
+                    'size'          => $a->size,
+                    // Authenticated streaming endpoint (see routes); the raw
+                    // public-disk URL is intentionally not exposed.
+                    'download_url'  => "/tickets/attachments/{$a->id}/download",
+                ])->values(),
             ])->values();
         }
 

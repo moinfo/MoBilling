@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Button, Textarea, Center, Loader,
-  ActionIcon, Avatar, Alert, Grid,
+  ActionIcon, Avatar, Alert, Grid, FileButton, Anchor,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { useNavigate, useParams } from 'react-router-dom';
-import { IconArrowLeft, IconMessageCircle, IconSend, IconLock, IconHeadset, IconUser } from '@tabler/icons-react';
-import { getPortalTicket, replyPortalTicket, closePortalTicket } from '../../api/portal';
+import { IconArrowLeft, IconMessageCircle, IconSend, IconLock, IconHeadset, IconUser, IconPaperclip, IconX } from '@tabler/icons-react';
+import { getPortalTicket, closePortalTicket } from '../../api/portal';
+import {
+  replyPortalTicketWithFiles, downloadPortalTicketAttachment, PortalTicketReply,
+} from '../../api/portalTickets';
 import { TICKET_STATUS_META, departmentLabel } from './PortalTickets';
 import dayjs from 'dayjs';
 
@@ -18,6 +21,7 @@ export default function PortalTicketView() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [message, setMessage] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['portal-ticket', id],
@@ -33,8 +37,8 @@ export default function PortalTicketView() {
   };
 
   const replyMutation = useMutation({
-    mutationFn: () => replyPortalTicket(id!, message.trim()),
-    onSuccess: () => { setMessage(''); invalidate(); },
+    mutationFn: () => replyPortalTicketWithFiles(id!, message.trim(), files),
+    onSuccess: () => { setMessage(''); setFiles([]); invalidate(); },
     onError: () => notifications.show({ message: 'Failed to send reply.', color: 'red' }),
   });
 
@@ -49,7 +53,7 @@ export default function PortalTicketView() {
 
   const meta = TICKET_STATUS_META[t.status] ?? { label: t.status, color: 'gray' };
   // WHMCS shows newest first; keep chronological (oldest first) for readability.
-  const replies = t.replies ?? [];
+  const replies: PortalTicketReply[] = t.replies ?? [];
 
   return (
     <Stack gap="lg" maw={960}>
@@ -124,6 +128,18 @@ export default function PortalTicketView() {
                 <Text size="xs" c="dimmed">{dayjs(r.created_at).format('dddd, D MMMM YYYY (HH:mm)')}</Text>
               </Group>
               <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{r.message}</Text>
+              {(r.attachments ?? []).length > 0 && (
+                <Group gap="xs" mt={8}>
+                  {(r.attachments ?? []).map((a) => (
+                    <Anchor key={a.id} size="xs" component="button" type="button"
+                      onClick={() => downloadPortalTicketAttachment(a)}>
+                      <Group gap={4} wrap="nowrap">
+                        <IconPaperclip size={13} /> {a.original_name}
+                      </Group>
+                    </Anchor>
+                  ))}
+                </Group>
+              )}
             </Paper>
           );
         })}
@@ -137,7 +153,27 @@ export default function PortalTicketView() {
             placeholder={t.status === 'closed' ? 'Write a reply to reopen this ticket…' : 'Write your reply…'}
             minRows={4} autosize maxRows={10}
             value={message} onChange={(e) => setMessage(e.currentTarget.value)} />
-          <Group justify="flex-end">
+          {files.length > 0 && (
+            <Group gap="xs">
+              {files.map((f, i) => (
+                <Badge key={i} variant="light" rightSection={
+                  <ActionIcon size="xs" variant="transparent" color="gray"
+                    onClick={() => setFiles(files.filter((_, j) => j !== i))}>
+                    <IconX size={11} />
+                  </ActionIcon>
+                }>{f.name}</Badge>
+              ))}
+            </Group>
+          )}
+          <Group justify="space-between">
+            <FileButton onChange={(picked) => setFiles((prev) => [...prev, ...picked].slice(0, 5))}
+              accept=".pdf,.png,.jpg,.jpeg,.txt,.zip,.doc,.docx,.xls,.xlsx" multiple>
+              {(props) => (
+                <Button {...props} size="sm" variant="light" leftSection={<IconPaperclip size={15} />}>
+                  Attach
+                </Button>
+              )}
+            </FileButton>
             <Button leftSection={<IconSend size={15} />}
               disabled={!message.trim()} loading={replyMutation.isPending}
               onClick={() => replyMutation.mutate()}>

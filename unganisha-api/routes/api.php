@@ -547,6 +547,15 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:tickets.reply')->post('/tickets/{ticket}/reply', [\App\Http\Controllers\TicketController::class, 'reply']);
     Route::middleware('permission:tickets.manage')->post('/tickets/{ticket}/status', [\App\Http\Controllers\TicketController::class, 'updateStatus']);
     Route::middleware('permission:tickets.manage')->post('/tickets/{ticket}/assign', [\App\Http\Controllers\TicketController::class, 'assign']);
+    Route::middleware('permission:tickets.read')->get('/tickets/attachments/{attachment}/download', [\App\Http\Controllers\TicketController::class, 'downloadAttachment']);
+
+    // Canned replies (staff)
+    Route::middleware('permission:tickets.reply')->get('/canned-replies', [\App\Http\Controllers\CannedReplyController::class, 'index']);
+    Route::middleware('permission:tickets.manage')->group(function () {
+        Route::post('/canned-replies',                 [\App\Http\Controllers\CannedReplyController::class, 'store']);
+        Route::put('/canned-replies/{cannedReply}',    [\App\Http\Controllers\CannedReplyController::class, 'update']);
+        Route::delete('/canned-replies/{cannedReply}', [\App\Http\Controllers\CannedReplyController::class, 'destroy']);
+    });
 
     // ── Client Credit (wallet) ───────────────────────────────────────────────
     Route::middleware('permission:credit.manage')->group(function () {
@@ -710,6 +719,7 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/tickets/{ticket}',         [\App\Http\Controllers\Portal\PortalTicketController::class, 'show']);
     Route::post('/tickets/{ticket}/reply',  [\App\Http\Controllers\Portal\PortalTicketController::class, 'reply']);
     Route::post('/tickets/{ticket}/close',  [\App\Http\Controllers\Portal\PortalTicketController::class, 'close']);
+    Route::get('/tickets/attachments/{attachment}/download', [\App\Http\Controllers\Portal\PortalTicketController::class, 'downloadAttachment']);
     Route::get('/catalog',  [\App\Http\Controllers\Portal\PortalOrderController::class, 'catalog']);
     Route::get('/domain-tlds', [\App\Http\Controllers\Portal\PortalOrderController::class, 'tlds']);
     Route::get('/domain-addons', [\App\Http\Controllers\Portal\PortalOrderController::class, 'domainAddons']);

@@ -2,16 +2,20 @@ import { useState } from 'react';
 import {
   Title, Stack, Group, Table, Badge, Text, Paper, Select, TextInput, Loader,
   Center, Drawer, Button, Textarea, Pagination, ScrollArea, Tooltip, ActionIcon,
+  FileButton, Anchor,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconMessageCircle, IconSend, IconLock, IconLockOpen, IconUserCog,
+  IconPaperclip, IconX, IconMessageDots,
 } from '@tabler/icons-react';
 import {
   getTickets, getTicketStats, getTicket, replyTicket, setTicketStatus, assignTicket,
+  downloadTicketAttachment,
   TicketRow, TICKET_STATUS_META, PRIORITY_COLORS,
 } from '../api/tickets';
+import { getCannedReplies, CannedReply } from '../api/cannedReplies';
 import { getUsers, TenantUser } from '../api/users';
 import { usePermissions } from '../hooks/usePermissions';
 import dayjs from 'dayjs';
@@ -122,6 +126,7 @@ function TicketThreadDrawer({ id, onClose, can }: {
 }) {
   const qc = useQueryClient();
   const [message, setMessage] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
 
   const { data, isLoading } = useQuery({
     queryKey: ['ticket', id],
@@ -129,6 +134,13 @@ function TicketThreadDrawer({ id, onClose, can }: {
     enabled: !!id,
   });
   const t = data?.data?.data;
+
+  const { data: cannedData } = useQuery({
+    queryKey: ['canned-replies'],
+    queryFn: getCannedReplies,
+    enabled: !!id && can('tickets.reply'),
+  });
+  const cannedReplies: CannedReply[] = cannedData?.data?.data ?? [];
 
   const { data: usersData } = useQuery({
     queryKey: ['tenant-users-for-assign'],
@@ -144,14 +156,21 @@ function TicketThreadDrawer({ id, onClose, can }: {
   };
 
   const replyMutation = useMutation({
-    mutationFn: () => replyTicket(id!, message.trim()),
+    mutationFn: () => replyTicket(id!, message.trim(), files),
     onSuccess: () => {
       setMessage('');
+      setFiles([]);
       invalidate();
       notifications.show({ message: 'Reply sent to the client.', color: 'green' });
     },
     onError: () => notifications.show({ message: 'Failed to send reply.', color: 'red' }),
   });
+
+  const insertCanned = (cannedId: string | null) => {
+    const c = cannedReplies.find((r) => r.id === cannedId);
+    if (!c) return;
+    setMessage((prev) => (prev.trim() ? `${prev}\n\n${c.body}` : c.body));
+  };
 
   const statusMutation = useMutation({
     mutationFn: (status: 'open' | 'closed') => setTicketStatus(id!, status),
@@ -218,6 +237,20 @@ function TicketThreadDrawer({ id, onClose, can }: {
                     <Text size="xs" c="dimmed">{dayjs(r.created_at).format('D MMM YYYY HH:mm')}</Text>
                   </Group>
                   <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{r.message}</Text>
+                  {(r.attachments ?? []).length > 0 && (
+                    <Group gap="xs" mt={8}>
+                      {(r.attachments ?? []).map((a) => (
+                        <Tooltip key={a.id} label={`Download (${Math.max(1, Math.round(a.size / 1024))} KB)`}>
+                          <Anchor size="xs" component="button" type="button"
+                            onClick={() => downloadTicketAttachment(a)}>
+                            <Group gap={4} wrap="nowrap">
+                              <IconPaperclip size={13} /> {a.original_name}
+                            </Group>
+                          </Anchor>
+                        </Tooltip>
+                      ))}
+                    </Group>
+                  )}
                 </Paper>
               ))}
             </Stack>
@@ -227,7 +260,37 @@ function TicketThreadDrawer({ id, onClose, can }: {
             <Stack gap="xs">
               <Textarea placeholder="Write a reply to the client…" minRows={3} autosize maxRows={6}
                 value={message} onChange={(e) => setMessage(e.currentTarget.value)} />
-              <Group justify="flex-end">
+              {files.length > 0 && (
+                <Group gap="xs">
+                  {files.map((f, i) => (
+                    <Badge key={i} variant="light" rightSection={
+                      <ActionIcon size="xs" variant="transparent" color="gray"
+                        onClick={() => setFiles(files.filter((_, j) => j !== i))}>
+                        <IconX size={11} />
+                      </ActionIcon>
+                    }>{f.name}</Badge>
+                  ))}
+                </Group>
+              )}
+              <Group justify="space-between">
+                <Group gap="xs">
+                  {cannedReplies.length > 0 && (
+                    <Select size="xs" w={210} clearable searchable
+                      placeholder="Insert canned reply…"
+                      leftSection={<IconMessageDots size={13} />}
+                      data={cannedReplies.map((c) => ({ value: c.id, label: c.title }))}
+                      value={null}
+                      onChange={insertCanned} />
+                  )}
+                  <FileButton onChange={(picked) => setFiles((prev) => [...prev, ...picked].slice(0, 5))}
+                    accept=".pdf,.png,.jpg,.jpeg,.txt,.zip,.doc,.docx,.xls,.xlsx" multiple>
+                    {(props) => (
+                      <Button {...props} size="xs" variant="light" leftSection={<IconPaperclip size={13} />}>
+                        Attach
+                      </Button>
+                    )}
+                  </FileButton>
+                </Group>
                 <Button size="sm" leftSection={<IconSend size={14} />}
                   disabled={!message.trim()} loading={replyMutation.isPending}
                   onClick={() => replyMutation.mutate()}>
