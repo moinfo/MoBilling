@@ -73,6 +73,20 @@ export const checkDomain = (name: string) =>
 export const getDomains = (params?: Record<string, string>) =>
   api.get('/domains', { params });
 
+export interface DomainStats {
+  total: number;
+  active: number;
+  pending: number;
+  expired: number;
+  cancelled: number;
+  failed: number;
+  expiring_soon: number;
+  auto_renew: number;
+}
+
+export const getDomainStats = () =>
+  api.get<{ data: DomainStats }>('/domains/stats');
+
 export const getDomainLogs = (id: string) =>
   api.get<{ data: DomainLogRow[] }>(`/domains/${id}/logs`);
 

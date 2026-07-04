@@ -2,26 +2,50 @@ import { useState } from 'react';
 import {
   Title, Stack, Group, Table, Badge, ActionIcon, Tooltip, Text, Paper, Select,
   TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code, NumberInput,
-  Alert, CopyButton,
+  Alert, CopyButton, SimpleGrid, ThemeIcon,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconWorldWww, IconPlus, IconHistory, IconRefresh, IconKey,
-  IconCheck, IconX, IconCopy,
+  IconCheck, IconX, IconCopy, IconWorld, IconClockExclamation, IconAlertTriangle,
+  IconHourglass, IconRepeat,
 } from '@tabler/icons-react';
 import {
-  checkDomain, getDomains, getDomainLogs, orderDomain, renewDomain, getDomainAuthInfo,
-  DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
+  checkDomain, getDomains, getDomainStats, getDomainLogs, orderDomain, renewDomain,
+  getDomainAuthInfo, DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
 import dayjs from 'dayjs';
 
+function DomainStatCard({ icon, color, label, value, active, onClick }: {
+  icon: React.ReactNode; color: string; label: string; value: number | string;
+  active?: boolean; onClick?: () => void;
+}) {
+  return (
+    <Paper withBorder radius="md" p="sm"
+      style={{
+        cursor: onClick ? 'pointer' : undefined,
+        borderColor: active ? `var(--mantine-color-${color}-6)` : undefined,
+      }}
+      onClick={onClick}>
+      <Group gap="sm" wrap="nowrap">
+        <ThemeIcon variant={active ? 'filled' : 'light'} color={color} size={38} radius="md">{icon}</ThemeIcon>
+        <div style={{ minWidth: 0 }}>
+          <Text size="lg" fw={700} lh={1.2} truncate>{value}</Text>
+          <Text size="xs" c="dimmed" truncate>{label}</Text>
+        </div>
+      </Group>
+    </Paper>
+  );
+}
+
 export default function Domains() {
   const { can } = usePermissions();
   const [statusFilter, setStatusFilter] = useState('');
+  const [expiringOnly, setExpiringOnly] = useState(false);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -31,12 +55,31 @@ export default function Domains() {
 
   const params: Record<string, string> = { page: String(page) };
   if (statusFilter) params.status = statusFilter;
+  if (expiringOnly) params.expiring = '1';
   if (search) params.search = search;
+
+  // stat card click: toggle the corresponding filter
+  const filterByStatus = (status: string) => {
+    setExpiringOnly(false);
+    setStatusFilter((cur) => (cur === status && !expiringOnly ? '' : status));
+    setPage(1);
+  };
+  const filterExpiring = () => {
+    setStatusFilter('');
+    setExpiringOnly((v) => !v);
+    setPage(1);
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['domains', params],
     queryFn: () => getDomains(params),
   });
+
+  const { data: statsData } = useQuery({
+    queryKey: ['domain-stats'],
+    queryFn: getDomainStats,
+  });
+  const stats = statsData?.data?.data;
   const domains: DomainRecord[] = data?.data?.data?.data ?? [];
   const lastPage: number = data?.data?.data?.last_page ?? 1;
 
@@ -63,11 +106,31 @@ export default function Domains() {
         )}
       </Group>
 
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="sm">
+        <DomainStatCard icon={<IconWorld size={20} />} color="blue" label="Total Domains"
+          value={stats?.total ?? '—'} active={!statusFilter && !expiringOnly}
+          onClick={() => { setStatusFilter(''); setExpiringOnly(false); setPage(1); }} />
+        <DomainStatCard icon={<IconCheck size={20} />} color="green" label="Active"
+          value={stats?.active ?? '—'} active={statusFilter === 'active' && !expiringOnly}
+          onClick={() => filterByStatus('active')} />
+        <DomainStatCard icon={<IconClockExclamation size={20} />} color="orange" label="Expiring ≤ 45 Days"
+          value={stats?.expiring_soon ?? '—'} active={expiringOnly}
+          onClick={filterExpiring} />
+        <DomainStatCard icon={<IconAlertTriangle size={20} />} color="red" label="Expired"
+          value={stats?.expired ?? '—'} active={statusFilter === 'expired' && !expiringOnly}
+          onClick={() => filterByStatus('expired')} />
+        <DomainStatCard icon={<IconHourglass size={20} />} color="cyan" label="Pending"
+          value={stats?.pending ?? '—'} active={statusFilter === 'pending' && !expiringOnly}
+          onClick={() => filterByStatus('pending')} />
+        <DomainStatCard icon={<IconRepeat size={20} />} color="violet" label="Auto-renew On"
+          value={stats?.auto_renew ?? '—'} />
+      </SimpleGrid>
+
       <Group gap="xs">
         <TextInput size="xs" placeholder="Search domain…" leftSection={<IconSearch size={13} />}
           value={search} onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }} w={220} />
         <Select size="xs" placeholder="All statuses" clearable w={160}
-          value={statusFilter} onChange={(v) => { setStatusFilter(v ?? ''); setPage(1); }}
+          value={statusFilter} onChange={(v) => { setStatusFilter(v ?? ''); setExpiringOnly(false); setPage(1); }}
           data={[
             { value: 'pending', label: 'Pending' },
             { value: 'active', label: 'Active' },

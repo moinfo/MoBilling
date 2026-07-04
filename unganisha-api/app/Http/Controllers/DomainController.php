@@ -57,8 +57,34 @@ class DomainController extends Controller
         if ($request->filled('search')) {
             $query->where('name', 'like', "%{$request->search}%");
         }
+        if ($request->boolean('expiring')) {
+            $query->where('status', 'active')
+                ->whereNotNull('expires_at')
+                ->where('expires_at', '<=', now()->addDays(45))
+                ->orderBy('expires_at');
+        }
 
         return response()->json(['data' => $query->paginate($request->get('per_page', 20))]);
+    }
+
+    /** Summary numbers for the Domains page dashboard strip. */
+    public function stats()
+    {
+        $byStatus = Domain::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
+
+        $active = Domain::where('status', 'active');
+
+        return response()->json(['data' => [
+            'total'         => (int) $byStatus->sum(),
+            'active'        => (int) ($byStatus['active'] ?? 0),
+            'pending'       => (int) ($byStatus['pending'] ?? 0),
+            'expired'       => (int) ($byStatus['expired'] ?? 0),
+            'cancelled'     => (int) ($byStatus['cancelled'] ?? 0),
+            'failed'        => (int) ($byStatus['failed'] ?? 0),
+            'expiring_soon' => (clone $active)->whereNotNull('expires_at')
+                ->where('expires_at', '<=', now()->addDays(45))->count(),
+            'auto_renew'    => (clone $active)->where('auto_renew', true)->count(),
+        ]]);
     }
 
     public function show(Domain $domain)
