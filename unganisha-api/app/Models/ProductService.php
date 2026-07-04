@@ -32,6 +32,16 @@ class ProductService extends Model
         return $this->belongsTo(Server::class);
     }
 
+    public function addons()
+    {
+        return $this->belongsToMany(
+            ProductAddon::class,
+            'product_addon_links',
+            'product_service_id',
+            'product_addon_id'
+        );
+    }
+
     public function scopeProducts($query)
     {
         return $query->where('type', 'product');

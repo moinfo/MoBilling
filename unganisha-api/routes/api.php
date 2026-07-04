@@ -216,6 +216,12 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:products.update')->put('/product-services/{product_service}', [ProductServiceController::class, 'update']);
     Route::middleware('permission:products.delete')->delete('/product-services/{product_service}', [ProductServiceController::class, 'destroy']);
 
+    // Product Add-ons (paid upsell attachable to products)
+    Route::middleware('permission:products.read')->get('/product-addons', [\App\Http\Controllers\ProductAddonController::class, 'index']);
+    Route::middleware('permission:products.create')->post('/product-addons', [\App\Http\Controllers\ProductAddonController::class, 'store']);
+    Route::middleware('permission:products.update')->put('/product-addons/{product_addon}', [\App\Http\Controllers\ProductAddonController::class, 'update']);
+    Route::middleware('permission:products.delete')->delete('/product-addons/{product_addon}', [\App\Http\Controllers\ProductAddonController::class, 'destroy']);
+
     // Documents
     Route::middleware('permission:documents.read')->get('/documents', [DocumentController::class, 'index']);
     Route::middleware('permission:documents.read')->get('/documents/{document}', [DocumentController::class, 'show']);
@@ -691,6 +697,7 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::get('/catalog',  [\App\Http\Controllers\Portal\PortalOrderController::class, 'catalog']);
     Route::get('/domain-tlds', [\App\Http\Controllers\Portal\PortalOrderController::class, 'tlds']);
     Route::get('/domain-addons', [\App\Http\Controllers\Portal\PortalOrderController::class, 'domainAddons']);
+    Route::get('/products/{product}/addons', [\App\Http\Controllers\Portal\PortalOrderController::class, 'productAddons']);
     Route::post('/orders',  [\App\Http\Controllers\Portal\PortalOrderController::class, 'store']);
     Route::get('/credit',                       [\App\Http\Controllers\Portal\PortalCreditController::class, 'show']);
     Route::post('/credit/topup',                [\App\Http\Controllers\Portal\PortalCreditController::class, 'topup']);

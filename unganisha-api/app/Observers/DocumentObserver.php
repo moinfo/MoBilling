@@ -61,6 +61,43 @@ class DocumentObserver
             }
         }
 
+        // Paid product add-ons: attach ordered add-ons to the service once its
+        // invoice is paid, snapshotting name/price/cycle so later catalog edits
+        // don't change what an existing service renews at.
+        $pendingAddonSubs = \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('metadata->pending_addons->document_id', $document->id)
+            ->get();
+
+        foreach ($pendingAddonSubs as $sub) {
+            $addonIds = $sub->metadata['pending_addons']['addon_ids'] ?? [];
+            $addons = \App\Models\ProductAddon::withoutGlobalScopes()->withTrashed()
+                ->where('tenant_id', $sub->tenant_id)
+                ->whereIn('id', $addonIds)
+                ->get();
+
+            foreach ($addons as $addon) {
+                \App\Models\SubscriptionAddon::withoutGlobalScopes()->firstOrCreate(
+                    [
+                        'client_subscription_id' => $sub->id,
+                        'product_addon_id'       => $addon->id,
+                    ],
+                    [
+                        'tenant_id'     => $sub->tenant_id,
+                        'name'          => $addon->name,
+                        'price'         => $addon->price,
+                        'billing_cycle' => $addon->billing_cycle,
+                        'tax_percent'   => $addon->tax_percent,
+                        'status'        => 'active',
+                    ]
+                );
+            }
+
+            $meta = $sub->metadata ?? [];
+            unset($meta['pending_addons']);
+            $sub->update(['metadata' => $meta]);
+        }
+
         foreach ($domains as $domain) {
             // Unmanaged domains (gTLDs — no registrar driver yet): keep the paid
             // order flagged for MANUAL fulfilment at the upstream registrar

@@ -13,7 +13,8 @@ import {
 } from '@tabler/icons-react';
 import {
   getPortalCatalog, placePortalOrder, getPortalDomainTlds, getPortalDomainAddons,
-  portalCheckDomain, CatalogGroup, CatalogProduct, DomainAddonRow,
+  getPortalProductAddons, portalCheckDomain, CatalogGroup, CatalogProduct,
+  DomainAddonRow, ProductAddonRow,
 } from '../../api/portal';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -141,6 +142,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
   const [step, setStep] = useState<'choose' | 'configure'>('choose');
   const [years, setYears] = useState(1);
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
+  const [selectedProductAddons, setSelectedProductAddons] = useState<string[]>([]);
 
   const { data: tldsData } = useQuery({
     queryKey: ['portal-domain-tlds'],
@@ -154,6 +156,15 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
     enabled: !!product?.needs_domain,
   });
   const addons: DomainAddonRow[] = addonsData?.data?.data ?? [];
+  const { data: productAddonsData } = useQuery({
+    queryKey: ['portal-product-addons', product?.id],
+    queryFn: () => getPortalProductAddons(product!.id),
+    enabled: !!product,
+  });
+  const productAddons: ProductAddonRow[] = productAddonsData?.data?.data ?? [];
+  const productAddonsPrice = productAddons
+    .filter((a) => selectedProductAddons.includes(a.id))
+    .reduce((sum, a) => sum + Number(a.price), 0);
   const tldOptions = tlds.map((t) => ({ value: t.tld, label: `.${t.tld}` }));
   const activeTld = tlds.find((t) => t.tld === tld);
 
@@ -202,6 +213,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
       auth_info: mode === 'transfer' ? authInfo : undefined,
       years: product!.needs_domain && mode !== 'existing' ? years : undefined,
       addons: product!.needs_domain && mode !== 'existing' ? selectedAddons : undefined,
+      product_addon_ids: selectedProductAddons.length ? selectedProductAddons : undefined,
     }),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['portal-subscriptions'] });
@@ -219,6 +231,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
   const handleClose = () => {
     setMode('register'); setSld(''); setFullDomain(''); setAuthInfo(''); setLabel('');
     setCheckResult(null); setStep('choose'); setYears(1); setSelectedAddons([]);
+    setSelectedProductAddons([]);
     onClose();
   };
 
@@ -232,7 +245,8 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
   );
 
   const total = (product?.price ?? 0)
-    + (product?.needs_domain && mode !== 'existing' && checkResult?.ok ? domainPrice + addonsPrice : 0);
+    + (product?.needs_domain && mode !== 'existing' && checkResult?.ok ? domainPrice + addonsPrice : 0)
+    + productAddonsPrice;
   const canContinue = product?.needs_domain && (
     mode === 'existing' ? domainValid
       : (domainValid && checkResult?.ok === true && (mode !== 'transfer' || authInfo.trim().length > 0)));
@@ -348,11 +362,45 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
               value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
           )}
 
+          {productAddons.length > 0 && (
+            <Paper withBorder radius="md" p="md" bg="var(--mantine-color-default-hover)">
+              <Text fw={700}>Available Add-ons</Text>
+              <Text size="xs" c="dimmed" mb="sm">Optional paid extras for this service — billed now and on each renewal.</Text>
+              <Stack gap="sm">
+                {productAddons.map((a) => {
+                  const on = selectedProductAddons.includes(a.id);
+                  const toggle = () => setSelectedProductAddons((cur) =>
+                    on ? cur.filter((x) => x !== a.id) : [...cur, a.id]);
+                  return (
+                    <Paper key={a.id} withBorder radius="md" p="sm">
+                      <Group justify="space-between" wrap="nowrap" align="flex-start">
+                        <div style={{ flex: 1 }}>
+                          <Checkbox checked={on} onChange={toggle} label={<Text fw={600}>{a.name}</Text>} />
+                          {a.description && <Text size="xs" c="dimmed" mt={4}>{a.description}</Text>}
+                        </div>
+                        <Stack gap={0} align="flex-end">
+                          <Text size="sm" fw={700}>Tsh.{fmt(Number(a.price))}</Text>
+                          <Text size="xs" c="dimmed">{cycleLabel[a.billing_cycle ?? ''] ?? a.billing_cycle ?? ''}</Text>
+                        </Stack>
+                      </Group>
+                    </Paper>
+                  );
+                })}
+              </Stack>
+            </Paper>
+          )}
+
           <Paper withBorder p="sm" radius="md">
             <Group justify="space-between">
               <Text size="sm">{product.name}</Text>
               <Text size="sm" fw={600}>Tsh.{fmt(product.price)}</Text>
             </Group>
+            {productAddons.filter((a) => selectedProductAddons.includes(a.id)).map((a) => (
+              <Group key={a.id} justify="space-between" mt={4}>
+                <Text size="sm">Add-on: {a.name}</Text>
+                <Text size="sm" fw={600}>Tsh.{fmt(Number(a.price))}</Text>
+              </Group>
+            ))}
             {product.needs_domain && mode !== 'existing' && checkResult?.ok && (
               <>
                 <Group justify="space-between" mt={4}>

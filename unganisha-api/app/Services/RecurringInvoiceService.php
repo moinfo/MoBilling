@@ -53,7 +53,7 @@ class RecurringInvoiceService
             ->where('status', 'active')
             // Parallel mode: WHMCS still bills its own (imported) subscriptions.
             ->when(config('whmcs.parallel_mode'), fn ($q) => $q->whereNull('legacy_id'))
-            ->with(['productService', 'client'])
+            ->with(['productService', 'client', 'addons' => fn ($q) => $q->where('status', 'active')])
             ->whereHas('productService', fn ($q) => $q
                 ->where('is_active', true)
                 ->whereNotNull('billing_cycle')
@@ -211,6 +211,36 @@ class RecurringInvoiceService
 
                 $subtotal += $lineBase;
                 $taxAmount += $lineTax;
+
+                // Paid product add-ons attached to this service. Bill each active
+                // add-on whose cycle matches the product renewal cycle (so a
+                // monthly add-on isn't wrongly billed on a yearly renewal, and to
+                // avoid double-adding across cycles). Snapshot price is used.
+                foreach ($sub->addons as $addon) {
+                    if ($addon->status !== 'active' || $addon->billing_cycle !== $product->billing_cycle) {
+                        continue;
+                    }
+
+                    $addonBase = $qty * (float) $addon->price;
+                    $addonTax = $addonBase * ((float) ($addon->tax_percent ?? 0) / 100);
+
+                    $lineItems[] = [
+                        'item_type' => 'service',
+                        'description' => "Add-on: {$addon->name}" . ($sub->label ? " — {$sub->label}" : ''),
+                        'quantity' => $qty,
+                        'price' => $addon->price,
+                        'discount_type' => 'percent',
+                        'discount_value' => 0,
+                        'tax_percent' => $addon->tax_percent ?? 0,
+                        'tax_amount' => round($addonTax, 2),
+                        'total' => round($addonBase + $addonTax, 2),
+                        'service_from' => $item['service_from']->format('Y-m-d'),
+                        'service_to' => $item['service_to']->format('Y-m-d'),
+                    ];
+
+                    $subtotal += $addonBase;
+                    $taxAmount += $addonTax;
+                }
             }
 
             $document = Document::withoutGlobalScopes()->create([

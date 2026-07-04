@@ -44,6 +44,11 @@ class ClientSubscription extends Model
         return $this->hasOne(HostingAccount::class);
     }
 
+    public function addons()
+    {
+        return $this->hasMany(SubscriptionAddon::class);
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', 'active');

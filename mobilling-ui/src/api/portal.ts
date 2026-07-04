@@ -358,8 +358,15 @@ export const getPortalCatalog = () =>
 export const placePortalOrder = (data: {
   product_service_id: string; label?: string;
   domain_mode?: 'register' | 'transfer' | 'existing'; auth_info?: string;
-  years?: number; addons?: string[];
+  years?: number; addons?: string[]; product_addon_ids?: string[];
 }) => api.post('/portal/orders', data);
+
+export interface ProductAddonRow {
+  id: string; name: string; description: string | null; price: number; billing_cycle: string | null;
+}
+
+export const getPortalProductAddons = (productId: string) =>
+  api.get<{ data: ProductAddonRow[] }>(`/portal/products/${productId}/addons`);
 
 export interface PortalTldRow {
   tld: string; register_price: number; transfer_price: number;

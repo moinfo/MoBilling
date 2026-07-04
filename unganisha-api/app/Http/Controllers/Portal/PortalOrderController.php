@@ -94,6 +94,37 @@ class PortalOrderController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /** Active paid add-ons offered by a product, for the order configuration step. */
+    public function productAddons(Request $request, string $product)
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $productModel = ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $product)
+            ->first();
+
+        if (!$productModel) {
+            return response()->json(['data' => []]);
+        }
+
+        $rows = $productModel->addons()
+            ->withoutGlobalScopes()
+            ->where('product_addons.tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['product_addons.id', 'name', 'description', 'price', 'billing_cycle'])
+            ->map(fn ($a) => [
+                'id'            => $a->id,
+                'name'          => $a->name,
+                'description'   => $a->description,
+                'price'         => (float) $a->price,
+                'billing_cycle' => $a->billing_cycle,
+            ]);
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** Place an order: pending subscription + invoice to pay. */
     public function store(Request $request)
     {
@@ -109,9 +140,22 @@ class PortalOrderController extends Controller
             'years'       => 'nullable|integer|min:1|max:10',
             'addons'      => 'nullable|array',
             'addons.*'    => 'uuid',
+            'product_addon_ids'   => 'nullable|array',
+            'product_addon_ids.*' => 'uuid',
         ]);
 
         $product = ProductService::withoutGlobalScopes()->find($data['product_service_id']);
+
+        // Paid product add-ons: only those this product actually offers, for this tenant.
+        $productAddons = collect();
+        if (!empty($data['product_addon_ids'])) {
+            $productAddons = \App\Models\ProductAddon::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)
+                ->where('is_active', true)
+                ->whereIn('id', $data['product_addon_ids'])
+                ->whereHas('products', fn ($q) => $q->where('product_services.id', $product->id))
+                ->get();
+        }
         $mode    = $data['domain_mode'] ?? 'existing';
         $domain  = strtolower(trim((string) ($data['label'] ?? '')));
 
@@ -156,7 +200,7 @@ class PortalOrderController extends Controller
                 ->whereIn('id', $data['addons'])->get();
         }
 
-        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing, $years, $addons) {
+        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing, $years, $addons, $productAddons) {
             $start = now()->startOfDay();
             $expire = match ($product->billing_cycle) {
                 'monthly'     => $start->copy()->addMonth(),
@@ -189,7 +233,14 @@ class PortalOrderController extends Controller
                 $domainPrice = round($unit * $years, 2);
             }
             $addonsPrice = round((float) $addons->sum(fn ($a) => $a->is_free ? 0 : $a->price), 2);
-            $total = round($lineBase + $lineTax + $domainPrice + $addonsPrice, 2);
+
+            // Paid product add-ons: each is its own base + tax line.
+            $productAddonsBase = round((float) $productAddons->sum(fn ($a) => (float) $a->price), 2);
+            $productAddonsTax  = round((float) $productAddons->sum(
+                fn ($a) => (float) $a->price * ((float) ($a->tax_percent ?? 0) / 100)
+            ), 2);
+
+            $total = round($lineBase + $lineTax + $domainPrice + $addonsPrice + $productAddonsBase + $productAddonsTax, 2);
 
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $tenantId,
@@ -198,9 +249,9 @@ class PortalOrderController extends Controller
                 'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
                 'date'            => now()->toDateString(),
                 'due_date'        => now()->toDateString(),
-                'subtotal'        => round($lineBase + $domainPrice + $addonsPrice, 2),
+                'subtotal'        => round($lineBase + $domainPrice + $addonsPrice + $productAddonsBase, 2),
                 'discount_amount' => 0,
-                'tax_amount'      => round($lineTax, 2),
+                'tax_amount'      => round($lineTax + $productAddonsTax, 2),
                 'total'           => $total,
                 'status'          => 'sent',
                 'notes'           => 'Portal order: new subscription',
@@ -216,6 +267,19 @@ class PortalOrderController extends Controller
                 'tax_amount'         => round($lineTax, 2),
                 'total'              => round($lineBase + $lineTax, 2),
             ]);
+
+            foreach ($productAddons as $addon) {
+                $addonTax = round((float) $addon->price * ((float) ($addon->tax_percent ?? 0) / 100), 2);
+                $document->items()->create([
+                    'item_type'   => 'service',
+                    'description' => "Add-on: {$addon->name}" . ($data['label'] ? " — {$data['label']}" : ''),
+                    'quantity'    => 1,
+                    'price'       => $addon->price,
+                    'tax_percent' => $addon->tax_percent ?? 0,
+                    'tax_amount'  => $addonTax,
+                    'total'       => round((float) $addon->price + $addonTax, 2),
+                ]);
+            }
 
             if ($domainPricing && in_array($mode, ['register', 'transfer'])) {
                 $document->items()->create([
@@ -259,6 +323,18 @@ class PortalOrderController extends Controller
                         'addons'            => $addons->pluck('name')->values()->all(),
                     ],
                 ]);
+            }
+
+            // Paid product add-ons: remember what was ordered so payment
+            // (DocumentObserver) can attach them to the live service. Snapshot
+            // is taken at activation from the current add-on catalog rows.
+            if ($productAddons->isNotEmpty()) {
+                $meta = $subscription->metadata ?? [];
+                $meta['pending_addons'] = [
+                    'document_id' => $document->id,
+                    'addon_ids'   => $productAddons->pluck('id')->values()->all(),
+                ];
+                $subscription->update(['metadata' => $meta]);
             }
 
             // Mark the first cycle as invoiced so the recurring engine doesn't
