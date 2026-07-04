@@ -20,4 +20,18 @@ return [
     | Credit = (old_price - new_price) × remaining-term-fraction × quantity.
     */
     'credit_on_downgrade' => env('WHMCS_CREDIT_ON_DOWNGRADE', true),
+
+    /*
+    | Auto-terminate long-overdue SUSPENDED services (WHMCS "Auto Terminate").
+    |
+    | Number of days a subscription must remain suspended before it is
+    | automatically terminated (hosting account deleted, subscription status
+    | set to 'terminated'). The clock starts from metadata.suspended_at
+    | (written when the service is suspended), falling back to updated_at.
+    |
+    | SAFE DEFAULT: 0 = feature DISABLED. This is a destructive action (it
+    | deletes the cPanel account and its data), so it stays off until an
+    | operator sets WHMCS_AUTO_TERMINATE_DAYS to a positive value (e.g. 30).
+    */
+    'auto_terminate_suspended_days' => (int) env('WHMCS_AUTO_TERMINATE_DAYS', 0),
 ];

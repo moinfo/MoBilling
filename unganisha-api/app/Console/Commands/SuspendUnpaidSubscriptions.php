@@ -100,8 +100,14 @@ class SuspendUnpaidSubscriptions extends Command
                 $graceCutoff = $effectiveStart->copy()->addDays($graceDays);
 
                 if ($today->greaterThan($graceCutoff)) {
-                    // Suspend the subscription
-                    $subscription->update(['status' => 'suspended']);
+                    // Suspend the subscription. Stamp metadata.suspended_at so the
+                    // auto-terminate command can measure the suspension window.
+                    $metadata = $subscription->metadata ?? [];
+                    $metadata['suspended_at'] = now()->toIso8601String();
+                    $subscription->update([
+                        'status' => 'suspended',
+                        'metadata' => $metadata,
+                    ]);
 
                     // Notify the client (don't let notification failure abort the batch)
                     try {
