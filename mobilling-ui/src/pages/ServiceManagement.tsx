@@ -17,7 +17,7 @@ import { getClients } from '../api/clients';
 import {
   getClientServices, getServiceDetail, updateService, changeHostingPassword,
   refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
-  terminateHosting, changeHostingPackage, getHostingSso,
+  terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
   ServiceListItem, ServiceDetail,
 } from '../api/hosting';
 import { deleteClientSubscription } from '../api/clientSubscriptions';
@@ -144,6 +144,16 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   const d = data?.data?.data;
 
   useEffect(() => { if (d) setForm(d); }, [d]);
+
+  // live WHM packages for this service's server
+  const { data: pkgData, isLoading: pkgLoading } = useQuery({
+    queryKey: ['server-packages', form.server_id],
+    queryFn: () => getServerPackages(form.server_id!),
+    enabled: !!form.server_id,
+  });
+  const pkgList: string[] = pkgData?.data?.data ?? [];
+  const pkgOptions = Array.from(new Set([...(form.package ? [form.package] : []), ...pkgList]))
+    .map((p) => ({ value: p, label: p }));
 
   const set = <K extends keyof ServiceDetail>(k: K, v: ServiceDetail[K]) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -299,6 +309,17 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
           </Row>
           <Row label="Username">
             <TextInput size="xs" value={form.username ?? ''} onChange={(e) => set('username', e.currentTarget.value)} />
+          </Row>
+          <Row label="cPanel Package">
+            {pkgList.length > 0 ? (
+              <Select size="xs" data={pkgOptions} value={form.package ?? null}
+                placeholder={pkgLoading ? 'Loading…' : 'Select package'} searchable
+                rightSection={pkgLoading ? <Loader size="xs" /> : undefined}
+                onChange={(v) => set('package', v)} />
+            ) : (
+              <TextInput size="xs" value={form.package ?? ''} placeholder={pkgLoading ? 'Loading…' : 'Package name'}
+                onChange={(e) => set('package', e.currentTarget.value)} />
+            )}
           </Row>
           <Row label="Password" alt>
             <Group gap="xs">

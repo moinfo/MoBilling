@@ -59,6 +59,7 @@ export const createServer = (data: ServerFormData) => api.post<{ data: Server }>
 export const updateServer = (id: string, data: Partial<ServerFormData>) => api.put<{ data: Server }>(`/servers/${id}`, data);
 export const deleteServer = (id: string) => api.delete(`/servers/${id}`);
 export const testServer = (id: string) => api.post<{ ok: boolean; packages: string[] }>(`/servers/${id}/test`);
+export const getServerPackages = (id: string) => api.get<{ data: string[] }>(`/servers/${id}/packages`);
 
 // Hosting accounts
 export const getHostingAccounts = (params?: Record<string, string>) =>

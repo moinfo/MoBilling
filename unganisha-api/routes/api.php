@@ -477,6 +477,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::put('/servers/{server}',           [\App\Http\Controllers\ServerController::class, 'update']);
         Route::delete('/servers/{server}',        [\App\Http\Controllers\ServerController::class, 'destroy']);
         Route::post('/servers/{server}/test',     [\App\Http\Controllers\ServerController::class, 'test']);
+        Route::get('/servers/{server}/packages',  [\App\Http\Controllers\ServerController::class, 'packages']);
     });
     Route::middleware('permission:hosting.read')->get('/hosting-accounts', [\App\Http\Controllers\HostingAccountController::class, 'index']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);

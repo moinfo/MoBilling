@@ -59,6 +59,16 @@ class ServerController extends Controller
         }
     }
 
+    /** GET the WHM package list for populating change-package selects. */
+    public function packages(Server $server)
+    {
+        try {
+            return response()->json(['data' => (new WhmService($server))->listPackages()]);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage(), 'data' => []], 422);
+        }
+    }
+
     private function validated(Request $request, bool $updating = false): array
     {
         $required = $updating ? 'sometimes' : 'required';

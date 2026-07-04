@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Stack, Group, Table, Badge, ActionIcon, Tooltip, Text, Paper,
-  Select, TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code,
+  Select, TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code, Anchor, Alert,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -11,15 +11,17 @@ import {
 } from '@tabler/icons-react';
 import {
   getHostingAccounts, getHostingLogs, suspendHosting, unsuspendHosting,
-  terminateHosting, changeHostingPackage, getHostingSso,
+  terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
   HostingAccount, ProvisioningLog, HOSTING_STATUS_COLORS,
 } from '../api/hosting';
 import { usePermissions } from '../hooks/usePermissions';
+import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 
 export default function HostingAccounts() {
   const qc = useQueryClient();
   const { can } = usePermissions();
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -125,9 +127,17 @@ export default function HostingAccounts() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {accounts.map((a) => (
+                {accounts.map((a) => {
+                  const manageUrl = a.subscription?.client?.id && a.subscription?.id
+                    ? `/hosting/services?client=${a.subscription.client.id}&service=${a.subscription.id}`
+                    : null;
+                  return (
                   <Table.Tr key={a.id}>
-                    <Table.Td fw={500}>{a.domain}</Table.Td>
+                    <Table.Td fw={500}>
+                      {manageUrl
+                        ? <Anchor size="sm" fw={600} onClick={() => navigate(manageUrl)}>{a.domain}</Anchor>
+                        : a.domain}
+                    </Table.Td>
                     <Table.Td>
                       <Text size="sm">{a.subscription?.client?.name ?? '—'}</Text>
                     </Table.Td>
@@ -194,7 +204,8 @@ export default function HostingAccounts() {
                       </Group>
                     </Table.Td>
                   </Table.Tr>
-                ))}
+                  );
+                })}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
@@ -215,17 +226,9 @@ export default function HostingAccounts() {
 
       {/* Change package */}
       <Modal opened={!!pkgFor} onClose={() => setPkgFor(null)} title={`Change package — ${pkgFor?.domain}`} centered>
-        <Stack>
-          <TextInput label="WHM package name" value={pkgName} required
-            onChange={(e) => setPkgName(e.currentTarget.value)} />
-          <Group justify="flex-end">
-            <Button variant="default" onClick={() => setPkgFor(null)}>Cancel</Button>
-            <Button color="grape" disabled={!pkgName.trim()} loading={pkgMutation.isPending}
-              onClick={() => pkgFor && pkgMutation.mutate({ id: pkgFor.id, pkg: pkgName.trim() })}>
-              Change Package
-            </Button>
-          </Group>
-        </Stack>
+        <ChangePackageForm account={pkgFor} value={pkgName} onChange={setPkgName}
+          onCancel={() => setPkgFor(null)} loading={pkgMutation.isPending}
+          onSubmit={() => pkgFor && pkgName.trim() && pkgMutation.mutate({ id: pkgFor.id, pkg: pkgName.trim() })} />
       </Modal>
 
       {/* Terminate confirmation */}
@@ -248,6 +251,53 @@ export default function HostingAccounts() {
           </Group>
         </Stack>
       </Modal>
+    </Stack>
+  );
+}
+
+function ChangePackageForm({ account, value, onChange, onCancel, onSubmit, loading }: {
+  account: HostingAccount | null;
+  value: string; onChange: (v: string) => void;
+  onCancel: () => void; onSubmit: () => void; loading: boolean;
+}) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['server-packages', account?.server?.id],
+    queryFn: () => getServerPackages(account!.server!.id),
+    enabled: !!account?.server?.id,
+  });
+  const packages: string[] = data?.data?.data ?? [];
+  // include the current package even if the list can't be fetched
+  const options = Array.from(new Set([...(value ? [value] : []), ...packages]))
+    .map((p) => ({ value: p, label: p }));
+
+  return (
+    <Stack>
+      {isError ? (
+        <>
+          <Alert color="orange" variant="light" p="xs">
+            Could not load packages from the server — type the exact WHM package name.
+          </Alert>
+          <TextInput label="WHM package name" value={value} required
+            onChange={(e) => onChange(e.currentTarget.value)} />
+        </>
+      ) : (
+        <Select
+          label="WHM package name"
+          placeholder={isLoading ? 'Loading packages…' : 'Select a package'}
+          data={options}
+          value={value || null}
+          onChange={(v) => onChange(v ?? '')}
+          searchable
+          rightSection={isLoading ? <Loader size="xs" /> : undefined}
+          required
+        />
+      )}
+      <Group justify="flex-end">
+        <Button variant="default" onClick={onCancel}>Cancel</Button>
+        <Button color="grape" disabled={!value.trim()} loading={loading} onClick={onSubmit}>
+          Change Package
+        </Button>
+      </Group>
     </Stack>
   );
 }
