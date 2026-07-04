@@ -125,6 +125,48 @@ class PortalOrderController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /** Active configurable option groups offered by a product, for the order configuration step. */
+    public function configOptions(Request $request, string $product)
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $productModel = ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('id', $product)
+            ->first();
+
+        if (!$productModel) {
+            return response()->json(['data' => []]);
+        }
+
+        $groups = $productModel->configGroups()
+            ->withoutGlobalScopes()
+            ->where('config_option_groups.tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->with(['options' => fn ($q) => $q->withoutGlobalScopes()->where('config_options.tenant_id', $tenantId),
+                    'options.choices' => fn ($q) => $q->withoutGlobalScopes()->where('config_option_choices.tenant_id', $tenantId)])
+            ->orderBy('name')
+            ->get()
+            ->map(fn ($g) => [
+                'id'      => $g->id,
+                'name'    => $g->name,
+                'description' => $g->description,
+                'options' => $g->options->map(fn ($o) => [
+                    'id'          => $o->id,
+                    'name'        => $o->name,
+                    'option_type' => $o->option_type,
+                    'unit_price'  => $o->unit_price !== null ? (float) $o->unit_price : null,
+                    'choices'     => $o->choices->map(fn ($c) => [
+                        'id'    => $c->id,
+                        'label' => $c->label,
+                        'price' => (float) $c->price,
+                    ])->values(),
+                ])->values(),
+            ]);
+
+        return response()->json(['data' => $groups]);
+    }
+
     /** Place an order: pending subscription + invoice to pay. */
     public function store(Request $request)
     {
@@ -142,6 +184,10 @@ class PortalOrderController extends Controller
             'addons.*'    => 'uuid',
             'product_addon_ids'   => 'nullable|array',
             'product_addon_ids.*' => 'uuid',
+            'config_options'              => 'nullable|array',
+            'config_options.*.option_id'  => 'required_with:config_options|uuid',
+            'config_options.*.choice_id'  => 'nullable|uuid',
+            'config_options.*.quantity'   => 'nullable|integer|min:1|max:10000',
         ]);
 
         $product = ProductService::withoutGlobalScopes()->find($data['product_service_id']);
@@ -156,6 +202,73 @@ class PortalOrderController extends Controller
                 ->whereHas('products', fn ($q) => $q->where('product_services.id', $product->id))
                 ->get();
         }
+        // Configurable options: resolve + validate each selection against the
+        // product's linked groups, recomputing every price from the DB (never
+        // trust a client-sent price). Result is a snapshot list of priced lines.
+        $configSelections = collect();
+        if (!empty($data['config_options'])) {
+            $optionIds = collect($data['config_options'])->pluck('option_id')->unique()->all();
+
+            // Only options belonging to a group linked to THIS product, for this tenant.
+            $allowedOptions = \App\Models\ConfigOption::withoutGlobalScopes()
+                ->where('config_options.tenant_id', $tenantId)
+                ->whereIn('config_options.id', $optionIds)
+                ->whereHas('group', fn ($q) => $q->withoutGlobalScopes()
+                    ->where('config_option_groups.tenant_id', $tenantId)
+                    ->where('is_active', true)
+                    ->whereHas('products', fn ($p) => $p->where('product_services.id', $product->id)))
+                ->with(['choices' => fn ($q) => $q->withoutGlobalScopes()->where('config_option_choices.tenant_id', $tenantId)])
+                ->get()
+                ->keyBy('id');
+
+            foreach ($data['config_options'] as $sel) {
+                $option = $allowedOptions->get($sel['option_id']);
+                if (!$option) {
+                    return response()->json(['message' => 'One of the selected options is not available for this product.'], 422);
+                }
+
+                if (in_array($option->option_type, ['dropdown', 'radio'])) {
+                    $choice = $option->choices->firstWhere('id', $sel['choice_id'] ?? null);
+                    if (!$choice) {
+                        return response()->json(['message' => "Please choose a valid value for \"{$option->name}\"."], 422);
+                    }
+                    $configSelections->push([
+                        'option_id'     => $option->id,
+                        'choice_id'     => $choice->id,
+                        'quantity'      => 1,
+                        'label'         => "{$option->name}: {$choice->label}",
+                        'unit_price'    => (float) $choice->price,
+                        'billing_cycle' => $product->billing_cycle ?? 'once',
+                        'tax_percent'   => (float) ($product->tax_percent ?? 0),
+                    ]);
+                } elseif ($option->option_type === 'quantity') {
+                    $qty = (int) ($sel['quantity'] ?? 1);
+                    if ($qty < 1) {
+                        continue;
+                    }
+                    $configSelections->push([
+                        'option_id'     => $option->id,
+                        'choice_id'     => null,
+                        'quantity'      => $qty,
+                        'label'         => "{$option->name} x{$qty}",
+                        'unit_price'    => (float) ($option->unit_price ?? 0),
+                        'billing_cycle' => $product->billing_cycle ?? 'once',
+                        'tax_percent'   => (float) ($product->tax_percent ?? 0),
+                    ]);
+                } else { // yesno — presence in the payload means "on"
+                    $configSelections->push([
+                        'option_id'     => $option->id,
+                        'choice_id'     => null,
+                        'quantity'      => 1,
+                        'label'         => $option->name,
+                        'unit_price'    => (float) ($option->unit_price ?? 0),
+                        'billing_cycle' => $product->billing_cycle ?? 'once',
+                        'tax_percent'   => (float) ($product->tax_percent ?? 0),
+                    ]);
+                }
+            }
+        }
+
         $mode    = $data['domain_mode'] ?? 'existing';
         $domain  = strtolower(trim((string) ($data['label'] ?? '')));
 
@@ -200,7 +313,7 @@ class PortalOrderController extends Controller
                 ->whereIn('id', $data['addons'])->get();
         }
 
-        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing, $years, $addons, $productAddons) {
+        [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing, $years, $addons, $productAddons, $configSelections) {
             $start = now()->startOfDay();
             $expire = match ($product->billing_cycle) {
                 'monthly'     => $start->copy()->addMonth(),
@@ -240,7 +353,14 @@ class PortalOrderController extends Controller
                 fn ($a) => (float) $a->price * ((float) ($a->tax_percent ?? 0) / 100)
             ), 2);
 
-            $total = round($lineBase + $lineTax + $domainPrice + $addonsPrice + $productAddonsBase + $productAddonsTax, 2);
+            // Configurable options: each selection is its own base + tax line,
+            // taxed like the product (snapshot tax_percent = product tax).
+            $configBase = round((float) $configSelections->sum(fn ($c) => $c['unit_price'] * $c['quantity']), 2);
+            $configTax  = round((float) $configSelections->sum(
+                fn ($c) => $c['unit_price'] * $c['quantity'] * ($c['tax_percent'] / 100)
+            ), 2);
+
+            $total = round($lineBase + $lineTax + $domainPrice + $addonsPrice + $productAddonsBase + $productAddonsTax + $configBase + $configTax, 2);
 
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $tenantId,
@@ -249,9 +369,9 @@ class PortalOrderController extends Controller
                 'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
                 'date'            => now()->toDateString(),
                 'due_date'        => now()->toDateString(),
-                'subtotal'        => round($lineBase + $domainPrice + $addonsPrice + $productAddonsBase, 2),
+                'subtotal'        => round($lineBase + $domainPrice + $addonsPrice + $productAddonsBase + $configBase, 2),
                 'discount_amount' => 0,
-                'tax_amount'      => round($lineTax + $productAddonsTax, 2),
+                'tax_amount'      => round($lineTax + $productAddonsTax + $configTax, 2),
                 'total'           => $total,
                 'status'          => 'sent',
                 'notes'           => 'Portal order: new subscription',
@@ -278,6 +398,20 @@ class PortalOrderController extends Controller
                     'tax_percent' => $addon->tax_percent ?? 0,
                     'tax_amount'  => $addonTax,
                     'total'       => round((float) $addon->price + $addonTax, 2),
+                ]);
+            }
+
+            foreach ($configSelections as $sel) {
+                $selBase = round($sel['unit_price'] * $sel['quantity'], 2);
+                $selTax  = round($selBase * ($sel['tax_percent'] / 100), 2);
+                $document->items()->create([
+                    'item_type'   => 'service',
+                    'description' => "Option: {$sel['label']}" . ($data['label'] ? " — {$data['label']}" : ''),
+                    'quantity'    => $sel['quantity'],
+                    'price'       => $sel['unit_price'],
+                    'tax_percent' => $sel['tax_percent'],
+                    'tax_amount'  => $selTax,
+                    'total'       => round($selBase + $selTax, 2),
                 ]);
             }
 
@@ -333,6 +467,18 @@ class PortalOrderController extends Controller
                 $meta['pending_addons'] = [
                     'document_id' => $document->id,
                     'addon_ids'   => $productAddons->pluck('id')->values()->all(),
+                ];
+                $subscription->update(['metadata' => $meta]);
+            }
+
+            // Configurable options: remember the resolved selections so payment
+            // (DocumentObserver) can attach them to the live service. Prices are
+            // already recomputed from the DB above and snapshotted here.
+            if ($configSelections->isNotEmpty()) {
+                $meta = $subscription->metadata ?? [];
+                $meta['pending_config_options'] = [
+                    'document_id' => $document->id,
+                    'selections'  => $configSelections->values()->all(),
                 ];
                 $subscription->update(['metadata' => $meta]);
             }

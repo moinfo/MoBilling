@@ -17,6 +17,7 @@ import Clients from './pages/Clients';
 import ClientProfile from './pages/ClientProfile';
 import ProductServices from './pages/ProductServices';
 import ProductAddons from './pages/ProductAddons';
+import ConfigOptions from './pages/ConfigOptions';
 import Quotations from './pages/Quotations';
 import Proformas from './pages/Proformas';
 import Invoices from './pages/Invoices';
@@ -186,6 +187,7 @@ export default function App() {
                   <Route path="/clients/:clientId" element={<ClientProfile />} />
                   <Route path="/product-services" element={<ProductServices />} />
                   <Route path="/product-addons" element={<ProductAddons />} />
+                  <Route path="/config-options" element={<ConfigOptions />} />
                   <Route path="/quotations" element={<Quotations />} />
                   <Route path="/proformas" element={<Proformas />} />
                   <Route path="/invoices" element={<Invoices />} />

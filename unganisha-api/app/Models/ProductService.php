@@ -42,6 +42,16 @@ class ProductService extends Model
         );
     }
 
+    public function configGroups()
+    {
+        return $this->belongsToMany(
+            ConfigOptionGroup::class,
+            'product_config_group_links',
+            'product_service_id',
+            'config_option_group_id'
+        );
+    }
+
     public function scopeProducts($query)
     {
         return $query->where('type', 'product');

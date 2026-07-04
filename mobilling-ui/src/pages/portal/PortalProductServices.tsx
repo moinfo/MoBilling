@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   SimpleGrid, Modal, TextInput, Badge, Divider, Center, Radio, Select, Alert,
-  Checkbox, UnstyledButton,
+  Checkbox, UnstyledButton, NumberInput,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -13,8 +13,9 @@ import {
 } from '@tabler/icons-react';
 import {
   getPortalCatalog, placePortalOrder, getPortalDomainTlds, getPortalDomainAddons,
-  getPortalProductAddons, portalCheckDomain, CatalogGroup, CatalogProduct,
-  DomainAddonRow, ProductAddonRow,
+  getPortalProductAddons, getPortalProductConfigOptions, portalCheckDomain,
+  CatalogGroup, CatalogProduct, DomainAddonRow, ProductAddonRow,
+  PortalConfigGroup, OrderConfigOption,
 } from '../../api/portal';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -143,6 +144,8 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
   const [years, setYears] = useState(1);
   const [selectedAddons, setSelectedAddons] = useState<string[]>([]);
   const [selectedProductAddons, setSelectedProductAddons] = useState<string[]>([]);
+  // Configurable option selections keyed by option id.
+  const [configSel, setConfigSel] = useState<Record<string, { choice_id?: string; quantity?: number; on?: boolean }>>({});
 
   const { data: tldsData } = useQuery({
     queryKey: ['portal-domain-tlds'],
@@ -165,6 +168,37 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
   const productAddonsPrice = productAddons
     .filter((a) => selectedProductAddons.includes(a.id))
     .reduce((sum, a) => sum + Number(a.price), 0);
+
+  const { data: configGroupsData } = useQuery({
+    queryKey: ['portal-product-config-options', product?.id],
+    queryFn: () => getPortalProductConfigOptions(product!.id),
+    enabled: !!product,
+  });
+  const configGroups: PortalConfigGroup[] = configGroupsData?.data?.data ?? [];
+
+  // Derive the running price + the order payload from the current selections.
+  const configOptionsPayload: OrderConfigOption[] = [];
+  let configOptionsPrice = 0;
+  configGroups.forEach((g) => g.options.forEach((o) => {
+    const sel = configSel[o.id];
+    if (!sel) return;
+    if (o.option_type === 'dropdown' || o.option_type === 'radio') {
+      if (!sel.choice_id) return;
+      const choice = o.choices.find((c) => c.id === sel.choice_id);
+      if (!choice) return;
+      configOptionsPrice += Number(choice.price);
+      configOptionsPayload.push({ option_id: o.id, choice_id: choice.id });
+    } else if (o.option_type === 'quantity') {
+      const qty = Number(sel.quantity ?? 0);
+      if (qty <= 0) return;
+      configOptionsPrice += Number(o.unit_price ?? 0) * qty;
+      configOptionsPayload.push({ option_id: o.id, quantity: qty });
+    } else if (o.option_type === 'yesno') {
+      if (!sel.on) return;
+      configOptionsPrice += Number(o.unit_price ?? 0);
+      configOptionsPayload.push({ option_id: o.id });
+    }
+  }));
   const tldOptions = tlds.map((t) => ({ value: t.tld, label: `.${t.tld}` }));
   const activeTld = tlds.find((t) => t.tld === tld);
 
@@ -214,6 +248,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
       years: product!.needs_domain && mode !== 'existing' ? years : undefined,
       addons: product!.needs_domain && mode !== 'existing' ? selectedAddons : undefined,
       product_addon_ids: selectedProductAddons.length ? selectedProductAddons : undefined,
+      config_options: configOptionsPayload.length ? configOptionsPayload : undefined,
     }),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['portal-subscriptions'] });
@@ -231,7 +266,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
   const handleClose = () => {
     setMode('register'); setSld(''); setFullDomain(''); setAuthInfo(''); setLabel('');
     setCheckResult(null); setStep('choose'); setYears(1); setSelectedAddons([]);
-    setSelectedProductAddons([]);
+    setSelectedProductAddons([]); setConfigSel({});
     onClose();
   };
 
@@ -246,7 +281,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
 
   const total = (product?.price ?? 0)
     + (product?.needs_domain && mode !== 'existing' && checkResult?.ok ? domainPrice + addonsPrice : 0)
-    + productAddonsPrice;
+    + productAddonsPrice + configOptionsPrice;
   const canContinue = product?.needs_domain && (
     mode === 'existing' ? domainValid
       : (domainValid && checkResult?.ok === true && (mode !== 'transfer' || authInfo.trim().length > 0)));
@@ -390,11 +425,78 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
             </Paper>
           )}
 
+          {configGroups.length > 0 && configGroups.map((g) => (
+            <Paper key={g.id} withBorder radius="md" p="md" bg="var(--mantine-color-default-hover)">
+              <Text fw={700}>{g.name}</Text>
+              {g.description && <Text size="xs" c="dimmed" mb="sm">{g.description}</Text>}
+              <Stack gap="sm" mt="sm">
+                {g.options.map((o) => {
+                  const sel = configSel[o.id] ?? {};
+                  if (o.option_type === 'dropdown' || o.option_type === 'radio') {
+                    return (
+                      <Select key={o.id} label={o.name} placeholder="Select…" clearable
+                        data={o.choices.map((c) => ({
+                          value: c.id,
+                          label: Number(c.price) > 0 ? `${c.label} (+Tsh.${fmt(Number(c.price))})` : c.label,
+                        }))}
+                        value={sel.choice_id ?? null}
+                        onChange={(v) => setConfigSel((cur) => ({ ...cur, [o.id]: { ...cur[o.id], choice_id: v ?? undefined } }))} />
+                    );
+                  }
+                  if (o.option_type === 'quantity') {
+                    return (
+                      <NumberInput key={o.id} label={`${o.name} (Tsh.${fmt(Number(o.unit_price ?? 0))} each)`}
+                        min={0} max={10000} value={sel.quantity ?? 0}
+                        onChange={(v) => setConfigSel((cur) => ({ ...cur, [o.id]: { ...cur[o.id], quantity: Number(v) || 0 } }))} />
+                    );
+                  }
+                  // yesno
+                  return (
+                    <Checkbox key={o.id} checked={!!sel.on}
+                      label={<Text fw={600}>{o.name} {Number(o.unit_price ?? 0) > 0 ? `(+Tsh.${fmt(Number(o.unit_price ?? 0))})` : ''}</Text>}
+                      onChange={(e) => setConfigSel((cur) => ({ ...cur, [o.id]: { ...cur[o.id], on: e.currentTarget.checked } }))} />
+                  );
+                })}
+              </Stack>
+            </Paper>
+          ))}
+
           <Paper withBorder p="sm" radius="md">
             <Group justify="space-between">
               <Text size="sm">{product.name}</Text>
               <Text size="sm" fw={600}>Tsh.{fmt(product.price)}</Text>
             </Group>
+            {configGroups.flatMap((g) => g.options).map((o) => {
+              const sel = configSel[o.id];
+              if (!sel) return null;
+              if ((o.option_type === 'dropdown' || o.option_type === 'radio') && sel.choice_id) {
+                const c = o.choices.find((x) => x.id === sel.choice_id);
+                if (!c) return null;
+                return (
+                  <Group key={o.id} justify="space-between" mt={4}>
+                    <Text size="sm">{o.name}: {c.label}</Text>
+                    <Text size="sm" fw={600}>Tsh.{fmt(Number(c.price))}</Text>
+                  </Group>
+                );
+              }
+              if (o.option_type === 'quantity' && Number(sel.quantity) > 0) {
+                return (
+                  <Group key={o.id} justify="space-between" mt={4}>
+                    <Text size="sm">{o.name} x{sel.quantity}</Text>
+                    <Text size="sm" fw={600}>Tsh.{fmt(Number(o.unit_price ?? 0) * Number(sel.quantity))}</Text>
+                  </Group>
+                );
+              }
+              if (o.option_type === 'yesno' && sel.on) {
+                return (
+                  <Group key={o.id} justify="space-between" mt={4}>
+                    <Text size="sm">{o.name}</Text>
+                    <Text size="sm" fw={600}>Tsh.{fmt(Number(o.unit_price ?? 0))}</Text>
+                  </Group>
+                );
+              }
+              return null;
+            })}
             {productAddons.filter((a) => selectedProductAddons.includes(a.id)).map((a) => (
               <Group key={a.id} justify="space-between" mt={4}>
                 <Text size="sm">Add-on: {a.name}</Text>

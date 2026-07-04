@@ -98,6 +98,41 @@ class DocumentObserver
             $sub->update(['metadata' => $meta]);
         }
 
+        // Configurable options: attach ordered selections to the service once
+        // its invoice is paid, using the price/label/cycle already snapshotted at
+        // order time so later catalog edits don't change existing renewals.
+        $pendingConfigSubs = \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('metadata->pending_config_options->document_id', $document->id)
+            ->get();
+
+        foreach ($pendingConfigSubs as $sub) {
+            $selections = $sub->metadata['pending_config_options']['selections'] ?? [];
+
+            foreach ($selections as $sel) {
+                \App\Models\SubscriptionConfigOption::withoutGlobalScopes()->firstOrCreate(
+                    [
+                        'client_subscription_id' => $sub->id,
+                        'config_option_id'       => $sel['option_id'] ?? null,
+                        'choice_id'              => $sel['choice_id'] ?? null,
+                    ],
+                    [
+                        'tenant_id'     => $sub->tenant_id,
+                        'label'         => $sel['label'] ?? '',
+                        'unit_price'    => $sel['unit_price'] ?? 0,
+                        'quantity'      => $sel['quantity'] ?? 1,
+                        'billing_cycle' => $sel['billing_cycle'] ?? 'monthly',
+                        'tax_percent'   => $sel['tax_percent'] ?? 0,
+                        'status'        => 'active',
+                    ]
+                );
+            }
+
+            $meta = $sub->metadata ?? [];
+            unset($meta['pending_config_options']);
+            $sub->update(['metadata' => $meta]);
+        }
+
         foreach ($domains as $domain) {
             // Unmanaged domains (gTLDs — no registrar driver yet): keep the paid
             // order flagged for MANUAL fulfilment at the upstream registrar

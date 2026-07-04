@@ -355,10 +355,17 @@ export interface CatalogGroup {
 export const getPortalCatalog = () =>
   api.get<{ data: CatalogGroup[] }>('/portal/catalog');
 
+export interface OrderConfigOption {
+  option_id: string;
+  choice_id?: string;
+  quantity?: number;
+}
+
 export const placePortalOrder = (data: {
   product_service_id: string; label?: string;
   domain_mode?: 'register' | 'transfer' | 'existing'; auth_info?: string;
   years?: number; addons?: string[]; product_addon_ids?: string[];
+  config_options?: OrderConfigOption[];
 }) => api.post('/portal/orders', data);
 
 export interface ProductAddonRow {
@@ -367,6 +374,30 @@ export interface ProductAddonRow {
 
 export const getPortalProductAddons = (productId: string) =>
   api.get<{ data: ProductAddonRow[] }>(`/portal/products/${productId}/addons`);
+
+export type PortalConfigOptionType = 'dropdown' | 'radio' | 'yesno' | 'quantity';
+
+export interface PortalConfigOptionChoice {
+  id: string; label: string; price: number;
+}
+
+export interface PortalConfigOption {
+  id: string;
+  name: string;
+  option_type: PortalConfigOptionType;
+  unit_price: number | null;
+  choices: PortalConfigOptionChoice[];
+}
+
+export interface PortalConfigGroup {
+  id: string;
+  name: string;
+  description: string | null;
+  options: PortalConfigOption[];
+}
+
+export const getPortalProductConfigOptions = (productId: string) =>
+  api.get<{ data: PortalConfigGroup[] }>(`/portal/products/${productId}/config-options`);
 
 export interface PortalTldRow {
   tld: string; register_price: number; transfer_price: number;

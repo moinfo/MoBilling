@@ -49,6 +49,11 @@ class ClientSubscription extends Model
         return $this->hasMany(SubscriptionAddon::class);
     }
 
+    public function configOptions()
+    {
+        return $this->hasMany(SubscriptionConfigOption::class);
+    }
+
     public function scopeActive($query)
     {
         return $query->where('status', 'active');

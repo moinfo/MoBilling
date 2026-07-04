@@ -53,7 +53,9 @@ class RecurringInvoiceService
             ->where('status', 'active')
             // Parallel mode: WHMCS still bills its own (imported) subscriptions.
             ->when(config('whmcs.parallel_mode'), fn ($q) => $q->whereNull('legacy_id'))
-            ->with(['productService', 'client', 'addons' => fn ($q) => $q->where('status', 'active')])
+            ->with(['productService', 'client',
+                'addons' => fn ($q) => $q->where('status', 'active'),
+                'configOptions' => fn ($q) => $q->where('status', 'active')])
             ->whereHas('productService', fn ($q) => $q
                 ->where('is_active', true)
                 ->whereNotNull('billing_cycle')
@@ -240,6 +242,36 @@ class RecurringInvoiceService
 
                     $subtotal += $addonBase;
                     $taxAmount += $addonTax;
+                }
+
+                // Configurable options attached to this service. Bill each active
+                // option whose cycle matches the product renewal cycle (so an
+                // option isn't wrongly billed on a mismatched renewal). Snapshot
+                // price/quantity is used. Product quantity multiplies through.
+                foreach ($sub->configOptions as $configOption) {
+                    if ($configOption->status !== 'active' || $configOption->billing_cycle !== $product->billing_cycle) {
+                        continue;
+                    }
+
+                    $optBase = $qty * (float) $configOption->unit_price * (int) $configOption->quantity;
+                    $optTax = $optBase * ((float) ($configOption->tax_percent ?? 0) / 100);
+
+                    $lineItems[] = [
+                        'item_type' => 'service',
+                        'description' => "Option: {$configOption->label}" . ($sub->label ? " — {$sub->label}" : ''),
+                        'quantity' => $qty * (int) $configOption->quantity,
+                        'price' => $configOption->unit_price,
+                        'discount_type' => 'percent',
+                        'discount_value' => 0,
+                        'tax_percent' => $configOption->tax_percent ?? 0,
+                        'tax_amount' => round($optTax, 2),
+                        'total' => round($optBase + $optTax, 2),
+                        'service_from' => $item['service_from']->format('Y-m-d'),
+                        'service_to' => $item['service_to']->format('Y-m-d'),
+                    ];
+
+                    $subtotal += $optBase;
+                    $taxAmount += $optTax;
                 }
             }
 
