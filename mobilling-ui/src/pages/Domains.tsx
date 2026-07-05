@@ -9,11 +9,11 @@ import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconWorldWww, IconPlus, IconHistory, IconRefresh, IconKey,
-  IconCheck, IconX, IconCopy, IconWorld, IconClockExclamation, IconAlertTriangle,
+  IconCheck, IconX, IconCopy, IconWorld, IconWallet, IconClockExclamation, IconAlertTriangle,
   IconHourglass, IconRepeat, IconShieldCheck, IconShieldOff,
 } from '@tabler/icons-react';
 import {
-  checkDomain, getDomains, getDomainStats, getDomainLogs, orderDomain, renewDomain,
+  checkDomain, getDomains, getDomainStats, getRegistrarCredit, getDomainLogs, orderDomain, renewDomain,
   getDomainAuthInfo, setDomainAutoRenew, describeDomainAction, DomainRecord,
   DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
@@ -96,6 +96,13 @@ export default function Domains() {
   });
   const stats = statsData?.data?.data;
 
+  const { data: creditData } = useQuery({
+    queryKey: ['registrar-credit'],
+    queryFn: getRegistrarCredit,
+    staleTime: 5 * 60 * 1000,
+  });
+  const registrarCredit = creditData?.data?.data;
+
   const toggleAutoRenew = async (d: DomainRecord, enabled: boolean) => {
     setTogglingId(d.id);
     try {
@@ -161,6 +168,50 @@ export default function Domains() {
         <DomainStatCard icon={<IconRepeat size={20} />} color="violet" label="Auto-renew On"
           value={stats?.auto_renew ?? '—'} />
       </SimpleGrid>
+
+      {/* Registrar (TZNIC) prepaid credit — real money the registry draws for register/renew */}
+      {registrarCredit && (
+        <Paper withBorder radius="md" p="sm">
+          <Group justify="space-between" mb={8} wrap="wrap">
+            <Group gap="xs">
+              <IconWallet size={18} />
+              <Text fw={600} size="sm">Registrar Credit — TZNIC (REG-MOINFOTECH)</Text>
+              {!registrarCredit.ok && <Badge size="xs" color="red" variant="light">unreachable</Badge>}
+            </Group>
+            <Group gap="xs">
+              <Text size="sm" c="dimmed">Total funded:</Text>
+              <Text fw={700}>{registrarCredit.total.toLocaleString()} TZS</Text>
+            </Group>
+          </Group>
+          {registrarCredit.low.length > 0 && (
+            <Alert color="orange" variant="light" p="xs" mb={8}>
+              Low balance — top up soon: {registrarCredit.low.join(', ')} (renewals draw real prepaid credit)
+            </Alert>
+          )}
+          <SimpleGrid cols={{ base: 2, sm: 3, md: 6 }} spacing="xs">
+            {registrarCredit.zones.filter((z) => z.credit > 0).map((z) => {
+              const low = registrarCredit.low.includes(z.zone);
+              return (
+                <Paper key={z.zone} withBorder p={8} radius="sm"
+                  style={{ borderColor: low ? 'var(--mantine-color-orange-5)' : undefined }}>
+                  <Text size="xs" c="dimmed">.{z.zone}</Text>
+                  <Text size="sm" fw={700} c={low ? 'orange' : undefined}>
+                    {z.credit.toLocaleString()}
+                  </Text>
+                </Paper>
+              );
+            })}
+            {registrarCredit.funded_count === 0 && (
+              <Text size="sm" c="dimmed">No funded zones.</Text>
+            )}
+          </SimpleGrid>
+          {registrarCredit.checked_at && (
+            <Text size="xs" c="dimmed" mt={6}>
+              As of {new Date(registrarCredit.checked_at).toLocaleString('en-GB')} · cached 5 min
+            </Text>
+          )}
+        </Paper>
+      )}
 
       <Group gap="xs">
         <TextInput size="xs" placeholder="Search domain…" leftSection={<IconSearch size={13} />}

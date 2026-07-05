@@ -538,6 +538,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:domains.read')->group(function () {
         Route::get('/domains/check',            [\App\Http\Controllers\DomainController::class, 'check']);
         Route::get('/domains/stats',            [\App\Http\Controllers\DomainController::class, 'stats']);
+        Route::get('/domains/registrar-credit', [\App\Http\Controllers\DomainController::class, 'registrarCredit']);
         Route::get('/domains',                  [\App\Http\Controllers\DomainController::class, 'index']);
         Route::get('/domains/{domain}',         [\App\Http\Controllers\DomainController::class, 'show']);
         Route::get('/domains/{domain}/logs',    [\App\Http\Controllers\DomainController::class, 'logs']);

@@ -106,6 +106,18 @@ export interface DomainStats {
   external: number;
 }
 
+export interface RegistrarCredit {
+  ok: boolean;
+  zones: { zone: string; credit: number }[];
+  total: number;
+  funded_count: number;
+  low: string[];
+  checked_at: string | null;
+  error: string | null;
+}
+export const getRegistrarCredit = () =>
+  api.get<{ data: RegistrarCredit }>('/domains/registrar-credit');
+
 export const getDomainStats = () =>
   api.get<{ data: DomainStats }>('/domains/stats');
 

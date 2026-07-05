@@ -161,6 +161,44 @@ class DomainController extends Controller
     }
 
     /** Summary numbers for the Domains page dashboard strip. */
+    /**
+     * Prepaid registrar (TZNIC) credit balance per zone — real money the
+     * registry draws for register/renew. Cached briefly (live external call).
+     */
+    public function registrarCredit(Request $request)
+    {
+        $threshold = (float) $request->get('threshold', 50000);
+
+        $data = \Illuminate\Support\Facades\Cache::remember('registrar_credit', now()->addMinutes(5), function () {
+            $account = \App\Models\RegistrarAccount::whereNull('tenant_id')->where('is_active', true)->first();
+            if (!$account) {
+                return ['ok' => false, 'zones' => []];
+            }
+            try {
+                $zones = collect((new \App\Services\Registrar\FredHttpDriver($account))->credit())
+                    ->map(fn ($c) => ['zone' => $c['zone'], 'credit' => (float) $c['credit']])
+                    ->sortByDesc('credit')->values()->all();
+
+                return ['ok' => true, 'zones' => $zones, 'checked_at' => now()->toISOString()];
+            } catch (\Throwable $e) {
+                return ['ok' => false, 'zones' => [], 'error' => $e->getMessage()];
+            }
+        });
+
+        $funded = collect($data['zones'])->filter(fn ($z) => $z['credit'] > 0)->values();
+
+        return response()->json(['data' => [
+            'ok'          => $data['ok'] ?? false,
+            'zones'       => $data['zones'] ?? [],
+            'total'       => (float) $funded->sum('credit'),
+            'funded_count'=> $funded->count(),
+            // funded zones running low (below threshold) need a top-up
+            'low'         => $funded->filter(fn ($z) => $z['credit'] < $threshold)->pluck('zone')->all(),
+            'checked_at'  => $data['checked_at'] ?? null,
+            'error'       => $data['error'] ?? null,
+        ]]);
+    }
+
     public function stats()
     {
         $byStatus = Domain::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
