@@ -10,8 +10,10 @@ import { IconPlus, IconEdit, IconTrash, IconPlugConnected, IconWorldWww, IconAle
 import {
   getRegistrarAccounts, testRegistrarAccount, getDomainTlds,
   createDomainTld, updateDomainTld, deleteDomainTld,
+  createRegistrarAccount, updateRegistrarAccount, deleteRegistrarAccount,
   RegistrarAccountRow, DomainTldRow,
 } from '../../api/domains';
+import { modals } from '@mantine/modals';
 import { formatCurrency } from '../../utils/formatCurrency';
 
 export default function DomainsTab() {
@@ -24,8 +26,10 @@ export default function DomainsTab() {
 }
 
 function RegistrarAccountsSection() {
+  const qc = useQueryClient();
   const [testingId, setTestingId] = useState<string | null>(null);
   const [credits, setCredits] = useState<{ id: string; rows: { zone: string; credit: string }[] } | null>(null);
+  const [editing, setEditing] = useState<RegistrarAccountRow | null | 'new'>(null);
 
   const { data, isLoading } = useQuery({ queryKey: ['registrar-accounts'], queryFn: getRegistrarAccounts });
   const accounts: RegistrarAccountRow[] = data?.data?.data ?? [];
@@ -48,12 +52,36 @@ function RegistrarAccountsSection() {
     }
   };
 
+  const removeMutation = useMutation({
+    mutationFn: deleteRegistrarAccount,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['registrar-accounts'] }); notifications.show({ message: 'Registrar account removed.', color: 'gray' }); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not remove account.', color: 'red' }),
+  });
+
+  const confirmDelete = (a: RegistrarAccountRow) => modals.openConfirmModal({
+    title: 'Remove registrar account',
+    children: <Text size="sm">Remove <b>{a.name}</b>? Domains registered through it stay, but you won’t be able to register/renew via this accreditation.</Text>,
+    labels: { confirm: 'Remove', cancel: 'Cancel' },
+    confirmProps: { color: 'red' },
+    onConfirm: () => removeMutation.mutate(a.id),
+  });
+
   return (
     <Stack>
-      <Group gap="xs">
-        <IconWorldWww size={20} />
-        <Text fw={600}>Registrar Accounts (.tz)</Text>
+      <Group justify="space-between">
+        <Group gap="xs">
+          <IconWorldWww size={20} />
+          <Text fw={600}>Registrar Accounts (.tz)</Text>
+        </Group>
+        <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>
+          Connect my registrar
+        </Button>
       </Group>
+
+      <Alert color="blue" variant="light" icon={<IconAlertCircle size={16} />}>
+        Register domains through the shared <b>platform</b> registrar, or connect your own TCRA accreditation
+        to register/renew under your own registrar handle and prepaid credit.
+      </Alert>
 
       {isLoading ? (
         <Center py="md"><Loader size="sm" /></Center>
@@ -87,12 +115,24 @@ function RegistrarAccountsSection() {
                     </Badge>
                   </Table.Td>
                   <Table.Td>
-                    <Tooltip label="Test connection (registry credit)">
-                      <ActionIcon variant="light" color="teal" loading={testingId === a.id}
-                        onClick={() => handleTest(a)}>
-                        <IconPlugConnected size={15} />
-                      </ActionIcon>
-                    </Tooltip>
+                    <Group gap={4} wrap="nowrap" justify="flex-end">
+                      <Tooltip label="Test connection (registry credit)">
+                        <ActionIcon variant="light" color="teal" loading={testingId === a.id}
+                          onClick={() => handleTest(a)}>
+                          <IconPlugConnected size={15} />
+                        </ActionIcon>
+                      </Tooltip>
+                      {!a.is_platform && (
+                        <>
+                          <Tooltip label="Edit">
+                            <ActionIcon variant="light" onClick={() => setEditing(a)}><IconEdit size={15} /></ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Remove">
+                            <ActionIcon variant="light" color="red" onClick={() => confirmDelete(a)}><IconTrash size={15} /></ActionIcon>
+                          </Tooltip>
+                        </>
+                      )}
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))}
@@ -113,7 +153,69 @@ function RegistrarAccountsSection() {
           </Group>
         </Paper>
       )}
+
+      {editing && (
+        <RegistrarAccountModal
+          account={editing === 'new' ? null : editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); qc.invalidateQueries({ queryKey: ['registrar-accounts'] }); }}
+        />
+      )}
     </Stack>
+  );
+}
+
+function RegistrarAccountModal({ account, onClose, onSaved }: {
+  account: RegistrarAccountRow | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const isEdit = !!account;
+  const form = useForm({
+    initialValues: {
+      name: account?.name ?? '',
+      endpoint_url: account?.endpoint_url ?? '',
+      registrar_id: account?.registrar_id ?? '',
+      service_token: '',
+      is_active: account?.is_active ?? true,
+    },
+    validate: {
+      name: (v) => (v.trim() ? null : 'Required'),
+      endpoint_url: (v) => (/^https?:\/\//.test(v) ? null : 'Enter a valid URL (https://…)'),
+      service_token: (v) => (isEdit || v.trim() ? null : 'Required to connect'),
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: (v: typeof form.values) => {
+      const payload: any = { name: v.name, endpoint_url: v.endpoint_url, registrar_id: v.registrar_id || null, is_active: v.is_active };
+      if (v.service_token.trim()) payload.service_token = v.service_token.trim();
+      return isEdit ? updateRegistrarAccount(account!.id, payload) : createRegistrarAccount(payload);
+    },
+    onSuccess: () => { notifications.show({ message: isEdit ? 'Registrar account updated.' : 'Registrar connected.', color: 'green' }); onSaved(); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not save.', color: 'red' }),
+  });
+
+  return (
+    <Modal opened onClose={onClose} title={isEdit ? 'Edit registrar account' : 'Connect my registrar'} centered>
+      <form onSubmit={form.onSubmit((v) => mutation.mutate(v))}>
+        <Stack gap="sm">
+          <TextInput label="Display name" placeholder="My TZNIC accreditation" required {...form.getInputProps('name')} />
+          <TextInput label="Service endpoint URL" placeholder="https://registry-bridge.example.co.tz"
+            description="The FRED-EPP bridge that holds your registry credentials" required {...form.getInputProps('endpoint_url')} />
+          <TextInput label="Registrar handle / ID" placeholder="REG-YOURNAME" {...form.getInputProps('registrar_id')} />
+          <TextInput label={isEdit ? 'Service token (leave blank to keep current)' : 'Service token'}
+            placeholder={isEdit && account?.has_token ? '•••••• (unchanged)' : 'Paste your service token'}
+            description="Stored encrypted; never shown again after saving"
+            required={!isEdit} {...form.getInputProps('service_token')} />
+          <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
+          <Group justify="flex-end" mt="xs">
+            <Button variant="default" onClick={onClose}>Cancel</Button>
+            <Button type="submit" loading={mutation.isPending}>{isEdit ? 'Save' : 'Connect'}</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
   );
 }
 

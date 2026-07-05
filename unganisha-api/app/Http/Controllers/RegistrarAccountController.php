@@ -26,6 +26,9 @@ class RegistrarAccountController extends Controller
                 'name'         => $a->name,
                 'driver'       => $a->driver,
                 'registrar_id' => $a->registrar_id,
+                // endpoint is non-sensitive (the service token is never returned)
+                'endpoint_url' => is_null($a->tenant_id) ? null : $a->endpoint_url,
+                'has_token'    => !empty($a->credentials['service_token'] ?? null),
                 'is_active'    => $a->is_active,
                 'is_sandbox'   => $a->is_sandbox,
                 'is_platform'  => is_null($a->tenant_id),

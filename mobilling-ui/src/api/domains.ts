@@ -32,6 +32,8 @@ export interface RegistrarAccountRow {
   name: string;
   driver: string;
   registrar_id: string | null;
+  endpoint_url: string | null;
+  has_token: boolean;
   is_active: boolean;
   is_sandbox: boolean;
   is_platform: boolean;
@@ -173,6 +175,22 @@ export const getRegistrarAccounts = () =>
 
 export const testRegistrarAccount = (id: string) =>
   api.post<{ ok: boolean; credits: { zone: string; credit: string }[] }>(`/registrar-accounts/${id}/test`);
+
+export interface RegistrarAccountInput {
+  name: string;
+  endpoint_url: string;
+  registrar_id?: string | null;
+  service_token?: string;
+  is_active?: boolean;
+}
+export const createRegistrarAccount = (data: RegistrarAccountInput) =>
+  api.post('/registrar-accounts', data);
+
+export const updateRegistrarAccount = (id: string, data: Partial<RegistrarAccountInput>) =>
+  api.put(`/registrar-accounts/${id}`, data);
+
+export const deleteRegistrarAccount = (id: string) =>
+  api.delete(`/registrar-accounts/${id}`);
 
 export const getDomainTlds = () =>
   api.get<{ data: DomainTldRow[] }>('/domain-tlds');
