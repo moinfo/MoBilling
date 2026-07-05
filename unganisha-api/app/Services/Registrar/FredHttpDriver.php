@@ -28,12 +28,20 @@ class FredHttpDriver implements RegistrarDriver
 
     private function call(string $method, string $path, array $payload = []): array
     {
+        // Bridge (MoBilling → fred-client) auth is the platform DRF token; a
+        // tenant's EPP account has no bridge token of its own, so fall back to
+        // the platform account's. (EPP creds go in the body, not this header.)
         $token = $this->account->credentials['service_token'] ?? null;
+        if (!$token) {
+            $token = RegistrarAccount::whereNull('tenant_id')->first()?->credentials['service_token'] ?? null;
+        }
         if (!$token) {
             throw new RegistrarApiException($path, 'Registrar account has no service token configured');
         }
 
-        $url = rtrim($this->account->endpoint_url, '/') . $path;
+        $base = $this->account->endpoint_url
+            ?: RegistrarAccount::whereNull('tenant_id')->first()?->endpoint_url;
+        $url = rtrim((string) $base, '/') . $path;
 
         try {
             $response = Http::withHeaders(['Authorization' => "Token {$token}"])
@@ -60,6 +68,13 @@ class FredHttpDriver implements RegistrarDriver
 
     private function log(string $action, array $request, ?array $response, bool $ok, ?string $error): void
     {
+        // Never persist EPP secrets that ride in the request body.
+        foreach (['certificate', 'private_key', 'password'] as $secret) {
+            if (isset($request[$secret])) {
+                $request[$secret] = '[redacted]';
+            }
+        }
+
         try {
             DomainLog::create([
                 'tenant_id' => $this->account->tenant_id,
@@ -92,7 +107,30 @@ class FredHttpDriver implements RegistrarDriver
 
     public function credit(): array
     {
+        // Tenant accounts carry their own EPP accreditation → connect under it;
+        // the platform account uses the server-configured credentials (GET).
+        if ($creds = $this->accountEppCreds()) {
+            return $this->call('post', '/api/billing/credit/', $creds)['credits'] ?? [];
+        }
         return $this->call('get', '/api/billing/credit/')['credits'] ?? [];
+    }
+
+    /** Per-account EPP credentials to send to the bridge, or null for platform. */
+    private function accountEppCreds(): ?array
+    {
+        $c = $this->account->credentials ?? [];
+        if (empty($c['certificate']) || empty($c['private_key'])) {
+            return null; // platform / server-configured
+        }
+
+        return [
+            'registrar_id' => $this->account->registrar_id,
+            'password'     => $c['password'] ?? '',
+            'certificate'  => $c['certificate'],
+            'private_key'  => $c['private_key'],
+            'host'         => $c['host'] ?? null,
+            'port'         => $c['port'] ?? null,
+        ];
     }
 
     /** Read the oldest registry poll message WITHOUT dequeuing it (safe). */

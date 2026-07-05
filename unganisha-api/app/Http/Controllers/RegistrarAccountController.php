@@ -135,22 +135,17 @@ class RegistrarAccountController extends Controller
         $tenantId = auth()->user()->tenant_id;
         abort_unless(is_null($registrarAccount->tenant_id) || $registrarAccount->tenant_id === $tenantId, 403);
 
-        // The shared FRED-EPP bridge authenticates to the registry with the
-        // PLATFORM certificate. Testing a tenant's own accreditation requires
-        // the bridge to connect under that tenant's cert/handle — not wired
-        // yet — so don't report platform credit as if it were theirs.
+        // Tenant accounts connect to the registry under their OWN cert/handle
+        // (the bridge accepts per-account creds). Guard against half-entered
+        // credentials before attempting a live connection.
         if (!is_null($registrarAccount->tenant_id)) {
-            $ready = !empty($registrarAccount->credentials['certificate'] ?? null)
-                && !empty($registrarAccount->credentials['private_key'] ?? null)
-                && !empty($registrarAccount->credentials['password'] ?? null);
-
-            return response()->json([
-                'ok'      => false,
-                'pending' => true,
-                'message' => $ready
-                    ? 'Credentials stored. Live connection under your own certificate is not activated yet — contact support to enable it.'
-                    : 'Missing credentials — add your handle, password, certificate (.crt) and key (.key).',
-            ], 200);
+            $c = $registrarAccount->credentials ?? [];
+            if (empty($c['certificate']) || empty($c['private_key']) || empty($c['password'])) {
+                return response()->json([
+                    'ok'      => false,
+                    'message' => 'Missing credentials — add your handle, password, certificate (.crt) and key (.key).',
+                ], 200);
+            }
         }
 
         try {
