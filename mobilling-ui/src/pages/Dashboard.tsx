@@ -10,6 +10,7 @@ import InvoiceStatusChart from '../components/Dashboard/InvoiceStatusChart';
 import PaymentMethodChart from '../components/Dashboard/PaymentMethodChart';
 import TopClientsChart from '../components/Dashboard/TopClientsChart';
 import SubscriptionStats from '../components/Dashboard/SubscriptionStats';
+import HostingDomains from '../components/Dashboard/HostingDomains';
 import RecentInvoices from '../components/Dashboard/RecentInvoices';
 import UpcomingBills from '../components/Dashboard/UpcomingBills';
 import UrgentObligations from '../components/Dashboard/UrgentObligations';
@@ -80,6 +81,8 @@ export default function Dashboard() {
             totalFieldVisits={summary.total_field_visits}
             periodLabel={periodLabel}
           />
+
+          {summary.hosting_domains && <HostingDomains data={summary.hosting_domains} />}
 
           {(can('dashboard.revenue_chart') || can('dashboard.activity_calendar')) && (
             <SimpleGrid cols={{ base: 1, md: 2 }}>

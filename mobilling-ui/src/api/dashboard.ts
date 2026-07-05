@@ -86,7 +86,24 @@ export interface SystemRecordsBreakdown {
   by_bank: SystemRecordBankTotal[];
 }
 
+export interface ExpiringDomain {
+  id: string;
+  name: string;
+  client_name: string | null;
+  expires_at: string;
+  days_left: number;
+  auto_renew: boolean;
+}
+export interface HostingDomainsSummary {
+  hosting: { total: number; active: number; suspended: number };
+  domains: { total: number; active: number; expiring_soon: number };
+  open_tickets: number;
+  registrar_credit_total: number | null;
+  expiring_domains: ExpiringDomain[];
+}
+
 export interface DashboardSummary {
+  hosting_domains?: HostingDomainsSummary;
   total_expenses: number;
   total_receivable: number;
   total_received: number;

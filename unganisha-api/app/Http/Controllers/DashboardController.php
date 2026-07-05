@@ -6,8 +6,11 @@ use App\Models\Bill;
 use App\Models\Client;
 use App\Models\ClientSubscription;
 use App\Models\Document;
+use App\Models\Domain;
 use App\Models\Expense;
 use App\Models\Followup;
+use App\Models\HostingAccount;
+use App\Models\Ticket;
 use App\Models\PaymentIn;
 use App\Models\SatisfactionCall;
 use App\Models\Statutory;
@@ -452,7 +455,54 @@ class DashboardController extends Controller
             'by_bank' => $byBank,
         ];
 
+        // ── Hosting & Domains ────────────────────────────────────────────
+        $hostingCounts = HostingAccount::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
+        $domainCounts  = Domain::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
+
+        $expiryWindow = now()->copy()->addDays(45)->toDateString();
+        $domainsExpiringSoon = Domain::where('status', 'active')
+            ->whereNotNull('expires_at')
+            ->whereBetween('expires_at', [now()->toDateString(), $expiryWindow])
+            ->count();
+
+        $expiringDomains = Domain::with('client:id,name')
+            ->where('status', 'active')
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now()->copy()->addDays(60)->toDateString())
+            ->orderBy('expires_at')
+            ->limit(6)
+            ->get()
+            ->map(fn ($d) => [
+                'id'          => $d->id,
+                'name'        => $d->name,
+                'client_name' => $d->client?->name,
+                'expires_at'  => $d->expires_at?->format('Y-m-d'),
+                'days_left'   => (int) now()->startOfDay()->diffInDays($d->expires_at, false),
+                'auto_renew'  => (bool) $d->auto_renew,
+            ]);
+
+        // Registrar prepaid credit — cached value only (no live registry call here)
+        $registrarCredit = collect(\Illuminate\Support\Facades\Cache::get('registrar_credit')['zones'] ?? [])
+            ->filter(fn ($z) => ($z['credit'] ?? 0) > 0);
+
+        $hostingDomains = [
+            'hosting' => [
+                'total'     => (int) $hostingCounts->sum(),
+                'active'    => (int) ($hostingCounts['active'] ?? 0),
+                'suspended' => (int) ($hostingCounts['suspended'] ?? 0),
+            ],
+            'domains' => [
+                'total'         => (int) $domainCounts->sum(),
+                'active'        => (int) ($domainCounts['active'] ?? 0),
+                'expiring_soon' => $domainsExpiringSoon,
+            ],
+            'open_tickets'          => Ticket::whereIn('status', ['open', 'customer_reply'])->count(),
+            'registrar_credit_total'=> $registrarCredit->isEmpty() ? null : round((float) $registrarCredit->sum('credit'), 2),
+            'expiring_domains'      => $expiringDomains,
+        ];
+
         return response()->json([
+            'hosting_domains' => $hostingDomains,
             'total_expenses' => round((float) $totalExpenses, 2),
             'total_receivable' => round($totalReceivable, 2),
             'total_received' => round($totalReceived, 2),
