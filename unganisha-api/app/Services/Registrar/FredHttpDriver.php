@@ -68,10 +68,14 @@ class FredHttpDriver implements RegistrarDriver
 
     private function log(string $action, array $request, ?array $response, bool $ok, ?string $error): void
     {
-        // Never persist EPP secrets that ride in the request body.
+        // Never persist EPP secrets that ride in the request body (top-level
+        // for credit, nested under 'creds' for register/renew/transfer).
         foreach (['certificate', 'private_key', 'password'] as $secret) {
             if (isset($request[$secret])) {
                 $request[$secret] = '[redacted]';
+            }
+            if (isset($request['creds'][$secret])) {
+                $request['creds'][$secret] = '[redacted]';
             }
         }
 
@@ -113,6 +117,15 @@ class FredHttpDriver implements RegistrarDriver
             return $this->call('post', '/api/billing/credit/', $creds)['credits'] ?? [];
         }
         return $this->call('get', '/api/billing/credit/')['credits'] ?? [];
+    }
+
+    /** Attach the account's own EPP creds (nested) to a mutating payload, if any. */
+    private function withCreds(array $payload): array
+    {
+        if ($creds = $this->accountEppCreds()) {
+            $payload['creds'] = $creds;
+        }
+        return $payload;
     }
 
     /** Per-account EPP credentials to send to the bridge, or null for platform. */
@@ -167,24 +180,24 @@ class FredHttpDriver implements RegistrarDriver
 
     public function register(string $domain, int $years = 1, array $nameservers = []): array
     {
-        return $this->call('post', '/api/domains/register/', array_filter([
+        return $this->call('post', '/api/domains/register/', $this->withCreds(array_filter([
             'domain_name'  => $domain,
             'period_years' => $years,
             'nameservers'  => $nameservers ?: null,
-        ]));
+        ])));
     }
 
     public function renew(string $domain, int $years = 1): array
     {
-        return $this->call('post', "/api/domains/{$domain}/renew/", ['period_years' => $years]);
+        return $this->call('post', "/api/domains/{$domain}/renew/", $this->withCreds(['period_years' => $years]));
     }
 
     public function transferIn(string $domain, string $authInfo): array
     {
-        return $this->call('post', '/api/domains/transfer/', [
+        return $this->call('post', '/api/domains/transfer/', $this->withCreds([
             'domain_name' => $domain,
             'auth_info'   => $authInfo,
-        ]);
+        ]));
     }
 
     public function updateDomain(string $domain, array $changes): array
