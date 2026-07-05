@@ -455,51 +455,64 @@ class DashboardController extends Controller
             'by_bank' => $byBank,
         ];
 
-        // ── Hosting & Domains ────────────────────────────────────────────
-        $hostingCounts = HostingAccount::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
-        $domainCounts  = Domain::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
+        // ── Hosting & Domains (permission-gated; only compute what's shown) ──
+        $user = auth()->user();
+        $canHosting = $user->hasPermission('menu.hosting');
+        $canDomains = $user->hasPermission('menu.domains');
+        $canTickets = $user->hasPermission('menu.tickets');
 
-        $expiryWindow = now()->copy()->addDays(45)->toDateString();
-        $domainsExpiringSoon = Domain::where('status', 'active')
-            ->whereNotNull('expires_at')
-            ->whereBetween('expires_at', [now()->toDateString(), $expiryWindow])
-            ->count();
+        $hostingDomains = null;
+        if ($canHosting || $canDomains) {
+            $hostingDomains = ['can' => ['hosting' => $canHosting, 'domains' => $canDomains, 'tickets' => $canTickets]];
 
-        $expiringDomains = Domain::with('client:id,name')
-            ->where('status', 'active')
-            ->whereNotNull('expires_at')
-            ->where('expires_at', '<=', now()->copy()->addDays(60)->toDateString())
-            ->orderBy('expires_at')
-            ->limit(6)
-            ->get()
-            ->map(fn ($d) => [
-                'id'          => $d->id,
-                'name'        => $d->name,
-                'client_name' => $d->client?->name,
-                'expires_at'  => $d->expires_at?->format('Y-m-d'),
-                'days_left'   => (int) now()->startOfDay()->diffInDays($d->expires_at, false),
-                'auto_renew'  => (bool) $d->auto_renew,
-            ]);
+            if ($canHosting) {
+                $hostingCounts = HostingAccount::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
+                $hostingDomains['hosting'] = [
+                    'total'     => (int) $hostingCounts->sum(),
+                    'active'    => (int) ($hostingCounts['active'] ?? 0),
+                    'suspended' => (int) ($hostingCounts['suspended'] ?? 0),
+                ];
+            }
 
-        // Registrar prepaid credit — cached value only (no live registry call here)
-        $registrarCredit = collect(\Illuminate\Support\Facades\Cache::get('registrar_credit')['zones'] ?? [])
-            ->filter(fn ($z) => ($z['credit'] ?? 0) > 0);
+            if ($canDomains) {
+                $domainCounts = Domain::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
+                $domainsExpiringSoon = Domain::where('status', 'active')
+                    ->whereNotNull('expires_at')
+                    ->whereBetween('expires_at', [now()->toDateString(), now()->copy()->addDays(45)->toDateString()])
+                    ->count();
 
-        $hostingDomains = [
-            'hosting' => [
-                'total'     => (int) $hostingCounts->sum(),
-                'active'    => (int) ($hostingCounts['active'] ?? 0),
-                'suspended' => (int) ($hostingCounts['suspended'] ?? 0),
-            ],
-            'domains' => [
-                'total'         => (int) $domainCounts->sum(),
-                'active'        => (int) ($domainCounts['active'] ?? 0),
-                'expiring_soon' => $domainsExpiringSoon,
-            ],
-            'open_tickets'          => Ticket::whereIn('status', ['open', 'customer_reply'])->count(),
-            'registrar_credit_total'=> $registrarCredit->isEmpty() ? null : round((float) $registrarCredit->sum('credit'), 2),
-            'expiring_domains'      => $expiringDomains,
-        ];
+                $hostingDomains['domains'] = [
+                    'total'         => (int) $domainCounts->sum(),
+                    'active'        => (int) ($domainCounts['active'] ?? 0),
+                    'expiring_soon' => $domainsExpiringSoon,
+                ];
+
+                $hostingDomains['expiring_domains'] = Domain::with('client:id,name')
+                    ->where('status', 'active')
+                    ->whereNotNull('expires_at')
+                    ->where('expires_at', '<=', now()->copy()->addDays(60)->toDateString())
+                    ->orderBy('expires_at')
+                    ->limit(6)
+                    ->get()
+                    ->map(fn ($d) => [
+                        'id'          => $d->id,
+                        'name'        => $d->name,
+                        'client_name' => $d->client?->name,
+                        'expires_at'  => $d->expires_at?->format('Y-m-d'),
+                        'days_left'   => (int) now()->startOfDay()->diffInDays($d->expires_at, false),
+                        'auto_renew'  => (bool) $d->auto_renew,
+                    ]);
+
+                // Registrar prepaid credit — cached value only (no live registry call here)
+                $registrarCredit = collect(\Illuminate\Support\Facades\Cache::get('registrar_credit')['zones'] ?? [])
+                    ->filter(fn ($z) => ($z['credit'] ?? 0) > 0);
+                $hostingDomains['registrar_credit_total'] = $registrarCredit->isEmpty() ? null : round((float) $registrarCredit->sum('credit'), 2);
+            }
+
+            if ($canTickets) {
+                $hostingDomains['open_tickets'] = Ticket::whereIn('status', ['open', 'customer_reply'])->count();
+            }
+        }
 
         return response()->json([
             'hosting_domains' => $hostingDomains,

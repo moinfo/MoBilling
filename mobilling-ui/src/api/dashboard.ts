@@ -95,11 +95,12 @@ export interface ExpiringDomain {
   auto_renew: boolean;
 }
 export interface HostingDomainsSummary {
-  hosting: { total: number; active: number; suspended: number };
-  domains: { total: number; active: number; expiring_soon: number };
-  open_tickets: number;
-  registrar_credit_total: number | null;
-  expiring_domains: ExpiringDomain[];
+  can: { hosting: boolean; domains: boolean; tickets: boolean };
+  hosting?: { total: number; active: number; suspended: number };
+  domains?: { total: number; active: number; expiring_soon: number };
+  open_tickets?: number;
+  registrar_credit_total?: number | null;
+  expiring_domains?: ExpiringDomain[];
 }
 
 export interface DashboardSummary {

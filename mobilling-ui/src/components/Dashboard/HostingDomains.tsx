@@ -28,29 +28,40 @@ function Stat({ icon, color, label, value, hint, onClick }: {
 export default function HostingDomains({ data }: { data: HostingDomainsSummary }) {
   const navigate = useNavigate();
   const credit = data.registrar_credit_total;
+  const expiring = data.expiring_domains ?? [];
 
   return (
     <Box>
       <Text fw={600} mb="xs">Hosting & Domains</Text>
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="sm" mb="md">
-        <Stat icon={<IconServer size={20} />} color="teal" label="Active Hosting"
-          value={data.hosting.active} hint={`${data.hosting.total} total`}
-          onClick={() => navigate('/hosting')} />
-        <Stat icon={<IconPlayerPause size={20} />} color="orange" label="Suspended"
-          value={data.hosting.suspended} onClick={() => navigate('/hosting')} />
-        <Stat icon={<IconWorldWww size={20} />} color="blue" label="Active Domains"
-          value={data.domains.active} hint={`${data.domains.total} total`}
-          onClick={() => navigate('/domains')} />
-        <Stat icon={<IconClockExclamation size={20} />} color="red" label="Expiring ≤ 45d"
-          value={data.domains.expiring_soon} onClick={() => navigate('/domains')} />
-        <Stat icon={<IconWallet size={20} />} color="grape" label="Registrar Credit"
-          value={credit == null ? '—' : `${credit.toLocaleString()}`}
-          hint={credit == null ? undefined : 'TZS'} onClick={() => navigate('/domains')} />
-        <Stat icon={<IconTicket size={20} />} color="indigo" label="Open Tickets"
-          value={data.open_tickets} onClick={() => navigate('/tickets')} />
+        {data.can.hosting && data.hosting && (
+          <>
+            <Stat icon={<IconServer size={20} />} color="teal" label="Active Hosting"
+              value={data.hosting.active} hint={`${data.hosting.total} total`}
+              onClick={() => navigate('/hosting')} />
+            <Stat icon={<IconPlayerPause size={20} />} color="orange" label="Suspended"
+              value={data.hosting.suspended} onClick={() => navigate('/hosting')} />
+          </>
+        )}
+        {data.can.domains && data.domains && (
+          <>
+            <Stat icon={<IconWorldWww size={20} />} color="blue" label="Active Domains"
+              value={data.domains.active} hint={`${data.domains.total} total`}
+              onClick={() => navigate('/domains')} />
+            <Stat icon={<IconClockExclamation size={20} />} color="red" label="Expiring ≤ 45d"
+              value={data.domains.expiring_soon} onClick={() => navigate('/domains')} />
+            <Stat icon={<IconWallet size={20} />} color="grape" label="Registrar Credit"
+              value={credit == null ? '—' : `${credit.toLocaleString()}`}
+              hint={credit == null ? undefined : 'TZS'} onClick={() => navigate('/domains')} />
+          </>
+        )}
+        {data.can.tickets && data.open_tickets != null && (
+          <Stat icon={<IconTicket size={20} />} color="indigo" label="Open Tickets"
+            value={data.open_tickets} onClick={() => navigate('/tickets')} />
+        )}
       </SimpleGrid>
 
-      {data.expiring_domains.length > 0 && (
+      {data.can.domains && expiring.length > 0 && (
         <Card withBorder padding="md" radius="md">
           <Group justify="space-between" mb="xs">
             <Text fw={600} size="sm">Domains Expiring Soon</Text>
@@ -67,7 +78,7 @@ export default function HostingDomains({ data }: { data: HostingDomainsSummary }
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {data.expiring_domains.map((d) => (
+                {expiring.map((d) => (
                   <Table.Tr key={d.id} style={{ cursor: 'pointer' }}
                     onClick={() => navigate(`/domains/${d.id}`)}>
                     <Table.Td fw={500}>{d.name}</Table.Td>
