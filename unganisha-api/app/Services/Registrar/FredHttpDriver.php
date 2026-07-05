@@ -95,6 +95,18 @@ class FredHttpDriver implements RegistrarDriver
         return $this->call('get', '/api/billing/credit/')['credits'] ?? [];
     }
 
+    /** Read the oldest registry poll message WITHOUT dequeuing it (safe). */
+    public function pollRequest(): array
+    {
+        return $this->call('get', '/api/billing/poll/');
+    }
+
+    /** Acknowledge/dequeue a registry poll message by id (irreversible). */
+    public function pollAck(string $msgId): array
+    {
+        return $this->call('post', '/api/billing/poll/', ['msg_id' => $msgId]);
+    }
+
     /** Live nameserver list for an NSset. */
     public function nssetInfo(string $nssetId): array
     {
