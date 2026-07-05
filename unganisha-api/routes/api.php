@@ -539,6 +539,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/domains/check',            [\App\Http\Controllers\DomainController::class, 'check']);
         Route::get('/domains/stats',            [\App\Http\Controllers\DomainController::class, 'stats']);
         Route::get('/domains/registrar-credit', [\App\Http\Controllers\DomainController::class, 'registrarCredit']);
+        Route::get('/registrar-credit-transfers', [\App\Http\Controllers\RegistrarCreditTransferController::class, 'index']);
         Route::get('/domains',                  [\App\Http\Controllers\DomainController::class, 'index']);
         Route::get('/domains/{domain}',         [\App\Http\Controllers\DomainController::class, 'show']);
         Route::get('/domains/{domain}/logs',    [\App\Http\Controllers\DomainController::class, 'logs']);
@@ -555,6 +556,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::put('/registrar-accounts/{registrarAccount}',    [\App\Http\Controllers\RegistrarAccountController::class, 'update']);
         Route::delete('/registrar-accounts/{registrarAccount}', [\App\Http\Controllers\RegistrarAccountController::class, 'destroy']);
         Route::post('/registrar-accounts/{registrarAccount}/test', [\App\Http\Controllers\RegistrarAccountController::class, 'test']);
+        Route::post('/registrar-credit-transfers', [\App\Http\Controllers\RegistrarCreditTransferController::class, 'store']);
+        Route::post('/registrar-credit-transfers/{registrarCreditTransfer}/complete', [\App\Http\Controllers\RegistrarCreditTransferController::class, 'complete']);
+        Route::post('/registrar-credit-transfers/{registrarCreditTransfer}/cancel', [\App\Http\Controllers\RegistrarCreditTransferController::class, 'cancel']);
         Route::get('/domain-tlds',                  [\App\Http\Controllers\DomainTldController::class, 'index']);
         Route::post('/domain-tlds',                 [\App\Http\Controllers\DomainTldController::class, 'store']);
         Route::put('/domain-tlds/{domainTld}',      [\App\Http\Controllers\DomainTldController::class, 'update']);

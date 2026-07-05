@@ -187,6 +187,14 @@ class DomainController extends Controller
 
         $funded = collect($data['zones'])->filter(fn ($z) => $z['credit'] > 0)->values();
 
+        $pending = \App\Models\RegistrarCreditTransfer::where('status', 'pending')
+            ->orderByDesc('created_at')->get()
+            ->map(fn ($tf) => [
+                'id' => $tf->id, 'from_zone' => $tf->from_zone, 'to_zone' => $tf->to_zone,
+                'amount' => (float) $tf->amount, 'requested_by' => $tf->requested_by_name,
+                'created_at' => $tf->created_at->toISOString(),
+            ]);
+
         return response()->json(['data' => [
             'ok'          => $data['ok'] ?? false,
             'zones'       => $data['zones'] ?? [],
@@ -194,6 +202,7 @@ class DomainController extends Controller
             'funded_count'=> $funded->count(),
             // funded zones running low (below threshold) need a top-up
             'low'         => $funded->filter(fn ($z) => $z['credit'] < $threshold)->pluck('zone')->all(),
+            'pending_transfers' => $pending,
             'checked_at'  => $data['checked_at'] ?? null,
             'error'       => $data['error'] ?? null,
         ]]);

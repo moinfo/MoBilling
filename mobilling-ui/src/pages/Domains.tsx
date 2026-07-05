@@ -9,13 +9,14 @@ import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconWorldWww, IconPlus, IconHistory, IconRefresh, IconKey,
-  IconCheck, IconX, IconCopy, IconWorld, IconWallet, IconClockExclamation, IconAlertTriangle,
+  IconCheck, IconX, IconCopy, IconWorld, IconWallet, IconArrowsLeftRight, IconClockExclamation, IconAlertTriangle,
   IconHourglass, IconRepeat, IconShieldCheck, IconShieldOff,
 } from '@tabler/icons-react';
 import {
   checkDomain, getDomains, getDomainStats, getRegistrarCredit, getDomainLogs, orderDomain, renewDomain,
-  getDomainAuthInfo, setDomainAutoRenew, describeDomainAction, DomainRecord,
-  DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
+  getDomainAuthInfo, setDomainAutoRenew, describeDomainAction,
+  createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
+  DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
@@ -102,6 +103,28 @@ export default function Domains() {
     staleTime: 5 * 60 * 1000,
   });
   const registrarCredit = creditData?.data?.data;
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [completingId, setCompletingId] = useState<string | null>(null);
+
+  const completeTransfer = async (id: string) => {
+    setCompletingId(id);
+    try {
+      const res = await completeCreditTransfer(id);
+      qc.invalidateQueries({ queryKey: ['registrar-credit'] });
+      notifications.show({ message: res.data.message, color: 'green' });
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Failed.', color: 'red' });
+    } finally { setCompletingId(null); }
+  };
+  const cancelTransfer = async (id: string) => {
+    try {
+      await cancelCreditTransfer(id);
+      qc.invalidateQueries({ queryKey: ['registrar-credit'] });
+      notifications.show({ message: 'Transfer request cancelled.', color: 'gray' });
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Failed.', color: 'red' });
+    }
+  };
 
   const toggleAutoRenew = async (d: DomainRecord, enabled: boolean) => {
     setTogglingId(d.id);
@@ -181,6 +204,10 @@ export default function Domains() {
             <Group gap="xs">
               <Text size="sm" c="dimmed">Total funded:</Text>
               <Text fw={700}>{registrarCredit.total.toLocaleString()} TZS</Text>
+              {can('domains.settings') && registrarCredit.funded_count > 0 && (
+                <Button size="compact-xs" variant="light" leftSection={<IconArrowsLeftRight size={13} />}
+                  onClick={() => setTransferOpen(true)}>Request Transfer</Button>
+              )}
             </Group>
           </Group>
           {registrarCredit.low.length > 0 && (
@@ -205,6 +232,33 @@ export default function Domains() {
               <Text size="sm" c="dimmed">No funded zones.</Text>
             )}
           </SimpleGrid>
+
+          {/* Pending transfer requests — TZNIC must action these; balance updates after */}
+          {(registrarCredit.pending_transfers?.length ?? 0) > 0 && (
+            <Stack gap={4} mt={8}>
+              <Text size="xs" fw={700} c="dimmed" tt="uppercase">Pending transfer requests</Text>
+              {registrarCredit.pending_transfers.map((tf) => (
+                <Group key={tf.id} justify="space-between" gap="xs"
+                  style={{ background: 'var(--mantine-color-yellow-0)', padding: '4px 8px', borderRadius: 6 }}>
+                  <Text size="xs">
+                    .{tf.from_zone} → .{tf.to_zone} · {tf.amount.toLocaleString()} TZS
+                    {tf.requested_by ? ` · ${tf.requested_by}` : ''}
+                    <Text span c="dimmed"> (awaiting TZNIC)</Text>
+                  </Text>
+                  {can('domains.settings') && (
+                    <Group gap={4}>
+                      <Button size="compact-xs" variant="light" color="green"
+                        loading={completingId === tf.id}
+                        onClick={() => completeTransfer(tf.id)}>Mark Done</Button>
+                      <Button size="compact-xs" variant="subtle" color="gray"
+                        onClick={() => cancelTransfer(tf.id)}>Cancel</Button>
+                    </Group>
+                  )}
+                </Group>
+              ))}
+            </Stack>
+          )}
+
           {registrarCredit.checked_at && (
             <Text size="xs" c="dimmed" mt={6}>
               As of {new Date(registrarCredit.checked_at).toLocaleString('en-GB')} · cached 5 min
@@ -212,6 +266,10 @@ export default function Domains() {
           )}
         </Paper>
       )}
+
+      <TransferRequestModal opened={transferOpen} onClose={() => setTransferOpen(false)}
+        credit={registrarCredit}
+        onDone={() => qc.invalidateQueries({ queryKey: ['registrar-credit'] })} />
 
       <Group gap="xs">
         <TextInput size="xs" placeholder="Search domain…" leftSection={<IconSearch size={13} />}
@@ -602,5 +660,87 @@ function DomainLogsList({ domainId }: { domainId: string }) {
         </Paper>
       ))}
     </Stack>
+  );
+}
+
+
+function TransferRequestModal({ opened, onClose, credit, onDone }: {
+  opened: boolean; onClose: () => void; credit: RegistrarCredit | undefined; onDone: () => void;
+}) {
+  const [fromZone, setFromZone] = useState<string | null>(null);
+  const [toZone, setToZone] = useState<string | null>(null);
+  const [amount, setAmount] = useState<number | ''>('');
+  const [notes, setNotes] = useState('');
+  const [email, setEmail] = useState<TransferEmail | null>(null);
+
+  const funded = (credit?.zones ?? []).filter((z) => z.credit > 0);
+  const fromBalance = funded.find((z) => z.zone === fromZone)?.credit ?? 0;
+  const allZones = (credit?.zones ?? []).map((z) => z.zone);
+
+  const mutation = useMutation({
+    mutationFn: () => createCreditTransfer({ from_zone: fromZone!, to_zone: toZone!, amount: Number(amount), notes: notes || undefined }),
+    onSuccess: (res) => {
+      setEmail(res.data.email);
+      notifications.show({ message: res.data.message, color: 'green', autoClose: 9000 });
+      onDone();
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not create request.', color: 'red' }),
+  });
+
+  const reset = () => { setFromZone(null); setToZone(null); setAmount(''); setNotes(''); setEmail(null); };
+  const close = () => { reset(); onClose(); };
+
+  const canSubmit = fromZone && toZone && fromZone !== toZone && Number(amount) > 0 && Number(amount) <= fromBalance;
+
+  return (
+    <Modal opened={opened} onClose={close} title="Request Zone Credit Transfer" centered>
+      {email ? (
+        <Stack gap="sm">
+          <Alert color="blue" variant="light">
+            Request logged as <b>pending</b>. TZNIC has no API for zone transfers — send them this email; the
+            balance updates after they process it, then click "Mark Done".
+          </Alert>
+          <Text size="sm" fw={600}>To: {email.to}</Text>
+          <Text size="sm" fw={600}>Subject: {email.subject}</Text>
+          <Paper withBorder p="xs" radius="sm" style={{ whiteSpace: 'pre-wrap', fontSize: 13 }}>{email.body}</Paper>
+          <Group justify="flex-end">
+            <CopyButton value={`${email.subject}\n\n${email.body}`}>
+              {({ copied, copy }) => (
+                <Button size="xs" variant="light" color={copied ? 'green' : 'blue'}
+                  leftSection={<IconCopy size={13} />} onClick={copy}>{copied ? 'Copied' : 'Copy email'}</Button>
+              )}
+            </CopyButton>
+            <Button size="xs" component="a"
+              href={`mailto:${email.to}?subject=${encodeURIComponent(email.subject)}&body=${encodeURIComponent(email.body)}`}>
+              Open in mail
+            </Button>
+            <Button size="xs" variant="default" onClick={close}>Done</Button>
+          </Group>
+        </Stack>
+      ) : (
+        <Stack gap="sm">
+          <Text size="xs" c="dimmed">
+            Moving credit between zones is a TZNIC-side action. This logs the request and generates the email to send them.
+          </Text>
+          <Group grow>
+            <Select label="From zone" placeholder="funded zone" data={funded.map((z) => ({ value: z.zone, label: `.${z.zone} (${z.credit.toLocaleString()})` }))}
+              value={fromZone} onChange={setFromZone} searchable />
+            <Select label="To zone" placeholder="zone" data={allZones.filter((z) => z !== fromZone).map((z) => ({ value: z, label: `.${z}` }))}
+              value={toZone} onChange={setToZone} searchable />
+          </Group>
+          <NumberInput label="Amount (TZS)" min={1} max={fromBalance || undefined} value={amount}
+            onChange={(v) => setAmount(v === '' ? '' : Number(v))}
+            description={fromZone ? `Available in .${fromZone}: ${fromBalance.toLocaleString()}` : undefined}
+            thousandSeparator="," />
+          <TextInput label="Notes (optional)" value={notes} onChange={(e) => setNotes(e.currentTarget.value)} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={close}>Cancel</Button>
+            <Button disabled={!canSubmit} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+              Create Request
+            </Button>
+          </Group>
+        </Stack>
+      )}
+    </Modal>
   );
 }

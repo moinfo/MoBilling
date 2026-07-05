@@ -112,9 +112,25 @@ export interface RegistrarCredit {
   total: number;
   funded_count: number;
   low: string[];
+  pending_transfers: CreditTransfer[];
   checked_at: string | null;
   error: string | null;
 }
+export interface CreditTransfer {
+  id: string; from_zone: string; to_zone: string; amount: number;
+  status?: string; reference?: string | null; notes?: string | null;
+  requested_by: string | null; created_at?: string; completed_at?: string | null;
+}
+export interface TransferEmail { to: string; subject: string; body: string }
+
+export const getCreditTransfers = () =>
+  api.get<{ data: CreditTransfer[] }>('/registrar-credit-transfers');
+export const createCreditTransfer = (data: { from_zone: string; to_zone: string; amount: number; notes?: string }) =>
+  api.post<{ data: CreditTransfer; email: TransferEmail; message: string }>('/registrar-credit-transfers', data);
+export const completeCreditTransfer = (id: string, reference?: string) =>
+  api.post<{ message: string }>(`/registrar-credit-transfers/${id}/complete`, { reference });
+export const cancelCreditTransfer = (id: string) =>
+  api.post<{ message: string }>(`/registrar-credit-transfers/${id}/cancel`);
 export const getRegistrarCredit = () =>
   api.get<{ data: RegistrarCredit }>('/domains/registrar-credit');
 
