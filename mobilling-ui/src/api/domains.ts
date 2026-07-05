@@ -32,8 +32,9 @@ export interface RegistrarAccountRow {
   name: string;
   driver: string;
   registrar_id: string | null;
-  endpoint_url: string | null;
-  has_token: boolean;
+  host: string | null;
+  has_cert: boolean;
+  has_key: boolean;
   is_active: boolean;
   is_sandbox: boolean;
   is_platform: boolean;
@@ -178,9 +179,13 @@ export const testRegistrarAccount = (id: string) =>
 
 export interface RegistrarAccountInput {
   name: string;
-  endpoint_url: string;
-  registrar_id?: string | null;
-  service_token?: string;
+  registrar_id: string;      // EPP username / handle, e.g. REG-MOINFOTECH
+  password?: string;
+  certificate?: string;      // PEM contents of the .crt
+  private_key?: string;      // PEM contents of the .key
+  host?: string;
+  port?: number;
+  is_sandbox?: boolean;
   is_active?: boolean;
 }
 export const createRegistrarAccount = (data: RegistrarAccountInput) =>

@@ -26,9 +26,10 @@ class RegistrarAccountController extends Controller
                 'name'         => $a->name,
                 'driver'       => $a->driver,
                 'registrar_id' => $a->registrar_id,
-                // endpoint is non-sensitive (the service token is never returned)
-                'endpoint_url' => is_null($a->tenant_id) ? null : $a->endpoint_url,
-                'has_token'    => !empty($a->credentials['service_token'] ?? null),
+                // credential material is never returned — only whether it's present
+                'host'         => is_null($a->tenant_id) ? null : ($a->credentials['host'] ?? null),
+                'has_cert'     => !empty($a->credentials['certificate'] ?? null),
+                'has_key'      => !empty($a->credentials['private_key'] ?? null),
                 'is_active'    => $a->is_active,
                 'is_sandbox'   => $a->is_sandbox,
                 'is_platform'  => is_null($a->tenant_id),
@@ -38,27 +39,50 @@ class RegistrarAccountController extends Controller
         return response()->json(['data' => $accounts]);
     }
 
+    // Validate the PEM material TCRA issues (MOINFOTECH.crt / MOINFOTECH.key).
+    private function credentialRules(bool $creating): array
+    {
+        $req = $creating ? 'required' : 'nullable';
+
+        return [
+            'name'         => ($creating ? 'required' : 'sometimes') . '|string|max:255',
+            'registrar_id' => ($creating ? 'required' : 'sometimes') . '|string|max:255', // EPP username/handle
+            'password'     => "$req|string",
+            'certificate'  => [$req, 'string', fn ($a, $v, $f) => $v && !str_contains($v, 'BEGIN CERTIFICATE') ? $f('That does not look like a PEM certificate (.crt).') : null],
+            'private_key'  => [$req, 'string', fn ($a, $v, $f) => $v && !str_contains($v, 'PRIVATE KEY') ? $f('That does not look like a PEM private key (.key).') : null],
+            'host'         => 'nullable|string|max:255',
+            'port'         => 'nullable|integer|min:1|max:65535',
+            'is_sandbox'   => 'boolean',
+            'is_active'    => 'boolean',
+        ];
+    }
+
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'name'          => 'required|string|max:255',
-            'endpoint_url'  => 'required|url',
-            'registrar_id'  => 'nullable|string|max:255',
-            'service_token' => 'required|string',
-            'is_active'     => 'boolean',
-        ]);
+        $data = $request->validate($this->credentialRules(true));
+
+        // MoBilling reaches the registry through the FRED-EPP bridge; tenants
+        // don't pick that — reuse the platform bridge, but with THEIR EPP creds.
+        $bridge = RegistrarAccount::whereNull('tenant_id')->value('endpoint_url');
 
         $account = RegistrarAccount::create([
             'tenant_id'    => auth()->user()->tenant_id,
             'name'         => $data['name'],
             'driver'       => 'fred_epp',
-            'endpoint_url' => $data['endpoint_url'],
-            'registrar_id' => $data['registrar_id'] ?? null,
-            'credentials'  => ['service_token' => $data['service_token']],
+            'endpoint_url' => $bridge,
+            'registrar_id' => $data['registrar_id'],
+            'credentials'  => [
+                'password'    => $data['password'],
+                'certificate' => $data['certificate'],
+                'private_key' => $data['private_key'],
+                'host'        => $data['host'] ?? 'mtanzania.tznic.or.tz',
+                'port'        => $data['port'] ?? 700,
+            ],
+            'is_sandbox'   => $data['is_sandbox'] ?? false,
             'is_active'    => $data['is_active'] ?? true,
         ]);
 
-        return response()->json(['data' => $account], 201);
+        return response()->json(['data' => ['id' => $account->id]], 201);
     }
 
     public function update(Request $request, RegistrarAccount $registrarAccount)
@@ -66,21 +90,31 @@ class RegistrarAccountController extends Controller
         // Tenants may only edit their own accreditation, never the platform row.
         abort_unless($registrarAccount->tenant_id === auth()->user()->tenant_id, 403);
 
-        $data = $request->validate([
-            'name'          => 'sometimes|string|max:255',
-            'endpoint_url'  => 'sometimes|url',
-            'registrar_id'  => 'nullable|string|max:255',
-            'service_token' => 'nullable|string',
-            'is_active'     => 'boolean',
-        ]);
+        $data = $request->validate($this->credentialRules(false));
 
-        if (!empty($data['service_token'])) {
-            $registrarAccount->credentials = ['service_token' => $data['service_token']];
+        // Merge secrets: only overwrite the ones actually re-supplied.
+        $creds = $registrarAccount->credentials ?? [];
+        foreach (['password', 'certificate', 'private_key'] as $k) {
+            if (!empty($data[$k])) {
+                $creds[$k] = $data[$k];
+            }
         }
-        unset($data['service_token']);
-        $registrarAccount->fill($data)->save();
+        if (array_key_exists('host', $data) && $data['host']) {
+            $creds['host'] = $data['host'];
+        }
+        if (array_key_exists('port', $data) && $data['port']) {
+            $creds['port'] = (int) $data['port'];
+        }
+        $registrarAccount->credentials = $creds;
 
-        return response()->json(['data' => $registrarAccount->fresh()]);
+        foreach (['name', 'registrar_id', 'is_sandbox', 'is_active'] as $k) {
+            if (array_key_exists($k, $data)) {
+                $registrarAccount->{$k} = $data[$k];
+            }
+        }
+        $registrarAccount->save();
+
+        return response()->json(['data' => ['id' => $registrarAccount->id]]);
     }
 
     public function destroy(RegistrarAccount $registrarAccount)
@@ -100,6 +134,24 @@ class RegistrarAccountController extends Controller
     {
         $tenantId = auth()->user()->tenant_id;
         abort_unless(is_null($registrarAccount->tenant_id) || $registrarAccount->tenant_id === $tenantId, 403);
+
+        // The shared FRED-EPP bridge authenticates to the registry with the
+        // PLATFORM certificate. Testing a tenant's own accreditation requires
+        // the bridge to connect under that tenant's cert/handle — not wired
+        // yet — so don't report platform credit as if it were theirs.
+        if (!is_null($registrarAccount->tenant_id)) {
+            $ready = !empty($registrarAccount->credentials['certificate'] ?? null)
+                && !empty($registrarAccount->credentials['private_key'] ?? null)
+                && !empty($registrarAccount->credentials['password'] ?? null);
+
+            return response()->json([
+                'ok'      => false,
+                'pending' => true,
+                'message' => $ready
+                    ? 'Credentials stored. Live connection under your own certificate is not activated yet — contact support to enable it.'
+                    : 'Missing credentials — add your handle, password, certificate (.crt) and key (.key).',
+            ], 200);
+        }
 
         try {
             $credits = (new FredHttpDriver($registrarAccount))->credit();

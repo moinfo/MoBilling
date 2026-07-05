@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Stack, Group, Button, Table, Badge, ActionIcon, Tooltip, Modal, TextInput,
-  NumberInput, Switch, Text, Paper, Loader, Center, Alert,
+  NumberInput, Switch, Text, Paper, Loader, Center, Alert, PasswordInput, FileInput, Grid,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -38,7 +38,12 @@ function RegistrarAccountsSection() {
     setTestingId(a.id);
     setCredits(null);
     try {
-      const res = await testRegistrarAccount(a.id);
+      const res: any = await testRegistrarAccount(a.id);
+      if (res.data.ok === false) {
+        // tenant accreditation stored but not yet activated on the bridge
+        notifications.show({ message: res.data.message ?? 'Not connected.', color: res.data.pending ? 'yellow' : 'red' });
+        return;
+      }
       setCredits({ id: a.id, rows: res.data.credits });
       notifications.show({ message: 'Registry connection OK.', color: 'green' });
     } catch (e: any) {
@@ -171,50 +176,107 @@ function RegistrarAccountModal({ account, onClose, onSaved }: {
   onSaved: () => void;
 }) {
   const isEdit = !!account;
+  const [certText, setCertText] = useState<string | null>(null);
+  const [keyText, setKeyText] = useState<string | null>(null);
+
   const form = useForm({
     initialValues: {
       name: account?.name ?? '',
-      endpoint_url: account?.endpoint_url ?? '',
       registrar_id: account?.registrar_id ?? '',
-      service_token: '',
+      password: '',
+      host: account?.host ?? 'mtanzania.tznic.or.tz',
+      port: 700,
+      is_sandbox: account?.is_sandbox ?? false,
       is_active: account?.is_active ?? true,
     },
     validate: {
       name: (v) => (v.trim() ? null : 'Required'),
-      endpoint_url: (v) => (/^https?:\/\//.test(v) ? null : 'Enter a valid URL (https://…)'),
-      service_token: (v) => (isEdit || v.trim() ? null : 'Required to connect'),
+      registrar_id: (v) => (v.trim() ? null : 'Your registrar handle is required'),
+      password: (v) => (isEdit || v.trim() ? null : 'Required to connect'),
     },
   });
+
+  // TCRA issues .crt/.key as PEM files — read their text and send as strings.
+  const readFile = async (file: File | null, set: (v: string | null) => void) => {
+    if (!file) { set(null); return; }
+    set(await file.text());
+  };
 
   const mutation = useMutation({
     mutationFn: (v: typeof form.values) => {
-      const payload: any = { name: v.name, endpoint_url: v.endpoint_url, registrar_id: v.registrar_id || null, is_active: v.is_active };
-      if (v.service_token.trim()) payload.service_token = v.service_token.trim();
+      const payload: any = {
+        name: v.name, registrar_id: v.registrar_id.trim(),
+        host: v.host, port: v.port, is_sandbox: v.is_sandbox, is_active: v.is_active,
+      };
+      if (v.password.trim()) payload.password = v.password;
+      if (certText) payload.certificate = certText;
+      if (keyText) payload.private_key = keyText;
       return isEdit ? updateRegistrarAccount(account!.id, payload) : createRegistrarAccount(payload);
     },
     onSuccess: () => { notifications.show({ message: isEdit ? 'Registrar account updated.' : 'Registrar connected.', color: 'green' }); onSaved(); },
-    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not save.', color: 'red' }),
+    onError: (e: any) => {
+      const errs = e?.response?.data?.errors;
+      const first = errs ? (Object.values(errs)[0] as string[])[0] : e?.response?.data?.message;
+      notifications.show({ message: first ?? 'Could not save.', color: 'red' });
+    },
   });
 
+  const submit = () => {
+    if (!isEdit && (!certText || !keyText)) {
+      notifications.show({ message: 'Upload both your certificate (.crt) and private key (.key).', color: 'red' });
+      return;
+    }
+    form.onSubmit((v) => mutation.mutate(v))();
+  };
+
   return (
-    <Modal opened onClose={onClose} title={isEdit ? 'Edit registrar account' : 'Connect my registrar'} centered>
-      <form onSubmit={form.onSubmit((v) => mutation.mutate(v))}>
-        <Stack gap="sm">
-          <TextInput label="Display name" placeholder="My TZNIC accreditation" required {...form.getInputProps('name')} />
-          <TextInput label="Service endpoint URL" placeholder="https://registry-bridge.example.co.tz"
-            description="The FRED-EPP bridge that holds your registry credentials" required {...form.getInputProps('endpoint_url')} />
-          <TextInput label="Registrar handle / ID" placeholder="REG-YOURNAME" {...form.getInputProps('registrar_id')} />
-          <TextInput label={isEdit ? 'Service token (leave blank to keep current)' : 'Service token'}
-            placeholder={isEdit && account?.has_token ? '•••••• (unchanged)' : 'Paste your service token'}
-            description="Stored encrypted; never shown again after saving"
-            required={!isEdit} {...form.getInputProps('service_token')} />
+    <Modal opened onClose={onClose} title={isEdit ? 'Edit registrar account' : 'Connect my registrar'} centered size="lg">
+      <Stack gap="sm">
+        <Alert color="blue" variant="light">
+          Enter the EPP credentials TCRA issued to your accreditation — your handle, password, and the
+          <b> .crt</b> certificate and <b> .key</b> private-key files.
+        </Alert>
+        <TextInput label="Display name" placeholder="My TZNIC accreditation" required {...form.getInputProps('name')} />
+        <Grid>
+          <Grid.Col span={{ base: 12, sm: 6 }}>
+            <TextInput label="Registrar handle (username)" placeholder="REG-YOURNAME" required {...form.getInputProps('registrar_id')} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 6 }}>
+            <PasswordInput label={isEdit ? 'Password (blank = unchanged)' : 'Password'}
+              placeholder={isEdit ? '•••••• (unchanged)' : 'EPP password'} required={!isEdit}
+              {...form.getInputProps('password')} />
+          </Grid.Col>
+        </Grid>
+        <Grid>
+          <Grid.Col span={{ base: 12, sm: 6 }}>
+            <FileInput label="Certificate (.crt)" placeholder={isEdit && account?.has_cert ? 'Stored — pick to replace' : 'MOINFOTECH.crt'}
+              accept=".crt,.pem,.cer" clearable
+              onChange={(f) => readFile(f, setCertText)} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 6 }}>
+            <FileInput label="Private key (.key)" placeholder={isEdit && account?.has_key ? 'Stored — pick to replace' : 'MOINFOTECH.key'}
+              accept=".key,.pem" clearable
+              onChange={(f) => readFile(f, setKeyText)} />
+          </Grid.Col>
+        </Grid>
+        <Grid>
+          <Grid.Col span={{ base: 12, sm: 8 }}>
+            <TextInput label="EPP host" {...form.getInputProps('host')} />
+          </Grid.Col>
+          <Grid.Col span={{ base: 12, sm: 4 }}>
+            <NumberInput label="Port" {...form.getInputProps('port')} />
+          </Grid.Col>
+        </Grid>
+        <Group>
+          <Switch label="Sandbox / test registry" {...form.getInputProps('is_sandbox', { type: 'checkbox' })} />
           <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
-          <Group justify="flex-end" mt="xs">
-            <Button variant="default" onClick={onClose}>Cancel</Button>
-            <Button type="submit" loading={mutation.isPending}>{isEdit ? 'Save' : 'Connect'}</Button>
-          </Group>
-        </Stack>
-      </form>
+        </Group>
+        <Text size="xs" c="dimmed">Certificate, key and password are stored encrypted and never shown again.</Text>
+        <Group justify="flex-end" mt="xs">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button loading={mutation.isPending} onClick={submit}>{isEdit ? 'Save' : 'Connect'}</Button>
+        </Group>
+      </Stack>
     </Modal>
   );
 }
