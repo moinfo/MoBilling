@@ -7,6 +7,8 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
+import { DateInput } from '@mantine/dates';
+import dayjs from 'dayjs';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconLock, IconLockOpen, IconExternalLink, IconChevronDown,
@@ -366,7 +368,9 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
 
         <Grid.Col span={{ base: 12, md: 6 }}>
           <Row label="Registration Date">
-            <TextInput size="xs" type="date" value={form.start_date ?? ''} onChange={(e) => set('start_date', e.currentTarget.value)} />
+            <DateInput size="xs" valueFormat="DD/MM/YYYY" clearable placeholder="dd/mm/yyyy"
+              value={form.start_date ?? null}
+              onChange={(v) => set('start_date', v ? dayjs(v).format('YYYY-MM-DD') : null)} />
           </Row>
           <Row label="Quantity" alt>
             <NumberInput size="xs" min={1} value={form.quantity ?? 1} onChange={(v) => set('quantity', Number(v) || 1)} />
@@ -387,10 +391,14 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
             </Group>
           </Row>
           <Row label="Next Due Date">
-            <TextInput size="xs" type="date" value={form.next_due_date ?? ''} onChange={(e) => set('next_due_date', e.currentTarget.value)} />
+            <DateInput size="xs" valueFormat="DD/MM/YYYY" clearable placeholder="dd/mm/yyyy"
+              value={form.next_due_date ?? null}
+              onChange={(v) => set('next_due_date', v ? dayjs(v).format('YYYY-MM-DD') : null)} />
           </Row>
           <Row label="Termination Date" alt>
-            <TextInput size="xs" type="date" value={form.termination_date ?? ''} onChange={(e) => set('termination_date', e.currentTarget.value)} />
+            <DateInput size="xs" valueFormat="DD/MM/YYYY" clearable placeholder="dd/mm/yyyy"
+              value={form.termination_date ?? null}
+              onChange={(v) => set('termination_date', v ? dayjs(v).format('YYYY-MM-DD') : null)} />
           </Row>
           <Row label="Billing Cycle">
             <Text size="xs" c="dimmed">{form.billing_cycle ?? '—'} <Text span size="xs" c="dimmed">(from product)</Text></Text>
