@@ -1,5 +1,14 @@
-import { Title, Stack, SimpleGrid, LoadingOverlay, Group, Loader } from '@mantine/core';
+import { Title, Stack, SimpleGrid, LoadingOverlay, Group, Loader, Text } from '@mantine/core';
 import { MonthPickerInput } from '@mantine/dates';
+import classes from '../components/Dashboard/Dashboard.module.css';
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className={classes.sectionLabel}>
+      <Text fw={700} size="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.5 }}>{children}</Text>
+    </div>
+  );
+}
 import { useState } from 'react';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getDashboardSummary } from '../api/dashboard';
@@ -37,13 +46,16 @@ export default function Dashboard() {
   const summary = data?.data;
 
   return (
-    <Stack pos="relative">
+    <Stack pos="relative" gap="lg">
       <LoadingOverlay visible={isFetching && !summary} />
-      <Group justify="space-between" align="center">
-        <Group gap="sm">
-          <Title order={2}>Dashboard</Title>
-          {isFetching && !!summary && <Loader size="xs" />}
-        </Group>
+      <Group justify="space-between" align="flex-start" wrap="wrap">
+        <div>
+          <Group gap="sm" align="center">
+            <Title order={2}>Dashboard</Title>
+            {isFetching && !!summary && <Loader size="xs" />}
+          </Group>
+          <Text size="sm" c="dimmed" mt={2}>Business overview for {periodLabel}</Text>
+        </div>
         {can('dashboard.month_filter') && (
           <MonthPickerInput
             value={selectedMonth}
@@ -84,6 +96,11 @@ export default function Dashboard() {
 
           {summary.hosting_domains && <HostingDomains data={summary.hosting_domains} />}
 
+          {(can('dashboard.revenue_chart') || can('dashboard.activity_calendar')
+            || can('dashboard.invoice_status_chart') || can('dashboard.payment_method_chart')) && (
+            <SectionLabel>Performance & Insights</SectionLabel>
+          )}
+
           {(can('dashboard.revenue_chart') || can('dashboard.activity_calendar')) && (
             <SimpleGrid cols={{ base: 1, md: 2 }}>
               {can('dashboard.revenue_chart') && <RevenueChart data={summary.monthly_revenue} />}
@@ -105,6 +122,11 @@ export default function Dashboard() {
             </SimpleGrid>
           )}
 
+          {(can('dashboard.recent_invoices') || can('dashboard.upcoming_bills')
+            || can('dashboard.urgent_obligations') || can('dashboard.upcoming_renewals')) && (
+            <SectionLabel>Recent Activity</SectionLabel>
+          )}
+
           {(can('dashboard.recent_invoices') || can('dashboard.upcoming_bills')) && (
             <SimpleGrid cols={{ base: 1, md: 2 }}>
               {can('dashboard.recent_invoices') && <RecentInvoices invoices={summary.recent_invoices} />}
@@ -117,6 +139,10 @@ export default function Dashboard() {
               {can('dashboard.urgent_obligations') && <UrgentObligations obligations={summary.urgent_obligations || []} />}
               {can('dashboard.upcoming_renewals') && <UpcomingRenewals data={summary.upcoming_renewals} />}
             </SimpleGrid>
+          )}
+
+          {(can('dashboard.system_records_breakdown') || can('dashboard.bank_account_breakdown')) && summary.system_records && (
+            <SectionLabel>Records</SectionLabel>
           )}
 
           {(can('dashboard.system_records_breakdown') || can('dashboard.bank_account_breakdown')) && summary.system_records && (

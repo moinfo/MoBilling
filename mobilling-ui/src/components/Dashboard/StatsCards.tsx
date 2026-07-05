@@ -1,7 +1,8 @@
-import { SimpleGrid, Card, Text, Group } from '@mantine/core';
+import { SimpleGrid, Card, Text, Group, ThemeIcon } from '@mantine/core';
 import { IconCash, IconReceipt, IconAlertTriangle, IconUsers, IconFileText, IconMessage, IconCalendarDue, IconWallet, IconBrandWhatsapp, IconMapPin } from '@tabler/icons-react';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { usePermissions } from '../../hooks/usePermissions';
+import classes from './Dashboard.module.css';
 
 interface Props {
   totalExpenses: number;
@@ -43,15 +44,21 @@ export default function StatsCards(props: Props) {
   const visibleCards = cards.filter((card) => can(card.permission));
 
   return (
-    <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }}>
+    <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} spacing="md">
       {visibleCards.map((card) => (
-        <Card key={card.title} withBorder padding="md" radius="md">
-          <Group justify="space-between" wrap="nowrap" gap="xs">
+        <Card key={card.title} withBorder padding="md" radius="md" shadow="xs"
+          className={classes.statCard}
+          style={{ ['--stat-accent' as string]: `var(--mantine-color-${card.color}-6)` }}>
+          <Group justify="space-between" wrap="nowrap" gap="sm" align="flex-start">
             <div style={{ minWidth: 0 }}>
               <Text size="xs" c="dimmed" tt="uppercase" fw={700} truncate>{card.title}</Text>
-              <Text fw={700} size="lg" mt={4} truncate>{card.value}</Text>
+              <Text fw={800} mt={6} lh={1.1} truncate style={{ fontSize: 'clamp(1.2rem, 2.2vw, 1.55rem)' }}>
+                {card.value}
+              </Text>
             </div>
-            <card.icon size={24} color={`var(--mantine-color-${card.color}-6)`} style={{ flexShrink: 0 }} />
+            <ThemeIcon variant="light" color={card.color} size={44} radius="md" style={{ flexShrink: 0 }}>
+              <card.icon size={23} />
+            </ThemeIcon>
           </Group>
         </Card>
       ))}

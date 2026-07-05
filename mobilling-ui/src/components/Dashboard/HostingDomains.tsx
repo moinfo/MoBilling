@@ -5,18 +5,20 @@ import {
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import type { HostingDomainsSummary } from '../../api/dashboard';
+import classes from './Dashboard.module.css';
 
 function Stat({ icon, color, label, value, hint, onClick }: {
   icon: React.ReactNode; color: string; label: string;
   value: number | string; hint?: string; onClick?: () => void;
 }) {
   return (
-    <Card withBorder padding="sm" radius="md"
-      style={{ cursor: onClick ? 'pointer' : undefined }} onClick={onClick}>
+    <Card withBorder padding="sm" radius="md" shadow="xs" className={classes.statCard}
+      style={{ cursor: onClick ? 'pointer' : undefined, ['--stat-accent' as string]: `var(--mantine-color-${color}-6)` }}
+      onClick={onClick}>
       <Group gap="sm" wrap="nowrap">
-        <ThemeIcon variant="light" color={color} size={40} radius="md">{icon}</ThemeIcon>
+        <ThemeIcon variant="light" color={color} size={42} radius="md">{icon}</ThemeIcon>
         <div style={{ minWidth: 0 }}>
-          <Text size="xl" fw={700} lh={1.15} truncate>{value}</Text>
+          <Text size="xl" fw={800} lh={1.15} truncate>{value}</Text>
           <Text size="xs" c="dimmed" truncate>{label}</Text>
           {hint && <Text size="xs" c={color} truncate>{hint}</Text>}
         </div>
@@ -32,7 +34,9 @@ export default function HostingDomains({ data }: { data: HostingDomainsSummary }
 
   return (
     <Box>
-      <Text fw={600} mb="xs">Hosting & Domains</Text>
+      <div className={classes.sectionLabel} style={{ marginBottom: 12 }}>
+        <Text fw={700} size="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.5 }}>Hosting &amp; Domains</Text>
+      </div>
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 6 }} spacing="sm" mb="md">
         {data.can.hosting && data.hosting && (
           <>
