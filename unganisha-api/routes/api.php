@@ -430,7 +430,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/followups/dashboard', [FollowupController::class, 'dashboard']);
         Route::get('/followups', [FollowupController::class, 'index']);
         Route::post('/followups', [FollowupController::class, 'store']);
-        Route::post('/followups/{followup}/log-call', [FollowupController::class, 'logCall']);
+        Route::post('/followups/{followup}/log-call', [FollowupController::class, 'logCall'])->middleware('permission:field_visits.log');
         Route::patch('/followups/{followup}/cancel', [FollowupController::class, 'cancel']);
         Route::get('/followups/client/{clientId}', [FollowupController::class, 'clientHistory']);
     });
@@ -472,9 +472,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::middleware('permission:reports.communication')->get('/communication-log', [ReportController::class, 'communicationLog']);
     });
 
-    // Broadcasts
-    Route::get('/broadcasts', [BroadcastController::class, 'index']);
-    Route::post('/broadcasts', [BroadcastController::class, 'send']);
+    // Broadcasts (mass email/SMS to all clients — gated: was open to any user)
+    Route::middleware('permission:menu.broadcast')->group(function () {
+        Route::get('/broadcasts', [BroadcastController::class, 'index']);
+        Route::post('/broadcasts', [BroadcastController::class, 'send']);
+    });
 
     // WhatsApp Campaigns
     Route::middleware('permission:whatsapp_campaigns.read')->get('/whatsapp-campaigns', [\App\Http\Controllers\WhatsappCampaignController::class, 'index']);
@@ -703,13 +705,14 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // SMS (tenant)
     Route::get('/sms/packages', [SmsPurchaseController::class, 'packages']);
     Route::get('/sms/balance', [SmsPurchaseController::class, 'balance']);
-    Route::post('/sms/checkout', [SmsPurchaseController::class, 'checkout']);
+    // Spend actions (buy credit / retry payment / request activation) — gated
+    Route::post('/sms/checkout', [SmsPurchaseController::class, 'checkout'])->middleware('permission:menu.sms');
     Route::get('/sms/purchases/{smsPurchase}/status', [SmsPurchaseController::class, 'checkStatus']);
     Route::get('/sms/purchases', [SmsPurchaseController::class, 'history']);
-    Route::post('/sms/purchases/{smsPurchase}/retry', [SmsPurchaseController::class, 'retryPayment']);
+    Route::post('/sms/purchases/{smsPurchase}/retry', [SmsPurchaseController::class, 'retryPayment'])->middleware('permission:menu.sms');
     Route::get('/sms/purchases/{smsPurchase}/receipt', [SmsPurchaseController::class, 'downloadReceipt']);
     Route::get('/sms/purchases/{smsPurchase}/invoice', [SmsPurchaseController::class, 'downloadInvoice']);
-    Route::post('/sms/request-activation', [SmsPurchaseController::class, 'requestActivation']);
+    Route::post('/sms/request-activation', [SmsPurchaseController::class, 'requestActivation'])->middleware('permission:menu.sms');
 });
 
 // Client Portal routes
