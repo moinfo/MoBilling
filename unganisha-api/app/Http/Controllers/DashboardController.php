@@ -457,9 +457,9 @@ class DashboardController extends Controller
 
         // ── Hosting & Domains (permission-gated; only compute what's shown) ──
         $user = auth()->user();
-        $canHosting = $user->hasPermission('menu.hosting');
-        $canDomains = $user->hasPermission('menu.domains');
-        $canTickets = $user->hasPermission('menu.tickets');
+        $canHosting = $user->hasPermission('dashboard.hosting');
+        $canDomains = $user->hasPermission('dashboard.domains');
+        $canTickets = $user->hasPermission('dashboard.tickets');
 
         $hostingDomains = null;
         if ($canHosting || $canDomains) {
