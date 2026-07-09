@@ -15,6 +15,8 @@ import {
   getRoles, createRole, updateRole, deleteRole, getAvailablePermissions,
   Role, RoleFormData, GroupedPermissions, Permission,
 } from '../api/roles';
+import { usePermissions } from '../hooks/usePermissions';
+import { IconLock } from '@tabler/icons-react';
 
 type View = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; role: Role };
 
@@ -68,17 +70,21 @@ function sortPerms(perms: Permission[], groupName: string, category: string): Pe
 
 export default function Roles() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('settings.users');
   const [view, setView] = useState<View>({ mode: 'list' });
   const [deleteTarget, setDeleteTarget] = useState<Role | null>(null);
 
   const { data: rolesData } = useQuery({
     queryKey: ['roles'],
     queryFn: () => getRoles(),
+    enabled: canManage,
   });
 
   const { data: permsData } = useQuery({
     queryKey: ['available-permissions'],
     queryFn: () => getAvailablePermissions(),
+    enabled: canManage,
   });
 
   const roles: Role[] = rolesData?.data?.data || [];
@@ -101,6 +107,15 @@ export default function Roles() {
   });
 
   const goBack = () => setView({ mode: 'list' });
+
+  // Direct-URL guard: the whole roles editor needs the settings.users capability.
+  if (!canManage) {
+    return (
+      <Alert color="red" variant="light" icon={<IconLock size={18} />} title="Access denied" maw={520}>
+        You don’t have permission to manage roles. This requires the “Manage Users &amp; Roles” permission.
+      </Alert>
+    );
+  }
 
   // ─── List View ───
   if (view.mode === 'list') {

@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'tenant' => \App\Http\Middleware\TenantMiddleware::class,
             'permission' => \App\Http\Middleware\CheckPermission::class,
             'client_portal' => \App\Http\Middleware\ClientPortalMiddleware::class,
+            'super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

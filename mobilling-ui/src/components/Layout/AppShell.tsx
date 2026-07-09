@@ -441,12 +441,14 @@ export default function AppLayout() {
               active={isActive('/automation')} onClick={() => navigateAndClose('/automation')} />
           )}
 
-          {can('menu.users') && (
+          {/* Team & Roles pages both require settings.users — only show the nav
+              when the user can actually use the page (was: menu.* only → 403). */}
+          {can('menu.users') && can('settings.users') && (
             <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
               active={isActive('/users')} onClick={() => navigateAndClose('/users')} />
           )}
 
-          {can('menu.roles') && (
+          {can('menu.roles') && can('settings.users') && (
             <NavLink label="Roles" leftSection={<IconShieldLock size={18} />}
               active={isActive('/roles')} onClick={() => navigateAndClose('/roles')} />
           )}

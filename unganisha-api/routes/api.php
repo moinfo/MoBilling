@@ -118,7 +118,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 });
 
 // Super Admin routes (no tenant middleware)
-Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'super_admin'])->prefix('admin')->group(function () {
     Route::get('/dashboard', [AdminDashboardController::class, 'summary']);
     Route::apiResource('tenants', TenantController::class)->except(['destroy']);
     Route::patch('/tenants/{tenant}/toggle-active', [TenantController::class, 'toggleActive']);

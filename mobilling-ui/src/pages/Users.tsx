@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Pagination } from '@mantine/core';
+import { Title, Group, Button, TextInput, Modal, Pagination, Alert } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconLock } from '@tabler/icons-react';
 import { getUsers, createUser, updateUser, toggleUserActive, TenantUser, UserFormData } from '../api/users';
 import { impersonateUser, impersonateUserAsTenantAdmin } from '../api/admin';
 import UserTable from '../components/Settings/UserTable';
@@ -27,6 +27,7 @@ export default function Users() {
   const { data } = useQuery({
     queryKey: ['users', debouncedSearch, page],
     queryFn: () => getUsers({ search: debouncedSearch || undefined, page }),
+    enabled: canManageUsers,
   });
 
   const users = data?.data?.data || [];
@@ -107,6 +108,14 @@ export default function Users() {
       createMutation.mutate(values);
     }
   };
+
+  if (!canManageUsers) {
+    return (
+      <Alert color="red" variant="light" icon={<IconLock size={18} />} title="Access denied" maw={520}>
+        You don’t have permission to manage team members. This requires the “Manage Users &amp; Roles” permission.
+      </Alert>
+    );
+  }
 
   return (
     <>
