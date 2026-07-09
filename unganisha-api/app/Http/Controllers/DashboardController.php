@@ -24,67 +24,71 @@ class DashboardController extends Controller
 {
     public function summary(Request $request)
     {
-        $tenantId = auth()->user()->tenant_id;
+        $user = auth()->user();
+        $tenantId = $user->tenant_id;
+        // Each dashboard metric is gated by its own dashboard.* permission —
+        // withheld data is neither computed nor returned (not just hidden in UI).
+        $can = fn (string $p) => $user->hasPermission($p);
 
         $month = (int) $request->query('month', now()->month);
         $year  = (int) $request->query('year', now()->year);
         $periodStart = Carbon::createFromDate($year, $month, 1)->startOfMonth();
         $periodEnd   = $periodStart->copy()->endOfMonth();
 
-        // Invoice stats scoped to selected month
-        $invoices = Document::where('type', 'invoice')
-            ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()]);
-        $totalReceivable = (clone $invoices)->sum('total');
-        $totalReceived = PaymentIn::whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])->sum('amount');
-        $overdueInvoices = Document::where('type', 'invoice')
-            ->where('status', '!=', 'paid')
-            ->whereNotNull('due_date')
-            ->where('due_date', '<', now())
-            ->count();
+        // Invoice money stats (only if any of the three money cards is allowed)
+        $totalReceivable = 0.0;
+        $totalReceived = 0.0;
+        if ($can('dashboard.total_receivable') || $can('dashboard.total_received') || $can('dashboard.outstanding')) {
+            $totalReceivable = (float) Document::where('type', 'invoice')
+                ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])->sum('total');
+            $totalReceived = (float) PaymentIn::whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])->sum('amount');
+        }
+        $overdueInvoices = $can('dashboard.overdue_invoices')
+            ? Document::where('type', 'invoice')->where('status', '!=', 'paid')
+                ->whereNotNull('due_date')->where('due_date', '<', now())->count()
+            : null;
 
         // Recent invoices
-        $recentInvoices = Document::with(['client', 'items:id,document_id,description'])
-            ->where('type', 'invoice')
-            ->orderByDesc('created_at')
-            ->limit(5)
-            ->get()
-            ->map(fn ($doc) => [
-                'id' => $doc->id,
-                'document_number' => $doc->document_number,
-                'description' => $doc->items->first()?->description ?? $doc->notes,
-                'client_name' => $doc->client?->name,
-                'total' => $doc->total,
-                'status' => $doc->status,
-                'date' => $doc->date?->format('Y-m-d'),
-            ]);
+        $recentInvoices = $can('dashboard.recent_invoices')
+            ? Document::with(['client', 'items:id,document_id,description'])
+                ->where('type', 'invoice')->orderByDesc('created_at')->limit(5)->get()
+                ->map(fn ($doc) => [
+                    'id' => $doc->id,
+                    'document_number' => $doc->document_number,
+                    'description' => $doc->items->first()?->description ?? $doc->notes,
+                    'client_name' => $doc->client?->name,
+                    'total' => $doc->total,
+                    'status' => $doc->status,
+                    'date' => $doc->date?->format('Y-m-d'),
+                ])
+            : [];
 
         // Upcoming bills
-        $upcomingBills = Bill::where('is_active', true)
-            ->where('due_date', '>=', now()->toDateString())
-            ->orderBy('due_date')
-            ->limit(5)
-            ->get()
-            ->map(fn ($bill) => [
-                'id' => $bill->id,
-                'name' => $bill->name,
-                'amount' => $bill->amount,
-                'due_date' => $bill->due_date?->format('Y-m-d'),
-                'category' => $bill->category,
-            ]);
+        $upcomingBills = $can('dashboard.upcoming_bills')
+            ? Bill::where('is_active', true)->where('due_date', '>=', now()->toDateString())
+                ->orderBy('due_date')->limit(5)->get()
+                ->map(fn ($bill) => [
+                    'id' => $bill->id,
+                    'name' => $bill->name,
+                    'amount' => $bill->amount,
+                    'due_date' => $bill->due_date?->format('Y-m-d'),
+                    'category' => $bill->category,
+                ])
+            : [];
 
         // Overdue bills
-        $overdueBills = Bill::where('is_active', true)
-            ->where('due_date', '<', now()->toDateString())
-            ->count();
+        $overdueBills = $can('dashboard.overdue_bills')
+            ? Bill::where('is_active', true)->where('due_date', '<', now()->toDateString())->count()
+            : null;
 
         // Counts
-        $totalClients = Client::count();
-        $totalDocuments = Document::count();
+        $totalClients = $can('dashboard.total_clients') ? Client::count() : null;
+        $totalDocuments = $can('dashboard.total_documents') ? Document::count() : null;
 
-        // SMS balance
+        // SMS balance (skip the live reseller call entirely if not permitted)
         $smsBalance = null;
-        $tenant = auth()->user()->tenant;
-        if ($tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
+        $tenant = $user->tenant;
+        if ($can('dashboard.sms_balance') && $tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
             try {
                 $reseller = new ResellerService();
                 $balanceResult = $reseller->getBalance($tenant);
@@ -97,79 +101,75 @@ class DashboardController extends Controller
         // --- Chart data ---
 
         // Monthly revenue (last 6 months): invoiced vs collected
-        $sixMonthsAgo = Carbon::now()->subMonths(5)->startOfMonth();
-        $monthlyInvoiced = Document::where('type', 'invoice')
-            ->where('date', '>=', $sixMonthsAgo)
-            ->selectRaw("DATE_FORMAT(date, '%Y-%m') as month, SUM(total) as invoiced")
-            ->groupBy('month')
-            ->pluck('invoiced', 'month');
-
-        $monthlyCollected = PaymentIn::where('payment_date', '>=', $sixMonthsAgo)
-            ->selectRaw("DATE_FORMAT(payment_date, '%Y-%m') as month, SUM(amount) as collected")
-            ->groupBy('month')
-            ->pluck('collected', 'month');
-
         $monthlyRevenue = collect();
-        for ($i = 5; $i >= 0; $i--) {
-            $date = Carbon::now()->subMonths($i);
-            $key = $date->format('Y-m');
-            $monthlyRevenue->push([
-                'month' => $date->format('M'),
-                'invoiced' => round((float) ($monthlyInvoiced[$key] ?? 0), 2),
-                'collected' => round((float) ($monthlyCollected[$key] ?? 0), 2),
-            ]);
+        if ($can('dashboard.revenue_chart')) {
+            $sixMonthsAgo = Carbon::now()->subMonths(5)->startOfMonth();
+            $monthlyInvoiced = Document::where('type', 'invoice')
+                ->where('date', '>=', $sixMonthsAgo)
+                ->selectRaw("DATE_FORMAT(date, '%Y-%m') as month, SUM(total) as invoiced")
+                ->groupBy('month')
+                ->pluck('invoiced', 'month');
+
+            $monthlyCollected = PaymentIn::where('payment_date', '>=', $sixMonthsAgo)
+                ->selectRaw("DATE_FORMAT(payment_date, '%Y-%m') as month, SUM(amount) as collected")
+                ->groupBy('month')
+                ->pluck('collected', 'month');
+
+            for ($i = 5; $i >= 0; $i--) {
+                $date = Carbon::now()->subMonths($i);
+                $key = $date->format('Y-m');
+                $monthlyRevenue->push([
+                    'month' => $date->format('M'),
+                    'invoiced' => round((float) ($monthlyInvoiced[$key] ?? 0), 2),
+                    'collected' => round((float) ($monthlyCollected[$key] ?? 0), 2),
+                ]);
+            }
         }
 
         // Invoice status breakdown for selected month
-        $invoiceStatusBreakdown = Document::where('type', 'invoice')
-            ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-            ->selectRaw('status, COUNT(*) as count')
-            ->groupBy('status')
-            ->get()
-            ->map(fn ($row) => ['status' => $row->status, 'count' => (int) $row->count]);
+        $invoiceStatusBreakdown = $can('dashboard.invoice_status_chart')
+            ? Document::where('type', 'invoice')
+                ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->selectRaw('status, COUNT(*) as count')->groupBy('status')->get()
+                ->map(fn ($row) => ['status' => $row->status, 'count' => (int) $row->count])
+            : [];
 
         // Payment method breakdown for selected month
-        $paymentMethodBreakdown = PaymentIn::whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-            ->selectRaw('payment_method, SUM(amount) as amount')
-            ->groupBy('payment_method')
-            ->get()
-            ->map(fn ($row) => [
-                'method' => $row->payment_method,
-                'amount' => round((float) $row->amount, 2),
-            ]);
+        $paymentMethodBreakdown = $can('dashboard.payment_method_chart')
+            ? PaymentIn::whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->selectRaw('payment_method, SUM(amount) as amount')->groupBy('payment_method')->get()
+                ->map(fn ($row) => ['method' => $row->payment_method, 'amount' => round((float) $row->amount, 2)])
+            : [];
 
         // Top 5 clients by invoiced amount
-        $topClients = Document::with('client')
-            ->where('type', 'invoice')
-            ->selectRaw('client_id, SUM(total) as total')
-            ->groupBy('client_id')
-            ->orderByDesc('total')
-            ->limit(5)
-            ->get()
-            ->map(function ($row) {
-                // payments_in links to clients through documents
-                $paid = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $row->client_id))
-                    ->sum('amount');
-                return [
-                    'name' => $row->client?->name ?? 'Unknown',
-                    'total' => round((float) $row->total, 2),
-                    'paid' => round((float) $paid, 2),
-                ];
-            });
+        $topClients = $can('dashboard.top_clients')
+            ? Document::with('client')->where('type', 'invoice')
+                ->selectRaw('client_id, SUM(total) as total')->groupBy('client_id')
+                ->orderByDesc('total')->limit(5)->get()
+                ->map(function ($row) {
+                    $paid = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $row->client_id))->sum('amount');
+                    return [
+                        'name' => $row->client?->name ?? 'Unknown',
+                        'total' => round((float) $row->total, 2),
+                        'paid' => round((float) $paid, 2),
+                    ];
+                })
+            : [];
 
         // Subscription stats
-        $subscriptionCounts = ClientSubscription::selectRaw('status, COUNT(*) as count')
-            ->groupBy('status')
-            ->pluck('count', 'status');
-
-        $subscriptionStats = [
-            'active' => (int) ($subscriptionCounts['active'] ?? 0),
-            'pending' => (int) ($subscriptionCounts['pending'] ?? 0),
-            'cancelled' => (int) ($subscriptionCounts['cancelled'] ?? 0),
-        ];
+        $subscriptionStats = null;
+        if ($can('dashboard.subscription_stats')) {
+            $subscriptionCounts = ClientSubscription::selectRaw('status, COUNT(*) as count')
+                ->groupBy('status')->pluck('count', 'status');
+            $subscriptionStats = [
+                'active' => (int) ($subscriptionCounts['active'] ?? 0),
+                'pending' => (int) ($subscriptionCounts['pending'] ?? 0),
+                'cancelled' => (int) ($subscriptionCounts['cancelled'] ?? 0),
+            ];
+        }
 
         // Upcoming renewals (next 5 subscriptions due based on start_date + billing_cycle)
-        $upcomingRenewals = ClientSubscription::with(['client', 'productService'])
+        $upcomingRenewals = !$can('dashboard.upcoming_renewals') ? collect() : ClientSubscription::with(['client', 'productService'])
             ->where('status', 'active')
             ->get()
             ->map(function ($sub) {
@@ -223,23 +223,26 @@ class DashboardController extends Controller
             ->take(5)
             ->values();
 
-        // Statutory obligations stats
-        $activeStatutories = Statutory::where('is_active', true)->get();
+        // Statutory obligations — shared by the two obligation cards, the
+        // urgent-obligations list, and the calendar; fetched once if any needs it.
+        $canObligationStats = $can('dashboard.overdue_obligations') || $can('dashboard.due_soon_obligations');
+        $needStatutory = $canObligationStats || $can('dashboard.urgent_obligations') || $can('dashboard.activity_calendar');
+        $activeStatutories = $needStatutory ? Statutory::where('is_active', true)->get() : collect();
         $today = now()->toDateString();
 
-        $statutoryOverdue = $activeStatutories->filter(fn ($s) => $s->next_due_date->lt($today))->count();
-        $statutoryDueSoon = $activeStatutories->filter(
-            fn ($s) => !$s->next_due_date->lt($today) && $s->next_due_date->diffInDays(now(), false) >= -$s->remind_days_before
-        )->count();
-
-        $statutoryStats = [
-            'total_active' => $activeStatutories->count(),
-            'overdue' => $statutoryOverdue,
-            'due_soon' => $statutoryDueSoon,
-        ];
+        $statutoryStats = null;
+        if ($canObligationStats) {
+            $statutoryStats = [
+                'total_active' => $activeStatutories->count(),
+                'overdue' => $activeStatutories->filter(fn ($s) => $s->next_due_date->lt($today))->count(),
+                'due_soon' => $activeStatutories->filter(
+                    fn ($s) => !$s->next_due_date->lt($today) && $s->next_due_date->diffInDays(now(), false) >= -$s->remind_days_before
+                )->count(),
+            ];
+        }
 
         // Overdue / due-soon obligations for dashboard list
-        $urgentObligations = $activeStatutories
+        $urgentObligations = !$can('dashboard.urgent_obligations') ? collect() : $activeStatutories
             ->filter(fn ($s) => $s->next_due_date->lte(now()->addDays($s->remind_days_before)))
             ->sortBy('next_due_date')
             ->take(5)
@@ -254,15 +257,16 @@ class DashboardController extends Controller
             ->values();
 
         // Total expenses for selected month
-        $totalExpenses = Expense::whereBetween('expense_date', [
-            $periodStart->toDateString(),
-            $periodEnd->toDateString(),
-        ])->sum('amount');
+        $totalExpenses = $can('dashboard.expenses')
+            ? (float) Expense::whereBetween('expense_date', [$periodStart->toDateString(), $periodEnd->toDateString()])->sum('amount')
+            : null;
 
         // Daily activities for the calendar (current month ± 1 month)
         $calStart = now()->subMonth()->startOfMonth()->toDateString();
         $calEnd = now()->addMonth()->endOfMonth()->toDateString();
 
+        $calendarData = [];
+        if ($can('dashboard.activity_calendar')) {
         $calendarItems = collect();
 
         // Followups with client info
@@ -395,71 +399,76 @@ class DashboardController extends Controller
                 'detail' => $i['detail'],
             ])->values(),
         ])->values();
+        } // end activity_calendar gate
 
-        $totalWhatsappContacts = \App\Models\WhatsappContact::count();
-        $totalFieldVisits      = \App\Models\FieldVisit::count();
+        $totalWhatsappContacts = $can('dashboard.whatsapp_contacts') ? \App\Models\WhatsappContact::count() : null;
+        $totalFieldVisits      = $can('dashboard.field_visits') ? \App\Models\FieldVisit::count() : null;
 
-        // System Records breakdown — grouped by (system, system_property)
-        // for the selected month. The SUM is done in SQL (cheap), then
-        // PHP nests the rows by system so the frontend can render a
-        // single per-system block with property line-items and a subtotal.
-        $systemRecordRows = DB::table('system_records as sr')
-            ->join('systems as s', 's.id', '=', 'sr.system_id')
-            ->join('system_properties as sp', 'sp.id', '=', 'sr.system_property_id')
-            ->where('sr.tenant_id', $tenantId)
-            ->whereNull('sr.deleted_at')
-            ->whereBetween('sr.record_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-            ->selectRaw('s.name as system_name, sp.name as system_property_name, SUM(sr.amount) as total')
-            ->groupBy('s.name', 'sp.name')
-            ->orderBy('s.name')
-            ->orderBy('sp.name')
-            ->get();
+        // System Records — the systems breakdown and the bank breakdown are two
+        // separate cards; compute the shared base only if at least one is allowed,
+        // and include each list only for its own permission.
+        $systemRecords = null;
+        $canSystemsCard = $can('dashboard.system_records_breakdown');
+        $canBankCard = $can('dashboard.bank_account_breakdown');
+        if ($canSystemsCard || $canBankCard) {
+            $systemRecordRows = DB::table('system_records as sr')
+                ->join('systems as s', 's.id', '=', 'sr.system_id')
+                ->join('system_properties as sp', 'sp.id', '=', 'sr.system_property_id')
+                ->where('sr.tenant_id', $tenantId)
+                ->whereNull('sr.deleted_at')
+                ->whereBetween('sr.record_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->selectRaw('s.name as system_name, sp.name as system_property_name, SUM(sr.amount) as total')
+                ->groupBy('s.name', 'sp.name')
+                ->orderBy('s.name')
+                ->orderBy('sp.name')
+                ->get();
 
-        $systemRecordsBreakdown = collect($systemRecordRows)
-            ->groupBy('system_name')
-            ->map(fn ($props, $name) => [
-                'name' => $name,
-                'subtotal' => round((float) $props->sum('total'), 2),
-                'properties' => $props->map(fn ($p) => [
-                    'name' => $p->system_property_name,
-                    'total' => round((float) $p->total, 2),
-                ])->values(),
-            ])
-            ->values();
+            $systemRecordsBreakdown = $canSystemsCard
+                ? collect($systemRecordRows)
+                    ->groupBy('system_name')
+                    ->map(fn ($props, $name) => [
+                        'name' => $name,
+                        'subtotal' => round((float) $props->sum('total'), 2),
+                        'properties' => $props->map(fn ($p) => [
+                            'name' => $p->system_property_name,
+                            'total' => round((float) $p->total, 2),
+                        ])->values(),
+                    ])
+                    ->values()
+                : [];
 
-        // Same period, grouped by bank account instead of system. LEFT JOIN
-        // so records with no bank_account_id (cash / untagged) still appear
-        // in the total — otherwise the bank breakdown would silently
-        // disagree with the system breakdown for the same period.
-        $bankRows = DB::table('system_records as sr')
-            ->leftJoin('bank_accounts as ba', 'ba.id', '=', 'sr.bank_account_id')
-            ->where('sr.tenant_id', $tenantId)
-            ->whereNull('sr.deleted_at')
-            ->whereBetween('sr.record_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-            ->selectRaw('sr.bank_account_id, MAX(ba.bank_name) as bank_name, MAX(ba.account_number) as account_number, SUM(sr.amount) as total')
-            ->groupBy('sr.bank_account_id')
-            ->orderByRaw('CASE WHEN sr.bank_account_id IS NULL THEN 1 ELSE 0 END')
-            ->orderBy('bank_name')
-            ->get();
+            $byBank = [];
+            if ($canBankCard) {
+                $bankRows = DB::table('system_records as sr')
+                    ->leftJoin('bank_accounts as ba', 'ba.id', '=', 'sr.bank_account_id')
+                    ->where('sr.tenant_id', $tenantId)
+                    ->whereNull('sr.deleted_at')
+                    ->whereBetween('sr.record_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                    ->selectRaw('sr.bank_account_id, MAX(ba.bank_name) as bank_name, MAX(ba.account_number) as account_number, SUM(sr.amount) as total')
+                    ->groupBy('sr.bank_account_id')
+                    ->orderByRaw('CASE WHEN sr.bank_account_id IS NULL THEN 1 ELSE 0 END')
+                    ->orderBy('bank_name')
+                    ->get();
 
-        $byBank = collect($bankRows)->map(fn ($r) => [
-            'bank_account_id' => $r->bank_account_id,
-            'bank_name' => $r->bank_name ?? 'Untagged / Cash',
-            'account_number' => $r->account_number,
-            'total' => round((float) $r->total, 2),
-        ])->values();
+                $byBank = collect($bankRows)->map(fn ($r) => [
+                    'bank_account_id' => $r->bank_account_id,
+                    'bank_name' => $r->bank_name ?? 'Untagged / Cash',
+                    'account_number' => $r->account_number,
+                    'total' => round((float) $r->total, 2),
+                ])->values();
+            }
 
-        $systemRecords = [
-            'total' => round((float) collect($systemRecordRows)->sum('total'), 2),
-            'systems' => $systemRecordsBreakdown,
-            'by_bank' => $byBank,
-        ];
+            $systemRecords = [
+                'total' => round((float) collect($systemRecordRows)->sum('total'), 2),
+                'systems' => $systemRecordsBreakdown,
+                'by_bank' => $byBank,
+            ];
+        }
 
         // ── Hosting & Domains (permission-gated; only compute what's shown) ──
-        $user = auth()->user();
-        $canHosting = $user->hasPermission('dashboard.hosting');
-        $canDomains = $user->hasPermission('dashboard.domains');
-        $canTickets = $user->hasPermission('dashboard.tickets');
+        $canHosting = $can('dashboard.hosting');
+        $canDomains = $can('dashboard.domains');
+        $canTickets = $can('dashboard.tickets');
 
         $hostingDomains = null;
         if ($canHosting || $canDomains) {
@@ -516,10 +525,10 @@ class DashboardController extends Controller
 
         return response()->json([
             'hosting_domains' => $hostingDomains,
-            'total_expenses' => round((float) $totalExpenses, 2),
-            'total_receivable' => round($totalReceivable, 2),
-            'total_received' => round($totalReceived, 2),
-            'outstanding' => round($totalReceivable - $totalReceived, 2),
+            'total_expenses' => $totalExpenses !== null ? round((float) $totalExpenses, 2) : null,
+            'total_receivable' => $can('dashboard.total_receivable') ? round($totalReceivable, 2) : null,
+            'total_received' => $can('dashboard.total_received') ? round($totalReceived, 2) : null,
+            'outstanding' => $can('dashboard.outstanding') ? round($totalReceivable - $totalReceived, 2) : null,
             'overdue_invoices' => $overdueInvoices,
             'overdue_bills' => $overdueBills,
             'total_clients'           => $totalClients,
