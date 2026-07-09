@@ -512,9 +512,24 @@ class DashboardController extends Controller
                         'auto_renew'  => (bool) $d->auto_renew,
                     ]);
 
-                // Registrar prepaid credit — cached value only (no live registry call here)
-                $registrarCredit = collect(\Illuminate\Support\Facades\Cache::get('registrar_credit')['zones'] ?? [])
-                    ->filter(fn ($z) => ($z['credit'] ?? 0) > 0);
+                // Registrar prepaid credit — served from the shared cache; on a
+                // cold cache do ONE live read so the card isn't blank, and cache
+                // only on success (a registry hiccup must not stick for 15 min).
+                $creditCache = \Illuminate\Support\Facades\Cache::get('registrar_credit');
+                if ($creditCache === null) {
+                    try {
+                        $acct = \App\Models\RegistrarAccount::whereNull('tenant_id')->where('is_active', true)->first();
+                        if ($acct) {
+                            $zones = collect((new \App\Services\Registrar\FredHttpDriver($acct))->credit())
+                                ->map(fn ($c) => ['zone' => $c['zone'], 'credit' => (float) $c['credit']])->all();
+                            $creditCache = ['ok' => true, 'zones' => $zones, 'checked_at' => now()->toISOString()];
+                            \Illuminate\Support\Facades\Cache::put('registrar_credit', $creditCache, now()->addMinutes(15));
+                        }
+                    } catch (\Throwable $e) {
+                        Log::warning('Dashboard: registrar credit fetch failed', ['error' => $e->getMessage()]);
+                    }
+                }
+                $registrarCredit = collect($creditCache['zones'] ?? [])->filter(fn ($z) => ($z['credit'] ?? 0) > 0);
                 $hostingDomains['registrar_credit_total'] = $registrarCredit->isEmpty() ? null : round((float) $registrarCredit->sum('credit'), 2);
             }
 
