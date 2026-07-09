@@ -29,7 +29,7 @@ const categoryMeta: Record<string, { label: string; icon: typeof IconMenu2; colo
 const categoryOrder = ['menu', 'crud', 'settings', 'reports'];
 
 // Order groups within the "menu" category to match sidebar top-to-bottom
-const menuGroupOrder = ['Navigation', 'Billing', 'Statutory', 'Expenses', 'Other'];
+const menuGroupOrder = ['Navigation', 'Billing', 'Hosting', 'Domains', 'Support', 'WhatsApp', 'Field Marketing', 'Statutory', 'Expenses', 'Other'];
 
 // Order individual permissions within each menu group to match sidebar item order
 const menuPermOrder: Record<string, string[]> = {
