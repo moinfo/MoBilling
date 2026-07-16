@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\StaffReportHoliday;
+use App\Models\StaffReportPenalty;
 use App\Models\StaffReportSettings;
 use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
@@ -9,6 +11,42 @@ use Illuminate\Http\Request;
 class StaffReportSettingsController extends Controller
 {
     use AuthorizesPermissions;
+
+    /** Holidays (office-closed days) — staff can view, reviewers manage. */
+    public function holidays()
+    {
+        $this->authorizePermission('staff_reports.submit');
+        return response()->json(['data' => StaffReportHoliday::orderBy('date')->get()]);
+    }
+
+    public function storeHoliday(Request $request)
+    {
+        $this->authorizePermission('staff_reports.review');
+        $data = $request->validate([
+            'date' => 'required|date',
+            'name' => 'nullable|string|max:255',
+        ]);
+
+        $holiday = StaffReportHoliday::updateOrCreate(
+            ['date' => $data['date']],
+            ['name' => $data['name'] ?? null],
+        );
+
+        // Undo any daily missing-deductions already charged for that day.
+        StaffReportPenalty::where('report_type', 'daily')
+            ->where('penalty_type', 'missing')
+            ->whereDate('period_date', $data['date'])
+            ->delete();
+
+        return response()->json(['data' => $holiday], 201);
+    }
+
+    public function destroyHoliday(StaffReportHoliday $holiday)
+    {
+        $this->authorizePermission('staff_reports.review');
+        $holiday->delete();
+        return response()->json(null, 204);
+    }
 
     public function show()
     {

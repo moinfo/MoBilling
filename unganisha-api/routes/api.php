@@ -673,6 +673,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/staff-reports/dashboard',               [\App\Http\Controllers\StaffReportsController::class, 'dashboard']);
     Route::get('/staff-reports/settings',                [\App\Http\Controllers\StaffReportSettingsController::class, 'show']);
     Route::put('/staff-reports/settings',                [\App\Http\Controllers\StaffReportSettingsController::class, 'update']);
+    Route::get('/staff-reports/holidays',                [\App\Http\Controllers\StaffReportSettingsController::class, 'holidays']);
+    Route::post('/staff-reports/holidays',               [\App\Http\Controllers\StaffReportSettingsController::class, 'storeHoliday']);
+    Route::delete('/staff-reports/holidays/{holiday}',   [\App\Http\Controllers\StaffReportSettingsController::class, 'destroyHoliday']);
     Route::get('/staff-reports/supervisors',             [\App\Http\Controllers\StaffSupervisorController::class, 'index']);
     Route::put('/staff-reports/supervisors/{userId}',    [\App\Http\Controllers\StaffSupervisorController::class, 'update']);
     Route::get('/staff-reports',                         [\App\Http\Controllers\StaffReportsController::class, 'index']);

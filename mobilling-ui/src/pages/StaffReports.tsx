@@ -24,6 +24,7 @@ dayjs.extend(isoWeek);
 import {
   getReports, createReport, updateReport, deleteReport, reviewReport, replyToReport,
   getDashboard, getSettings, updateSettings, getSupervisors, updateSupervisor,
+  getHolidays, addHoliday, deleteHoliday,
   type StaffReport, type ReportSettings, type MonthStats, type StaffStat,
   type StaffWithSupervisor,
 } from '../api/staffReports';
@@ -996,8 +997,88 @@ function SettingsTab() {
 
       <Divider />
 
+      {/* ── Holidays ─────────────────────────────────────────────────────── */}
+      <HolidaysManager />
+
+      <Divider />
+
       {/* ── Supervisor Assignments ───────────────────────────────────────── */}
       <SupervisorAssignments />
+    </Stack>
+  );
+}
+
+// ── Holidays (office-closed days — no daily report required / charged) ─────────
+
+function HolidaysManager() {
+  const qc = useQueryClient();
+  const [date, setDate] = useState<string | null>(null);
+  const [name, setName] = useState('');
+
+  const { data } = useQuery({ queryKey: ['staff-report-holidays'], queryFn: getHolidays });
+  const holidays = data?.data?.data ?? [];
+
+  const addMut = useMutation({
+    mutationFn: () => addHoliday(date!, name || undefined),
+    onSuccess: () => {
+      setDate(null); setName('');
+      qc.invalidateQueries({ queryKey: ['staff-report-holidays'] });
+      qc.invalidateQueries({ queryKey: ['staff-reports-dashboard'] });
+      notifications.show({ message: 'Holiday added — that day won’t be required or charged.', color: 'green' });
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Failed to add holiday.', color: 'red' }),
+  });
+
+  const delMut = useMutation({
+    mutationFn: (id: string) => deleteHoliday(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['staff-report-holidays'] });
+      notifications.show({ message: 'Holiday removed.', color: 'gray' });
+    },
+  });
+
+  return (
+    <Stack gap="sm" maw={560}>
+      <div>
+        <Group gap="xs" mb="xs">
+          <ThemeIcon size="sm" variant="light" color="grape" radius="xl"><IconCalendar size={14} /></ThemeIcon>
+          <Text size="sm" fw={700}>Holidays (office closed)</Text>
+        </Group>
+        <Text size="xs" c="dimmed" mb="sm">
+          On these days no daily report is required, and no missing-daily deduction is charged.
+          Adding a day also refunds any daily deduction already recorded for it.
+        </Text>
+      </div>
+
+      <Group align="flex-end" gap="xs" wrap="wrap">
+        <DatePickerInput label="Date" placeholder="Pick a day" value={date} onChange={(v) => setDate(v as any)}
+          valueFormat="DD/MM/YYYY" style={{ minWidth: 170 }} />
+        <TextInput label="Name (optional)" placeholder="e.g. Eid, Saba Saba" value={name}
+          onChange={(e) => setName(e.currentTarget.value)} style={{ flex: 1, minWidth: 180 }} />
+        <Button disabled={!date} loading={addMut.isPending} onClick={() => addMut.mutate()}
+          leftSection={<IconPlus size={15} />}>Add</Button>
+      </Group>
+
+      {holidays.length > 0 ? (
+        <Paper withBorder radius="md">
+          <Stack gap={0}>
+            {holidays.map((h) => (
+              <Group key={h.id} justify="space-between" p="xs"
+                style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+                <Group gap="sm">
+                  <Badge variant="light" color="grape">{dayjs(h.date).format('ddd, D MMM YYYY')}</Badge>
+                  <Text size="sm">{h.name ?? '—'}</Text>
+                </Group>
+                <ActionIcon variant="subtle" color="red" onClick={() => delMut.mutate(h.id)}>
+                  <IconTrash size={15} />
+                </ActionIcon>
+              </Group>
+            ))}
+          </Stack>
+        </Paper>
+      ) : (
+        <Text size="sm" c="dimmed">No holidays added yet.</Text>
+      )}
     </Stack>
   );
 }

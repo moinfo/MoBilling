@@ -225,6 +225,9 @@ class StaffReportsController extends Controller
         $monthStart = $now->copy()->startOfMonth()->toDateString();
         $monthEnd   = $now->copy()->endOfMonth()->toDateString();
 
+        // Office-closed days this tenant (skip for the daily expected count)
+        $holidays = \App\Models\StaffReportHoliday::pluck('date')->map(fn ($d) => $d->toDateString())->all();
+
         // My own stats for this month
         $thisMonth = [];
         foreach (['daily', 'weekly', 'monthly'] as $type) {
@@ -246,7 +249,7 @@ class StaffReportsController extends Controller
                 // month-straddling first-week report isn't missed by the month filter.
                 [$expected, $submitted, $missing] = $this->weeklyProgress($user->id, $settings, $now);
             } else {
-                $expected = $this->expectedSoFar($type, $settings, $now);
+                $expected = $this->expectedSoFar($type, $settings, $now, $holidays);
                 $missing  = max(0, $expected - $submitted);
             }
 
@@ -405,14 +408,16 @@ class StaffReportsController extends Controller
     }
 
     /** How many reports of a type are DUE by now this month (deadline passed). */
-    private function expectedSoFar(string $type, StaffReportSettings $s, Carbon $now): int
+    private function expectedSoFar(string $type, StaffReportSettings $s, Carbon $now, array $holidays = []): int
     {
         $monthStart = $now->copy()->startOfMonth();
 
         if ($type === 'daily') {
             $c = 0;
             for ($d = $monthStart->copy(); $d->lte($now); $d->addDay()) {
-                if ($d->isWeekday() && $now->gt($d->copy()->setTimeFromTimeString($s->daily_deadline_time))) {
+                if ($d->isWeekday()
+                    && !in_array($d->toDateString(), $holidays, true)
+                    && $now->gt($d->copy()->setTimeFromTimeString($s->daily_deadline_time))) {
                     $c++;
                 }
             }

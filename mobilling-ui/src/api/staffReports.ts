@@ -93,6 +93,15 @@ export const reviewReport = (id: string, data: {
 export const getDashboard = () =>
   api.get<{ data: DashboardData }>('/staff-reports/dashboard');
 
+
+export interface Holiday { id: string; date: string; name: string | null }
+export const getHolidays = () =>
+  api.get<{ data: Holiday[] }>('/staff-reports/holidays');
+export const addHoliday = (date: string, name?: string) =>
+  api.post<{ data: Holiday }>('/staff-reports/holidays', { date, name });
+export const deleteHoliday = (id: string) =>
+  api.delete(`/staff-reports/holidays/${id}`);
+
 export const getSettings = () =>
   api.get<{ data: ReportSettings }>('/staff-reports/settings');
 

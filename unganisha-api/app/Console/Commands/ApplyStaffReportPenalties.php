@@ -45,10 +45,15 @@ class ApplyStaffReportPenalties extends Command
 
             $monthEnd = $now->copy()->endOfMonth();
 
-            // ── Daily: every past WEEKDAY this month whose deadline has passed ──
+            // Office-closed days — no daily report required, so no charge.
+            $holidays = \App\Models\StaffReportHoliday::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)->pluck('date')
+                ->map(fn ($d) => \Carbon\Carbon::parse($d)->toDateString())->flip();
+
+            // ── Daily: every past WEEKDAY (non-holiday) whose deadline has passed ──
             if ((float) $s->penalty_missing_daily > 0) {
                 for ($d = $monthStart->copy(); $d->lte($now); $d->addDay()) {
-                    if (!$d->isWeekday()) {
+                    if (!$d->isWeekday() || $holidays->has($d->toDateString())) {
                         continue;
                     }
                     $deadline = $d->copy()->setTimeFromTimeString($s->daily_deadline_time);
