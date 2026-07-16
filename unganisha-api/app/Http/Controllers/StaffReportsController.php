@@ -388,9 +388,10 @@ class StaffReportsController extends Controller
                 ->get()
                 ->groupBy('user_id');
 
+            // Same auto-calculated targets as the personal cards
             $targets = [
-                'daily'   => $settings->daily_target,
-                'weekly'  => $settings->weekly_target,
+                'daily'   => $this->workingDaysInMonth($now, $settings, $holidays),
+                'weekly'  => $this->weeksInMonth($settings, $now),
                 'monthly' => $settings->monthly_target,
             ];
 
