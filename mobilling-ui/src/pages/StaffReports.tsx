@@ -1023,18 +1023,24 @@ function SettingsTab() {
               <ThemeIcon size="sm" variant="light" color="blue" radius="xl">
                 <IconTarget size={14} />
               </ThemeIcon>
-              <Text size="sm" fw={700}>Monthly Submission Targets</Text>
+              <Text size="sm" fw={700}>Monthly Targets (calculated automatically)</Text>
             </Group>
             <Text size="xs" c="dimmed" mb="sm">
-              How many reports of each type should staff submit per month.
+              Targets adjust to each month — no need to set them by hand:
             </Text>
-            <SimpleGrid cols={3} spacing="sm">
-              <NumberInput label="Daily target" min={1} max={200}
-                {...form.getInputProps('daily_target')} />
-              <NumberInput label="Weekly target" min={1} max={50}
-                {...form.getInputProps('weekly_target')} />
-              <NumberInput label="Monthly target" min={1} max={12}
-                {...form.getInputProps('monthly_target')} />
+            <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+              <Paper withBorder p="sm" radius="md">
+                <Text size="sm" fw={700}>Daily</Text>
+                <Text size="xs" c="dimmed">Working days <b>Mon–Sat</b> in the month, minus any holidays.</Text>
+              </Paper>
+              <Paper withBorder p="sm" radius="md">
+                <Text size="sm" fw={700}>Weekly</Text>
+                <Text size="xs" c="dimmed">The number of <b>weeks</b> in the month (usually 4–5).</Text>
+              </Paper>
+              <Paper withBorder p="sm" radius="md">
+                <Text size="sm" fw={700}>Monthly</Text>
+                <Text size="xs" c="dimmed"><b>One</b> report for the month.</Text>
+              </Paper>
             </SimpleGrid>
           </div>
 
