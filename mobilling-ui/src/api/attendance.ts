@@ -20,7 +20,10 @@ export interface AttendanceDeduction {
 }
 
 export interface MyAttendance {
-  settings: { check_in_time: string; check_out_time: string; penalties_enabled: boolean };
+  settings: {
+    check_in_time: string; check_out_time: string; penalties_enabled: boolean;
+    penalty_absent: number; penalty_late: number; penalty_left_early: number; penalty_no_checkout: number;
+  };
   today: AttendanceDay | null;
   month_label: string;
   present_days: number;

@@ -84,6 +84,22 @@ export default function MyAttendance() {
             )}
           </Group>
         )}
+
+        {/* Rules & deduction amounts — so staff know what applies */}
+        <Stack gap={4} mt="sm" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+          <Text size="xs" c="dimmed">
+            <b>Rules:</b> check in by <b>{s.check_in_time}</b>, check out by <b>{s.check_out_time}</b>. A missing check-in counts as absent even if you check out.
+          </Text>
+          {s.penalties_enabled && (
+            <Group gap={6}>
+              {([['absent', s.penalty_absent], ['late', s.penalty_late], ['left_early', s.penalty_left_early], ['no_checkout', s.penalty_no_checkout]] as const).map(([tp, amt]) => (
+                <Badge key={tp} variant="outline" color="gray" radius="sm" size="sm">
+                  {dtypeLabel[tp]} −TZS {Number(amt).toLocaleString()}
+                </Badge>
+              ))}
+            </Group>
+          )}
+        </Stack>
       </Card>
     </Box>
   );
