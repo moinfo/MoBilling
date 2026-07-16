@@ -383,12 +383,13 @@ class StaffReportsController extends Controller
         }
 
         if ($type === 'weekly') {
+            // A week counts for this month if its DEADLINE falls in the month
+            // and has passed (so the first, month-straddling week is included).
             $c = 0;
+            $monthEnd = $now->copy()->endOfMonth();
             for ($w = $monthStart->copy()->startOfWeek(Carbon::MONDAY); $w->lte($now); $w->addWeek()) {
-                if ($w->lt($monthStart)) {
-                    continue;
-                }
-                if ($now->gt($w->copy()->addDays($s->weekly_deadline_day - 1)->setTimeFromTimeString($s->weekly_deadline_time))) {
+                $deadline = $w->copy()->addDays($s->weekly_deadline_day - 1)->setTimeFromTimeString($s->weekly_deadline_time);
+                if ($deadline->gte($monthStart) && $deadline->lte($monthEnd) && $now->gt($deadline)) {
                     $c++;
                 }
             }

@@ -43,6 +43,8 @@ class ApplyStaffReportPenalties extends Command
 
             $monthStart = $now->copy()->startOfMonth();
 
+            $monthEnd = $now->copy()->endOfMonth();
+
             // ── Daily: every past WEEKDAY this month whose deadline has passed ──
             if ((float) $s->penalty_missing_daily > 0) {
                 for ($d = $monthStart->copy(); $d->lte($now); $d->addDay()) {
@@ -52,27 +54,28 @@ class ApplyStaffReportPenalties extends Command
                     $deadline = $d->copy()->setTimeFromTimeString($s->daily_deadline_time);
                     if ($now->gt($deadline)) {
                         $charged += $this->chargeMissing(
-                            $tenantId, $staffIds, 'daily', $d->toDateString(),
+                            $tenantId, $staffIds, 'daily', $d->toDateString(), $d->toDateString(),
                             (float) $s->penalty_missing_daily, 'Missing daily report (' . $d->format('D, j M') . ')', $dry
                         );
                     }
                 }
             }
 
-            // ── Weekly: each week (Mon start) this month whose deadline passed ──
+            // ── Weekly: a week belongs to the month its DEADLINE falls in (so the
+            // first week — which starts in the prev month but is mostly this one —
+            // counts). Check report by the week's Monday; attribute the charge to
+            // this month (clamp to month start for display). ──
             if ((float) $s->penalty_missing_weekly > 0) {
-                $w = $monthStart->copy()->startOfWeek(Carbon::MONDAY);
-                for (; $w->lte($now); $w->addWeek()) {
-                    if ($w->lt($monthStart)) {
-                        continue; // skip a week that started in the previous month
-                    }
+                for ($w = $monthStart->copy()->startOfWeek(Carbon::MONDAY); $w->lte($now); $w->addWeek()) {
                     $deadline = $w->copy()->addDays($s->weekly_deadline_day - 1)->setTimeFromTimeString($s->weekly_deadline_time);
-                    if ($now->gt($deadline)) {
-                        $charged += $this->chargeMissing(
-                            $tenantId, $staffIds, 'weekly', $w->toDateString(),
-                            (float) $s->penalty_missing_weekly, 'Missing weekly report (wk of ' . $w->format('j M') . ')', $dry
-                        );
+                    if ($deadline->lt($monthStart) || $deadline->gt($monthEnd) || !$now->gt($deadline)) {
+                        continue; // deadline not in this month, or not passed yet
                     }
+                    $chargeDate = $w->lt($monthStart) ? $monthStart->toDateString() : $w->toDateString();
+                    $charged += $this->chargeMissing(
+                        $tenantId, $staffIds, 'weekly', $w->toDateString(), $chargeDate,
+                        (float) $s->penalty_missing_weekly, 'Missing weekly report (wk of ' . $w->format('j M') . ')', $dry
+                    );
                 }
             }
 
@@ -81,7 +84,7 @@ class ApplyStaffReportPenalties extends Command
             $monthDeadline = $monthStart->copy()->addDays($dueDay - 1)->setTimeFromTimeString($s->monthly_deadline_time);
             if ($now->gt($monthDeadline) && (float) $s->penalty_missing_monthly > 0) {
                 $charged += $this->chargeMissing(
-                    $tenantId, $staffIds, 'monthly', $monthStart->toDateString(),
+                    $tenantId, $staffIds, 'monthly', $monthStart->toDateString(), $monthStart->toDateString(),
                     (float) $s->penalty_missing_monthly, 'Missing monthly report (' . $monthStart->format('M Y') . ')', $dry
                 );
             }
@@ -96,13 +99,17 @@ class ApplyStaffReportPenalties extends Command
         return self::SUCCESS;
     }
 
-    /** Charge every staff member who has no report of $type for $periodDate. */
-    private function chargeMissing($tenantId, $staffIds, string $type, string $periodDate, float $amount, string $notes, bool $dry): int
+    /**
+     * Charge every staff member with no report for $checkPeriod (the report's
+     * own period_date), attributing the penalty to $chargePeriod (the month it
+     * belongs to, for display). For daily/monthly the two are the same.
+     */
+    private function chargeMissing($tenantId, $staffIds, string $type, string $checkPeriod, string $chargePeriod, float $amount, string $notes, bool $dry): int
     {
         $submitted = StaffReport::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
             ->where('report_type', $type)
-            ->where('period_date', $periodDate)
+            ->where('period_date', $checkPeriod)
             ->pluck('user_id')->all();
 
         $missing = $staffIds->diff($submitted);
@@ -111,14 +118,14 @@ class ApplyStaffReportPenalties extends Command
         }
 
         if ($dry) {
-            $this->line("  {$type} {$periodDate}: {$missing->count()} missing × " . number_format($amount));
+            $this->line("  {$type} {$chargePeriod}: {$missing->count()} missing × " . number_format($amount));
             return $missing->count();
         }
 
         $n = 0;
         foreach ($missing as $uid) {
             $created = StaffReportPenalty::firstOrCreate(
-                ['user_id' => $uid, 'report_type' => $type, 'penalty_type' => 'missing', 'period_date' => $periodDate],
+                ['user_id' => $uid, 'report_type' => $type, 'penalty_type' => 'missing', 'period_date' => $chargePeriod],
                 ['tenant_id' => $tenantId, 'amount' => $amount, 'notes' => $notes],
             );
             if ($created->wasRecentlyCreated) {
