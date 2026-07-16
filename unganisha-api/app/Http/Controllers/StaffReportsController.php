@@ -80,6 +80,27 @@ class StaffReportsController extends Controller
         $report = StaffReport::create($data);
         $report->load(['user', 'reviewer']);
 
+        // Late submission → record the late-report deduction (once per period).
+        if ($report->is_late) {
+            $s = $this->getSettings();
+            if ($s->penalties_enabled && (float) $s->penalty_late > 0) {
+                \App\Models\StaffReportPenalty::firstOrCreate(
+                    [
+                        'user_id'      => $report->user_id,
+                        'report_type'  => $report->report_type,
+                        'penalty_type' => 'late',
+                        'period_date'  => $report->period_date->toDateString(),
+                    ],
+                    [
+                        'tenant_id'       => $report->tenant_id,
+                        'amount'          => $s->penalty_late,
+                        'staff_report_id' => $report->id,
+                        'notes'           => 'Late ' . $report->report_type . ' report',
+                    ],
+                );
+            }
+        }
+
         // Notify supervisor of the new submission
         $supervisor = $report->user->supervisor;
         if ($supervisor) {
@@ -98,6 +119,9 @@ class StaffReportsController extends Controller
         }
         if ($staffReport->status === 'reviewed') {
             abort(422, 'Cannot edit a report that has already been reviewed.');
+        }
+        if ($this->periodEnded($staffReport)) {
+            abort(422, 'This report is locked — you can only edit it on the day it covers.');
         }
 
         $data = $request->validate([
@@ -120,6 +144,9 @@ class StaffReportsController extends Controller
         }
         if ($staffReport->status === 'reviewed') {
             abort(422, 'Cannot delete a reviewed report.');
+        }
+        if ($this->periodEnded($staffReport)) {
+            abort(422, 'This report is locked — you can only delete it on the day it covers.');
         }
 
         $staffReport->delete();
@@ -300,6 +327,17 @@ class StaffReportsController extends Controller
             'weekly'  => $carbon->startOfWeek(Carbon::MONDAY)->toDateString(),
             'monthly' => $carbon->startOfMonth()->toDateString(),
         };
+    }
+
+    /** A report locks for edit/delete once its own day/period has passed. */
+    private function periodEnded(StaffReport $r): bool
+    {
+        $end = match ($r->report_type) {
+            'daily'   => $r->period_date->copy()->endOfDay(),
+            'weekly'  => $r->period_date->copy()->endOfWeek(Carbon::SUNDAY),
+            'monthly' => $r->period_date->copy()->endOfMonth(),
+        };
+        return now()->gt($end);
     }
 
     private function periodLabel(string $type, Carbon $date): string

@@ -15,6 +15,8 @@ Schedule::command('subscriptions:suspend-unpaid')->dailyAt('09:30')->withoutOver
 Schedule::command('subscriptions:terminate-abandoned')->dailyAt('10:00')->withoutOverlapping();
 Schedule::command('satisfaction-calls:schedule')->dailyAt('07:15')->withoutOverlapping();
 Schedule::command('staff-reports:send-reminders')->dailyAt('09:45')->withoutOverlapping();
+// After deadlines pass: charge missing-report deductions (idempotent).
+Schedule::command('staff-reports:apply-penalties')->dailyAt('00:30')->withoutOverlapping();
 
 // Daily system verification reminders. Africa/Dar_es_Salaam = UTC+3 — set
 // explicitly so the schedule isn't sensitive to APP_TIMEZONE drifting.

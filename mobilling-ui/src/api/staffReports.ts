@@ -28,6 +28,11 @@ export interface ReportSettings {
   weekly_deadline_time:  string;
   monthly_deadline_day:  number;
   monthly_deadline_time: string;
+  penalties_enabled?:        boolean;
+  penalty_missing_daily?:    number;
+  penalty_late?:             number;
+  penalty_missing_weekly?:   number;
+  penalty_missing_monthly?:  number;
 }
 
 export interface MonthStats {

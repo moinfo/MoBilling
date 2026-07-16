@@ -538,7 +538,42 @@ class DashboardController extends Controller
             }
         }
 
+        // ── My report deductions (personal — shown to report submitters) ──
+        $staffPenalties = null;
+        if ($can('staff_reports.submit')) {
+            $monthStart = now()->startOfMonth()->toDateString();
+            $monthEnd   = now()->endOfMonth()->toDateString();
+
+            $rows = \App\Models\StaffReportPenalty::withoutGlobalScopes()
+                ->where('user_id', $user->id)
+                ->where('waived', false)
+                ->orderByDesc('period_date')->orderByDesc('created_at')
+                ->limit(15)->get();
+
+            $monthTotal = \App\Models\StaffReportPenalty::withoutGlobalScopes()
+                ->where('user_id', $user->id)->where('waived', false)
+                ->whereBetween('period_date', [$monthStart, $monthEnd])
+                ->sum('amount');
+
+            $staffPenalties = [
+                'month_label' => now()->format('M Y'),
+                'month_total' => round((float) $monthTotal, 2),
+                'count_this_month' => \App\Models\StaffReportPenalty::withoutGlobalScopes()
+                    ->where('user_id', $user->id)->where('waived', false)
+                    ->whereBetween('period_date', [$monthStart, $monthEnd])->count(),
+                'items' => $rows->map(fn ($p) => [
+                    'id'           => $p->id,
+                    'report_type'  => $p->report_type,
+                    'penalty_type' => $p->penalty_type,
+                    'period_date'  => $p->period_date->format('Y-m-d'),
+                    'amount'       => round((float) $p->amount, 2),
+                    'notes'        => $p->notes,
+                ])->values(),
+            ];
+        }
+
         return response()->json([
+            'staff_penalties' => $staffPenalties,
             'hosting_domains' => $hostingDomains,
             'total_expenses' => $totalExpenses !== null ? round((float) $totalExpenses, 2) : null,
             'total_receivable' => $can('dashboard.total_receivable') ? round($totalReceivable, 2) : null,

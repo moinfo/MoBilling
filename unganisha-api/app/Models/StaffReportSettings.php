@@ -15,6 +15,8 @@ class StaffReportSettings extends Model
         'daily_deadline_time',
         'weekly_deadline_day', 'weekly_deadline_time',
         'monthly_deadline_day', 'monthly_deadline_time',
+        'penalties_enabled', 'penalty_missing_daily', 'penalty_late',
+        'penalty_missing_weekly', 'penalty_missing_monthly',
     ];
 
     protected $casts = [

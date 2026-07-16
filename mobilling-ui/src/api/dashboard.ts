@@ -103,7 +103,23 @@ export interface HostingDomainsSummary {
   expiring_domains?: ExpiringDomain[];
 }
 
+export interface StaffPenaltyItem {
+  id: string;
+  report_type: 'daily' | 'weekly' | 'monthly';
+  penalty_type: 'missing' | 'late';
+  period_date: string;
+  amount: number;
+  notes: string | null;
+}
+export interface StaffPenaltiesSummary {
+  month_label: string;
+  month_total: number;
+  count_this_month: number;
+  items: StaffPenaltyItem[];
+}
+
 export interface DashboardSummary {
+  staff_penalties?: StaffPenaltiesSummary | null;
   hosting_domains?: HostingDomainsSummary;
   total_expenses: number;
   total_receivable: number;

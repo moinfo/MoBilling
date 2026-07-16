@@ -20,6 +20,7 @@ import PaymentMethodChart from '../components/Dashboard/PaymentMethodChart';
 import TopClientsChart from '../components/Dashboard/TopClientsChart';
 import SubscriptionStats from '../components/Dashboard/SubscriptionStats';
 import HostingDomains from '../components/Dashboard/HostingDomains';
+import StaffPenalties from '../components/Dashboard/StaffPenalties';
 import RecentInvoices from '../components/Dashboard/RecentInvoices';
 import UpcomingBills from '../components/Dashboard/UpcomingBills';
 import UrgentObligations from '../components/Dashboard/UrgentObligations';
@@ -93,6 +94,8 @@ export default function Dashboard() {
             totalFieldVisits={summary.total_field_visits}
             periodLabel={periodLabel}
           />
+
+          {summary.staff_penalties && <StaffPenalties data={summary.staff_penalties} />}
 
           {summary.hosting_domains && <HostingDomains data={summary.hosting_domains} />}
 

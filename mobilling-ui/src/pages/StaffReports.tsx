@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Title, Tabs, Stack, Group, Button, Badge, Text, Paper, ActionIcon,
-  Textarea, Modal, Loader, Center, ThemeIcon, Select, Divider,
+  Textarea, Modal, Loader, Center, ThemeIcon, Select, Divider, Switch,
   SegmentedControl, Avatar, ScrollArea, RingProgress, SimpleGrid,
   NumberInput, Alert, TextInput,
 } from '@mantine/core';
@@ -758,6 +758,9 @@ function SettingsTab() {
       daily_deadline_time: '18:00',
       weekly_deadline_day: 5, weekly_deadline_time: '17:00',
       monthly_deadline_day: 28, monthly_deadline_time: '17:00',
+      penalties_enabled: true,
+      penalty_missing_daily: 5000, penalty_late: 2000,
+      penalty_missing_weekly: 7000, penalty_missing_monthly: 10000,
     },
   });
 
@@ -849,6 +852,36 @@ function SettingsTab() {
                 </Group>
               </Paper>
             </Stack>
+          </div>
+
+          <Divider />
+
+          {/* ── Deductions / Penalties ─────────────────────────────────── */}
+          <div>
+            <Group gap="xs" mb="xs" justify="space-between">
+              <Group gap="xs">
+                <ThemeIcon size="sm" variant="light" color="red" radius="xl">
+                  <IconAlertTriangle size={14} />
+                </ThemeIcon>
+                <Text size="sm" fw={700}>Report Deductions</Text>
+              </Group>
+              <Switch label="Enabled" checked={!!form.values.penalties_enabled}
+                onChange={(e) => form.setFieldValue('penalties_enabled', e.currentTarget.checked)} />
+            </Group>
+            <Text size="xs" c="dimmed" mb="sm">
+              Amounts deducted from a staff member when a report is missed or submitted late.
+              Missing-report deductions are applied automatically after each deadline; late deductions at submission.
+            </Text>
+            <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+              <NumberInput label="Missing daily" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled}
+                {...form.getInputProps('penalty_missing_daily')} />
+              <NumberInput label="Late report" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled}
+                {...form.getInputProps('penalty_late')} />
+              <NumberInput label="Missing weekly" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled}
+                {...form.getInputProps('penalty_missing_weekly')} />
+              <NumberInput label="Missing monthly" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled}
+                {...form.getInputProps('penalty_missing_monthly')} />
+            </SimpleGrid>
           </div>
 
           <Group>
