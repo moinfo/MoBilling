@@ -17,6 +17,15 @@ export interface StaffReport {
   review_notes: string | null;
   rating:       number | null;
   created_at:   string;
+  replies?:     StaffReportReply[];
+}
+
+export interface StaffReportReply {
+  id:          string;
+  user:        { id: string; name: string };
+  is_reviewer: boolean;
+  message:     string;
+  created_at:  string;
 }
 
 export interface ReportSettings {
@@ -71,6 +80,9 @@ export const updateReport = (id: string, data: {
 
 export const deleteReport = (id: string) =>
   api.delete(`/staff-reports/${id}`);
+
+export const replyToReport = (id: string, message: string) =>
+  api.post<{ data: StaffReport }>(`/staff-reports/${id}/reply`, { message });
 
 export const reviewReport = (id: string, data: {
   rating?: number; review_notes?: string;

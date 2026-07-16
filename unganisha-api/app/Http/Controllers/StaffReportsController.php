@@ -19,7 +19,7 @@ class StaffReportsController extends Controller
         $this->authorizePermission('staff_reports.submit');
 
         $user  = auth()->user();
-        $query = StaffReport::with(['user', 'reviewer'])
+        $query = StaffReport::with(['user', 'reviewer', 'replies'])
             // hide reports belonging to deactivated/inactive staff
             ->whereHas('user', fn ($q) => $q->where('is_active', true))
             ->orderBy('period_date', 'desc')
@@ -78,7 +78,7 @@ class StaffReportsController extends Controller
         }
 
         $report = StaffReport::create($data);
-        $report->load(['user', 'reviewer']);
+        $report->load(['user', 'reviewer', 'replies']);
 
         // Late submission → record the late-report deduction (once per period).
         if ($report->is_late) {
@@ -132,7 +132,7 @@ class StaffReportsController extends Controller
         ]);
 
         $staffReport->update($data);
-        return response()->json(['data' => $this->format($staffReport->load(['user', 'reviewer']))]);
+        return response()->json(['data' => $this->format($staffReport->load(['user', 'reviewer', 'replies']))]);
     }
 
     public function destroy(StaffReport $staffReport)
@@ -170,7 +170,7 @@ class StaffReportsController extends Controller
             'review_notes' => $data['review_notes'] ?? null,
         ]);
 
-        $staffReport->load(['user', 'reviewer']);
+        $staffReport->load(['user', 'reviewer', 'replies']);
 
         // Notify the staff member that their report was reviewed
         $staffReport->user->notify(
@@ -178,6 +178,41 @@ class StaffReportsController extends Controller
         );
 
         return response()->json(['data' => $this->format($staffReport)]);
+    }
+
+    /**
+     * Add a reply to a report's feedback thread. The report owner (staff) can
+     * respond to a supervisor's review; a supervisor can reply back. Emails the
+     * other party (gated by the tenant's email settings).
+     */
+    public function reply(Request $request, StaffReport $staffReport)
+    {
+        $author   = auth()->user();
+        $isOwner  = $staffReport->user_id === $author->id;
+        $canReview = $author->hasPermission('staff_reports.review');
+        abort_unless($isOwner || $canReview, 403, 'You cannot reply to this report.');
+
+        $data = $request->validate(['message' => 'required|string|max:3000']);
+
+        $reply = \App\Models\StaffReportReply::create([
+            'tenant_id'       => $staffReport->tenant_id,
+            'staff_report_id' => $staffReport->id,
+            'user_id'         => $author->id,
+            'message'         => $data['message'],
+        ]);
+
+        // Notify the other party: staff→supervisor(reviewer/supervisor), supervisor→staff.
+        $recipient = $isOwner
+            ? ($staffReport->reviewer ?? $staffReport->user->supervisor)
+            : $staffReport->user;
+
+        if ($recipient && $recipient->id !== $author->id) {
+            $recipient->notify(new \App\Notifications\StaffReportReplyNotification(
+                $author->tenant, $staffReport, $reply, $author->name
+            ));
+        }
+
+        return response()->json(['data' => $this->format($staffReport->fresh(['user', 'reviewer', 'replies']))], 201);
     }
 
     public function dashboard()
@@ -209,7 +244,7 @@ class StaffReportsController extends Controller
             $thisMonth[$type] = compact('submitted', 'reviewed', 'late', 'target');
         }
 
-        $recentReviews = StaffReport::with(['reviewer'])
+        $recentReviews = StaffReport::with(['reviewer', 'replies'])
             ->where('user_id', $user->id)
             ->where('status', 'reviewed')
             ->orderBy('reviewed_at', 'desc')
@@ -368,6 +403,13 @@ class StaffReportsController extends Controller
             'review_notes' => $r->review_notes,
             'rating'       => $r->rating,
             'created_at'   => $r->created_at->toISOString(),
+            'replies'      => $r->relationLoaded('replies') ? $r->replies->map(fn ($rep) => [
+                'id'          => $rep->id,
+                'user'        => ['id' => $rep->user_id, 'name' => $rep->user?->name ?? 'Unknown'],
+                'is_reviewer' => $rep->user_id !== $r->user_id,
+                'message'     => $rep->message,
+                'created_at'  => $rep->created_at->toISOString(),
+            ])->values() : [],
         ];
     }
 }

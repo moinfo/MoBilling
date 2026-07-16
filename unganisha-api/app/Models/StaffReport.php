@@ -33,4 +33,9 @@ class StaffReport extends Model
     {
         return $this->belongsTo(User::class, 'reviewed_by');
     }
+
+    public function replies()
+    {
+        return $this->hasMany(StaffReportReply::class)->with('user:id,name')->orderBy('created_at');
+    }
 }

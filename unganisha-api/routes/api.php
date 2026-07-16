@@ -680,6 +680,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/staff-reports/{staffReport}',           [\App\Http\Controllers\StaffReportsController::class, 'update']);
     Route::delete('/staff-reports/{staffReport}',        [\App\Http\Controllers\StaffReportsController::class, 'destroy']);
     Route::post('/staff-reports/{staffReport}/review',   [\App\Http\Controllers\StaffReportsController::class, 'review']);
+    Route::post('/staff-reports/{staffReport}/reply',    [\App\Http\Controllers\StaffReportsController::class, 'reply']);
 
     // ── Staff Targets & Commission ────────────────────────────────────────────
     Route::get('/staff-targets/summary',                          [\App\Http\Controllers\StaffTargetsController::class, 'summary']);

@@ -16,13 +16,13 @@ import {
   IconClipboardList, IconUsers, IconStar, IconAlertCircle,
   IconSettings, IconChartBar, IconAlertTriangle, IconMoodHappy,
   IconClock, IconTarget, IconTrendingUp, IconEye, IconArrowLeft,
-  IconSearch,
+  IconSearch, IconSend,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
 dayjs.extend(isoWeek);
 import {
-  getReports, createReport, updateReport, deleteReport, reviewReport,
+  getReports, createReport, updateReport, deleteReport, reviewReport, replyToReport,
   getDashboard, getSettings, updateSettings, getSupervisors, updateSupervisor,
   type StaffReport, type ReportSettings, type MonthStats, type StaffStat,
   type StaffWithSupervisor,
@@ -392,6 +392,48 @@ function ProgressCard({ type, stats, settings }: {
   );
 }
 
+// Reply thread — lets staff respond to supervisor feedback (and vice-versa)
+function ReplyThread({ report }: { report: StaffReport }) {
+  const qc = useQueryClient();
+  const [msg, setMsg] = useState('');
+  const replies = report.replies ?? [];
+
+  const mutation = useMutation({
+    mutationFn: () => replyToReport(report.id, msg.trim()),
+    onSuccess: () => {
+      setMsg('');
+      qc.invalidateQueries({ queryKey: ['staff-reports-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['staff-reports'] });
+      notifications.show({ message: 'Reply sent — your supervisor has been notified.', color: 'green' });
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Failed to send reply.', color: 'red' }),
+  });
+
+  return (
+    <Stack gap={6} mt={8}>
+      {replies.map(rep => (
+        <Paper key={rep.id} withBorder p={6} radius="sm"
+          style={{ background: rep.is_reviewer ? 'var(--mantine-color-blue-light)' : 'var(--mantine-color-gray-0)' }}>
+          <Group gap={6} mb={2} wrap="nowrap">
+            <Text size="xs" fw={700}>{rep.user.name}</Text>
+            <Badge size="xs" variant="light" color={rep.is_reviewer ? 'blue' : 'gray'}>
+              {rep.is_reviewer ? 'Supervisor' : 'Staff'}
+            </Badge>
+            <Text size="xs" c="dimmed">{dayjs(rep.created_at).format('D MMM HH:mm')}</Text>
+          </Group>
+          <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{rep.message}</Text>
+        </Paper>
+      ))}
+      <Group gap={6} align="flex-end" wrap="nowrap">
+        <Textarea style={{ flex: 1 }} placeholder="Respond to your supervisor…" autosize minRows={1} maxRows={4}
+          value={msg} onChange={e => setMsg(e.currentTarget.value)} />
+        <Button size="xs" disabled={!msg.trim()} loading={mutation.isPending}
+          onClick={() => mutation.mutate()} leftSection={<IconSend size={13} />}>Reply</Button>
+      </Group>
+    </Stack>
+  );
+}
+
 // Card shown in Recent Feedback section of dashboard
 function ReviewFeedbackCard({ report: r }: { report: StaffReport }) {
   const typeCfg = TYPE_CONFIG[r.report_type];
@@ -420,6 +462,7 @@ function ReviewFeedbackCard({ report: r }: { report: StaffReport }) {
           <Text size="xs" c="dimmed">Reviewed by {r.reviewer?.name} — no written feedback</Text>
         </Group>
       )}
+      <ReplyThread report={r} />
     </Paper>
   );
 }
