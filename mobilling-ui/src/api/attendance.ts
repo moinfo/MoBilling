@@ -61,3 +61,22 @@ export const recordAttendance = (payload: { user_id: string; date: string; check
 export const getAttendanceSettings = () => api.get<{ data: AttendanceSettings }>('/attendance/settings');
 export const updateAttendanceSettings = (data: AttendanceSettings) =>
   api.put<{ data: AttendanceSettings }>('/attendance/settings', data);
+
+export interface AttnDeductionItem {
+  id: string; date: string; penalty_type: 'absent'|'late'|'left_early'|'no_checkout';
+  amount: number; notes: string | null; waived: boolean; waive_reason: string | null;
+}
+export interface AttnStaffDeductions {
+  user: { id: string; name: string };
+  total: number;
+  by_type: { absent: number; late: number; left_early: number; no_checkout: number };
+  items: AttnDeductionItem[];
+}
+export interface AttnDeductionsResponse { month_label: string; grand_total: number; staff: AttnStaffDeductions[] }
+
+export const getAttendancePenalties = (month: number, year: number) =>
+  api.get<{ data: AttnDeductionsResponse }>('/attendance/penalties', { params: { month, year } });
+export const waiveAttendancePenalty = (id: string, reason?: string) =>
+  api.post(`/attendance/penalties/${id}/waive`, { reason });
+export const unwaiveAttendancePenalty = (id: string) =>
+  api.post(`/attendance/penalties/${id}/unwaive`);

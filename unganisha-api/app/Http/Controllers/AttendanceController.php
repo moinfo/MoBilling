@@ -107,6 +107,59 @@ class AttendanceController extends Controller
         return response()->json(['data' => ['user' => ['id' => $att->user_id]] + $this->formatDay($att, $this->settings())]);
     }
 
+    /** Deductions overview: every staff member's attendance penalties for a month. */
+    public function penalties(Request $request)
+    {
+        $this->authorizePermission('attendance.manage');
+
+        $month = (int) $request->query('month', now()->month);
+        $year  = (int) $request->query('year', now()->year);
+        $start = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+        $end   = $start->copy()->endOfMonth();
+
+        $rows = AttendancePenalty::with('user:id,name')
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->orderByDesc('date')->get();
+
+        $staff = $rows->groupBy('user_id')->map(function ($rs) {
+            $active = $rs->where('waived', false);
+            return [
+                'user'    => ['id' => $rs->first()->user_id, 'name' => $rs->first()->user?->name ?? 'Unknown'],
+                'total'   => round((float) $active->sum('amount'), 2),
+                'by_type' => collect(['absent', 'late', 'left_early', 'no_checkout'])
+                    ->mapWithKeys(fn ($t) => [$t => (int) $active->where('penalty_type', $t)->count()]),
+                'items'   => $rs->map(fn ($p) => [
+                    'id' => $p->id, 'date' => $p->date->format('Y-m-d'),
+                    'penalty_type' => $p->penalty_type, 'amount' => round((float) $p->amount, 2),
+                    'notes' => $p->notes, 'waived' => (bool) $p->waived, 'waive_reason' => $p->waive_reason,
+                ])->values(),
+            ];
+        })->sortByDesc('total')->values();
+
+        return response()->json(['data' => [
+            'month_label' => $start->format('M Y'),
+            'grand_total' => round((float) $rows->where('waived', false)->sum('amount'), 2),
+            'staff'       => $staff,
+        ]]);
+    }
+
+    public function waivePenalty(Request $request, AttendancePenalty $attendancePenalty)
+    {
+        $this->authorizePermission('attendance.manage');
+        $data = $request->validate(['reason' => 'nullable|string|max:255']);
+        $attendancePenalty->update([
+            'waived' => true, 'waived_by' => auth()->id(), 'waived_at' => now(), 'waive_reason' => $data['reason'] ?? null,
+        ]);
+        return response()->json(['message' => 'Deduction waived.']);
+    }
+
+    public function unwaivePenalty(AttendancePenalty $attendancePenalty)
+    {
+        $this->authorizePermission('attendance.manage');
+        $attendancePenalty->update(['waived' => false, 'waived_by' => null, 'waived_at' => null, 'waive_reason' => null]);
+        return response()->json(['message' => 'Deduction reinstated.']);
+    }
+
     public function showSettings()
     {
         $s = $this->settings();

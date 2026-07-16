@@ -3,14 +3,16 @@ import {
   Title, Tabs, Stack, Group, Text, Paper, Table, Badge, Button, ActionIcon,
   Loader, Center, ThemeIcon, NumberInput, Switch, Chip, SimpleGrid, Divider, Alert,
 } from '@mantine/core';
-import { DatePickerInput, TimeInput } from '@mantine/dates';
+import { DatePickerInput, TimeInput, MonthPickerInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle } from '@tabler/icons-react';
+import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff } from '@tabler/icons-react';
+import { Drawer, Text as MText } from '@mantine/core';
 import dayjs from 'dayjs';
 import {
   getAttendanceDay, recordAttendance, getAttendanceSettings, updateAttendanceSettings,
+  getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty,
   AttendanceSettings,
 } from '../api/attendance';
 
@@ -21,9 +23,11 @@ export default function Attendance() {
       <Tabs defaultValue="record" keepMounted={false}>
         <Tabs.List>
           <Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>
+          <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>Deductions</Tabs.Tab>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>
+        <Tabs.Panel value="deductions" pt="md"><DeductionsTab /></Tabs.Panel>
         <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>
       </Tabs>
     </Stack>
@@ -117,6 +121,115 @@ function RecordTab() {
         </Paper>
       )}
       <Text size="xs" c="dimmed">A missing check-in counts as absent (even if a check-out is entered). Clear a field and save to undo a mark.</Text>
+    </Stack>
+  );
+}
+
+const penLabel: Record<string, string> = {
+  absent: 'Absent', late: 'Late', left_early: 'Left early', no_checkout: 'No check-out',
+};
+
+function DeductionsTab() {
+  const qc = useQueryClient();
+  const [month, setMonth] = useState<Date>(new Date());
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const m = month.getMonth() + 1;
+  const y = month.getFullYear();
+
+  const { data, isLoading } = useQuery({ queryKey: ['attendance-penalties', m, y], queryFn: () => getAttendancePenalties(m, y) });
+  const res = data?.data?.data;
+  const detail = res?.staff.find((s) => s.user.id === detailId) ?? null;
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['attendance-penalties'] });
+  const waiveMut = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => waiveAttendancePenalty(id, reason),
+    onSuccess: () => { invalidate(); notifications.show({ message: 'Deduction waived.', color: 'green' }); },
+  });
+  const unwaiveMut = useMutation({
+    mutationFn: (id: string) => unwaiveAttendancePenalty(id),
+    onSuccess: () => { invalidate(); notifications.show({ message: 'Reinstated.', color: 'gray' }); },
+  });
+
+  return (
+    <Stack>
+      <Group justify="space-between" wrap="wrap">
+        <MonthPickerInput value={month} onChange={(v) => v && setMonth(new Date(v as any))}
+          maxDate={new Date()} maxLevel="decade" w={160} size="sm" />
+        {res && <Badge size="lg" color="red" variant="light">Total: TZS {res.grand_total.toLocaleString()}</Badge>}
+      </Group>
+
+      {isLoading ? <Center py="xl"><Loader /></Center> : !res || res.staff.length === 0 ? (
+        <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">No attendance deductions for {res?.month_label ?? 'this month'}.</Text></Paper>
+      ) : (
+        <Paper withBorder radius="md">
+          <Table.ScrollContainer minWidth={640}>
+            <Table highlightOnHover verticalSpacing="sm">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Staff</Table.Th>
+                  <Table.Th ta="center">Absent</Table.Th>
+                  <Table.Th ta="center">Late</Table.Th>
+                  <Table.Th ta="center">Early</Table.Th>
+                  <Table.Th ta="center">No-out</Table.Th>
+                  <Table.Th ta="right">Total</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {res.staff.map((s) => (
+                  <Table.Tr key={s.user.id}>
+                    <Table.Td fw={500}>{s.user.name}</Table.Td>
+                    <Table.Td ta="center">{s.by_type.absent || '—'}</Table.Td>
+                    <Table.Td ta="center">{s.by_type.late || '—'}</Table.Td>
+                    <Table.Td ta="center">{s.by_type.left_early || '—'}</Table.Td>
+                    <Table.Td ta="center">{s.by_type.no_checkout || '—'}</Table.Td>
+                    <Table.Td ta="right" fw={700} c="red">TZS {s.total.toLocaleString()}</Table.Td>
+                    <Table.Td ta="right">
+                      <Button size="compact-xs" variant="light" onClick={() => setDetailId(s.user.id)}>View / waive</Button>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
+
+      <Drawer opened={!!detailId} onClose={() => setDetailId(null)} position="right" size="lg"
+        title={detail ? `${detail.user.name} — ${res?.month_label}` : ''}>
+        {detail && (
+          <Stack gap="xs">
+            {detail.items.map((it) => (
+              <Paper key={it.id} withBorder p="xs" radius="sm" style={{ opacity: it.waived ? 0.55 : 1 }}>
+                <Group justify="space-between" wrap="nowrap" align="flex-start">
+                  <div style={{ minWidth: 0 }}>
+                    <Group gap={6} wrap="nowrap">
+                      <Badge size="xs" variant="light" color={it.penalty_type === 'absent' ? 'red' : 'orange'}>{penLabel[it.penalty_type] ?? it.penalty_type}</Badge>
+                      <MText size="sm" truncate>{it.notes}</MText>
+                    </Group>
+                    <MText size="xs" c="dimmed">
+                      {dayjs(it.date).format('ddd, D MMM YYYY')}
+                      {it.waived && it.waive_reason ? ` · waived: ${it.waive_reason}` : it.waived ? ' · waived' : ''}
+                    </MText>
+                  </div>
+                  <Group gap="xs" wrap="nowrap">
+                    <MText size="sm" fw={600} c={it.waived ? 'dimmed' : 'red'} td={it.waived ? 'line-through' : undefined}>−TZS {it.amount.toLocaleString()}</MText>
+                    {it.waived ? (
+                      <Button size="compact-xs" variant="subtle" color="gray" loading={unwaiveMut.isPending} onClick={() => unwaiveMut.mutate(it.id)}>Reinstate</Button>
+                    ) : (
+                      <Button size="compact-xs" variant="light" color="teal" loading={waiveMut.isPending}
+                        onClick={() => {
+                          const reason = window.prompt('Reason for waiving (optional):') ?? undefined;
+                          waiveMut.mutate({ id: it.id, reason: reason || undefined });
+                        }}>Waive</Button>
+                    )}
+                  </Group>
+                </Group>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+      </Drawer>
     </Stack>
   );
 }

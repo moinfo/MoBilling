@@ -692,6 +692,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/attendance/mine',        [\App\Http\Controllers\AttendanceController::class, 'mine']);
     Route::get('/attendance/day',         [\App\Http\Controllers\AttendanceController::class, 'day']);
     Route::post('/attendance/record',     [\App\Http\Controllers\AttendanceController::class, 'record']);
+    Route::get('/attendance/penalties',   [\App\Http\Controllers\AttendanceController::class, 'penalties']);
+    Route::post('/attendance/penalties/{attendancePenalty}/waive',   [\App\Http\Controllers\AttendanceController::class, 'waivePenalty']);
+    Route::post('/attendance/penalties/{attendancePenalty}/unwaive', [\App\Http\Controllers\AttendanceController::class, 'unwaivePenalty']);
     Route::get('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'showSettings']);
     Route::put('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'updateSettings']);
 
