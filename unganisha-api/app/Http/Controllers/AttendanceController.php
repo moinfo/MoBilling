@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Models\Attendance;
 use App\Models\AttendancePenalty;
 use App\Models\AttendanceSettings;
+use App\Models\User;
 use App\Traits\AuthorizesPermissions;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class AttendanceController extends Controller
 {
@@ -54,43 +56,55 @@ class AttendanceController extends Controller
         ]]);
     }
 
-    public function checkIn(Request $request)
+    /** Attendance-clerk view: all active staff + their marks for a date. */
+    public function day(Request $request)
     {
-        return $this->mark($request, 'in');
+        $this->authorizePermission('attendance.manage');
+        $date = $request->query('date', now()->toDateString());
+        $s = $this->settings();
+
+        $users = User::where('tenant_id', auth()->user()->tenant_id)
+            ->where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $records = Attendance::whereDate('date', $date)->get()->keyBy('user_id');
+
+        $staff = $users->map(function ($u) use ($records, $s, $date) {
+            $att = $records->get($u->id);
+            $day = $att ? $this->formatDay($att, $s) : [
+                'date' => $date, 'check_in_at' => null, 'check_out_at' => null,
+                'absent' => true, 'late' => false, 'left_early' => false, 'no_checkout' => false,
+            ];
+            return ['user' => ['id' => $u->id, 'name' => $u->name]] + $day;
+        });
+
+        return response()->json(['data' => [
+            'date' => $date,
+            'check_in_time'  => $s->check_in_time,
+            'check_out_time' => $s->check_out_time,
+            'staff' => $staff,
+        ]]);
     }
 
-    public function checkOut(Request $request)
+    /** Clerk records/updates one staff member's check-in/out for a date. */
+    public function record(Request $request)
     {
-        return $this->mark($request, 'out');
-    }
+        $this->authorizePermission('attendance.manage');
+        $tenantId = auth()->user()->tenant_id;
 
-    private function mark(Request $request, string $which)
-    {
-        $user = auth()->user();
-        $data = $request->validate(['time' => 'nullable|date_format:H:i']);
+        $data = $request->validate([
+            'user_id'   => ['required', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
+            'date'      => 'required|date',
+            'check_in'  => 'nullable|date_format:H:i',
+            'check_out' => 'nullable|date_format:H:i',
+        ]);
 
-        $now = $data['time']
-            ? now()->setTimeFromTimeString($data['time'])
-            : now();
-        $date = now()->toDateString();
-
-        $att = Attendance::firstOrNew(['user_id' => $user->id, 'date' => $date]);
-        $att->tenant_id ??= $user->tenant_id;
-
-        if ($which === 'in') {
-            if ($att->check_in_at) {
-                return response()->json(['message' => 'You already checked in today at ' . $att->check_in_at->format('H:i') . '.'], 422);
-            }
-            $att->check_in_at = $now;
-        } else {
-            if ($att->check_out_at) {
-                return response()->json(['message' => 'You already checked out today at ' . $att->check_out_at->format('H:i') . '.'], 422);
-            }
-            $att->check_out_at = $now;
-        }
+        $date = Carbon::parse($data['date']);
+        $att = Attendance::firstOrNew(['user_id' => $data['user_id'], 'date' => $date->toDateString()]);
+        $att->tenant_id ??= $tenantId;
+        $att->check_in_at  = !empty($data['check_in'])  ? $date->copy()->setTimeFromTimeString($data['check_in'])  : null;
+        $att->check_out_at = !empty($data['check_out']) ? $date->copy()->setTimeFromTimeString($data['check_out']) : null;
         $att->save();
 
-        return response()->json(['data' => $this->formatDay($att, $this->settings())]);
+        return response()->json(['data' => ['user' => ['id' => $att->user_id]] + $this->formatDay($att, $this->settings())]);
     }
 
     public function showSettings()

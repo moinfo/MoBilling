@@ -6,7 +6,7 @@ import {
   IconFileText, IconFileInvoice, IconReceipt, IconFileDescription, IconFileCheck,
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
-  IconClipboardList, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
+  IconClipboardList, IconClipboardCheck, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
   IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww, IconMessageCircle, IconMessageDots, IconNews, IconBook,
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
@@ -419,6 +419,15 @@ export default function AppLayout() {
               leftSection={<IconClipboardList size={18} />}
               active={isActive('/staff-reports')}
               onClick={() => navigateAndClose('/staff-reports')}
+            />
+          )}
+
+          {can('attendance.manage') && (
+            <NavLink
+              label="Attendance"
+              leftSection={<IconClipboardCheck size={18} />}
+              active={isActive('/attendance')}
+              onClick={() => navigateAndClose('/attendance')}
             />
           )}
 

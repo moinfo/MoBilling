@@ -20,15 +20,7 @@ export interface AttendanceDeduction {
 }
 
 export interface MyAttendance {
-  settings: {
-    check_in_time: string;
-    check_out_time: string;
-    penalties_enabled: boolean;
-    penalty_absent: number;
-    penalty_late: number;
-    penalty_left_early: number;
-    penalty_no_checkout: number;
-  };
+  settings: { check_in_time: string; check_out_time: string; penalties_enabled: boolean };
   today: AttendanceDay | null;
   month_label: string;
   present_days: number;
@@ -37,6 +29,35 @@ export interface MyAttendance {
   deductions: AttendanceDeduction[];
 }
 
+export interface AttendanceRow extends AttendanceDay {
+  user: { id: string; name: string };
+}
+export interface AttendanceDayResponse {
+  date: string;
+  check_in_time: string;
+  check_out_time: string;
+  staff: AttendanceRow[];
+}
+
+export interface AttendanceSettings {
+  check_in_time: string;
+  check_out_time: string;
+  penalties_enabled: boolean;
+  penalty_absent: number;
+  penalty_late: number;
+  penalty_left_early: number;
+  penalty_no_checkout: number;
+  working_days?: number[];
+}
+
 export const getMyAttendance = () => api.get<{ data: MyAttendance }>('/attendance/mine');
-export const checkIn = (time?: string) => api.post('/attendance/check-in', time ? { time } : {});
-export const checkOut = (time?: string) => api.post('/attendance/check-out', time ? { time } : {});
+
+export const getAttendanceDay = (date: string) =>
+  api.get<{ data: AttendanceDayResponse }>('/attendance/day', { params: { date } });
+
+export const recordAttendance = (payload: { user_id: string; date: string; check_in?: string | null; check_out?: string | null }) =>
+  api.post<{ data: AttendanceRow }>('/attendance/record', payload);
+
+export const getAttendanceSettings = () => api.get<{ data: AttendanceSettings }>('/attendance/settings');
+export const updateAttendanceSettings = (data: AttendanceSettings) =>
+  api.put<{ data: AttendanceSettings }>('/attendance/settings', data);

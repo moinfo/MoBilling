@@ -690,8 +690,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Attendance (all staff check in/out; settings gated in-controller)
     Route::get('/attendance/mine',        [\App\Http\Controllers\AttendanceController::class, 'mine']);
-    Route::post('/attendance/check-in',   [\App\Http\Controllers\AttendanceController::class, 'checkIn']);
-    Route::post('/attendance/check-out',  [\App\Http\Controllers\AttendanceController::class, 'checkOut']);
+    Route::get('/attendance/day',         [\App\Http\Controllers\AttendanceController::class, 'day']);
+    Route::post('/attendance/record',     [\App\Http\Controllers\AttendanceController::class, 'record']);
     Route::get('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'showSettings']);
     Route::put('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'updateSettings']);
 

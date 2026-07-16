@@ -1,9 +1,8 @@
-import { Card, Group, Text, Badge, Button, ThemeIcon, Box, Stack } from '@mantine/core';
-import { IconLogin2, IconLogout2, IconClockHour4, IconReceiptOff, IconCircleCheck } from '@tabler/icons-react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { notifications } from '@mantine/notifications';
+import { Card, Group, Text, Badge, ThemeIcon, Box, Stack } from '@mantine/core';
+import { IconLogin2, IconLogout2, IconClockHour4, IconReceiptOff } from '@tabler/icons-react';
+import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { getMyAttendance, checkIn, checkOut } from '../../api/attendance';
+import { getMyAttendance } from '../../api/attendance';
 import classes from './Dashboard.module.css';
 
 const dtypeLabel: Record<string, string> = {
@@ -11,20 +10,8 @@ const dtypeLabel: Record<string, string> = {
 };
 
 export default function MyAttendance() {
-  const qc = useQueryClient();
   const { data } = useQuery({ queryKey: ['my-attendance'], queryFn: getMyAttendance });
   const a = data?.data?.data;
-
-  const inMut = useMutation({
-    mutationFn: () => checkIn(),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['my-attendance'] }); notifications.show({ message: 'Checked in — have a great day!', color: 'green' }); },
-    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Check-in failed.', color: 'red' }),
-  });
-  const outMut = useMutation({
-    mutationFn: () => checkOut(),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['my-attendance'] }); notifications.show({ message: 'Checked out. See you tomorrow!', color: 'green' }); },
-    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Check-out failed.', color: 'red' }),
-  });
 
   if (!a) return null;
   const t = a.today;
@@ -66,19 +53,10 @@ export default function MyAttendance() {
               </Group>
             </div>
 
-            <div>
-              {!t?.check_in_at ? (
-                <Button color="green" leftSection={<IconLogin2 size={16} />} loading={inMut.isPending} onClick={() => inMut.mutate()}>
-                  Check In
-                </Button>
-              ) : !t?.check_out_at ? (
-                <Button color="blue" leftSection={<IconLogout2 size={16} />} loading={outMut.isPending} onClick={() => outMut.mutate()}>
-                  Check Out
-                </Button>
-              ) : (
-                <Badge size="lg" color="teal" variant="light" leftSection={<IconCircleCheck size={14} />}>Done for today</Badge>
-              )}
-            </div>
+            <Badge size="lg" variant="light"
+              color={!t?.check_in_at ? 'gray' : t.late ? 'orange' : 'teal'}>
+              {!t?.check_in_at ? 'Not marked yet' : t.late ? 'Present (late)' : 'Present'}
+            </Badge>
           </Group>
 
           <Stack gap={2} align="flex-end">

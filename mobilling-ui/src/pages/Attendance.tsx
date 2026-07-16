@@ -1,0 +1,200 @@
+import { useState, useEffect } from 'react';
+import {
+  Title, Tabs, Stack, Group, Text, Paper, Table, Badge, Button, ActionIcon,
+  Loader, Center, ThemeIcon, NumberInput, Switch, Chip, SimpleGrid, Divider, Alert,
+} from '@mantine/core';
+import { DatePickerInput, TimeInput } from '@mantine/dates';
+import { useForm } from '@mantine/form';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { notifications } from '@mantine/notifications';
+import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle } from '@tabler/icons-react';
+import dayjs from 'dayjs';
+import {
+  getAttendanceDay, recordAttendance, getAttendanceSettings, updateAttendanceSettings,
+  AttendanceSettings,
+} from '../api/attendance';
+
+export default function Attendance() {
+  return (
+    <Stack>
+      <Title order={2}>Attendance</Title>
+      <Tabs defaultValue="record" keepMounted={false}>
+        <Tabs.List>
+          <Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>
+          <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>
+        <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>
+      </Tabs>
+    </Stack>
+  );
+}
+
+function RecordTab() {
+  const qc = useQueryClient();
+  const [date, setDate] = useState<Date>(new Date());
+  const ds = dayjs(date).format('YYYY-MM-DD');
+  const [edits, setEdits] = useState<Record<string, { check_in: string; check_out: string }>>({});
+
+  const { data, isLoading } = useQuery({ queryKey: ['attendance-day', ds], queryFn: () => getAttendanceDay(ds) });
+  const resp = data?.data?.data;
+
+  useEffect(() => {
+    if (resp) {
+      const m: Record<string, { check_in: string; check_out: string }> = {};
+      resp.staff.forEach((r) => { m[r.user.id] = { check_in: r.check_in_at ?? '', check_out: r.check_out_at ?? '' }; });
+      setEdits(m);
+    }
+  }, [resp]);
+
+  const recordMut = useMutation({
+    mutationFn: recordAttendance,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['attendance-day', ds] }); notifications.show({ message: 'Saved.', color: 'green' }); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Save failed.', color: 'red' }),
+  });
+
+  const set = (uid: string, field: 'check_in' | 'check_out', v: string) =>
+    setEdits((s) => ({ ...s, [uid]: { ...s[uid], [field]: v } }));
+
+  return (
+    <Stack>
+      <Group>
+        <DatePickerInput label="Date" value={date} onChange={(v) => v && setDate(new Date(v as any))}
+          valueFormat="DD/MM/YYYY" maxDate={new Date()} w={180} size="sm" />
+        {resp && <Text size="sm" c="dimmed" mt={22}>Targets: in by {resp.check_in_time} · out by {resp.check_out_time}</Text>}
+      </Group>
+
+      {isLoading ? <Center py="xl"><Loader /></Center> : !resp || resp.staff.length === 0 ? (
+        <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">No staff.</Text></Paper>
+      ) : (
+        <Paper withBorder radius="md">
+          <Table.ScrollContainer minWidth={620}>
+            <Table verticalSpacing="sm">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Staff</Table.Th>
+                  <Table.Th>Check-in</Table.Th>
+                  <Table.Th>Check-out</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {resp.staff.map((r) => {
+                  const e = edits[r.user.id] ?? { check_in: '', check_out: '' };
+                  return (
+                    <Table.Tr key={r.user.id}>
+                      <Table.Td fw={500}>{r.user.name}</Table.Td>
+                      <Table.Td>
+                        <TimeInput value={e.check_in} onChange={(ev) => set(r.user.id, 'check_in', ev.currentTarget.value)} w={110} />
+                      </Table.Td>
+                      <Table.Td>
+                        <TimeInput value={e.check_out} onChange={(ev) => set(r.user.id, 'check_out', ev.currentTarget.value)} w={110} />
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4}>
+                          {r.absent && <Badge size="xs" color="red" variant="light">absent</Badge>}
+                          {r.late && <Badge size="xs" color="orange" variant="light">late</Badge>}
+                          {r.left_early && <Badge size="xs" color="orange" variant="light">early</Badge>}
+                          {r.no_checkout && <Badge size="xs" color="yellow" variant="light">no out</Badge>}
+                          {!r.absent && !r.late && !r.left_early && !r.no_checkout && r.check_in_at && (
+                            <Badge size="xs" color="teal" variant="light">present</Badge>
+                          )}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td>
+                        <ActionIcon variant="light" loading={recordMut.isPending && recordMut.variables?.user_id === r.user.id}
+                          onClick={() => recordMut.mutate({ user_id: r.user.id, date: ds, check_in: e.check_in || null, check_out: e.check_out || null })}>
+                          <IconDeviceFloppy size={16} />
+                        </ActionIcon>
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
+      <Text size="xs" c="dimmed">A missing check-in counts as absent (even if a check-out is entered). Clear a field and save to undo a mark.</Text>
+    </Stack>
+  );
+}
+
+function SettingsTab() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['attendance-settings'], queryFn: getAttendanceSettings });
+  const settings = data?.data?.data;
+
+  const form = useForm<AttendanceSettings>({
+    initialValues: {
+      check_in_time: '07:30', check_out_time: '17:00', penalties_enabled: true,
+      penalty_absent: 5000, penalty_late: 2000, penalty_left_early: 2000, penalty_no_checkout: 2000,
+      working_days: [1, 2, 3, 4, 5, 6],
+    },
+  });
+
+  useEffect(() => { if (settings) form.setValues(settings); /* eslint-disable-next-line */ }, [settings]);
+
+  const mutation = useMutation({
+    mutationFn: updateAttendanceSettings,
+    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ['attendance-settings'] }); form.setValues(res.data.data); notifications.show({ message: 'Settings saved.', color: 'green' }); },
+    onError: () => notifications.show({ message: 'Failed to save.', color: 'red' }),
+  });
+
+  if (isLoading) return <Center py="xl"><Loader /></Center>;
+
+  return (
+    <form onSubmit={form.onSubmit((v) => mutation.mutate(v))}>
+      <Stack gap="lg" maw={560}>
+        <div>
+          <Group gap="xs" mb="xs">
+            <ThemeIcon size="sm" variant="light" color="blue" radius="xl"><IconClock size={14} /></ThemeIcon>
+            <Text size="sm" fw={700}>Work hours</Text>
+          </Group>
+          <SimpleGrid cols={2} spacing="sm">
+            <TimeInput label="Check-in time" {...form.getInputProps('check_in_time')} />
+            <TimeInput label="Check-out time" {...form.getInputProps('check_out_time')} />
+          </SimpleGrid>
+          <Text size="xs" fw={600} mt="sm" mb={4}>Working days</Text>
+          <Chip.Group multiple value={(form.values.working_days ?? []).map(String)}
+            onChange={(v) => form.setFieldValue('working_days', v.map(Number).sort())}>
+            <Group gap={6}>
+              {[[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']].map(([n, l]) => (
+                <Chip key={n} value={String(n)} size="xs" variant="light">{l as string}</Chip>
+              ))}
+            </Group>
+          </Chip.Group>
+        </div>
+
+        <Divider />
+
+        <div>
+          <Group gap="xs" mb="xs" justify="space-between">
+            <Group gap="xs">
+              <ThemeIcon size="sm" variant="light" color="red" radius="xl"><IconAlertTriangle size={14} /></ThemeIcon>
+              <Text size="sm" fw={700}>Deductions</Text>
+            </Group>
+            <Switch label="Enabled" checked={!!form.values.penalties_enabled}
+              onChange={(e) => form.setFieldValue('penalties_enabled', e.currentTarget.checked)} />
+          </Group>
+          <Text size="xs" c="dimmed" mb="sm">Charged after each working day's check-out time. Holidays are excluded.</Text>
+          <SimpleGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+            <NumberInput label="Absent" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled} {...form.getInputProps('penalty_absent')} />
+            <NumberInput label="Late" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled} {...form.getInputProps('penalty_late')} />
+            <NumberInput label="Left early" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled} {...form.getInputProps('penalty_left_early')} />
+            <NumberInput label="No check-out" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled} {...form.getInputProps('penalty_no_checkout')} />
+          </SimpleGrid>
+        </div>
+
+        <Alert color="blue" variant="light" p="xs">
+          A missing check-in is counted as <b>absent</b> even if a check-out is recorded.
+        </Alert>
+
+        <Group>
+          <Button type="submit" loading={mutation.isPending}>Save Settings</Button>
+        </Group>
+      </Stack>
+    </form>
+  );
+}

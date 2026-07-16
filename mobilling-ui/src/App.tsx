@@ -73,6 +73,7 @@ import FieldMarketing from './pages/FieldMarketing';
 import SocialMedia from './pages/SocialMedia';
 import ServedCustomers from './pages/ServedCustomers';
 import StaffReports from './pages/StaffReports';
+import Attendance from './pages/Attendance';
 import StaffTargets from './pages/StaffTargets';
 import Collection from './pages/Collection';
 import Followups from './pages/Followups';
@@ -234,6 +235,7 @@ export default function App() {
                   <Route path="/social-media" element={<SocialMedia />} />
                   <Route path="/served-customers" element={<ServedCustomers />} />
                   <Route path="/staff-reports" element={<StaffReports />} />
+                  <Route path="/attendance" element={<Attendance />} />
                   <Route path="/staff-targets" element={<StaffTargets />} />
                   <Route path="/reports/revenue" element={<RevenueSummary />} />
                   <Route path="/reports/aging" element={<OutstandingAging />} />
