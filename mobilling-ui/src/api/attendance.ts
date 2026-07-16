@@ -81,3 +81,14 @@ export const waiveAttendancePenalty = (id: string, reason?: string) =>
   api.post(`/attendance/penalties/${id}/waive`, { reason });
 export const unwaiveAttendancePenalty = (id: string) =>
   api.post(`/attendance/penalties/${id}/unwaive`);
+
+export interface AttendanceOverview {
+  today: { total: number; present: number; late: number; left_early: number; not_recorded: number };
+  month_label: string;
+  working_days_so_far: number;
+  deduction_total: number;
+  by_type: { absent: number; late: number; left_early: number; no_checkout: number };
+  staff: { user: { id: string; name: string }; present_days: number; deductions: number }[];
+}
+export const getAttendanceDashboard = () =>
+  api.get<{ data: AttendanceOverview }>('/attendance/dashboard');

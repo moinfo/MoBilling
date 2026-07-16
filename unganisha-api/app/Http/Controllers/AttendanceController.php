@@ -109,6 +109,65 @@ class AttendanceController extends Controller
         return response()->json(['data' => ['user' => ['id' => $att->user_id]] + $this->formatDay($att, $this->settings())]);
     }
 
+    /** Attendance overview: today's snapshot + this month's per-staff summary. */
+    public function dashboard(Request $request)
+    {
+        $this->authorizePermission('attendance.manage');
+        $tenantId = auth()->user()->tenant_id;
+        $s = $this->settings();
+
+        $users = User::where('tenant_id', $tenantId)->where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $today = now()->toDateString();
+        $todayRecs = Attendance::whereDate('date', $today)->get()->keyBy('user_id');
+
+        $t = ['total' => $users->count(), 'present' => 0, 'late' => 0, 'left_early' => 0, 'not_recorded' => 0];
+        foreach ($users as $u) {
+            $day = $todayRecs->get($u->id);
+            $f = $day ? $this->formatDay($day, $s) : null;
+            if (!$f || !$f['check_in_at']) {
+                $t['not_recorded']++;
+            } else {
+                $t['present']++;
+                if ($f['late']) $t['late']++;
+                if ($f['left_early']) $t['left_early']++;
+            }
+        }
+
+        // This month
+        $monthStart = now()->startOfMonth()->toDateString();
+        $monthEnd   = now()->endOfMonth()->toDateString();
+        $workDays = $s->working_days ?: [1, 2, 3, 4, 5, 6];
+        $holidays = \App\Models\StaffReportHoliday::pluck('date')->map(fn ($d) => $d->toDateString())->all();
+        $workedSoFar = 0;
+        for ($d = now()->startOfMonth(); $d->lte(now()); $d->addDay()) {
+            if (in_array($d->dayOfWeekIso, $workDays) && !in_array($d->toDateString(), $holidays, true)) {
+                $workedSoFar++;
+            }
+        }
+
+        $pens = AttendancePenalty::where('waived', false)->whereBetween('date', [$monthStart, $monthEnd])->get();
+        $recs = Attendance::whereBetween('date', [$monthStart, $monthEnd])->get();
+
+        $staff = $users->map(function ($u) use ($recs, $pens) {
+            $mine = $recs->where('user_id', $u->id);
+            return [
+                'user' => ['id' => $u->id, 'name' => $u->name],
+                'present_days' => $mine->whereNotNull('check_in_at')->count(),
+                'deductions'   => round((float) $pens->where('user_id', $u->id)->sum('amount'), 2),
+            ];
+        })->sortByDesc('deductions')->values();
+
+        return response()->json(['data' => [
+            'today' => $t,
+            'month_label' => now()->format('M Y'),
+            'working_days_so_far' => $workedSoFar,
+            'deduction_total' => round((float) $pens->sum('amount'), 2),
+            'by_type' => collect(['absent', 'late', 'left_early', 'no_checkout'])
+                ->mapWithKeys(fn ($tp) => [$tp => (int) $pens->where('penalty_type', $tp)->count()]),
+            'staff' => $staff,
+        ]]);
+    }
+
     /** Deductions overview: every staff member's attendance penalties for a month. */
     public function penalties(Request $request)
     {

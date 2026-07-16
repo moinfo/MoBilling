@@ -7,12 +7,12 @@ import { DatePickerInput, TimeInput, MonthPickerInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff } from '@tabler/icons-react';
-import { Drawer, Text as MText } from '@mantine/core';
+import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2 } from '@tabler/icons-react';
+import { Drawer, Text as MText, Card, SimpleGrid as MGrid } from '@mantine/core';
 import dayjs from 'dayjs';
 import {
   getAttendanceDay, recordAttendance, getAttendanceSettings, updateAttendanceSettings,
-  getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty,
+  getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty, getAttendanceDashboard,
   AttendanceSettings,
 } from '../api/attendance';
 
@@ -20,16 +20,98 @@ export default function Attendance() {
   return (
     <Stack>
       <Title order={2}>Attendance</Title>
-      <Tabs defaultValue="record" keepMounted={false}>
+      <Tabs defaultValue="dashboard" keepMounted={false}>
         <Tabs.List>
+          <Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>Dashboard</Tabs.Tab>
           <Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>
           <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>Deductions</Tabs.Tab>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>
         </Tabs.List>
+        <Tabs.Panel value="dashboard" pt="md"><DashboardTab /></Tabs.Panel>
         <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>
         <Tabs.Panel value="deductions" pt="md"><DeductionsTab /></Tabs.Panel>
         <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>
       </Tabs>
+    </Stack>
+  );
+}
+
+function StatCard({ label, value, sub, color, icon }: { label: string; value: number | string; sub?: string; color: string; icon: React.ReactNode }) {
+  return (
+    <Card withBorder radius="md" p="sm">
+      <Group gap="sm" wrap="nowrap">
+        <ThemeIcon variant="light" color={color} size={40} radius="md">{icon}</ThemeIcon>
+        <div style={{ minWidth: 0 }}>
+          <Text size="xl" fw={800} lh={1.1}>{value}</Text>
+          <Text size="xs" c="dimmed" truncate>{label}</Text>
+          {sub && <Text size="xs" c={color}>{sub}</Text>}
+        </div>
+      </Group>
+    </Card>
+  );
+}
+
+function DashboardTab() {
+  const { data, isLoading } = useQuery({ queryKey: ['attendance-dashboard'], queryFn: getAttendanceDashboard });
+  const d = data?.data?.data;
+  if (isLoading) return <Center py="xl"><Loader /></Center>;
+  if (!d) return null;
+
+  return (
+    <Stack gap="lg">
+      <div>
+        <Text size="sm" fw={700} tt="uppercase" c="dimmed" mb="xs">Today · {dayjs().format('ddd, D MMM')}</Text>
+        <MGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+          <StatCard label="Present" value={`${d.today.present}/${d.today.total}`} color="teal" icon={<IconUserCheck size={20} />} />
+          <StatCard label="Late" value={d.today.late} color="orange" icon={<IconClock size={20} />} />
+          <StatCard label="Left early" value={d.today.left_early} color="orange" icon={<IconLogout2 size={20} />} />
+          <StatCard label="Not recorded" value={d.today.not_recorded} color={d.today.not_recorded ? 'red' : 'gray'} icon={<IconUserOff size={20} />} />
+        </MGrid>
+      </div>
+
+      <div>
+        <Text size="sm" fw={700} tt="uppercase" c="dimmed" mb="xs">{d.month_label} · deductions</Text>
+        <Group gap="sm" wrap="wrap" mb="sm">
+          <Badge size="lg" color="red" variant="light">Total: TZS {d.deduction_total.toLocaleString()}</Badge>
+          <Text size="sm" c="dimmed">{d.working_days_so_far} working days so far</Text>
+        </Group>
+        <Group gap="xs">
+          {(['absent', 'late', 'left_early', 'no_checkout'] as const).map((t) => (
+            <Badge key={t} variant="light" color={t === 'absent' ? 'red' : 'orange'} radius="sm">
+              {penLabel[t]}: {d.by_type[t]}
+            </Badge>
+          ))}
+        </Group>
+      </div>
+
+      <Paper withBorder radius="md">
+        <Table.ScrollContainer minWidth={480}>
+          <Table highlightOnHover verticalSpacing="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Staff</Table.Th>
+                <Table.Th ta="center">Present ({d.working_days_so_far})</Table.Th>
+                <Table.Th ta="right">Deductions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {d.staff.map((s) => (
+                <Table.Tr key={s.user.id}>
+                  <Table.Td fw={500}>{s.user.name}</Table.Td>
+                  <Table.Td ta="center">
+                    <Badge variant="light" color={s.present_days >= d.working_days_so_far ? 'teal' : 'gray'}>
+                      {s.present_days}/{d.working_days_so_far}
+                    </Badge>
+                  </Table.Td>
+                  <Table.Td ta="right" fw={600} c={s.deductions > 0 ? 'red' : 'dimmed'}>
+                    {s.deductions > 0 ? `TZS ${s.deductions.toLocaleString()}` : '—'}
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Paper>
     </Stack>
   );
 }
