@@ -197,6 +197,9 @@ function DashboardTab({ can, canSeeTeam }: { can: (p: string) => boolean; canSee
         </Group>
       </Paper>
 
+      {/* Rules & deductions — so staff know the amounts and the rules */}
+      {can('staff_reports.submit') && <RulesAndDeductions settings={settings} />}
+
       {/* Recent supervisor feedback (staff view) */}
       {!isSupervisor && (
         <>
@@ -441,6 +444,54 @@ function ReplyThread({ report }: { report: StaffReport }) {
           onClick={() => mutation.mutate()} leftSection={<IconSend size={13} />}>Reply</Button>
       </Group>
     </Stack>
+  );
+}
+
+// Rules + deduction amounts — visible to staff so they know what applies
+function RulesAndDeductions({ settings }: { settings: ReportSettings }) {
+  const enabled = settings.penalties_enabled ?? true;
+  const fmt = (n?: number) => (n != null ? `TZS ${Number(n).toLocaleString()}` : '—');
+
+  const rows: { label: string; amount?: number; color: string; when: string }[] = [
+    { label: 'Missing daily report',   amount: settings.penalty_missing_daily,   color: 'red',    when: 'each weekday with no report, after the deadline' },
+    { label: 'Late report',            amount: settings.penalty_late,            color: 'orange', when: 'any report submitted after its deadline' },
+    { label: 'Missing weekly report',  amount: settings.penalty_missing_weekly,  color: 'red',    when: 'each week with no report, after the deadline' },
+    { label: 'Missing monthly report', amount: settings.penalty_missing_monthly, color: 'red',    when: 'the month with no report, after the deadline' },
+  ];
+
+  return (
+    <Paper withBorder p="md" radius="md" style={{ borderLeft: '3px solid var(--mantine-color-red-5)' }}>
+      <Group gap="xs" mb="xs">
+        <ThemeIcon size="sm" variant="light" color="red" radius="xl"><IconAlertTriangle size={14} /></ThemeIcon>
+        <Text size="sm" fw={700} tt="uppercase" c="dimmed">Report Rules &amp; Deductions</Text>
+      </Group>
+
+      <Stack gap={4} mb="sm">
+        <Text size="xs" c="dimmed">• Submit each report <b>before its deadline</b> — a late report is charged, and a day/week/month with no report is charged after the deadline passes.</Text>
+        <Text size="xs" c="dimmed">• Once its day/period passes, a report <b>can no longer be edited or deleted</b>.</Text>
+        <Text size="xs" c="dimmed">• Your deductions for the month are shown on your main dashboard under <b>“My Report Deductions”</b>.</Text>
+      </Stack>
+
+      {enabled ? (
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="xs">
+          {rows.map((r) => (
+            <Paper key={r.label} withBorder p="xs" radius="sm">
+              <Group justify="space-between" wrap="nowrap">
+                <div style={{ minWidth: 0 }}>
+                  <Text size="sm" fw={600} truncate>{r.label}</Text>
+                  <Text size="xs" c="dimmed">{r.when}</Text>
+                </div>
+                <Badge color={r.color} variant="light" size="lg" radius="sm" style={{ flexShrink: 0 }}>
+                  −{fmt(r.amount)}
+                </Badge>
+              </Group>
+            </Paper>
+          ))}
+        </SimpleGrid>
+      ) : (
+        <Badge color="gray" variant="light">Deductions are currently disabled</Badge>
+      )}
+    </Paper>
   );
 }
 
