@@ -329,10 +329,12 @@ function StatCell({ stat, color }: { stat: MonthStats; color: string }) {
 function ProgressCard({ type, stats, settings }: {
   type: ReportType; stats: MonthStats; settings: ReportSettings;
 }) {
-  const cfg    = TYPE_CONFIG[type];
-  const ratio  = stats.target > 0 ? stats.submitted / stats.target : 0;
-  const pct    = Math.min(ratio, 1) * 100;
-  const over   = stats.submitted > stats.target;
+  const cfg      = TYPE_CONFIG[type];
+  const expected = stats.expected ?? 0;
+  const missing  = stats.missing ?? Math.max(0, expected - stats.submitted);
+  // progress against what's DUE by today (not the whole-month target)
+  const pct      = expected > 0 ? Math.min(stats.submitted / expected, 1) * 100 : 100;
+  const over     = missing === 0;
 
   const deadlineLabel = type === 'daily'
     ? `by ${settings.daily_deadline_time} daily`
@@ -350,6 +352,14 @@ function ProgressCard({ type, stats, settings }: {
             <Text size="sm" c="dimmed" mt={4}>/ {stats.target}</Text>
           </Group>
           <Text size="xs" c="dimmed">target this month</Text>
+
+          {/* Progress relative to today, not the whole month */}
+          <Group gap={6} mt={6} wrap="wrap">
+            <Badge size="xs" variant="light" color="gray">{stats.submitted}/{expected} due by today</Badge>
+            {missing > 0 && (
+              <Badge size="xs" variant="light" color="red">{missing} missing</Badge>
+            )}
+          </Group>
 
           <Group gap="xs" mt={6} wrap="wrap">
             {stats.reviewed > 0 && (

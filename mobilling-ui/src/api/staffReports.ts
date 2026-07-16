@@ -49,6 +49,8 @@ export interface MonthStats {
   reviewed:  number;
   late:      number;
   target:    number;
+  expected?: number;  // how many are due by today
+  missing?:  number;  // due-by-today but not written
 }
 
 export interface StaffStat {

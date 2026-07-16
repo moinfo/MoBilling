@@ -240,8 +240,11 @@ class StaffReportsController extends Controller
                 'weekly'  => $settings->weekly_target,
                 'monthly' => $settings->monthly_target,
             };
+            // How many are actually due by today (elapsed weekdays/weeks past deadline)
+            $expected = $this->expectedSoFar($type, $settings, $now);
+            $missing  = max(0, $expected - $submitted);
 
-            $thisMonth[$type] = compact('submitted', 'reviewed', 'late', 'target');
+            $thisMonth[$type] = compact('submitted', 'reviewed', 'late', 'target', 'expected', 'missing');
         }
 
         $recentReviews = StaffReport::with(['reviewer', 'replies'])
@@ -362,6 +365,38 @@ class StaffReportsController extends Controller
             'weekly'  => $carbon->startOfWeek(Carbon::MONDAY)->toDateString(),
             'monthly' => $carbon->startOfMonth()->toDateString(),
         };
+    }
+
+    /** How many reports of a type are DUE by now this month (deadline passed). */
+    private function expectedSoFar(string $type, StaffReportSettings $s, Carbon $now): int
+    {
+        $monthStart = $now->copy()->startOfMonth();
+
+        if ($type === 'daily') {
+            $c = 0;
+            for ($d = $monthStart->copy(); $d->lte($now); $d->addDay()) {
+                if ($d->isWeekday() && $now->gt($d->copy()->setTimeFromTimeString($s->daily_deadline_time))) {
+                    $c++;
+                }
+            }
+            return $c;
+        }
+
+        if ($type === 'weekly') {
+            $c = 0;
+            for ($w = $monthStart->copy()->startOfWeek(Carbon::MONDAY); $w->lte($now); $w->addWeek()) {
+                if ($w->lt($monthStart)) {
+                    continue;
+                }
+                if ($now->gt($w->copy()->addDays($s->weekly_deadline_day - 1)->setTimeFromTimeString($s->weekly_deadline_time))) {
+                    $c++;
+                }
+            }
+            return $c;
+        }
+
+        $dueDay = min($s->monthly_deadline_day, $now->daysInMonth);
+        return $now->gt($monthStart->copy()->addDays($dueDay - 1)->setTimeFromTimeString($s->monthly_deadline_time)) ? 1 : 0;
     }
 
     /** A report locks for edit/delete once its own day/period has passed. */

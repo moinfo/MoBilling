@@ -41,27 +41,42 @@ class ApplyStaffReportPenalties extends Command
                 continue;
             }
 
-            // ── Daily: charge for YESTERDAY (a completed weekday with no report) ──
-            $yesterday = $now->copy()->subDay();
-            if ($yesterday->isWeekday() && (float) $s->penalty_missing_daily > 0) {
-                $charged += $this->chargeMissing(
-                    $tenantId, $staffIds, 'daily', $yesterday->toDateString(),
-                    (float) $s->penalty_missing_daily, 'Missing daily report (' . $yesterday->format('D, j M') . ')', $dry
-                );
+            $monthStart = $now->copy()->startOfMonth();
+
+            // ── Daily: every past WEEKDAY this month whose deadline has passed ──
+            if ((float) $s->penalty_missing_daily > 0) {
+                for ($d = $monthStart->copy(); $d->lte($now); $d->addDay()) {
+                    if (!$d->isWeekday()) {
+                        continue;
+                    }
+                    $deadline = $d->copy()->setTimeFromTimeString($s->daily_deadline_time);
+                    if ($now->gt($deadline)) {
+                        $charged += $this->chargeMissing(
+                            $tenantId, $staffIds, 'daily', $d->toDateString(),
+                            (float) $s->penalty_missing_daily, 'Missing daily report (' . $d->format('D, j M') . ')', $dry
+                        );
+                    }
+                }
             }
 
-            // ── Weekly: current week, once its deadline has passed ──
-            $weekStart = $now->copy()->startOfWeek(Carbon::MONDAY);
-            $weekDeadline = $weekStart->copy()->addDays($s->weekly_deadline_day - 1)->setTimeFromTimeString($s->weekly_deadline_time);
-            if ($now->gt($weekDeadline) && (float) $s->penalty_missing_weekly > 0) {
-                $charged += $this->chargeMissing(
-                    $tenantId, $staffIds, 'weekly', $weekStart->toDateString(),
-                    (float) $s->penalty_missing_weekly, 'Missing weekly report (wk of ' . $weekStart->format('j M') . ')', $dry
-                );
+            // ── Weekly: each week (Mon start) this month whose deadline passed ──
+            if ((float) $s->penalty_missing_weekly > 0) {
+                $w = $monthStart->copy()->startOfWeek(Carbon::MONDAY);
+                for (; $w->lte($now); $w->addWeek()) {
+                    if ($w->lt($monthStart)) {
+                        continue; // skip a week that started in the previous month
+                    }
+                    $deadline = $w->copy()->addDays($s->weekly_deadline_day - 1)->setTimeFromTimeString($s->weekly_deadline_time);
+                    if ($now->gt($deadline)) {
+                        $charged += $this->chargeMissing(
+                            $tenantId, $staffIds, 'weekly', $w->toDateString(),
+                            (float) $s->penalty_missing_weekly, 'Missing weekly report (wk of ' . $w->format('j M') . ')', $dry
+                        );
+                    }
+                }
             }
 
             // ── Monthly: current month, once its deadline has passed ──
-            $monthStart = $now->copy()->startOfMonth();
             $dueDay = min($s->monthly_deadline_day, $now->daysInMonth);
             $monthDeadline = $monthStart->copy()->addDays($dueDay - 1)->setTimeFromTimeString($s->monthly_deadline_time);
             if ($now->gt($monthDeadline) && (float) $s->penalty_missing_monthly > 0) {
@@ -69,6 +84,11 @@ class ApplyStaffReportPenalties extends Command
                     $tenantId, $staffIds, 'monthly', $monthStart->toDateString(),
                     (float) $s->penalty_missing_monthly, 'Missing monthly report (' . $monthStart->format('M Y') . ')', $dry
                 );
+            }
+
+            // ── Backfill LATE deductions for already-submitted late reports ──
+            if ((float) $s->penalty_late > 0 && !$dry) {
+                $charged += $this->backfillLate($tenantId, $s, $monthStart, $now);
             }
         }
 
@@ -100,6 +120,28 @@ class ApplyStaffReportPenalties extends Command
             $created = StaffReportPenalty::firstOrCreate(
                 ['user_id' => $uid, 'report_type' => $type, 'penalty_type' => 'missing', 'period_date' => $periodDate],
                 ['tenant_id' => $tenantId, 'amount' => $amount, 'notes' => $notes],
+            );
+            if ($created->wasRecentlyCreated) {
+                $n++;
+            }
+        }
+        return $n;
+    }
+
+    /** Record late deductions for already-submitted late reports missing one. */
+    private function backfillLate($tenantId, $s, $monthStart, $now): int
+    {
+        $lateReports = StaffReport::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('is_late', true)
+            ->whereBetween('period_date', [$monthStart->toDateString(), $now->toDateString()])
+            ->get();
+
+        $n = 0;
+        foreach ($lateReports as $r) {
+            $created = StaffReportPenalty::firstOrCreate(
+                ['user_id' => $r->user_id, 'report_type' => $r->report_type, 'penalty_type' => 'late', 'period_date' => $r->period_date->toDateString()],
+                ['tenant_id' => $tenantId, 'amount' => $s->penalty_late, 'staff_report_id' => $r->id, 'notes' => 'Late ' . $r->report_type . ' report'],
             );
             if ($created->wasRecentlyCreated) {
                 $n++;
