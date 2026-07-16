@@ -7,12 +7,13 @@ import { DatePickerInput, TimeInput, MonthPickerInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2 } from '@tabler/icons-react';
-import { Drawer, Text as MText, Card, SimpleGrid as MGrid } from '@mantine/core';
+import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh } from '@tabler/icons-react';
+import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse } from '@mantine/core';
 import dayjs from 'dayjs';
 import {
   getAttendanceDay, recordAttendance, getAttendanceSettings, updateAttendanceSettings,
   getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty, getAttendanceDashboard,
+  getDeviceConfig, getDeviceEvents, regenerateDeviceToken,
   AttendanceSettings,
 } from '../api/attendance';
 
@@ -25,11 +26,13 @@ export default function Attendance() {
           <Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>Dashboard</Tabs.Tab>
           <Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>
           <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>Deductions</Tabs.Tab>
+          <Tabs.Tab value="device" leftSection={<IconDeviceDesktop size={15} />}>Device</Tabs.Tab>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="dashboard" pt="md"><DashboardTab /></Tabs.Panel>
         <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>
         <Tabs.Panel value="deductions" pt="md"><DeductionsTab /></Tabs.Panel>
+        <Tabs.Panel value="device" pt="md"><DeviceTab /></Tabs.Panel>
         <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>
       </Tabs>
     </Stack>
@@ -312,6 +315,108 @@ function DeductionsTab() {
           </Stack>
         )}
       </Drawer>
+    </Stack>
+  );
+}
+
+function DeviceTab() {
+  const qc = useQueryClient();
+  const [openId, setOpenId] = useState<string | null>(null);
+  const { data: cfgRes, isLoading } = useQuery({ queryKey: ['device-config'], queryFn: getDeviceConfig });
+  const { data: evRes } = useQuery({ queryKey: ['device-events'], queryFn: getDeviceEvents, refetchInterval: 5000 });
+  const cfg = cfgRes?.data?.data;
+  const events = evRes?.data?.data ?? [];
+
+  const regenMut = useMutation({
+    mutationFn: regenerateDeviceToken,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['device-config'] }); notifications.show({ message: 'New webhook URL generated.', color: 'green' }); },
+  });
+
+  if (isLoading) return <Center py="xl"><Loader /></Center>;
+
+  return (
+    <Stack gap="lg">
+      <Alert color="blue" variant="light" icon={<IconDeviceDesktop size={18} />} title="HIKVISION event push">
+        Point your device's <b>Notify Surveillance Center</b> / <b>HTTP Listening (Alarm Server)</b> at the URL below.
+        Each face/card swipe posts an event here. We're in <b>capture mode</b> — events are logged raw so we can confirm
+        the exact format and map each device employee number to a staff member. Nothing is imported into attendance yet.
+      </Alert>
+
+      <Paper withBorder radius="md" p="md">
+        <Text size="sm" fw={700} mb="xs">Webhook URL</Text>
+        <Group gap="xs" wrap="nowrap" align="stretch">
+          <Code style={{ flex: 1, wordBreak: 'break-all', padding: '8px 10px', fontSize: 13 }}>{cfg?.webhook_url}</Code>
+          <CopyButton value={cfg?.webhook_url ?? ''} timeout={1500}>
+            {({ copied, copy }) => (
+              <Tooltip label={copied ? 'Copied' : 'Copy'}>
+                <Button variant="light" color={copied ? 'teal' : 'blue'} onClick={copy}
+                  leftSection={copied ? <IconCheck size={15} /> : <IconCopy size={15} />}>
+                  {copied ? 'Copied' : 'Copy'}
+                </Button>
+              </Tooltip>
+            )}
+          </CopyButton>
+        </Group>
+        <Group justify="space-between" mt="sm">
+          <Text size="xs" c="dimmed">
+            Last event: {cfg?.last_event_at ? dayjs(cfg.last_event_at).format('ddd, D MMM HH:mm:ss') : 'none yet'}
+          </Text>
+          <Button size="compact-xs" variant="subtle" color="gray" leftSection={<IconRefresh size={13} />}
+            loading={regenMut.isPending}
+            onClick={() => { if (window.confirm('Generate a new URL? The device must be reconfigured with the new URL.')) regenMut.mutate(); }}>
+            Regenerate URL
+          </Button>
+        </Group>
+      </Paper>
+
+      <div>
+        <Group justify="space-between" mb="xs">
+          <Text size="sm" fw={700} tt="uppercase" c="dimmed">Captured events</Text>
+          <Badge variant="light" color={events.length ? 'teal' : 'gray'}>{events.length} recent</Badge>
+        </Group>
+        {events.length === 0 ? (
+          <Paper withBorder p="xl" radius="md">
+            <Text c="dimmed" ta="center" size="sm">
+              No events captured yet. Configure the device with the URL above, then have one person swipe — it should appear here within seconds.
+            </Text>
+          </Paper>
+        ) : (
+          <Stack gap="xs">
+            {events.map((e) => (
+              <Paper key={e.id} withBorder radius="sm" p="xs">
+                <Group justify="space-between" wrap="nowrap" onClick={() => setOpenId(openId === e.id ? null : e.id)} style={{ cursor: 'pointer' }}>
+                  <Group gap="sm" wrap="nowrap" style={{ minWidth: 0 }}>
+                    <Badge variant="light" color={e.employee_no ? 'blue' : 'gray'} radius="sm">
+                      {e.employee_no ? `#${e.employee_no}` : 'no id'}
+                    </Badge>
+                    <div style={{ minWidth: 0 }}>
+                      <Text size="sm" fw={500}>
+                        {e.event_time ? dayjs(e.event_time).format('ddd, D MMM HH:mm:ss') : 'no event time'}
+                      </Text>
+                      <Text size="xs" c="dimmed" truncate>{e.content_type ?? 'unknown type'} · logged {dayjs(e.created_at).format('HH:mm:ss')}</Text>
+                    </div>
+                  </Group>
+                  <Button size="compact-xs" variant="subtle" color="gray">{openId === e.id ? 'Hide' : 'Raw'}</Button>
+                </Group>
+                <Collapse in={openId === e.id}>
+                  <Stack gap={6} mt="xs">
+                    {e.parsed && Object.keys(e.parsed).length > 0 && (
+                      <div>
+                        <Text size="xs" fw={600} c="dimmed" mb={2}>Parsed fields</Text>
+                        <Code block style={{ fontSize: 12 }}>{JSON.stringify(e.parsed, null, 2)}</Code>
+                      </div>
+                    )}
+                    <div>
+                      <Text size="xs" fw={600} c="dimmed" mb={2}>Raw payload</Text>
+                      <Code block style={{ fontSize: 12, maxHeight: 260, overflow: 'auto' }}>{e.payload || '(empty)'}</Code>
+                    </div>
+                  </Stack>
+                </Collapse>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+      </div>
     </Stack>
   );
 }

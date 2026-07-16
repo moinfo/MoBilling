@@ -95,3 +95,23 @@ export interface AttendanceOverview {
 }
 export const getAttendanceDashboard = () =>
   api.get<{ data: AttendanceOverview }>('/attendance/dashboard');
+
+export interface DeviceConfig {
+  name: string;
+  is_active: boolean;
+  last_event_at: string | null;
+  webhook_url: string;
+}
+export interface DeviceEvent {
+  id: string;
+  content_type: string | null;
+  employee_no: string | null;
+  event_time: string | null;
+  parsed: Record<string, unknown> | null;
+  payload: string | null;
+  created_at: string;
+}
+export const getDeviceConfig = () => api.get<{ data: DeviceConfig }>('/attendance/device-config');
+export const getDeviceEvents = () => api.get<{ data: DeviceEvent[] }>('/attendance/device-events');
+export const regenerateDeviceToken = () =>
+  api.post<{ data: { webhook_url: string } }>('/attendance/device-regenerate');
