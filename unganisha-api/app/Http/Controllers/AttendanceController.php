@@ -46,6 +46,8 @@ class AttendanceController extends Controller
             'present_days'  => $records->whereNotNull('check_in_at')->count(),
             'month_records' => $records->map(fn ($a) => $this->formatDay($a, $s))->values(),
             'deduction_total' => round((float) $penalties->sum('amount'), 2),
+            'deduction_by_type' => collect(['absent', 'late', 'left_early', 'no_checkout'])
+                ->mapWithKeys(fn ($t) => [$t => (int) $penalties->where('penalty_type', $t)->count()]),
             'deductions' => $penalties->map(fn ($p) => [
                 'id'   => $p->id,
                 'date' => $p->date->format('Y-m-d'),

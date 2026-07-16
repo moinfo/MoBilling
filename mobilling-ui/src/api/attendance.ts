@@ -26,6 +26,7 @@ export interface MyAttendance {
   present_days: number;
   month_records: AttendanceDay[];
   deduction_total: number;
+  deduction_by_type?: { absent: number; late: number; left_early: number; no_checkout: number };
   deductions: AttendanceDeduction[];
 }
 

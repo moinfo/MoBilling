@@ -73,14 +73,15 @@ export default function MyAttendance() {
           </Stack>
         </Group>
 
-        {s.penalties_enabled && a.deductions.length > 0 && (
+        {s.penalties_enabled && a.deduction_total > 0 && a.deduction_by_type && (
           <Group gap={6} mt="sm">
-            {a.deductions.slice(0, 8).map((d) => (
-              <Badge key={d.id} variant="light" color="red" radius="sm">
-                {dayjs(d.date).format('D MMM')} · {dtypeLabel[d.penalty_type] ?? d.penalty_type}
-              </Badge>
-            ))}
-            {a.deductions.length > 8 && <Text size="xs" c="dimmed">+{a.deductions.length - 8} more</Text>}
+            {(['absent', 'late', 'left_early', 'no_checkout'] as const).map((tp) =>
+              a.deduction_by_type![tp] > 0 ? (
+                <Badge key={tp} variant="light" color={tp === 'absent' ? 'red' : 'orange'} radius="sm">
+                  {dtypeLabel[tp]}: {a.deduction_by_type![tp]}
+                </Badge>
+              ) : null,
+            )}
           </Group>
         )}
       </Card>
