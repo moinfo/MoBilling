@@ -241,8 +241,14 @@ class StaffReportsController extends Controller
                 'monthly' => $settings->monthly_target,
             };
             // How many are actually due by today (elapsed weekdays/weeks past deadline)
-            $expected = $this->expectedSoFar($type, $settings, $now);
-            $missing  = max(0, $expected - $submitted);
+            if ($type === 'weekly') {
+                // Count coverage per due week (matches the deduction logic) so a
+                // month-straddling first-week report isn't missed by the month filter.
+                [$expected, $submitted, $missing] = $this->weeklyProgress($user->id, $settings, $now);
+            } else {
+                $expected = $this->expectedSoFar($type, $settings, $now);
+                $missing  = max(0, $expected - $submitted);
+            }
 
             $thisMonth[$type] = compact('submitted', 'reviewed', 'late', 'target', 'expected', 'missing');
         }
@@ -365,6 +371,37 @@ class StaffReportsController extends Controller
             'weekly'  => $carbon->startOfWeek(Carbon::MONDAY)->toDateString(),
             'monthly' => $carbon->startOfMonth()->toDateString(),
         };
+    }
+
+    /**
+     * Weekly progress by DUE WEEK (deadline in month, passed): returns
+     * [expected, covered, missing], checking coverage by each week's Monday so
+     * a report for the month-straddling first week counts even though its
+     * period_date is in the previous month. Consistent with the deductions.
+     */
+    private function weeklyProgress(string $userId, StaffReportSettings $s, Carbon $now): array
+    {
+        $monthStart = $now->copy()->startOfMonth();
+        $monthEnd   = $now->copy()->endOfMonth();
+        $expected = 0;
+        $covered  = 0;
+
+        for ($w = $monthStart->copy()->startOfWeek(Carbon::MONDAY); $w->lte($now); $w->addWeek()) {
+            $deadline = $w->copy()->addDays($s->weekly_deadline_day - 1)->setTimeFromTimeString($s->weekly_deadline_time);
+            if ($deadline->lt($monthStart) || $deadline->gt($monthEnd) || !$now->gt($deadline)) {
+                continue;
+            }
+            $expected++;
+            $has = StaffReport::where('user_id', $userId)
+                ->where('report_type', 'weekly')
+                ->whereDate('period_date', $w->toDateString())
+                ->exists();
+            if ($has) {
+                $covered++;
+            }
+        }
+
+        return [$expected, $covered, max(0, $expected - $covered)];
     }
 
     /** How many reports of a type are DUE by now this month (deadline passed). */
