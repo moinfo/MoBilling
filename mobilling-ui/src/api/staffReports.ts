@@ -95,6 +95,26 @@ export const getDashboard = () =>
 
 
 export interface Holiday { id: string; date: string; name: string | null }
+
+export interface DeductionItem {
+  id: string; report_type: 'daily'|'weekly'|'monthly'; penalty_type: 'missing'|'late';
+  period_date: string; amount: number; notes: string | null; waived: boolean; waive_reason: string | null;
+}
+export interface StaffDeductions {
+  user: { id: string; name: string };
+  total: number; count: number; late: number;
+  by_type: { daily: number; weekly: number; monthly: number };
+  items: DeductionItem[];
+}
+export interface DeductionsResponse { month_label: string; grand_total: number; staff: StaffDeductions[] }
+
+export const getPenalties = (month: number, year: number) =>
+  api.get<{ data: DeductionsResponse }>('/staff-reports/penalties', { params: { month, year } });
+export const waivePenalty = (id: string, reason?: string) =>
+  api.post(`/staff-reports/penalties/${id}/waive`, { reason });
+export const unwaivePenalty = (id: string) =>
+  api.post(`/staff-reports/penalties/${id}/unwaive`);
+
 export const getHolidays = () =>
   api.get<{ data: Holiday[] }>('/staff-reports/holidays');
 export const addHoliday = (date: string, name?: string) =>

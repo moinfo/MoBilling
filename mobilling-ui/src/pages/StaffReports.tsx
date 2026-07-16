@@ -3,7 +3,7 @@ import {
   Title, Tabs, Stack, Group, Button, Badge, Text, Paper, ActionIcon,
   Textarea, Modal, Loader, Center, ThemeIcon, Select, Divider, Switch,
   SegmentedControl, Avatar, ScrollArea, RingProgress, SimpleGrid,
-  NumberInput, Alert, TextInput,
+  NumberInput, Alert, TextInput, Table, Drawer,
 } from '@mantine/core';
 import { DatePickerInput, MonthPickerInput, TimeInput } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
@@ -16,7 +16,7 @@ import {
   IconClipboardList, IconUsers, IconStar, IconAlertCircle,
   IconSettings, IconChartBar, IconAlertTriangle, IconMoodHappy,
   IconClock, IconTarget, IconTrendingUp, IconEye, IconArrowLeft,
-  IconSearch, IconSend,
+  IconSearch, IconSend, IconReceiptOff,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import isoWeek from 'dayjs/plugin/isoWeek';
@@ -25,6 +25,7 @@ import {
   getReports, createReport, updateReport, deleteReport, reviewReport, replyToReport,
   getDashboard, getSettings, updateSettings, getSupervisors, updateSupervisor,
   getHolidays, addHoliday, deleteHoliday,
+  getPenalties, waivePenalty, unwaivePenalty,
   type StaffReport, type ReportSettings, type MonthStats, type StaffStat,
   type StaffWithSupervisor,
 } from '../api/staffReports';
@@ -93,6 +94,11 @@ export default function StaffReports() {
             </Tabs.Tab>
           )}
           {canManage && (
+            <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>
+              Deductions
+            </Tabs.Tab>
+          )}
+          {canManage && (
             <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>
               Settings
             </Tabs.Tab>
@@ -111,6 +117,11 @@ export default function StaffReports() {
         {canSeeTeam && (
           <Tabs.Panel value="team" pt="md">
             <TeamReportsTab can={can} />
+          </Tabs.Panel>
+        )}
+        {canManage && (
+          <Tabs.Panel value="deductions" pt="md">
+            <DeductionsTab />
           </Tabs.Panel>
         )}
         {canManage && (
@@ -444,6 +455,121 @@ function ReplyThread({ report }: { report: StaffReport }) {
         <Button size="xs" disabled={!msg.trim()} loading={mutation.isPending}
           onClick={() => mutation.mutate()} leftSection={<IconSend size={13} />}>Reply</Button>
       </Group>
+    </Stack>
+  );
+}
+
+// ── Deductions Tab (supervisor/admin) — see everyone's deductions + waive ──
+
+function DeductionsTab() {
+  const qc = useQueryClient();
+  const [month, setMonth] = useState<Date>(new Date());
+  const [detailId, setDetailId] = useState<string | null>(null);
+  const m = month.getMonth() + 1;
+  const y = month.getFullYear();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['staff-penalties', m, y],
+    queryFn: () => getPenalties(m, y),
+  });
+  const res = data?.data?.data;
+  const detail = res?.staff.find((s) => s.user.id === detailId) ?? null;
+
+  const invalidate = () => qc.invalidateQueries({ queryKey: ['staff-penalties'] });
+  const waiveMut = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => waivePenalty(id, reason),
+    onSuccess: () => { invalidate(); notifications.show({ message: 'Deduction waived.', color: 'green' }); },
+  });
+  const unwaiveMut = useMutation({
+    mutationFn: (id: string) => unwaivePenalty(id),
+    onSuccess: () => { invalidate(); notifications.show({ message: 'Deduction reinstated.', color: 'gray' }); },
+  });
+
+  return (
+    <Stack>
+      <Group justify="space-between" wrap="wrap">
+        <MonthPickerInput value={month} onChange={(v) => v && setMonth(new Date(v as any))}
+          maxDate={new Date()} maxLevel="decade" w={160} size="sm" />
+        {res && <Badge size="lg" color="red" variant="light">Total this month: TZS {res.grand_total.toLocaleString()}</Badge>}
+      </Group>
+
+      {isLoading ? (
+        <Center py="xl"><Loader /></Center>
+      ) : !res || res.staff.length === 0 ? (
+        <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">No deductions for {res?.month_label ?? 'this month'}.</Text></Paper>
+      ) : (
+        <Paper withBorder radius="md">
+          <Table.ScrollContainer minWidth={680}>
+            <Table highlightOnHover verticalSpacing="sm">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Staff</Table.Th>
+                  <Table.Th ta="center">Daily</Table.Th>
+                  <Table.Th ta="center">Weekly</Table.Th>
+                  <Table.Th ta="center">Monthly</Table.Th>
+                  <Table.Th ta="center">Late</Table.Th>
+                  <Table.Th ta="right">Total</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {res.staff.map((s) => (
+                  <Table.Tr key={s.user.id}>
+                    <Table.Td fw={500}>{s.user.name}</Table.Td>
+                    <Table.Td ta="center">{s.by_type.daily || '—'}</Table.Td>
+                    <Table.Td ta="center">{s.by_type.weekly || '—'}</Table.Td>
+                    <Table.Td ta="center">{s.by_type.monthly || '—'}</Table.Td>
+                    <Table.Td ta="center">{s.late || '—'}</Table.Td>
+                    <Table.Td ta="right" fw={700} c="red">TZS {s.total.toLocaleString()}</Table.Td>
+                    <Table.Td ta="right">
+                      <Button size="compact-xs" variant="light" onClick={() => setDetailId(s.user.id)}>View / waive</Button>
+                    </Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
+
+      <Drawer opened={!!detailId} onClose={() => setDetailId(null)} position="right" size="lg"
+        title={detail ? `${detail.user.name} — ${res?.month_label}` : ''}>
+        {detail && (
+          <Stack gap="xs">
+            {detail.items.map((it) => (
+              <Paper key={it.id} withBorder p="xs" radius="sm" style={{ opacity: it.waived ? 0.55 : 1 }}>
+                <Group justify="space-between" wrap="nowrap" align="flex-start">
+                  <div style={{ minWidth: 0 }}>
+                    <Group gap={6} wrap="nowrap">
+                      <Badge size="xs" variant="light" color={it.penalty_type === 'late' ? 'orange' : 'red'}>{it.penalty_type}</Badge>
+                      <Text size="sm" truncate>{it.notes ?? it.report_type}</Text>
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                      {dayjs(it.period_date).format('D MMM YYYY')}
+                      {it.waived && it.waive_reason ? ` · waived: ${it.waive_reason}` : it.waived ? ' · waived' : ''}
+                    </Text>
+                  </div>
+                  <Group gap="xs" wrap="nowrap">
+                    <Text size="sm" fw={600} c={it.waived ? 'dimmed' : 'red'} td={it.waived ? 'line-through' : undefined}>
+                      −TZS {it.amount.toLocaleString()}
+                    </Text>
+                    {it.waived ? (
+                      <Button size="compact-xs" variant="subtle" color="gray"
+                        loading={unwaiveMut.isPending} onClick={() => unwaiveMut.mutate(it.id)}>Reinstate</Button>
+                    ) : (
+                      <Button size="compact-xs" variant="light" color="teal" loading={waiveMut.isPending}
+                        onClick={() => {
+                          const reason = window.prompt('Reason for waiving this deduction (optional):') ?? undefined;
+                          waiveMut.mutate({ id: it.id, reason: reason || undefined });
+                        }}>Waive</Button>
+                    )}
+                  </Group>
+                </Group>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+      </Drawer>
     </Stack>
   );
 }
