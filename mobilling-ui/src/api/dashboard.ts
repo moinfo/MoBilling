@@ -111,9 +111,15 @@ export interface StaffPenaltyItem {
   amount: number;
   notes: string | null;
 }
+export interface StaffPenaltyTypeSummary {
+  report_type: 'daily' | 'weekly' | 'monthly';
+  count: number;
+  total: number;
+}
 export interface StaffPenaltiesSummary {
   month_label: string;
   month_total: number;
+  by_type?: StaffPenaltyTypeSummary[];
   count_this_month: number;
   items: StaffPenaltyItem[];
 }

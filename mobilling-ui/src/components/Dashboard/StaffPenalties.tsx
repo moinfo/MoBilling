@@ -38,6 +38,18 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
           </Badge>
         </Group>
 
+        {/* Per-type breakdown so daily / weekly / monthly are all visible */}
+        {(data.by_type?.length ?? 0) > 0 && (
+          <Group gap="xs" mb={data.items.length ? 'sm' : 0}>
+            {data.by_type!.map((t) => (
+              <Badge key={t.report_type} variant="light" radius="sm"
+                color={t.count > 0 ? 'red' : 'gray'} tt="capitalize">
+                {t.report_type}: {t.count > 0 ? `${t.count} · ${formatCurrency(t.total)}` : 'none'}
+              </Badge>
+            ))}
+          </Group>
+        )}
+
         {none ? (
           <Text size="sm" c="dimmed" mt="xs">
             Great — no missing or late reports this month. Submit each report before its deadline to avoid deductions.

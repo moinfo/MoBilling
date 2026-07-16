@@ -555,9 +555,22 @@ class DashboardController extends Controller
                 ->whereBetween('period_date', [$monthStart, $monthEnd])
                 ->sum('amount');
 
+            // Per-report-type breakdown (so daily/weekly/monthly are all visible)
+            $typeRows = \App\Models\StaffReportPenalty::withoutGlobalScopes()
+                ->where('user_id', $user->id)->where('waived', false)
+                ->whereBetween('period_date', [$monthStart, $monthEnd])
+                ->selectRaw('report_type, COUNT(*) as c, SUM(amount) as total')
+                ->groupBy('report_type')->get()->keyBy('report_type');
+            $byType = collect(['daily', 'weekly', 'monthly'])->map(fn ($t) => [
+                'report_type' => $t,
+                'count'       => (int) ($typeRows[$t]->c ?? 0),
+                'total'       => round((float) ($typeRows[$t]->total ?? 0), 2),
+            ])->values();
+
             $staffPenalties = [
                 'month_label' => now()->format('M Y'),
                 'month_total' => round((float) $monthTotal, 2),
+                'by_type'     => $byType,
                 'count_this_month' => \App\Models\StaffReportPenalty::withoutGlobalScopes()
                     ->where('user_id', $user->id)->where('waived', false)
                     ->whereBetween('period_date', [$monthStart, $monthEnd])->count(),
