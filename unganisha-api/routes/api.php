@@ -688,6 +688,13 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/staff-reports/penalties/{staffReportPenalty}/waive',   [\App\Http\Controllers\StaffReportsController::class, 'waivePenalty']);
     Route::post('/staff-reports/penalties/{staffReportPenalty}/unwaive', [\App\Http\Controllers\StaffReportsController::class, 'unwaivePenalty']);
 
+    // Attendance (all staff check in/out; settings gated in-controller)
+    Route::get('/attendance/mine',        [\App\Http\Controllers\AttendanceController::class, 'mine']);
+    Route::post('/attendance/check-in',   [\App\Http\Controllers\AttendanceController::class, 'checkIn']);
+    Route::post('/attendance/check-out',  [\App\Http\Controllers\AttendanceController::class, 'checkOut']);
+    Route::get('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'showSettings']);
+    Route::put('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'updateSettings']);
+
     // ── Staff Targets & Commission ────────────────────────────────────────────
     Route::get('/staff-targets/summary',                          [\App\Http\Controllers\StaffTargetsController::class, 'summary']);
     Route::get('/staff-targets',                                  [\App\Http\Controllers\StaffTargetsController::class, 'index']);
