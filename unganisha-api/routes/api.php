@@ -684,6 +684,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::delete('/staff-reports/{staffReport}',        [\App\Http\Controllers\StaffReportsController::class, 'destroy']);
     Route::post('/staff-reports/{staffReport}/review',   [\App\Http\Controllers\StaffReportsController::class, 'review']);
     Route::post('/staff-reports/{staffReport}/reply',    [\App\Http\Controllers\StaffReportsController::class, 'reply']);
+    Route::get('/staff-reports/penalties',               [\App\Http\Controllers\StaffReportsController::class, 'penalties']);
+    Route::post('/staff-reports/penalties/{staffReportPenalty}/waive',   [\App\Http\Controllers\StaffReportsController::class, 'waivePenalty']);
+    Route::post('/staff-reports/penalties/{staffReportPenalty}/unwaive', [\App\Http\Controllers\StaffReportsController::class, 'unwaivePenalty']);
 
     // ── Staff Targets & Commission ────────────────────────────────────────────
     Route::get('/staff-targets/summary',                          [\App\Http\Controllers\StaffTargetsController::class, 'summary']);

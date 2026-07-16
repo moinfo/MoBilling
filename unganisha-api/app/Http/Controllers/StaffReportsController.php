@@ -180,6 +180,98 @@ class StaffReportsController extends Controller
         return response()->json(['data' => $this->format($staffReport)]);
     }
 
+    /** Supervisor/admin view of everyone's deductions for a month. */
+    public function penalties(Request $request)
+    {
+        $this->authorizePermission('staff_reports.review');
+        $user = auth()->user();
+
+        $month = (int) $request->query('month', now()->month);
+        $year  = (int) $request->query('year', now()->year);
+        $start = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+        $end   = $start->copy()->endOfMonth();
+
+        $userIds = $this->penaltyScopeUserIds($user);
+
+        $rows = \App\Models\StaffReportPenalty::with('user:id,name')
+            ->whereIn('user_id', $userIds)
+            ->whereBetween('period_date', [$start->toDateString(), $end->toDateString()])
+            ->orderByDesc('period_date')->orderByDesc('created_at')
+            ->get();
+
+        $staff = $rows->groupBy('user_id')->map(function ($rs) {
+            $active = $rs->where('waived', false);
+            return [
+                'user'  => ['id' => $rs->first()->user_id, 'name' => $rs->first()->user?->name ?? 'Unknown'],
+                'total' => round((float) $active->sum('amount'), 2),
+                'count' => $active->count(),
+                'by_type' => collect(['daily', 'weekly', 'monthly'])->mapWithKeys(fn ($t) => [
+                    $t => (int) $active->where('report_type', $t)->count(),
+                ]),
+                'late'  => (int) $active->where('penalty_type', 'late')->count(),
+                'items' => $rs->map(fn ($p) => [
+                    'id'           => $p->id,
+                    'report_type'  => $p->report_type,
+                    'penalty_type' => $p->penalty_type,
+                    'period_date'  => $p->period_date->format('Y-m-d'),
+                    'amount'       => round((float) $p->amount, 2),
+                    'notes'        => $p->notes,
+                    'waived'       => (bool) $p->waived,
+                    'waive_reason' => $p->waive_reason,
+                ])->values(),
+            ];
+        })->sortByDesc('total')->values();
+
+        return response()->json(['data' => [
+            'month_label' => $start->format('M Y'),
+            'grand_total' => round((float) $rows->where('waived', false)->sum('amount'), 2),
+            'staff'       => $staff,
+        ]]);
+    }
+
+    public function waivePenalty(Request $request, \App\Models\StaffReportPenalty $staffReportPenalty)
+    {
+        $this->authorizePermission('staff_reports.review');
+        $this->assertPenaltyInScope($staffReportPenalty);
+
+        $data = $request->validate(['reason' => 'nullable|string|max:255']);
+        $staffReportPenalty->update([
+            'waived'       => true,
+            'waived_by'    => auth()->id(),
+            'waived_at'    => now(),
+            'waive_reason' => $data['reason'] ?? null,
+        ]);
+
+        return response()->json(['message' => 'Deduction waived.']);
+    }
+
+    public function unwaivePenalty(\App\Models\StaffReportPenalty $staffReportPenalty)
+    {
+        $this->authorizePermission('staff_reports.review');
+        $this->assertPenaltyInScope($staffReportPenalty);
+
+        $staffReportPenalty->update([
+            'waived' => false, 'waived_by' => null, 'waived_at' => null, 'waive_reason' => null,
+        ]);
+
+        return response()->json(['message' => 'Deduction reinstated.']);
+    }
+
+    /** Users whose deductions this reviewer may see (all, or their subordinates). */
+    private function penaltyScopeUserIds($user)
+    {
+        if ($user->hasPermission('staff_reports.view_all')) {
+            return \App\Models\User::where('tenant_id', $user->tenant_id)->pluck('id');
+        }
+        return \App\Models\User::where('tenant_id', $user->tenant_id)
+            ->where('supervisor_id', $user->id)->pluck('id');
+    }
+
+    private function assertPenaltyInScope(\App\Models\StaffReportPenalty $p): void
+    {
+        abort_unless($this->penaltyScopeUserIds(auth()->user())->contains($p->user_id), 403);
+    }
+
     /**
      * Add a reply to a report's feedback thread. The report owner (staff) can
      * respond to a supervisor's review; a supervisor can reply back. Emails the
@@ -238,9 +330,11 @@ class StaffReportsController extends Controller
             $submitted = (clone $base)->count();
             $reviewed  = (clone $base)->where('status', 'reviewed')->count();
             $late      = (clone $base)->where('is_late', true)->count();
+            // Targets reflect the actual month: Mon–Sat working days (minus
+            // holidays) for daily, and the number of weeks for weekly.
             $target    = match ($type) {
-                'daily'   => $settings->daily_target,
-                'weekly'  => $settings->weekly_target,
+                'daily'   => $this->workingDaysInMonth($now, $holidays),
+                'weekly'  => $this->weeksInMonth($settings, $now),
                 'monthly' => $settings->monthly_target,
             };
             // How many are actually due by today (elapsed weekdays/weeks past deadline)
@@ -407,6 +501,34 @@ class StaffReportsController extends Controller
         return [$expected, $covered, max(0, $expected - $covered)];
     }
 
+    /** Mon–Sat working days in the month, minus holidays (the daily target). */
+    private function workingDaysInMonth(Carbon $now, array $holidays = []): int
+    {
+        $c = 0;
+        $end = $now->copy()->endOfMonth();
+        for ($d = $now->copy()->startOfMonth(); $d->lte($end); $d->addDay()) {
+            if ($d->dayOfWeek !== Carbon::SUNDAY && !in_array($d->toDateString(), $holidays, true)) {
+                $c++;
+            }
+        }
+        return $c;
+    }
+
+    /** Number of weeks in the month (weeks whose deadline falls in it). */
+    private function weeksInMonth(StaffReportSettings $s, Carbon $now): int
+    {
+        $c = 0;
+        $monthStart = $now->copy()->startOfMonth();
+        $monthEnd   = $now->copy()->endOfMonth();
+        for ($w = $monthStart->copy()->startOfWeek(Carbon::MONDAY); $w->lte($monthEnd); $w->addWeek()) {
+            $deadline = $w->copy()->addDays($s->weekly_deadline_day - 1)->setTimeFromTimeString($s->weekly_deadline_time);
+            if ($deadline->gte($monthStart) && $deadline->lte($monthEnd)) {
+                $c++;
+            }
+        }
+        return $c;
+    }
+
     /** How many reports of a type are DUE by now this month (deadline passed). */
     private function expectedSoFar(string $type, StaffReportSettings $s, Carbon $now, array $holidays = []): int
     {
@@ -415,7 +537,8 @@ class StaffReportsController extends Controller
         if ($type === 'daily') {
             $c = 0;
             for ($d = $monthStart->copy(); $d->lte($now); $d->addDay()) {
-                if ($d->isWeekday()
+                // Working days are Mon–Sat (Sunday off); holidays skipped.
+                if ($d->dayOfWeek !== Carbon::SUNDAY
                     && !in_array($d->toDateString(), $holidays, true)
                     && $now->gt($d->copy()->setTimeFromTimeString($s->daily_deadline_time))) {
                     $c++;

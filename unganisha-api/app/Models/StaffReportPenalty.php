@@ -19,12 +19,14 @@ class StaffReportPenalty extends Model
     protected $fillable = [
         'tenant_id', 'user_id', 'report_type', 'penalty_type',
         'period_date', 'amount', 'staff_report_id', 'notes', 'waived',
+        'waived_by', 'waived_at', 'waive_reason',
     ];
 
     protected $casts = [
         'period_date' => 'date',
         'amount'      => 'decimal:2',
         'waived'      => 'boolean',
+        'waived_at'   => 'datetime',
     ];
 
     public function user(): BelongsTo
