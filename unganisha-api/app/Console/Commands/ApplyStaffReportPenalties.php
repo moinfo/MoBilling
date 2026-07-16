@@ -50,10 +50,11 @@ class ApplyStaffReportPenalties extends Command
                 ->where('tenant_id', $tenantId)->pluck('date')
                 ->map(fn ($d) => \Carbon\Carbon::parse($d)->toDateString())->flip();
 
-            // ── Daily: every past working day (Mon–Sat, non-holiday) past deadline ──
+            // ── Daily: every past working day (per config, non-holiday) past deadline ──
+            $workDays = $s->working_days ?: [1, 2, 3, 4, 5, 6];
             if ((float) $s->penalty_missing_daily > 0) {
                 for ($d = $monthStart->copy(); $d->lte($now); $d->addDay()) {
-                    if ($d->dayOfWeek === Carbon::SUNDAY || $holidays->has($d->toDateString())) {
+                    if (!in_array($d->dayOfWeekIso, $workDays) || $holidays->has($d->toDateString())) {
                         continue;
                     }
                     $deadline = $d->copy()->setTimeFromTimeString($s->daily_deadline_time);

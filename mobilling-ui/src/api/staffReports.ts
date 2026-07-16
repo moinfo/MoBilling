@@ -42,6 +42,7 @@ export interface ReportSettings {
   penalty_late?:             number;
   penalty_missing_weekly?:   number;
   penalty_missing_monthly?:  number;
+  working_days?:             number[];
 }
 
 export interface MonthStats {

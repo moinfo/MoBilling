@@ -333,7 +333,7 @@ class StaffReportsController extends Controller
             // Targets reflect the actual month: Mon–Sat working days (minus
             // holidays) for daily, and the number of weeks for weekly.
             $target    = match ($type) {
-                'daily'   => $this->workingDaysInMonth($now, $holidays),
+                'daily'   => $this->workingDaysInMonth($now, $settings, $holidays),
                 'weekly'  => $this->weeksInMonth($settings, $now),
                 'monthly' => $settings->monthly_target,
             };
@@ -501,13 +501,14 @@ class StaffReportsController extends Controller
         return [$expected, $covered, max(0, $expected - $covered)];
     }
 
-    /** Mon–Sat working days in the month, minus holidays (the daily target). */
-    private function workingDaysInMonth(Carbon $now, array $holidays = []): int
+    /** Working days in the month (per the configured week), minus holidays. */
+    private function workingDaysInMonth(Carbon $now, StaffReportSettings $s, array $holidays = []): int
     {
+        $workDays = $s->working_days ?: [1, 2, 3, 4, 5, 6];
         $c = 0;
         $end = $now->copy()->endOfMonth();
         for ($d = $now->copy()->startOfMonth(); $d->lte($end); $d->addDay()) {
-            if ($d->dayOfWeek !== Carbon::SUNDAY && !in_array($d->toDateString(), $holidays, true)) {
+            if (in_array($d->dayOfWeekIso, $workDays) && !in_array($d->toDateString(), $holidays, true)) {
                 $c++;
             }
         }
@@ -535,10 +536,10 @@ class StaffReportsController extends Controller
         $monthStart = $now->copy()->startOfMonth();
 
         if ($type === 'daily') {
+            $workDays = $s->working_days ?: [1, 2, 3, 4, 5, 6];
             $c = 0;
             for ($d = $monthStart->copy(); $d->lte($now); $d->addDay()) {
-                // Working days are Mon–Sat (Sunday off); holidays skipped.
-                if ($d->dayOfWeek !== Carbon::SUNDAY
+                if (in_array($d->dayOfWeekIso, $workDays)
                     && !in_array($d->toDateString(), $holidays, true)
                     && $now->gt($d->copy()->setTimeFromTimeString($s->daily_deadline_time))) {
                     $c++;

@@ -72,10 +72,30 @@ class StaffReportSettingsController extends Controller
             'penalty_late'            => 'nullable|numeric|min:0',
             'penalty_missing_weekly'  => 'nullable|numeric|min:0',
             'penalty_missing_monthly' => 'nullable|numeric|min:0',
+            'working_days'            => 'nullable|array',
+            'working_days.*'          => 'integer|min:1|max:7',
         ]);
 
         $settings = $this->settings();
         $settings->update($data);
+
+        // If a weekday was removed from the working week, drop daily
+        // missing-deductions this month for that day (no longer a work day).
+        if (array_key_exists('working_days', $data) && is_array($data['working_days'])) {
+            $offDays = collect(range(1, 7))->diff($data['working_days'])->values();
+            if ($offDays->isNotEmpty()) {
+                $monthStart = now()->startOfMonth();
+                StaffReportPenalty::where('report_type', 'daily')
+                    ->where('penalty_type', 'missing')
+                    ->whereDate('period_date', '>=', $monthStart->toDateString())
+                    ->get()
+                    ->each(function ($p) use ($offDays) {
+                        if ($offDays->contains($p->period_date->dayOfWeekIso)) {
+                            $p->delete();
+                        }
+                    });
+            }
+        }
 
         return response()->json(['data' => $settings]);
     }
@@ -96,6 +116,7 @@ class StaffReportSettingsController extends Controller
             'penalty_late'            => 2000,
             'penalty_missing_weekly'  => 7000,
             'penalty_missing_monthly' => 10000,
+            'working_days'            => [1, 2, 3, 4, 5, 6],
         ]);
     }
 }

@@ -17,6 +17,7 @@ class StaffReportSettings extends Model
         'monthly_deadline_day', 'monthly_deadline_time',
         'penalties_enabled', 'penalty_missing_daily', 'penalty_late',
         'penalty_missing_weekly', 'penalty_missing_monthly',
+        'working_days',
     ];
 
     protected $casts = [
@@ -25,5 +26,7 @@ class StaffReportSettings extends Model
         'monthly_target'       => 'integer',
         'weekly_deadline_day'  => 'integer',
         'monthly_deadline_day' => 'integer',
+        'penalties_enabled'    => 'boolean',
+        'working_days'         => 'array',
     ];
 }

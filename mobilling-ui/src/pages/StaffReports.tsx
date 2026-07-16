@@ -3,7 +3,7 @@ import {
   Title, Tabs, Stack, Group, Button, Badge, Text, Paper, ActionIcon,
   Textarea, Modal, Loader, Center, ThemeIcon, Select, Divider, Switch,
   SegmentedControl, Avatar, ScrollArea, RingProgress, SimpleGrid,
-  NumberInput, Alert, TextInput, Table, Drawer,
+  NumberInput, Alert, TextInput, Table, Drawer, Chip,
 } from '@mantine/core';
 import { DatePickerInput, MonthPickerInput, TimeInput } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
@@ -992,6 +992,7 @@ function SettingsTab() {
       penalties_enabled: true,
       penalty_missing_daily: 5000, penalty_late: 2000,
       penalty_missing_weekly: 7000, penalty_missing_monthly: 10000,
+      working_days: [1,2,3,4,5,6],
     },
   });
 
@@ -1028,10 +1029,21 @@ function SettingsTab() {
             <Text size="xs" c="dimmed" mb="sm">
               Targets adjust to each month — no need to set them by hand:
             </Text>
+
+            <Text size="xs" fw={600} mb={4}>Working days (which days a daily report is required)</Text>
+            <Chip.Group multiple value={(form.values.working_days ?? []).map(String)}
+              onChange={(v) => form.setFieldValue('working_days', v.map(Number).sort())}>
+              <Group gap={6} mb="sm">
+                {[[1, 'Mon'], [2, 'Tue'], [3, 'Wed'], [4, 'Thu'], [5, 'Fri'], [6, 'Sat'], [7, 'Sun']].map(([n, lbl]) => (
+                  <Chip key={n} value={String(n)} size="xs" variant="light">{lbl as string}</Chip>
+                ))}
+              </Group>
+            </Chip.Group>
+
             <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
               <Paper withBorder p="sm" radius="md">
                 <Text size="sm" fw={700}>Daily</Text>
-                <Text size="xs" c="dimmed">Working days <b>Mon–Sat</b> in the month, minus any holidays.</Text>
+                <Text size="xs" c="dimmed">The <b>working days</b> above in the month, minus any holidays.</Text>
               </Paper>
               <Paper withBorder p="sm" radius="md">
                 <Text size="sm" fw={700}>Weekly</Text>
