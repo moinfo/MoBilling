@@ -71,6 +71,11 @@ class ApplyAttendancePenalties extends Command
                     $att = $records->get($uid);
                     $charges = [];
 
+                    // Excused day (leave / sick / field duty) — never charge.
+                    if ($att && in_array($att->status, Attendance::EXCUSED, true)) {
+                        continue;
+                    }
+
                     if (!$att || !$att->check_in_at) {
                         // No check-in → absent (even if they checked out).
                         $charges['absent'] = [(float) $s->penalty_absent, 'Absent (no check-in)'];

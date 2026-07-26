@@ -72,7 +72,7 @@ class AttendanceController extends Controller
         $staff = $users->map(function ($u) use ($records, $s, $date) {
             $att = $records->get($u->id);
             $day = $att ? $this->formatDay($att, $s) : [
-                'date' => $date, 'check_in_at' => null, 'check_out_at' => null,
+                'date' => $date, 'status' => null, 'status_note' => null, 'check_in_at' => null, 'check_out_at' => null,
                 'absent' => true, 'late' => false, 'left_early' => false, 'no_checkout' => false,
             ];
             return ['user' => ['id' => $u->id, 'name' => $u->name]] + $day;
@@ -93,17 +93,24 @@ class AttendanceController extends Controller
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
-            'user_id'   => ['required', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
-            'date'      => 'required|date',
-            'check_in'  => 'nullable|date_format:H:i',
-            'check_out' => 'nullable|date_format:H:i',
+            'user_id'     => ['required', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
+            'date'        => 'required|date',
+            'status'      => ['nullable', Rule::in(Attendance::EXCUSED)], // leave|sick|field, null = normal
+            'status_note' => 'nullable|string|max:255',
+            'check_in'    => 'nullable|date_format:H:i',
+            'check_out'   => 'nullable|date_format:H:i',
         ]);
 
         $date = Carbon::parse($data['date']);
+        $excused = !empty($data['status']);
+
         $att = Attendance::firstOrNew(['user_id' => $data['user_id'], 'date' => $date->toDateString()]);
         $att->tenant_id ??= $tenantId;
-        $att->check_in_at  = !empty($data['check_in'])  ? $date->copy()->setTimeFromTimeString($data['check_in'])  : null;
-        $att->check_out_at = !empty($data['check_out']) ? $date->copy()->setTimeFromTimeString($data['check_out']) : null;
+        $att->status      = $data['status'] ?? null;
+        $att->status_note = $excused ? ($data['status_note'] ?? null) : null;
+        // An excused day is a free day — clear any times so it can't read as late/absent.
+        $att->check_in_at  = !$excused && !empty($data['check_in'])  ? $date->copy()->setTimeFromTimeString($data['check_in'])  : null;
+        $att->check_out_at = !$excused && !empty($data['check_out']) ? $date->copy()->setTimeFromTimeString($data['check_out']) : null;
         $att->save();
 
         return response()->json(['data' => ['user' => ['id' => $att->user_id]] + $this->formatDay($att, $this->settings())]);
@@ -120,11 +127,13 @@ class AttendanceController extends Controller
         $today = now()->toDateString();
         $todayRecs = Attendance::whereDate('date', $today)->get()->keyBy('user_id');
 
-        $t = ['total' => $users->count(), 'present' => 0, 'late' => 0, 'left_early' => 0, 'not_recorded' => 0];
+        $t = ['total' => $users->count(), 'present' => 0, 'late' => 0, 'left_early' => 0, 'excused' => 0, 'not_recorded' => 0];
         foreach ($users as $u) {
             $day = $todayRecs->get($u->id);
             $f = $day ? $this->formatDay($day, $s) : null;
-            if (!$f || !$f['check_in_at']) {
+            if ($f && $f['status']) {
+                $t['excused']++;                 // leave / sick / field duty — not counted absent
+            } elseif (!$f || !$f['check_in_at']) {
                 $t['not_recorded']++;
             } else {
                 $t['present']++;
@@ -249,20 +258,24 @@ class AttendanceController extends Controller
     /** Status flags for a day, evaluated against the settings' times. */
     private function formatDay(Attendance $a, AttendanceSettings $s): array
     {
-        $late = $a->check_in_at
+        $excused = $a->isExcused();   // leave / sick / field duty → a free day, no marks
+
+        $late = !$excused && $a->check_in_at
             && $a->check_in_at->gt($a->date->copy()->setTimeFromTimeString($s->check_in_time));
-        $leftEarly = $a->check_out_at
+        $leftEarly = !$excused && $a->check_out_at
             && $a->check_out_at->lt($a->date->copy()->setTimeFromTimeString($s->check_out_time));
 
         return [
             'id'           => $a->id,
             'date'         => $a->date->format('Y-m-d'),
+            'status'       => $a->status,               // null | leave | sick | field
+            'status_note'  => $a->status_note,
             'check_in_at'  => $a->check_in_at?->format('H:i'),
             'check_out_at' => $a->check_out_at?->format('H:i'),
-            'absent'       => !$a->check_in_at,          // no check-in = absent (even if checked out)
+            'absent'       => !$excused && !$a->check_in_at,  // no check-in = absent (unless excused)
             'late'         => (bool) $late,
             'left_early'   => (bool) $leftEarly,
-            'no_checkout'  => $a->check_in_at && !$a->check_out_at,
+            'no_checkout'  => !$excused && $a->check_in_at && !$a->check_out_at,
         ];
     }
 

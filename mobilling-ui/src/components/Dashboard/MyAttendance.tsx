@@ -9,6 +9,10 @@ const dtypeLabel: Record<string, string> = {
   absent: 'Absent', late: 'Late', left_early: 'Left early', no_checkout: 'No check-out',
 };
 
+const statusLabel: Record<string, string> = {
+  leave: 'Ruhusa (leave)', sick: 'Mgonjwa (sick)', field: 'Kazi za nje (field)',
+};
+
 export default function MyAttendance() {
   const { data } = useQuery({ queryKey: ['my-attendance'], queryFn: getMyAttendance });
   const a = data?.data?.data;
@@ -54,8 +58,8 @@ export default function MyAttendance() {
             </div>
 
             <Badge size="lg" variant="light"
-              color={!t?.check_in_at ? 'gray' : t.late ? 'orange' : 'teal'}>
-              {!t?.check_in_at ? 'Not marked yet' : t.late ? 'Present (late)' : 'Present'}
+              color={t?.status ? 'grape' : !t?.check_in_at ? 'gray' : t.late ? 'orange' : 'teal'}>
+              {t?.status ? (statusLabel[t.status] ?? t.status) : !t?.check_in_at ? 'Not marked yet' : t.late ? 'Present (late)' : 'Present'}
             </Badge>
           </Group>
 

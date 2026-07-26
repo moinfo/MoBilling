@@ -1,20 +1,20 @@
 import { useState, useEffect } from 'react';
 import {
   Title, Tabs, Stack, Group, Text, Paper, Table, Badge, Button, ActionIcon,
-  Loader, Center, ThemeIcon, NumberInput, Switch, Chip, SimpleGrid, Divider, Alert,
+  Loader, Center, ThemeIcon, NumberInput, Switch, Chip, SimpleGrid, Divider, Alert, Select,
 } from '@mantine/core';
 import { DatePickerInput, TimeInput, MonthPickerInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh } from '@tabler/icons-react';
+import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff } from '@tabler/icons-react';
 import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse } from '@mantine/core';
 import dayjs from 'dayjs';
 import {
   getAttendanceDay, recordAttendance, getAttendanceSettings, updateAttendanceSettings,
   getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty, getAttendanceDashboard,
   getDeviceConfig, getDeviceEvents, regenerateDeviceToken,
-  AttendanceSettings,
+  AttendanceSettings, ExcusedStatus,
 } from '../api/attendance';
 
 export default function Attendance() {
@@ -64,10 +64,11 @@ function DashboardTab() {
     <Stack gap="lg">
       <div>
         <Text size="sm" fw={700} tt="uppercase" c="dimmed" mb="xs">Today · {dayjs().format('ddd, D MMM')}</Text>
-        <MGrid cols={{ base: 2, sm: 4 }} spacing="sm">
+        <MGrid cols={{ base: 2, sm: 5 }} spacing="sm">
           <StatCard label="Present" value={`${d.today.present}/${d.today.total}`} color="teal" icon={<IconUserCheck size={20} />} />
           <StatCard label="Late" value={d.today.late} color="orange" icon={<IconClock size={20} />} />
           <StatCard label="Left early" value={d.today.left_early} color="orange" icon={<IconLogout2 size={20} />} />
+          <StatCard label="Excused" value={d.today.excused} sub="ruhusa/mgonjwa/nje" color={d.today.excused ? 'grape' : 'gray'} icon={<IconCalendarOff size={20} />} />
           <StatCard label="Not recorded" value={d.today.not_recorded} color={d.today.not_recorded ? 'red' : 'gray'} icon={<IconUserOff size={20} />} />
         </MGrid>
       </div>
@@ -119,19 +120,21 @@ function DashboardTab() {
   );
 }
 
+type RowEdit = { status: string; check_in: string; check_out: string };
+
 function RecordTab() {
   const qc = useQueryClient();
   const [date, setDate] = useState<Date>(new Date());
   const ds = dayjs(date).format('YYYY-MM-DD');
-  const [edits, setEdits] = useState<Record<string, { check_in: string; check_out: string }>>({});
+  const [edits, setEdits] = useState<Record<string, RowEdit>>({});
 
   const { data, isLoading } = useQuery({ queryKey: ['attendance-day', ds], queryFn: () => getAttendanceDay(ds) });
   const resp = data?.data?.data;
 
   useEffect(() => {
     if (resp) {
-      const m: Record<string, { check_in: string; check_out: string }> = {};
-      resp.staff.forEach((r) => { m[r.user.id] = { check_in: r.check_in_at ?? '', check_out: r.check_out_at ?? '' }; });
+      const m: Record<string, RowEdit> = {};
+      resp.staff.forEach((r) => { m[r.user.id] = { status: r.status ?? '', check_in: r.check_in_at ?? '', check_out: r.check_out_at ?? '' }; });
       setEdits(m);
     }
   }, [resp]);
@@ -142,7 +145,7 @@ function RecordTab() {
     onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Save failed.', color: 'red' }),
   });
 
-  const set = (uid: string, field: 'check_in' | 'check_out', v: string) =>
+  const set = (uid: string, field: keyof RowEdit, v: string) =>
     setEdits((s) => ({ ...s, [uid]: { ...s[uid], [field]: v } }));
 
   return (
@@ -157,11 +160,12 @@ function RecordTab() {
         <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">No staff.</Text></Paper>
       ) : (
         <Paper withBorder radius="md">
-          <Table.ScrollContainer minWidth={620}>
+          <Table.ScrollContainer minWidth={760}>
             <Table verticalSpacing="sm">
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Staff</Table.Th>
+                  <Table.Th>Day</Table.Th>
                   <Table.Th>Check-in</Table.Th>
                   <Table.Th>Check-out</Table.Th>
                   <Table.Th>Status</Table.Th>
@@ -170,30 +174,41 @@ function RecordTab() {
               </Table.Thead>
               <Table.Tbody>
                 {resp.staff.map((r) => {
-                  const e = edits[r.user.id] ?? { check_in: '', check_out: '' };
+                  const e = edits[r.user.id] ?? { status: '', check_in: '', check_out: '' };
+                  const excused = !!e.status;
                   return (
                     <Table.Tr key={r.user.id}>
                       <Table.Td fw={500}>{r.user.name}</Table.Td>
                       <Table.Td>
-                        <TimeInput value={e.check_in} onChange={(ev) => set(r.user.id, 'check_in', ev.currentTarget.value)} w={110} />
+                        <Select data={statusOptions} value={e.status} w={150} allowDeselect={false} comboboxProps={{ withinPortal: true }}
+                          onChange={(v) => set(r.user.id, 'status', v ?? '')} />
                       </Table.Td>
                       <Table.Td>
-                        <TimeInput value={e.check_out} onChange={(ev) => set(r.user.id, 'check_out', ev.currentTarget.value)} w={110} />
+                        <TimeInput value={e.check_in} disabled={excused} onChange={(ev) => set(r.user.id, 'check_in', ev.currentTarget.value)} w={110} />
+                      </Table.Td>
+                      <Table.Td>
+                        <TimeInput value={e.check_out} disabled={excused} onChange={(ev) => set(r.user.id, 'check_out', ev.currentTarget.value)} w={110} />
                       </Table.Td>
                       <Table.Td>
                         <Group gap={4}>
-                          {r.absent && <Badge size="xs" color="red" variant="light">absent</Badge>}
-                          {r.late && <Badge size="xs" color="orange" variant="light">late</Badge>}
-                          {r.left_early && <Badge size="xs" color="orange" variant="light">early</Badge>}
-                          {r.no_checkout && <Badge size="xs" color="yellow" variant="light">no out</Badge>}
-                          {!r.absent && !r.late && !r.left_early && !r.no_checkout && r.check_in_at && (
+                          {r.status && <Badge size="xs" color="grape" variant="light">{statusLabel[r.status] ?? r.status}</Badge>}
+                          {!r.status && r.absent && <Badge size="xs" color="red" variant="light">absent</Badge>}
+                          {!r.status && r.late && <Badge size="xs" color="orange" variant="light">late</Badge>}
+                          {!r.status && r.left_early && <Badge size="xs" color="orange" variant="light">early</Badge>}
+                          {!r.status && r.no_checkout && <Badge size="xs" color="yellow" variant="light">no out</Badge>}
+                          {!r.status && !r.absent && !r.late && !r.left_early && !r.no_checkout && r.check_in_at && (
                             <Badge size="xs" color="teal" variant="light">present</Badge>
                           )}
                         </Group>
                       </Table.Td>
                       <Table.Td>
                         <ActionIcon variant="light" loading={recordMut.isPending && recordMut.variables?.user_id === r.user.id}
-                          onClick={() => recordMut.mutate({ user_id: r.user.id, date: ds, check_in: e.check_in || null, check_out: e.check_out || null })}>
+                          onClick={() => recordMut.mutate({
+                            user_id: r.user.id, date: ds,
+                            status: (e.status || null) as ExcusedStatus | null,
+                            check_in: excused ? null : (e.check_in || null),
+                            check_out: excused ? null : (e.check_out || null),
+                          })}>
                           <IconDeviceFloppy size={16} />
                         </ActionIcon>
                       </Table.Td>
@@ -205,7 +220,7 @@ function RecordTab() {
           </Table.ScrollContainer>
         </Paper>
       )}
-      <Text size="xs" c="dimmed">A missing check-in counts as absent (even if a check-out is entered). Clear a field and save to undo a mark.</Text>
+      <Text size="xs" c="dimmed">A missing check-in counts as absent (even if a check-out is entered). Set <b>Day</b> to Ruhusa / Mgonjwa / Kazi za nje for an excused day — no absence mark, no deduction. Clear a field and save to undo a mark.</Text>
     </Stack>
   );
 }
@@ -213,6 +228,17 @@ function RecordTab() {
 const penLabel: Record<string, string> = {
   absent: 'Absent', late: 'Late', left_early: 'Left early', no_checkout: 'No check-out',
 };
+
+// Excused-day statuses (a free day — no absence/late marks, no deductions).
+const statusLabel: Record<string, string> = {
+  leave: 'Ruhusa', sick: 'Mgonjwa', field: 'Kazi za nje',
+};
+const statusOptions = [
+  { value: '', label: 'Present (kazini)' },
+  { value: 'leave', label: 'Ruhusa (leave)' },
+  { value: 'sick', label: 'Mgonjwa (sick)' },
+  { value: 'field', label: 'Kazi za nje (field)' },
+];
 
 function DeductionsTab() {
   const qc = useQueryClient();

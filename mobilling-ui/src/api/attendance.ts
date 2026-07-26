@@ -1,8 +1,12 @@
 import api from './axios';
 
+export type ExcusedStatus = 'leave' | 'sick' | 'field';
+
 export interface AttendanceDay {
   id?: string;
   date: string;
+  status: ExcusedStatus | null;
+  status_note: string | null;
   check_in_at: string | null;
   check_out_at: string | null;
   absent: boolean;
@@ -59,7 +63,7 @@ export const getMyAttendance = () => api.get<{ data: MyAttendance }>('/attendanc
 export const getAttendanceDay = (date: string) =>
   api.get<{ data: AttendanceDayResponse }>('/attendance/day', { params: { date } });
 
-export const recordAttendance = (payload: { user_id: string; date: string; check_in?: string | null; check_out?: string | null }) =>
+export const recordAttendance = (payload: { user_id: string; date: string; status?: ExcusedStatus | null; status_note?: string | null; check_in?: string | null; check_out?: string | null }) =>
   api.post<{ data: AttendanceRow }>('/attendance/record', payload);
 
 export const getAttendanceSettings = () => api.get<{ data: AttendanceSettings }>('/attendance/settings');
@@ -86,7 +90,7 @@ export const unwaiveAttendancePenalty = (id: string) =>
   api.post(`/attendance/penalties/${id}/unwaive`);
 
 export interface AttendanceOverview {
-  today: { total: number; present: number; late: number; left_early: number; not_recorded: number };
+  today: { total: number; present: number; late: number; left_early: number; excused: number; not_recorded: number };
   month_label: string;
   working_days_so_far: number;
   deduction_total: number;
