@@ -3,8 +3,9 @@ import { Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Tooltip, Seg
 import { notifications } from '@mantine/notifications';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { IconFileInvoice, IconAlertCircle } from '@tabler/icons-react';
-import { getPortalSubscriptions, generateSubscriptionInvoice } from '../../api/portal';
+import { IconFileInvoice, IconAlertCircle, IconExternalLink } from '@tabler/icons-react';
+import { getPortalSubscriptions, generateSubscriptionInvoice, portalHostingSso } from '../../api/portal';
+import { useAuth } from '../../context/AuthContext';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
@@ -23,7 +24,26 @@ const cycleLabel: Record<string, string> = {
 
 export default function PortalSubscriptions() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const isPortalAdmin = (user as any)?.role === 'admin';
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [openingId, setOpeningId] = useState<string | null>(null);
+
+  const openCpanel = async (id: string) => {
+    setOpeningId(id);
+    try {
+      const res = await portalHostingSso(id);
+      window.open(res.data.url, '_blank', 'noopener');
+    } catch (e: any) {
+      notifications.show({
+        title: 'cPanel login failed',
+        message: e?.response?.data?.message ?? 'Could not open cPanel. Please try again later.',
+        color: 'red',
+      });
+    } finally {
+      setOpeningId(null);
+    }
+  };
 
   const { data, isLoading } = useQuery({
     queryKey: ['portal-subscriptions'],
@@ -152,19 +172,35 @@ export default function PortalSubscriptions() {
                       </Badge>
                     </Table.Td>
                     <Table.Td ta="center">
-                      {s.status === 'active' && (
-                        <Tooltip label="Generate invoice and pay now">
-                          <Button
-                            variant="light"
-                            size="compact-sm"
-                            leftSection={<IconFileInvoice size={14} />}
-                            loading={generatingId === s.id}
-                            onClick={() => handleGenerateInvoice(s.id)}
-                          >
-                            Pay Now
-                          </Button>
-                        </Tooltip>
-                      )}
+                      <Group gap="xs" justify="center" wrap="nowrap">
+                        {isPortalAdmin && s.hosting_account?.status === 'active' && (
+                          <Tooltip label={`Log in to cPanel (${s.hosting_account.cpanel_username})`}>
+                            <Button
+                              variant="light"
+                              color="teal"
+                              size="compact-sm"
+                              leftSection={<IconExternalLink size={14} />}
+                              loading={openingId === s.hosting_account.id}
+                              onClick={() => openCpanel(s.hosting_account!.id)}
+                            >
+                              cPanel
+                            </Button>
+                          </Tooltip>
+                        )}
+                        {s.status === 'active' && (
+                          <Tooltip label="Generate invoice and pay now">
+                            <Button
+                              variant="light"
+                              size="compact-sm"
+                              leftSection={<IconFileInvoice size={14} />}
+                              loading={generatingId === s.id}
+                              onClick={() => handleGenerateInvoice(s.id)}
+                            >
+                              Pay Now
+                            </Button>
+                          </Tooltip>
+                        )}
+                      </Group>
                     </Table.Td>
                   </Table.Tr>
                 );

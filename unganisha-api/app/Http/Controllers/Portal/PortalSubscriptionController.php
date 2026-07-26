@@ -30,7 +30,11 @@ class PortalSubscriptionController extends Controller
             // Cancelled subscriptions (incl. migration de-dup artifacts) are
             // internal history — never shown to clients.
             ->where('status', '!=', 'cancelled')
-            ->with('productService:id,name,type,price,billing_cycle')
+            ->with([
+                'productService:id,name,type,price,billing_cycle',
+                // For the one-click cPanel login button (serialises as hosting_account).
+                'hostingAccount:id,client_subscription_id,status,cpanel_username',
+            ])
             ->orderByRaw("CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
             ->orderBy('label')
             ->orderBy('expire_date')
