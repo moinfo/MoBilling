@@ -4,9 +4,12 @@ namespace App\Http\Controllers;
 
 use App\Models\AttendanceDevice;
 use App\Models\AttendanceDeviceEvent;
+use App\Models\User;
+use App\Services\AttendanceDeviceImporter;
 use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 /**
  * HIKVISION (and similar) attendance-device integration.
@@ -53,6 +56,14 @@ class DeviceAttendanceController extends Controller
 
         $device->update(['last_event_at' => now()]);
 
+        // Fold straight into attendance if this employee number is already linked
+        // to a staff member (best-effort — never let it break the 200 the device needs).
+        try {
+            app(AttendanceDeviceImporter::class)->drainTenant($device->tenant_id);
+        } catch (\Throwable) {
+            // the scheduled import will pick it up
+        }
+
         // Devices expect a 200 to consider the event delivered.
         return response()->json(['ok' => true]);
     }
@@ -97,6 +108,70 @@ class DeviceAttendanceController extends Controller
         $device = AttendanceDevice::first() ?? AttendanceDevice::create(['name' => 'HIKVISION device', 'token' => Str::random(40)]);
         $device->update(['token' => Str::random(40)]);
         return response()->json(['data' => ['webhook_url' => url('/api/attendance/device/' . $device->token)]]);
+    }
+
+    /**
+     * Staff ↔ device-employee-number mapping, plus any employee numbers seen in
+     * recent events that aren't linked to a staff member yet.
+     */
+    public function mappings()
+    {
+        $this->authorizePermission('attendance.manage');
+        $tenantId = auth()->user()->tenant_id;
+
+        $staff = User::where('tenant_id', $tenantId)->where('is_active', true)
+            ->orderBy('name')->get(['id', 'name', 'device_employee_no'])
+            ->map(fn ($u) => [
+                'id' => $u->id, 'name' => $u->name,
+                'device_employee_no' => $u->device_employee_no,
+            ]);
+
+        $linked = $staff->pluck('device_employee_no')->filter()->map(fn ($n) => (string) $n)->all();
+        $unlinked = AttendanceDeviceEvent::whereNotNull('employee_no')
+            ->where('processed', false)
+            ->orderByDesc('created_at')->limit(200)->pluck('employee_no')
+            ->map(fn ($n) => (string) $n)->unique()
+            ->reject(fn ($n) => in_array($n, $linked, true))->values();
+
+        return response()->json(['data' => ['staff' => $staff, 'unlinked' => $unlinked]]);
+    }
+
+    /** Link (or clear) a staff member's device employee number, then import their pending events. */
+    public function saveMapping(Request $request)
+    {
+        $this->authorizePermission('attendance.manage');
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'user_id'            => ['required', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
+            'device_employee_no' => ['nullable', 'string', 'max:64'],
+        ]);
+
+        $no = $data['device_employee_no'] !== null && $data['device_employee_no'] !== ''
+            ? trim($data['device_employee_no']) : null;
+
+        // One employee number per staff member within a tenant.
+        if ($no) {
+            $clash = User::where('tenant_id', $tenantId)->where('device_employee_no', $no)
+                ->where('id', '!=', $data['user_id'])->exists();
+            if ($clash) {
+                return response()->json(['message' => "Employee no. {$no} is already linked to another staff member."], 422);
+            }
+        }
+
+        User::where('id', $data['user_id'])->update(['device_employee_no' => $no]);
+
+        $res = app(AttendanceDeviceImporter::class)->drainTenant($tenantId);
+
+        return response()->json(['message' => 'Saved.', 'import' => $res]);
+    }
+
+    /** Manually drain captured events into attendance for this tenant. */
+    public function importNow()
+    {
+        $this->authorizePermission('attendance.manage');
+        $res = app(AttendanceDeviceImporter::class)->drainTenant(auth()->user()->tenant_id);
+        return response()->json(['data' => $res]);
     }
 
     /** Flatten a nested array to dot-less leaf keys (last key wins). */

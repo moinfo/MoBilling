@@ -8,13 +8,14 @@ import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff } from '@tabler/icons-react';
-import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse } from '@mantine/core';
+import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput } from '@mantine/core';
 import dayjs from 'dayjs';
 import {
   getAttendanceDay, recordAttendance, getAttendanceSettings, updateAttendanceSettings,
   getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty, getAttendanceDashboard,
   getDeviceConfig, getDeviceEvents, regenerateDeviceToken,
-  AttendanceSettings, ExcusedStatus,
+  getDeviceMappings, saveDeviceMapping, importDeviceEvents,
+  AttendanceSettings, ExcusedStatus, DeviceMappingStaff,
 } from '../api/attendance';
 
 export default function Attendance() {
@@ -345,17 +346,70 @@ function DeductionsTab() {
   );
 }
 
+function StaffMapRow({ staff }: { staff: DeviceMappingStaff }) {
+  const qc = useQueryClient();
+  // Keyed on the server value by the parent, so a fresh server value remounts this row.
+  const [val, setVal] = useState(staff.device_employee_no ?? '');
+
+  const dirty = val.trim() !== (staff.device_employee_no ?? '');
+  const saveMut = useMutation({
+    mutationFn: () => saveDeviceMapping(staff.id, val.trim() || null),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['device-mappings'] });
+      qc.invalidateQueries({ queryKey: ['device-events'] });
+      qc.invalidateQueries({ queryKey: ['attendance-dashboard'] });
+      const imp = res.data.import;
+      notifications.show({ message: imp?.days ? `Linked — imported ${imp.matched} swipe(s).` : 'Saved.', color: 'green' });
+    },
+    onError: (e) => {
+      const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Save failed.';
+      notifications.show({ message: msg, color: 'red' });
+    },
+  });
+
+  return (
+    <Table.Tr>
+      <Table.Td fw={500}>{staff.name}</Table.Td>
+      <Table.Td>
+        <Group gap={6} wrap="nowrap">
+          <TextInput value={val} placeholder="e.g. 5" w={120} size="xs"
+            onChange={(e) => setVal(e.currentTarget.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && dirty) saveMut.mutate(); }} />
+          <Button size="compact-xs" variant={dirty ? 'filled' : 'light'} disabled={!dirty}
+            loading={saveMut.isPending} onClick={() => saveMut.mutate()}>Save</Button>
+        </Group>
+      </Table.Td>
+    </Table.Tr>
+  );
+}
+
 function DeviceTab() {
   const qc = useQueryClient();
   const [openId, setOpenId] = useState<string | null>(null);
   const { data: cfgRes, isLoading } = useQuery({ queryKey: ['device-config'], queryFn: getDeviceConfig });
   const { data: evRes } = useQuery({ queryKey: ['device-events'], queryFn: getDeviceEvents, refetchInterval: 5000 });
+  const { data: mapRes } = useQuery({ queryKey: ['device-mappings'], queryFn: getDeviceMappings, refetchInterval: 10000 });
   const cfg = cfgRes?.data?.data;
   const events = evRes?.data?.data ?? [];
+  const mappings = mapRes?.data?.data;
 
   const regenMut = useMutation({
     mutationFn: regenerateDeviceToken,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['device-config'] }); notifications.show({ message: 'New webhook URL generated.', color: 'green' }); },
+  });
+
+  const importMut = useMutation({
+    mutationFn: importDeviceEvents,
+    onSuccess: (res) => {
+      const r = res.data.data;
+      qc.invalidateQueries({ queryKey: ['device-events'] });
+      qc.invalidateQueries({ queryKey: ['device-mappings'] });
+      qc.invalidateQueries({ queryKey: ['attendance-dashboard'] });
+      notifications.show({
+        message: `Imported ${r.matched} swipe(s) into ${r.days} staff-day(s).${r.unmatched ? ` ${r.unmatched} still unlinked.` : ''}`,
+        color: r.matched ? 'green' : 'gray',
+      });
+    },
   });
 
   if (isLoading) return <Center py="xl"><Loader /></Center>;
@@ -394,6 +448,45 @@ function DeviceTab() {
           </Button>
         </Group>
       </Paper>
+
+      <div>
+        <Group justify="space-between" mb="xs">
+          <div>
+            <Text size="sm" fw={700} tt="uppercase" c="dimmed">Link staff to device IDs</Text>
+            <Text size="xs" c="dimmed">Enter each staff member's employee number on the device. Linked swipes fill their check-in/out automatically.</Text>
+          </div>
+          <Button size="compact-sm" variant="light" leftSection={<IconRefresh size={14} />}
+            loading={importMut.isPending} onClick={() => importMut.mutate()}>
+            Import now
+          </Button>
+        </Group>
+
+        {mappings && mappings.unlinked.length > 0 && (
+          <Alert color="orange" variant="light" mb="sm" p="xs">
+            <Text size="xs">
+              Device IDs seen but not linked to anyone yet:{' '}
+              {mappings.unlinked.map((n) => <Badge key={n} color="orange" variant="light" radius="sm" mr={4}>#{n}</Badge>)}
+              — set the matching number on a staff row below.
+            </Text>
+          </Alert>
+        )}
+
+        <Paper withBorder radius="md" mb="lg">
+          <Table.ScrollContainer minWidth={420}>
+            <Table verticalSpacing="xs">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Staff</Table.Th>
+                  <Table.Th w={220}>Device employee no.</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {mappings?.staff.map((s) => <StaffMapRow key={`${s.id}|${s.device_employee_no ?? ''}`} staff={s} />)}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      </div>
 
       <div>
         <Group justify="space-between" mb="xs">

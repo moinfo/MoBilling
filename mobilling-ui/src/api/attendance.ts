@@ -119,3 +119,12 @@ export const getDeviceConfig = () => api.get<{ data: DeviceConfig }>('/attendanc
 export const getDeviceEvents = () => api.get<{ data: DeviceEvent[] }>('/attendance/device-events');
 export const regenerateDeviceToken = () =>
   api.post<{ data: { webhook_url: string } }>('/attendance/device-regenerate');
+
+export interface DeviceMappingStaff { id: string; name: string; device_employee_no: string | null }
+export interface DeviceMappings { staff: DeviceMappingStaff[]; unlinked: string[] }
+export interface ImportResult { matched: number; unmatched: number; days: number }
+
+export const getDeviceMappings = () => api.get<{ data: DeviceMappings }>('/attendance/device-mappings');
+export const saveDeviceMapping = (user_id: string, device_employee_no: string | null) =>
+  api.post<{ message: string; import: ImportResult }>('/attendance/device-mappings', { user_id, device_employee_no });
+export const importDeviceEvents = () => api.post<{ data: ImportResult }>('/attendance/device-import');
