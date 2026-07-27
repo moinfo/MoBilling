@@ -47,8 +47,30 @@ class NameserverService
         }
 
         $sharedWith = $this->sharedWith($domain);
+        $mode = null;
 
-        if ($sharedWith > 0) {
+        // In-place edit is only valid when we EXCLUSIVELY own the nsset. If it's
+        // shared with other domains we must not touch it. If we don't sponsor it
+        // at all — typical after a transfer-in, where the nsset stays with the
+        // losing registrar — the in-place update comes back 2201 (not authorised),
+        // and we fall through to minting a fresh nsset under our own registrar.
+        if ($sharedWith === 0) {
+            try {
+                $driver->nssetUpdate(
+                    $domain->nsset_handle,
+                    $new->diff($current)->map(fn ($n) => ['name' => $n, 'addrs' => []])->values()->all(),
+                    $current->diff($new)->values()->all(),
+                );
+                $mode = 'in_place';
+            } catch (\App\Exceptions\RegistrarApiException $e) {
+                if (!str_contains($e->getMessage(), '2201')) {
+                    throw $e;
+                }
+                // Not ours — create a new nsset below.
+            }
+        }
+
+        if ($mode === null) {
             // Tech contact: keep the current one, else the domain's registrant.
             $tech = ($info['tech'] ?? []) ?: array_filter([$domain->registrant_handle]);
             if (empty($tech)) {
@@ -63,12 +85,7 @@ class NameserverService
             );
             $driver->updateDomain($domain->name, ['nsset_id' => $newHandle]);
             $domain->update(['nsset_handle' => $newHandle]);
-        } else {
-            $driver->nssetUpdate(
-                $domain->nsset_handle,
-                $new->diff($current)->map(fn ($n) => ['name' => $n, 'addrs' => []])->values()->all(),
-                $current->diff($new)->values()->all(),
-            );
+            $mode = $sharedWith > 0 ? 'new_nsset_shared' : 'new_nsset_foreign';
         }
 
         DomainLog::create([
@@ -78,7 +95,7 @@ class NameserverService
             'request'   => array_merge([
                 'from' => $current->all(),
                 'to'   => $new->all(),
-                'mode' => $sharedWith > 0 ? 'new_nsset' : 'in_place',
+                'mode' => $mode,
             ], $auditActor),
             'status'    => 'success',
         ]);
