@@ -10,6 +10,7 @@ use App\Models\DomainLog;
 use App\Models\DomainTld;
 use App\Services\DocumentNumberService;
 use App\Services\Registrar\DomainRegistrarManager;
+use App\Services\TznicWhoisService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -45,6 +46,29 @@ class DomainController extends Controller
                 'years_max'      => $pricing->years_max,
             ] : null,
         ]);
+    }
+
+    /**
+     * WHOIS lookup for a .tz domain, straight from the TZNIC registry (port 43)
+     * — the same data as whois.tznic.or.tz, in-house. Flags whether the domain
+     * is sponsored by this tenant's own registrar.
+     */
+    public function whois(Request $request, TznicWhoisService $whois)
+    {
+        $data = $request->validate(['name' => 'required|string|max:255']);
+        $domain = $whois->normalise($data['name']);
+
+        if (!str_ends_with($domain, '.tz') || substr_count($domain, '.') < 1) {
+            return response()->json(['message' => 'Enter a .tz domain, e.g. example.co.tz.'], 422);
+        }
+
+        $res = $whois->lookup($domain);
+
+        $ours = $this->ourRegistrarHandle();
+        $res['our_registrar'] = $ours;
+        $res['is_ours'] = (bool) ($ours && $res['registrar'] && strcasecmp($res['registrar'], $ours) === 0);
+
+        return response()->json(['data' => $res]);
     }
 
     public function index(Request $request)

@@ -73,6 +73,26 @@ export const DOMAIN_STATUS_COLORS: Record<DomainRecord['status'], string> = {
 export const checkDomain = (name: string) =>
   api.get<DomainCheckResult>('/domains/check', { params: { name } });
 
+export interface WhoisResult {
+  domain: string;
+  found: boolean;
+  raw: string;
+  registrar: string | null;
+  registrant: string | null;
+  statuses: string[];
+  admins: string[];
+  nsset: string | null;
+  nameservers: string[];
+  registered: string | null;
+  changed: string | null;
+  expire: string | null;
+  our_registrar: string | null;
+  is_ours: boolean;
+}
+
+export const whoisDomain = (name: string) =>
+  api.get<{ data: WhoisResult }>('/domains/whois', { params: { name } });
+
 export const getDomains = (params?: Record<string, string>) =>
   api.get('/domains', { params });
 

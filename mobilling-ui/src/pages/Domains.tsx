@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Stack, Group, Table, Badge, ActionIcon, Tooltip, Text, Paper, Select,
   TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code, NumberInput,
-  Alert, CopyButton, SimpleGrid, ThemeIcon, Switch, Anchor,
+  Alert, CopyButton, SimpleGrid, ThemeIcon, Switch, Anchor, Collapse,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -17,6 +17,7 @@ import {
   getDomainAuthInfo, setDomainAutoRenew, describeDomainAction,
   createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
   DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
+  whoisDomain, WhoisResult,
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
@@ -191,6 +192,8 @@ export default function Domains() {
         <DomainStatCard icon={<IconRepeat size={20} />} color="violet" label="Auto-renew On"
           value={stats?.auto_renew ?? '—'} />
       </SimpleGrid>
+
+      <DomainLookup canRegister={can('domains.create')} onRegister={() => setWizardOpen(true)} />
 
       {/* Registrar (TZNIC) prepaid credit — real money the registry draws for register/renew */}
       {registrarCredit && (
@@ -465,6 +468,91 @@ export default function Domains() {
 }
 
 // ── Register / Transfer wizard ─────────────────────────────────────────────────
+
+function WhoisLine({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
+  return (
+    <Text size="sm"><Text span c="dimmed" size="xs" fw={600}>{label}: </Text>{value}</Text>
+  );
+}
+
+/** .tz domain search + WHOIS, live from the TZNIC registry (whois.tznic.or.tz). */
+function DomainLookup({ canRegister, onRegister }: { canRegister: boolean; onRegister: () => void }) {
+  const [name, setName] = useState('');
+  const [showRaw, setShowRaw] = useState(false);
+
+  const lookup = useMutation({
+    mutationFn: (n: string) => whoisDomain(n),
+    onError: (e) => notifications.show({
+      message: (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? 'Lookup failed.',
+      color: 'red',
+    }),
+  });
+  const r: WhoisResult | undefined = lookup.data?.data?.data;
+  const submit = () => { const n = name.trim(); if (n) { setShowRaw(false); lookup.mutate(n); } };
+
+  return (
+    <Paper withBorder radius="md" p="md">
+      <Group gap="xs" mb="xs">
+        <IconSearch size={16} />
+        <Text fw={600} size="sm">Domain lookup — .tz WHOIS</Text>
+      </Group>
+      <Group gap="xs" wrap="nowrap">
+        <TextInput style={{ flex: 1 }} placeholder="example.co.tz" value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
+        <Button leftSection={<IconSearch size={16} />} loading={lookup.isPending} onClick={submit}>Look up</Button>
+      </Group>
+      <Text size="xs" c="dimmed" mt={4}>Live from the TZNIC registry (whois.tznic.or.tz). Enter any .tz domain.</Text>
+
+      {r && (!r.found ? (
+        <Alert color="green" variant="light" mt="md" title={`${r.domain} — available`}>
+          <Group gap="sm">
+            <Text size="sm">Not registered at the registry.</Text>
+            {canRegister && <Button size="compact-sm" variant="light" onClick={onRegister}>Register it</Button>}
+          </Group>
+        </Alert>
+      ) : (
+        <Paper withBorder radius="md" p="sm" mt="md">
+          <Group justify="space-between" wrap="wrap" mb="xs">
+            <Group gap="xs">
+              <IconWorld size={16} />
+              <Text fw={700}>{r.domain}</Text>
+              {r.statuses.map((s) => (
+                <Badge key={s} size="sm" variant="light" color={/expired|delete|hold|blocked/i.test(s) ? 'red' : 'gray'}>{s}</Badge>
+              ))}
+            </Group>
+            {r.registrar && (r.is_ours ? (
+              <Badge color="teal" variant="filled" leftSection={<IconShieldCheck size={12} />}>Your registrar · {r.registrar}</Badge>
+            ) : (
+              <Badge color="gray" variant="light">Registrar: {r.registrar}</Badge>
+            ))}
+          </Group>
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={4}>
+            <WhoisLine label="Registrant" value={r.registrant} />
+            <WhoisLine label="Registered" value={r.registered} />
+            <WhoisLine label="Expires" value={r.expire} />
+            <WhoisLine label="Last changed" value={r.changed} />
+          </SimpleGrid>
+          {r.nameservers.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <Text size="xs" c="dimmed" fw={600}>Nameservers</Text>
+              <Group gap={6} mt={2}>
+                {r.nameservers.map((ns) => <Badge key={ns} variant="outline" color="gray" radius="sm">{ns}</Badge>)}
+              </Group>
+            </div>
+          )}
+          <Button size="compact-xs" variant="subtle" color="gray" mt="sm" onClick={() => setShowRaw((v) => !v)}>
+            {showRaw ? 'Hide raw WHOIS' : 'Raw WHOIS'}
+          </Button>
+          <Collapse in={showRaw}>
+            <Code block mt="xs" style={{ fontSize: 12, maxHeight: 320, overflow: 'auto' }}>{r.raw}</Code>
+          </Collapse>
+        </Paper>
+      ))}
+    </Paper>
+  );
+}
 
 function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const qc = useQueryClient();

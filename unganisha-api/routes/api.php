@@ -542,6 +542,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     // ── Domains (.tz registrar) ──────────────────────────────────────────────
     Route::middleware('permission:domains.read')->group(function () {
         Route::get('/domains/check',            [\App\Http\Controllers\DomainController::class, 'check']);
+        Route::get('/domains/whois',            [\App\Http\Controllers\DomainController::class, 'whois']);
         Route::get('/domains/stats',            [\App\Http\Controllers\DomainController::class, 'stats']);
         Route::get('/domains/registrar-credit', [\App\Http\Controllers\DomainController::class, 'registrarCredit']);
         Route::get('/registrar-credit-transfers', [\App\Http\Controllers\RegistrarCreditTransferController::class, 'index']);
