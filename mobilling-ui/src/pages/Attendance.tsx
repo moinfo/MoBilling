@@ -8,14 +8,16 @@ import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff } from '@tabler/icons-react';
-import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput } from '@mantine/core';
+import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput, FileButton, SegmentedControl } from '@mantine/core';
+import { IconUpload, IconFileSpreadsheet } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
   getAttendanceDay, recordAttendance, getAttendanceSettings, updateAttendanceSettings,
   getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty, getAttendanceDashboard,
   getDeviceConfig, getDeviceEvents, regenerateDeviceToken,
   getDeviceMappings, saveDeviceMapping, importDeviceEvents,
-  AttendanceSettings, ExcusedStatus, DeviceMappingStaff,
+  previewAttendanceSheet, commitAttendanceSheet,
+  AttendanceSettings, ExcusedStatus, DeviceMappingStaff, SheetMapping, SheetPreview, SheetImportResult,
 } from '../api/attendance';
 
 export default function Attendance() {
@@ -27,17 +29,23 @@ export default function Attendance() {
           <Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>Dashboard</Tabs.Tab>
           <Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>
           <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>Deductions</Tabs.Tab>
+          <Tabs.Tab value="import" leftSection={<IconFileSpreadsheet size={15} />}>Import (iVMS)</Tabs.Tab>
           <Tabs.Tab value="device" leftSection={<IconDeviceDesktop size={15} />}>Device</Tabs.Tab>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="dashboard" pt="md"><DashboardTab /></Tabs.Panel>
         <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>
         <Tabs.Panel value="deductions" pt="md"><DeductionsTab /></Tabs.Panel>
+        <Tabs.Panel value="import" pt="md"><ImportTab /></Tabs.Panel>
         <Tabs.Panel value="device" pt="md"><DeviceTab /></Tabs.Panel>
         <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>
       </Tabs>
     </Stack>
   );
+}
+
+function apiErr(e: unknown, fallback: string): string {
+  return (e as { response?: { data?: { message?: string } } })?.response?.data?.message ?? fallback;
 }
 
 function StatCard({ label, value, sub, color, icon }: { label: string; value: number | string; sub?: string; color: string; icon: React.ReactNode }) {
@@ -342,6 +350,149 @@ function DeductionsTab() {
           </Stack>
         )}
       </Drawer>
+    </Stack>
+  );
+}
+
+function ImportTab() {
+  const qc = useQueryClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<SheetPreview | null>(null);
+  const [map, setMap] = useState<SheetMapping | null>(null);
+  const [result, setResult] = useState<SheetImportResult | null>(null);
+
+  const colData = (preview?.headers ?? []).map((h, i) => ({ value: String(i), label: h || `Column ${i + 1}` }));
+  const setM = (patch: Partial<SheetMapping>) => setMap((m) => (m ? { ...m, ...patch } : m));
+
+  const previewMut = useMutation({
+    mutationFn: (f: File) => previewAttendanceSheet(f),
+    onSuccess: (res) => { setPreview(res.data.data); setMap(res.data.data.guess); setResult(null); },
+    onError: (e) => notifications.show({ message: apiErr(e, 'Could not read the file.'), color: 'red' }),
+  });
+
+  const commitMut = useMutation({
+    mutationFn: () => commitAttendanceSheet(file!, map!),
+    onSuccess: (res) => {
+      setResult(res.data.data);
+      qc.invalidateQueries({ queryKey: ['attendance-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['attendance-day'] });
+      notifications.show({ message: `Imported ${res.data.data.days} staff-day(s).`, color: 'green' });
+    },
+    onError: (e) => notifications.show({ message: apiErr(e, 'Import failed.'), color: 'red' }),
+  });
+
+  const pick = (f: File | null) => {
+    setFile(f); setPreview(null); setMap(null); setResult(null);
+    if (f) previewMut.mutate(f);
+  };
+
+  const unmatched = result ? Object.entries(result.unmatched) : [];
+
+  return (
+    <Stack gap="lg" maw={860}>
+      <Alert color="blue" variant="light" icon={<IconFileSpreadsheet size={18} />} title="Import from iVMS-4200">
+        In iVMS-4200 open <b>Time &amp; Attendance → Report</b>, generate the attendance report, and <b>Export as CSV</b>.
+        Upload it here — first punch of the day becomes the check-in, last becomes the check-out. Staff are matched by
+        name (or employee number). Excused days are never overwritten.
+      </Alert>
+
+      <Group>
+        <FileButton onChange={pick} accept=".csv,text/csv">
+          {(props) => <Button {...props} leftSection={<IconUpload size={16} />} loading={previewMut.isPending}>Choose CSV file</Button>}
+        </FileButton>
+        {file && <Text size="sm" c="dimmed">{file.name} · {preview ? `${preview.total} rows` : '…'}</Text>}
+      </Group>
+
+      {preview && map && (
+        <>
+          <Paper withBorder radius="md" p="md">
+            <Text size="sm" fw={700} mb="sm">Tell us which columns to use</Text>
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+              <div>
+                <Text size="xs" fw={600} mb={4}>Match staff by</Text>
+                <SegmentedControl fullWidth size="xs" value={map.match_by}
+                  onChange={(v) => setM({ match_by: v as SheetMapping['match_by'] })}
+                  data={[{ value: 'name', label: 'Name' }, { value: 'employee_no', label: 'Employee no.' }]} />
+              </div>
+              <Select label={map.match_by === 'name' ? 'Name column' : 'Employee-no column'} data={colData}
+                value={String(map.identity_col)} onChange={(v) => setM({ identity_col: Number(v) })} />
+              <Select label="Date column" data={colData} clearable
+                value={map.date_col === null ? null : String(map.date_col)}
+                onChange={(v) => setM({ date_col: v === null ? null : Number(v) })}
+                description="Skip if the time column already includes the date" />
+              <div>
+                <Text size="xs" fw={600} mb={4}>Time columns</Text>
+                <SegmentedControl fullWidth size="xs" value={map.time_mode}
+                  onChange={(v) => setM({ time_mode: v as SheetMapping['time_mode'] })}
+                  data={[{ value: 'inout', label: 'Separate in / out' }, { value: 'single', label: 'One punch column' }]} />
+              </div>
+              {map.time_mode === 'inout' ? (
+                <>
+                  <Select label="Check-in column" data={colData} clearable
+                    value={map.in_col === null ? null : String(map.in_col)}
+                    onChange={(v) => setM({ in_col: v === null ? null : Number(v) })} />
+                  <Select label="Check-out column" data={colData} clearable
+                    value={map.out_col === null ? null : String(map.out_col)}
+                    onChange={(v) => setM({ out_col: v === null ? null : Number(v) })} />
+                </>
+              ) : (
+                <Select label="Punch / time column" data={colData} clearable
+                  value={map.time_col === null ? null : String(map.time_col)}
+                  onChange={(v) => setM({ time_col: v === null ? null : Number(v) })}
+                  description="Each row is one punch; we take earliest & latest per day" />
+              )}
+            </SimpleGrid>
+          </Paper>
+
+          <div>
+            <Text size="xs" fw={700} tt="uppercase" c="dimmed" mb="xs">Preview · first {preview.rows.length} of {preview.total} rows</Text>
+            <Paper withBorder radius="md">
+              <Table.ScrollContainer minWidth={preview.headers.length * 120}>
+                <Table striped withColumnBorders verticalSpacing="xs" fz="xs">
+                  <Table.Thead>
+                    <Table.Tr>{preview.headers.map((h, i) => <Table.Th key={i}>{h || `Col ${i + 1}`}</Table.Th>)}</Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {preview.rows.map((r, ri) => (
+                      <Table.Tr key={ri}>{preview.headers.map((_, ci) => <Table.Td key={ci}>{r[ci] ?? ''}</Table.Td>)}</Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            </Paper>
+          </div>
+
+          <Group>
+            <Button leftSection={<IconDeviceFloppy size={16} />} loading={commitMut.isPending}
+              disabled={map.time_mode === 'inout' ? (map.in_col === null && map.out_col === null) : map.time_col === null}
+              onClick={() => commitMut.mutate()}>
+              Import {preview.total} rows
+            </Button>
+          </Group>
+        </>
+      )}
+
+      {result && (
+        <Alert color={result.days ? 'teal' : 'orange'} variant="light" title="Import complete">
+          <Text size="sm">
+            Imported <b>{result.days}</b> staff-day(s) from <b>{result.matched_rows}</b> matched row(s).
+            {result.skipped > 0 && ` ${result.skipped} row(s) skipped (no usable time).`}
+          </Text>
+          {unmatched.length > 0 && (
+            <>
+              <Text size="sm" mt="xs" fw={600}>Not matched to any staff ({unmatched.length}):</Text>
+              <Group gap={6} mt={4}>
+                {unmatched.map(([name, n]) => (
+                  <Badge key={name} color="orange" variant="light" radius="sm">{name} ×{n}</Badge>
+                ))}
+              </Group>
+              <Text size="xs" c="dimmed" mt={6}>
+                Fix the staff name in MoBilling (or switch “Match staff by” to Employee no. and set each person's number in the Device tab), then re-upload.
+              </Text>
+            </>
+          )}
+        </Alert>
+      )}
     </Stack>
   );
 }

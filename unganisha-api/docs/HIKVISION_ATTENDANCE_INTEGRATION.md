@@ -177,8 +177,38 @@ override.
 
 ---
 
-## 8. Open question to close before §7
+## 8. Field device: DS-K1A8503MF-B (firmware V1.4.1) — why we use CSV import
 
-**Exact device model + firmware version** — this determines whether events arrive as
-JSON or multipart and what the employee-number / event-time field names actually are.
-Capture one real swipe, read it off the Device tab, and the §7 parser can be finalised.
+The deployed unit is a **HIKVISION DS-K1A8503MF-B** face T&A terminal, firmware
+**V1.4.1** (serial GH7861828). ISAPI works, but
+`GET /ISAPI/Event/notification/httpHosts/capabilities` reports hard limits that make
+**direct device→cloud push impractical**:
+
+- `protocolType: HTTP, EHome` — **no HTTPS**
+- `addressingFormatType: ipaddress` — **IP only, no hostname** (can't target `mobilling.co.tz`)
+- `portNo: 1024–65535` — **80/443 not allowed**
+
+So the device can't securely reach the public server (no hostname, no TLS, no 443).
+A LAN relay could bridge it, but the office already runs **iVMS-4200**, so the chosen
+path is **CSV import** (§9). The event-push capture endpoint (§1–§7) remains in place
+for any future device that *can* push (HTTPS + hostname), and the staff↔employee-no
+mapping is shared between both paths.
+
+## 9. iVMS-4200 CSV import (the live path)
+
+- **Operator flow:** iVMS-4200 → *Time & Attendance → Report* → generate → **Export as
+  CSV** → in MoBilling, *Attendance → Import (iVMS)* → upload → confirm the column
+  mapping → import.
+- **Endpoints:** `POST /attendance/import/preview` (parse headers + guess mapping),
+  `POST /attendance/import/commit` (import per confirmed mapping). Both `attendance.manage`.
+  The file is re-sent on commit; nothing is stored server-side.
+- **Parser:** `app/Services/AttendanceSheetImporter.php`. CSV only (native PHP — no
+  spreadsheet dependency added to production); operator exports CSV. Handles two shapes:
+  separate in/out columns, or one punch column grouped per person+day.
+- **Matching:** by staff name (default) or `users.device_employee_no`. Unmatched
+  identities are reported back for correction.
+- **Shared write rule:** `app/Services/AttendanceUpserter@applyDay` — earliest time =
+  check-in, latest = check-out, single punch = no check-out, **excused days never
+  overwritten**. Used by both the CSV importer and the device-event importer, so they
+  behave identically.
+- **UI:** `mobilling-ui/src/pages/Attendance.tsx` → `ImportTab`.

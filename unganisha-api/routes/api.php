@@ -700,6 +700,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/attendance/device-mappings', [\App\Http\Controllers\DeviceAttendanceController::class, 'mappings']);
     Route::post('/attendance/device-mappings', [\App\Http\Controllers\DeviceAttendanceController::class, 'saveMapping']);
     Route::post('/attendance/device-import',  [\App\Http\Controllers\DeviceAttendanceController::class, 'importNow']);
+    Route::post('/attendance/import/preview', [\App\Http\Controllers\AttendanceImportController::class, 'preview']);
+    Route::post('/attendance/import/commit',  [\App\Http\Controllers\AttendanceImportController::class, 'commit']);
     Route::get('/attendance/day',         [\App\Http\Controllers\AttendanceController::class, 'day']);
     Route::post('/attendance/record',     [\App\Http\Controllers\AttendanceController::class, 'record']);
     Route::get('/attendance/penalties',   [\App\Http\Controllers\AttendanceController::class, 'penalties']);

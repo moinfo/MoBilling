@@ -128,3 +128,44 @@ export const getDeviceMappings = () => api.get<{ data: DeviceMappings }>('/atten
 export const saveDeviceMapping = (user_id: string, device_employee_no: string | null) =>
   api.post<{ message: string; import: ImportResult }>('/attendance/device-mappings', { user_id, device_employee_no });
 export const importDeviceEvents = () => api.post<{ data: ImportResult }>('/attendance/device-import');
+
+// ── iVMS-4200 CSV export → upload ──────────────────────────────────────────
+export interface SheetMapping {
+  match_by: 'name' | 'employee_no';
+  identity_col: number;
+  date_col: number | null;
+  time_mode: 'single' | 'inout';
+  in_col: number | null;
+  out_col: number | null;
+  time_col: number | null;
+}
+export interface SheetPreview {
+  headers: string[];
+  rows: string[][];
+  total: number;
+  guess: SheetMapping;
+}
+export interface SheetImportResult {
+  days: number;
+  matched_rows: number;
+  unmatched: Record<string, number>;
+  skipped: number;
+}
+
+export const previewAttendanceSheet = (file: File) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  return api.post<{ data: SheetPreview }>('/attendance/import/preview', fd);
+};
+export const commitAttendanceSheet = (file: File, map: SheetMapping) => {
+  const fd = new FormData();
+  fd.append('file', file);
+  fd.append('match_by', map.match_by);
+  fd.append('identity_col', String(map.identity_col));
+  if (map.date_col !== null) fd.append('date_col', String(map.date_col));
+  fd.append('time_mode', map.time_mode);
+  if (map.time_col !== null) fd.append('time_col', String(map.time_col));
+  if (map.in_col !== null) fd.append('in_col', String(map.in_col));
+  if (map.out_col !== null) fd.append('out_col', String(map.out_col));
+  return api.post<{ data: SheetImportResult }>('/attendance/import/commit', fd);
+};

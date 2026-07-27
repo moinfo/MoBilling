@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Models\Attendance;
 use App\Models\AttendanceDeviceEvent;
 use App\Models\User;
 use Carbon\Carbon;
@@ -23,6 +22,8 @@ use Carbon\Carbon;
  */
 class AttendanceDeviceImporter
 {
+    public function __construct(private AttendanceUpserter $upserter) {}
+
     /**
      * Drain a tenant's unprocessed events into attendance.
      *
@@ -71,33 +72,12 @@ class AttendanceDeviceImporter
         $days = 0;
         foreach ($grouped as $uid => $perDay) {
             foreach ($perDay as $day => $bucket) {
-                $att = Attendance::withoutGlobalScopes()
-                    ->where('user_id', $uid)->whereDate('date', $day)->first()
-                    ?? new Attendance(['user_id' => $uid, 'date' => $day]);
-
-                // Don't overwrite an excused day (leave/sick/field); still mark handled.
-                if ($att->exists && $att->isExcused()) {
-                    array_push($processedIds, ...$bucket['events']);
-                    continue;
+                // Excused days are skipped inside applyDay, but the events are still
+                // "handled" — mark them processed either way so they don't recur.
+                if ($this->upserter->applyDay($tenantId, $uid, $day, $bucket['times'])) {
+                    $days++;
                 }
-
-                // All known swipe timestamps for the day: existing marks + new events.
-                $times = collect($bucket['times']);
-                if ($att->check_in_at)  { $times->push($att->check_in_at); }
-                if ($att->check_out_at) { $times->push($att->check_out_at); }
-                $times = $times->sort()->values();
-
-                $earliest = $times->first();
-                $latest   = $times->last();
-
-                $att->tenant_id ??= $tenantId;
-                $att->check_in_at = $earliest;
-                // A single swipe = check-in only; no check-out until a later, distinct swipe.
-                $att->check_out_at = $latest->gt($earliest) ? $latest : null;
-                $att->save();
-
                 array_push($processedIds, ...$bucket['events']);
-                $days++;
             }
         }
 
