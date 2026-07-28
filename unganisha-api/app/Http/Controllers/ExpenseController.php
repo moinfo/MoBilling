@@ -16,10 +16,14 @@ class ExpenseController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Expense::with('subCategory.category');
+        $query = Expense::with('subCategory.category', 'recorder:id,name', 'approver:id,name');
 
         if ($request->has('sub_expense_category_id')) {
             $query->where('sub_expense_category_id', $request->sub_expense_category_id);
+        }
+
+        if ($request->filled('approval_status')) {
+            $query->where('approval_status', $request->approval_status);
         }
 
         if ($request->filled('search')) {
@@ -42,6 +46,10 @@ class ExpenseController extends Controller
     public function store(StoreExpenseRequest $request)
     {
         $data = $request->safe()->except('attachment');
+
+        // Petty-cash expenses need administrator approval; others are auto-approved.
+        $data['recorded_by'] = auth()->id();
+        $data['approval_status'] = !empty($data['petty_cash_account_id']) ? 'pending' : 'approved';
 
         // Insufficient-funds guard for petty cash — runs BEFORE the file
         // upload so a rejected expense doesn't orphan an attachment.
@@ -78,12 +86,59 @@ class ExpenseController extends Controller
 
     public function show(Expense $expense)
     {
-        return new ExpenseResource($expense->load('subCategory.category'));
+        return new ExpenseResource($expense->load('subCategory.category', 'recorder:id,name', 'approver:id,name'));
+    }
+
+    /** Administrator approves a pending petty-cash expense (not one they recorded). */
+    public function approve(Expense $expense)
+    {
+        $this->assertApprovable($expense);
+        $expense->update([
+            'approval_status'  => 'approved',
+            'approved_by'      => auth()->id(),
+            'approved_at'      => now(),
+            'rejection_reason' => null,
+        ]);
+
+        return new ExpenseResource($expense->load('subCategory.category', 'recorder:id,name', 'approver:id,name'));
+    }
+
+    /** Administrator rejects a pending petty-cash expense. */
+    public function reject(Request $request, Expense $expense)
+    {
+        $data = $request->validate(['reason' => 'nullable|string|max:500']);
+        $this->assertApprovable($expense);
+        $expense->update([
+            'approval_status'  => 'rejected',
+            'approved_by'      => auth()->id(),
+            'approved_at'      => now(),
+            'rejection_reason' => $data['reason'] ?? null,
+        ]);
+
+        return new ExpenseResource($expense->load('subCategory.category', 'recorder:id,name', 'approver:id,name'));
+    }
+
+    /** Guards shared by approve()/reject(): petty-cash, pending, and no self-approval. */
+    private function assertApprovable(Expense $expense): void
+    {
+        abort_unless($expense->isPettyCash(), 422, 'Only petty-cash expenses require approval.');
+        abort_unless($expense->approval_status === 'pending', 422, 'This expense is not awaiting approval.');
+        abort_if($expense->recorded_by && $expense->recorded_by === auth()->id(), 403,
+            'You cannot approve or reject an expense you recorded — it must be reviewed by someone else.');
     }
 
     public function update(StoreExpenseRequest $request, Expense $expense)
     {
         $data = $request->safe()->except('attachment');
+
+        // Editing a petty-cash expense sends it back for approval (the amount or
+        // details may have changed since it was last reviewed).
+        if (!empty($data['petty_cash_account_id'])) {
+            $data['approval_status'] = 'pending';
+            $data['approved_by'] = null;
+            $data['approved_at'] = null;
+            $data['rejection_reason'] = null;
+        }
 
         // Insufficient-funds guard for petty cash — same pre-upload check
         // as store(). Pass the existing expense so its current amount is

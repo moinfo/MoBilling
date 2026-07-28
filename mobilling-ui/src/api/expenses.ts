@@ -21,6 +21,13 @@ export interface Expense {
   given_by_name: string | null;
   received_by_name: string | null;
   voucher_attachment_url: string | null;
+  // Approval (petty-cash expenses only)
+  approval_status: 'pending' | 'approved' | 'rejected';
+  recorded_by: string | null;
+  recorded_by_name?: string | null;
+  approved_by_name?: string | null;
+  approved_at?: string | null;
+  rejection_reason?: string | null;
 }
 
 export const getExpenses = (params?: {
@@ -30,7 +37,14 @@ export const getExpenses = (params?: {
   per_page?: number;
   date_from?: string;
   date_to?: string;
+  approval_status?: 'pending' | 'approved' | 'rejected';
 }) => api.get('/expenses', { params });
+
+export const approveExpense = (id: string) =>
+  api.post<{ data: Expense }>(`/expenses/${id}/approve`);
+
+export const rejectExpense = (id: string, reason?: string) =>
+  api.post<{ data: Expense }>(`/expenses/${id}/reject`, { reason });
 
 export const getExpense = (id: string) =>
   api.get<{ data: Expense }>(`/expenses/${id}`);

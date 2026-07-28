@@ -15,6 +15,7 @@ class Expense extends Model
     protected $fillable = [
         'tenant_id', 'sub_expense_category_id', 'petty_cash_account_id',
         'description', 'amount',
+        'approval_status', 'recorded_by', 'approved_by', 'approved_at', 'rejection_reason',
         'expense_date', 'payment_method', 'control_number', 'reference',
         'notes', 'attachment_path',
         'given_by_name', 'received_by_name', 'voucher_attachment_path',
@@ -23,7 +24,24 @@ class Expense extends Model
     protected $casts = [
         'amount' => 'decimal:2',
         'expense_date' => 'date',
+        'approved_at' => 'datetime',
     ];
+
+    /** A petty-cash expense needs administrator approval; others don't. */
+    public function isPettyCash(): bool
+    {
+        return !empty($this->petty_cash_account_id);
+    }
+
+    public function recorder()
+    {
+        return $this->belongsTo(User::class, 'recorded_by');
+    }
+
+    public function approver()
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
 
     public function subCategory()
     {

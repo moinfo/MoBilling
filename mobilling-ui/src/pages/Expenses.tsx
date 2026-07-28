@@ -1,19 +1,26 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor, Tooltip, FileButton } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor, Tooltip, FileButton, SegmentedControl } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useDebouncedValue } from '@mantine/hooks';
 import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle, IconEye } from '@tabler/icons-react';
-import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, Expense } from '../api/expenses';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle, IconEye, IconThumbUp, IconThumbDown } from '@tabler/icons-react';
+import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, approveExpense, rejectExpense, Expense } from '../api/expenses';
 import { getExpenseCategories, ExpenseCategory } from '../api/expenseCategories';
 import { getPettyCash } from '../api/pettyCash';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import ExpenseForm from '../components/Expenses/ExpenseForm';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
+
+const approvalMeta: Record<string, { label: string; color: string }> = {
+  pending: { label: 'Pending approval', color: 'yellow' },
+  approved: { label: 'Approved', color: 'green' },
+  rejected: { label: 'Rejected', color: 'red' },
+};
 
 const methodLabels: Record<string, string> = {
   cash: 'Cash',
@@ -26,9 +33,11 @@ const methodLabels: Record<string, string> = {
 export default function Expenses() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
+  const { user } = useAuth();
   const canCreate = can('expenses.create');
   const canUpdate = can('expenses.update');
   const canDelete = can('expenses.delete');
+  const canApprove = can('expenses.approve');
   const canChangeDateRange = can('expenses.date_range');
   const today = dayjs().format('YYYY-MM-DD');
   const [page, setPage] = useState(1);
@@ -36,16 +45,18 @@ export default function Expenses() {
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [dateFrom, setDateFrom] = useState<string>(today);
   const [dateTo, setDateTo] = useState<string>(today);
+  const [statusFilter, setStatusFilter] = useState<string>('');
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
 
   const { data } = useQuery({
-    queryKey: ['expenses', page, debouncedSearch, dateFrom, dateTo],
+    queryKey: ['expenses', page, debouncedSearch, dateFrom, dateTo, statusFilter],
     queryFn: () => getExpenses({
       page,
       search: debouncedSearch || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
+      approval_status: (statusFilter || undefined) as 'pending' | 'approved' | 'rejected' | undefined,
     }),
   });
 
@@ -96,7 +107,7 @@ export default function Expenses() {
     setUploadingFor(e.id);
     try {
       await uploadExpenseVoucher(e.id, file);
-      notifications.show({ title: 'Uploaded', message: 'Signed voucher attached — verified balance updated.', color: 'green' });
+      notifications.show({ title: 'Uploaded', message: 'Signed voucher attached.', color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
       // Attaching a voucher moves this expense from pending → signed in the
       // strict imprest model, so the petty-cash balance card needs to refresh.
@@ -155,6 +166,42 @@ export default function Expenses() {
       color: 'red',
     }),
   });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => approveExpense(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
+      notifications.show({ title: 'Approved', message: 'Expense approved — it now counts against the petty-cash balance.', color: 'green' });
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to approve', color: 'red' }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => rejectExpense(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
+      notifications.show({ title: 'Rejected', message: 'Expense rejected.', color: 'gray' });
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to reject', color: 'red' }),
+  });
+
+  const handleApprove = (e: Expense) => {
+    modals.openConfirmModal({
+      title: 'Approve expense',
+      children: `Approve "${e.description}" (${formatCurrency(e.amount)})? It will be deducted from the petty-cash balance.`,
+      labels: { confirm: 'Approve', cancel: 'Cancel' },
+      confirmProps: { color: 'green' },
+      onConfirm: () => approveMutation.mutate(e.id),
+    });
+  };
+
+  const handleReject = (e: Expense) => {
+    const reason = window.prompt(`Reject "${e.description}"? Optionally give a reason:`);
+    if (reason === null) return; // cancelled
+    rejectMutation.mutate({ id: e.id, reason: reason || undefined });
+  };
 
   const closeForm = () => {
     setFormOpen(false);
@@ -226,6 +273,20 @@ export default function Expenses() {
           maw={160}
           size="sm"
         />
+        <div>
+          <Text size="sm" fw={500} mb={4}>Approval</Text>
+          <SegmentedControl
+            size="sm"
+            value={statusFilter || 'all'}
+            onChange={(v) => { setStatusFilter(v === 'all' ? '' : v); setPage(1); }}
+            data={[
+              { value: 'all', label: 'All' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'approved', label: 'Approved' },
+              { value: 'rejected', label: 'Rejected' },
+            ]}
+          />
+        </div>
       </Group>
 
       {expenses.length === 0 ? (
@@ -243,7 +304,7 @@ export default function Expenses() {
               <Table.Th>Method</Table.Th>
               <Table.Th>Control #</Table.Th>
               <Table.Th>Attachment</Table.Th>
-              {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
+              {(canUpdate || canDelete || canApprove) && <Table.Th w={140}>Actions</Table.Th>}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -260,6 +321,17 @@ export default function Expenses() {
                     {e.petty_cash_account_id && (
                       <Tooltip label="Paid from petty cash">
                         <Badge color="violet" variant="light" size="sm" leftSection={<IconCash size={10} />}>PC</Badge>
+                      </Tooltip>
+                    )}
+                    {e.petty_cash_account_id && approvalMeta[e.approval_status] && (
+                      <Tooltip label={
+                        e.approval_status === 'approved' ? `Approved${e.approved_by_name ? ' by ' + e.approved_by_name : ''}`
+                        : e.approval_status === 'rejected' ? `Rejected${e.rejection_reason ? ': ' + e.rejection_reason : ''}`
+                        : 'Awaiting administrator approval — not yet deducted from the balance'
+                      }>
+                        <Badge color={approvalMeta[e.approval_status].color} variant="light" size="sm">
+                          {approvalMeta[e.approval_status].label}
+                        </Badge>
                       </Tooltip>
                     )}
                     {/* Voucher state — persistent visual confirmation. The
@@ -300,9 +372,25 @@ export default function Expenses() {
                     </Anchor>
                   ) : '—'}
                 </Table.Td>
-                {(canUpdate || canDelete) && (
+                {(canUpdate || canDelete || canApprove) && (
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
+                      {/* Approve / reject: pending petty-cash expenses only, and
+                          never one you recorded yourself (separation of duties). */}
+                      {canApprove && e.petty_cash_account_id && e.approval_status === 'pending' && e.recorded_by !== user?.id && (
+                        <>
+                          <Tooltip label="Approve expense">
+                            <ActionIcon variant="light" color="green" loading={approveMutation.isPending && approveMutation.variables === e.id} onClick={() => handleApprove(e)}>
+                              <IconThumbUp size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                          <Tooltip label="Reject expense">
+                            <ActionIcon variant="light" color="red" onClick={() => handleReject(e)}>
+                              <IconThumbDown size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        </>
+                      )}
                       {canUpdate && (
                         <ActionIcon variant="light" onClick={() => openEdit(e)}>
                           <IconEdit size={16} />

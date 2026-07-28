@@ -37,16 +37,16 @@ class PettyCashAccount extends Model
     }
 
     /**
-     * Compute the three petty-cash balance figures for this account.
+     * Compute the petty-cash balance figures for this account.
      *
      * - verified  = the official remaining float (what the user sees as
-     *               "balance"). Subtracts only expenses whose signed voucher
-     *               has been attached.
-     * - committed = the physically-remaining cash. Subtracts ALL expenses
-     *               (signed or not), since unsigned ones still represent
-     *               cash that has left the till.
+     *               "balance"). Subtracts only APPROVED expenses.
+     * - committed = the physically-remaining cash. Also subtracts expenses
+     *               still awaiting approval, since that cash has already left
+     *               the till.
      * - pending_total / pending_count describe the gap — expenses awaiting
-     *   voucher attachment.
+     *   administrator approval.
+     * - Rejected expenses never count (the cash is expected back).
      *
      * verified - pending_total = committed.
      *
@@ -63,15 +63,16 @@ class PettyCashAccount extends Model
             ->first();
 
         $exp = Expense::where('petty_cash_account_id', $this->id)
+            ->where('approval_status', '!=', 'rejected')
             ->selectRaw("
-                COALESCE(SUM(CASE WHEN voucher_attachment_path IS NOT NULL THEN amount ELSE 0 END), 0) AS signed_total,
-                COALESCE(SUM(CASE WHEN voucher_attachment_path IS NULL THEN amount ELSE 0 END), 0) AS pending_total,
-                SUM(CASE WHEN voucher_attachment_path IS NULL THEN 1 ELSE 0 END) AS pending_count
+                COALESCE(SUM(CASE WHEN approval_status = 'approved' THEN amount ELSE 0 END), 0) AS approved_total,
+                COALESCE(SUM(CASE WHEN approval_status = 'pending' THEN amount ELSE 0 END), 0) AS pending_total,
+                SUM(CASE WHEN approval_status = 'pending' THEN 1 ELSE 0 END) AS pending_count
             ")
             ->first();
 
         $opening = (float) $this->opening_balance;
-        $verified = round($opening + (float) $tx->additions - (float) $tx->subtractions - (float) $exp->signed_total, 2);
+        $verified = round($opening + (float) $tx->additions - (float) $tx->subtractions - (float) $exp->approved_total, 2);
         $pendingTotal = round((float) $exp->pending_total, 2);
         $committed = round($verified - $pendingTotal, 2);
 
