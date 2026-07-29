@@ -39,19 +39,22 @@ class SuspendUnpaidSubscriptions extends Command
                 return self::SUCCESS;
             }
 
-            // 2. Batch-load the latest recurring invoice log per (tenant_id, client_id, product_service_id)
+            // 2. Batch-load the latest recurring invoice log PER SUBSCRIPTION.
+            // Keying by (tenant, client, product) is wrong: a client with many
+            // subscriptions of the same product (one per domain) would have them
+            // ALL matched to one domain's invoice, suspending fully-paid services.
             $logs = RecurringInvoiceLog::withoutGlobalScopes()
                 ->whereNotNull('document_id')
+                ->whereNotNull('client_subscription_id')
                 ->with('document')
                 ->orderByDesc('invoice_created_at')
                 ->get();
 
-            // Deduplicate: keep only the latest log per subscription key
+            // Deduplicate: keep only the latest log per subscription
             $latestLogMap = [];
             foreach ($logs as $log) {
-                $key = "{$log->tenant_id}|{$log->client_id}|{$log->product_service_id}";
-                if (!isset($latestLogMap[$key])) {
-                    $latestLogMap[$key] = $log;
+                if (!isset($latestLogMap[$log->client_subscription_id])) {
+                    $latestLogMap[$log->client_subscription_id] = $log;
                 }
             }
 
@@ -74,9 +77,9 @@ class SuspendUnpaidSubscriptions extends Command
 
                 $graceDays = $tenant->subscription_grace_days ?? 7;
 
-                // Find the latest invoice log for this subscription
-                $key = "{$subscription->tenant_id}|{$subscription->client_id}|{$subscription->product_service_id}";
-                $log = $latestLogMap[$key] ?? null;
+                // Find the latest invoice log for THIS subscription. No log for
+                // it → nothing due yet → never suspend on a sibling's invoice.
+                $log = $latestLogMap[$subscription->id] ?? null;
 
                 if (!$log || !$log->document) {
                     $skipped++;
