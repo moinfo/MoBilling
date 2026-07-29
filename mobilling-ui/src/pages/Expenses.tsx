@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor, Tooltip, FileButton, SegmentedControl } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor, Tooltip, FileButton, SegmentedControl, Alert } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useDebouncedValue } from '@mantine/hooks';
 import dayjs from 'dayjs';
@@ -49,16 +49,27 @@ export default function Expenses() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
 
+  // "Pending" is a review queue — show ALL awaiting expenses regardless of the
+  // date filter, otherwise yesterday's pending ones are invisible by default.
+  const ignoreDates = statusFilter === 'pending';
   const { data } = useQuery({
     queryKey: ['expenses', page, debouncedSearch, dateFrom, dateTo, statusFilter],
     queryFn: () => getExpenses({
       page,
       search: debouncedSearch || undefined,
-      date_from: dateFrom || undefined,
-      date_to: dateTo || undefined,
+      date_from: ignoreDates ? undefined : (dateFrom || undefined),
+      date_to: ignoreDates ? undefined : (dateTo || undefined),
       approval_status: (statusFilter || undefined) as 'pending' | 'approved' | 'rejected' | undefined,
     }),
   });
+
+  // Live count of expenses awaiting approval (any date) for the banner.
+  const { data: pendingData } = useQuery({
+    queryKey: ['expenses-pending-count'],
+    queryFn: () => getExpenses({ approval_status: 'pending', per_page: 1 }),
+    enabled: can('expenses.approve'),
+  });
+  const pendingCount: number = pendingData?.data?.meta?.total ?? 0;
 
   const { data: catData } = useQuery({
     queryKey: ['expense-categories'],
@@ -109,6 +120,7 @@ export default function Expenses() {
       await uploadExpenseVoucher(e.id, file);
       notifications.show({ title: 'Uploaded', message: 'Signed voucher attached.', color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       // Attaching a voucher moves this expense from pending → signed in the
       // strict imprest model, so the petty-cash balance card needs to refresh.
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
@@ -127,6 +139,7 @@ export default function Expenses() {
     mutationFn: (values: any) => createExpense(values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       closeForm();
       notifications.show({ title: 'Success', message: 'Expense created', color: 'green' });
@@ -142,6 +155,7 @@ export default function Expenses() {
     mutationFn: (values: any) => updateExpense(editing!.id, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       closeForm();
       notifications.show({ title: 'Success', message: 'Expense updated', color: 'green' });
@@ -157,6 +171,7 @@ export default function Expenses() {
     mutationFn: (id: string) => deleteExpense(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       notifications.show({ title: 'Success', message: 'Expense deleted', color: 'green' });
     },
@@ -171,6 +186,7 @@ export default function Expenses() {
     mutationFn: (id: string) => approveExpense(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       notifications.show({ title: 'Approved', message: 'Expense approved — it now counts against the petty-cash balance.', color: 'green' });
     },
@@ -181,6 +197,7 @@ export default function Expenses() {
     mutationFn: ({ id, reason }: { id: string; reason?: string }) => rejectExpense(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       notifications.show({ title: 'Rejected', message: 'Expense rejected.', color: 'gray' });
     },
@@ -255,6 +272,20 @@ export default function Expenses() {
           )}
         </Group>
       </Group>
+
+      {canApprove && pendingCount > 0 && statusFilter !== 'pending' && (
+        <Alert color="yellow" variant="light" mb="md" icon={<IconAlertTriangle size={16} />}>
+          <Group justify="space-between" wrap="wrap">
+            <Text size="sm">
+              <b>{pendingCount}</b> petty-cash expense{pendingCount === 1 ? '' : 's'} waiting for approval.
+            </Text>
+            <Button size="compact-sm" variant="light" color="yellow"
+              onClick={() => { setStatusFilter('pending'); setPage(1); }}>
+              Review pending
+            </Button>
+          </Group>
+        </Alert>
+      )}
 
       <Group mb="md" wrap="wrap">
         <DateInput
