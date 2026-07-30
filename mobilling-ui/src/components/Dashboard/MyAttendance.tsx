@@ -116,7 +116,7 @@ function MyAttendanceChart() {
     return h * 60 + mm;
   };
   const DOM_MIN = 6 * 60, DOM_MAX = 22 * 60;           // 06:00 → 22:00
-  const ML = 36, MR = 6, MT = 6, MB = 16, H = 132;
+  const ML = 36, MR = 6, MT = 6, MB = 16, H = 84;
   const dayW = 14, barW = 7;
   const W = ML + MR + r.days.length * dayW;
   const yPos = (min: number) => MT + ((Math.min(Math.max(min, DOM_MIN), DOM_MAX) - DOM_MIN) / (DOM_MAX - DOM_MIN)) * H;
@@ -127,7 +127,7 @@ function MyAttendanceChart() {
   return (
     <div style={{ position: 'relative', marginTop: 10 }}>
       <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={4}>Check-in / check-out · {r.month_label}</Text>
-      <svg viewBox={`0 0 ${W} ${MT + H + MB}`} style={{ width: '100%', display: 'block' }} role="img"
+      <svg viewBox={`0 0 ${W} ${MT + H + MB}`} style={{ width: '100%', maxWidth: 520, display: 'block' }} role="img"
         aria-label={`Daily check-in and check-out times for ${r.month_label}`}>
         {/* target lines */}
         {[[inTarget, r.check_in_time], [outTarget, r.check_out_time]].map(([yy, label]) => (
