@@ -75,6 +75,12 @@ class SuspendUnpaidSubscriptions extends Command
                     continue;
                 }
 
+                // Tenant has switched auto-suspension off — dunning only.
+                if (!$tenant->auto_suspend_enabled) {
+                    $skipped++;
+                    continue;
+                }
+
                 $graceDays = $tenant->subscription_grace_days ?? 7;
 
                 // Find the latest invoice log for THIS subscription. No log for

@@ -43,6 +43,7 @@ class Tenant extends Model
         'email_footer_text',
         // Subscription settings
         'subscription_grace_days',
+        'auto_suspend_enabled',
         // Late fee settings
         'late_fee_enabled', 'late_fee_percent', 'late_fee_days',
     ];
@@ -72,6 +73,7 @@ class Tenant extends Model
         'pesapal_sandbox' => 'boolean',
         'pesapal_consumer_secret' => 'encrypted',
         'subscription_grace_days' => 'integer',
+        'auto_suspend_enabled' => 'boolean',
         'late_fee_enabled' => 'boolean',
         'late_fee_percent' => 'decimal:2',
         'late_fee_days' => 'integer',

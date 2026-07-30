@@ -134,6 +134,7 @@ export const updatePaymentMethods = (methods: PaymentMethod[]) =>
 
 export interface SubscriptionSettings {
   subscription_grace_days: number;
+  auto_suspend_enabled: boolean;
 }
 
 export const getSubscriptionSettings = () =>

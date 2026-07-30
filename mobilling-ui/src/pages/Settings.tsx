@@ -586,10 +586,12 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
   const subSettings: SubscriptionSettings | undefined = subData?.data?.data;
   const [graceDays, setGraceDays] = useState<number | string>(7);
+  const [autoSuspend, setAutoSuspend] = useState(true);
   const [subInitialized, setSubInitialized] = useState(false);
 
   if (subSettings && !subInitialized) {
     setGraceDays(subSettings.subscription_grace_days);
+    setAutoSuspend(!!subSettings.auto_suspend_enabled);
     setSubInitialized(true);
   }
 
@@ -692,6 +694,14 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
           Subscriptions are reactivated automatically when the invoice is paid.
         </Text>
 
+        <Switch
+          label="Auto-suspension enabled"
+          description="When off, unpaid services are never suspended automatically — reminders still go out, and you suspend manually."
+          disabled={!isAdmin}
+          checked={autoSuspend}
+          onChange={(e) => setAutoSuspend(e.currentTarget.checked)}
+        />
+
         <NumberInput
           label="Grace period (days)"
           description="Number of days after invoice due date before the subscription is suspended"
@@ -699,7 +709,7 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
           max={90}
           value={graceDays}
           onChange={(val) => setGraceDays(val)}
-          disabled={!isAdmin}
+          disabled={!isAdmin || !autoSuspend}
           maw={200}
         />
 
@@ -707,7 +717,7 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
           <Group justify="flex-end">
             <Button
               loading={subSaveMutation.isPending}
-              onClick={() => subSaveMutation.mutate({ subscription_grace_days: Number(graceDays) || 7 })}
+              onClick={() => subSaveMutation.mutate({ subscription_grace_days: Number(graceDays) || 7, auto_suspend_enabled: autoSuspend })}
             >
               Save Subscription Settings
             </Button>

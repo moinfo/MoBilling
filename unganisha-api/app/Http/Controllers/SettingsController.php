@@ -275,7 +275,7 @@ class SettingsController extends Controller
         $tenant = $request->user()->tenant;
 
         return response()->json([
-            'data' => $tenant->only(['subscription_grace_days']),
+            'data' => $tenant->only(['subscription_grace_days', 'auto_suspend_enabled']),
         ]);
     }
 
@@ -285,13 +285,14 @@ class SettingsController extends Controller
 
         $validated = $request->validate([
             'subscription_grace_days' => 'required|integer|min:1|max:90',
+            'auto_suspend_enabled'    => 'required|boolean',
         ]);
 
         $tenant = $request->user()->tenant;
         $tenant->update($validated);
 
         return response()->json([
-            'data'    => $tenant->fresh()->only(['subscription_grace_days']),
+            'data'    => $tenant->fresh()->only(['subscription_grace_days', 'auto_suspend_enabled']),
             'message' => 'Subscription settings updated.',
         ]);
     }
