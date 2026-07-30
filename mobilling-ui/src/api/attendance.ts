@@ -129,6 +129,31 @@ export const saveDeviceMapping = (user_id: string, device_employee_no: string | 
   api.post<{ message: string; import: ImportResult }>('/attendance/device-mappings', { user_id, device_employee_no });
 export const importDeviceEvents = () => api.post<{ data: ImportResult }>('/attendance/device-import');
 
+// ── Monthly per-staff check-in/out report ──────────────────────────────────
+export interface ReportDay {
+  date: string;
+  weekday: string;
+  working: boolean;
+  holiday: boolean;
+  status: ExcusedStatus | null;
+  check_in_at: string | null;
+  check_out_at: string | null;
+  late: boolean;
+  left_early: boolean;
+  no_checkout: boolean;
+  absent: boolean;
+}
+export interface AttendanceReport {
+  user: { id: string; name: string };
+  month_label: string;
+  check_in_time: string;
+  check_out_time: string;
+  days: ReportDay[];
+  totals: { present: number; late: number; left_early: number; no_checkout: number; absent: number; excused: number };
+}
+export const getAttendanceReport = (user_id: string, month: number, year: number) =>
+  api.get<{ data: AttendanceReport }>('/attendance/report', { params: { user_id, month, year } });
+
 // ── iVMS-4200 CSV export → upload ──────────────────────────────────────────
 export interface SheetMapping {
   match_by: 'name' | 'employee_no';

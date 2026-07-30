@@ -16,8 +16,8 @@ import {
   getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty, getAttendanceDashboard,
   getDeviceConfig, getDeviceEvents, regenerateDeviceToken,
   getDeviceMappings, saveDeviceMapping, importDeviceEvents,
-  previewAttendanceSheet, commitAttendanceSheet,
-  AttendanceSettings, ExcusedStatus, DeviceMappingStaff, SheetMapping, SheetPreview, SheetImportResult,
+  previewAttendanceSheet, commitAttendanceSheet, getAttendanceReport,
+  AttendanceSettings, ExcusedStatus, DeviceMappingStaff, SheetMapping, SheetPreview, SheetImportResult, AttendanceReport,
 } from '../api/attendance';
 
 export default function Attendance() {
@@ -29,6 +29,7 @@ export default function Attendance() {
           <Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>Dashboard</Tabs.Tab>
           <Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>
           <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>Deductions</Tabs.Tab>
+          <Tabs.Tab value="report" leftSection={<IconClipboardCheck size={15} />}>Report</Tabs.Tab>
           <Tabs.Tab value="import" leftSection={<IconFileSpreadsheet size={15} />}>Import (iVMS)</Tabs.Tab>
           <Tabs.Tab value="device" leftSection={<IconDeviceDesktop size={15} />}>Device</Tabs.Tab>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>
@@ -36,6 +37,7 @@ export default function Attendance() {
         <Tabs.Panel value="dashboard" pt="md"><DashboardTab /></Tabs.Panel>
         <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>
         <Tabs.Panel value="deductions" pt="md"><DeductionsTab /></Tabs.Panel>
+        <Tabs.Panel value="report" pt="md"><ReportTab /></Tabs.Panel>
         <Tabs.Panel value="import" pt="md"><ImportTab /></Tabs.Panel>
         <Tabs.Panel value="device" pt="md"><DeviceTab /></Tabs.Panel>
         <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>
@@ -350,6 +352,99 @@ function DeductionsTab() {
           </Stack>
         )}
       </Drawer>
+    </Stack>
+  );
+}
+
+
+function ReportTab() {
+  const [month, setMonth] = useState<Date>(new Date());
+  const [userId, setUserId] = useState<string | null>(null);
+  const m = month.getMonth() + 1;
+  const y = month.getFullYear();
+
+  const { data: mapRes } = useQuery({ queryKey: ['device-mappings'], queryFn: getDeviceMappings });
+  const staff = mapRes?.data?.data?.staff ?? [];
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['attendance-report', userId, m, y],
+    queryFn: () => getAttendanceReport(userId!, m, y),
+    enabled: !!userId,
+  });
+  const r: AttendanceReport | undefined = data?.data?.data;
+
+  return (
+    <Stack>
+      <Group wrap="wrap">
+        <Select label="Staff" placeholder="Select staff" w={240} searchable
+          data={staff.map((s) => ({ value: s.id, label: s.name }))}
+          value={userId} onChange={setUserId} />
+        <MonthPickerInput label="Month" value={month} maxDate={new Date()}
+          onChange={(v) => v && setMonth(new Date(v as unknown as string))} w={160} />
+        {r && (
+          <Text size="sm" c="dimmed" mt={22}>Targets: in by {r.check_in_time} · out by {r.check_out_time}</Text>
+        )}
+      </Group>
+
+      {!userId ? (
+        <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">Select a staff member to see their check-in / check-out report.</Text></Paper>
+      ) : isLoading ? (
+        <Center py="xl"><Loader /></Center>
+      ) : r && (
+        <>
+          <Group gap="xs" wrap="wrap">
+            <Badge size="lg" variant="light" color="teal">Present: {r.totals.present}</Badge>
+            <Badge size="lg" variant="light" color="orange">Late: {r.totals.late}</Badge>
+            <Badge size="lg" variant="light" color="orange">Left early: {r.totals.left_early}</Badge>
+            <Badge size="lg" variant="light" color="yellow">No check-out: {r.totals.no_checkout}</Badge>
+            <Badge size="lg" variant="light" color="red">Absent: {r.totals.absent}</Badge>
+            {r.totals.excused > 0 && <Badge size="lg" variant="light" color="grape">Excused: {r.totals.excused}</Badge>}
+          </Group>
+
+          <Paper withBorder radius="md">
+            <Table.ScrollContainer minWidth={560}>
+              <Table highlightOnHover verticalSpacing="xs" fz="sm">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Date</Table.Th>
+                    <Table.Th ta="center">Check-in</Table.Th>
+                    <Table.Th ta="center">Check-out</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {r.days.map((d) => (
+                    <Table.Tr key={d.date} style={{ opacity: d.working ? 1 : 0.5 }}>
+                      <Table.Td fw={500}>{dayjs(d.date).format('DD MMM')} <Text span size="xs" c="dimmed">{d.weekday}</Text></Table.Td>
+                      <Table.Td ta="center" fw={600} c={d.check_in_at ? (d.late ? 'orange' : undefined) : 'dimmed'}>
+                        {d.check_in_at ?? '—'}
+                      </Table.Td>
+                      <Table.Td ta="center" fw={600} c={d.check_out_at ? (d.left_early ? 'orange' : undefined) : 'dimmed'}>
+                        {d.check_out_at ?? '—'}
+                      </Table.Td>
+                      <Table.Td>
+                        <Group gap={4}>
+                          {!d.working && !d.holiday && <Badge size="xs" variant="light" color="gray">off day</Badge>}
+                          {d.holiday && <Badge size="xs" variant="light" color="cyan">holiday</Badge>}
+                          {d.status && <Badge size="xs" variant="light" color="grape">{statusLabel[d.status] ?? d.status}</Badge>}
+                          {d.absent && <Badge size="xs" variant="light" color="red">absent</Badge>}
+                          {d.late && <Badge size="xs" variant="light" color="orange">late</Badge>}
+                          {d.left_early && <Badge size="xs" variant="light" color="orange">left early</Badge>}
+                          {d.no_checkout && <Badge size="xs" variant="light" color="yellow">no check-out</Badge>}
+                          {d.check_in_at && !d.late && !d.left_early && !d.no_checkout && !d.status && (
+                            <Badge size="xs" variant="light" color="teal">present</Badge>
+                          )}
+                        </Group>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Paper>
+          <Text size="xs" c="dimmed">Punches before 15:00 count as check-in; from 15:00 onwards as check-out. A missing check-out means the person forgot to punch out.</Text>
+        </>
+      )}
     </Stack>
   );
 }

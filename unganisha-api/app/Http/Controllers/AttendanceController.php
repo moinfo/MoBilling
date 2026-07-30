@@ -177,6 +177,78 @@ class AttendanceController extends Controller
         ]]);
     }
 
+    /** Monthly check-in/out report for one staff member (day by day). */
+    public function report(Request $request)
+    {
+        $this->authorizePermission('attendance.manage');
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'user_id' => ['required', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
+            'month'   => 'nullable|integer|min:1|max:12',
+            'year'    => 'nullable|integer|min:2020|max:2100',
+        ]);
+
+        $s = $this->settings();
+        $start = Carbon::createFromDate((int) ($data['year'] ?? now()->year), (int) ($data['month'] ?? now()->month), 1)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+        $last = $end->isFuture() ? now() : $end;   // don't report days that haven't happened
+
+        $user = User::where('tenant_id', $tenantId)->findOrFail($data['user_id']);
+        $recs = Attendance::where('user_id', $user->id)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->get()->keyBy(fn ($a) => $a->date->toDateString());
+
+        $workDays = $s->working_days ?: [1, 2, 3, 4, 5, 6];
+        $holidays = \App\Models\StaffReportHoliday::pluck('date')->map(fn ($d) => $d->toDateString())->flip();
+
+        $days = [];
+        $totals = ['present' => 0, 'late' => 0, 'left_early' => 0, 'no_checkout' => 0, 'absent' => 0, 'excused' => 0];
+
+        for ($d = $start->copy(); $d->lte($last); $d->addDay()) {
+            $key = $d->toDateString();
+            $working = in_array($d->dayOfWeekIso, $workDays) && !$holidays->has($key);
+            $att = $recs->get($key);
+            $f = $att ? $this->formatDay($att, $s) : null;
+
+            $row = [
+                'date'         => $key,
+                'weekday'      => $d->format('D'),
+                'working'      => $working,
+                'holiday'      => $holidays->has($key),
+                'status'       => $f['status'] ?? null,
+                'check_in_at'  => $f['check_in_at'] ?? null,
+                'check_out_at' => $f['check_out_at'] ?? null,
+                'late'         => $f['late'] ?? false,
+                'left_early'   => $f['left_early'] ?? false,
+                'no_checkout'  => $f['no_checkout'] ?? false,
+                // Absent only matters on a working day.
+                'absent'       => $working && (($f['absent'] ?? true) && !($f['status'] ?? null)),
+            ];
+            $days[] = $row;
+
+            if ($row['status']) {
+                $totals['excused']++;
+            } elseif ($row['check_in_at']) {
+                $totals['present']++;
+                if ($row['late']) $totals['late']++;
+                if ($row['left_early']) $totals['left_early']++;
+                if ($row['no_checkout']) $totals['no_checkout']++;
+            } elseif ($row['absent']) {
+                $totals['absent']++;
+            }
+        }
+
+        return response()->json(['data' => [
+            'user'        => ['id' => $user->id, 'name' => $user->name],
+            'month_label' => $start->format('F Y'),
+            'check_in_time'  => $s->check_in_time,
+            'check_out_time' => $s->check_out_time,
+            'days'   => $days,
+            'totals' => $totals,
+        ]]);
+    }
+
     /** Deductions overview: every staff member's attendance penalties for a month. */
     public function penalties(Request $request)
     {
