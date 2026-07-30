@@ -28,39 +28,65 @@ class AttendanceSheetImporter
      */
     public function parse(string $path, int $previewLimit = 8): array
     {
-        $headers = [];
-        $rows = [];
-        $total = 0;
+        $all = $this->readRows($path);
+        $headers = array_shift($all) ?? [];
 
-        if (($h = fopen($path, 'r')) !== false) {
-            // Strip a UTF-8 BOM if present.
-            $first = fgets($h);
-            if ($first !== false) {
-                $first = preg_replace('/^\xEF\xBB\xBF/', '', $first);
-                rewind($h);
-                if ($first !== null && str_starts_with($first, "\xEF\xBB\xBF")) {
-                    fseek($h, 3);
-                }
-            }
-            $line = 0;
-            while (($data = fgetcsv($h)) !== false) {
-                if ($data === [null] || (count($data) === 1 && trim((string) $data[0]) === '')) {
-                    continue; // blank line
-                }
-                if ($line === 0) {
-                    $headers = array_map(fn ($v) => trim((string) $v), $data);
-                } else {
-                    $total++;
-                    if (count($rows) < $previewLimit) {
-                        $rows[] = array_map(fn ($v) => trim((string) $v), $data);
-                    }
-                }
-                $line++;
-            }
-            fclose($h);
+        return [
+            'headers' => $headers,
+            'rows'    => array_slice($all, 0, $previewLimit),
+            'total'   => count($all),
+        ];
+    }
+
+    /**
+     * Read the whole sheet into trimmed string rows (header first). Handles
+     * what iVMS-4200 actually exports as "CSV": UTF-16LE/BE or UTF-8 with a
+     * BOM, and comma, semicolon or tab delimiters (auto-detected).
+     *
+     * @return array<int,array<int,string>>
+     */
+    private function readRows(string $path): array
+    {
+        $content = (string) @file_get_contents($path);
+        if ($content === '') {
+            return [];
         }
 
-        return ['headers' => $headers, 'rows' => $rows, 'total' => $total];
+        // Normalise encoding to UTF-8.
+        if (str_starts_with($content, "\xFF\xFE")) {
+            $content = mb_convert_encoding(substr($content, 2), 'UTF-8', 'UTF-16LE');
+        } elseif (str_starts_with($content, "\xFE\xFF")) {
+            $content = mb_convert_encoding(substr($content, 2), 'UTF-8', 'UTF-16BE');
+        } elseif (str_starts_with($content, "\xEF\xBB\xBF")) {
+            $content = substr($content, 3);
+        } elseif (str_contains($content, "\x00")) {
+            // UTF-16 without a BOM (NUL bytes betray it).
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-16LE');
+        }
+
+        $lines = preg_split('/\r\n|\r|\n/', $content) ?: [];
+        $firstLine = '';
+        foreach ($lines as $l) {
+            if (trim($l) !== '') { $firstLine = $l; break; }
+        }
+
+        // Pick the delimiter that splits the header into the most columns.
+        $delim = ',';
+        $best = 0;
+        foreach ([',', ';', "\t"] as $d) {
+            $n = count(str_getcsv($firstLine, $d));
+            if ($n > $best) { $best = $n; $delim = $d; }
+        }
+
+        $rows = [];
+        foreach ($lines as $l) {
+            if (trim($l) === '') {
+                continue;
+            }
+            $rows[] = array_map(fn ($v) => trim((string) $v), str_getcsv($l, $delim));
+        }
+
+        return $rows;
     }
 
     /**
@@ -89,17 +115,10 @@ class AttendanceSheetImporter
         $skipped = 0;
         $unmatched = [];
 
-        if (($h = fopen($path, 'r')) === false) {
-            return ['days' => 0, 'matched_rows' => 0, 'unmatched' => [], 'skipped' => 0];
-        }
-        $line = 0;
-        while (($data = fgetcsv($h)) !== false) {
-            if ($line++ === 0) {
-                continue; // header
-            }
-            if ($data === [null]) {
-                continue;
-            }
+        $allRows = $this->readRows($path);
+        array_shift($allRows); // header
+
+        foreach ($allRows as $data) {
             $cell = fn ($i) => $i === null || $i < 0 ? null : trim((string) ($data[$i] ?? ''));
 
             $identity = $cell($map['identity_col']);
@@ -133,7 +152,6 @@ class AttendanceSheetImporter
                 $matchedRows++;
             }
         }
-        fclose($h);
 
         $days = 0;
         foreach ($grouped as $uid => $perDay) {

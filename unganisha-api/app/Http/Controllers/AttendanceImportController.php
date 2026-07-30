@@ -18,9 +18,7 @@ class AttendanceImportController extends Controller
     public function preview(Request $request, AttendanceSheetImporter $importer)
     {
         $this->authorizePermission('attendance.manage');
-        $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:10240',
-        ]);
+        $this->validateSheet($request);
 
         $parsed = $importer->parse($request->file('file')->getRealPath());
 
@@ -37,8 +35,8 @@ class AttendanceImportController extends Controller
     public function commit(Request $request, AttendanceSheetImporter $importer)
     {
         $this->authorizePermission('attendance.manage');
+        $this->validateSheet($request);
         $data = $request->validate([
-            'file'         => 'required|file|mimes:csv,txt|max:10240',
             'match_by'     => 'required|in:name,employee_no',
             'identity_col' => 'required|integer|min:0',
             'date_col'     => 'nullable|integer|min:0',
@@ -63,6 +61,19 @@ class AttendanceImportController extends Controller
         );
 
         return response()->json(['data' => $res]);
+    }
+
+    /**
+     * iVMS "CSV" exports are often UTF-16 or tab-separated, which PHP's mime
+     * sniffing flags as binary — so validate by extension, not detected mime.
+     */
+    private function validateSheet(Request $request): void
+    {
+        $request->validate(['file' => 'required|file|max:10240']);
+        $ext = strtolower($request->file('file')->getClientOriginalExtension());
+        if (!in_array($ext, ['csv', 'txt'], true)) {
+            abort(422, 'Please upload the report as a .csv file (in iVMS-4200 choose Export → CSV).');
+        }
     }
 
     /** Best-effort column guesses from iVMS header names (0-based indexes, or null). */
