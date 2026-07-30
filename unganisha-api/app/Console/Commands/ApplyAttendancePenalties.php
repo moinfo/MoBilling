@@ -71,8 +71,12 @@ class ApplyAttendancePenalties extends Command
                     $att = $records->get($uid);
                     $charges = [];
 
-                    // Excused day (leave / sick / field duty) — never charge.
+                    // Excused day (leave / sick / field duty) — never charge, and
+                    // clear any stale unwaived charges for the day.
                     if ($att && in_array($att->status, Attendance::EXCUSED, true)) {
+                        if (!$dry) {
+                            $this->reconcile($uid, $d->toDateString(), []);
+                        }
                         continue;
                     }
 
@@ -88,6 +92,14 @@ class ApplyAttendancePenalties extends Command
                         } elseif ($att->check_out_at->lt($outCut)) {
                             $charges['left_early'] = [(float) $s->penalty_left_early, 'Left early (' . $att->check_out_at->format('H:i') . ')'];
                         }
+                    }
+
+                    // Self-heal: attendance may have been backfilled (device
+                    // import) since a charge was made — drop unwaived charges
+                    // the current data no longer supports (e.g. "absent" on a
+                    // day that now has a check-in).
+                    if (!$dry) {
+                        $this->reconcile($uid, $d->toDateString(), array_keys($charges));
                     }
 
                     foreach ($charges as $type => [$amount, $note]) {
@@ -112,5 +124,15 @@ class ApplyAttendancePenalties extends Command
 
         $this->info($dry ? "Dry run: {$charged} attendance penalties." : "Charged {$charged} attendance penalties.");
         return self::SUCCESS;
+    }
+
+    /** Delete unwaived charges for a day that current data no longer supports. */
+    private function reconcile(string $userId, string $date, array $validTypes): void
+    {
+        AttendancePenalty::withoutGlobalScopes()
+            ->where('user_id', $userId)->whereDate('date', $date)
+            ->where('waived', false)
+            ->when($validTypes, fn ($q) => $q->whereNotIn('penalty_type', $validTypes))
+            ->delete();
     }
 }

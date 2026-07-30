@@ -145,6 +145,16 @@ class AttendanceSheetImporter
             }
 
             $user = $matchByName ? $byName->get($this->norm($identity)) : $byNo->get($this->normNo($identity));
+
+            // Name spelling differs from the device ("EDWARD" vs "Edwad")?
+            // Fall back to the already-linked employee number on the same row.
+            if (!$user && $matchByName && ($map['employee_no_col'] ?? null) !== null) {
+                $no = $this->normNo((string) ($cell($map['employee_no_col']) ?? ''));
+                if ($no !== '') {
+                    $user = $byNo->get($no);
+                }
+            }
+
             if (!$user) {
                 $unmatched[$identity] = ($unmatched[$identity] ?? 0) + 1;
                 continue;
