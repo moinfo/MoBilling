@@ -22,6 +22,7 @@ import SubscriptionStats from '../components/Dashboard/SubscriptionStats';
 import HostingDomains from '../components/Dashboard/HostingDomains';
 import StaffPenalties from '../components/Dashboard/StaffPenalties';
 import MyAttendance from '../components/Dashboard/MyAttendance';
+import TotalDeductions from '../components/Dashboard/TotalDeductions';
 import RecentInvoices from '../components/Dashboard/RecentInvoices';
 import UpcomingBills from '../components/Dashboard/UpcomingBills';
 import UrgentObligations from '../components/Dashboard/UrgentObligations';
@@ -98,6 +99,8 @@ export default function Dashboard() {
             totalFieldVisits={summary.total_field_visits}
             periodLabel={periodLabel}
           />
+
+          <TotalDeductions reportPenalties={summary.staff_penalties} />
 
           {summary.staff_penalties && <StaffPenalties data={summary.staff_penalties} />}
 
