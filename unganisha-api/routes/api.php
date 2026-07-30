@@ -332,7 +332,9 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:expenses.approve')->post('/expenses/{expense}/unapprove', [ExpenseController::class, 'unapprove']);
     // Petty cash voucher per expense (download PDF / upload signed copy)
     Route::middleware('permission:expenses.read')->get('/expenses/{expense}/voucher', [ExpenseController::class, 'downloadVoucher']);
-    Route::middleware('permission:expenses.update')->post('/expenses/{expense}/voucher', [ExpenseController::class, 'uploadVoucher']);
+    // Recorders (expenses.create) may attach the signed voucher to their own
+    // expense — the ownership check lives in the controller.
+    Route::middleware('permission:expenses.update,expenses.create')->post('/expenses/{expense}/voucher', [ExpenseController::class, 'uploadVoucher']);
 
     // Systems (reference list)
     Route::middleware('permission:systems.read')->get('/systems', [SystemController::class, 'index']);

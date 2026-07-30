@@ -272,6 +272,12 @@ class ExpenseController extends Controller
      */
     public function uploadVoucher(Request $request, Expense $expense)
     {
+        // Without full edit rights you may only attach a voucher to an
+        // expense you recorded yourself (typically while it awaits approval).
+        if (!auth()->user()->hasPermission('expenses.update') && $expense->recorded_by !== auth()->id()) {
+            abort(403, 'You can only upload a voucher for an expense you recorded.');
+        }
+
         $request->validate([
             'voucher' => 'required|file|max:10240|mimes:pdf,jpg,jpeg,png',
         ]);

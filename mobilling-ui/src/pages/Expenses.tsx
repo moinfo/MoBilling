@@ -356,7 +356,7 @@ export default function Expenses() {
               <Table.Th>Method</Table.Th>
               <Table.Th>Control #</Table.Th>
               <Table.Th>Attachment</Table.Th>
-              {(canUpdate || canDelete || canApprove) && <Table.Th w={140}>Actions</Table.Th>}
+              {(canUpdate || canDelete || canApprove || canCreate) && <Table.Th w={140}>Actions</Table.Th>}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -424,7 +424,7 @@ export default function Expenses() {
                     </Anchor>
                   ) : '—'}
                 </Table.Td>
-                {(canUpdate || canDelete || canApprove) && (
+                {(canUpdate || canDelete || canApprove || canCreate) && (
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
                       {/* Approve / reject: pending petty-cash expenses only, and
@@ -481,7 +481,9 @@ export default function Expenses() {
                               </ActionIcon>
                             </Tooltip>
                           )}
-                          {canUpdate && (
+                          {/* Recorders may attach the signed voucher to their own
+                              expense (e.g. while it awaits approval). */}
+                          {(canUpdate || e.recorded_by === user?.id) && (
                             <FileButton onChange={(f) => handleUploadVoucher(e, f)} accept="application/pdf,image/*">
                               {(props) => (
                                 <Tooltip label={e.voucher_attachment_url ? 'Replace signed voucher' : 'Upload signed voucher'}>
