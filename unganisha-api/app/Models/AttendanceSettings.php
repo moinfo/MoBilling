@@ -13,6 +13,7 @@ class AttendanceSettings extends Model
     ];
     protected $casts = [
         'penalties_enabled' => 'boolean',
+        'penalties_from' => 'date',
         'working_days'      => 'array',
     ];
 }
