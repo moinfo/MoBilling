@@ -155,7 +155,9 @@ export interface SheetImportResult {
 export const previewAttendanceSheet = (file: File) => {
   const fd = new FormData();
   fd.append('file', file);
-  return api.post<{ data: SheetPreview }>('/attendance/import/preview', fd);
+  return api.post<{ data: SheetPreview }>('/attendance/import/preview', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
 };
 export const commitAttendanceSheet = (file: File, map: SheetMapping) => {
   const fd = new FormData();
@@ -167,5 +169,7 @@ export const commitAttendanceSheet = (file: File, map: SheetMapping) => {
   if (map.time_col !== null) fd.append('time_col', String(map.time_col));
   if (map.in_col !== null) fd.append('in_col', String(map.in_col));
   if (map.out_col !== null) fd.append('out_col', String(map.out_col));
-  return api.post<{ data: SheetImportResult }>('/attendance/import/commit', fd);
+  return api.post<{ data: SheetImportResult }>('/attendance/import/commit', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
 };
