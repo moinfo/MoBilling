@@ -399,6 +399,9 @@ function ReportTab() {
             <Badge size="lg" variant="light" color="yellow">No check-out: {r.totals.no_checkout}</Badge>
             <Badge size="lg" variant="light" color="red">Absent: {r.totals.absent}</Badge>
             {r.totals.excused > 0 && <Badge size="lg" variant="light" color="grape">Excused: {r.totals.excused}</Badge>}
+            <Badge size="lg" variant="filled" color={r.totals.deduction_total > 0 ? 'red' : 'gray'}>
+              Deductions: TZS {r.totals.deduction_total.toLocaleString()}
+            </Badge>
           </Group>
 
           <Paper withBorder radius="md">
@@ -410,6 +413,7 @@ function ReportTab() {
                     <Table.Th ta="center">Check-in</Table.Th>
                     <Table.Th ta="center">Check-out</Table.Th>
                     <Table.Th>Status</Table.Th>
+                    <Table.Th ta="right">Deduction</Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -435,6 +439,9 @@ function ReportTab() {
                             <Badge size="xs" variant="light" color="teal">present</Badge>
                           )}
                         </Group>
+                      </Table.Td>
+                      <Table.Td ta="right" fw={600} c={d.deduction > 0 ? 'red' : 'dimmed'}>
+                        {d.deduction > 0 ? `−TZS ${d.deduction.toLocaleString()}` : '—'}
                       </Table.Td>
                     </Table.Tr>
                   ))}

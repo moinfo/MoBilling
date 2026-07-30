@@ -202,8 +202,13 @@ class AttendanceController extends Controller
         $workDays = $s->working_days ?: [1, 2, 3, 4, 5, 6];
         $holidays = \App\Models\StaffReportHoliday::pluck('date')->map(fn ($d) => $d->toDateString())->flip();
 
+        // Actual charges per day (what was really deducted, waived excluded).
+        $penalties = AttendancePenalty::where('user_id', $user->id)->where('waived', false)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->get()->groupBy(fn ($p) => $p->date->toDateString());
+
         $days = [];
-        $totals = ['present' => 0, 'late' => 0, 'left_early' => 0, 'no_checkout' => 0, 'absent' => 0, 'excused' => 0];
+        $totals = ['present' => 0, 'late' => 0, 'left_early' => 0, 'no_checkout' => 0, 'absent' => 0, 'excused' => 0, 'deduction_total' => 0.0];
 
         for ($d = $start->copy(); $d->lte($last); $d->addDay()) {
             $key = $d->toDateString();
@@ -224,8 +229,10 @@ class AttendanceController extends Controller
                 'no_checkout'  => $f['no_checkout'] ?? false,
                 // Absent only matters on a working day.
                 'absent'       => $working && (($f['absent'] ?? true) && !($f['status'] ?? null)),
+                'deduction'    => round((float) ($penalties->get($key)?->sum('amount') ?? 0), 2),
             ];
             $days[] = $row;
+            $totals['deduction_total'] += $row['deduction'];
 
             if ($row['status']) {
                 $totals['excused']++;
@@ -245,7 +252,7 @@ class AttendanceController extends Controller
             'check_in_time'  => $s->check_in_time,
             'check_out_time' => $s->check_out_time,
             'days'   => $days,
-            'totals' => $totals,
+            'totals' => array_merge($totals, ['deduction_total' => round($totals['deduction_total'], 2)]),
         ]]);
     }
 

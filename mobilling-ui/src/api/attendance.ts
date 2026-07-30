@@ -142,6 +142,7 @@ export interface ReportDay {
   left_early: boolean;
   no_checkout: boolean;
   absent: boolean;
+  deduction: number;
 }
 export interface AttendanceReport {
   user: { id: string; name: string };
@@ -149,7 +150,7 @@ export interface AttendanceReport {
   check_in_time: string;
   check_out_time: string;
   days: ReportDay[];
-  totals: { present: number; late: number; left_early: number; no_checkout: number; absent: number; excused: number };
+  totals: { present: number; late: number; left_early: number; no_checkout: number; absent: number; excused: number; deduction_total: number };
 }
 export const getAttendanceReport = (user_id: string, month: number, year: number) =>
   api.get<{ data: AttendanceReport }>('/attendance/report', { params: { user_id, month, year } });
