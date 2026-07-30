@@ -177,7 +177,7 @@ class AttendanceController extends Controller
         ]]);
     }
 
-    /** Monthly check-in/out report for one staff member (day by day). */
+    /** Monthly check-in/out report for one staff member (attendance clerk). */
     public function report(Request $request)
     {
         $this->authorizePermission('attendance.manage');
@@ -189,12 +189,29 @@ class AttendanceController extends Controller
             'year'    => 'nullable|integer|min:2020|max:2100',
         ]);
 
+        $user = User::where('tenant_id', $tenantId)->findOrFail($data['user_id']);
+
+        return response()->json(['data' => $this->buildReport($user, $data)]);
+    }
+
+    /** The same monthly report, but always for the logged-in user themselves. */
+    public function myReport(Request $request)
+    {
+        $data = $request->validate([
+            'month' => 'nullable|integer|min:1|max:12',
+            'year'  => 'nullable|integer|min:2020|max:2100',
+        ]);
+
+        return response()->json(['data' => $this->buildReport(auth()->user(), $data)]);
+    }
+
+    /** Day-by-day month report shared by the clerk view and self view. */
+    private function buildReport(User $user, array $data): array
+    {
         $s = $this->settings();
         $start = Carbon::createFromDate((int) ($data['year'] ?? now()->year), (int) ($data['month'] ?? now()->month), 1)->startOfMonth();
         $end = $start->copy()->endOfMonth();
         $last = $end->isFuture() ? now() : $end;   // don't report days that haven't happened
-
-        $user = User::where('tenant_id', $tenantId)->findOrFail($data['user_id']);
         $recs = Attendance::where('user_id', $user->id)
             ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
             ->get()->keyBy(fn ($a) => $a->date->toDateString());
@@ -246,14 +263,14 @@ class AttendanceController extends Controller
             }
         }
 
-        return response()->json(['data' => [
+        return [
             'user'        => ['id' => $user->id, 'name' => $user->name],
             'month_label' => $start->format('F Y'),
             'check_in_time'  => $s->check_in_time,
             'check_out_time' => $s->check_out_time,
             'days'   => $days,
             'totals' => array_merge($totals, ['deduction_total' => round($totals['deduction_total'], 2)]),
-        ]]);
+        ];
     }
 
     /** Deductions overview: every staff member's attendance penalties for a month. */
