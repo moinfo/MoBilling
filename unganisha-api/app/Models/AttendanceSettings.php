@@ -8,6 +8,7 @@ class AttendanceSettings extends Model
     use HasUuids, BelongsToTenant;
     protected $fillable = [
         'tenant_id', 'check_in_time', 'check_out_time', 'penalties_enabled',
+        'penalties_from',
         'penalty_absent', 'penalty_late', 'penalty_left_early', 'penalty_no_checkout', 'working_days',
     ];
     protected $casts = [

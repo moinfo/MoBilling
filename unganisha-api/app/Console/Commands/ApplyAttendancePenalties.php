@@ -47,7 +47,9 @@ class ApplyAttendancePenalties extends Command
             // Start the day AFTER attendance was enabled — never backfill
             // absences for days before the feature existed (or its launch day).
             $monthStart = $now->copy()->startOfMonth();
-            $begin = $s->created_at ? $s->created_at->copy()->addDay()->startOfDay() : $monthStart;
+            $begin = $s->penalties_from
+                ? $s->penalties_from->copy()->startOfDay()
+                : ($s->created_at ? $s->created_at->copy()->addDay()->startOfDay() : $monthStart);
             if ($begin->lt($monthStart)) {
                 $begin = $monthStart;
             }
