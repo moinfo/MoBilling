@@ -138,6 +138,7 @@ export interface SheetMapping {
   in_col: number | null;
   out_col: number | null;
   time_col: number | null;
+  employee_no_col?: number | null;
 }
 export interface SheetPreview {
   headers: string[];
@@ -150,6 +151,7 @@ export interface SheetImportResult {
   matched_rows: number;
   unmatched: Record<string, number>;
   skipped: number;
+  linked?: number;
 }
 
 export const previewAttendanceSheet = (file: File) => {
@@ -169,6 +171,7 @@ export const commitAttendanceSheet = (file: File, map: SheetMapping) => {
   if (map.time_col !== null) fd.append('time_col', String(map.time_col));
   if (map.in_col !== null) fd.append('in_col', String(map.in_col));
   if (map.out_col !== null) fd.append('out_col', String(map.out_col));
+  if (map.employee_no_col !== null && map.employee_no_col !== undefined) fd.append('employee_no_col', String(map.employee_no_col));
   return api.post<{ data: SheetImportResult }>('/attendance/import/commit', fd, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });

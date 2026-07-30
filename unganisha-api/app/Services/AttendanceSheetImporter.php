@@ -118,6 +118,11 @@ class AttendanceSheetImporter
         $matchByName = ($map['match_by'] ?? 'name') === 'name';
         $single = ($map['time_mode'] ?? 'single') === 'single';
 
+        // When matching by name and the sheet also carries a Person ID column,
+        // learn each matched staff member's device employee number from it.
+        $learnCol = $matchByName ? ($map['employee_no_col'] ?? null) : null;
+        $learned = [];   // user_id => normalised employee no
+
         // grouped[userId][date] = Carbon[]
         $grouped = [];
         $matchedRows = 0;
@@ -143,6 +148,13 @@ class AttendanceSheetImporter
             if (!$user) {
                 $unmatched[$identity] = ($unmatched[$identity] ?? 0) + 1;
                 continue;
+            }
+
+            if ($learnCol !== null && !isset($learned[$user->id])) {
+                $no = $this->normNo((string) ($cell($learnCol) ?? ''));
+                if ($no !== '' && $no !== '0') {
+                    $learned[$user->id] = $no;
+                }
             }
 
             // Resolve the day + the swipe time(s) for this row.
@@ -174,7 +186,24 @@ class AttendanceSheetImporter
             }
         }
 
-        return ['days' => $days, 'matched_rows' => $matchedRows, 'unmatched' => $unmatched, 'skipped' => $skipped];
+        // Persist learned device numbers — never overwrite an existing link,
+        // and never give two users the same number.
+        $linked = 0;
+        if ($learned) {
+            $taken = $users->pluck('device_employee_no')->filter()
+                ->map(fn ($n) => $this->normNo((string) $n))->flip();
+            foreach ($learned as $uid => $no) {
+                $u = $users->firstWhere('id', $uid);
+                if (!$u || $u->device_employee_no || isset($taken[$no])) {
+                    continue;
+                }
+                User::withoutGlobalScopes()->where('id', $uid)->update(['device_employee_no' => $no]);
+                $taken[$no] = true;
+                $linked++;
+            }
+        }
+
+        return ['days' => $days, 'matched_rows' => $matchedRows, 'unmatched' => $unmatched, 'skipped' => $skipped, 'linked' => $linked];
     }
 
     private function norm(string $s): string

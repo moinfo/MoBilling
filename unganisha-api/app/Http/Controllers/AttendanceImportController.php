@@ -44,6 +44,7 @@ class AttendanceImportController extends Controller
             'time_col'     => 'nullable|integer|min:0|required_if:time_mode,single',
             'in_col'       => 'nullable|integer|min:0|required_if:time_mode,inout',
             'out_col'      => 'nullable|integer|min:0|required_if:time_mode,inout',
+            'employee_no_col' => 'nullable|integer|min:0',
         ]);
 
         $res = $importer->import(
@@ -57,6 +58,7 @@ class AttendanceImportController extends Controller
                 'time_col'     => isset($data['time_col']) ? (int) $data['time_col'] : null,
                 'in_col'       => isset($data['in_col']) ? (int) $data['in_col'] : null,
                 'out_col'      => isset($data['out_col']) ? (int) $data['out_col'] : null,
+                'employee_no_col' => isset($data['employee_no_col']) ? (int) $data['employee_no_col'] : null,
             ],
         );
 
@@ -110,6 +112,9 @@ class AttendanceImportController extends Controller
             'in_col'       => $inCol,
             'out_col'      => $outCol,
             'time_col'     => $hasInOut ? null : ($timeCol ?? $dateCol),
+            // Person ID column — lets the import auto-link device numbers to
+            // staff matched by name.
+            'employee_no_col' => $noCol,
         ];
     }
 }

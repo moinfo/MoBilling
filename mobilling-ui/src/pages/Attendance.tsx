@@ -476,6 +476,7 @@ function ImportTab() {
         <Alert color={result.days ? 'teal' : 'orange'} variant="light" title="Import complete">
           <Text size="sm">
             Imported <b>{result.days}</b> staff-day(s) from <b>{result.matched_rows}</b> matched row(s).
+            {(result.linked ?? 0) > 0 && <> Linked <b>{result.linked}</b> staff to their device employee numbers.</>}
             {result.skipped > 0 && ` ${result.skipped} row(s) skipped (no usable time).`}
           </Text>
           {unmatched.length > 0 && (
