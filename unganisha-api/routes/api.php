@@ -329,6 +329,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:expenses.delete')->delete('/expenses/{expense}', [ExpenseController::class, 'destroy']);
     Route::middleware('permission:expenses.approve')->post('/expenses/{expense}/approve', [ExpenseController::class, 'approve']);
     Route::middleware('permission:expenses.approve')->post('/expenses/{expense}/reject', [ExpenseController::class, 'reject']);
+    Route::middleware('permission:expenses.approve')->post('/expenses/{expense}/unapprove', [ExpenseController::class, 'unapprove']);
     // Petty cash voucher per expense (download PDF / upload signed copy)
     Route::middleware('permission:expenses.read')->get('/expenses/{expense}/voucher', [ExpenseController::class, 'downloadVoucher']);
     Route::middleware('permission:expenses.update')->post('/expenses/{expense}/voucher', [ExpenseController::class, 'uploadVoucher']);

@@ -6,8 +6,8 @@ import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle, IconEye, IconThumbUp, IconThumbDown } from '@tabler/icons-react';
-import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, approveExpense, rejectExpense, Expense } from '../api/expenses';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle, IconEye, IconThumbUp, IconThumbDown, IconArrowBackUp } from '@tabler/icons-react';
+import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, approveExpense, rejectExpense, unapproveExpense, Expense } from '../api/expenses';
 import { getExpenseCategories, ExpenseCategory } from '../api/expenseCategories';
 import { getPettyCash } from '../api/pettyCash';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -203,6 +203,27 @@ export default function Expenses() {
     },
     onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to reject', color: 'red' }),
   });
+
+  const unapproveMutation = useMutation({
+    mutationFn: (id: string) => unapproveExpense(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
+      notifications.show({ title: 'Reverted', message: 'Expense sent back to pending review — the petty-cash balance was restored.', color: 'yellow' });
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to unapprove', color: 'red' }),
+  });
+
+  const handleUnapprove = (e: Expense) => {
+    modals.openConfirmModal({
+      title: 'Undo approval',
+      children: `Send "${e.description}" (${formatCurrency(e.amount)}) back to pending review? Its amount will be added back to the petty-cash balance until re-approved.`,
+      labels: { confirm: 'Undo approval', cancel: 'Cancel' },
+      confirmProps: { color: 'yellow' },
+      onConfirm: () => unapproveMutation.mutate(e.id),
+    });
+  };
 
   const handleApprove = (e: Expense) => {
     modals.openConfirmModal({
@@ -421,6 +442,16 @@ export default function Expenses() {
                             </ActionIcon>
                           </Tooltip>
                         </>
+                      )}
+                      {/* Undo a wrong approval — back to pending review. */}
+                      {canApprove && e.petty_cash_account_id && e.approval_status === 'approved' && (
+                        <Tooltip label="Undo approval (back to pending)">
+                          <ActionIcon variant="light" color="yellow"
+                            loading={unapproveMutation.isPending && unapproveMutation.variables === e.id}
+                            onClick={() => handleUnapprove(e)}>
+                            <IconArrowBackUp size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                       )}
                       {canUpdate && (
                         <ActionIcon variant="light" onClick={() => openEdit(e)}>

@@ -46,6 +46,9 @@ export const approveExpense = (id: string) =>
 export const rejectExpense = (id: string, reason?: string) =>
   api.post<{ data: Expense }>(`/expenses/${id}/reject`, { reason });
 
+export const unapproveExpense = (id: string) =>
+  api.post<{ data: Expense }>(`/expenses/${id}/unapprove`);
+
 export const getExpense = (id: string) =>
   api.get<{ data: Expense }>(`/expenses/${id}`);
 
