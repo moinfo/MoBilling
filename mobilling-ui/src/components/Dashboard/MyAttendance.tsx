@@ -91,6 +91,127 @@ function MyReportModal({ opened, onClose }: { opened: boolean; onClose: () => vo
   );
 }
 
+
+/** Month chart: one thin bar per day from check-in to check-out (time of day,
+ *  morning at top), dashed target lines, ✖ = absent, violet band = excused. */
+const CHART = {
+  ok: '#099268', warn: '#e8590c', excused: '#6741d9', absent: '#c92a2a',
+};
+
+function MyAttendanceChart() {
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  const y = now.getFullYear();
+  const { data } = useQuery({
+    queryKey: ['my-attendance-report', m, y],
+    queryFn: () => getMyAttendanceReport(m, y),
+  });
+  const [hover, setHover] = useState<number | null>(null);
+  const r: AttendanceReport | undefined = data?.data?.data;
+  if (!r || r.days.length === 0) return null;
+
+  const toMin = (t: string | null) => {
+    if (!t) return null;
+    const [h, mm] = t.split(':').map(Number);
+    return h * 60 + mm;
+  };
+  const DOM_MIN = 6 * 60, DOM_MAX = 22 * 60;           // 06:00 → 22:00
+  const ML = 36, MR = 6, MT = 6, MB = 16, H = 132;
+  const dayW = 14, barW = 7;
+  const W = ML + MR + r.days.length * dayW;
+  const yPos = (min: number) => MT + ((Math.min(Math.max(min, DOM_MIN), DOM_MAX) - DOM_MIN) / (DOM_MAX - DOM_MIN)) * H;
+  const inTarget = yPos(toMin(r.check_in_time) ?? 450);
+  const outTarget = yPos(toMin(r.check_out_time) ?? 1020);
+  const hovered = hover !== null ? r.days[hover] : null;
+
+  return (
+    <div style={{ position: 'relative', marginTop: 10 }}>
+      <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={4}>Check-in / check-out · {r.month_label}</Text>
+      <svg viewBox={`0 0 ${W} ${MT + H + MB}`} style={{ width: '100%', display: 'block' }} role="img"
+        aria-label={`Daily check-in and check-out times for ${r.month_label}`}>
+        {/* target lines */}
+        {[[inTarget, r.check_in_time], [outTarget, r.check_out_time]].map(([yy, label]) => (
+          <g key={String(label)}>
+            <line x1={ML} x2={W - MR} y1={yy as number} y2={yy as number}
+              stroke="var(--mantine-color-default-border)" strokeDasharray="3 3" strokeWidth={1} />
+            <text x={ML - 4} y={(yy as number) + 3} textAnchor="end" fontSize={8}
+              fill="var(--mantine-color-dimmed)">{label}</text>
+          </g>
+        ))}
+        {r.days.map((d, i) => {
+          const cx = ML + i * dayW + dayW / 2;
+          const inM = toMin(d.check_in_at);
+          const outM = toMin(d.check_out_at);
+          const violation = d.late || d.left_early || d.no_checkout;
+          const color = violation ? CHART.warn : CHART.ok;
+          return (
+            <g key={d.date} opacity={d.working || inM !== null ? 1 : 0.35}>
+              {/* excused band */}
+              {d.status && (
+                <rect x={cx - barW / 2} y={inTarget} width={barW} height={outTarget - inTarget}
+                  rx={3.5} fill={CHART.excused} opacity={0.45} />
+              )}
+              {/* presence bar: check-in → check-out (or short stub if no out) */}
+              {inM !== null && (
+                <rect x={cx - barW / 2} y={yPos(inM)} width={barW}
+                  height={Math.max((outM !== null ? yPos(outM) : yPos(inM) + 10) - yPos(inM), 6)}
+                  rx={3.5} fill={color}
+                  stroke={d.no_checkout ? color : 'none'} strokeDasharray={d.no_checkout ? '2 2' : undefined}
+                  fillOpacity={d.no_checkout ? 0.45 : 1} />
+              )}
+              {/* absent marker */}
+              {d.absent && (
+                <text x={cx} y={inTarget + 3.5} textAnchor="middle" fontSize={9} fontWeight={700}
+                  fill={CHART.absent}>✕</text>
+              )}
+              {/* day label every other day */}
+              {i % 2 === 0 && (
+                <text x={cx} y={MT + H + 11} textAnchor="middle" fontSize={7}
+                  fill="var(--mantine-color-dimmed)">{dayjs(d.date).format('D')}</text>
+              )}
+              {/* hover hit target (full column) */}
+              <rect x={ML + i * dayW} y={0} width={dayW} height={MT + H + MB} fill="transparent"
+                onMouseEnter={() => setHover(i)} onMouseLeave={() => setHover(null)} />
+              {hover === i && (
+                <rect x={ML + i * dayW} y={MT} width={dayW} height={H} fill="var(--mantine-color-dimmed)" opacity={0.08} />
+              )}
+            </g>
+          );
+        })}
+      </svg>
+
+      {hovered && (
+        <div style={{
+          position: 'absolute', top: 18, left: `${((ML + (hover ?? 0) * dayW) / W) * 100}%`,
+          transform: (hover ?? 0) > r.days.length / 2 ? 'translateX(-100%)' : undefined,
+          background: 'var(--mantine-color-body)', border: '1px solid var(--mantine-color-default-border)',
+          borderRadius: 6, padding: '6px 8px', pointerEvents: 'none', zIndex: 5, boxShadow: '0 2px 8px rgba(0,0,0,.12)',
+        }}>
+          <Text size="xs" fw={700}>{dayjs(hovered.date).format('ddd, D MMM')}</Text>
+          <Text size="xs">In: {hovered.check_in_at ?? '—'} · Out: {hovered.check_out_at ?? '—'}</Text>
+          <Text size="xs" c="dimmed">
+            {hovered.status ? (statusLabelFull[hovered.status] ?? hovered.status)
+              : hovered.absent ? 'Absent' : hovered.holiday ? 'Holiday' : !hovered.working ? 'Off day'
+              : [hovered.late && 'Late', hovered.left_early && 'Left early', hovered.no_checkout && 'No check-out'].filter(Boolean).join(' · ') || 'Present'}
+            {hovered.deduction > 0 ? ` · −TZS ${hovered.deduction.toLocaleString()}` : ''}
+          </Text>
+        </div>
+      )}
+
+      <Group gap={10} mt={2} wrap="wrap">
+        {[[CHART.ok, 'On time'], [CHART.warn, 'Late / early / no out'], [CHART.excused, 'Excused'], [CHART.absent, '✕ Absent']].map(([c, l]) => (
+          <Group key={l} gap={4} wrap="nowrap">
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: l === '✕ Absent' ? 'transparent' : c, color: c, fontSize: 9, fontWeight: 700, lineHeight: '8px' }}>
+              {l === '✕ Absent' ? '✕' : ''}
+            </span>
+            <Text size="xs" c="dimmed">{l}</Text>
+          </Group>
+        ))}
+      </Group>
+    </div>
+  );
+}
+
 const dtypeLabel: Record<string, string> = {
   absent: 'Absent', late: 'Late', left_early: 'Left early', no_checkout: 'No check-out',
 };
@@ -179,6 +300,8 @@ export default function MyAttendance() {
             )}
           </Group>
         )}
+
+        <MyAttendanceChart />
 
         {/* Rules & deduction amounts — so staff know what applies */}
         <Stack gap={4} mt="sm" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
