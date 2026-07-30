@@ -101,8 +101,10 @@ class AttendanceImportController extends Controller
         $hasInOut = $inCol !== null && $outCol !== null;
 
         return [
-            'match_by'     => $noCol !== null ? 'employee_no' : 'name',
-            'identity_col' => $noCol ?? $nameCol ?? 0,
+            // Prefer matching by NAME — staff names are already in MoBilling,
+            // while device employee numbers must be linked by hand first.
+            'match_by'     => $nameCol !== null ? 'name' : 'employee_no',
+            'identity_col' => $nameCol ?? $noCol ?? 0,
             'date_col'     => $dateCol,
             'time_mode'    => $hasInOut ? 'inout' : 'single',
             'in_col'       => $inCol,

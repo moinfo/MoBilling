@@ -112,7 +112,8 @@ class AttendanceSheetImporter
         $users = User::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('is_active', true)
             ->get(['id', 'name', 'device_employee_no']);
         $byName = $users->keyBy(fn ($u) => $this->norm($u->name));
-        $byNo   = $users->filter(fn ($u) => $u->device_employee_no)->keyBy(fn ($u) => (string) $u->device_employee_no);
+        $byNo   = $users->filter(fn ($u) => $u->device_employee_no)
+            ->keyBy(fn ($u) => $this->normNo((string) $u->device_employee_no));
 
         $matchByName = ($map['match_by'] ?? 'name') === 'name';
         $single = ($map['time_mode'] ?? 'single') === 'single';
@@ -130,12 +131,15 @@ class AttendanceSheetImporter
             $cell = fn ($i) => $i === null || $i < 0 ? null : trim((string) ($data[$i] ?? ''));
 
             $identity = $cell($map['identity_col']);
+            // iVMS prefixes numeric cells with an apostrophe ('0003) to force
+            // text in Excel — strip it before matching.
+            $identity = $identity !== null ? ltrim($identity, "'\"") : null;
             if ($identity === null || $identity === '') {
                 $skipped++;
                 continue;
             }
 
-            $user = $matchByName ? $byName->get($this->norm($identity)) : $byNo->get($identity);
+            $user = $matchByName ? $byName->get($this->norm($identity)) : $byNo->get($this->normNo($identity));
             if (!$user) {
                 $unmatched[$identity] = ($unmatched[$identity] ?? 0) + 1;
                 continue;
@@ -176,6 +180,14 @@ class AttendanceSheetImporter
     private function norm(string $s): string
     {
         return preg_replace('/\s+/', ' ', mb_strtolower(trim($s)));
+    }
+
+    /** Employee numbers compare without quotes/leading zeros: '0003 ≡ 3. */
+    private function normNo(string $s): string
+    {
+        $s = trim(ltrim(trim($s), "'\""));
+        $stripped = ltrim($s, '0');
+        return $stripped === '' ? '0' : $stripped;
     }
 
     /**
