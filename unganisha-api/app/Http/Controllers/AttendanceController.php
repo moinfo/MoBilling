@@ -113,7 +113,24 @@ class AttendanceController extends Controller
         $att->check_out_at = !$excused && !empty($data['check_out']) ? $date->copy()->setTimeFromTimeString($data['check_out']) : null;
         $att->save();
 
-        return response()->json(['data' => ['user' => ['id' => $att->user_id]] + $this->formatDay($att, $this->settings())]);
+        // Immediately drop unwaived charges the edit just contradicted (an
+        // excused day clears everything; a filled check-in clears "absent",
+        // etc.) — same rule the nightly reconcile applies, but instant.
+        $s = $this->settings();
+        $f = $this->formatDay($att, $s);
+        $stillValid = array_keys(array_filter([
+            'absent'      => $f['absent'],
+            'late'        => $f['late'],
+            'left_early'  => $f['left_early'],
+            'no_checkout' => $f['no_checkout'],
+        ]));
+        AttendancePenalty::where('user_id', $att->user_id)
+            ->whereDate('date', $att->date->toDateString())
+            ->where('waived', false)
+            ->when($stillValid, fn ($q) => $q->whereNotIn('penalty_type', $stillValid))
+            ->delete();
+
+        return response()->json(['data' => ['user' => ['id' => $att->user_id]] + $f]);
     }
 
     /** Attendance overview: today's snapshot + this month's per-staff summary. */

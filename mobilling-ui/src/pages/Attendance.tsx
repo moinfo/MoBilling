@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import {
   Title, Tabs, Stack, Group, Text, Paper, Table, Badge, Button, ActionIcon,
-  Loader, Center, ThemeIcon, NumberInput, Switch, Chip, SimpleGrid, Divider, Alert, Select,
+  Loader, Center, ThemeIcon, NumberInput, Switch, Chip, SimpleGrid, Divider, Alert, Select, Menu,
 } from '@mantine/core';
 import { DatePickerInput, TimeInput, MonthPickerInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff } from '@tabler/icons-react';
+import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff, IconDotsVertical } from '@tabler/icons-react';
 import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput, FileButton, SegmentedControl } from '@mantine/core';
 import { IconUpload, IconFileSpreadsheet } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -358,6 +358,7 @@ function DeductionsTab() {
 
 
 function ReportTab() {
+  const qc = useQueryClient();
   const [month, setMonth] = useState<Date>(new Date());
   const [userId, setUserId] = useState<string | null>(null);
   const m = month.getMonth() + 1;
@@ -372,6 +373,18 @@ function ReportTab() {
     enabled: !!userId,
   });
   const r: AttendanceReport | undefined = data?.data?.data;
+
+  const markMut = useMutation({
+    mutationFn: ({ date, status }: { date: string; status: ExcusedStatus | null }) =>
+      recordAttendance({ user_id: userId!, date, status }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendance-report'] });
+      qc.invalidateQueries({ queryKey: ['attendance-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['attendance-penalties'] });
+      notifications.show({ message: 'Saved — day updated and deductions recalculated.', color: 'green' });
+    },
+    onError: (e) => notifications.show({ message: apiErr(e, 'Failed to update day.'), color: 'red' }),
+  });
 
   return (
     <Stack>
@@ -414,6 +427,7 @@ function ReportTab() {
                     <Table.Th ta="center">Check-out</Table.Th>
                     <Table.Th>Status</Table.Th>
                     <Table.Th ta="right">Deduction</Table.Th>
+                    <Table.Th w={44} />
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -442,6 +456,40 @@ function ReportTab() {
                       </Table.Td>
                       <Table.Td ta="right" fw={600} c={d.deduction > 0 ? 'red' : 'dimmed'}>
                         {d.deduction > 0 ? `−TZS ${d.deduction.toLocaleString()}` : '—'}
+                      </Table.Td>
+                      <Table.Td>
+                        <Menu withinPortal position="bottom-end" shadow="md">
+                          <Menu.Target>
+                            <ActionIcon variant="subtle" color="gray" size="sm"
+                              loading={markMut.isPending && markMut.variables?.date === d.date}>
+                              <IconDotsVertical size={14} />
+                            </ActionIcon>
+                          </Menu.Target>
+                          <Menu.Dropdown>
+                            <Menu.Label>Mark {dayjs(d.date).format('D MMM')} as</Menu.Label>
+                            <Menu.Item leftSection={<IconCalendarOff size={14} />}
+                              onClick={() => markMut.mutate({ date: d.date, status: 'leave' })}>
+                              Ruhusa (leave)
+                            </Menu.Item>
+                            <Menu.Item leftSection={<IconCalendarOff size={14} />}
+                              onClick={() => markMut.mutate({ date: d.date, status: 'sick' })}>
+                              Mgonjwa (sick)
+                            </Menu.Item>
+                            <Menu.Item leftSection={<IconCalendarOff size={14} />}
+                              onClick={() => markMut.mutate({ date: d.date, status: 'field' })}>
+                              Kazi za nje (field)
+                            </Menu.Item>
+                            {d.status && (
+                              <>
+                                <Menu.Divider />
+                                <Menu.Item color="red"
+                                  onClick={() => markMut.mutate({ date: d.date, status: null })}>
+                                  Remove excuse
+                                </Menu.Item>
+                              </>
+                            )}
+                          </Menu.Dropdown>
+                        </Menu>
                       </Table.Td>
                     </Table.Tr>
                   ))}
