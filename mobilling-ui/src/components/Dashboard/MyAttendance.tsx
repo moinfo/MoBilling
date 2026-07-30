@@ -125,9 +125,9 @@ function MyAttendanceChart() {
   const hovered = hover !== null ? r.days[hover] : null;
 
   return (
-    <div style={{ position: 'relative', marginTop: 10 }}>
+    <div style={{ position: 'relative', marginTop: 10, maxWidth: 520 }}>
       <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={4}>Check-in / check-out · {r.month_label}</Text>
-      <svg viewBox={`0 0 ${W} ${MT + H + MB}`} style={{ width: '100%', maxWidth: 520, display: 'block' }} role="img"
+      <svg viewBox={`0 0 ${W} ${MT + H + MB}`} style={{ width: '100%', display: 'block' }} role="img"
         aria-label={`Daily check-in and check-out times for ${r.month_label}`}>
         {/* target lines */}
         {[[inTarget, r.check_in_time], [outTarget, r.check_out_time]].map(([yy, label]) => (
