@@ -64,6 +64,14 @@ class AttendanceSheetImporter
             $content = mb_convert_encoding($content, 'UTF-8', 'UTF-16LE');
         }
 
+        // Whatever the source was, end up with clean UTF-8 — json_encode
+        // rejects the whole response over a single stray byte otherwise.
+        if (!mb_check_encoding($content, 'UTF-8')) {
+            $from = mb_detect_encoding($content, ['UTF-8', 'Windows-1252', 'ISO-8859-1'], true) ?: 'Windows-1252';
+            $content = mb_convert_encoding($content, 'UTF-8', $from);
+        }
+        $content = (string) mb_convert_encoding($content, 'UTF-8', 'UTF-8'); // scrub residual invalid sequences
+
         $lines = preg_split('/\r\n|\r|\n/', $content) ?: [];
         $firstLine = '';
         foreach ($lines as $l) {
