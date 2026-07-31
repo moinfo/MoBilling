@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Notifications\Concerns\HasTenantBranding;
 use App\Services\PdfService;
@@ -25,12 +26,16 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
 
         $channels = [];
 
-        if ($tenant->email_enabled) {
+        if ($tenant->email_enabled && $notifiable->email) {
             $channels[] = 'mail';
         }
 
         if ($tenant->sms_enabled && $tenant->reminder_sms_enabled) {
             $channels[] = SmsChannel::class;
+        }
+
+        if ($tenant->whatsapp_enabled && $tenant->reminder_whatsapp_enabled) {
+            $channels[] = WhatsAppChannel::class;
         }
 
         // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
@@ -50,6 +55,33 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             'body'  => "Amount: " . number_format((float) $doc->total, 2)
                 . ($doc->due_date ? ' — due ' . $doc->due_date->format('d M Y') : ''),
             'data'  => ['type' => 'invoice', 'document_id' => $doc->id],
+        ];
+    }
+
+    public function toWhatsApp($notifiable): array
+    {
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $tenant = $this->document->tenant;
+        $typeName = ucfirst($this->document->type);
+        $amount = $tenant->currency . ' ' . number_format($this->document->total, 2);
+        $due = $this->document->due_date?->format('d M Y') ?? '—';
+        $payable = $tenant->pesapal_enabled && $this->document->balance_due > 0;
+
+        if ($payable) {
+            return [
+                'template' => 'invoice_notice_v2',
+                'parameters' => ["{$typeName} {$this->document->document_number}", $amount, $due, $tenant->name],
+                'language' => 'en',
+                'button_url' => (string) $this->document->id,
+                'fallback' => "📄 {$typeName} {$this->document->document_number} — {$amount}, due {$due}. Pay online: " . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}") . " — {$tenant->name}",
+            ];
+        }
+
+        return [
+            'template' => 'invoice_notice_v1',
+            'parameters' => ["{$typeName} {$this->document->document_number}", $amount, $due, 'Contact us for payment options', $tenant->name],
+            'language' => 'en',
+            'fallback' => "📄 {$typeName} {$this->document->document_number} — {$amount}, due {$due}. — {$tenant->name}",
         ];
     }
 

@@ -117,6 +117,6 @@ class PortalDocumentController extends Controller
         $document->load('client');
         $document->client->notify(new InvoiceSentNotification($document));
 
-        return response()->json(['message' => 'Document sent to your email.']);
+        return response()->json(['message' => 'Document sent to your registered contacts (email/SMS/WhatsApp).']);
     }
 }

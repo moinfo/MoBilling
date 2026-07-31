@@ -186,8 +186,8 @@ class SettingsController extends Controller
         $update = [
             'whatsapp_enabled' => $validated['whatsapp_enabled'],
             'reminder_whatsapp_enabled' => $validated['reminder_whatsapp_enabled'],
-            'whatsapp_phone_number_id' => $validated['whatsapp_phone_number_id'],
-            'whatsapp_business_account_id' => $validated['whatsapp_business_account_id'],
+            'whatsapp_phone_number_id' => $validated['whatsapp_phone_number_id'] ?? null,
+            'whatsapp_business_account_id' => $validated['whatsapp_business_account_id'] ?? null,
         ];
 
         // Only update token if provided (not masked)
@@ -275,7 +275,7 @@ class SettingsController extends Controller
         $tenant = $request->user()->tenant;
 
         return response()->json([
-            'data' => $tenant->only(['subscription_grace_days']),
+            'data' => $tenant->only(['subscription_grace_days', 'auto_suspend_enabled']),
         ]);
     }
 
@@ -285,13 +285,14 @@ class SettingsController extends Controller
 
         $validated = $request->validate([
             'subscription_grace_days' => 'required|integer|min:1|max:90',
+            'auto_suspend_enabled'    => 'required|boolean',
         ]);
 
         $tenant = $request->user()->tenant;
         $tenant->update($validated);
 
         return response()->json([
-            'data'    => $tenant->fresh()->only(['subscription_grace_days']),
+            'data'    => $tenant->fresh()->only(['subscription_grace_days', 'auto_suspend_enabled']),
             'message' => 'Subscription settings updated.',
         ]);
     }

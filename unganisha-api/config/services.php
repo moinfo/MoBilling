@@ -2,6 +2,12 @@
 
 return [
 
+    'mosms' => [
+        'base_url' => env('MOSMS_BASE_URL', 'https://mosms.co.tz/api'),
+        'timeout'  => env('MOSMS_TIMEOUT', 30),
+    ],
+
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

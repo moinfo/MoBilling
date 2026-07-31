@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Tabs, TextInput, Textarea, PasswordInput, Select, Button,
   Stack, Divider, Paper, Group, Alert, NumberInput, Switch, Loader, Center, Box,
-  FileButton, Image, Text, Badge, ActionIcon, Accordion, ThemeIcon, Tooltip,
+  FileButton, Image, Text, Badge, ActionIcon, Accordion, ThemeIcon, Tooltip, SegmentedControl, Modal,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -28,6 +28,8 @@ import {
   getSubscriptionSettings, updateSubscriptionSettings, SubscriptionSettings,
   getPesapalSettings, updatePesapalSettings, PesapalSettings,
   getWhatsAppSettings, updateWhatsAppSettings, WhatsAppSettings,
+  getMosmsStatus, linkMosms, registerMosms, unlinkMosms, testMosms, MosmsStatus,
+  getMosmsPackages, purchaseMosmsSms, MosmsPackage,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
@@ -586,10 +588,12 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
 
   const subSettings: SubscriptionSettings | undefined = subData?.data?.data;
   const [graceDays, setGraceDays] = useState<number | string>(7);
+  const [autoSuspend, setAutoSuspend] = useState(true);
   const [subInitialized, setSubInitialized] = useState(false);
 
   if (subSettings && !subInitialized) {
     setGraceDays(subSettings.subscription_grace_days);
+    setAutoSuspend(!!subSettings.auto_suspend_enabled);
     setSubInitialized(true);
   }
 
@@ -692,6 +696,14 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
           Subscriptions are reactivated automatically when the invoice is paid.
         </Text>
 
+        <Switch
+          label="Auto-suspension enabled"
+          description="When off, unpaid services are never suspended automatically — reminders still go out, and you suspend manually."
+          disabled={!isAdmin}
+          checked={autoSuspend}
+          onChange={(e) => setAutoSuspend(e.currentTarget.checked)}
+        />
+
         <NumberInput
           label="Grace period (days)"
           description="Number of days after invoice due date before the subscription is suspended"
@@ -699,7 +711,7 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
           max={90}
           value={graceDays}
           onChange={(val) => setGraceDays(val)}
-          disabled={!isAdmin}
+          disabled={!isAdmin || !autoSuspend}
           maw={200}
         />
 
@@ -707,7 +719,7 @@ function RemindersTab({ isAdmin }: { isAdmin: boolean }) {
           <Group justify="flex-end">
             <Button
               loading={subSaveMutation.isPending}
-              onClick={() => subSaveMutation.mutate({ subscription_grace_days: Number(graceDays) || 7 })}
+              onClick={() => subSaveMutation.mutate({ subscription_grace_days: Number(graceDays) || 7, auto_suspend_enabled: autoSuspend })}
             >
               Save Subscription Settings
             </Button>
@@ -1143,6 +1155,193 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+function MosmsBuyModal({ opened, onClose, whatsappPrice }: { opened: boolean; onClose: () => void; whatsappPrice?: number | null }) {
+  const [channel, setChannel] = useState<'sms' | 'whatsapp'>('sms');
+  const [qty, setQty] = useState<number | string>(1000);
+  const { data } = useQuery({ queryKey: ['mosms-packages'], queryFn: getMosmsPackages, enabled: opened });
+  const packages: MosmsPackage[] = data?.data?.data ?? [];
+  const n = Number(qty) || 0;
+  const minQty = channel === 'whatsapp' ? 10 : 100;
+  const pkg = packages.find((p) => n >= p.min_quantity && (p.max_quantity === null || n <= p.max_quantity));
+  const unit = channel === 'whatsapp' ? (whatsappPrice ?? 30) : (pkg ? Number(pkg.price_per_sms) : 0);
+  const total = n * unit;
+
+  const buyMut = useMutation({
+    mutationFn: () => purchaseMosmsSms(n, window.location.origin + '/settings', channel),
+    onSuccess: (res) => {
+      const url = res.data?.data?.redirect_url;
+      if (url) window.open(url, '_blank', 'noopener');
+      notifications.show({ title: 'Checkout created', message: 'Complete the payment on the Pesapal page that just opened. Credits are added automatically after payment.', color: 'green' });
+      onClose();
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to start checkout', color: 'red' }),
+  });
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Buy credits (MoSMS)" size="md">
+      <Stack gap="sm">
+        <SegmentedControl fullWidth value={channel}
+          onChange={(v: string) => { setChannel(v as 'sms' | 'whatsapp'); setQty(v === 'whatsapp' ? 100 : 1000); }}
+          data={[{ value: 'sms', label: 'SMS credits' }, { value: 'whatsapp', label: 'WhatsApp credits' }]} />
+        <NumberInput label={channel === 'whatsapp' ? 'How many WhatsApp credits?' : 'How many SMS credits?'}
+          min={minQty} step={channel === 'whatsapp' ? 10 : 100} value={qty}
+          onChange={setQty} thousandSeparator="," description={`Minimum ${minQty}`} />
+        {channel === 'whatsapp' && (
+          <Text size="sm" c="dimmed">Flat price: TZS {(whatsappPrice ?? 30).toLocaleString()} per message.</Text>
+        )}
+        {channel === 'sms' && packages.length > 0 && (
+          <Stack gap={4}>
+            {packages.map((p) => (
+              <Group key={p.id} justify="space-between"
+                style={{ opacity: pkg?.id === p.id ? 1 : 0.55 }}>
+                <Text size="sm" fw={pkg?.id === p.id ? 700 : 400}>
+                  {p.name} · {p.min_quantity.toLocaleString()}{p.max_quantity ? `–${p.max_quantity.toLocaleString()}` : '+'}
+                </Text>
+                <Badge variant={pkg?.id === p.id ? 'filled' : 'light'} color="teal">TZS {Number(p.price_per_sms).toLocaleString()}/SMS</Badge>
+              </Group>
+            ))}
+          </Stack>
+        )}
+        {n >= minQty && unit > 0 && (
+          <Alert color="teal" variant="light" p="xs">
+            <Text size="sm"><b>{n.toLocaleString()}</b> × TZS {unit.toLocaleString()} = <b>TZS {total.toLocaleString()}</b>{channel === 'sms' && pkg ? ` (${pkg.name})` : ''}</Text>
+          </Alert>
+        )}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button loading={buyMut.isPending} disabled={n < minQty} onClick={() => buyMut.mutate()}>
+            Pay with Pesapal
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+// --- MoSMS section (WhatsApp via mosms.co.tz — no Meta setup needed) ---
+
+function MosmsSection({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['mosms-status'], queryFn: getMosmsStatus });
+  const st: MosmsStatus | undefined = data?.data?.data;
+
+  const [mode, setMode] = useState<'link' | 'register'>('link');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [orgName, setOrgName] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [testTo, setTestTo] = useState('');
+  const [testText, setTestText] = useState('');
+  const [buyOpen, setBuyOpen] = useState(false);
+
+  const done = () => queryClient.invalidateQueries({ queryKey: ['mosms-status'] });
+  const fail = (err: any, msg: string) =>
+    notifications.show({ title: 'Error', message: err.response?.data?.message || msg, color: 'red' });
+
+  const linkMut = useMutation({
+    mutationFn: () => linkMosms(email, password),
+    onSuccess: () => { done(); setPassword(''); notifications.show({ title: 'Linked', message: 'MoSMS account linked — WhatsApp now routes through MoSMS.', color: 'green' }); },
+    onError: (e: any) => fail(e, 'Failed to link MoSMS account'),
+  });
+  const registerMut = useMutation({
+    mutationFn: () => registerMosms({ org_name: orgName, name, email, phone, password }),
+    onSuccess: () => { done(); setPassword(''); notifications.show({ title: 'Account created', message: 'MoSMS account created and linked.', color: 'green' }); },
+    onError: (e: any) => fail(e, 'Failed to create MoSMS account'),
+  });
+  const unlinkMut = useMutation({
+    mutationFn: unlinkMosms,
+    onSuccess: () => { done(); notifications.show({ title: 'Unlinked', message: 'MoSMS account unlinked.', color: 'gray' }); },
+  });
+  const testMut = useMutation({
+    mutationFn: () => testMosms(testTo, testText || 'MoBilling test message'),
+    onSuccess: (res: any) => notifications.show({ title: 'Sent', message: res.data?.message || 'Queued on MoSMS.', color: 'green' }),
+    onError: (e: any) => fail(e, 'Test send failed'),
+  });
+
+  if (isLoading) return <Center py="md"><Loader size="sm" /></Center>;
+
+  return (
+    <Stack gap="sm">
+      <Group gap="xs">
+        <ThemeIcon variant="light" color="teal" size="lg" radius="xl">
+          <IconBrandWhatsapp size={20} />
+        </ThemeIcon>
+        <div>
+          <Text fw={600}>MoSMS (recommended)</Text>
+          <Text size="xs" c="dimmed">Send WhatsApp through your MoSMS account — no Meta/WABA setup needed</Text>
+        </div>
+        {st?.linked && <Badge color="teal" variant="light">Linked · {st.email}</Badge>}
+      </Group>
+
+      {st?.linked ? (
+        <>
+          <Group gap="xs" wrap="wrap">
+            <Badge variant="light" color="blue">SMS credits: {st.balance?.sms_balance ?? '—'}</Badge>
+            <Badge variant="light" color="teal">WhatsApp credits: {st.balance?.whatsapp_balance ?? '—'}</Badge>
+            <Badge variant="light" color={st.custom_template_id ? 'teal' : 'orange'}>
+              {st.custom_template_id ? 'Free-text ready' : 'custom_message template missing'}
+            </Badge>
+            <Badge variant="light" color="gray">{st.templates.length} template(s)</Badge>
+            {isAdmin && (
+              <Button size="compact-xs" variant="light" color="teal" onClick={() => setBuyOpen(true)}>
+                Buy credits
+              </Button>
+            )}
+          </Group>
+          <MosmsBuyModal opened={buyOpen} onClose={() => { setBuyOpen(false); done(); }} whatsappPrice={st.balance?.whatsapp_price} />
+          {st.error && (
+            <Alert color="orange" variant="light" p="xs">{st.error}</Alert>
+          )}
+          {isAdmin && (
+            <>
+              <Group gap="xs" align="flex-end" wrap="wrap">
+                <TextInput label="Test number" placeholder="07XXXXXXXX" value={testTo} w={150} size="xs"
+                  onChange={(e) => setTestTo(e.currentTarget.value)} />
+                <TextInput label="Message" placeholder="Test message" value={testText} w={220} size="xs"
+                  onChange={(e) => setTestText(e.currentTarget.value)} />
+                <Button size="xs" variant="light" loading={testMut.isPending} disabled={!testTo}
+                  onClick={() => testMut.mutate()}>Send test</Button>
+                <Button size="xs" variant="subtle" color="red" loading={unlinkMut.isPending}
+                  onClick={() => unlinkMut.mutate()}>Unlink</Button>
+              </Group>
+              <Text size="xs" c="dimmed">1 credit per message, billed from your MoSMS WhatsApp balance. Top up at mosms.co.tz.</Text>
+            </>
+          )}
+        </>
+      ) : isAdmin ? (
+        <>
+          <SegmentedControl size="xs" value={mode} onChange={(v: string) => setMode(v as 'link' | 'register')}
+            data={[{ value: 'link', label: 'Link existing account' }, { value: 'register', label: 'Create new account' }]} w={320} />
+          {mode === 'register' && (
+            <Group grow>
+              <TextInput label="Business name" value={orgName} onChange={(e) => setOrgName(e.currentTarget.value)} />
+              <TextInput label="Your name" value={name} onChange={(e) => setName(e.currentTarget.value)} />
+              <TextInput label="Phone" value={phone} onChange={(e) => setPhone(e.currentTarget.value)} />
+            </Group>
+          )}
+          <Group grow>
+            <TextInput label="MoSMS email" value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+            <PasswordInput label="Password" value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
+          </Group>
+          <Group>
+            {mode === 'link' ? (
+              <Button size="sm" loading={linkMut.isPending} disabled={!email || !password}
+                onClick={() => linkMut.mutate()}>Link MoSMS account</Button>
+            ) : (
+              <Button size="sm" loading={registerMut.isPending}
+                disabled={!email || !password || !orgName || !name || !phone}
+                onClick={() => registerMut.mutate()}>Create & link</Button>
+            )}
+          </Group>
+        </>
+      ) : (
+        <Text size="sm" c="dimmed">Not linked. Ask an admin to link a MoSMS account.</Text>
+      )}
+    </Stack>
+  );
+}
+
 // --- WhatsApp Tab ---
 
 function WhatsAppTab({ isAdmin }: { isAdmin: boolean }) {
@@ -1206,15 +1405,9 @@ function WhatsAppTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       <Stack>
-        <Group gap="xs">
-          <ThemeIcon variant="light" color="green" size="lg" radius="xl">
-            <IconBrandWhatsapp size={20} />
-          </ThemeIcon>
-          <div>
-            <Text fw={600}>WhatsApp Business API</Text>
-            <Text size="xs" c="dimmed">Send automated reminders via WhatsApp</Text>
-          </div>
-        </Group>
+        <MosmsSection isAdmin={isAdmin} />
+
+        <Divider my="xs" label="General" labelPosition="left" />
 
         <Switch
           label="WhatsApp integration enabled"
@@ -1232,7 +1425,7 @@ function WhatsAppTab({ isAdmin }: { isAdmin: boolean }) {
           onChange={(e) => setReminderEnabled(e.currentTarget.checked)}
         />
 
-        <Divider my="xs" label="API Credentials" labelPosition="left" />
+        <Divider my="xs" label="Own Meta number (advanced — overrides MoSMS when set)" labelPosition="left" />
 
         <TextInput
           label="Phone Number ID"

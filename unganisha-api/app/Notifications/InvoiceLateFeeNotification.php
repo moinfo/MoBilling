@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Models\Tenant;
 use App\Notifications\Concerns\HasTenantBranding;
@@ -27,12 +28,16 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
     {
         $channels = [];
 
-        if ($this->tenant->email_enabled) {
+        if ($this->tenant->email_enabled && $notifiable->email) {
             $channels[] = 'mail';
         }
 
         if ($this->tenant->sms_enabled && $this->tenant->reminder_sms_enabled) {
             $channels[] = SmsChannel::class;
+        }
+
+        if ($this->tenant->whatsapp_enabled && $this->tenant->reminder_whatsapp_enabled) {
+            $channels[] = WhatsAppChannel::class;
         }
 
         return $channels;
@@ -69,6 +74,31 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
         $this->applyBranding($mail, $this->tenant);
 
         return $mail;
+    }
+
+    public function toWhatsApp($notifiable): array
+    {
+        $currency = $this->tenant->currency;
+        $fee = "{$currency} " . number_format($this->lateFeeAmount, 2);
+        $newTotal = "{$currency} " . number_format($this->newTotal, 2);
+        $payable = $this->tenant->pesapal_enabled && $this->document->balance_due > 0;
+
+        if ($payable) {
+            return [
+                'template' => 'late_fee_notice_v2',
+                'parameters' => [$this->document->document_number, $fee, $newTotal, $this->tenant->name],
+                'language' => 'en',
+                'button_url' => (string) $this->document->id,
+                'fallback' => "⚠️ Late fee {$fee} applied to invoice {$this->document->document_number}. New total {$newTotal}. Pay online: " . $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}") . " — {$this->tenant->name}",
+            ];
+        }
+
+        return [
+            'template' => 'late_fee_notice_v1',
+            'parameters' => [$this->document->document_number, $fee, $newTotal, 'Contact us for payment options', $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "⚠️ Late fee {$fee} applied to invoice {$this->document->document_number}. New total {$newTotal}. — {$this->tenant->name}",
+        ];
     }
 
     public function toSms($notifiable): ?string

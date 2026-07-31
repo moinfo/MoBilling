@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Models\Tenant;
 use App\Notifications\Concerns\HasTenantBranding;
@@ -25,12 +26,16 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
     {
         $channels = [];
 
-        if ($this->tenant->email_enabled) {
+        if ($this->tenant->email_enabled && $notifiable->email) {
             $channels[] = 'mail';
         }
 
         if ($this->tenant->sms_enabled) {
             $channels[] = SmsChannel::class;
+        }
+
+        if ($this->tenant->whatsapp_enabled) {
+            $channels[] = WhatsAppChannel::class;
         }
 
         return $channels;
@@ -67,6 +72,30 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
         $this->applyBranding($mail, $this->tenant);
 
         return $mail;
+    }
+
+    public function toWhatsApp($notifiable): array
+    {
+        $currency = $this->tenant->currency;
+        $amount = "{$currency} " . number_format($this->document->total, 2);
+        $payable = $this->tenant->pesapal_enabled && $this->document->balance_due > 0;
+
+        if ($payable) {
+            return [
+                'template' => 'final_notice_v2',
+                'parameters' => [$this->document->document_number, $amount, $this->tenant->name],
+                'language' => 'en',
+                'button_url' => (string) $this->document->id,
+                'fallback' => "🚨 FINAL NOTICE: Invoice {$this->document->document_number} ({$amount}) unpaid — service terminates in 7 days. Pay now: " . $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}") . " — {$this->tenant->name}",
+            ];
+        }
+
+        return [
+            'template' => 'final_notice_v1',
+            'parameters' => [$this->document->document_number, $amount, 'Contact us to pay', $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "🚨 FINAL NOTICE: Invoice {$this->document->document_number} ({$amount}) unpaid — service terminates in 7 days. — {$this->tenant->name}",
+        ];
     }
 
     public function toSms($notifiable): ?string

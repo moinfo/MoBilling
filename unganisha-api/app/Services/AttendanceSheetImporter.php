@@ -28,39 +28,73 @@ class AttendanceSheetImporter
      */
     public function parse(string $path, int $previewLimit = 8): array
     {
-        $headers = [];
-        $rows = [];
-        $total = 0;
+        $all = $this->readRows($path);
+        $headers = array_shift($all) ?? [];
 
-        if (($h = fopen($path, 'r')) !== false) {
-            // Strip a UTF-8 BOM if present.
-            $first = fgets($h);
-            if ($first !== false) {
-                $first = preg_replace('/^\xEF\xBB\xBF/', '', $first);
-                rewind($h);
-                if ($first !== null && str_starts_with($first, "\xEF\xBB\xBF")) {
-                    fseek($h, 3);
-                }
-            }
-            $line = 0;
-            while (($data = fgetcsv($h)) !== false) {
-                if ($data === [null] || (count($data) === 1 && trim((string) $data[0]) === '')) {
-                    continue; // blank line
-                }
-                if ($line === 0) {
-                    $headers = array_map(fn ($v) => trim((string) $v), $data);
-                } else {
-                    $total++;
-                    if (count($rows) < $previewLimit) {
-                        $rows[] = array_map(fn ($v) => trim((string) $v), $data);
-                    }
-                }
-                $line++;
-            }
-            fclose($h);
+        return [
+            'headers' => $headers,
+            'rows'    => array_slice($all, 0, $previewLimit),
+            'total'   => count($all),
+        ];
+    }
+
+    /**
+     * Read the whole sheet into trimmed string rows (header first). Handles
+     * what iVMS-4200 actually exports as "CSV": UTF-16LE/BE or UTF-8 with a
+     * BOM, and comma, semicolon or tab delimiters (auto-detected).
+     *
+     * @return array<int,array<int,string>>
+     */
+    private function readRows(string $path): array
+    {
+        $content = (string) @file_get_contents($path);
+        if ($content === '') {
+            return [];
         }
 
-        return ['headers' => $headers, 'rows' => $rows, 'total' => $total];
+        // Normalise encoding to UTF-8.
+        if (str_starts_with($content, "\xFF\xFE")) {
+            $content = mb_convert_encoding(substr($content, 2), 'UTF-8', 'UTF-16LE');
+        } elseif (str_starts_with($content, "\xFE\xFF")) {
+            $content = mb_convert_encoding(substr($content, 2), 'UTF-8', 'UTF-16BE');
+        } elseif (str_starts_with($content, "\xEF\xBB\xBF")) {
+            $content = substr($content, 3);
+        } elseif (str_contains($content, "\x00")) {
+            // UTF-16 without a BOM (NUL bytes betray it).
+            $content = mb_convert_encoding($content, 'UTF-8', 'UTF-16LE');
+        }
+
+        // Whatever the source was, end up with clean UTF-8 — json_encode
+        // rejects the whole response over a single stray byte otherwise.
+        if (!mb_check_encoding($content, 'UTF-8')) {
+            $from = mb_detect_encoding($content, ['UTF-8', 'Windows-1252', 'ISO-8859-1'], true) ?: 'Windows-1252';
+            $content = mb_convert_encoding($content, 'UTF-8', $from);
+        }
+        $content = (string) mb_convert_encoding($content, 'UTF-8', 'UTF-8'); // scrub residual invalid sequences
+
+        $lines = preg_split('/\r\n|\r|\n/', $content) ?: [];
+        $firstLine = '';
+        foreach ($lines as $l) {
+            if (trim($l) !== '') { $firstLine = $l; break; }
+        }
+
+        // Pick the delimiter that splits the header into the most columns.
+        $delim = ',';
+        $best = 0;
+        foreach ([',', ';', "\t"] as $d) {
+            $n = count(str_getcsv($firstLine, $d));
+            if ($n > $best) { $best = $n; $delim = $d; }
+        }
+
+        $rows = [];
+        foreach ($lines as $l) {
+            if (trim($l) === '') {
+                continue;
+            }
+            $rows[] = array_map(fn ($v) => trim((string) $v), str_getcsv($l, $delim));
+        }
+
+        return $rows;
     }
 
     /**
@@ -78,10 +112,16 @@ class AttendanceSheetImporter
         $users = User::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('is_active', true)
             ->get(['id', 'name', 'device_employee_no']);
         $byName = $users->keyBy(fn ($u) => $this->norm($u->name));
-        $byNo   = $users->filter(fn ($u) => $u->device_employee_no)->keyBy(fn ($u) => (string) $u->device_employee_no);
+        $byNo   = $users->filter(fn ($u) => $u->device_employee_no)
+            ->keyBy(fn ($u) => $this->normNo((string) $u->device_employee_no));
 
         $matchByName = ($map['match_by'] ?? 'name') === 'name';
         $single = ($map['time_mode'] ?? 'single') === 'single';
+
+        // When matching by name and the sheet also carries a Person ID column,
+        // learn each matched staff member's device employee number from it.
+        $learnCol = $matchByName ? ($map['employee_no_col'] ?? null) : null;
+        $learned = [];   // user_id => normalised employee no
 
         // grouped[userId][date] = Carbon[]
         $grouped = [];
@@ -89,29 +129,42 @@ class AttendanceSheetImporter
         $skipped = 0;
         $unmatched = [];
 
-        if (($h = fopen($path, 'r')) === false) {
-            return ['days' => 0, 'matched_rows' => 0, 'unmatched' => [], 'skipped' => 0];
-        }
-        $line = 0;
-        while (($data = fgetcsv($h)) !== false) {
-            if ($line++ === 0) {
-                continue; // header
-            }
-            if ($data === [null]) {
-                continue;
-            }
+        $allRows = $this->readRows($path);
+        array_shift($allRows); // header
+
+        foreach ($allRows as $data) {
             $cell = fn ($i) => $i === null || $i < 0 ? null : trim((string) ($data[$i] ?? ''));
 
             $identity = $cell($map['identity_col']);
+            // iVMS prefixes numeric cells with an apostrophe ('0003) to force
+            // text in Excel — strip it before matching.
+            $identity = $identity !== null ? ltrim($identity, "'\"") : null;
             if ($identity === null || $identity === '') {
                 $skipped++;
                 continue;
             }
 
-            $user = $matchByName ? $byName->get($this->norm($identity)) : $byNo->get($identity);
+            $user = $matchByName ? $byName->get($this->norm($identity)) : $byNo->get($this->normNo($identity));
+
+            // Name spelling differs from the device ("EDWARD" vs "Edwad")?
+            // Fall back to the already-linked employee number on the same row.
+            if (!$user && $matchByName && ($map['employee_no_col'] ?? null) !== null) {
+                $no = $this->normNo((string) ($cell($map['employee_no_col']) ?? ''));
+                if ($no !== '') {
+                    $user = $byNo->get($no);
+                }
+            }
+
             if (!$user) {
                 $unmatched[$identity] = ($unmatched[$identity] ?? 0) + 1;
                 continue;
+            }
+
+            if ($learnCol !== null && !isset($learned[$user->id])) {
+                $no = $this->normNo((string) ($cell($learnCol) ?? ''));
+                if ($no !== '' && $no !== '0') {
+                    $learned[$user->id] = $no;
+                }
             }
 
             // Resolve the day + the swipe time(s) for this row.
@@ -133,7 +186,6 @@ class AttendanceSheetImporter
                 $matchedRows++;
             }
         }
-        fclose($h);
 
         $days = 0;
         foreach ($grouped as $uid => $perDay) {
@@ -144,12 +196,37 @@ class AttendanceSheetImporter
             }
         }
 
-        return ['days' => $days, 'matched_rows' => $matchedRows, 'unmatched' => $unmatched, 'skipped' => $skipped];
+        // Persist learned device numbers — never overwrite an existing link,
+        // and never give two users the same number.
+        $linked = 0;
+        if ($learned) {
+            $taken = $users->pluck('device_employee_no')->filter()
+                ->map(fn ($n) => $this->normNo((string) $n))->flip();
+            foreach ($learned as $uid => $no) {
+                $u = $users->firstWhere('id', $uid);
+                if (!$u || $u->device_employee_no || isset($taken[$no])) {
+                    continue;
+                }
+                User::withoutGlobalScopes()->where('id', $uid)->update(['device_employee_no' => $no]);
+                $taken[$no] = true;
+                $linked++;
+            }
+        }
+
+        return ['days' => $days, 'matched_rows' => $matchedRows, 'unmatched' => $unmatched, 'skipped' => $skipped, 'linked' => $linked];
     }
 
     private function norm(string $s): string
     {
         return preg_replace('/\s+/', ' ', mb_strtolower(trim($s)));
+    }
+
+    /** Employee numbers compare without quotes/leading zeros: '0003 ≡ 3. */
+    private function normNo(string $s): string
+    {
+        $s = trim(ltrim(trim($s), "'\""));
+        $stripped = ltrim($s, '0');
+        return $stripped === '' ? '0' : $stripped;
     }
 
     /**

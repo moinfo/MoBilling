@@ -240,3 +240,17 @@ The system automatically formats Tanzanian phone numbers:
 | `app/Notifications/InvoiceOverdueReminderNotification.php` | Overdue reminder with `toWhatsApp()` |
 | `app/Http/Controllers/SettingsController.php` | WhatsApp settings API endpoints |
 | `database/migrations/2026_03_10_300000_add_whatsapp_fields_to_tenants_table.php` | Database migration |
+
+---
+
+## Alternative: send through MoSMS (recommended, July 2026)
+
+MoBilling is dual-mode. If a tenant has NO Meta credentials configured but has
+linked their MoSMS account (Settings → WhatsApp → MoSMS), every WhatsApp send
+(reminders, campaigns, followups) routes through MoSMS's token API instead —
+`POST https://mosms.co.tz/api/whatsapp/send` with the tenant's MoSMS Sanctum
+token. Free text is wrapped in MoSMS's approved 1-variable `custom_message`
+template; each message costs 1 credit from the tenant's MoSMS WhatsApp balance.
+A tenant with their own Meta credentials keeps sending directly (nothing
+changes for them). See `app/Services/MosmsService.php` and the `mosms_accounts`
+table; the pattern mirrors MoPOS's `Mosms_lib`.

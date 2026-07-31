@@ -118,6 +118,21 @@ class ExpenseController extends Controller
         return new ExpenseResource($expense->load('subCategory.category', 'recorder:id,name', 'approver:id,name'));
     }
 
+    /** Revert a wrong approval — sends the expense back to pending review. */
+    public function unapprove(Expense $expense)
+    {
+        abort_unless($expense->isPettyCash(), 422, 'Only petty-cash expenses have approvals.');
+        abort_unless($expense->approval_status === 'approved', 422, 'This expense is not approved.');
+        $expense->update([
+            'approval_status'  => 'pending',
+            'approved_by'      => null,
+            'approved_at'      => null,
+            'rejection_reason' => null,
+        ]);
+
+        return new ExpenseResource($expense->load('subCategory.category', 'recorder:id,name', 'approver:id,name'));
+    }
+
     /** Guards shared by approve()/reject(): petty-cash, pending, and no self-approval. */
     private function assertApprovable(Expense $expense): void
     {
@@ -257,6 +272,12 @@ class ExpenseController extends Controller
      */
     public function uploadVoucher(Request $request, Expense $expense)
     {
+        // Without full edit rights you may only attach a voucher to an
+        // expense you recorded yourself (typically while it awaits approval).
+        if (!auth()->user()->hasPermission('expenses.update') && $expense->recorded_by !== auth()->id()) {
+            abort(403, 'You can only upload a voucher for an expense you recorded.');
+        }
+
         $request->validate([
             'voucher' => 'required|file|max:10240|mimes:pdf,jpg,jpeg,png',
         ]);

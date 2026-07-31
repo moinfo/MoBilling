@@ -129,6 +129,35 @@ export const saveDeviceMapping = (user_id: string, device_employee_no: string | 
   api.post<{ message: string; import: ImportResult }>('/attendance/device-mappings', { user_id, device_employee_no });
 export const importDeviceEvents = () => api.post<{ data: ImportResult }>('/attendance/device-import');
 
+// ── Monthly per-staff check-in/out report ──────────────────────────────────
+export interface ReportDay {
+  date: string;
+  weekday: string;
+  working: boolean;
+  holiday: boolean;
+  status: ExcusedStatus | null;
+  check_in_at: string | null;
+  check_out_at: string | null;
+  late: boolean;
+  left_early: boolean;
+  no_checkout: boolean;
+  absent: boolean;
+  deduction: number;
+}
+export interface AttendanceReport {
+  user: { id: string; name: string };
+  month_label: string;
+  check_in_time: string;
+  check_out_time: string;
+  days: ReportDay[];
+  totals: { present: number; late: number; left_early: number; no_checkout: number; absent: number; excused: number; deduction_total: number };
+}
+export const getAttendanceReport = (user_id: string, month: number, year: number) =>
+  api.get<{ data: AttendanceReport }>('/attendance/report', { params: { user_id, month, year } });
+
+export const getMyAttendanceReport = (month: number, year: number) =>
+  api.get<{ data: AttendanceReport }>('/attendance/my-report', { params: { month, year } });
+
 // ── iVMS-4200 CSV export → upload ──────────────────────────────────────────
 export interface SheetMapping {
   match_by: 'name' | 'employee_no';
@@ -138,6 +167,7 @@ export interface SheetMapping {
   in_col: number | null;
   out_col: number | null;
   time_col: number | null;
+  employee_no_col?: number | null;
 }
 export interface SheetPreview {
   headers: string[];
@@ -150,12 +180,15 @@ export interface SheetImportResult {
   matched_rows: number;
   unmatched: Record<string, number>;
   skipped: number;
+  linked?: number;
 }
 
 export const previewAttendanceSheet = (file: File) => {
   const fd = new FormData();
   fd.append('file', file);
-  return api.post<{ data: SheetPreview }>('/attendance/import/preview', fd);
+  return api.post<{ data: SheetPreview }>('/attendance/import/preview', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
 };
 export const commitAttendanceSheet = (file: File, map: SheetMapping) => {
   const fd = new FormData();
@@ -167,5 +200,8 @@ export const commitAttendanceSheet = (file: File, map: SheetMapping) => {
   if (map.time_col !== null) fd.append('time_col', String(map.time_col));
   if (map.in_col !== null) fd.append('in_col', String(map.in_col));
   if (map.out_col !== null) fd.append('out_col', String(map.out_col));
-  return api.post<{ data: SheetImportResult }>('/attendance/import/commit', fd);
+  if (map.employee_no_col !== null && map.employee_no_col !== undefined) fd.append('employee_no_col', String(map.employee_no_col));
+  return api.post<{ data: SheetImportResult }>('/attendance/import/commit', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
 };

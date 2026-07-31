@@ -113,7 +113,24 @@ class AttendanceController extends Controller
         $att->check_out_at = !$excused && !empty($data['check_out']) ? $date->copy()->setTimeFromTimeString($data['check_out']) : null;
         $att->save();
 
-        return response()->json(['data' => ['user' => ['id' => $att->user_id]] + $this->formatDay($att, $this->settings())]);
+        // Immediately drop unwaived charges the edit just contradicted (an
+        // excused day clears everything; a filled check-in clears "absent",
+        // etc.) — same rule the nightly reconcile applies, but instant.
+        $s = $this->settings();
+        $f = $this->formatDay($att, $s);
+        $stillValid = array_keys(array_filter([
+            'absent'      => $f['absent'],
+            'late'        => $f['late'],
+            'left_early'  => $f['left_early'],
+            'no_checkout' => $f['no_checkout'],
+        ]));
+        AttendancePenalty::where('user_id', $att->user_id)
+            ->whereDate('date', $att->date->toDateString())
+            ->where('waived', false)
+            ->when($stillValid, fn ($q) => $q->whereNotIn('penalty_type', $stillValid))
+            ->delete();
+
+        return response()->json(['data' => ['user' => ['id' => $att->user_id]] + $f]);
     }
 
     /** Attendance overview: today's snapshot + this month's per-staff summary. */
@@ -175,6 +192,102 @@ class AttendanceController extends Controller
                 ->mapWithKeys(fn ($tp) => [$tp => (int) $pens->where('penalty_type', $tp)->count()]),
             'staff' => $staff,
         ]]);
+    }
+
+    /** Monthly check-in/out report for one staff member (attendance clerk). */
+    public function report(Request $request)
+    {
+        $this->authorizePermission('attendance.manage');
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'user_id' => ['required', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
+            'month'   => 'nullable|integer|min:1|max:12',
+            'year'    => 'nullable|integer|min:2020|max:2100',
+        ]);
+
+        $user = User::where('tenant_id', $tenantId)->findOrFail($data['user_id']);
+
+        return response()->json(['data' => $this->buildReport($user, $data)]);
+    }
+
+    /** The same monthly report, but always for the logged-in user themselves. */
+    public function myReport(Request $request)
+    {
+        $data = $request->validate([
+            'month' => 'nullable|integer|min:1|max:12',
+            'year'  => 'nullable|integer|min:2020|max:2100',
+        ]);
+
+        return response()->json(['data' => $this->buildReport(auth()->user(), $data)]);
+    }
+
+    /** Day-by-day month report shared by the clerk view and self view. */
+    private function buildReport(User $user, array $data): array
+    {
+        $s = $this->settings();
+        $start = Carbon::createFromDate((int) ($data['year'] ?? now()->year), (int) ($data['month'] ?? now()->month), 1)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+        $last = $end->isFuture() ? now() : $end;   // don't report days that haven't happened
+        $recs = Attendance::where('user_id', $user->id)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->get()->keyBy(fn ($a) => $a->date->toDateString());
+
+        $workDays = $s->working_days ?: [1, 2, 3, 4, 5, 6];
+        $holidays = \App\Models\StaffReportHoliday::pluck('date')->map(fn ($d) => $d->toDateString())->flip();
+
+        // Actual charges per day (what was really deducted, waived excluded).
+        $penalties = AttendancePenalty::where('user_id', $user->id)->where('waived', false)
+            ->whereBetween('date', [$start->toDateString(), $end->toDateString()])
+            ->get()->groupBy(fn ($p) => $p->date->toDateString());
+
+        $days = [];
+        $totals = ['present' => 0, 'late' => 0, 'left_early' => 0, 'no_checkout' => 0, 'absent' => 0, 'excused' => 0, 'deduction_total' => 0.0];
+
+        for ($d = $start->copy(); $d->lte($last); $d->addDay()) {
+            $key = $d->toDateString();
+            $working = in_array($d->dayOfWeekIso, $workDays) && !$holidays->has($key);
+            $att = $recs->get($key);
+            $f = $att ? $this->formatDay($att, $s) : null;
+
+            $row = [
+                'date'         => $key,
+                'weekday'      => $d->format('D'),
+                'working'      => $working,
+                'holiday'      => $holidays->has($key),
+                'status'       => $f['status'] ?? null,
+                'check_in_at'  => $f['check_in_at'] ?? null,
+                'check_out_at' => $f['check_out_at'] ?? null,
+                'late'         => $f['late'] ?? false,
+                'left_early'   => $f['left_early'] ?? false,
+                'no_checkout'  => $f['no_checkout'] ?? false,
+                // Absent only matters on a working day.
+                'absent'       => $working && (($f['absent'] ?? true) && !($f['status'] ?? null)),
+                'deduction'    => round((float) ($penalties->get($key)?->sum('amount') ?? 0), 2),
+            ];
+            $days[] = $row;
+            $totals['deduction_total'] += $row['deduction'];
+
+            if ($row['status']) {
+                $totals['excused']++;
+            } elseif ($row['check_in_at']) {
+                $totals['present']++;
+                if ($row['late']) $totals['late']++;
+                if ($row['left_early']) $totals['left_early']++;
+                if ($row['no_checkout']) $totals['no_checkout']++;
+            } elseif ($row['absent']) {
+                $totals['absent']++;
+            }
+        }
+
+        return [
+            'user'        => ['id' => $user->id, 'name' => $user->name],
+            'month_label' => $start->format('F Y'),
+            'check_in_time'  => $s->check_in_time,
+            'check_out_time' => $s->check_out_time,
+            'days'   => $days,
+            'totals' => array_merge($totals, ['deduction_total' => round($totals['deduction_total'], 2)]),
+        ];
     }
 
     /** Deductions overview: every staff member's attendance penalties for a month. */

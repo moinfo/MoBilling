@@ -18,9 +18,7 @@ class AttendanceImportController extends Controller
     public function preview(Request $request, AttendanceSheetImporter $importer)
     {
         $this->authorizePermission('attendance.manage');
-        $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:10240',
-        ]);
+        $this->validateSheet($request);
 
         $parsed = $importer->parse($request->file('file')->getRealPath());
 
@@ -37,8 +35,8 @@ class AttendanceImportController extends Controller
     public function commit(Request $request, AttendanceSheetImporter $importer)
     {
         $this->authorizePermission('attendance.manage');
+        $this->validateSheet($request);
         $data = $request->validate([
-            'file'         => 'required|file|mimes:csv,txt|max:10240',
             'match_by'     => 'required|in:name,employee_no',
             'identity_col' => 'required|integer|min:0',
             'date_col'     => 'nullable|integer|min:0',
@@ -46,6 +44,7 @@ class AttendanceImportController extends Controller
             'time_col'     => 'nullable|integer|min:0|required_if:time_mode,single',
             'in_col'       => 'nullable|integer|min:0|required_if:time_mode,inout',
             'out_col'      => 'nullable|integer|min:0|required_if:time_mode,inout',
+            'employee_no_col' => 'nullable|integer|min:0',
         ]);
 
         $res = $importer->import(
@@ -59,10 +58,24 @@ class AttendanceImportController extends Controller
                 'time_col'     => isset($data['time_col']) ? (int) $data['time_col'] : null,
                 'in_col'       => isset($data['in_col']) ? (int) $data['in_col'] : null,
                 'out_col'      => isset($data['out_col']) ? (int) $data['out_col'] : null,
+                'employee_no_col' => isset($data['employee_no_col']) ? (int) $data['employee_no_col'] : null,
             ],
         );
 
         return response()->json(['data' => $res]);
+    }
+
+    /**
+     * iVMS "CSV" exports are often UTF-16 or tab-separated, which PHP's mime
+     * sniffing flags as binary — so validate by extension, not detected mime.
+     */
+    private function validateSheet(Request $request): void
+    {
+        $request->validate(['file' => 'required|file|max:10240']);
+        $ext = strtolower($request->file('file')->getClientOriginalExtension());
+        if (!in_array($ext, ['csv', 'txt'], true)) {
+            abort(422, 'Please upload the report as a .csv file (in iVMS-4200 choose Export → CSV).');
+        }
     }
 
     /** Best-effort column guesses from iVMS header names (0-based indexes, or null). */
@@ -90,13 +103,18 @@ class AttendanceImportController extends Controller
         $hasInOut = $inCol !== null && $outCol !== null;
 
         return [
-            'match_by'     => $noCol !== null ? 'employee_no' : 'name',
-            'identity_col' => $noCol ?? $nameCol ?? 0,
+            // Prefer matching by NAME — staff names are already in MoBilling,
+            // while device employee numbers must be linked by hand first.
+            'match_by'     => $nameCol !== null ? 'name' : 'employee_no',
+            'identity_col' => $nameCol ?? $noCol ?? 0,
             'date_col'     => $dateCol,
             'time_mode'    => $hasInOut ? 'inout' : 'single',
             'in_col'       => $inCol,
             'out_col'      => $outCol,
             'time_col'     => $hasInOut ? null : ($timeCol ?? $dateCol),
+            // Person ID column — lets the import auto-link device numbers to
+            // staff matched by name.
+            'employee_no_col' => $noCol,
         ];
     }
 }

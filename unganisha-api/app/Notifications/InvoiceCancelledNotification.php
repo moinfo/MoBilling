@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Notifications\Concerns\HasTenantBranding;
 use Illuminate\Bus\Queueable;
@@ -23,7 +24,7 @@ class InvoiceCancelledNotification extends Notification implements ShouldQueue
 
         $channels = [];
 
-        if ($tenant->email_enabled) {
+        if ($tenant->email_enabled && $notifiable->email) {
             $channels[] = 'mail';
         }
 
@@ -31,7 +32,25 @@ class InvoiceCancelledNotification extends Notification implements ShouldQueue
             $channels[] = SmsChannel::class;
         }
 
+        if ($tenant->whatsapp_enabled && $tenant->reminder_whatsapp_enabled) {
+            $channels[] = WhatsAppChannel::class;
+        }
+
         return $channels;
+    }
+
+    public function toWhatsApp($notifiable): array
+    {
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $tenant = $this->document->tenant;
+        $amount = $tenant->currency . ' ' . number_format($this->document->total, 2);
+
+        return [
+            'template' => 'invoice_cancelled_v1',
+            'parameters' => [$this->document->document_number, $amount, $tenant->name],
+            'language' => 'en',
+            'fallback' => "❌ Invoice {$this->document->document_number} ({$amount}) has been cancelled. No payment required. — {$tenant->name}",
+        ];
     }
 
     public function toSms($notifiable): ?string

@@ -17,11 +17,28 @@ class SmsService
     }
 
     /**
-     * Send an SMS via the tenant's gateway account.
+     * True when this tenant can send SMS at all — via their own gateway
+     * account or their linked MoSMS account.
+     */
+    public function canSend(?Tenant $tenant): bool
+    {
+        if (!$tenant || !$tenant->sms_enabled) {
+            return false;
+        }
+        return (bool) $tenant->sms_authorization || app(MosmsService::class)->isLinked($tenant);
+    }
+
+    /**
+     * Send an SMS via the tenant's gateway account, or through their linked
+     * MoSMS account when no gateway credentials are configured (dual-mode,
+     * mirroring WhatsAppService).
      */
     public function send(Tenant $tenant, string $recipient, string $message): array
     {
         if (!$tenant->sms_authorization) {
+            if (app(MosmsService::class)->isLinked($tenant)) {
+                return app(MosmsService::class)->sendSms($tenant, $recipient, $message);
+            }
             throw new \RuntimeException('Tenant has no SMS authorization configured.');
         }
 
@@ -54,8 +71,9 @@ class SmsService
      */
     public function sendOtp(string $recipient, string $message, ?Tenant $tenant = null): array
     {
-        // Try tenant credentials first
-        if ($tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
+        // Try tenant credentials first (own gateway, then linked MoSMS)
+        if ($tenant && $tenant->sms_enabled
+            && ($tenant->sms_authorization || app(MosmsService::class)->isLinked($tenant))) {
             return $this->send($tenant, $recipient, $message);
         }
 

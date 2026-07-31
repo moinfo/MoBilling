@@ -329,9 +329,12 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:expenses.delete')->delete('/expenses/{expense}', [ExpenseController::class, 'destroy']);
     Route::middleware('permission:expenses.approve')->post('/expenses/{expense}/approve', [ExpenseController::class, 'approve']);
     Route::middleware('permission:expenses.approve')->post('/expenses/{expense}/reject', [ExpenseController::class, 'reject']);
+    Route::middleware('permission:expenses.approve')->post('/expenses/{expense}/unapprove', [ExpenseController::class, 'unapprove']);
     // Petty cash voucher per expense (download PDF / upload signed copy)
     Route::middleware('permission:expenses.read')->get('/expenses/{expense}/voucher', [ExpenseController::class, 'downloadVoucher']);
-    Route::middleware('permission:expenses.update')->post('/expenses/{expense}/voucher', [ExpenseController::class, 'uploadVoucher']);
+    // Recorders (expenses.create) may attach the signed voucher to their own
+    // expense — the ownership check lives in the controller.
+    Route::middleware('permission:expenses.update,expenses.create')->post('/expenses/{expense}/voucher', [ExpenseController::class, 'uploadVoucher']);
 
     // Systems (reference list)
     Route::middleware('permission:systems.read')->get('/systems', [SystemController::class, 'index']);
@@ -421,6 +424,13 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/settings/pesapal', [SettingsController::class, 'updatePesapal']);
     Route::get('/settings/whatsapp', [SettingsController::class, 'getWhatsApp']);
     Route::put('/settings/whatsapp', [SettingsController::class, 'updateWhatsApp']);
+    Route::get('/settings/mosms', [\App\Http\Controllers\MosmsController::class, 'status']);
+    Route::post('/settings/mosms/link', [\App\Http\Controllers\MosmsController::class, 'link']);
+    Route::post('/settings/mosms/register', [\App\Http\Controllers\MosmsController::class, 'register']);
+    Route::delete('/settings/mosms', [\App\Http\Controllers\MosmsController::class, 'unlink']);
+    Route::post('/settings/mosms/test', [\App\Http\Controllers\MosmsController::class, 'sendTest']);
+    Route::get('/settings/mosms/packages', [\App\Http\Controllers\MosmsController::class, 'packages']);
+    Route::post('/settings/mosms/purchase', [\App\Http\Controllers\MosmsController::class, 'purchase']);
 
     // Email settings (tenant admin)
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);
@@ -700,6 +710,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::get('/attendance/device-config',  [\App\Http\Controllers\DeviceAttendanceController::class, 'config']);
     Route::get('/attendance/device-events',  [\App\Http\Controllers\DeviceAttendanceController::class, 'events']);
     Route::post('/attendance/device-regenerate', [\App\Http\Controllers\DeviceAttendanceController::class, 'regenerate']);
+    Route::get('/attendance/report', [\App\Http\Controllers\AttendanceController::class, 'report']);
+    Route::get('/attendance/my-report', [\App\Http\Controllers\AttendanceController::class, 'myReport']);
     Route::get('/attendance/device-mappings', [\App\Http\Controllers\DeviceAttendanceController::class, 'mappings']);
     Route::post('/attendance/device-mappings', [\App\Http\Controllers\DeviceAttendanceController::class, 'saveMapping']);
     Route::post('/attendance/device-import',  [\App\Http\Controllers\DeviceAttendanceController::class, 'importNow']);

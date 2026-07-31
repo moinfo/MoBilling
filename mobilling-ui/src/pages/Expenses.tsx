@@ -1,13 +1,13 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor, Tooltip, FileButton, SegmentedControl } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, Anchor, Tooltip, FileButton, SegmentedControl, Alert } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useDebouncedValue } from '@mantine/hooks';
 import dayjs from 'dayjs';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle, IconEye, IconThumbUp, IconThumbDown } from '@tabler/icons-react';
-import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, approveExpense, rejectExpense, Expense } from '../api/expenses';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconDownload, IconFileDownload, IconUpload, IconCash, IconCheck, IconAlertTriangle, IconEye, IconThumbUp, IconThumbDown, IconArrowBackUp } from '@tabler/icons-react';
+import { getExpenses, createExpense, updateExpense, deleteExpense, downloadExpenseVoucher, uploadExpenseVoucher, approveExpense, rejectExpense, unapproveExpense, Expense } from '../api/expenses';
 import { getExpenseCategories, ExpenseCategory } from '../api/expenseCategories';
 import { getPettyCash } from '../api/pettyCash';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -49,16 +49,27 @@ export default function Expenses() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
 
+  // "Pending" is a review queue — show ALL awaiting expenses regardless of the
+  // date filter, otherwise yesterday's pending ones are invisible by default.
+  const ignoreDates = statusFilter === 'pending';
   const { data } = useQuery({
     queryKey: ['expenses', page, debouncedSearch, dateFrom, dateTo, statusFilter],
     queryFn: () => getExpenses({
       page,
       search: debouncedSearch || undefined,
-      date_from: dateFrom || undefined,
-      date_to: dateTo || undefined,
+      date_from: ignoreDates ? undefined : (dateFrom || undefined),
+      date_to: ignoreDates ? undefined : (dateTo || undefined),
       approval_status: (statusFilter || undefined) as 'pending' | 'approved' | 'rejected' | undefined,
     }),
   });
+
+  // Live count of expenses awaiting approval (any date) for the banner.
+  const { data: pendingData } = useQuery({
+    queryKey: ['expenses-pending-count'],
+    queryFn: () => getExpenses({ approval_status: 'pending', per_page: 1 }),
+    enabled: can('expenses.approve'),
+  });
+  const pendingCount: number = pendingData?.data?.meta?.total ?? 0;
 
   const { data: catData } = useQuery({
     queryKey: ['expense-categories'],
@@ -109,6 +120,7 @@ export default function Expenses() {
       await uploadExpenseVoucher(e.id, file);
       notifications.show({ title: 'Uploaded', message: 'Signed voucher attached.', color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       // Attaching a voucher moves this expense from pending → signed in the
       // strict imprest model, so the petty-cash balance card needs to refresh.
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
@@ -127,6 +139,7 @@ export default function Expenses() {
     mutationFn: (values: any) => createExpense(values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       closeForm();
       notifications.show({ title: 'Success', message: 'Expense created', color: 'green' });
@@ -142,6 +155,7 @@ export default function Expenses() {
     mutationFn: (values: any) => updateExpense(editing!.id, values),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       closeForm();
       notifications.show({ title: 'Success', message: 'Expense updated', color: 'green' });
@@ -157,6 +171,7 @@ export default function Expenses() {
     mutationFn: (id: string) => deleteExpense(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       notifications.show({ title: 'Success', message: 'Expense deleted', color: 'green' });
     },
@@ -171,6 +186,7 @@ export default function Expenses() {
     mutationFn: (id: string) => approveExpense(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       notifications.show({ title: 'Approved', message: 'Expense approved — it now counts against the petty-cash balance.', color: 'green' });
     },
@@ -181,11 +197,33 @@ export default function Expenses() {
     mutationFn: ({ id, reason }: { id: string; reason?: string }) => rejectExpense(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
       queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
       notifications.show({ title: 'Rejected', message: 'Expense rejected.', color: 'gray' });
     },
     onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to reject', color: 'red' }),
   });
+
+  const unapproveMutation = useMutation({
+    mutationFn: (id: string) => unapproveExpense(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expenses'] });
+      queryClient.invalidateQueries({ queryKey: ['expenses-pending-count'] });
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
+      notifications.show({ title: 'Reverted', message: 'Expense sent back to pending review — the petty-cash balance was restored.', color: 'yellow' });
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to unapprove', color: 'red' }),
+  });
+
+  const handleUnapprove = (e: Expense) => {
+    modals.openConfirmModal({
+      title: 'Undo approval',
+      children: `Send "${e.description}" (${formatCurrency(e.amount)}) back to pending review? Its amount will be added back to the petty-cash balance until re-approved.`,
+      labels: { confirm: 'Undo approval', cancel: 'Cancel' },
+      confirmProps: { color: 'yellow' },
+      onConfirm: () => unapproveMutation.mutate(e.id),
+    });
+  };
 
   const handleApprove = (e: Expense) => {
     modals.openConfirmModal({
@@ -256,6 +294,20 @@ export default function Expenses() {
         </Group>
       </Group>
 
+      {canApprove && pendingCount > 0 && statusFilter !== 'pending' && (
+        <Alert color="yellow" variant="light" mb="md" icon={<IconAlertTriangle size={16} />}>
+          <Group justify="space-between" wrap="wrap">
+            <Text size="sm">
+              <b>{pendingCount}</b> petty-cash expense{pendingCount === 1 ? '' : 's'} waiting for approval.
+            </Text>
+            <Button size="compact-sm" variant="light" color="yellow"
+              onClick={() => { setStatusFilter('pending'); setPage(1); }}>
+              Review pending
+            </Button>
+          </Group>
+        </Alert>
+      )}
+
       <Group mb="md" wrap="wrap">
         <DateInput
           label="From"
@@ -304,7 +356,7 @@ export default function Expenses() {
               <Table.Th>Method</Table.Th>
               <Table.Th>Control #</Table.Th>
               <Table.Th>Attachment</Table.Th>
-              {(canUpdate || canDelete || canApprove) && <Table.Th w={140}>Actions</Table.Th>}
+              {(canUpdate || canDelete || canApprove || canCreate) && <Table.Th w={140}>Actions</Table.Th>}
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
@@ -372,7 +424,7 @@ export default function Expenses() {
                     </Anchor>
                   ) : '—'}
                 </Table.Td>
-                {(canUpdate || canDelete || canApprove) && (
+                {(canUpdate || canDelete || canApprove || canCreate) && (
                   <Table.Td>
                     <Group gap="xs" wrap="nowrap">
                       {/* Approve / reject: pending petty-cash expenses only, and
@@ -390,6 +442,16 @@ export default function Expenses() {
                             </ActionIcon>
                           </Tooltip>
                         </>
+                      )}
+                      {/* Undo a wrong approval — back to pending review. */}
+                      {canApprove && e.petty_cash_account_id && e.approval_status === 'approved' && (
+                        <Tooltip label="Undo approval (back to pending)">
+                          <ActionIcon variant="light" color="yellow"
+                            loading={unapproveMutation.isPending && unapproveMutation.variables === e.id}
+                            onClick={() => handleUnapprove(e)}>
+                            <IconArrowBackUp size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                       )}
                       {canUpdate && (
                         <ActionIcon variant="light" onClick={() => openEdit(e)}>
@@ -419,7 +481,9 @@ export default function Expenses() {
                               </ActionIcon>
                             </Tooltip>
                           )}
-                          {canUpdate && (
+                          {/* Recorders may attach the signed voucher to their own
+                              expense (e.g. while it awaits approval). */}
+                          {(canUpdate || e.recorded_by === user?.id) && (
                             <FileButton onChange={(f) => handleUploadVoucher(e, f)} accept="application/pdf,image/*">
                               {(props) => (
                                 <Tooltip label={e.voucher_attachment_url ? 'Replace signed voucher' : 'Upload signed voucher'}>

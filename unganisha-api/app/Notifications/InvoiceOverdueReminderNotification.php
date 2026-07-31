@@ -88,26 +88,23 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
         return $msg;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $currency = $this->tenant->currency;
-        $totalFormatted = number_format($this->document->total, 2);
-        $balanceDue = number_format($this->document->balance_due, 2);
+        $amount = "{$currency} " . number_format($this->document->total, 2);
+        $balanceDue = "{$currency} " . number_format($this->document->balance_due, 2);
+        $dueDate = $this->document->due_date->format('d M Y');
+        $params = [$this->document->document_number, $amount, $balanceDue, $dueDate, $this->tenant->name];
+        $payable = $this->tenant->pesapal_enabled && $this->document->balance_due > 0;
 
-        $msg = "🔴 *Payment Overdue*\n\n"
-            . "*{$this->document->document_number}*\n"
-            . "Amount: *{$currency} {$totalFormatted}*\n"
-            . "Balance Due: *{$currency} {$balanceDue}*\n"
-            . "Overdue by: *{$this->daysOverdue} day(s)*\n\n"
-            . "⚠️ Please make payment immediately to avoid service disruption.";
-
-        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
-            $msg .= "\n\n💳 Pay online: {$payUrl}";
-        }
-
-        $msg .= "\n\n— {$this->tenant->name}";
-
-        return $msg;
+        return array_filter([
+            'template' => $payable ? 'invoice_reminder_v2' : 'invoice_reminder_v1',
+            'parameters' => $params,
+            'language' => 'en',
+            'button_url' => $payable ? (string) $this->document->id : null,
+            'fallback' => "📋 OVERDUE: Invoice {$this->document->document_number}, balance {$balanceDue}, was due {$dueDate}. Please pay now."
+                . ($payable ? ' Pay online: ' . $this->tenantPortalUrl($this->tenant, "/pay/{$this->document->id}") : '')
+                . " — {$this->tenant->name}",
+        ], fn ($v) => $v !== null);
     }
 }

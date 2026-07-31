@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\ClientSubscription;
 use App\Models\Document;
 use App\Models\Tenant;
@@ -26,12 +27,30 @@ class SubscriptionSuspendedNotification extends Notification implements ShouldQu
     {
         $channels = [];
 
-        if ($this->tenant->email_enabled) {
+        if ($this->tenant->email_enabled && $notifiable->email) {
             $channels[] = 'mail';
         }
+        if ($this->tenant->sms_enabled && $notifiable->phone) {
+            $channels[] = SmsChannel::class;
+        }
+        if ($this->tenant->whatsapp_enabled && $notifiable->phone) {
+            $channels[] = WhatsAppChannel::class;
+        }
 
-        // SMS disabled for suspension notifications — email only
         return $channels;
+    }
+
+    public function toWhatsApp($notifiable): array
+    {
+        $currency = $this->tenant->currency;
+        $reason = "Unpaid invoice {$this->document->document_number} ({$currency} " . number_format($this->document->total, 2) . ')';
+
+        return [
+            'template' => 'service_suspended_v1',
+            'parameters' => [$this->subscription->label ?: 'Your service', $reason, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "⛔ {$this->subscription->label} suspended — {$reason}. Pay to reactivate. — {$this->tenant->name}",
+        ];
     }
 
     public function toMail($notifiable): MailMessage

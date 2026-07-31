@@ -38,6 +38,21 @@ class ProvisionHostingAccount extends BaseHostingJob
 
         // Imported-from-WHMCS services already exist on the server — adopt, don't create.
         if (!empty($meta['cpanel_username'])) {
+            // Idempotent: the account may already be in MoBilling (earlier
+            // import, or a native record) — link it instead of colliding on
+            // the (server, username) unique key.
+            $existing = HostingAccount::withoutGlobalScopes()
+                ->where('server_id', $server->id)
+                ->where('cpanel_username', $meta['cpanel_username'])
+                ->first();
+
+            if ($existing) {
+                if (!$existing->client_subscription_id) {
+                    $existing->update(['client_subscription_id' => $sub->id]);
+                }
+                return;
+            }
+
             HostingAccount::create([
                 'tenant_id'              => $sub->tenant_id,
                 'client_subscription_id' => $sub->id,

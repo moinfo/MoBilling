@@ -114,34 +114,23 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
         return $msg;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $currency = $this->tenant->currency;
-        $amount = number_format($this->document->total, 2);
+        $amount = "{$currency} " . number_format($this->document->total, 2);
+        $balanceDue = "{$currency} " . number_format($this->document->balance_due, 2);
         $dueDate = $this->document->due_date->format('d M Y');
-        $balanceDue = number_format($this->document->balance_due, 2);
+        $params = [$this->document->document_number, $amount, $balanceDue, $dueDate, $this->tenant->name];
+        $payable = $this->tenant->pesapal_enabled && $this->document->balance_due > 0;
 
-        $msg = "📋 *Invoice Reminder*\n\n"
-            . "*{$this->document->document_number}*\n"
-            . "Amount: *{$currency} {$amount}*\n"
-            . "Balance Due: *{$currency} {$balanceDue}*\n"
-            . "Due Date: {$dueDate}\n";
-
-        if ($this->daysRemaining > 0) {
-            $msg .= "⏳ {$this->daysRemaining} day(s) remaining\n";
-        } elseif ($this->daysRemaining === 0) {
-            $msg .= "⚠️ *Due today*\n";
-        } else {
-            $msg .= "🔴 *" . abs($this->daysRemaining) . " day(s) overdue*\n";
-        }
-
-        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
-            $msg .= "\n💳 Pay online: {$payUrl}";
-        }
-
-        $msg .= "\n\n— {$this->tenant->name}";
-
-        return $msg;
+        return array_filter([
+            'template' => $payable ? 'invoice_reminder_v2' : 'invoice_reminder_v1',
+            'parameters' => $params,
+            'language' => 'en',
+            'button_url' => $payable ? (string) $this->document->id : null,
+            'fallback' => "📋 Invoice Reminder: {$this->document->document_number}, balance {$balanceDue}, due {$dueDate}."
+                . ($payable ? ' Pay online: ' . $this->tenantPortalUrl($this->tenant, "/pay/{$this->document->id}") : '')
+                . " — {$this->tenant->name}",
+        ], fn ($v) => $v !== null);
     }
 }

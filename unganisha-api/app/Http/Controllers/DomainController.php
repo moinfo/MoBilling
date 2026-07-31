@@ -177,6 +177,20 @@ class DomainController extends Controller
         ]);
     }
 
+    /** Security alert to the registrant — the EPP code can move the domain away. */
+    private function notifyAuthInfoRevealed(Domain $domain): void
+    {
+        try {
+            $client = $domain->client()->withoutGlobalScopes()->first();
+            $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($domain->tenant_id);
+            if ($client && $tenant && ($client->email || $client->phone)) {
+                $client->notify(new \App\Notifications\DomainAuthInfoRevealedNotification($domain, $tenant));
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('AuthInfo notice failed', ['error' => $e->getMessage()]);
+        }
+    }
+
     /** The platform registrar handle at the registry (e.g. REG-MOINFOTECH). */
     private function ourRegistrarHandle(): ?string
     {
@@ -394,6 +408,8 @@ class DomainController extends Controller
             'request'   => ['by_user' => auth()->id()],
             'status'    => 'success',
         ]);
+
+        $this->notifyAuthInfoRevealed($domain);
 
         return response()->json(['auth_info' => $domain->epp_auth_info]);
     }

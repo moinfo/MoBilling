@@ -134,6 +134,7 @@ export const updatePaymentMethods = (methods: PaymentMethod[]) =>
 
 export interface SubscriptionSettings {
   subscription_grace_days: number;
+  auto_suspend_enabled: boolean;
 }
 
 export const getSubscriptionSettings = () =>
@@ -203,3 +204,29 @@ export const updateWhatsAppSettings = (data: {
   whatsapp_access_token?: string;
   whatsapp_business_account_id?: string;
 }) => api.put<{ data: WhatsAppSettings; message: string }>('/settings/whatsapp', data);
+
+// --- MoSMS link (WhatsApp via mosms.co.tz) ---
+
+export interface MosmsTemplate { id: number; name: string; variables: string[]; status: string }
+export interface MosmsStatus {
+  linked: boolean;
+  email: string | null;
+  mosms_tenant_id: number | null;
+  custom_template_id: number | null;
+  balance: { sms_balance: number | null; whatsapp_balance: number | null; whatsapp_price?: number | null } | null;
+  templates: MosmsTemplate[];
+  error?: string;
+}
+
+export const getMosmsStatus = () => api.get<{ data: MosmsStatus }>('/settings/mosms');
+export const linkMosms = (email: string, password: string) =>
+  api.post('/settings/mosms/link', { email, password });
+export const registerMosms = (data: { org_name: string; name: string; email: string; phone: string; password: string }) =>
+  api.post('/settings/mosms/register', data);
+export const unlinkMosms = () => api.delete('/settings/mosms');
+export const testMosms = (to: string, text: string) => api.post('/settings/mosms/test', { to, text });
+
+export interface MosmsPackage { id: number; name: string; min_quantity: number; max_quantity: number | null; price_per_sms: string }
+export const getMosmsPackages = () => api.get<{ data: MosmsPackage[] }>('/settings/mosms/packages');
+export const purchaseMosmsSms = (sms_quantity: number, callback_url?: string, channel: 'sms' | 'whatsapp' = 'sms') =>
+  api.post<{ data: { payment_id: number; redirect_url: string }; message: string }>('/settings/mosms/purchase', { sms_quantity, callback_url, channel });

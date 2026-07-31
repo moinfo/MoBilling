@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Models\PaymentIn;
 use App\Notifications\Concerns\HasTenantBranding;
@@ -25,13 +27,22 @@ class PaymentReceiptNotification extends Notification implements ShouldQueue
         $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
         $tenant = $this->document->tenant;
 
-        // Push is independent of the tenant's email setting; FcmChannel
-        // no-ops when unconfigured or the client has no devices.
-        if ($tenant && !$tenant->email_enabled) {
-            return [\App\Channels\FcmChannel::class];
+        $channels = [];
+        if ($tenant?->email_enabled && $notifiable->email) {
+            $channels[] = 'mail';
+        }
+        if ($tenant?->sms_enabled && $notifiable->phone) {
+            $channels[] = SmsChannel::class;
+        }
+        if ($tenant?->whatsapp_enabled && $notifiable->phone) {
+            $channels[] = WhatsAppChannel::class;
         }
 
-        return ['mail', \App\Channels\FcmChannel::class];
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the client has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
+        return $channels;
     }
 
     public function toFcm($notifiable): ?array
@@ -44,6 +55,34 @@ class PaymentReceiptNotification extends Notification implements ShouldQueue
             'body'  => "{$currency} " . number_format((float) $this->payment->amount, 2)
                 . " received for {$this->document->document_number}.",
             'data'  => ['type' => 'payment', 'document_id' => $this->document->id],
+        ];
+    }
+
+    public function toSms($notifiable): ?string
+    {
+        $tenant = $this->document->tenant;
+        $amount = $tenant->currency . ' ' . number_format($this->payment->amount, 2);
+        $paid = $this->document->status === 'paid';
+
+        return "Payment received: {$amount} for invoice {$this->document->document_number}."
+            . ($paid ? ' Invoice fully PAID.' : ' Balance: ' . $tenant->currency . ' ' . number_format($this->document->balance_due, 2) . '.')
+            . " Asante! — {$tenant->name}";
+    }
+
+    public function toWhatsApp($notifiable): array
+    {
+        $tenant = $this->document->tenant;
+        $amount = $tenant->currency . ' ' . number_format($this->payment->amount, 2);
+        $paid = $this->document->status === 'paid';
+        $statusLine = $paid
+            ? 'Your invoice is now fully PAID.'
+            : 'Remaining balance: ' . $tenant->currency . ' ' . number_format($this->document->balance_due, 2);
+
+        return [
+            'template' => 'payment_received_v1',
+            'parameters' => [$this->document->document_number, $amount, $statusLine, $tenant->name],
+            'language' => 'en',
+            'fallback' => "✅ Payment received: {$amount} for invoice {$this->document->document_number}. {$statusLine} — {$tenant->name}",
         ];
     }
 

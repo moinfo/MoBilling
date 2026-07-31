@@ -79,7 +79,7 @@ class PaymentInController extends Controller
         // not hold the row lock open.
         if ($request->document_id && $request->boolean('send_email', true)) {
             $document = Document::with('client')->find($request->document_id);
-            if ($document?->client?->email) {
+            if ($document?->client && ($document->client->email || $document->client->phone)) {
                 $document->client->notify(new PaymentReceiptNotification($payment, $document));
             }
         }

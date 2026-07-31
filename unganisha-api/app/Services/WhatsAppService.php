@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Log;
 
 class WhatsAppService
 {
+    /** AUTHENTICATION templates whose copy-code button carries the first variable. */
+    private const AUTH_TEMPLATES = ['otp_code'];
+
     private string $apiVersion;
     private int $timeout;
 
@@ -23,6 +26,12 @@ class WhatsAppService
      */
     public function sendText(Tenant $tenant, string $recipient, string $message): array
     {
+        // Dual-mode: tenants without their own Meta credentials send through
+        // their linked MoSMS account instead (MoSMS fans out to Meta).
+        if ($this->useMosms($tenant)) {
+            return app(MosmsService::class)->sendText($tenant, $recipient, $message);
+        }
+
         $this->validateCredentials($tenant);
 
         $response = Http::baseUrl("https://graph.facebook.com/{$this->apiVersion}")
@@ -57,8 +66,13 @@ class WhatsAppService
         string $recipient,
         string $templateName,
         array $parameters = [],
-        string $language = 'en'
+        string $language = 'en',
+        ?string $buttonUrlParam = null
     ): array {
+        if ($this->useMosms($tenant)) {
+            return app(MosmsService::class)->sendTemplate($tenant, $recipient, $templateName, $parameters, $language, $buttonUrlParam);
+        }
+
         $this->validateCredentials($tenant);
 
         $components = [];
@@ -69,6 +83,22 @@ class WhatsAppService
                     'type' => 'text',
                     'text' => (string) $p,
                 ], $parameters),
+            ];
+        }
+        if ($buttonUrlParam !== null) {
+            $components[] = [
+                'type' => 'button',
+                'sub_type' => 'url',
+                'index' => '0',
+                'parameters' => [['type' => 'text', 'text' => $buttonUrlParam]],
+            ];
+        }
+        if (in_array($templateName, self::AUTH_TEMPLATES, true) && !empty($parameters)) {
+            $components[] = [
+                'type' => 'button',
+                'sub_type' => 'url',
+                'index' => '0',
+                'parameters' => [['type' => 'text', 'text' => (string) $parameters[0]]],
             ];
         }
 
@@ -103,6 +133,15 @@ class WhatsAppService
         }
 
         return $response->json();
+    }
+
+    /** True when the tenant has no direct Meta credentials but is linked to MoSMS. */
+    private function useMosms(Tenant $tenant): bool
+    {
+        if ($tenant->whatsapp_phone_number_id && $tenant->whatsapp_access_token) {
+            return false;   // own Meta number wins — nothing changes for them
+        }
+        return app(MosmsService::class)->isLinked($tenant);
     }
 
     private function validateCredentials(Tenant $tenant): void

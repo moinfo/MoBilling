@@ -104,10 +104,11 @@ class PasswordResetController extends Controller
 
         // Send OTP via SMS if phone available and tenant has SMS enabled
         $smsSent = false;
+        $waSent = false;
         $phone = $target->phone;
         $tenant = $target->tenant_id ? Tenant::find($target->tenant_id) : null;
 
-        if ($phone && $tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
+        if ($phone && app(SmsService::class)->canSend($tenant)) {
             try {
                 app(SmsService::class)->send(
                     $tenant,
@@ -120,13 +121,46 @@ class PasswordResetController extends Controller
             }
         }
 
-        $sentTo = $smsSent ? 'your email and phone' : 'your email';
+        // Send OTP via WhatsApp too — routes through the tenant's own Meta
+        // number or their linked MoSMS account (WhatsAppService dual-mode).
+        if ($phone && $tenant && $tenant->whatsapp_enabled && $this->canSendWhatsApp($tenant)) {
+            $wa = app(\App\Services\WhatsAppService::class);
+            try {
+                // Official Meta AUTHENTICATION template (copy-code button).
+                $wa->sendTemplate($tenant, $phone, config('whatsapp.otp_template', 'otp_code'), [$otp], config('whatsapp.otp_language', 'en'));
+                $waSent = true;
+            } catch (\Throwable $e) {
+                try {
+                    // Template unavailable — plain text fallback.
+                    $wa->sendText($tenant, $phone, "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.");
+                    $waSent = true;
+                } catch (\Throwable $e2) {
+                    // WhatsApp failed — email (and possibly SMS) still went out
+                }
+            }
+        }
+
+        $sentTo = match (true) {
+            $smsSent && $waSent => 'your email, SMS and WhatsApp',
+            $waSent             => 'your email and WhatsApp',
+            $smsSent            => 'your email and phone',
+            default             => 'your email',
+        };
 
         return response()->json([
             'message' => "Verification code sent to {$sentTo}.",
             'email_hint' => Str::mask($email, '*', 3, -strpos(strrev($email), '@') - 1),
             'requires_registration' => $type === 'client',
         ]);
+    }
+
+    /** Tenant can deliver WhatsApp: own Meta number, or a linked MoSMS account. */
+    private function canSendWhatsApp(Tenant $tenant): bool
+    {
+        if ($tenant->whatsapp_phone_number_id && $tenant->whatsapp_access_token) {
+            return true;
+        }
+        return app(\App\Services\MosmsService::class)->isLinked($tenant);
     }
 
     /**

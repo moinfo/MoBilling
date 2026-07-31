@@ -1,5 +1,6 @@
-import { Card, Group, Text, Badge, Table, ThemeIcon, Box } from '@mantine/core';
-import { IconReceiptOff, IconCircleCheck } from '@tabler/icons-react';
+import { useState } from 'react';
+import { Card, Group, Text, Badge, Table, ThemeIcon, Box, Button, Modal } from '@mantine/core';
+import { IconReceiptOff, IconCircleCheck, IconReportAnalytics } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import type { StaffPenaltiesSummary } from '../../api/dashboard';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -10,6 +11,7 @@ const typeLabel = (penalty: string, report: string) =>
 
 export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }) {
   const none = data.count_this_month === 0 && data.items.length === 0;
+  const [open, setOpen] = useState(false);
 
   return (
     <Box>
@@ -19,7 +21,7 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
 
       <Card withBorder radius="md" p="md" shadow="xs" className={classes.statCard}
         style={{ ['--stat-accent' as string]: `var(--mantine-color-${none ? 'teal' : 'red'}-6)` }}>
-        <Group justify="space-between" wrap="wrap" mb={data.items.length ? 'sm' : 0}>
+        <Group justify="space-between" wrap="wrap">
           <Group gap="sm" wrap="nowrap">
             <ThemeIcon size={44} radius="md" variant="light" color={none ? 'teal' : 'red'}>
               {none ? <IconCircleCheck size={24} /> : <IconReceiptOff size={24} />}
@@ -33,14 +35,17 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
               </Text>
             </div>
           </Group>
-          <Badge color={none ? 'teal' : 'red'} variant="light" size="lg" radius="sm">
-            {none ? 'No deductions 🎉' : `${data.month_label}`}
-          </Badge>
+          {!none && data.items.length > 0 && (
+            <Button size="compact-xs" variant="light" color="red" leftSection={<IconReportAnalytics size={14} />}
+              onClick={() => setOpen(true)}>
+              Full report
+            </Button>
+          )}
         </Group>
 
         {/* Per-type breakdown so daily / weekly / monthly are all visible */}
         {(data.by_type?.length ?? 0) > 0 && (
-          <Group gap="xs" mb={data.items.length ? 'sm' : 0}>
+          <Group gap="xs" mt="sm">
             {data.by_type!.map((t) => (
               <Badge key={t.report_type} variant="light" radius="sm"
                 color={t.count > 0 ? 'red' : 'gray'} tt="capitalize">
@@ -50,40 +55,43 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
           </Group>
         )}
 
-        {none ? (
+        {none && (
           <Text size="sm" c="dimmed" mt="xs">
             Great — no missing or late reports this month. Submit each report before its deadline to avoid deductions.
           </Text>
-        ) : (
-          <Table.ScrollContainer minWidth={420}>
-            <Table verticalSpacing={6} highlightOnHover>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Date</Table.Th>
-                  <Table.Th>Reason</Table.Th>
-                  <Table.Th ta="right">Amount</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {data.items.map((p) => (
-                  <Table.Tr key={p.id}>
-                    <Table.Td>{dayjs(p.period_date).format('D MMM YYYY')}</Table.Td>
-                    <Table.Td>
-                      <Group gap={6} wrap="nowrap">
-                        <Badge size="xs" variant="light" color={p.penalty_type === 'late' ? 'orange' : 'red'}>
-                          {p.penalty_type}
-                        </Badge>
-                        <Text size="sm">{p.notes ?? typeLabel(p.penalty_type, p.report_type)}</Text>
-                      </Group>
-                    </Table.Td>
-                    <Table.Td ta="right" fw={600} c="red">−{formatCurrency(p.amount)}</Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
         )}
       </Card>
+
+      <Modal opened={open} onClose={() => setOpen(false)} size="lg"
+        title={`Report deductions · ${data.month_label}`}>
+        <Table.ScrollContainer minWidth={420}>
+          <Table verticalSpacing={6} highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Reason</Table.Th>
+                <Table.Th ta="right">Amount</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {data.items.map((p) => (
+                <Table.Tr key={p.id}>
+                  <Table.Td>{dayjs(p.period_date).format('D MMM YYYY')}</Table.Td>
+                  <Table.Td>
+                    <Group gap={6} wrap="nowrap">
+                      <Badge size="xs" variant="light" color={p.penalty_type === 'late' ? 'orange' : 'red'}>
+                        {p.penalty_type}
+                      </Badge>
+                      <Text size="sm">{p.notes ?? typeLabel(p.penalty_type, p.report_type)}</Text>
+                    </Group>
+                  </Table.Td>
+                  <Table.Td ta="right" fw={600} c="red">−{formatCurrency(p.amount)}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      </Modal>
     </Box>
   );
 }

@@ -107,7 +107,7 @@ class TenantPesapalWebhookController extends Controller
         }
 
         // Create payment record
-        PaymentIn::create([
+        $paymentIn = PaymentIn::create([
             'tenant_id' => $payment->tenant_id,
             'document_id' => $payment->document_id,
             'amount' => $payment->amount,
@@ -125,6 +125,16 @@ class TenantPesapalWebhookController extends Controller
             $doc->update(['status' => 'paid']);
         } elseif ($balance < (float) $doc->total) {
             $doc->update(['status' => 'partial']);
+        }
+
+        // Confirm the payment to the client (email / SMS / WhatsApp per tenant switches)
+        try {
+            $doc->loadMissing('client');
+            if ($doc->client && ($doc->client->email || $doc->client->phone)) {
+                $doc->client->notify(new \App\Notifications\PaymentReceiptNotification($paymentIn, $doc));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Tenant Pesapal: receipt notification failed', ['error' => $e->getMessage()]);
         }
 
         Log::info('Tenant Pesapal: invoice payment completed', [
