@@ -121,7 +121,7 @@ class SuspendUnpaidSubscriptions extends Command
                     // Notify the client (don't let notification failure abort the batch)
                     try {
                         $subscription->loadMissing('client');
-                        if ($subscription->client?->email) {
+                        if ($subscription->client && ($subscription->client->email || $subscription->client->phone)) {
                             $subscription->client->notify(
                                 new SubscriptionSuspendedNotification($subscription, $document, $tenant)
                             );

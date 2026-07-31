@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Models\PaymentIn;
 use App\Notifications\Concerns\HasTenantBranding;
@@ -25,11 +27,47 @@ class PaymentReceiptNotification extends Notification implements ShouldQueue
         $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
         $tenant = $this->document->tenant;
 
-        if ($tenant && !$tenant->email_enabled) {
-            return [];
+        $channels = [];
+        if ($tenant?->email_enabled && $notifiable->email) {
+            $channels[] = 'mail';
+        }
+        if ($tenant?->sms_enabled && $notifiable->phone) {
+            $channels[] = SmsChannel::class;
+        }
+        if ($tenant?->whatsapp_enabled && $notifiable->phone) {
+            $channels[] = WhatsAppChannel::class;
         }
 
-        return ['mail'];
+        return $channels;
+    }
+
+    public function toSms($notifiable): ?string
+    {
+        $tenant = $this->document->tenant;
+        $amount = $tenant->currency . ' ' . number_format($this->payment->amount, 2);
+        $paid = $this->document->status === 'paid';
+
+        return "Payment received: {$amount} for invoice {$this->document->document_number}."
+            . ($paid ? ' Invoice fully PAID.' : ' Balance: ' . $tenant->currency . ' ' . number_format($this->document->balance_due, 2) . '.')
+            . " Asante! — {$tenant->name}";
+    }
+
+    public function toWhatsApp($notifiable): ?string
+    {
+        $tenant = $this->document->tenant;
+        $amount = $tenant->currency . ' ' . number_format($this->payment->amount, 2);
+        $paid = $this->document->status === 'paid';
+
+        $msg = "✅ *Payment Received*\n\n"
+            . "Invoice: *{$this->document->document_number}*\n"
+            . "Amount: *{$amount}*\n"
+            . "Date: {$this->payment->payment_date->format('d M Y')}\n";
+        $msg .= $paid
+            ? "\nYour invoice is now *fully paid*. Thank you!"
+            : "\nRemaining balance: *{$tenant->currency} " . number_format($this->document->balance_due, 2) . "*";
+        $msg .= "\n\n— {$tenant->name}";
+
+        return $msg;
     }
 
     public function toMail($notifiable): MailMessage
