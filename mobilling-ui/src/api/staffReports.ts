@@ -142,3 +142,21 @@ export const updateSupervisor = (userId: string, supervisorId: string | null) =>
   api.put<{ data: StaffWithSupervisor }>(`/staff-reports/supervisors/${userId}`, {
     supervisor_id: supervisorId,
   });
+
+// ── Per-staff monthly report matrix (daily/weekly/monthly status) ──────────
+export interface MatrixDaily { date: string; weekday: string; status: 'submitted' | 'late' | 'missing'; submitted_at: string | null; deduction: number }
+export interface MatrixWeekly { week_label: string; status: 'submitted' | 'late' | 'missing' | 'pending'; submitted_at: string | null; deduction: number }
+export interface StaffReportMatrix {
+  user: { id: string; name: string };
+  month_label: string;
+  daily: MatrixDaily[];
+  weekly: MatrixWeekly[];
+  monthly: { label: string; status: string; submitted_at: string | null; deduction: number };
+  totals: { daily_expected: number; daily_written: number; daily_missing: number; late: number; weekly_expected: number; weekly_covered: number; deduction_total: number };
+}
+export interface StaffListItem { id: string; name: string }
+export const getStaffList = () => api.get<{ data: StaffListItem[] }>('/staff-reports/supervisors');
+export const getStaffReportMatrix = (user_id: string, month: number, year: number) =>
+  api.get<{ data: StaffReportMatrix }>('/staff-reports/report', { params: { user_id, month, year } });
+export const exportStaffReportMatrix = (user_id: string, month: number, year: number, format: 'pdf' | 'csv') =>
+  api.get('/staff-reports/report/export', { params: { user_id, month, year, format }, responseType: 'blob' });

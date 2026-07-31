@@ -28,6 +28,7 @@ import {
   getPenalties, waivePenalty, unwaivePenalty,
   type StaffReport, type ReportSettings, type MonthStats, type StaffStat,
   type StaffWithSupervisor,
+  getStaffList, getStaffReportMatrix, exportStaffReportMatrix, type StaffReportMatrix,
 } from '../api/staffReports';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -94,6 +95,11 @@ export default function StaffReports() {
             </Tabs.Tab>
           )}
           {canManage && (
+            <Tabs.Tab value="report" leftSection={<IconChartBar size={15} />}>
+              Report
+            </Tabs.Tab>
+          )}
+          {canManage && (
             <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>
               Deductions
             </Tabs.Tab>
@@ -117,6 +123,11 @@ export default function StaffReports() {
         {canSeeTeam && (
           <Tabs.Panel value="team" pt="md">
             <TeamReportsTab can={can} />
+          </Tabs.Panel>
+        )}
+        {canManage && (
+          <Tabs.Panel value="report" pt="md">
+            <MatrixReportTab />
           </Tabs.Panel>
         )}
         {canManage && (
@@ -460,6 +471,133 @@ function ReplyThread({ report }: { report: StaffReport }) {
 }
 
 // ── Deductions Tab (supervisor/admin) — see everyone's deductions + waive ──
+
+
+function MatrixReportTab() {
+  const [month, setMonth] = useState<Date>(new Date());
+  const [userId, setUserId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null);
+  const m = month.getMonth() + 1;
+  const y = month.getFullYear();
+
+  const { data: staffRes } = useQuery({ queryKey: ['sr-staff-list'], queryFn: getStaffList });
+  const staff = staffRes?.data?.data ?? [];
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['sr-matrix', userId, m, y],
+    queryFn: () => getStaffReportMatrix(userId!, m, y),
+    enabled: !!userId,
+  });
+  const r: StaffReportMatrix | undefined = data?.data?.data;
+
+  const doExport = async (format: 'pdf' | 'csv') => {
+    if (!userId) return;
+    setExporting(format);
+    try {
+      const res = await exportStaffReportMatrix(userId, m, y, format);
+      const name = staff.find((s) => s.id === userId)?.name ?? 'staff';
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = `staff-report-${name.replace(/\s+/g, '-')}-${y}-${String(m).padStart(2, '0')}.${format === 'pdf' ? 'pdf' : 'csv'}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      notifications.show({ message: 'Export failed.', color: 'red' });
+    } finally {
+      setExporting(null);
+    }
+  };
+
+  const statusBadge = (st: string) => (
+    <Badge size="sm" variant="light"
+      color={st === 'submitted' ? 'teal' : st === 'late' ? 'orange' : st === 'pending' ? 'gray' : 'red'}>
+      {st}
+    </Badge>
+  );
+
+  return (
+    <Stack>
+      <Group wrap="wrap">
+        <Select label="Staff" placeholder="Select staff" w={240} searchable
+          data={staff.map((s) => ({ value: s.id, label: s.name }))}
+          value={userId} onChange={setUserId} />
+        <MonthPickerInput label="Month" value={month} maxDate={new Date()}
+          onChange={(v) => v && setMonth(new Date(v as unknown as string))} w={160} />
+        {userId && r && (
+          <Group gap="xs" mt={22}>
+            <Button size="xs" variant="light" loading={exporting === 'pdf'} onClick={() => doExport('pdf')}>PDF</Button>
+            <Button size="xs" variant="light" color="teal" loading={exporting === 'csv'} onClick={() => doExport('csv')}>Excel</Button>
+          </Group>
+        )}
+      </Group>
+
+      {!userId ? (
+        <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">Select a staff member to see their report submissions.</Text></Paper>
+      ) : isLoading ? (
+        <Center py="xl"><Loader /></Center>
+      ) : r && (
+        <>
+          <Group gap="xs" wrap="wrap">
+            <Badge size="lg" variant="light" color="teal">Daily: {r.totals.daily_written}/{r.totals.daily_expected}</Badge>
+            <Badge size="lg" variant="light" color="red">Missing: {r.totals.daily_missing}</Badge>
+            <Badge size="lg" variant="light" color="blue">Weekly: {r.totals.weekly_covered}/{r.totals.weekly_expected}</Badge>
+            <Badge size="lg" variant="light" color="orange">Late: {r.totals.late}</Badge>
+            <Badge size="lg" variant="filled" color={r.totals.deduction_total > 0 ? 'red' : 'gray'}>
+              Deductions: TZS {r.totals.deduction_total.toLocaleString()}
+            </Badge>
+          </Group>
+
+          <Text size="sm" fw={700} tt="uppercase" c="dimmed">Daily reports</Text>
+          <Paper withBorder radius="md">
+            <Table.ScrollContainer minWidth={520}>
+              <Table highlightOnHover verticalSpacing={4} fz="sm">
+                <Table.Thead>
+                  <Table.Tr><Table.Th>Date</Table.Th><Table.Th>Status</Table.Th><Table.Th>Submitted</Table.Th><Table.Th ta="right">Deduction</Table.Th></Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {r.daily.map((d) => (
+                    <Table.Tr key={d.date}>
+                      <Table.Td fw={500}>{dayjs(d.date).format('DD MMM')} <Text span size="xs" c="dimmed">{d.weekday}</Text></Table.Td>
+                      <Table.Td>{statusBadge(d.status)}</Table.Td>
+                      <Table.Td>{d.submitted_at ?? '—'}</Table.Td>
+                      <Table.Td ta="right" fw={600} c={d.deduction > 0 ? 'red' : 'dimmed'}>{d.deduction > 0 ? `−${d.deduction.toLocaleString()}` : '—'}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          </Paper>
+
+          <Text size="sm" fw={700} tt="uppercase" c="dimmed">Weekly reports</Text>
+          <Paper withBorder radius="md">
+            <Table verticalSpacing={4} fz="sm">
+              <Table.Thead>
+                <Table.Tr><Table.Th>Week</Table.Th><Table.Th>Status</Table.Th><Table.Th>Submitted</Table.Th><Table.Th ta="right">Deduction</Table.Th></Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {r.weekly.map((w) => (
+                  <Table.Tr key={w.week_label}>
+                    <Table.Td fw={500}>{w.week_label}</Table.Td>
+                    <Table.Td>{statusBadge(w.status)}</Table.Td>
+                    <Table.Td>{w.submitted_at ?? '—'}</Table.Td>
+                    <Table.Td ta="right" fw={600} c={w.deduction > 0 ? 'red' : 'dimmed'}>{w.deduction > 0 ? `−${w.deduction.toLocaleString()}` : '—'}</Table.Td>
+                  </Table.Tr>
+                ))}
+                <Table.Tr>
+                  <Table.Td fw={500}>Monthly · {r.monthly.label}</Table.Td>
+                  <Table.Td>{statusBadge(r.monthly.status)}</Table.Td>
+                  <Table.Td>{r.monthly.submitted_at ?? '—'}</Table.Td>
+                  <Table.Td ta="right" fw={600} c={r.monthly.deduction > 0 ? 'red' : 'dimmed'}>{r.monthly.deduction > 0 ? `−${r.monthly.deduction.toLocaleString()}` : '—'}</Table.Td>
+                </Table.Tr>
+              </Table.Tbody>
+            </Table>
+          </Paper>
+        </>
+      )}
+    </Stack>
+  );
+}
 
 function DeductionsTab() {
   const qc = useQueryClient();

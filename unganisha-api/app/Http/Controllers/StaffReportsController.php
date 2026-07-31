@@ -307,6 +307,157 @@ class StaffReportsController extends Controller
         return response()->json(['data' => $this->format($staffReport->fresh(['user', 'reviewer', 'replies']))], 201);
     }
 
+
+    /** Per-staff monthly report matrix: every working day + weekly + monthly status. */
+    public function report(Request $request)
+    {
+        $this->authorizePermission('staff_reports.review');
+        $data = $this->validateReportParams($request);
+        $user = \App\Models\User::where('tenant_id', auth()->user()->tenant_id)->findOrFail($data['user_id']);
+
+        return response()->json(['data' => $this->buildReportMatrix($user, $data)]);
+    }
+
+    /** Export the matrix as PDF or CSV (Excel-friendly). */
+    public function exportReport(Request $request)
+    {
+        $this->authorizePermission('staff_reports.review');
+        $data = $this->validateReportParams($request, withFormat: true);
+        $user = \App\Models\User::where('tenant_id', auth()->user()->tenant_id)->findOrFail($data['user_id']);
+        $matrix = $this->buildReportMatrix($user, $data);
+        $slug = \Illuminate\Support\Str::slug($user->name) . '-' . \Illuminate\Support\Str::slug($matrix['month_label']);
+
+        if ($data['format'] === 'pdf') {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.staff-report', [
+                'matrix' => $matrix,
+                'tenant' => auth()->user()->tenant,
+            ]);
+
+            return $pdf->download("staff-report-{$slug}.pdf");
+        }
+
+        $rows = [['Section', 'Date / Period', 'Status', 'Submitted at', 'Deduction']];
+        foreach ($matrix['daily'] as $d) {
+            $rows[] = ['Daily', $d['date'] . ' (' . $d['weekday'] . ')', $d['status'], $d['submitted_at'] ?? '', $d['deduction'] ?: ''];
+        }
+        foreach ($matrix['weekly'] as $w) {
+            $rows[] = ['Weekly', $w['week_label'], $w['status'], $w['submitted_at'] ?? '', $w['deduction'] ?: ''];
+        }
+        $rows[] = ['Monthly', $matrix['monthly']['label'], $matrix['monthly']['status'], $matrix['monthly']['submitted_at'] ?? '', $matrix['monthly']['deduction'] ?: ''];
+        $rows[] = [];
+        $t = $matrix['totals'];
+        $rows[] = ['Totals', "Daily {$t['daily_written']}/{$t['daily_expected']}", "Weekly {$t['weekly_covered']}/{$t['weekly_expected']}", "Late: {$t['late']}", "Deductions: {$t['deduction_total']}"];
+
+        $csv = fopen('php://temp', 'r+');
+        fwrite($csv, "\xEF\xBB\xBF");
+        foreach ($rows as $r) {
+            fputcsv($csv, $r);
+        }
+        rewind($csv);
+
+        return response(stream_get_contents($csv), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=staff-report-{$slug}.csv",
+        ]);
+    }
+
+    private function validateReportParams(Request $request, bool $withFormat = false): array
+    {
+        return $request->validate(array_merge([
+            'user_id' => ['required', \Illuminate\Validation\Rule::exists('users', 'id')->where('tenant_id', auth()->user()->tenant_id)],
+            'month'   => 'nullable|integer|min:1|max:12',
+            'year'    => 'nullable|integer|min:2020|max:2100',
+        ], $withFormat ? ['format' => 'required|in:pdf,csv'] : []));
+    }
+
+    private function buildReportMatrix(\App\Models\User $user, array $data): array
+    {
+        $s = StaffReportSettings::first() ?? new StaffReportSettings();
+        $ref = Carbon::createFromDate((int) ($data['year'] ?? now()->year), (int) ($data['month'] ?? now()->month), 1)->startOfMonth();
+        $monthEnd = $ref->copy()->endOfMonth();
+        $now = now();
+        $last = $monthEnd->isFuture() ? $now : $monthEnd;
+        $workDays = $s->working_days ?: [1, 2, 3, 4, 5, 6];
+        $holidays = \App\Models\StaffReportHoliday::pluck('date')->map(fn ($d) => $d->toDateString())->flip();
+
+        $reports = StaffReport::where('user_id', $user->id)
+            ->whereBetween('period_date', [$ref->toDateString(), $monthEnd->toDateString()])
+            ->get()->groupBy('report_type');
+
+        $penalties = \App\Models\StaffReportPenalty::where('user_id', $user->id)->where('waived', false)
+            ->whereBetween('period_date', [$ref->toDateString(), $monthEnd->toDateString()])
+            ->get();
+        $penFor = fn (string $type, string $date) => round((float) $penalties
+            ->filter(fn ($p) => $p->report_type === $type && $p->period_date->toDateString() === $date)
+            ->sum('amount'), 2);
+
+        // Daily rows — every working day up to today
+        $daily = [];
+        $dailyLate = 0;
+        $byDate = ($reports['daily'] ?? collect())->keyBy(fn ($r) => $r->period_date->toDateString());
+        for ($d = $ref->copy(); $d->lte($last); $d->addDay()) {
+            if (!in_array($d->dayOfWeekIso, $workDays) || $holidays->has($d->toDateString())) {
+                continue;
+            }
+            $r = $byDate->get($d->toDateString());
+            if ($r && $r->is_late) $dailyLate++;
+            $daily[] = [
+                'date' => $d->toDateString(),
+                'weekday' => $d->format('D'),
+                'status' => $r ? ($r->is_late ? 'late' : 'submitted') : 'missing',
+                'submitted_at' => $r?->created_at?->format('d M H:i'),
+                'deduction' => $penFor('daily', $d->toDateString()),
+            ];
+        }
+
+        // Weekly rows — weeks whose deadline falls inside the month and has passed
+        $weekly = [];
+        $byWeek = ($reports['weekly'] ?? collect())->keyBy(fn ($r) => $r->period_date->toDateString());
+        for ($w = $ref->copy()->startOfWeek(Carbon::MONDAY); $w->lte($monthEnd); $w->addWeek()) {
+            $deadline = $w->copy()->addDays(($s->weekly_deadline_day ?? 1) - 1)->setTimeFromTimeString($s->weekly_deadline_time ?? '17:00');
+            if ($deadline->lt($ref) || $deadline->gt($monthEnd)) {
+                continue;
+            }
+            $r = $byWeek->get($w->toDateString());
+            $chargeDate = $w->lt($ref) ? $ref->toDateString() : $w->toDateString();   // clamped like the penalty command
+            $weekly[] = [
+                'week_label' => 'Wk of ' . $w->format('d M'),
+                'status' => $r ? ($r->is_late ? 'late' : 'submitted') : ($now->gt($deadline) ? 'missing' : 'pending'),
+                'submitted_at' => $r?->created_at?->format('d M H:i'),
+                'deduction' => $penFor('weekly', $chargeDate) ?: $penFor('weekly', $w->toDateString()),
+            ];
+        }
+
+        // Monthly
+        $mReport = ($reports['monthly'] ?? collect())->first();
+        $mDeadline = $ref->copy()->addDays(($s->monthly_deadline_day ?? 1) - 1)->setTimeFromTimeString($s->monthly_deadline_time ?? '17:00');
+        $monthly = [
+            'label' => $ref->format('F Y'),
+            'status' => $mReport ? ($mReport->is_late ? 'late' : 'submitted') : ($now->gt($mDeadline) ? 'missing' : 'pending'),
+            'submitted_at' => $mReport?->created_at?->format('d M H:i'),
+            'deduction' => round((float) $penalties->where('report_type', 'monthly')->sum('amount'), 2),
+        ];
+
+        $weeklyDone = collect($weekly)->whereIn('status', ['submitted', 'late'])->count();
+
+        return [
+            'user' => ['id' => $user->id, 'name' => $user->name],
+            'month_label' => $ref->format('F Y'),
+            'daily' => $daily,
+            'weekly' => $weekly,
+            'monthly' => $monthly,
+            'totals' => [
+                'daily_expected' => count($daily),
+                'daily_written'  => collect($daily)->whereIn('status', ['submitted', 'late'])->count(),
+                'daily_missing'  => collect($daily)->where('status', 'missing')->count(),
+                'late'           => $dailyLate + collect($weekly)->where('status', 'late')->count() + ($monthly['status'] === 'late' ? 1 : 0),
+                'weekly_expected' => count($weekly),
+                'weekly_covered'  => $weeklyDone,
+                'deduction_total' => round((float) $penalties->sum('amount'), 2),
+            ],
+        ];
+    }
+
     public function dashboard()
     {
         $this->authorizePermission('staff_reports.submit');
