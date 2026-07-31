@@ -107,6 +107,15 @@ class MosmsService
 
     // ── Sends ──────────────────────────────────────────────────────────────
 
+    /** Plain SMS through MoSMS (1 credit per 160-char segment). */
+    public function sendSms(Tenant $tenant, string $to, string $text): array
+    {
+        return $this->request('post', '/sms/send', [
+            'to'   => $to,
+            'text' => $text,
+        ], $this->tokenFor($tenant));
+    }
+
     /** Free text — wrapped by MoSMS in their approved custom_message template. */
     public function sendText(Tenant $tenant, string $to, string $text): array
     {

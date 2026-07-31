@@ -91,7 +91,7 @@ class PortalAuthController extends Controller
             ->notify(new PortalOtpNotification($otp, $tenantName));
 
         // Also send via SMS if phone available and tenant has SMS enabled
-        if ($client?->phone && $tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
+        if ($client?->phone && app(SmsService::class)->canSend($tenant)) {
             try {
                 app(SmsService::class)->send(
                     $tenant,

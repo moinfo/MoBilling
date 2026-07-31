@@ -108,7 +108,7 @@ class PasswordResetController extends Controller
         $phone = $target->phone;
         $tenant = $target->tenant_id ? Tenant::find($target->tenant_id) : null;
 
-        if ($phone && $tenant && $tenant->sms_enabled && $tenant->sms_authorization) {
+        if ($phone && app(SmsService::class)->canSend($tenant)) {
             try {
                 app(SmsService::class)->send(
                     $tenant,
