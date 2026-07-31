@@ -99,9 +99,18 @@ class FredHttpDriver implements RegistrarDriver
     public function check(string $domain): array
     {
         $res = $this->call('post', '/api/domains/check/', ['domain_names' => [$domain]]);
-        $entry = $res['domains'][$domain] ?? ['available' => false, 'reason' => 'No response for domain'];
+        $entry = $res['domains'][$domain] ?? null;
 
-        return ['available' => (bool) ($entry['available'] ?? false), 'reason' => $entry['reason'] ?? null];
+        // "The registry did not answer" is not the same as "the name is taken".
+        // Defaulting a missing entry to unavailable made a broken or
+        // misconfigured middleware look like a definitive answer, so every
+        // visitor to the public search was told their domain was already gone.
+        // Fail loudly instead — every caller already handles this exception.
+        if ($entry === null || !array_key_exists('available', $entry)) {
+            throw new RegistrarApiException('check', "No availability answer for {$domain}");
+        }
+
+        return ['available' => (bool) $entry['available'], 'reason' => $entry['reason'] ?? null];
     }
 
     public function info(string $domain): array

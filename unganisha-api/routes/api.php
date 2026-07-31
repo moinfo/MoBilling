@@ -76,6 +76,11 @@ Route::post('/auth/reset-password', [PasswordResetController::class, 'resetPassw
 // White-label branding by hostname (public)
 Route::get('/public/branding', [\App\Http\Controllers\PublicBrandingController::class, 'show']);
 
+// Public domain availability search for the moinfo.co.tz search box. Each hit
+// costs a live registry call, so it is throttled per IP.
+Route::get('/public/domains/check', [\App\Http\Controllers\PublicDomainController::class, 'check'])
+    ->middleware('throttle:20,1');
+
 // Portal self-registration (public)
 Route::post('/portal/request-otp', [PortalAuthController::class, 'requestOtp']);
 Route::post('/portal/verify-register', [PortalAuthController::class, 'verifyAndRegister']);

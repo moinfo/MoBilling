@@ -19,7 +19,16 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['http://localhost:5173', 'http://localhost:5174', 'https://mobilling.co.tz'],
+    // moinfo.co.tz is here for the public domain search on the marketing site;
+    // localhost:3000 is that site's Next.js dev server.
+    'allowed_origins' => [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'http://localhost:5174',
+        'https://mobilling.co.tz',
+        'https://moinfo.co.tz',
+        'https://www.moinfo.co.tz',
+    ],
 
     'allowed_origins_patterns' => [],
 
