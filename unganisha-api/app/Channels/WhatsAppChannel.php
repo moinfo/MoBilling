@@ -42,6 +42,7 @@ class WhatsAppChannel
                     $message['template'],
                     $message['parameters'] ?? [],
                     $message['language'] ?? 'en',
+                    $message['button_url'] ?? null,
                 );
             } catch (\Throwable $e) {
                 $fallback = $message['fallback'] ?? null;

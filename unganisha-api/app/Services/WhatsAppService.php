@@ -66,10 +66,11 @@ class WhatsAppService
         string $recipient,
         string $templateName,
         array $parameters = [],
-        string $language = 'en'
+        string $language = 'en',
+        ?string $buttonUrlParam = null
     ): array {
         if ($this->useMosms($tenant)) {
-            return app(MosmsService::class)->sendTemplate($tenant, $recipient, $templateName, $parameters, $language);
+            return app(MosmsService::class)->sendTemplate($tenant, $recipient, $templateName, $parameters, $language, $buttonUrlParam);
         }
 
         $this->validateCredentials($tenant);
@@ -82,6 +83,14 @@ class WhatsAppService
                     'type' => 'text',
                     'text' => (string) $p,
                 ], $parameters),
+            ];
+        }
+        if ($buttonUrlParam !== null) {
+            $components[] = [
+                'type' => 'button',
+                'sub_type' => 'url',
+                'index' => '0',
+                'parameters' => [['type' => 'text', 'text' => $buttonUrlParam]],
             ];
         }
         if (in_array($templateName, self::AUTH_TEMPLATES, true) && !empty($parameters)) {

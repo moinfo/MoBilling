@@ -91,15 +91,20 @@ class InvoiceOverdueReminderNotification extends Notification implements ShouldQ
     public function toWhatsApp($notifiable): array
     {
         $currency = $this->tenant->currency;
-        $amount = number_format($this->document->total, 2);
-        $balanceDue = number_format($this->document->balance_due, 2);
+        $amount = "{$currency} " . number_format($this->document->total, 2);
+        $balanceDue = "{$currency} " . number_format($this->document->balance_due, 2);
         $dueDate = $this->document->due_date->format('d M Y');
+        $params = [$this->document->document_number, $amount, $balanceDue, $dueDate, $this->tenant->name];
+        $payable = $this->tenant->pesapal_enabled && $this->document->balance_due > 0;
 
-        return [
-            'template' => 'invoice_reminder_v1',
-            'parameters' => [$this->document->document_number, "{$currency} {$amount}", "{$currency} {$balanceDue}", $dueDate, $this->tenant->name],
+        return array_filter([
+            'template' => $payable ? 'invoice_reminder_v2' : 'invoice_reminder_v1',
+            'parameters' => $params,
             'language' => 'en',
-            'fallback' => "📋 OVERDUE: Invoice {$this->document->document_number}, balance {$currency} {$balanceDue}, was due {$dueDate}. Please pay now. — {$this->tenant->name}",
-        ];
+            'button_url' => $payable ? (string) $this->document->id : null,
+            'fallback' => "📋 OVERDUE: Invoice {$this->document->document_number}, balance {$balanceDue}, was due {$dueDate}. Please pay now."
+                . ($payable ? ' Pay online: ' . $this->tenantPortalUrl($this->tenant, "/pay/{$this->document->id}") : '')
+                . " — {$this->tenant->name}",
+        ], fn ($v) => $v !== null);
     }
 }

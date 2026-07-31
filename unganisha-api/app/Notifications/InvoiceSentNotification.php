@@ -48,15 +48,23 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
         $typeName = ucfirst($this->document->type);
         $amount = $tenant->currency . ' ' . number_format($this->document->total, 2);
         $due = $this->document->due_date?->format('d M Y') ?? '—';
-        $payLine = ($tenant->pesapal_enabled && $this->document->balance_due > 0)
-            ? 'Pay online at ' . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}")
-            : 'Contact us for payment options';
+        $payable = $tenant->pesapal_enabled && $this->document->balance_due > 0;
+
+        if ($payable) {
+            return [
+                'template' => 'invoice_notice_v2',
+                'parameters' => ["{$typeName} {$this->document->document_number}", $amount, $due, $tenant->name],
+                'language' => 'en',
+                'button_url' => (string) $this->document->id,
+                'fallback' => "📄 {$typeName} {$this->document->document_number} — {$amount}, due {$due}. Pay online: " . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}") . " — {$tenant->name}",
+            ];
+        }
 
         return [
             'template' => 'invoice_notice_v1',
-            'parameters' => ["{$typeName} {$this->document->document_number}", $amount, $due, $payLine, $tenant->name],
+            'parameters' => ["{$typeName} {$this->document->document_number}", $amount, $due, 'Contact us for payment options', $tenant->name],
             'language' => 'en',
-            'fallback' => "📄 {$typeName} {$this->document->document_number} — {$amount}, due {$due}. {$payLine}. — {$tenant->name}",
+            'fallback' => "📄 {$typeName} {$this->document->document_number} — {$amount}, due {$due}. — {$tenant->name}",
         ];
     }
 

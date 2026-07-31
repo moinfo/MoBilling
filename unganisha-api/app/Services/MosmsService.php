@@ -126,15 +126,16 @@ class MosmsService
         ], $this->tokenFor($tenant));
     }
 
-    /** Named approved template with ordered variables. */
-    public function sendTemplate(Tenant $tenant, string $to, string $template, array $variables = [], string $language = 'sw'): array
+    /** Named approved template with ordered variables (+ optional dynamic URL-button suffix). */
+    public function sendTemplate(Tenant $tenant, string $to, string $template, array $variables = [], string $language = 'sw', ?string $buttonUrlParam = null): array
     {
-        return $this->request('post', '/whatsapp/send', [
+        return $this->request('post', '/whatsapp/send', array_filter([
             'to'        => $to,
             'template'  => $template,
             'variables' => array_values(array_map('strval', $variables)),
             'language'  => $language,
-        ], $this->tokenFor($tenant));
+            'button_url_param' => $buttonUrlParam,
+        ], fn ($v) => $v !== null), $this->tokenFor($tenant));
     }
 
     // ── Internals ──────────────────────────────────────────────────────────

@@ -78,15 +78,23 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
     {
         $currency = $this->tenant->currency;
         $amount = "{$currency} " . number_format($this->document->total, 2);
-        $payLine = ($this->tenant->pesapal_enabled && $this->document->balance_due > 0)
-            ? 'Pay online at ' . $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}")
-            : 'Contact us to pay';
+        $payable = $this->tenant->pesapal_enabled && $this->document->balance_due > 0;
+
+        if ($payable) {
+            return [
+                'template' => 'final_notice_v2',
+                'parameters' => [$this->document->document_number, $amount, $this->tenant->name],
+                'language' => 'en',
+                'button_url' => (string) $this->document->id,
+                'fallback' => "🚨 FINAL NOTICE: Invoice {$this->document->document_number} ({$amount}) unpaid — service terminates in 7 days. Pay now: " . $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}") . " — {$this->tenant->name}",
+            ];
+        }
 
         return [
             'template' => 'final_notice_v1',
-            'parameters' => [$this->document->document_number, $amount, $payLine, $this->tenant->name],
+            'parameters' => [$this->document->document_number, $amount, 'Contact us to pay', $this->tenant->name],
             'language' => 'en',
-            'fallback' => "🚨 FINAL NOTICE: Invoice {$this->document->document_number} ({$amount}) unpaid — service terminates in 7 days. {$payLine}. — {$this->tenant->name}",
+            'fallback' => "🚨 FINAL NOTICE: Invoice {$this->document->document_number} ({$amount}) unpaid — service terminates in 7 days. — {$this->tenant->name}",
         ];
     }
 
