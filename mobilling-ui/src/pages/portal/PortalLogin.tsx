@@ -7,7 +7,8 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../branding';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { safeNext } from '../../utils/safeNext';
 import {
   IconWorldWww, IconServer, IconHeadset, IconSun, IconMoon, IconArrowLeft,
 } from '@tabler/icons-react';
@@ -21,6 +22,8 @@ const features = [
 export default function PortalLogin() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  // Set when the visitor came from an /order/* link — see OrderRoute.
+  const next = safeNext(useLocation().search);
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
@@ -40,7 +43,7 @@ export default function PortalLogin() {
     try {
       const { user, userType } = await login(values);
       if (userType === 'client') {
-        navigate('/portal/dashboard');
+        navigate(next ?? '/portal/dashboard');
       } else {
         navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
       }
@@ -52,7 +55,10 @@ export default function PortalLogin() {
           message: 'A verification code has been sent to your email — finish setting up your account.',
           color: 'blue',
         });
-        navigate(`/portal/register?email=${encodeURIComponent(values.identifier)}&sent=1`);
+        navigate(
+          `/portal/register?email=${encodeURIComponent(values.identifier)}&sent=1`
+          + (next ? `&next=${encodeURIComponent(next)}` : '')
+        );
         return;
       }
       notifications.show({
@@ -156,7 +162,12 @@ export default function PortalLogin() {
 
           <Text c="dimmed" size="sm" ta="center" mt="lg">
             New to {brandName}?{' '}
-            <Anchor component={Link} to="/portal/register" size="sm" fw={600}>
+            <Anchor
+              component={Link}
+              to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}
+              size="sm"
+              fw={600}
+            >
               Create an account
             </Anchor>
           </Text>

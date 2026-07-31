@@ -100,6 +100,10 @@ import PortalKnowledgebase from './pages/portal/PortalKnowledgebase';
 import PortalProductServices from './pages/portal/PortalProductServices';
 import PortalProfile from './pages/portal/PortalProfile';
 import PortalUsers from './pages/portal/PortalUsers';
+import OrderRoute from './components/order/OrderRoute';
+import OrderIndex from './pages/order/OrderIndex';
+import OrderCategory from './pages/order/OrderCategory';
+import OrderDomain from './pages/order/OrderDomain';
 import RevenueSummary from './pages/reports/RevenueSummary';
 import OutstandingAging from './pages/reports/OutstandingAging';
 import ClientStatementReport from './pages/reports/ClientStatementReport';
@@ -281,6 +285,23 @@ export default function App() {
                   <Route path="/portal/knowledgebase" element={<PortalKnowledgebase />} />
                   <Route path="/portal/profile" element={<PortalProfile />} />
                   <Route path="/portal/users" element={<PortalUsers />} />
+                </Route>
+
+                {/*
+                  Storefront. Entered from moinfo.co.tz as /order/<category>?plan=<slug>,
+                  so OrderRoute (not ProtectedRoute) guards it — it preserves the
+                  chosen plan through login via ?next=.
+                */}
+                <Route
+                  element={
+                    <OrderRoute>
+                      <PortalShell />
+                    </OrderRoute>
+                  }
+                >
+                  <Route path="/order" element={<OrderIndex />} />
+                  <Route path="/order/domain" element={<OrderDomain />} />
+                  <Route path="/order/:category" element={<OrderCategory />} />
                 </Route>
 
                 <Route path="*" element={<Navigate to="/" replace />} />

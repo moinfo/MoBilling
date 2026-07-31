@@ -7,7 +7,8 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { safeNext } from '../utils/safeNext';
 import { verifyAndRegisterPortal } from '../api/auth';
 import {
   IconFileInvoice, IconChartBar, IconShieldCheck, IconSun, IconMoon, IconArrowLeft,
@@ -23,6 +24,8 @@ const features = [
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
+  // Set when the visitor came from an /order/* link — see OrderRoute.
+  const next = safeNext(useLocation().search);
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
 
@@ -55,7 +58,8 @@ export default function Login() {
     try {
       const { user, userType } = await login(values);
       if (userType === 'client') {
-        navigate('/portal/dashboard');
+        // Came from an /order/* link? Return to the plan they picked.
+        navigate(next ?? '/portal/dashboard');
       } else {
         navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
       }
@@ -99,7 +103,7 @@ export default function Login() {
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user_type', 'client');
       setOtpDone(true);
-      setTimeout(() => { window.location.href = '/portal/dashboard'; }, 1500);
+      setTimeout(() => { window.location.href = next ?? '/portal/dashboard'; }, 1500);
     } catch (err: any) {
       notifications.show({
         title: 'Error',

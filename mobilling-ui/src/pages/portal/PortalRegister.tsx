@@ -7,6 +7,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { safeNext } from '../../utils/safeNext';
 import { IconSun, IconMoon, IconArrowLeft, IconCheck, IconUserPlus } from '@tabler/icons-react';
 import { requestPortalOtp, verifyAndRegisterPortal } from '../../api/auth';
 import { useBranding } from '../../branding';
@@ -14,6 +15,8 @@ import { useBranding } from '../../branding';
 export default function PortalRegister() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  // Preserved through the OTP flow so an /order/* visitor lands back on their plan.
+  const next = safeNext(window.location.search);
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
@@ -60,7 +63,7 @@ export default function PortalRegister() {
           message: 'Please sign in instead — use "Forgot password" if needed.',
           color: 'blue',
         });
-        navigate('/portal/login');
+        navigate(`/portal/login${next ? `?next=${encodeURIComponent(next)}` : ''}`);
         return;
       }
       setClientName(res.data.client_name ?? null);
@@ -109,7 +112,7 @@ export default function PortalRegister() {
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user_type', 'client');
       setStep('done');
-      setTimeout(() => { window.location.href = '/portal/dashboard'; }, 1500);
+      setTimeout(() => { window.location.href = next ?? '/portal/dashboard'; }, 1500);
     } catch (e: any) {
       notifications.show({
         message: e?.response?.data?.message ?? e?.response?.data?.errors?.otp?.[0] ?? 'Verification failed.',

@@ -24,8 +24,16 @@ class PortalOrderController extends Controller
     {
         $tenantId = $request->user()->tenant_id;
 
-        // WHMCS group ordering, then anything else alphabetically.
-        $groupOrder = DB::connection('whmcs')->table('tblproductgroups')->pluck('order', 'name')->all();
+        // Group ordering is inherited from WHMCS, which is being retired. It is
+        // cosmetic — a missing entry just sorts the group last — so a dead or
+        // removed WHMCS database must not take the whole catalog (and with it
+        // the storefront) down. Fall back to alphabetical.
+        try {
+            $groupOrder = DB::connection('whmcs')->table('tblproductgroups')->pluck('order', 'name')->all();
+        } catch (\Throwable $e) {
+            report($e);
+            $groupOrder = [];
+        }
 
         $products = ProductService::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
