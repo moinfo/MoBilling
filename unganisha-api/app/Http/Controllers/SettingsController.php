@@ -186,8 +186,8 @@ class SettingsController extends Controller
         $update = [
             'whatsapp_enabled' => $validated['whatsapp_enabled'],
             'reminder_whatsapp_enabled' => $validated['reminder_whatsapp_enabled'],
-            'whatsapp_phone_number_id' => $validated['whatsapp_phone_number_id'],
-            'whatsapp_business_account_id' => $validated['whatsapp_business_account_id'],
+            'whatsapp_phone_number_id' => $validated['whatsapp_phone_number_id'] ?? null,
+            'whatsapp_business_account_id' => $validated['whatsapp_business_account_id'] ?? null,
         ];
 
         // Only update token if provided (not masked)
