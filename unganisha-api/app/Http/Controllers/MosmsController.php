@@ -111,9 +111,11 @@ class MosmsController extends Controller
     public function purchase(Request $request)
     {
         $this->authorizePermission('settings.reminders');
+        $channel = $request->input('channel') === 'whatsapp' ? 'whatsapp' : 'sms';
         $data = $request->validate([
-            'sms_quantity' => 'required|integer|min:100|max:10000000',
+            'sms_quantity' => 'required|integer|min:' . ($channel === 'whatsapp' ? 10 : 100) . '|max:10000000',
             'callback_url' => 'nullable|url|max:500',
+            'channel'      => 'nullable|in:sms,whatsapp',
         ]);
 
         try {
@@ -121,6 +123,7 @@ class MosmsController extends Controller
                 $request->user()->tenant,
                 (int) $data['sms_quantity'],
                 $data['callback_url'] ?? null,
+                $channel,
             );
         } catch (\Throwable $e) {
             return response()->json(['message' => $e->getMessage()], 422);

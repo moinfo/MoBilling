@@ -213,7 +213,7 @@ export interface MosmsStatus {
   email: string | null;
   mosms_tenant_id: number | null;
   custom_template_id: number | null;
-  balance: { sms_balance: number | null; whatsapp_balance: number | null } | null;
+  balance: { sms_balance: number | null; whatsapp_balance: number | null; whatsapp_price?: number | null } | null;
   templates: MosmsTemplate[];
   error?: string;
 }
@@ -228,5 +228,5 @@ export const testMosms = (to: string, text: string) => api.post('/settings/mosms
 
 export interface MosmsPackage { id: number; name: string; min_quantity: number; max_quantity: number | null; price_per_sms: string }
 export const getMosmsPackages = () => api.get<{ data: MosmsPackage[] }>('/settings/mosms/packages');
-export const purchaseMosmsSms = (sms_quantity: number, callback_url?: string) =>
-  api.post<{ data: { payment_id: number; redirect_url: string }; message: string }>('/settings/mosms/purchase', { sms_quantity, callback_url });
+export const purchaseMosmsSms = (sms_quantity: number, callback_url?: string, channel: 'sms' | 'whatsapp' = 'sms') =>
+  api.post<{ data: { payment_id: number; redirect_url: string }; message: string }>('/settings/mosms/purchase', { sms_quantity, callback_url, channel });

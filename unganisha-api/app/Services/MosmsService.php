@@ -69,6 +69,7 @@ class MosmsService
         return [
             'sms_balance'      => $res['sms_balance'] ?? null,
             'whatsapp_balance' => $res['whatsapp_balance'] ?? null,
+            'whatsapp_price'   => $res['whatsapp_price'] ?? null,
         ];
     }
 
@@ -90,11 +91,12 @@ class MosmsService
      * Start a Pesapal checkout for SMS credits.
      * @return array{payment_id:mixed, redirect_url:?string}
      */
-    public function purchaseSms(Tenant $tenant, int $quantity, ?string $callbackUrl = null): array
+    public function purchaseSms(Tenant $tenant, int $quantity, ?string $callbackUrl = null, string $channel = 'sms'): array
     {
         $res = $this->request('post', '/sms-purchases/pesapal', array_filter([
             'sms_quantity' => $quantity,
             'callback_url' => $callbackUrl,
+            'channel'      => $channel,
         ]), $this->tokenFor($tenant));
 
         return [

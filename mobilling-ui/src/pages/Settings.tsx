@@ -1155,16 +1155,19 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
-function MosmsBuyModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+function MosmsBuyModal({ opened, onClose, whatsappPrice }: { opened: boolean; onClose: () => void; whatsappPrice?: number | null }) {
+  const [channel, setChannel] = useState<'sms' | 'whatsapp'>('sms');
   const [qty, setQty] = useState<number | string>(1000);
   const { data } = useQuery({ queryKey: ['mosms-packages'], queryFn: getMosmsPackages, enabled: opened });
   const packages: MosmsPackage[] = data?.data?.data ?? [];
   const n = Number(qty) || 0;
+  const minQty = channel === 'whatsapp' ? 10 : 100;
   const pkg = packages.find((p) => n >= p.min_quantity && (p.max_quantity === null || n <= p.max_quantity));
-  const total = pkg ? n * Number(pkg.price_per_sms) : 0;
+  const unit = channel === 'whatsapp' ? (whatsappPrice ?? 30) : (pkg ? Number(pkg.price_per_sms) : 0);
+  const total = n * unit;
 
   const buyMut = useMutation({
-    mutationFn: () => purchaseMosmsSms(n, window.location.origin + '/settings'),
+    mutationFn: () => purchaseMosmsSms(n, window.location.origin + '/settings', channel),
     onSuccess: (res) => {
       const url = res.data?.data?.redirect_url;
       if (url) window.open(url, '_blank', 'noopener');
@@ -1175,11 +1178,18 @@ function MosmsBuyModal({ opened, onClose }: { opened: boolean; onClose: () => vo
   });
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Buy SMS credits (MoSMS)" size="md">
+    <Modal opened={opened} onClose={onClose} title="Buy credits (MoSMS)" size="md">
       <Stack gap="sm">
-        <NumberInput label="How many SMS credits?" min={100} step={100} value={qty}
-          onChange={setQty} thousandSeparator="," description="Minimum 100" />
-        {packages.length > 0 && (
+        <SegmentedControl fullWidth value={channel}
+          onChange={(v: string) => { setChannel(v as 'sms' | 'whatsapp'); setQty(v === 'whatsapp' ? 100 : 1000); }}
+          data={[{ value: 'sms', label: 'SMS credits' }, { value: 'whatsapp', label: 'WhatsApp credits' }]} />
+        <NumberInput label={channel === 'whatsapp' ? 'How many WhatsApp credits?' : 'How many SMS credits?'}
+          min={minQty} step={channel === 'whatsapp' ? 10 : 100} value={qty}
+          onChange={setQty} thousandSeparator="," description={`Minimum ${minQty}`} />
+        {channel === 'whatsapp' && (
+          <Text size="sm" c="dimmed">Flat price: TZS {(whatsappPrice ?? 30).toLocaleString()} per message.</Text>
+        )}
+        {channel === 'sms' && packages.length > 0 && (
           <Stack gap={4}>
             {packages.map((p) => (
               <Group key={p.id} justify="space-between"
@@ -1192,14 +1202,14 @@ function MosmsBuyModal({ opened, onClose }: { opened: boolean; onClose: () => vo
             ))}
           </Stack>
         )}
-        {pkg && n >= 100 && (
+        {n >= minQty && unit > 0 && (
           <Alert color="teal" variant="light" p="xs">
-            <Text size="sm"><b>{n.toLocaleString()}</b> SMS × TZS {Number(pkg.price_per_sms).toLocaleString()} = <b>TZS {total.toLocaleString()}</b> ({pkg.name})</Text>
+            <Text size="sm"><b>{n.toLocaleString()}</b> × TZS {unit.toLocaleString()} = <b>TZS {total.toLocaleString()}</b>{channel === 'sms' && pkg ? ` (${pkg.name})` : ''}</Text>
           </Alert>
         )}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
-          <Button loading={buyMut.isPending} disabled={n < 100} onClick={() => buyMut.mutate()}>
+          <Button loading={buyMut.isPending} disabled={n < minQty} onClick={() => buyMut.mutate()}>
             Pay with Pesapal
           </Button>
         </Group>
@@ -1275,11 +1285,11 @@ function MosmsSection({ isAdmin }: { isAdmin: boolean }) {
             <Badge variant="light" color="gray">{st.templates.length} template(s)</Badge>
             {isAdmin && (
               <Button size="compact-xs" variant="light" color="teal" onClick={() => setBuyOpen(true)}>
-                Buy SMS credits
+                Buy credits
               </Button>
             )}
           </Group>
-          <MosmsBuyModal opened={buyOpen} onClose={() => { setBuyOpen(false); done(); }} />
+          <MosmsBuyModal opened={buyOpen} onClose={() => { setBuyOpen(false); done(); }} whatsappPrice={st.balance?.whatsapp_price} />
           {st.error && (
             <Alert color="orange" variant="light" p="xs">{st.error}</Alert>
           )}
