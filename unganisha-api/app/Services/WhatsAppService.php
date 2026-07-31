@@ -8,6 +8,9 @@ use Illuminate\Support\Facades\Log;
 
 class WhatsAppService
 {
+    /** AUTHENTICATION templates whose copy-code button carries the first variable. */
+    private const AUTH_TEMPLATES = ['otp_code'];
+
     private string $apiVersion;
     private int $timeout;
 
@@ -79,6 +82,14 @@ class WhatsAppService
                     'type' => 'text',
                     'text' => (string) $p,
                 ], $parameters),
+            ];
+        }
+        if (in_array($templateName, self::AUTH_TEMPLATES, true) && !empty($parameters)) {
+            $components[] = [
+                'type' => 'button',
+                'sub_type' => 'url',
+                'index' => '0',
+                'parameters' => [['type' => 'text', 'text' => (string) $parameters[0]]],
             ];
         }
 

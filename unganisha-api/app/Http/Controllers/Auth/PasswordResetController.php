@@ -124,15 +124,19 @@ class PasswordResetController extends Controller
         // Send OTP via WhatsApp too — routes through the tenant's own Meta
         // number or their linked MoSMS account (WhatsAppService dual-mode).
         if ($phone && $tenant && $tenant->whatsapp_enabled && $this->canSendWhatsApp($tenant)) {
+            $wa = app(\App\Services\WhatsAppService::class);
             try {
-                app(\App\Services\WhatsAppService::class)->sendText(
-                    $tenant,
-                    $phone,
-                    "Your MoBilling verification code is: {$otp}. It expires in 10 minutes."
-                );
+                // Official Meta AUTHENTICATION template (copy-code button).
+                $wa->sendTemplate($tenant, $phone, config('whatsapp.otp_template', 'otp_code'), [$otp], config('whatsapp.otp_language', 'en'));
                 $waSent = true;
             } catch (\Throwable $e) {
-                // WhatsApp failed — email (and possibly SMS) still went out
+                try {
+                    // Template unavailable — plain text fallback.
+                    $wa->sendText($tenant, $phone, "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.");
+                    $waSent = true;
+                } catch (\Throwable $e2) {
+                    // WhatsApp failed — email (and possibly SMS) still went out
+                }
             }
         }
 
