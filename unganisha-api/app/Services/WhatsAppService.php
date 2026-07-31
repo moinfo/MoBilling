@@ -23,6 +23,12 @@ class WhatsAppService
      */
     public function sendText(Tenant $tenant, string $recipient, string $message): array
     {
+        // Dual-mode: tenants without their own Meta credentials send through
+        // their linked MoSMS account instead (MoSMS fans out to Meta).
+        if ($this->useMosms($tenant)) {
+            return app(MosmsService::class)->sendText($tenant, $recipient, $message);
+        }
+
         $this->validateCredentials($tenant);
 
         $response = Http::baseUrl("https://graph.facebook.com/{$this->apiVersion}")
@@ -59,6 +65,10 @@ class WhatsAppService
         array $parameters = [],
         string $language = 'en'
     ): array {
+        if ($this->useMosms($tenant)) {
+            return app(MosmsService::class)->sendTemplate($tenant, $recipient, $templateName, $parameters, $language);
+        }
+
         $this->validateCredentials($tenant);
 
         $components = [];
@@ -103,6 +113,15 @@ class WhatsAppService
         }
 
         return $response->json();
+    }
+
+    /** True when the tenant has no direct Meta credentials but is linked to MoSMS. */
+    private function useMosms(Tenant $tenant): bool
+    {
+        if ($tenant->whatsapp_phone_number_id && $tenant->whatsapp_access_token) {
+            return false;   // own Meta number wins — nothing changes for them
+        }
+        return app(MosmsService::class)->isLinked($tenant);
     }
 
     private function validateCredentials(Tenant $tenant): void

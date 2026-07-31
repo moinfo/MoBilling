@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Tabs, TextInput, Textarea, PasswordInput, Select, Button,
   Stack, Divider, Paper, Group, Alert, NumberInput, Switch, Loader, Center, Box,
-  FileButton, Image, Text, Badge, ActionIcon, Accordion, ThemeIcon, Tooltip,
+  FileButton, Image, Text, Badge, ActionIcon, Accordion, ThemeIcon, Tooltip, SegmentedControl,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -28,6 +28,7 @@ import {
   getSubscriptionSettings, updateSubscriptionSettings, SubscriptionSettings,
   getPesapalSettings, updatePesapalSettings, PesapalSettings,
   getWhatsAppSettings, updateWhatsAppSettings, WhatsAppSettings,
+  getMosmsStatus, linkMosms, registerMosms, unlinkMosms, testMosms, MosmsStatus,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
@@ -1153,6 +1154,123 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+// --- MoSMS section (WhatsApp via mosms.co.tz — no Meta setup needed) ---
+
+function MosmsSection({ isAdmin }: { isAdmin: boolean }) {
+  const queryClient = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['mosms-status'], queryFn: getMosmsStatus });
+  const st: MosmsStatus | undefined = data?.data?.data;
+
+  const [mode, setMode] = useState<'link' | 'register'>('link');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [orgName, setOrgName] = useState('');
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [testTo, setTestTo] = useState('');
+  const [testText, setTestText] = useState('');
+
+  const done = () => queryClient.invalidateQueries({ queryKey: ['mosms-status'] });
+  const fail = (err: any, msg: string) =>
+    notifications.show({ title: 'Error', message: err.response?.data?.message || msg, color: 'red' });
+
+  const linkMut = useMutation({
+    mutationFn: () => linkMosms(email, password),
+    onSuccess: () => { done(); setPassword(''); notifications.show({ title: 'Linked', message: 'MoSMS account linked — WhatsApp now routes through MoSMS.', color: 'green' }); },
+    onError: (e: any) => fail(e, 'Failed to link MoSMS account'),
+  });
+  const registerMut = useMutation({
+    mutationFn: () => registerMosms({ org_name: orgName, name, email, phone, password }),
+    onSuccess: () => { done(); setPassword(''); notifications.show({ title: 'Account created', message: 'MoSMS account created and linked.', color: 'green' }); },
+    onError: (e: any) => fail(e, 'Failed to create MoSMS account'),
+  });
+  const unlinkMut = useMutation({
+    mutationFn: unlinkMosms,
+    onSuccess: () => { done(); notifications.show({ title: 'Unlinked', message: 'MoSMS account unlinked.', color: 'gray' }); },
+  });
+  const testMut = useMutation({
+    mutationFn: () => testMosms(testTo, testText || 'MoBilling test message'),
+    onSuccess: (res: any) => notifications.show({ title: 'Sent', message: res.data?.message || 'Queued on MoSMS.', color: 'green' }),
+    onError: (e: any) => fail(e, 'Test send failed'),
+  });
+
+  if (isLoading) return <Center py="md"><Loader size="sm" /></Center>;
+
+  return (
+    <Stack gap="sm">
+      <Group gap="xs">
+        <ThemeIcon variant="light" color="teal" size="lg" radius="xl">
+          <IconBrandWhatsapp size={20} />
+        </ThemeIcon>
+        <div>
+          <Text fw={600}>MoSMS (recommended)</Text>
+          <Text size="xs" c="dimmed">Send WhatsApp through your MoSMS account — no Meta/WABA setup needed</Text>
+        </div>
+        {st?.linked && <Badge color="teal" variant="light">Linked · {st.email}</Badge>}
+      </Group>
+
+      {st?.linked ? (
+        <>
+          <Group gap="xs" wrap="wrap">
+            <Badge variant="light" color="blue">SMS credits: {st.balance?.sms_balance ?? '—'}</Badge>
+            <Badge variant="light" color="teal">WhatsApp credits: {st.balance?.whatsapp_balance ?? '—'}</Badge>
+            <Badge variant="light" color={st.custom_template_id ? 'teal' : 'orange'}>
+              {st.custom_template_id ? 'Free-text ready' : 'custom_message template missing'}
+            </Badge>
+            <Badge variant="light" color="gray">{st.templates.length} template(s)</Badge>
+          </Group>
+          {st.error && (
+            <Alert color="orange" variant="light" p="xs">{st.error}</Alert>
+          )}
+          {isAdmin && (
+            <>
+              <Group gap="xs" align="flex-end" wrap="wrap">
+                <TextInput label="Test number" placeholder="07XXXXXXXX" value={testTo} w={150} size="xs"
+                  onChange={(e) => setTestTo(e.currentTarget.value)} />
+                <TextInput label="Message" placeholder="Test message" value={testText} w={220} size="xs"
+                  onChange={(e) => setTestText(e.currentTarget.value)} />
+                <Button size="xs" variant="light" loading={testMut.isPending} disabled={!testTo}
+                  onClick={() => testMut.mutate()}>Send test</Button>
+                <Button size="xs" variant="subtle" color="red" loading={unlinkMut.isPending}
+                  onClick={() => unlinkMut.mutate()}>Unlink</Button>
+              </Group>
+              <Text size="xs" c="dimmed">1 credit per message, billed from your MoSMS WhatsApp balance. Top up at mosms.co.tz.</Text>
+            </>
+          )}
+        </>
+      ) : isAdmin ? (
+        <>
+          <SegmentedControl size="xs" value={mode} onChange={(v: string) => setMode(v as 'link' | 'register')}
+            data={[{ value: 'link', label: 'Link existing account' }, { value: 'register', label: 'Create new account' }]} w={320} />
+          {mode === 'register' && (
+            <Group grow>
+              <TextInput label="Business name" value={orgName} onChange={(e) => setOrgName(e.currentTarget.value)} />
+              <TextInput label="Your name" value={name} onChange={(e) => setName(e.currentTarget.value)} />
+              <TextInput label="Phone" value={phone} onChange={(e) => setPhone(e.currentTarget.value)} />
+            </Group>
+          )}
+          <Group grow>
+            <TextInput label="MoSMS email" value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+            <PasswordInput label="Password" value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
+          </Group>
+          <Group>
+            {mode === 'link' ? (
+              <Button size="sm" loading={linkMut.isPending} disabled={!email || !password}
+                onClick={() => linkMut.mutate()}>Link MoSMS account</Button>
+            ) : (
+              <Button size="sm" loading={registerMut.isPending}
+                disabled={!email || !password || !orgName || !name || !phone}
+                onClick={() => registerMut.mutate()}>Create & link</Button>
+            )}
+          </Group>
+        </>
+      ) : (
+        <Text size="sm" c="dimmed">Not linked. Ask an admin to link a MoSMS account.</Text>
+      )}
+    </Stack>
+  );
+}
+
 // --- WhatsApp Tab ---
 
 function WhatsAppTab({ isAdmin }: { isAdmin: boolean }) {
@@ -1216,15 +1334,9 @@ function WhatsAppTab({ isAdmin }: { isAdmin: boolean }) {
       )}
 
       <Stack>
-        <Group gap="xs">
-          <ThemeIcon variant="light" color="green" size="lg" radius="xl">
-            <IconBrandWhatsapp size={20} />
-          </ThemeIcon>
-          <div>
-            <Text fw={600}>WhatsApp Business API</Text>
-            <Text size="xs" c="dimmed">Send automated reminders via WhatsApp</Text>
-          </div>
-        </Group>
+        <MosmsSection isAdmin={isAdmin} />
+
+        <Divider my="xs" label="General" labelPosition="left" />
 
         <Switch
           label="WhatsApp integration enabled"
@@ -1242,7 +1354,7 @@ function WhatsAppTab({ isAdmin }: { isAdmin: boolean }) {
           onChange={(e) => setReminderEnabled(e.currentTarget.checked)}
         />
 
-        <Divider my="xs" label="API Credentials" labelPosition="left" />
+        <Divider my="xs" label="Own Meta number (advanced — overrides MoSMS when set)" labelPosition="left" />
 
         <TextInput
           label="Phone Number ID"

@@ -424,6 +424,11 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::put('/settings/pesapal', [SettingsController::class, 'updatePesapal']);
     Route::get('/settings/whatsapp', [SettingsController::class, 'getWhatsApp']);
     Route::put('/settings/whatsapp', [SettingsController::class, 'updateWhatsApp']);
+    Route::get('/settings/mosms', [\App\Http\Controllers\MosmsController::class, 'status']);
+    Route::post('/settings/mosms/link', [\App\Http\Controllers\MosmsController::class, 'link']);
+    Route::post('/settings/mosms/register', [\App\Http\Controllers\MosmsController::class, 'register']);
+    Route::delete('/settings/mosms', [\App\Http\Controllers\MosmsController::class, 'unlink']);
+    Route::post('/settings/mosms/test', [\App\Http\Controllers\MosmsController::class, 'sendTest']);
 
     // Email settings (tenant admin)
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);
