@@ -30,15 +30,26 @@ class WhatsAppChannel
             return;
         }
 
-        // $message can be a string (plain text) or an array with template info
+        // $message can be a string (plain text) or an array with template info.
+        // Template sends fall back to the plain-text 'fallback' when the named
+        // template isn't approved/available yet — so new templates roll out
+        // without ever dropping a notification.
         if (is_array($message)) {
-            $this->whatsAppService->sendTemplate(
-                $tenant,
-                $recipient,
-                $message['template'],
-                $message['parameters'] ?? [],
-                $message['language'] ?? 'en',
-            );
+            try {
+                $this->whatsAppService->sendTemplate(
+                    $tenant,
+                    $recipient,
+                    $message['template'],
+                    $message['parameters'] ?? [],
+                    $message['language'] ?? 'en',
+                );
+            } catch (\Throwable $e) {
+                $fallback = $message['fallback'] ?? null;
+                if (!$fallback) {
+                    throw $e;
+                }
+                $this->whatsAppService->sendText($tenant, $recipient, $fallback);
+            }
         } else {
             $this->whatsAppService->sendText($tenant, $recipient, $message);
         }

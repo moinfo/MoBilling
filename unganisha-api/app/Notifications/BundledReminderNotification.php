@@ -118,34 +118,18 @@ class BundledReminderNotification extends Notification
         return $msg;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $currency = $this->tenant->currency;
         $count = $this->documents->count();
-        $totalBalance = $this->documents->sum('balance_due');
+        $totalBalance = "{$currency} " . number_format($this->documents->sum('balance_due'), 2);
+        $list = $this->documents->map(fn ($d) => $d->document_number)->implode(' · ');
 
-        $lines = [
-            "📋 *Payment Reminder*",
-            "",
-            "You have *{$count} unpaid invoice(s)* with a total balance of *{$currency} " . number_format($totalBalance, 2) . "*.",
-            "",
-            "*Outstanding Invoices:*",
+        return [
+            'template' => 'bundled_reminder_v1',
+            'parameters' => [(string) $count, $list, $totalBalance, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "📋 You have {$count} unpaid invoice(s): {$list}. Total due: {$totalBalance}. Please settle them to keep your services running. — {$this->tenant->name}",
         ];
-
-        foreach ($this->documents as $doc) {
-            $dueLabel = $doc->due_date ? $doc->due_date->format('d M Y') : 'N/A';
-            $balanceFormatted = number_format($doc->balance_due, 2);
-            $overdue = $doc->due_date && $doc->due_date->isPast() ? ' 🔴' : '';
-            $lines[] = "  ▸ {$doc->document_number} — {$currency} {$balanceFormatted} — Due: {$dueLabel}{$overdue}";
-        }
-
-        $lines[] = "";
-        $lines[] = "💰 *Total: {$currency} " . number_format($totalBalance, 2) . "*";
-        $lines[] = "";
-        $lines[] = "Please make payment at your earliest convenience.";
-        $lines[] = "";
-        $lines[] = "— {$this->tenant->name}";
-
-        return implode("\n", $lines);
     }
 }

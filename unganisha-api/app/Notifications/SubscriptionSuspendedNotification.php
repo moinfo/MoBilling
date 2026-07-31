@@ -40,16 +40,17 @@ class SubscriptionSuspendedNotification extends Notification implements ShouldQu
         return $channels;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $currency = $this->tenant->currency;
-        $total = number_format($this->document->total, 2);
+        $reason = "Unpaid invoice {$this->document->document_number} ({$currency} " . number_format($this->document->total, 2) . ')';
 
-        return "⛔ *Service Suspended*\n\n"
-            . "Service: *{$this->subscription->label}*\n"
-            . "Unpaid invoice: *{$this->document->document_number}* ({$currency} {$total})\n\n"
-            . "Please settle the invoice to reactivate. If you already paid, contact us with your payment reference.\n\n"
-            . "— {$this->tenant->name}";
+        return [
+            'template' => 'service_suspended_v1',
+            'parameters' => [$this->subscription->label ?: 'Your service', $reason, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "⛔ {$this->subscription->label} suspended — {$reason}. Pay to reactivate. — {$this->tenant->name}",
+        ];
     }
 
     public function toMail($notifiable): MailMessage

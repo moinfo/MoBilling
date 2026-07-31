@@ -41,26 +41,23 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
         return $channels;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
         $tenant = $this->document->tenant;
         $typeName = ucfirst($this->document->type);
-        $due = $this->document->due_date?->format('d M Y');
+        $amount = $tenant->currency . ' ' . number_format($this->document->total, 2);
+        $due = $this->document->due_date?->format('d M Y') ?? '—';
+        $payLine = ($tenant->pesapal_enabled && $this->document->balance_due > 0)
+            ? 'Pay online at ' . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}")
+            : 'Contact us for payment options';
 
-        $msg = "📄 *New {$typeName}*\n\n"
-            . "*{$this->document->document_number}*\n"
-            . "Amount: *{$tenant->currency} " . number_format($this->document->total, 2) . "*\n"
-            . ($due ? "Due date: {$due}\n" : '');
-
-        if ($tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}");
-            $msg .= "\nPay online: {$payUrl}\n";
-        }
-
-        $msg .= "\n— {$tenant->name}";
-
-        return $msg;
+        return [
+            'template' => 'invoice_notice_v1',
+            'parameters' => ["{$typeName} {$this->document->document_number}", $amount, $due, $payLine, $tenant->name],
+            'language' => 'en',
+            'fallback' => "📄 {$typeName} {$this->document->document_number} — {$amount}, due {$due}. {$payLine}. — {$tenant->name}",
+        ];
     }
 
     public function toSms($notifiable): ?string

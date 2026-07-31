@@ -58,12 +58,8 @@ class HostingAccountProvisionedNotification extends Notification
     {
         $tenant = $this->account->tenant;
 
-        return "🎉 *Hosting Account Ready*\n\n"
-            . "Domain: *{$this->account->domain}*\n"
-            . "cPanel username: *{$this->account->cpanel_username}*\n"
-            . "cPanel: https://{$this->account->domain}:2083\n\n"
-            . "Full details (including your password) were sent to your email.\n\n"
-            . "— " . ($tenant?->name ?? 'MoBilling');
+        return "🎉 Hosting ya {$this->account->domain} iko tayari! cPanel user: {$this->account->cpanel_username}. "
+            . "Maelezo kamili (na password) yametumwa kwenye email yako. — " . ($tenant?->name ?? 'MoBilling');
     }
 
     public function toMail($notifiable): MailMessage

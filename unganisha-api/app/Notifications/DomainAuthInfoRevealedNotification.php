@@ -61,11 +61,15 @@ class DomainAuthInfoRevealedNotification extends Notification implements ShouldQ
             . "Kama hukuiomba, wasiliana nasi MARA MOJA. — {$this->tenant->name}";
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
-        return "🔐 *Domain Transfer Code Accessed*\n\n"
-            . "Domain: *{$this->domain->name}*\n\n"
-            . "This code can move the domain to another registrar. If you didn't request it, contact us *immediately*.\n\n"
-            . "— {$this->tenant->name}";
+        $alert = "The transfer (EPP) code for your domain {$this->domain->name} was just accessed";
+
+        return [
+            'template' => 'security_alert_v1',
+            'parameters' => [$alert, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "🔐 SECURITY: {$alert}. This code can move the domain to another registrar. If you didn't request it, contact us immediately. — {$this->tenant->name}",
+        ];
     }
 }

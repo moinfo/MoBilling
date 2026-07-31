@@ -59,11 +59,15 @@ class HostingPasswordChangedNotification extends Notification implements ShouldQ
             . "Kama si wewe, wasiliana nasi MARA MOJA. — {$this->tenant->name}";
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
-        return "🔐 *cPanel Password Changed*\n\n"
-            . "Domain: *{$this->account->domain}*\n"
-            . "Changed via: {$this->changedVia}\n\n"
-            . "If this wasn't you, contact us *immediately*.\n\n— {$this->tenant->name}";
+        $alert = "The cPanel password for {$this->account->domain} was just changed via the {$this->changedVia}";
+
+        return [
+            'template' => 'security_alert_v1',
+            'parameters' => [$alert, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "🔐 SECURITY: {$alert}. If this wasn't you, contact us immediately. — {$this->tenant->name}",
+        ];
     }
 }

@@ -52,22 +52,21 @@ class PaymentReceiptNotification extends Notification implements ShouldQueue
             . " Asante! — {$tenant->name}";
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $tenant = $this->document->tenant;
         $amount = $tenant->currency . ' ' . number_format($this->payment->amount, 2);
         $paid = $this->document->status === 'paid';
+        $statusLine = $paid
+            ? 'Your invoice is now fully PAID.'
+            : 'Remaining balance: ' . $tenant->currency . ' ' . number_format($this->document->balance_due, 2);
 
-        $msg = "✅ *Payment Received*\n\n"
-            . "Invoice: *{$this->document->document_number}*\n"
-            . "Amount: *{$amount}*\n"
-            . "Date: {$this->payment->payment_date->format('d M Y')}\n";
-        $msg .= $paid
-            ? "\nYour invoice is now *fully paid*. Thank you!"
-            : "\nRemaining balance: *{$tenant->currency} " . number_format($this->document->balance_due, 2) . "*";
-        $msg .= "\n\n— {$tenant->name}";
-
-        return $msg;
+        return [
+            'template' => 'payment_received_v1',
+            'parameters' => [$this->document->document_number, $amount, $statusLine, $tenant->name],
+            'language' => 'en',
+            'fallback' => "✅ Payment received: {$amount} for invoice {$this->document->document_number}. {$statusLine} — {$tenant->name}",
+        ];
     }
 
     public function toMail($notifiable): MailMessage

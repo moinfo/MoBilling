@@ -67,14 +67,15 @@ class SubscriptionReactivatedNotification extends Notification implements Should
         return "Payment received — service restored: {$list}. Asante! — {$this->tenant->name}";
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
-        $msg = "✅ *Service Restored*\n\nThank you for your payment. Restored:\n";
-        foreach ($this->labels as $label) {
-            $msg .= "• {$label}\n";
-        }
-        $msg .= "\n— {$this->tenant->name}";
+        $list = implode(' · ', $this->labels);
 
-        return $msg;
+        return [
+            'template' => 'service_restored_v1',
+            'parameters' => [$list, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "✅ Service restored: {$list}. Thank you for your payment! — {$this->tenant->name}",
+        ];
     }
 }

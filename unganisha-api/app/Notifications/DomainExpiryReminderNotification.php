@@ -66,15 +66,15 @@ class DomainExpiryReminderNotification extends Notification implements ShouldQue
             . "Ifanyie renew mapema kuepuka website/email kusimama. — {$this->tenant->name}";
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $expires = $this->domain->expires_at->format('d M Y');
-        $flag = $this->daysLeft <= 7 ? '🚨' : '⏰';
 
-        return "{$flag} *Domain Expiry Reminder*\n\n"
-            . "Domain: *{$this->domain->name}*\n"
-            . "Expires: *{$expires}* ({$this->daysLeft} day" . ($this->daysLeft === 1 ? '' : 's') . " left)\n\n"
-            . "Renew in time to keep your website and email running.\n\n"
-            . "— {$this->tenant->name}";
+        return [
+            'template' => 'domain_expiry_v1',
+            'parameters' => [$this->domain->name, $expires, (string) $this->daysLeft, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "⏰ Domain {$this->domain->name} expires {$expires} ({$this->daysLeft} days). Renew in time to keep your website and email running. — {$this->tenant->name}",
+        ];
     }
 }

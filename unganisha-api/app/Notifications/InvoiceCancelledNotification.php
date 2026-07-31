@@ -39,15 +39,18 @@ class InvoiceCancelledNotification extends Notification implements ShouldQueue
         return $channels;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
         $tenant = $this->document->tenant;
+        $amount = $tenant->currency . ' ' . number_format($this->document->total, 2);
 
-        return "❌ *Invoice Cancelled*\n\n"
-            . "Invoice *{$this->document->document_number}* ({$tenant->currency} "
-            . number_format($this->document->total, 2) . ") has been cancelled.\n"
-            . "No payment is required.\n\n— {$tenant->name}";
+        return [
+            'template' => 'invoice_cancelled_v1',
+            'parameters' => [$this->document->document_number, $amount, $tenant->name],
+            'language' => 'en',
+            'fallback' => "❌ Invoice {$this->document->document_number} ({$amount}) has been cancelled. No payment required. — {$tenant->name}",
+        ];
     }
 
     public function toSms($notifiable): ?string

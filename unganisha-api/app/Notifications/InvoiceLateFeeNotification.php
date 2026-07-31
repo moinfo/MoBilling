@@ -76,24 +76,25 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
         return $mail;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $currency = $this->tenant->currency;
+        $payLine = ($this->tenant->pesapal_enabled && $this->document->balance_due > 0)
+            ? 'Pay online at ' . $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}")
+            : 'Contact us for payment options';
 
-        $msg = "⚠️ *Late Fee Applied*\n\n"
-            . "Invoice: *{$this->document->document_number}*\n"
-            . "Late fee: *{$currency} " . number_format($this->lateFeeAmount, 2) . "*\n"
-            . "New total: *{$currency} " . number_format($this->newTotal, 2) . "*\n\n"
-            . "Please pay promptly to avoid further charges.";
-
-        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
-            $msg .= "\nPay online: {$payUrl}";
-        }
-
-        $msg .= "\n\n— {$this->tenant->name}";
-
-        return $msg;
+        return [
+            'template' => 'late_fee_notice_v1',
+            'parameters' => [
+                $this->document->document_number,
+                "{$currency} " . number_format($this->lateFeeAmount, 2),
+                "{$currency} " . number_format($this->newTotal, 2),
+                $payLine,
+                $this->tenant->name,
+            ],
+            'language' => 'en',
+            'fallback' => "⚠️ Late fee {$currency} " . number_format($this->lateFeeAmount, 2) . " applied to invoice {$this->document->document_number}. New total {$currency} " . number_format($this->newTotal, 2) . ". {$payLine}. — {$this->tenant->name}",
+        ];
     }
 
     public function toSms($notifiable): ?string

@@ -74,23 +74,20 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
         return $mail;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $currency = $this->tenant->currency;
+        $amount = "{$currency} " . number_format($this->document->total, 2);
+        $payLine = ($this->tenant->pesapal_enabled && $this->document->balance_due > 0)
+            ? 'Pay online at ' . $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}")
+            : 'Contact us to pay';
 
-        $msg = "🚨 *FINAL NOTICE — Service Termination*\n\n"
-            . "Invoice: *{$this->document->document_number}*\n"
-            . "Amount: *{$currency} " . number_format($this->document->total, 2) . "*\n\n"
-            . "This invoice is unpaid. Service will be *TERMINATED in 7 days* if not cleared.";
-
-        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
-            $msg .= "\nPay now: {$payUrl}";
-        }
-
-        $msg .= "\n\n— {$this->tenant->name}";
-
-        return $msg;
+        return [
+            'template' => 'final_notice_v1',
+            'parameters' => [$this->document->document_number, $amount, $payLine, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "🚨 FINAL NOTICE: Invoice {$this->document->document_number} ({$amount}) unpaid — service terminates in 7 days. {$payLine}. — {$this->tenant->name}",
+        ];
     }
 
     public function toSms($notifiable): ?string

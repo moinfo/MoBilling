@@ -114,34 +114,18 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
         return $msg;
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
         $currency = $this->tenant->currency;
         $amount = number_format($this->document->total, 2);
-        $dueDate = $this->document->due_date->format('d M Y');
         $balanceDue = number_format($this->document->balance_due, 2);
+        $dueDate = $this->document->due_date->format('d M Y');
 
-        $msg = "📋 *Invoice Reminder*\n\n"
-            . "*{$this->document->document_number}*\n"
-            . "Amount: *{$currency} {$amount}*\n"
-            . "Balance Due: *{$currency} {$balanceDue}*\n"
-            . "Due Date: {$dueDate}\n";
-
-        if ($this->daysRemaining > 0) {
-            $msg .= "⏳ {$this->daysRemaining} day(s) remaining\n";
-        } elseif ($this->daysRemaining === 0) {
-            $msg .= "⚠️ *Due today*\n";
-        } else {
-            $msg .= "🔴 *" . abs($this->daysRemaining) . " day(s) overdue*\n";
-        }
-
-        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
-            $msg .= "\n💳 Pay online: {$payUrl}";
-        }
-
-        $msg .= "\n\n— {$this->tenant->name}";
-
-        return $msg;
+        return [
+            'template' => 'invoice_reminder_v1',
+            'parameters' => [$this->document->document_number, "{$currency} {$amount}", "{$currency} {$balanceDue}", $dueDate, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "📋 Invoice Reminder: {$this->document->document_number}, amount {$currency} {$amount}, balance {$currency} {$balanceDue}, due {$dueDate}. — {$this->tenant->name}",
+        ];
     }
 }

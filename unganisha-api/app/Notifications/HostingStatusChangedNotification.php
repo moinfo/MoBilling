@@ -69,10 +69,26 @@ class HostingStatusChangedNotification extends Notification implements ShouldQue
             : "Hosting ya {$this->account->domain} imerudishwa — website/email zinafanya kazi. — {$this->tenant->name}";
     }
 
-    public function toWhatsApp($notifiable): ?string
+    public function toWhatsApp($notifiable): array
     {
-        return $this->suspended
-            ? "⛔ *Hosting Suspended*\n\nDomain: *{$this->account->domain}*" . ($this->reason ? "\nReason: {$this->reason}" : '') . "\n\nYour website and email are temporarily offline. Contact us to resolve.\n\n— {$this->tenant->name}"
-            : "✅ *Hosting Restored*\n\nDomain: *{$this->account->domain}*\nYour website and email are back online.\n\n— {$this->tenant->name}";
+        $service = "hosting {$this->account->domain}";
+
+        if ($this->suspended) {
+            $reason = $this->reason ?: 'Contact us for details';
+
+            return [
+                'template' => 'service_suspended_v1',
+                'parameters' => [$service, $reason, $this->tenant->name],
+                'language' => 'en',
+                'fallback' => "⛔ Hosting {$this->account->domain} suspended ({$reason}). Contact us to resolve. — {$this->tenant->name}",
+            ];
+        }
+
+        return [
+            'template' => 'service_restored_v1',
+            'parameters' => [$service, $this->tenant->name],
+            'language' => 'en',
+            'fallback' => "✅ Hosting {$this->account->domain} restored — website and email back online. — {$this->tenant->name}",
+        ];
     }
 }
