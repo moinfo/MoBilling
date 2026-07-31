@@ -25,11 +25,26 @@ class PaymentReceiptNotification extends Notification implements ShouldQueue
         $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
         $tenant = $this->document->tenant;
 
+        // Push is independent of the tenant's email setting; FcmChannel
+        // no-ops when unconfigured or the client has no devices.
         if ($tenant && !$tenant->email_enabled) {
-            return [];
+            return [\App\Channels\FcmChannel::class];
         }
 
-        return ['mail'];
+        return ['mail', \App\Channels\FcmChannel::class];
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $currency = $this->document->tenant?->currency ?? 'TZS';
+
+        return [
+            'title' => 'Payment received — thank you!',
+            'body'  => "{$currency} " . number_format((float) $this->payment->amount, 2)
+                . " received for {$this->document->document_number}.",
+            'data'  => ['type' => 'payment', 'document_id' => $this->document->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

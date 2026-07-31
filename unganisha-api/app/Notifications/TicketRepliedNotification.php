@@ -17,7 +17,18 @@ class TicketRepliedNotification extends Notification
 
     public function via($notifiable): array
     {
-        return ['mail'];
+        return ['mail', \App\Channels\FcmChannel::class];
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => $this->closed
+                ? "Ticket {$this->ticket->ticket_number} closed"
+                : "New reply — {$this->ticket->ticket_number}",
+            'body'  => $this->closed ? $this->ticket->subject : $this->replyExcerpt,
+            'data'  => ['type' => 'ticket', 'ticket_id' => $this->ticket->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

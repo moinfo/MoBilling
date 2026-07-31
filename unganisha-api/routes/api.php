@@ -798,6 +798,8 @@ Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(fu
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
     Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);
+    Route::post('/device-tokens', [\App\Http\Controllers\Portal\PortalDeviceTokenController::class, 'store']);
+    Route::delete('/device-tokens', [\App\Http\Controllers\Portal\PortalDeviceTokenController::class, 'destroy']);
     Route::get('/profile', [PortalProfileController::class, 'show']);
     Route::put('/profile', [PortalProfileController::class, 'update']);
     Route::post('/profile/change-password', [PortalProfileController::class, 'changePassword']);

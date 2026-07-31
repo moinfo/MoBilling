@@ -33,7 +33,24 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             $channels[] = SmsChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $doc = $this->document;
+        $typeName = ucfirst($doc->type);
+
+        return [
+            'title' => "{$typeName} {$doc->document_number}",
+            'body'  => "Amount: " . number_format((float) $doc->total, 2)
+                . ($doc->due_date ? ' — due ' . $doc->due_date->format('d M Y') : ''),
+            'data'  => ['type' => 'invoice', 'document_id' => $doc->id],
+        ];
     }
 
     public function toSms($notifiable): ?string

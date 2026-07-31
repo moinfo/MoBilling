@@ -35,4 +35,10 @@ return [
         ],
     ],
 
+    // Firebase Cloud Messaging (mobile push). Path to a service-account JSON;
+    // unset = push disabled, all FCM sends become silent no-ops.
+    'fcm' => [
+        'credentials' => env('FCM_CREDENTIALS'),
+    ],
+
 ];
