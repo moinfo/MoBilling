@@ -79,6 +79,30 @@ class MosmsService
         return $res['data'] ?? [];
     }
 
+    /** Active SMS credit packages (name, quantity range, price per SMS). */
+    public function packages(Tenant $tenant): array
+    {
+        $res = $this->request('get', '/sms-packages', null, $this->tokenFor($tenant));
+        return $res['data'] ?? [];
+    }
+
+    /**
+     * Start a Pesapal checkout for SMS credits.
+     * @return array{payment_id:mixed, redirect_url:?string}
+     */
+    public function purchaseSms(Tenant $tenant, int $quantity, ?string $callbackUrl = null): array
+    {
+        $res = $this->request('post', '/sms-purchases/pesapal', array_filter([
+            'sms_quantity' => $quantity,
+            'callback_url' => $callbackUrl,
+        ]), $this->tokenFor($tenant));
+
+        return [
+            'payment_id'   => data_get($res, 'data.payment_id'),
+            'redirect_url' => data_get($res, 'data.redirect_url'),
+        ];
+    }
+
     // ── Sends ──────────────────────────────────────────────────────────────
 
     /** Free text — wrapped by MoSMS in their approved custom_message template. */

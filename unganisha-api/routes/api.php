@@ -429,6 +429,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/settings/mosms/register', [\App\Http\Controllers\MosmsController::class, 'register']);
     Route::delete('/settings/mosms', [\App\Http\Controllers\MosmsController::class, 'unlink']);
     Route::post('/settings/mosms/test', [\App\Http\Controllers\MosmsController::class, 'sendTest']);
+    Route::get('/settings/mosms/packages', [\App\Http\Controllers\MosmsController::class, 'packages']);
+    Route::post('/settings/mosms/purchase', [\App\Http\Controllers\MosmsController::class, 'purchase']);
 
     // Email settings (tenant admin)
     Route::get('/settings/email', [EmailSettingsController::class, 'show']);

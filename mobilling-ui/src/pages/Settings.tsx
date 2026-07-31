@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Tabs, TextInput, Textarea, PasswordInput, Select, Button,
   Stack, Divider, Paper, Group, Alert, NumberInput, Switch, Loader, Center, Box,
-  FileButton, Image, Text, Badge, ActionIcon, Accordion, ThemeIcon, Tooltip, SegmentedControl,
+  FileButton, Image, Text, Badge, ActionIcon, Accordion, ThemeIcon, Tooltip, SegmentedControl, Modal,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -29,6 +29,7 @@ import {
   getPesapalSettings, updatePesapalSettings, PesapalSettings,
   getWhatsAppSettings, updateWhatsAppSettings, WhatsAppSettings,
   getMosmsStatus, linkMosms, registerMosms, unlinkMosms, testMosms, MosmsStatus,
+  getMosmsPackages, purchaseMosmsSms, MosmsPackage,
 } from '../api/settings';
 import { getActiveCurrencies } from '../api/admin';
 import axios from 'axios';
@@ -1154,6 +1155,59 @@ function PaymentMethodsTab({ isAdmin }: { isAdmin: boolean }) {
   );
 }
 
+function MosmsBuyModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+  const [qty, setQty] = useState<number | string>(1000);
+  const { data } = useQuery({ queryKey: ['mosms-packages'], queryFn: getMosmsPackages, enabled: opened });
+  const packages: MosmsPackage[] = data?.data?.data ?? [];
+  const n = Number(qty) || 0;
+  const pkg = packages.find((p) => n >= p.min_quantity && (p.max_quantity === null || n <= p.max_quantity));
+  const total = pkg ? n * Number(pkg.price_per_sms) : 0;
+
+  const buyMut = useMutation({
+    mutationFn: () => purchaseMosmsSms(n, window.location.origin + '/settings'),
+    onSuccess: (res) => {
+      const url = res.data?.data?.redirect_url;
+      if (url) window.open(url, '_blank', 'noopener');
+      notifications.show({ title: 'Checkout created', message: 'Complete the payment on the Pesapal page that just opened. Credits are added automatically after payment.', color: 'green' });
+      onClose();
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to start checkout', color: 'red' }),
+  });
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Buy SMS credits (MoSMS)" size="md">
+      <Stack gap="sm">
+        <NumberInput label="How many SMS credits?" min={100} step={100} value={qty}
+          onChange={setQty} thousandSeparator="," description="Minimum 100" />
+        {packages.length > 0 && (
+          <Stack gap={4}>
+            {packages.map((p) => (
+              <Group key={p.id} justify="space-between"
+                style={{ opacity: pkg?.id === p.id ? 1 : 0.55 }}>
+                <Text size="sm" fw={pkg?.id === p.id ? 700 : 400}>
+                  {p.name} · {p.min_quantity.toLocaleString()}{p.max_quantity ? `–${p.max_quantity.toLocaleString()}` : '+'}
+                </Text>
+                <Badge variant={pkg?.id === p.id ? 'filled' : 'light'} color="teal">TZS {Number(p.price_per_sms).toLocaleString()}/SMS</Badge>
+              </Group>
+            ))}
+          </Stack>
+        )}
+        {pkg && n >= 100 && (
+          <Alert color="teal" variant="light" p="xs">
+            <Text size="sm"><b>{n.toLocaleString()}</b> SMS × TZS {Number(pkg.price_per_sms).toLocaleString()} = <b>TZS {total.toLocaleString()}</b> ({pkg.name})</Text>
+          </Alert>
+        )}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button loading={buyMut.isPending} disabled={n < 100} onClick={() => buyMut.mutate()}>
+            Pay with Pesapal
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
 // --- MoSMS section (WhatsApp via mosms.co.tz — no Meta setup needed) ---
 
 function MosmsSection({ isAdmin }: { isAdmin: boolean }) {
@@ -1169,6 +1223,7 @@ function MosmsSection({ isAdmin }: { isAdmin: boolean }) {
   const [phone, setPhone] = useState('');
   const [testTo, setTestTo] = useState('');
   const [testText, setTestText] = useState('');
+  const [buyOpen, setBuyOpen] = useState(false);
 
   const done = () => queryClient.invalidateQueries({ queryKey: ['mosms-status'] });
   const fail = (err: any, msg: string) =>
@@ -1218,7 +1273,13 @@ function MosmsSection({ isAdmin }: { isAdmin: boolean }) {
               {st.custom_template_id ? 'Free-text ready' : 'custom_message template missing'}
             </Badge>
             <Badge variant="light" color="gray">{st.templates.length} template(s)</Badge>
+            {isAdmin && (
+              <Button size="compact-xs" variant="light" color="teal" onClick={() => setBuyOpen(true)}>
+                Buy SMS credits
+              </Button>
+            )}
           </Group>
+          <MosmsBuyModal opened={buyOpen} onClose={() => { setBuyOpen(false); done(); }} />
           {st.error && (
             <Alert color="orange" variant="light" p="xs">{st.error}</Alert>
           )}
