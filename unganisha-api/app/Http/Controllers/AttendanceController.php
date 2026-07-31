@@ -211,6 +211,58 @@ class AttendanceController extends Controller
         return response()->json(['data' => $this->buildReport($user, $data)]);
     }
 
+    /** Export the monthly report as PDF or CSV (Excel-friendly). */
+    public function exportReport(Request $request)
+    {
+        $this->authorizePermission('attendance.manage');
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'user_id' => ['required', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
+            'month'   => 'nullable|integer|min:1|max:12',
+            'year'    => 'nullable|integer|min:2020|max:2100',
+            'format'  => 'required|in:pdf,csv',
+        ]);
+
+        $user = User::where('tenant_id', $tenantId)->findOrFail($data['user_id']);
+        $report = $this->buildReport($user, $data);
+        $slug = \Illuminate\Support\Str::slug($user->name) . '-' . \Illuminate\Support\Str::slug($report['month_label']);
+
+        if ($data['format'] === 'pdf') {
+            $tenant = auth()->user()->tenant;
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.attendance-report', [
+                'report' => $report,
+                'tenant' => $tenant,
+            ]);
+
+            return $pdf->download("attendance-{$slug}.pdf");
+        }
+
+        // CSV (opens directly in Excel)
+        $rows = [['Date', 'Day', 'Check-in', 'Check-out', 'Status', 'Deduction']];
+        foreach ($report['days'] as $d) {
+            $status = $d['holiday'] ? 'Holiday'
+                : (!$d['working'] ? 'Off day'
+                : ($d['status'] ?: ($d['absent'] ? 'Absent'
+                : (implode(' + ', array_filter([$d['late'] ? 'Late' : null, $d['left_early'] ? 'Left early' : null, $d['no_checkout'] ? 'No check-out' : null])) ?: 'Present'))));
+            $rows[] = [$d['date'], $d['weekday'], $d['check_in_at'] ?? '', $d['check_out_at'] ?? '', $status, $d['deduction'] ?: ''];
+        }
+        $rows[] = [];
+        $rows[] = ['Totals', '', "Present: {$report['totals']['present']}", "Late: {$report['totals']['late']}", "Absent: {$report['totals']['absent']}", "Deductions: {$report['totals']['deduction_total']}"];
+
+        $csv = fopen('php://temp', 'r+');
+        fwrite($csv, "\xEF\xBB\xBF");   // BOM so Excel reads UTF-8
+        foreach ($rows as $r) {
+            fputcsv($csv, $r);
+        }
+        rewind($csv);
+
+        return response(stream_get_contents($csv), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=attendance-{$slug}.csv",
+        ]);
+    }
+
     /** The same monthly report, but always for the logged-in user themselves. */
     public function myReport(Request $request)
     {

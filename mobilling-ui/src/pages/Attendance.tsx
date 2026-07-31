@@ -7,7 +7,7 @@ import { DatePickerInput, TimeInput, MonthPickerInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff, IconDotsVertical } from '@tabler/icons-react';
+import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff, IconDotsVertical, IconFileDownload } from '@tabler/icons-react';
 import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput, FileButton, SegmentedControl } from '@mantine/core';
 import { IconUpload, IconFileSpreadsheet } from '@tabler/icons-react';
 import dayjs from 'dayjs';
@@ -16,7 +16,7 @@ import {
   getAttendancePenalties, waiveAttendancePenalty, unwaiveAttendancePenalty, getAttendanceDashboard,
   getDeviceConfig, getDeviceEvents, regenerateDeviceToken,
   getDeviceMappings, saveDeviceMapping, importDeviceEvents,
-  previewAttendanceSheet, commitAttendanceSheet, getAttendanceReport,
+  previewAttendanceSheet, commitAttendanceSheet, getAttendanceReport, exportAttendanceReport,
   AttendanceSettings, ExcusedStatus, DeviceMappingStaff, SheetMapping, SheetPreview, SheetImportResult, AttendanceReport,
 } from '../api/attendance';
 
@@ -374,6 +374,26 @@ function ReportTab() {
   });
   const r: AttendanceReport | undefined = data?.data?.data;
 
+  const [exporting, setExporting] = useState<'pdf' | 'csv' | null>(null);
+  const doExport = async (format: 'pdf' | 'csv') => {
+    if (!userId) return;
+    setExporting(format);
+    try {
+      const res = await exportAttendanceReport(userId, m, y, format);
+      const staffName = staff.find((s) => s.id === userId)?.name ?? 'staff';
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = `attendance-${staffName.replace(/\s+/g, '-')}-${y}-${String(m).padStart(2, '0')}.${format === 'pdf' ? 'pdf' : 'csv'}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      notifications.show({ message: apiErr(e, 'Export failed.'), color: 'red' });
+    } finally {
+      setExporting(null);
+    }
+  };
+
   const markMut = useMutation({
     mutationFn: ({ date, status }: { date: string; status: ExcusedStatus | null }) =>
       recordAttendance({ user_id: userId!, date, status }),
@@ -396,6 +416,14 @@ function ReportTab() {
           onChange={(v) => v && setMonth(new Date(v as unknown as string))} w={160} />
         {r && (
           <Text size="sm" c="dimmed" mt={22}>Targets: in by {r.check_in_time} · out by {r.check_out_time}</Text>
+        )}
+        {userId && r && (
+          <Group gap="xs" mt={22}>
+            <Button size="xs" variant="light" leftSection={<IconFileDownload size={14} />}
+              loading={exporting === 'pdf'} onClick={() => doExport('pdf')}>PDF</Button>
+            <Button size="xs" variant="light" color="teal" leftSection={<IconFileSpreadsheet size={14} />}
+              loading={exporting === 'csv'} onClick={() => doExport('csv')}>Excel</Button>
+          </Group>
         )}
       </Group>
 
