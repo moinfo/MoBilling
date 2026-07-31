@@ -399,6 +399,17 @@ class HostingServiceController extends Controller
                 ->forAccount($hostingAccount->id)
                 ->resetPassword($hostingAccount->cpanel_username, $data['password']);
 
+            // Security notice to the client (never includes the password).
+            try {
+                $client = $hostingAccount->subscription?->client;
+                $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($hostingAccount->tenant_id);
+                if ($client && $tenant && ($client->email || $client->phone)) {
+                    $client->notify(new \App\Notifications\HostingPasswordChangedNotification($hostingAccount, $tenant, 'staff'));
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Password-change notice failed', ['error' => $e->getMessage()]);
+            }
+
             return response()->json(['message' => 'cPanel password changed.']);
         } catch (WhmApiException $e) {
             return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);

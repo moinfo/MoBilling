@@ -50,13 +50,29 @@ class HostingAccountController extends Controller
     public function suspend(HostingAccount $hostingAccount)
     {
         SuspendHostingAccount::dispatch($hostingAccount, 'Suspended by admin');
+        $this->notifyStatusChange($hostingAccount, suspended: true);
         return response()->json(['message' => 'Suspension started.'], 202);
     }
 
     public function unsuspend(HostingAccount $hostingAccount)
     {
         ReactivateHostingAccount::dispatch($hostingAccount);
+        $this->notifyStatusChange($hostingAccount, suspended: false);
         return response()->json(['message' => 'Unsuspension started.'], 202);
+    }
+
+    /** Tell the client about a manual suspend/restore (auto flows notify elsewhere). */
+    private function notifyStatusChange(HostingAccount $hostingAccount, bool $suspended): void
+    {
+        try {
+            $client = $hostingAccount->subscription?->client;
+            $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($hostingAccount->tenant_id);
+            if ($client && $tenant && ($client->email || $client->phone)) {
+                $client->notify(new \App\Notifications\HostingStatusChangedNotification($hostingAccount, $tenant, $suspended));
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Hosting status notice failed', ['error' => $e->getMessage()]);
+        }
     }
 
     public function terminate(HostingAccount $hostingAccount)

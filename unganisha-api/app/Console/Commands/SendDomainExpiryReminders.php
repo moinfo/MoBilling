@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
 class SendDomainExpiryReminders extends Command
 {
     protected $signature = 'domains:send-expiry-reminders {--dry-run}';
-    protected $description = 'Remind clients about expiring domains (45/30/7/1 days)';
+    protected $description = 'Remind clients about expiring domains (45/30/7/1 days) and expiring SSL certificates (14/7)';
 
     private const MARKS_MANUAL = [45, 30, 7, 1];
     private const MARKS_AUTO   = [7, 1];
@@ -83,7 +83,73 @@ class SendDomainExpiryReminders extends Command
             }
         }
 
-        $this->info(($dry ? 'Dry run: ' : '') . "{$sent} expiry reminder(s).");
+        $sslSent = $this->sslPass($dry, $tenants);
+
+        $this->info(($dry ? 'Dry run: ' : '') . "{$sent} domain + {$sslSent} SSL expiry reminder(s).");
         return self::SUCCESS;
+    }
+
+    /**
+     * SSL certificates: domains:sync probes every cert nightly into
+     * domain.meta (ssl_expires_at) — surface the ones about to lapse.
+     */
+    private function sslPass(bool $dry, array &$tenants): int
+    {
+        $sent = 0;
+        $marks = [14, 7];
+
+        $domains = Domain::withoutGlobalScopes()
+            ->where('status', 'active')
+            ->whereNotNull('client_id')
+            ->where('meta->ssl_expires_at', '!=', null)
+            ->with(['client' => fn ($q) => $q->withoutGlobalScopes()])
+            ->get();
+
+        foreach ($domains as $domain) {
+            $expires = data_get($domain->meta, 'ssl_expires_at');
+            $client = $domain->client;
+            if (!$expires || !$client || !$client->email) {
+                continue;
+            }
+
+            $expiresAt = \Carbon\Carbon::parse($expires)->startOfDay();
+            if ($expiresAt->isPast() || $expiresAt->gt(now()->addDays(14))) {
+                continue;
+            }
+
+            $daysLeft = (int) now()->startOfDay()->diffInDays($expiresAt);
+            $mark = collect($marks)->filter(fn ($m) => $daysLeft <= $m)->last();
+            if ($mark === null) {
+                continue;
+            }
+
+            $sentMarks = (array) data_get($domain->meta, "ssl_reminders_sent.{$expires}", []);
+            if (in_array($mark, $sentMarks, true)) {
+                continue;
+            }
+
+            $tenant = $tenants[$domain->tenant_id] ??= Tenant::withoutGlobalScopes()->find($domain->tenant_id);
+            if (!$tenant) {
+                continue;
+            }
+
+            if ($dry) {
+                $this->line("[dry-ssl] {$domain->name} — cert {$daysLeft}d left (mark {$mark}) → {$client->name}");
+                $sent++;
+                continue;
+            }
+
+            try {
+                $client->notify(new \App\Notifications\SslExpiryReminderNotification($domain, $tenant, $daysLeft, $expiresAt->format('d M Y')));
+                $meta = $domain->meta ?? [];
+                $meta['ssl_reminders_sent'][$expires][] = $mark;
+                $domain->update(['meta' => $meta]);
+                $sent++;
+            } catch (\Throwable $e) {
+                Log::warning('SSL expiry reminder failed', ['domain' => $domain->name, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return $sent;
     }
 }

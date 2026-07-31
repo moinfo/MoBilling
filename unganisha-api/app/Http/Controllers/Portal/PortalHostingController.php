@@ -282,6 +282,17 @@ class PortalHostingController extends Controller
                 ->forAccount($hostingAccount->id)
                 ->resetPassword($hostingAccount->cpanel_username, $data['password']);
 
+            // Security notice (never includes the password).
+            try {
+                $client = $hostingAccount->subscription?->client;
+                $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($hostingAccount->tenant_id);
+                if ($client && $tenant && ($client->email || $client->phone)) {
+                    $client->notify(new \App\Notifications\HostingPasswordChangedNotification($hostingAccount, $tenant, 'client portal'));
+                }
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Password-change notice failed', ['error' => $e->getMessage()]);
+            }
+
             return response()->json(['message' => 'cPanel password changed.']);
         } catch (WhmApiException $e) {
             return response()->json(['message' => 'Password change failed: ' . $e->getMessage()], 422);

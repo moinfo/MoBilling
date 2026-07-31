@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\HostingAccount;
 use App\Notifications\Concerns\HasTenantBranding;
 use Illuminate\Bus\Queueable;
@@ -27,7 +29,41 @@ class HostingAccountProvisionedNotification extends Notification
 
     public function via($notifiable): array
     {
-        return ['mail'];
+        $tenant = $this->account->tenant;
+
+        $channels = [];
+        if (($tenant?->email_enabled ?? true) && $notifiable->email) {
+            $channels[] = 'mail';
+        }
+        if ($tenant?->sms_enabled && $notifiable->phone) {
+            $channels[] = SmsChannel::class;
+        }
+        if ($tenant?->whatsapp_enabled && $notifiable->phone) {
+            $channels[] = WhatsAppChannel::class;
+        }
+
+        return $channels;
+    }
+
+    /** Never includes the password — that goes by email only. */
+    public function toSms($notifiable): ?string
+    {
+        $tenant = $this->account->tenant;
+
+        return "Hosting ya {$this->account->domain} iko tayari! cPanel user: {$this->account->cpanel_username}. "
+            . "Maelezo kamili (na password) yametumwa kwenye email yako. — " . ($tenant?->name ?? 'MoBilling');
+    }
+
+    public function toWhatsApp($notifiable): ?string
+    {
+        $tenant = $this->account->tenant;
+
+        return "🎉 *Hosting Account Ready*\n\n"
+            . "Domain: *{$this->account->domain}*\n"
+            . "cPanel username: *{$this->account->cpanel_username}*\n"
+            . "cPanel: https://{$this->account->domain}:2083\n\n"
+            . "Full details (including your password) were sent to your email.\n\n"
+            . "— " . ($tenant?->name ?? 'MoBilling');
     }
 
     public function toMail($notifiable): MailMessage

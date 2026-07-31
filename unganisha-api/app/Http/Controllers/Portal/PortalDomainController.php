@@ -207,6 +207,16 @@ class PortalDomainController extends Controller
             'status'    => 'success',
         ]);
 
+        try {
+            $client = $domain->client()->withoutGlobalScopes()->first();
+            $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($domain->tenant_id);
+            if ($client && $tenant && ($client->email || $client->phone)) {
+                $client->notify(new \App\Notifications\DomainAuthInfoRevealedNotification($domain, $tenant));
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('AuthInfo notice failed', ['error' => $e->getMessage()]);
+        }
+
         return response()->json(['auth_info' => $domain->epp_auth_info]);
     }
 
