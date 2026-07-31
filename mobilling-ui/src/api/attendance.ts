@@ -158,6 +158,9 @@ export const getAttendanceReport = (user_id: string, month: number, year: number
 export const getMyAttendanceReport = (month: number, year: number) =>
   api.get<{ data: AttendanceReport }>('/attendance/my-report', { params: { month, year } });
 
+export const exportAttendanceReport = (user_id: string, month: number, year: number, format: 'pdf' | 'csv') =>
+  api.get('/attendance/report/export', { params: { user_id, month, year, format }, responseType: 'blob' });
+
 // ── iVMS-4200 CSV export → upload ──────────────────────────────────────────
 export interface SheetMapping {
   match_by: 'name' | 'employee_no';

@@ -712,6 +712,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::post('/attendance/device-regenerate', [\App\Http\Controllers\DeviceAttendanceController::class, 'regenerate']);
     Route::get('/attendance/report', [\App\Http\Controllers\AttendanceController::class, 'report']);
     Route::get('/attendance/my-report', [\App\Http\Controllers\AttendanceController::class, 'myReport']);
+    Route::get('/attendance/report/export', [\App\Http\Controllers\AttendanceController::class, 'exportReport']);
     Route::get('/attendance/device-mappings', [\App\Http\Controllers\DeviceAttendanceController::class, 'mappings']);
     Route::post('/attendance/device-mappings', [\App\Http\Controllers\DeviceAttendanceController::class, 'saveMapping']);
     Route::post('/attendance/device-import',  [\App\Http\Controllers\DeviceAttendanceController::class, 'importNow']);
