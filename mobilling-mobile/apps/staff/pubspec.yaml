@@ -1,0 +1,33 @@
+name: staff
+description: "MoBilling staff — dashboard, clients, invoices, payments and tickets on the go."
+publish_to: 'none'
+version: 1.0.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  mobilling_api:
+    path: ../../packages/mobilling_api
+  mobilling_auth:
+    path: ../../packages/mobilling_auth
+  mobilling_ui:
+    path: ../../packages/mobilling_ui
+
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.6.2
+  intl: ^0.20.2
+  url_launcher: ^6.3.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

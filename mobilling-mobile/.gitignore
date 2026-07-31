@@ -1,0 +1,33 @@
+# Dart / Flutter workspace
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Member packages resolve through the workspace root, so only the root
+# lockfile is meaningful — per-package ones are stray files.
+apps/*/pubspec.lock
+packages/*/pubspec.lock
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# iOS
+ios/Pods/
+ios/.symlinks/
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/ephemeral/
+**/ios/Podfile.lock
+
+# Android
+android/.gradle/
+android/local.properties
+**/android/key.properties
+*.jks
+
+# macOS
+.DS_Store

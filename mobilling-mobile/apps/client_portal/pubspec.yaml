@@ -1,0 +1,40 @@
+name: client_portal
+description: "MoBilling client portal — invoices, payments, services and support."
+publish_to: 'none'
+version: 1.0.0+1
+resolution: workspace
+
+environment:
+  sdk: ^3.10.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  mobilling_api:
+    path: ../../packages/mobilling_api
+  mobilling_auth:
+    path: ../../packages/mobilling_auth
+  mobilling_ui:
+    path: ../../packages/mobilling_ui
+
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.6.2
+  intl: ^0.20.2
+  # Opens the Pesapal hosted payment page in an in-app browser view
+  # (SFSafariViewController / Chrome Custom Tab).
+  url_launcher: ^6.3.1
+  # PDF share: write bytes to a temp file, hand to the platform share sheet.
+  path_provider: ^2.1.5
+  share_plus: ^10.1.4
+  # Ticket attachments — SAF/document picker, no runtime permissions needed.
+  file_picker: ^8.1.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

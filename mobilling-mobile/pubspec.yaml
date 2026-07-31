@@ -1,0 +1,15 @@
+# Dart pub workspace root. Members share a single resolved dependency set and
+# one .dart_tool, so the apps and packages can never drift onto different
+# versions of Dio, Riverpod, etc. Requires Dart >=3.6 — no melos needed.
+name: mobilling_mobile
+publish_to: none
+
+environment:
+  sdk: ^3.10.7
+
+workspace:
+  - apps/client_portal
+  - apps/staff
+  - packages/mobilling_api
+  - packages/mobilling_auth
+  - packages/mobilling_ui
