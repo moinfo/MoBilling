@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Models\Tenant;
 use App\Notifications\Concerns\HasTenantBranding;
@@ -27,12 +28,16 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
     {
         $channels = [];
 
-        if ($this->tenant->email_enabled) {
+        if ($this->tenant->email_enabled && $notifiable->email) {
             $channels[] = 'mail';
         }
 
         if ($this->tenant->sms_enabled && $this->tenant->reminder_sms_enabled) {
             $channels[] = SmsChannel::class;
+        }
+
+        if ($this->tenant->whatsapp_enabled && $this->tenant->reminder_whatsapp_enabled) {
+            $channels[] = WhatsAppChannel::class;
         }
 
         return $channels;
@@ -69,6 +74,26 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
         $this->applyBranding($mail, $this->tenant);
 
         return $mail;
+    }
+
+    public function toWhatsApp($notifiable): ?string
+    {
+        $currency = $this->tenant->currency;
+
+        $msg = "⚠️ *Late Fee Applied*\n\n"
+            . "Invoice: *{$this->document->document_number}*\n"
+            . "Late fee: *{$currency} " . number_format($this->lateFeeAmount, 2) . "*\n"
+            . "New total: *{$currency} " . number_format($this->newTotal, 2) . "*\n\n"
+            . "Please pay promptly to avoid further charges.";
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
+            $msg .= "\nPay online: {$payUrl}";
+        }
+
+        $msg .= "\n\n— {$this->tenant->name}";
+
+        return $msg;
     }
 
     public function toSms($notifiable): ?string

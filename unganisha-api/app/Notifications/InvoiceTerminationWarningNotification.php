@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Models\Tenant;
 use App\Notifications\Concerns\HasTenantBranding;
@@ -25,12 +26,16 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
     {
         $channels = [];
 
-        if ($this->tenant->email_enabled) {
+        if ($this->tenant->email_enabled && $notifiable->email) {
             $channels[] = 'mail';
         }
 
         if ($this->tenant->sms_enabled) {
             $channels[] = SmsChannel::class;
+        }
+
+        if ($this->tenant->whatsapp_enabled) {
+            $channels[] = WhatsAppChannel::class;
         }
 
         return $channels;
@@ -67,6 +72,25 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
         $this->applyBranding($mail, $this->tenant);
 
         return $mail;
+    }
+
+    public function toWhatsApp($notifiable): ?string
+    {
+        $currency = $this->tenant->currency;
+
+        $msg = "🚨 *FINAL NOTICE — Service Termination*\n\n"
+            . "Invoice: *{$this->document->document_number}*\n"
+            . "Amount: *{$currency} " . number_format($this->document->total, 2) . "*\n\n"
+            . "This invoice is unpaid. Service will be *TERMINATED in 7 days* if not cleared.";
+
+        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
+            $msg .= "\nPay now: {$payUrl}";
+        }
+
+        $msg .= "\n\n— {$this->tenant->name}";
+
+        return $msg;
     }
 
     public function toSms($notifiable): ?string

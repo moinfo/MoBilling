@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Document;
 use App\Notifications\Concerns\HasTenantBranding;
 use App\Services\PdfService;
@@ -25,7 +26,7 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
 
         $channels = [];
 
-        if ($tenant->email_enabled) {
+        if ($tenant->email_enabled && $notifiable->email) {
             $channels[] = 'mail';
         }
 
@@ -33,7 +34,33 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             $channels[] = SmsChannel::class;
         }
 
+        if ($tenant->whatsapp_enabled && $tenant->reminder_whatsapp_enabled) {
+            $channels[] = WhatsAppChannel::class;
+        }
+
         return $channels;
+    }
+
+    public function toWhatsApp($notifiable): ?string
+    {
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $tenant = $this->document->tenant;
+        $typeName = ucfirst($this->document->type);
+        $due = $this->document->due_date?->format('d M Y');
+
+        $msg = "📄 *New {$typeName}*\n\n"
+            . "*{$this->document->document_number}*\n"
+            . "Amount: *{$tenant->currency} " . number_format($this->document->total, 2) . "*\n"
+            . ($due ? "Due date: {$due}\n" : '');
+
+        if ($tenant->pesapal_enabled && $this->document->balance_due > 0) {
+            $payUrl = $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}");
+            $msg .= "\nPay online: {$payUrl}\n";
+        }
+
+        $msg .= "\n— {$tenant->name}";
+
+        return $msg;
     }
 
     public function toSms($notifiable): ?string

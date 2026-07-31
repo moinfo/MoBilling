@@ -263,8 +263,8 @@ class DocumentController extends Controller
         }
 
         if ($request->boolean('send_email', true)) {
-            if (!$document->client->email) {
-                return response()->json(['message' => 'Client has no email address. Document status updated.'], 422);
+            if (!$document->client->email && !$document->client->phone) {
+                return response()->json(['message' => 'Client has no email address or phone number. Document status updated.'], 422);
             }
 
             // Send synchronously so a delivery failure surfaces to the user instead of
@@ -328,7 +328,7 @@ class DocumentController extends Controller
         $document->refresh();
 
         // Approve and optionally send to client
-        if ($request->boolean('send_email', true) && $document->client->email) {
+        if ($request->boolean('send_email', true) && ($document->client->email || $document->client->phone)) {
             // Approval is a legitimate state change independent of delivery, so a send
             // failure must not undo it — surface the failure but keep the document approved.
             try {
