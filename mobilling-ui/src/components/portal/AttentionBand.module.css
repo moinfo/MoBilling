@@ -1,0 +1,93 @@
+/* Amber-bordered band that leads the dashboard. */
+.band {
+  border: 1px solid var(--dc-warning-line);
+  border-radius: var(--dc-radius-card);
+  background: var(--dc-warning-fill);
+  padding: 18px 20px;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--dc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  color: var(--dc-warning);
+  margin-bottom: 14px;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dc-warning);
+  flex-shrink: 0;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-radius-panel);
+  background: var(--dc-card-fill);
+}
+
+.cardBody {
+  min-width: 0;
+}
+
+.cardTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--dc-text);
+}
+
+.cardMeta {
+  margin-top: 4px;
+  font-family: var(--dc-font-body);
+  font-size: 13px;
+  color: var(--dc-text-secondary);
+}
+
+.action {
+  padding: 10px 18px;
+  border: none;
+  border-radius: var(--dc-radius-button);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: filter 150ms ease;
+}
+
+.action:hover {
+  filter: brightness(1.08);
+}
+
+.actionWarn {
+  background: var(--dc-warning);
+  color: var(--dc-warning-deep);
+}
+
+.actionOk {
+  background: var(--dc-accent);
+  color: var(--dc-accent-deep);
+}
+
+@media (max-width: 40em) {
+  .card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}

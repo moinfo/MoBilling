@@ -1,0 +1,541 @@
+/*
+ * Client Area login — design_handoff_moinfo_hosting/"Client Area Login.dc.html".
+ * Two equal columns: a brand-gradient panel on the left, the form on the right.
+ */
+.page {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+  background: var(--dc-bg);
+  font-family: var(--dc-font-display);
+}
+
+/* ── Left: brand panel ──────────────────────────────────────────────── */
+.brand {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 44px 56px;
+  background: linear-gradient(165deg, #0b5cd5 0%, #0a4fa8 42%, #0a8f63 100%);
+  overflow: hidden;
+}
+
+.brandGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 72px 72px;
+}
+
+/* 520px circle bleeding off the top-right corner. */
+.brandOrb {
+  position: absolute;
+  top: -160px;
+  right: -180px;
+  width: 520px;
+  height: 520px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  pointer-events: none;
+}
+
+.brandRow {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandLockup {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.brandName {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.brandNameAccent {
+  color: #9fd8ff;
+}
+
+.brandKicker {
+  font-family: var(--dc-font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.brandMiddle {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  max-width: 30ch;
+}
+
+.brandHeadline {
+  margin: 0;
+  font-size: clamp(32px, 3.4vw, 50px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  font-weight: 600;
+  color: #fff;
+  text-wrap: pretty;
+}
+
+.perks {
+  display: flex;
+  flex-direction: column;
+}
+
+.perk {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.perkKey {
+  font-family: var(--dc-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+  padding-top: 4px;
+  width: 46px;
+  flex-shrink: 0;
+}
+
+.perkBody {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.perkTitle {
+  font-size: 16.5px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.perkDesc {
+  font-family: var(--dc-font-body);
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.brandFoot {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.tiles {
+  display: flex;
+  gap: 12px;
+}
+
+.tile {
+  flex: 1;
+  padding: 14px 16px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: var(--dc-radius-panel);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.tileLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--dc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.tileDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dc-accent-text);
+}
+
+.tileValue {
+  margin-top: 7px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.copyright {
+  font-family: var(--dc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── Right: form column ─────────────────────────────────────────────── */
+.formCol {
+  display: flex;
+  flex-direction: column;
+  background: var(--dc-bg);
+}
+
+.topBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 56px;
+  height: 76px;
+  border-bottom: 1px solid var(--dc-hairline);
+}
+
+.back {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14.5px;
+  color: var(--dc-text-secondary);
+  text-decoration: none;
+}
+
+.back:hover {
+  color: var(--dc-text);
+}
+
+.topRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.help {
+  padding: 9px 16px;
+  border: 1px solid var(--dc-border-strong);
+  border-radius: 7px;
+  color: var(--dc-text-body);
+  font-size: 13.5px;
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.help:hover {
+  background: var(--dc-hover-fill);
+}
+
+.formWrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 56px;
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  width: 100%;
+  max-width: 452px;
+  margin: 0 auto;
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.eyebrow {
+  font-family: var(--dc-font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.16em;
+  color: var(--dc-accent-text);
+}
+
+.heading {
+  margin: 0;
+  font-size: 38px;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--dc-text);
+  line-height: 1.05;
+}
+
+.sub {
+  margin: 0;
+  font-family: var(--dc-font-body);
+  font-size: 15.5px;
+  line-height: 1.6;
+  color: var(--dc-text-muted);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--dc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--dc-text-label);
+}
+
+.labelHint {
+  color: var(--dc-text-faint);
+}
+
+.forgot {
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--dc-accent-text);
+  text-decoration: none;
+}
+
+.forgot:hover {
+  color: var(--dc-blue);
+}
+
+.input {
+  height: 52px;
+  width: 100%;
+  padding: 0 16px;
+  border: 1px solid var(--dc-border-strong);
+  border-radius: 9px;
+  background: var(--dc-field-bg);
+  color: var(--dc-text);
+  font-family: var(--dc-font-body);
+  font-size: 15.5px;
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--dc-text-faint);
+}
+
+/* The handoff only sets outline: none — focus has to stay visible. */
+.input:focus {
+  border-color: var(--dc-accent);
+  box-shadow: 0 0 0 3px var(--dc-accent-fill);
+}
+
+.pwWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.pwInput {
+  padding-right: 92px;
+}
+
+.pwToggle {
+  position: absolute;
+  right: 8px;
+  padding: 8px 12px;
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-radius-chip);
+  background: var(--dc-hover-fill);
+  color: var(--dc-text-secondary);
+  font-family: var(--dc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.pwToggle:hover {
+  color: var(--dc-text);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.remember {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font-family: var(--dc-font-body);
+  font-size: 14px;
+  color: var(--dc-text-secondary);
+}
+
+.box {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--dc-border-strong);
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+  color: var(--dc-accent-deep);
+  font-size: 11px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.boxOn {
+  background: var(--dc-accent);
+  border-color: var(--dc-accent);
+}
+
+.security {
+  font-family: var(--dc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--dc-text-faint);
+}
+
+.submit {
+  height: 52px;
+  border: none;
+  border-radius: 9px;
+  background: var(--dc-accent);
+  color: var(--dc-accent-deep);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease;
+}
+
+.submit:hover:not(:disabled) {
+  background: var(--dc-accent-hover);
+}
+
+.submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.quickLinks {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.quick {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 14px 16px;
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-radius-panel);
+  text-decoration: none;
+  transition: border-color 150ms ease;
+}
+
+.quick:hover {
+  border-color: var(--dc-blue-line);
+}
+
+.quickLabel {
+  font-family: var(--dc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  color: var(--dc-blue-text);
+}
+
+.quickText {
+  font-size: 14px;
+  color: var(--dc-text-body);
+}
+
+.newHere {
+  font-family: var(--dc-font-body);
+  font-size: 14px;
+  color: var(--dc-text-muted);
+  text-align: center;
+}
+
+.newHere a {
+  color: var(--dc-accent-text);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.newHere a:hover {
+  color: var(--dc-blue);
+}
+
+.legal {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 56px;
+  height: 58px;
+  border-top: 1px solid var(--dc-hairline);
+  font-family: var(--dc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  color: var(--dc-text-faint);
+}
+
+.legal a {
+  color: var(--dc-text-label);
+  text-decoration: none;
+}
+
+.legal a:hover {
+  color: var(--dc-text);
+}
+
+/* ── Responsive — not designed; ours. ───────────────────────────────── */
+@media (max-width: 62em) {
+  .page {
+    grid-template-columns: 1fr;
+  }
+
+  /* The brand panel becomes a compact header rather than half the screen. */
+  .brand {
+    padding: 28px 24px 32px;
+  }
+
+  .brandMiddle {
+    max-width: none;
+    gap: 20px;
+  }
+
+  .perks,
+  .brandFoot {
+    display: none;
+  }
+
+  .topBar,
+  .legal {
+    padding: 0 24px;
+  }
+
+  .formWrap {
+    padding: 32px 24px;
+  }
+}

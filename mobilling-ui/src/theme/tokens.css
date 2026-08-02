@@ -1,0 +1,217 @@
+/*
+ * Design tokens for the "Control Room" redesign (portal).
+ *
+ * Kept byte-identical to moinfo_hosting/src/theme/tokens.css so the marketing
+ * site and the client portal cannot drift apart visually. If you change a token
+ * here, change it there too — they are two apps sharing one design language.
+ *
+ * Values are taken verbatim from design_handoff_moinfo_hosting/README.md so the
+ * handoff stays the single source of truth — when a token changes there, change
+ * it here and nowhere else. The design prototypes use inline styles throughout;
+ * this file is the extracted equivalent.
+ *
+ * Only the dark treatment was designed. Light-surface values exist for the
+ * homepage "Registry" direction, which we did not ship, so the light theme
+ * still uses the previous Mantine palette.
+ */
+
+:root {
+  /* ── Surfaces ───────────────────────────────────────────────────────── */
+  --dc-bg: #0c1116; /* default page surface */
+  --dc-surface-alt: #0a0e12; /* alternating sections, table rows */
+  --dc-surface-deep: #070a0d; /* utility bar, sidebar, footer, inputs */
+  --dc-surface-raised: #0f151a; /* dropdown menu items */
+  --dc-hairline: rgba(255, 255, 255, 0.08); /* dividers, row borders */
+  --dc-border: rgba(255, 255, 255, 0.12); /* card and panel borders */
+  --dc-border-strong: rgba(255, 255, 255, 0.16); /* inputs, secondary buttons */
+  --dc-card-fill: rgba(255, 255, 255, 0.02);
+  --dc-header-fill: rgba(12, 17, 22, 0.92); /* sticky nav */
+  /* Divider colour behind every 1px-gap hairline grid. */
+  --dc-grid-line: rgba(255, 255, 255, 0.1);
+  /* Cell fill inside a hairline grid — must match the surface behind it. */
+  --dc-grid-cell: #0c1216;
+  /* Form fields sit on the deepest surface in dark, plain white in light. */
+  --dc-field-bg: var(--dc-surface-deep);
+  /* Translucent-white fills that need a solid equivalent on paper. */
+  --dc-panel-fill: rgba(255, 255, 255, 0.035);
+  --dc-chip-fill: rgba(255, 255, 255, 0.05);
+  --dc-hover-fill: rgba(255, 255, 255, 0.03);
+  --dc-outline: rgba(255, 255, 255, 0.2);
+  --dc-accent-hover: #22bd7c;
+  --dc-separator: #37413c;
+
+  /* ── Text ───────────────────────────────────────────────────────────── */
+  --dc-text: #ffffff; /* headings, values, active nav */
+  --dc-text-body: #dce3df; /* long-form copy in cards */
+  --dc-text-secondary: #9aa6a1; /* paragraphs, table cells */
+  --dc-text-muted: #8b968f;
+  --dc-text-nav: #b6c0bb; /* inactive nav items */
+  --dc-text-label: #7f8c86; /* mono labels, table headers */
+  /* Near the AA floor at 10–11px. Non-essential hints only — use --dc-text-label
+     for anything the user actually has to read. */
+  --dc-text-faint: #5c665f;
+
+  /* ── Brand & semantic ───────────────────────────────────────────────── */
+  --dc-brand-blue: #0b5cd5; /* logo gradient start */
+  --dc-brand-green: #0a8f63; /* logo gradient end */
+  --dc-accent: #29d08a; /* primary CTA fill, success, uptime */
+  --dc-accent-text: #7be3b4; /* kickers, links, prices on dark */
+  --dc-accent-deep: #06231a; /* text ON the accent button */
+  --dc-blue: #4a9bff; /* "Hosting" wordmark, link hover */
+  --dc-blue-text: #7fb4ff;
+  --dc-blue-deep: #04122a;
+  --dc-warning: #f2a33c; /* overdue, expiring */
+  --dc-warning-deep: #2a1a05;
+  --dc-danger: #ff7b72;
+
+  /* Tinted fills — fill 0.12–0.16, border 0.35–0.45 */
+  --dc-accent-fill: rgba(41, 208, 138, 0.14);
+  --dc-accent-line: rgba(41, 208, 138, 0.45);
+  --dc-blue-fill: rgba(74, 155, 255, 0.14);
+  --dc-blue-line: rgba(74, 155, 255, 0.4);
+  --dc-warning-fill: rgba(242, 163, 60, 0.07);
+  --dc-warning-line: rgba(242, 163, 60, 0.35);
+  --dc-danger-fill: rgba(255, 123, 114, 0.14);
+
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  --dc-font-display: "Space Grotesk", sans-serif;
+  --dc-font-body: "Instrument Sans", sans-serif;
+  --dc-font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  /* ── Radius ─────────────────────────────────────────────────────────── */
+  --dc-radius-micro: 4px;
+  --dc-radius-chip: 6px;
+  --dc-radius-button: 8px;
+  --dc-radius-panel: 10px;
+  --dc-radius-card: 12px;
+  --dc-radius-pill: 20px;
+
+  /* ── Shadows ────────────────────────────────────────────────────────── */
+  --dc-shadow-menu: 0 24px 60px -20px rgba(0, 0, 0, 0.7);
+}
+
+/*
+ * Light scheme.
+ *
+ * Only the dark treatment was designed for direction 1a, but the handoff does
+ * specify a full light palette for direction 1b ("Registry" — light, ruled,
+ * document-like). Those are the values used here, so light mode is the same
+ * design language rather than a washed-out inversion: paper surfaces, solid
+ * hairlines instead of translucent white, and a deeper green that holds
+ * contrast on paper.
+ *
+ * Everything is expressed as the same --dc-* tokens, so every component
+ * already written picks this up with no per-component light styles.
+ */
+:root[data-mantine-color-scheme="light"] {
+  --dc-bg: #fbfbf9;
+  --dc-surface-alt: #f2f3ef;
+  --dc-surface-raised: #ffffff;
+  /* Kept dark on purpose — the handoff's "dark inversion band". It carries the
+     utility strip and footer, which read as chrome rather than page. */
+  --dc-surface-deep: #0f1a2e;
+  --dc-hairline: #eef1f5;
+  --dc-border: #dfe1da;
+  --dc-border-strong: #c9ccc2;
+  --dc-card-fill: #ffffff;
+  --dc-header-fill: rgba(251, 251, 249, 0.92);
+  --dc-grid-line: #dfe1da;
+  --dc-grid-cell: #ffffff;
+  --dc-field-bg: #ffffff;
+
+  --dc-text: #14181c;
+  --dc-text-body: #3d443b;
+  --dc-text-secondary: #6b726a;
+  --dc-text-muted: #8a9188;
+  /* Nav sits on the light header here, so it needs the body colour, not the
+     pale grey used against near-black. */
+  --dc-text-nav: #3d443b;
+  --dc-text-label: #6b726a;
+  --dc-text-faint: #8a9188;
+
+  --dc-accent: #12a46f;
+  --dc-accent-text: #0a7a55;
+  --dc-accent-deep: #ffffff; /* text on a filled green button */
+  --dc-blue: #0b5cd5;
+  --dc-blue-text: #0b5cd5;
+
+  --dc-accent-fill: rgba(18, 164, 111, 0.1);
+  --dc-accent-line: rgba(18, 164, 111, 0.35);
+  --dc-blue-fill: rgba(11, 92, 213, 0.08);
+  --dc-blue-line: rgba(11, 92, 213, 0.3);
+  --dc-warning-fill: rgba(242, 163, 60, 0.12);
+  --dc-warning-line: rgba(242, 163, 60, 0.45);
+
+  --dc-panel-fill: #ffffff;
+  --dc-chip-fill: #f2f3ef;
+  --dc-hover-fill: rgba(20, 24, 28, 0.04);
+  --dc-outline: #c9ccc2;
+  --dc-accent-hover: #0f9163;
+  --dc-separator: #c9ccc2;
+
+  --dc-shadow-menu: 0 24px 60px -24px rgba(20, 24, 28, 0.35);
+}
+
+/*
+ * Signature treatments — reproduce these or the design loses its character.
+ * Both are absolutely positioned overlays inside a `position: relative` hero.
+ */
+
+/* 1. Grid texture — 80px ruled grid over every marketing hero. */
+.dcGrid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(var(--dc-grid-texture) 1px, transparent 1px),
+    linear-gradient(90deg, var(--dc-grid-texture) 1px, transparent 1px);
+  background-size: 80px 80px;
+}
+
+:root {
+  --dc-grid-texture: rgba(255, 255, 255, 0.035);
+}
+
+/* On paper the ruling is ink, not light — and a touch stronger so it reads. */
+:root[data-mantine-color-scheme="light"] {
+  --dc-grid-texture: rgba(20, 24, 28, 0.05);
+}
+
+/* 2. Radial brand wash — sits behind the grid. */
+.dcWash {
+  background: radial-gradient(900px 420px at 20% 0%, rgba(11, 92, 213, 0.28), transparent 70%),
+    radial-gradient(720px 400px at 88% 30%, rgba(10, 143, 99, 0.22), transparent 70%), var(--dc-bg);
+}
+
+/* The same wash at full strength would tint white paper murky. */
+:root[data-mantine-color-scheme="light"] .dcWash {
+  background: radial-gradient(900px 420px at 20% 0%, rgba(11, 92, 213, 0.07), transparent 70%),
+    radial-gradient(720px 400px at 88% 30%, rgba(18, 164, 111, 0.06), transparent 70%), var(--dc-bg);
+}
+
+/*
+ * 3. Hairline grid — 1px dividers with no border doubling. Each cell paints
+ * itself the page colour over a hairline-coloured 1px-gap grid.
+ */
+.dcHairGrid {
+  display: grid;
+  gap: 1px;
+  background: var(--dc-grid-line);
+}
+.dcHairGrid > * {
+  background: var(--dc-bg);
+}
+
+/* Every value that is data is mono. Prose never is. */
+.dcMono {
+  font-family: var(--dc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Uppercase mono eyebrow — the recurring section/field label. */
+.dcEyebrow {
+  font-family: var(--dc-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dc-text-label);
+}

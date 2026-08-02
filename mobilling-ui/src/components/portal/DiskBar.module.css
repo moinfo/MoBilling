@@ -1,0 +1,70 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 150px;
+}
+
+.figures {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+/* Quotas are data — mono, tabular so the columns line up down the table. */
+.value {
+  font-family: var(--dc-font-mono);
+  font-size: 12px;
+  color: var(--dc-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.pct {
+  font-family: var(--dc-font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--dc-grid-line);
+  overflow: hidden;
+}
+
+.fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 200ms ease;
+}
+
+/* Design thresholds: under 65% green, 65–84% amber, 85%+ red. */
+.green {
+  color: var(--dc-accent);
+  background: var(--dc-accent);
+}
+
+.amber {
+  color: var(--dc-warning);
+  background: var(--dc-warning);
+}
+
+.red {
+  color: var(--dc-danger);
+  background: var(--dc-danger);
+}
+
+/* Colour classes double as text colour on .pct, so reset the background there. */
+.pct.green,
+.pct.amber,
+.pct.red {
+  background: none;
+}
+
+.none {
+  font-family: var(--dc-font-mono);
+  font-size: 12px;
+  color: var(--dc-text-faint);
+}

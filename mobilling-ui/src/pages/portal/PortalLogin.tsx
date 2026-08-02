@@ -1,22 +1,23 @@
-import {
-  TextInput, PasswordInput, Button, Paper, Title, Text, Anchor, Stack,
-  Image, Group, Box, ThemeIcon, List, rem, useMantineColorScheme, useComputedColorScheme,
-  ActionIcon,
-} from '@mantine/core';
+import { useState } from 'react';
+import { useMantineColorScheme, useComputedColorScheme, ActionIcon } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../branding';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { safeNext } from '../../utils/safeNext';
-import {
-  IconWorldWww, IconServer, IconHeadset, IconSun, IconMoon, IconArrowLeft,
-} from '@tabler/icons-react';
+import { IconSun, IconMoon } from '@tabler/icons-react';
+import classes from './PortalLogin.module.css';
 
-const features = [
-  { icon: IconWorldWww, text: 'Register, renew & manage your .tz domains' },
-  { icon: IconServer, text: 'cPanel hosting — one-click login, upgrades & usage' },
-  { icon: IconHeadset, text: 'Invoices, wallet top-ups & 24/7 support tickets' },
+/**
+ * The four things a customer signs in to do. The mono keys on the left mirror
+ * the design's ledger feel — they are labels, not decoration.
+ */
+const PERKS = [
+  { k: 'DOM', t: 'Domains', d: 'Register, renew and manage your .tz domains, nameservers and EPP codes.' },
+  { k: 'WEB', t: 'Hosting', d: 'One-click cPanel login, disk and bandwidth usage, upgrades.' },
+  { k: 'PAY', t: 'Billing', d: 'Invoices, statements and receipts. Pay by mobile money or card.' },
+  { k: 'SUP', t: 'Support', d: 'Open a ticket and track it, 24/7, with a team in your time zone.' },
 ];
 
 export default function PortalLogin() {
@@ -25,11 +26,14 @@ export default function PortalLogin() {
   // Set when the visitor came from an /order/* link — see OrderRoute.
   const next = safeNext(useLocation().search);
   const { toggleColorScheme } = useMantineColorScheme();
-  const computedColorScheme = useComputedColorScheme('light');
-  const isDark = computedColorScheme === 'dark';
+  const isDark = useComputedColorScheme('dark') === 'dark';
   const branding = useBranding();
   const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
-  const brandLogo = branding.branded ? branding.logo_url : '/moinfotech-logo.png';
+  const backHref = branding.branded && branding.website ? branding.website : 'https://moinfo.co.tz';
+
+  const [showPw, setShowPw] = useState(false);
+  const [remember, setRemember] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
   const form = useForm({
     initialValues: { identifier: '', password: '' },
@@ -40,6 +44,7 @@ export default function PortalLogin() {
   });
 
   const handleSubmit = async (values: typeof form.values) => {
+    setSubmitting(true);
     try {
       const { user, userType } = await login(values);
       if (userType === 'client') {
@@ -66,113 +71,198 @@ export default function PortalLogin() {
         message: err.response?.data?.message || 'Invalid credentials',
         color: 'red',
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   return (
-    <Box style={{ minHeight: '100vh', display: 'flex' }}>
-      {/* Left branding panel */}
-      <Box visibleFrom="md"
-        style={{
-          width: '45%',
-          background: isDark
-            ? '#141517'
-            : 'linear-gradient(160deg, #2f6fed 0%, #2b5cd9 50%, #1f3f9e 100%)',
-          display: 'flex', flexDirection: 'column', justifyContent: 'center',
-          padding: rem(60), position: 'relative', overflow: 'hidden',
-        }}>
-        <Box style={{
-          position: 'absolute', top: '-20%', right: '-10%', width: '60%', height: '60%',
-          borderRadius: '50%',
-          background: isDark ? 'radial-gradient(circle, rgba(59,130,246,0.12) 0%, transparent 70%)' : 'rgba(255,255,255,0.06)',
-          filter: isDark ? 'blur(40px)' : undefined,
-        }} />
-        <Group gap={12} mb={rem(48)}>
-          {brandLogo && <Image src={brandLogo} h={44} w="auto" alt={brandName} />}
-          <Text size={rem(26)} fw={800} c="white">{brandName}</Text>
-        </Group>
+    <div className={classes.page}>
+      {/* ── Brand panel ─────────────────────────────────────────────── */}
+      <div className={classes.brand}>
+        <div className={classes.brandGrid} aria-hidden="true" />
+        <div className={classes.brandOrb} aria-hidden="true" />
 
-        <Title order={2} c="white" fw={700} mb="sm" style={{ lineHeight: 1.3 }}>
-          Client Area
-        </Title>
-        <Text c={isDark ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.75)'} size="lg" mb={rem(40)} maw={420}>
-          Manage your domains, hosting, invoices and support — all in one place.
-        </Text>
+        <div className={classes.brandRow}>
+          <img src="/moinfotech-logo.png" alt="" height={40} />
+          <span className={classes.brandLockup}>
+            <span className={classes.brandName}>
+              Moinfo<span className={classes.brandNameAccent}>Tech</span>
+            </span>
+            <span className={classes.brandKicker}>TCRA REGISTRAR · TZ</span>
+          </span>
+        </div>
 
-        <List spacing="lg" size="md" center>
-          {features.map((f, i) => (
-            <List.Item key={i}
-              icon={
-                <ThemeIcon size={36} radius="xl" color={isDark ? 'blue' : 'indigo'} variant={isDark ? 'light' : 'white'}>
-                  <f.icon size={18} />
-                </ThemeIcon>
-              }>
-              <Text c={isDark ? 'rgba(255,255,255,0.7)' : 'white'} size="sm" fw={500}>{f.text}</Text>
-            </List.Item>
-          ))}
-        </List>
+        <div className={classes.brandMiddle}>
+          <h1 className={classes.brandHeadline}>Everything you run with us, in one place.</h1>
+          <div className={classes.perks}>
+            {PERKS.map((p) => (
+              <div key={p.k} className={classes.perk}>
+                <span className={classes.perkKey}>{p.k}</span>
+                <span className={classes.perkBody}>
+                  <span className={classes.perkTitle}>{p.t}</span>
+                  <span className={classes.perkDesc}>{p.d}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
 
-        <Text size="xs" c="rgba(255,255,255,0.25)" mt="auto" pt={rem(60)}>
-          &copy; {new Date().getFullYear()} {branding.branded ? brandName : 'Moinfotech Company Limited'}. All rights reserved.
-        </Text>
-      </Box>
+        <div className={classes.brandFoot}>
+          <div className={classes.tiles}>
+            <div className={classes.tile}>
+              <div className={classes.tileLabel}>
+                <span className={classes.tileDot} />
+                PLATFORM STATUS
+              </div>
+              <div className={classes.tileValue}>All systems operational</div>
+            </div>
+            {/* The design shows a measured "99.98% / 30 DAYS". Nothing actually
+                measures that, so we state the guarantee the site advertises. */}
+            <div className={classes.tile}>
+              <div className={classes.tileLabel}>UPTIME GUARANTEE</div>
+              <div className={classes.tileValue}>99.9%</div>
+            </div>
+          </div>
+          <div className={classes.copyright}>
+            © {new Date().getFullYear()} MOINFOTECH COMPANY LIMITED
+          </div>
+        </div>
+      </div>
 
-      {/* Right form panel */}
-      <Box style={{
-        flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center',
-        alignItems: 'center', padding: rem(24), position: 'relative',
-      }}>
-        <Group style={{ position: 'absolute', top: rem(20), right: rem(20) }} gap="xs">
-          {(!branding.branded || branding.website) && (
-            <Button component="a" href={branding.branded ? branding.website! : 'https://moinfo.co.tz'}
-              variant="subtle" size="compact-sm" leftSection={<IconArrowLeft size={14} />}>
-              {branding.branded ? branding.website!.replace(/^https?:\/\//, '') : 'moinfo.co.tz'}
-            </Button>
-          )}
-          <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
-            {isDark ? <IconSun size={18} /> : <IconMoon size={18} />}
-          </ActionIcon>
-        </Group>
-
-        <Box w="100%" maw={400}>
-          <Group justify="center" gap={8} mb="md" hiddenFrom="md">
-            {brandLogo && <Image src={brandLogo} h={36} w="auto" alt={brandName} />}
-            <Text size="xl" fw={800}>{brandName}</Text>
-          </Group>
-
-          <Title order={2} ta="center" mb={4}>Client Area Login</Title>
-          <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>
-            Sign in to manage your services
-          </Text>
-
-          <Paper withBorder shadow="sm" p="xl" radius="md">
-            <form onSubmit={form.onSubmit(handleSubmit)}>
-              <Stack gap="md">
-                <TextInput label="Email or Phone" placeholder="you@company.com or 0712345678"
-                  size="md" required {...form.getInputProps('identifier')} />
-                <PasswordInput label="Password" placeholder="Your password"
-                  size="md" required {...form.getInputProps('password')} />
-                <Anchor component={Link} to="/forgot-password" size="sm" ta="right" display="block">
-                  Forgot password?
-                </Anchor>
-                <Button fullWidth type="submit" size="md" mt="xs">Sign In</Button>
-              </Stack>
-            </form>
-          </Paper>
-
-          <Text c="dimmed" size="sm" ta="center" mt="lg">
-            New to {brandName}?{' '}
-            <Anchor
-              component={Link}
-              to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}
-              size="sm"
-              fw={600}
+      {/* ── Form column ─────────────────────────────────────────────── */}
+      <div className={classes.formCol}>
+        <div className={classes.topBar}>
+          <a className={classes.back} href={backHref}>
+            ← Back to {backHref.replace(/^https?:\/\//, '')}
+          </a>
+          <div className={classes.topRight}>
+            <ActionIcon
+              variant="default"
+              size="lg"
+              onClick={toggleColorScheme}
+              aria-label="Toggle colour scheme"
             >
-              Create an account
-            </Anchor>
-          </Text>
-        </Box>
-      </Box>
-    </Box>
+              {isDark ? <IconSun size={18} /> : <IconMoon size={18} />}
+            </ActionIcon>
+            <a
+              className={classes.help}
+              href="https://wa.me/255689011111"
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              Need help?
+            </a>
+          </div>
+        </div>
+
+        <div className={classes.formWrap}>
+          <form className={classes.form} onSubmit={form.onSubmit(handleSubmit)}>
+            <div className={classes.intro}>
+              <span className={classes.eyebrow}>CLIENT AREA</span>
+              <h2 className={classes.heading}>Sign in</h2>
+              <p className={classes.sub}>Manage domains, hosting, invoices and tickets.</p>
+            </div>
+
+            <div className={classes.fields}>
+              <div className={classes.field}>
+                <label className={classes.label} htmlFor="identifier">
+                  <span>EMAIL OR PHONE</span>
+                  <span className={classes.labelHint}>REQUIRED</span>
+                </label>
+                <input
+                  id="identifier"
+                  className={classes.input}
+                  placeholder="you@company.com or 0712345678"
+                  autoComplete="username"
+                  {...form.getInputProps('identifier')}
+                />
+              </div>
+
+              <div className={classes.field}>
+                <label className={classes.label} htmlFor="password">
+                  <span>PASSWORD</span>
+                  <Link className={classes.forgot} to="/forgot-password">FORGOT?</Link>
+                </label>
+                <div className={classes.pwWrap}>
+                  <input
+                    id="password"
+                    className={`${classes.input} ${classes.pwInput}`}
+                    type={showPw ? 'text' : 'password'}
+                    placeholder="Your password"
+                    autoComplete="current-password"
+                    {...form.getInputProps('password')}
+                  />
+                  <button
+                    type="button"
+                    className={classes.pwToggle}
+                    onClick={() => setShowPw((v) => !v)}
+                    aria-label={showPw ? 'Hide password' : 'Show password'}
+                  >
+                    {showPw ? 'HIDE' : 'SHOW'}
+                  </button>
+                </div>
+              </div>
+
+              <div className={classes.row}>
+                <button
+                  type="button"
+                  className={classes.remember}
+                  onClick={() => setRemember((v) => !v)}
+                  aria-pressed={remember}
+                >
+                  <span className={`${classes.box} ${remember ? classes.boxOn : ''}`}>
+                    {remember ? '✓' : ''}
+                  </span>
+                  Keep me signed in
+                </button>
+                <span className={classes.security}>TLS 1.3 · 2FA READY</span>
+              </div>
+
+              <button className={classes.submit} type="submit" disabled={submitting}>
+                {submitting ? 'Signing in…' : 'Sign in'}
+              </button>
+            </div>
+
+            <div className={classes.quickLinks}>
+              <a
+                className={classes.quick}
+                href="https://moinfo.co.tz:2083"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span className={classes.quickLabel}>CPANEL</span>
+                <span className={classes.quickText}>Manage files &amp; databases</span>
+              </a>
+              <a
+                className={classes.quick}
+                href="https://moinfo.co.tz:2096"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <span className={classes.quickLabel}>WEBMAIL</span>
+                <span className={classes.quickText}>Read your email</span>
+              </a>
+            </div>
+
+            <p className={classes.newHere}>
+              New to {brandName}?{' '}
+              <Link to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}>
+                Create an account
+              </Link>
+            </p>
+          </form>
+        </div>
+
+        <div className={classes.legal}>
+          <span>© {new Date().getFullYear()} MOINFOTECH</span>
+          <span>
+            <a href="https://moinfo.co.tz/privacy">PRIVACY</a>
+            {' · '}
+            <a href="https://moinfo.co.tz/terms">TERMS</a>
+          </span>
+        </div>
+      </div>
+    </div>
   );
 }
