@@ -215,3 +215,26 @@
   text-transform: uppercase;
   color: var(--dc-text-label);
 }
+
+/*
+ * Hand the design surfaces to Mantine.
+ *
+ * Mantine paints the page and its Paper/Card surfaces from its own variables,
+ * so without this the portal renders on Mantine's default #242424 rather than
+ * the design's #0C1116 — the tokens load but nothing consumes them. Mapping
+ * them here means every existing screen adopts the design's surfaces without
+ * being touched.
+ */
+:root {
+  --mantine-color-body: var(--dc-bg);
+  --mantine-color-text: var(--dc-text);
+  --mantine-color-dimmed: var(--dc-text-secondary);
+  --mantine-color-default-border: var(--dc-border);
+}
+
+:root[data-mantine-color-scheme='dark'] {
+  --mantine-color-dark-7: var(--dc-bg);
+  --mantine-color-dark-6: var(--dc-surface-raised);
+  --mantine-color-dark-8: var(--dc-surface-alt);
+  --mantine-color-dark-9: var(--dc-surface-deep);
+}
