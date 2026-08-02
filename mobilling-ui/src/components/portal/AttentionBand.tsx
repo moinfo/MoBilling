@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../../i18n/LanguageContext';
 import classes from './AttentionBand.module.css';
 
 /**
@@ -25,6 +26,7 @@ interface Props {
 
 export function AttentionBand({ data }: Props) {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const overdue = data.overdue_count ?? 0;
   const unpaid = data.unpaid_invoices_count ?? 0;
@@ -36,7 +38,7 @@ export function AttentionBand({ data }: Props) {
     <div className={classes.band}>
       <div className={classes.head}>
         <span className={classes.dot} aria-hidden="true" />
-        NEEDS YOUR ATTENTION
+        {t('attention.title')}
       </div>
 
       <div className={classes.cards}>
@@ -45,13 +47,13 @@ export function AttentionBand({ data }: Props) {
             <div className={classes.cardBody}>
               <div className={classes.cardTitle}>
                 {overdue > 0
-                  ? `${overdue} ${overdue === 1 ? 'invoice is' : 'invoices are'} overdue`
-                  : `${unpaid} unpaid ${unpaid === 1 ? 'invoice' : 'invoices'}`}
+                  ? `${overdue} ${t(overdue === 1 ? 'attention.invoicesOverdueOne' : 'attention.invoicesOverdueMany')}`
+                  : `${unpaid} ${t(unpaid === 1 ? 'attention.unpaidOne' : 'attention.unpaidMany')}`}
               </div>
               <div className={classes.cardMeta}>
                 {unpaid > overdue
-                  ? `${unpaid} unpaid in total · settle to keep services active`
-                  : 'Settle these to keep your services active'}
+                  ? `${unpaid} ${t('attention.unpaidTotal')}`
+                  : t('attention.settleNote')}
               </div>
             </div>
             <button
@@ -59,7 +61,7 @@ export function AttentionBand({ data }: Props) {
               className={`${classes.action} ${classes.actionWarn}`}
               onClick={() => navigate('/portal/invoices')}
             >
-              View invoices
+              {t('attention.viewInvoices')}
             </button>
           </div>
         )}
@@ -68,10 +70,10 @@ export function AttentionBand({ data }: Props) {
           <div className={classes.card}>
             <div className={classes.cardBody}>
               <div className={classes.cardTitle}>
-                {expiring} {expiring === 1 ? 'domain expires' : 'domains expire'} soon
+                {expiring} {t(expiring === 1 ? 'attention.domainExpiresOne' : 'attention.domainExpiresMany')}
               </div>
               <div className={classes.cardMeta}>
-                Within the next 45 days · renew to avoid losing the name
+                {t('attention.domainNote')}
               </div>
             </div>
             <button
@@ -79,7 +81,7 @@ export function AttentionBand({ data }: Props) {
               className={`${classes.action} ${classes.actionOk}`}
               onClick={() => navigate('/portal/domains')}
             >
-              Renew
+              {t('attention.renew')}
             </button>
           </div>
         )}

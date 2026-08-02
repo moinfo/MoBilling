@@ -15,11 +15,13 @@ import {
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../branding';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export default function PortalShell() {
   const [opened, { toggle, close }] = useDisclosure();
   const { user, logout, permissions } = useAuth();
   const branding = useBranding();
+  const { t } = useLanguage();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const navigate = useNavigate();
@@ -62,50 +64,50 @@ export default function PortalShell() {
     }[];
   }[] = [
     {
-      label: 'Overview',
+      label: t('nav.overview'),
       items: [
-        { icon: IconDashboard, label: 'Dashboard', path: '/portal/dashboard' },
-        { icon: IconNews, label: 'News', path: '/portal/announcements' },
+        { icon: IconDashboard, label: t('nav.dashboard'), path: '/portal/dashboard' },
+        { icon: IconNews, label: t('nav.news'), path: '/portal/announcements' },
       ],
     },
     {
-      label: 'Services',
+      label: t('nav.services'),
       items: [
-        { icon: IconWorld, label: 'My Hosting', path: '/portal/hosting', count: counts?.services_count },
-        { icon: IconWorldWww, label: 'My Domains', path: '/portal/domains', count: counts?.domains_count },
-        { icon: IconPackage, label: 'Products & Services', path: '/portal/products-services' },
-        { icon: IconCalendarRepeat, label: 'Subscriptions', path: '/portal/subscriptions' },
-        { icon: IconShoppingCart, label: 'Order Services', path: '/order' },
+        { icon: IconWorld, label: t('nav.myHosting'), path: '/portal/hosting', count: counts?.services_count },
+        { icon: IconWorldWww, label: t('nav.myDomains'), path: '/portal/domains', count: counts?.domains_count },
+        { icon: IconPackage, label: t('nav.productsServices'), path: '/portal/products-services' },
+        { icon: IconCalendarRepeat, label: t('nav.subscriptions'), path: '/portal/subscriptions' },
+        { icon: IconShoppingCart, label: t('nav.orderServices'), path: '/order' },
       ],
     },
     {
-      label: 'Billing',
+      label: t('nav.billing'),
       items: [
         {
           icon: IconFileInvoice,
-          label: 'Invoices',
+          label: t('nav.invoices'),
           path: '/portal/invoices',
           count: counts?.unpaid_invoices_count,
           alert: (counts?.overdue_count ?? 0) > 0,
         },
-        { icon: IconCash, label: 'Payments', path: '/portal/payments' },
-        { icon: IconFileText, label: 'Quotations', path: '/portal/quotations' },
-        { icon: IconReceipt, label: 'Credit Notes', path: '/portal/credit-notes' },
-        { icon: IconReceipt, label: 'Statement', path: '/portal/statement' },
+        { icon: IconCash, label: t('nav.payments'), path: '/portal/payments' },
+        { icon: IconFileText, label: t('nav.quotations'), path: '/portal/quotations' },
+        { icon: IconReceipt, label: t('nav.creditNotes'), path: '/portal/credit-notes' },
+        { icon: IconReceipt, label: t('nav.statement'), path: '/portal/statement' },
       ],
     },
     {
-      label: 'Support',
+      label: t('nav.support'),
       items: [
-        { icon: IconMessageCircle, label: 'Support Tickets', path: '/portal/tickets', count: counts?.tickets_count },
-        { icon: IconBook, label: 'Knowledgebase', path: '/portal/knowledgebase' },
+        { icon: IconMessageCircle, label: t('nav.tickets'), path: '/portal/tickets', count: counts?.tickets_count },
+        { icon: IconBook, label: t('nav.knowledgebase'), path: '/portal/knowledgebase' },
       ],
     },
     {
-      label: 'Account',
+      label: t('nav.account'),
       items: [
-        { icon: IconUser, label: 'Profile', path: '/portal/profile' },
-        { icon: IconUsers, label: 'Portal Users', path: '/portal/users', permission: 'portal.users' },
+        { icon: IconUser, label: t('nav.profile'), path: '/portal/profile' },
+        { icon: IconUsers, label: t('nav.portalUsers'), path: '/portal/users', permission: 'portal.users' },
       ],
     },
   ];
@@ -200,11 +202,11 @@ export default function PortalShell() {
         <AppShell.Section className={classes.footer}>
           <div className={classes.status}>
             <span className={classes.statusDot} aria-hidden="true" />
-            ALL SYSTEMS OPERATIONAL
+            {t('nav.operational')}
           </div>
           <button type="button" className={classes.item} onClick={handleLogout}>
             <IconLogout size={16} />
-            <span className={classes.itemLabel}>Sign out</span>
+            <span className={classes.itemLabel}>{t('nav.signOut')}</span>
           </button>
         </AppShell.Section>
       </AppShell.Navbar>

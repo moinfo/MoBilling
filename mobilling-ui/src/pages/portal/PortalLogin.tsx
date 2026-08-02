@@ -6,6 +6,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useBranding } from '../../branding';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { safeNext } from '../../utils/safeNext';
+import { useLanguage } from '../../i18n/LanguageContext';
 import { IconSun, IconMoon } from '@tabler/icons-react';
 import classes from './PortalLogin.module.css';
 
@@ -14,10 +15,10 @@ import classes from './PortalLogin.module.css';
  * the design's ledger feel — they are labels, not decoration.
  */
 const PERKS = [
-  { k: 'DOM', t: 'Domains', d: 'Register, renew and manage your .tz domains, nameservers and EPP codes.' },
-  { k: 'WEB', t: 'Hosting', d: 'One-click cPanel login, disk and bandwidth usage, upgrades.' },
-  { k: 'PAY', t: 'Billing', d: 'Invoices, statements and receipts. Pay by mobile money or card.' },
-  { k: 'SUP', t: 'Support', d: 'Open a ticket and track it, 24/7, with a team in your time zone.' },
+  { k: 'DOM', titleKey: 'login.perkDomains', descKey: 'login.perkDomainsDesc' },
+  { k: 'WEB', titleKey: 'login.perkHosting', descKey: 'login.perkHostingDesc' },
+  { k: 'PAY', titleKey: 'login.perkBilling', descKey: 'login.perkBillingDesc' },
+  { k: 'SUP', titleKey: 'login.perkSupport', descKey: 'login.perkSupportDesc' },
 ];
 
 export default function PortalLogin() {
@@ -28,6 +29,7 @@ export default function PortalLogin() {
   const { toggleColorScheme } = useMantineColorScheme();
   const isDark = useComputedColorScheme('dark') === 'dark';
   const branding = useBranding();
+  const { t } = useLanguage();
   const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
   const backHref = branding.branded && branding.website ? branding.website : 'https://moinfo.co.tz';
 
@@ -56,8 +58,8 @@ export default function PortalLogin() {
       // Imported WHMCS client without a portal account yet → claim it via OTP.
       if (err.response?.status === 449 && err.response?.data?.requires_otp) {
         notifications.show({
-          title: 'Verification required',
-          message: 'A verification code has been sent to your email — finish setting up your account.',
+          title: t('login.verifyTitle'),
+          message: t('login.verifyMessage'),
           color: 'blue',
         });
         navigate(
@@ -67,8 +69,8 @@ export default function PortalLogin() {
         return;
       }
       notifications.show({
-        title: 'Login failed',
-        message: err.response?.data?.message || 'Invalid credentials',
+        title: t('login.failed'),
+        message: err.response?.data?.message || t('login.invalid'),
         color: 'red',
       });
     } finally {
@@ -94,14 +96,14 @@ export default function PortalLogin() {
         </div>
 
         <div className={classes.brandMiddle}>
-          <h1 className={classes.brandHeadline}>Everything you run with us, in one place.</h1>
+          <h1 className={classes.brandHeadline}>{t('login.brandHeadline')}</h1>
           <div className={classes.perks}>
             {PERKS.map((p) => (
               <div key={p.k} className={classes.perk}>
                 <span className={classes.perkKey}>{p.k}</span>
                 <span className={classes.perkBody}>
-                  <span className={classes.perkTitle}>{p.t}</span>
-                  <span className={classes.perkDesc}>{p.d}</span>
+                  <span className={classes.perkTitle}>{t(p.titleKey)}</span>
+                  <span className={classes.perkDesc}>{t(p.descKey)}</span>
                 </span>
               </div>
             ))}
@@ -113,14 +115,14 @@ export default function PortalLogin() {
             <div className={classes.tile}>
               <div className={classes.tileLabel}>
                 <span className={classes.tileDot} />
-                PLATFORM STATUS
+                {t('login.platformStatus')}
               </div>
-              <div className={classes.tileValue}>All systems operational</div>
+              <div className={classes.tileValue}>{t('login.operational')}</div>
             </div>
             {/* The design shows a measured "99.98% / 30 DAYS". Nothing actually
                 measures that, so we state the guarantee the site advertises. */}
             <div className={classes.tile}>
-              <div className={classes.tileLabel}>UPTIME GUARANTEE</div>
+              <div className={classes.tileLabel}>{t('login.uptimeGuarantee')}</div>
               <div className={classes.tileValue}>99.9%</div>
             </div>
           </div>
@@ -134,7 +136,7 @@ export default function PortalLogin() {
       <div className={classes.formCol}>
         <div className={classes.topBar}>
           <a className={classes.back} href={backHref}>
-            ← Back to {backHref.replace(/^https?:\/\//, '')}
+            ← {t('login.backTo')} {backHref.replace(/^https?:\/\//, '')}
           </a>
           <div className={classes.topRight}>
             <ActionIcon
@@ -151,7 +153,7 @@ export default function PortalLogin() {
               target="_blank"
               rel="noopener noreferrer"
             >
-              Need help?
+              {t('login.needHelp')}
             </a>
           </div>
         </div>
@@ -159,21 +161,21 @@ export default function PortalLogin() {
         <div className={classes.formWrap}>
           <form className={classes.form} onSubmit={form.onSubmit(handleSubmit)}>
             <div className={classes.intro}>
-              <span className={classes.eyebrow}>CLIENT AREA</span>
-              <h2 className={classes.heading}>Sign in</h2>
-              <p className={classes.sub}>Manage domains, hosting, invoices and tickets.</p>
+              <span className={classes.eyebrow}>{t('login.eyebrow')}</span>
+              <h2 className={classes.heading}>{t('login.heading')}</h2>
+              <p className={classes.sub}>{t('login.sub')}</p>
             </div>
 
             <div className={classes.fields}>
               <div className={classes.field}>
                 <label className={classes.label} htmlFor="identifier">
-                  <span>EMAIL OR PHONE</span>
-                  <span className={classes.labelHint}>REQUIRED</span>
+                  <span>{t('login.identifier')}</span>
+                  <span className={classes.labelHint}>{t('login.required')}</span>
                 </label>
                 <input
                   id="identifier"
                   className={classes.input}
-                  placeholder="you@company.com or 0712345678"
+                  placeholder={t('login.identifierPlaceholder')}
                   autoComplete="username"
                   {...form.getInputProps('identifier')}
                 />
@@ -181,15 +183,15 @@ export default function PortalLogin() {
 
               <div className={classes.field}>
                 <label className={classes.label} htmlFor="password">
-                  <span>PASSWORD</span>
-                  <Link className={classes.forgot} to="/forgot-password">FORGOT?</Link>
+                  <span>{t('login.password')}</span>
+                  <Link className={classes.forgot} to="/forgot-password">{t('login.forgot')}</Link>
                 </label>
                 <div className={classes.pwWrap}>
                   <input
                     id="password"
                     className={`${classes.input} ${classes.pwInput}`}
                     type={showPw ? 'text' : 'password'}
-                    placeholder="Your password"
+                    placeholder={t('login.passwordPlaceholder')}
                     autoComplete="current-password"
                     {...form.getInputProps('password')}
                   />
@@ -199,7 +201,7 @@ export default function PortalLogin() {
                     onClick={() => setShowPw((v) => !v)}
                     aria-label={showPw ? 'Hide password' : 'Show password'}
                   >
-                    {showPw ? 'HIDE' : 'SHOW'}
+                    {showPw ? t('login.hide') : t('login.show')}
                   </button>
                 </div>
               </div>
@@ -214,13 +216,13 @@ export default function PortalLogin() {
                   <span className={`${classes.box} ${remember ? classes.boxOn : ''}`}>
                     {remember ? '✓' : ''}
                   </span>
-                  Keep me signed in
+                  {t('login.remember')}
                 </button>
-                <span className={classes.security}>TLS 1.3 · 2FA READY</span>
+                <span className={classes.security}>{t('login.security')}</span>
               </div>
 
               <button className={classes.submit} type="submit" disabled={submitting}>
-                {submitting ? 'Signing in…' : 'Sign in'}
+                {submitting ? t('login.submitting') : t('login.submit')}
               </button>
             </div>
 
@@ -231,8 +233,8 @@ export default function PortalLogin() {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <span className={classes.quickLabel}>CPANEL</span>
-                <span className={classes.quickText}>Manage files &amp; databases</span>
+                <span className={classes.quickLabel}>{t('login.cpanel')}</span>
+                <span className={classes.quickText}>{t('login.cpanelDesc')}</span>
               </a>
               <a
                 className={classes.quick}
@@ -240,15 +242,15 @@ export default function PortalLogin() {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <span className={classes.quickLabel}>WEBMAIL</span>
-                <span className={classes.quickText}>Read your email</span>
+                <span className={classes.quickLabel}>{t('login.webmail')}</span>
+                <span className={classes.quickText}>{t('login.webmailDesc')}</span>
               </a>
             </div>
 
             <p className={classes.newHere}>
-              New to {brandName}?{' '}
+              {t('login.newHere')} {brandName}?{' '}
               <Link to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}>
-                Create an account
+                {t('login.createAccount')}
               </Link>
             </p>
           </form>
@@ -257,9 +259,9 @@ export default function PortalLogin() {
         <div className={classes.legal}>
           <span>© {new Date().getFullYear()} MOINFOTECH</span>
           <span>
-            <a href="https://moinfo.co.tz/privacy">PRIVACY</a>
+            <a href="https://moinfo.co.tz/privacy">{t('login.privacy')}</a>
             {' · '}
-            <a href="https://moinfo.co.tz/terms">TERMS</a>
+            <a href="https://moinfo.co.tz/terms">{t('login.terms')}</a>
           </span>
         </div>
       </div>

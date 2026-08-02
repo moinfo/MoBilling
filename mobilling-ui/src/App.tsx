@@ -1,5 +1,6 @@
 import { MantineProvider } from '@mantine/core';
 import { theme } from './theme';
+import { LanguageProvider } from './i18n/LanguageContext';
 import { Notifications } from '@mantine/notifications';
 import { ModalsProvider } from '@mantine/modals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -136,6 +137,7 @@ export default function App() {
   return (
     <MantineProvider theme={theme} defaultColorScheme="auto">
       <Notifications position="top-right" />
+      <LanguageProvider>
       <ModalsProvider>
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
@@ -311,6 +313,7 @@ export default function App() {
           </BrowserRouter>
         </QueryClientProvider>
       </ModalsProvider>
+      </LanguageProvider>
     </MantineProvider>
   );
 }
