@@ -17,6 +17,7 @@ import {
 import {
   findCategory, productNameForPlan, formatTsh, cycleLabel,
 } from '../../data/storefront';
+import classes from './Order.module.css';
 
 type DomainMode = 'register' | 'transfer' | 'existing';
 
@@ -259,13 +260,13 @@ export default function OrderCategory() {
       {!selected && (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
           {plansInCategory.map(({ plan, product }) => (
-            <Paper key={product.id} withBorder p="lg" radius="md">
+            <Paper key={product.id} p="lg" radius="md" className={classes.planCard}>
               <Stack gap="sm" h="100%" justify="space-between">
                 <div>
                   <Text fw={600}>{product.name}</Text>
                   <Group gap={4} align="baseline" mt={4}>
-                    <Text fw={700} size="xl">{formatTsh(product.price)}</Text>
-                    <Text c="dimmed" size="sm">{cycleLabel(product.billing_cycle)}</Text>
+                    <Text className={classes.price}>{formatTsh(product.price)}</Text>
+                    <Text className={classes.pricePeriod}>{cycleLabel(product.billing_cycle)}</Text>
                   </Group>
                   {product.needs_domain && (
                     <Badge size="sm" variant="light" mt="xs">Needs a domain</Badge>

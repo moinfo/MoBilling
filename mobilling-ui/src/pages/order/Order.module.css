@@ -1,0 +1,95 @@
+/*
+ * Order flow, on the redesign tokens.
+ *
+ * This is the screen customers reach from an "Order Now" button on
+ * moinfo.co.tz, so it has to feel like the same product they just left.
+ */
+
+/* Category tiles lift their border to green on hover — the one hover state
+   the handoff specifies for this flow. */
+.categoryCard {
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-radius-card);
+  background: var(--dc-card-fill);
+  transition: border-color 150ms ease;
+  height: 100%;
+}
+
+.categoryCard:hover {
+  border-color: rgba(41, 208, 138, 0.5);
+}
+
+.eyebrow {
+  font-family: var(--dc-font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dc-text-label);
+}
+
+/* Every price is data — mono and tabular so tiers compare down the column. */
+.price {
+  font-family: var(--dc-font-mono);
+  font-size: 26px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--dc-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.pricePeriod {
+  font-size: 13px;
+  color: var(--dc-text-label);
+}
+
+.planCard {
+  border: 1px solid var(--dc-border);
+  border-radius: var(--dc-radius-card);
+  background: var(--dc-card-fill);
+  height: 100%;
+  transition: border-color 150ms ease;
+}
+
+.planCard:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Recommended tier: border + wash, never a lift or a scale. */
+.planRecommended {
+  border-color: var(--dc-accent-line);
+  background: linear-gradient(180deg, var(--dc-accent-fill), transparent);
+}
+
+.specRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--dc-hairline);
+  font-size: 13.5px;
+}
+
+.specRow:last-child {
+  border-bottom: none;
+}
+
+.specLabel {
+  color: var(--dc-text-secondary);
+}
+
+.specValue {
+  font-family: var(--dc-font-mono);
+  font-size: 13px;
+  color: var(--dc-text);
+  white-space: nowrap;
+}
+
+/* Summary total — the number the customer is agreeing to. */
+.total {
+  font-family: var(--dc-font-mono);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--dc-text);
+  font-variant-numeric: tabular-nums;
+}
