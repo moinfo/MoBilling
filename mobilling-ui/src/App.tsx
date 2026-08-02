@@ -1,4 +1,5 @@
 import { MantineProvider } from '@mantine/core';
+import { theme } from './theme';
 import { Notifications } from '@mantine/notifications';
 import { ModalsProvider } from '@mantine/modals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -133,7 +134,7 @@ const queryClient = new QueryClient({
 
 export default function App() {
   return (
-    <MantineProvider defaultColorScheme="auto">
+    <MantineProvider theme={theme} defaultColorScheme="auto">
       <Notifications position="top-right" />
       <ModalsProvider>
         <QueryClientProvider client={queryClient}>
