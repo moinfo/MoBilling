@@ -28,6 +28,26 @@ class RegisterDomainJob extends BaseDomainJob
             $this->clearPending($domain);
             $this->syncFromRegistry($domain);
 
+            // Point the fresh domain at the tenant's hosting nameservers so it
+            // resolves immediately. Best-effort — staff can change them later.
+            if (!$domain->fresh()->nsset_handle) {
+                $ns = \App\Models\Server::withoutGlobalScopes()
+                    ->where('tenant_id', $domain->tenant_id)
+                    ->where('is_active', true)
+                    ->whereNotNull('nameservers')
+                    ->value('nameservers')
+                    ?: config('hosting.default_nameservers', []);
+                $ns = is_string($ns) ? json_decode($ns, true) : $ns;
+                if ($ns) {
+                    try {
+                        app(\App\Services\Registrar\NameserverService::class)
+                            ->update($domain->fresh(), (array) $ns, ['auto' => 'post_register']);
+                    } catch (\Throwable $e) {
+                        Log::warning("Default NS attach failed for {$domain->name}: {$e->getMessage()}");
+                    }
+                }
+            }
+
             if ($domain->client?->email) {
                 try {
                     $domain->client->notify(new DomainRegisteredNotification($domain->fresh()));

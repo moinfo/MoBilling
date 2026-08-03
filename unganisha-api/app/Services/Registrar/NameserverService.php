@@ -39,7 +39,11 @@ class NameserverService
         $new = collect($new)->map(fn ($n) => strtolower(trim($n)))->filter()->unique()->values();
 
         $driver = $this->registrar->driverFor($domain->tenant_id, $domain->id);
-        $info = $driver->nssetInfo($domain->nsset_handle);
+        // A freshly registered domain may have no nsset yet — treat as empty and
+        // mint a new one below instead of querying the registry with null.
+        $info = $domain->nsset_handle
+            ? $driver->nssetInfo($domain->nsset_handle)
+            : ['nameservers' => [], 'tech' => []];
         $current = collect($info['nameservers'] ?? [])->pluck('name')->map(fn ($n) => strtolower($n))->values();
 
         if ($new->sort()->values()->all() === $current->sort()->values()->all()) {
@@ -54,7 +58,7 @@ class NameserverService
         // at all — typical after a transfer-in, where the nsset stays with the
         // losing registrar — the in-place update comes back 2201 (not authorised),
         // and we fall through to minting a fresh nsset under our own registrar.
-        if ($sharedWith === 0) {
+        if ($sharedWith === 0 && $domain->nsset_handle) {
             try {
                 $driver->nssetUpdate(
                     $domain->nsset_handle,
