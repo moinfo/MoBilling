@@ -108,6 +108,9 @@ export const downloadPdf = (id: string) =>
 export const sendDocument = (id: string, send_email = true) =>
   api.post(`/documents/${id}/send`, { send_email });
 
+export const sendDocumentWhatsApp = (id: string) =>
+  api.post<{ message: string }>(`/documents/${id}/send-whatsapp`);
+
 export const submitForApproval = (id: string) =>
   api.patch(`/documents/${id}/submit-for-approval`);
 

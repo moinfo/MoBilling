@@ -6,7 +6,7 @@ import { notifications } from '@mantine/notifications';
 import { IconFileDownload, IconSend, IconArrowRight, IconCash, IconX, IconRefresh, IconTrash, IconCopy, IconBrandWhatsapp, IconLink, IconCheck, IconArrowBack, IconEdit, IconArrowBackUp, IconReceiptRefund, IconFileInvoice } from '@tabler/icons-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Document, convertDocument, downloadPdf, sendDocument, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem, submitForApproval, approveDocument, rejectDocument, returnDocumentToDraft, createRefund } from '../../api/documents';
+import { Document, convertDocument, downloadPdf, sendDocument, sendDocumentWhatsApp, createPaymentIn, cancelDocument, uncancelDocument, removeDocumentItem, submitForApproval, approveDocument, rejectDocument, returnDocumentToDraft, createRefund } from '../../api/documents';
 import { usePermissions } from '../../hooks/usePermissions';
 import { usePaymentMethods } from '../../hooks/usePaymentMethods';
 import { useAuth } from '../../context/AuthContext';
@@ -198,6 +198,27 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
     } finally {
       setLoading('');
     }
+  };
+
+  const handleSendWhatsApp = () => {
+    modals.openConfirmModal({
+      title: 'Send via WhatsApp',
+      children: `Send ${doc.document_number} to ${doc.client?.name || 'client'} on WhatsApp (${doc.client?.phone})?`,
+      labels: { confirm: 'Send WhatsApp', cancel: 'Cancel' },
+      confirmProps: { color: 'green' },
+      onConfirm: async () => {
+        try {
+          setLoading('sendWhatsApp');
+          const res = await sendDocumentWhatsApp(doc.id);
+          notifications.show({ title: 'Success', message: res.data.message, color: 'green' });
+          onRefresh();
+        } catch (err: any) {
+          notifications.show({ title: 'Error', message: err.response?.data?.message || 'WhatsApp send failed', color: 'red' });
+        } finally {
+          setLoading('');
+        }
+      },
+    });
   };
 
   const handleReturnToDraft = () => {
@@ -518,6 +539,13 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           <Button variant="light" leftSection={<IconSend size={16} />}
             onClick={() => { setSendEmail(true); setShowSendConfirm(true); }} loading={loading === 'send'}>
             Send Email
+          </Button>
+        )}
+        {can('documents.send') && !!doc.client?.phone
+          && doc.status !== 'draft' && doc.status !== 'pending_approval' && doc.status !== 'cancelled' && (
+          <Button variant="light" color="green" leftSection={<IconBrandWhatsapp size={16} />}
+            onClick={handleSendWhatsApp} loading={loading === 'sendWhatsApp'}>
+            Send WhatsApp
           </Button>
         )}
         {can('documents.update') && ['sent', 'overdue', 'partial', 'pending_approval'].includes(doc.status) && (

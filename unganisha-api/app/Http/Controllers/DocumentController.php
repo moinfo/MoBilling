@@ -291,6 +291,56 @@ class DocumentController extends Controller
         return response()->json(['message' => 'Document status updated (email not sent)']);
     }
 
+    /**
+     * Explicit "send via WhatsApp": delivers ONLY the WhatsApp invoice template
+     * (with a Pay Now button when payable), independent of the tenant's
+     * reminder-channel toggles. Requires WhatsApp to be configured and the
+     * client to have a phone number.
+     */
+    public function sendWhatsApp(Request $request, Document $document)
+    {
+        $document->load('client');
+        $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($document->tenant_id);
+
+        if ($document->status === 'cancelled') {
+            return response()->json(['message' => 'Cannot send a cancelled document.'], 422);
+        }
+        if (!$tenant?->whatsapp_enabled) {
+            return response()->json(['message' => 'WhatsApp is not enabled — link it in Settings → WhatsApp first.'], 422);
+        }
+        if (!$document->client?->phone) {
+            return response()->json(['message' => 'Client has no phone number.'], 422);
+        }
+
+        // Same status handling as send(): advance to "sent" but never downgrade
+        // a financial status, and roll back if delivery fails.
+        $priorStatus = $document->status;
+        $statusAdvanced = false;
+        if (!in_array($document->status, ['paid', 'partial', 'overdue'], true)) {
+            $document->update(['status' => 'sent']);
+            $document->refresh();
+            $statusAdvanced = true;
+        }
+
+        try {
+            $document->client->notifyNow(
+                new \App\Notifications\InvoiceSentNotification($document),
+                [\App\Channels\WhatsAppChannel::class]
+            );
+        } catch (\Throwable $e) {
+            if ($statusAdvanced) {
+                $document->update(['status' => $priorStatus]);
+            }
+            Log::error('Document WhatsApp send failed', ['document_id' => $document->id, 'exception' => $e]);
+
+            return response()->json(['message' => 'Could not send via WhatsApp: '.$e->getMessage()], 502);
+        }
+
+        $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
+
+        return response()->json(['message' => "Sent via WhatsApp to {$document->client->phone}"]);
+    }
+
     public function submitForApproval(Document $document)
     {
         if ($document->status !== 'draft') {

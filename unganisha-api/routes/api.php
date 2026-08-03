@@ -254,6 +254,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:documents.convert')->post('/documents/{document}/convert', [DocumentController::class, 'convert']);
     Route::middleware('permission:documents.download')->get('/documents/{document}/pdf', [DocumentController::class, 'downloadPdf']);
     Route::middleware('permission:documents.send')->post('/documents/{document}/send', [DocumentController::class, 'send']);
+    Route::middleware('permission:documents.send')->post('/documents/{document}/send-whatsapp', [DocumentController::class, 'sendWhatsApp']);
     Route::middleware('permission:documents.send')->post('/documents/remind-unpaid', [DocumentController::class, 'remindUnpaid']);
     Route::middleware('permission:documents.create')->post('/documents/merge', [DocumentController::class, 'merge']);
     Route::middleware('permission:documents.send')->patch('/documents/{document}/submit-for-approval', [DocumentController::class, 'submitForApproval']);
