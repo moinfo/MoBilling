@@ -1,0 +1,139 @@
+/*
+ * Control Room portal sidebar — 244px on the deepest surface, grouped.
+ * The original had 17 flat items and was unscannable; the design's five
+ * labelled groups are the point of this screen.
+ */
+.sidebar {
+  width: 244px;
+  background: var(--dc-surface-deep);
+  border-right: 1px solid var(--dc-hairline);
+}
+
+.logoHeader {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 68px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--dc-hairline);
+}
+
+.logoText {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.05;
+}
+
+.logoName {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.logoKicker {
+  font-family: var(--dc-font-mono);
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.groupLabel {
+  font-family: var(--dc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.36);
+  padding: 18px 18px 8px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 18px;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  font-size: 14px;
+  color: #9aa6a1;
+  transition: background 140ms ease, color 140ms ease;
+}
+
+.item:hover {
+  background: rgba(255, 255, 255, 0.04);
+  color: #fff;
+}
+
+/* Active: blue-tinted fill, white 600 text, blue marker. */
+.itemActive {
+  background: var(--dc-blue-fill);
+  color: #fff;
+  font-weight: 600;
+}
+
+.marker {
+  font-size: 9px;
+  color: #3d453f;
+  flex-shrink: 0;
+}
+
+.itemActive .marker {
+  color: var(--dc-blue);
+}
+
+.itemLabel {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Counts render as pills — mono, because a count is data. */
+.badge {
+  font-family: var(--dc-font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--dc-radius-pill);
+  background: rgba(255, 255, 255, 0.1);
+  color: #b6c0bb;
+  flex-shrink: 0;
+}
+
+/* Something needing action is amber, not neutral. */
+.badgeAlert {
+  background: rgba(242, 163, 60, 0.18);
+  color: var(--dc-warning);
+}
+
+.footer {
+  border-top: 1px solid var(--dc-hairline);
+  padding: 14px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--dc-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.statusDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--dc-accent);
+  box-shadow: 0 0 0 3px rgba(41, 208, 138, 0.18);
+  flex-shrink: 0;
+}

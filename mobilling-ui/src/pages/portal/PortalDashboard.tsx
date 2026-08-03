@@ -12,6 +12,8 @@ import {
   IconAlertTriangle, IconClock, IconWallet, IconNews,
 } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
+import { AttentionBand } from '../../components/portal/AttentionBand';
+import { DiskBar } from '../../components/portal/DiskBar';
 import { getPortalDashboard, portalHostingSso, portalCreditTopup } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
@@ -63,6 +65,8 @@ export default function PortalDashboard() {
       <LoadingOverlay visible={isLoading} />
       <Title order={3}>Welcome, {user?.name}</Title>
 
+      {d && <AttentionBand data={d} />}
+
       {d && (
         <>
           {/* 1 ── Stats row */}
@@ -107,18 +111,29 @@ export default function PortalDashboard() {
                               {s.label && <Text size="xs" c="dimmed" truncate>{s.label}</Text>}
                             </div>
                           </Group>
-                          <Group gap="xs" wrap="nowrap">
+
+                          {/* Usage sits between the name and the actions so a
+                              filling disk is visible without opening anything. */}
+                          {s.hosting_account_id && (
+                            <DiskBar used={s.disk_used} limit={s.disk_limit} />
+                          )}
+
+                          {/* Fixed width in every row — `auto` resolves
+                              differently per row and misaligns the column.
+                              Labels are the design's short forms; "Log in to
+                              cPanel" does not fit beside the usage bar. */}
+                          <Group gap="xs" wrap="nowrap" w={190} justify="flex-end" style={{ flexShrink: 0 }}>
                             {s.hosting_account_id && (
                               <Button size="xs" variant="filled" color="blue"
                                 leftSection={<IconExternalLink size={12} />}
                                 loading={ssoLoading === s.hosting_account_id}
                                 onClick={() => openCpanel(s.hosting_account_id)}>
-                                Log in to cPanel
+                                cPanel
                               </Button>
                             )}
                             <Button size="xs" variant="default"
                               onClick={() => navigate('/portal/subscriptions')}>
-                              View Details
+                              Details
                             </Button>
                           </Group>
                         </Group>

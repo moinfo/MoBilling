@@ -25,6 +25,9 @@ return [
         'http://localhost:3000',
         'http://localhost:5173',
         'http://localhost:5174',
+        // Vite falls through to 5175 when 5173/5174 are taken by another
+        // project on the same machine.
+        'http://localhost:5175',
         'https://mobilling.co.tz',
         'https://moinfo.co.tz',
         'https://www.moinfo.co.tz',

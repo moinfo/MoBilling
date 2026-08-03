@@ -5,6 +5,7 @@ import {
   IconWorldWww, IconChevronRight,
 } from '@tabler/icons-react';
 import { STOREFRONT } from '../../data/storefront';
+import classes from './Order.module.css';
 
 const ICONS: Record<string, typeof IconWorld> = {
   'web-hosting': IconWorld,
@@ -42,7 +43,7 @@ export default function OrderIndex() {
       <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
         {tiles.map(({ slug, label, description, to, Icon }) => (
           <UnstyledButton key={slug} onClick={() => navigate(to)}>
-            <Paper withBorder p="lg" radius="md" h="100%">
+            <Paper p="lg" radius="md" className={classes.categoryCard}>
               <Group justify="space-between" align="flex-start" wrap="nowrap">
                 <Group align="flex-start" wrap="nowrap" gap="sm">
                   <ThemeIcon variant="light" size="lg" radius="md"><Icon size={20} /></ThemeIcon>

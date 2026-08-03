@@ -46,7 +46,9 @@ class PortalDashboardController extends Controller
 
         $recentServices = ClientSubscription::where('client_id', $clientId)
             ->where('status', '!=', 'cancelled')
-            ->with(['productService:id,name', 'hostingAccount:id,client_subscription_id,status'])
+            // `meta` carries the cPanel disk figures the dashboard's usage bars
+            // need — without it the bars have nothing to render.
+            ->with(['productService:id,name', 'hostingAccount:id,client_subscription_id,status,meta'])
             ->orderByRaw("CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
             ->orderByDesc('start_date')
             ->limit(4)
@@ -58,6 +60,11 @@ class PortalDashboardController extends Controller
                 'status'             => $s->status,
                 'hosting_account_id' => $s->hostingAccount && $s->hostingAccount->status === 'active'
                                             ? $s->hostingAccount->id : null,
+                // Null until the account's usage has been synced from cPanel.
+                // The UI must show "not synced", never 0% — an empty bar reads
+                // as "plenty of room left".
+                'disk_used'          => $s->hostingAccount?->meta['disk_used'] ?? null,
+                'disk_limit'         => $s->hostingAccount?->meta['disk_limit'] ?? null,
             ]);
 
         $expiringDomainsCount = \App\Models\Domain::where('client_id', $clientId)
