@@ -115,6 +115,7 @@ function ChartSvg({ r, full = false }: { r: AttendanceReport; full?: boolean }) 
   // time/day labels are what made the card tall. Full (report modal): labelled.
   const ML = full ? 32 : 4, MR = 4, MT = full ? 4 : 2, MB = full ? 13 : 3, H = full ? 64 : 26;
   const dayW = full ? 12 : 8, barW = full ? 6 : 4.5;
+  const xr = full ? 2.2 : 1.4;                          // absent-cross half-size
   const W = ML + MR + r.days.length * dayW;
   const yPos = (min: number) => MT + ((Math.min(Math.max(min, DOM_MIN), DOM_MAX) - DOM_MIN) / (DOM_MAX - DOM_MIN)) * H;
   const inTarget = yPos(toMin(r.check_in_time) ?? 450);
@@ -162,9 +163,9 @@ function ChartSvg({ r, full = false }: { r: AttendanceReport; full?: boolean }) 
               )}
               {/* absent marker: drawn cross (a text glyph renders inconsistently) */}
               {d.absent && (
-                <g stroke={CHART.absent} strokeWidth={1.3} strokeLinecap="round">
-                  <line x1={cx - 2.2} y1={inTarget - 2.2} x2={cx + 2.2} y2={inTarget + 2.2} />
-                  <line x1={cx - 2.2} y1={inTarget + 2.2} x2={cx + 2.2} y2={inTarget - 2.2} />
+                <g stroke={CHART.absent} strokeWidth={full ? 1.3 : 0.9} strokeLinecap="round">
+                  <line x1={cx - xr} y1={inTarget - xr} x2={cx + xr} y2={inTarget + xr} />
+                  <line x1={cx - xr} y1={inTarget + xr} x2={cx + xr} y2={inTarget - xr} />
                 </g>
               )}
               {/* day label every 5th day (full chart only) */}
@@ -209,10 +210,10 @@ function ChartSvg({ r, full = false }: { r: AttendanceReport; full?: boolean }) 
           </Group>
         ))}
         <Group gap={4} wrap="nowrap">
-          <svg width={8} height={8} style={{ flexShrink: 0 }}>
-            <g stroke={CHART.absent} strokeWidth={1.4} strokeLinecap="round">
-              <line x1={1.5} y1={1.5} x2={6.5} y2={6.5} />
-              <line x1={1.5} y1={6.5} x2={6.5} y2={1.5} />
+          <svg width={7} height={7} style={{ flexShrink: 0 }}>
+            <g stroke={CHART.absent} strokeWidth={1.2} strokeLinecap="round">
+              <line x1={1.5} y1={1.5} x2={5.5} y2={5.5} />
+              <line x1={1.5} y1={5.5} x2={5.5} y2={1.5} />
             </g>
           </svg>
           <Text size="xs" c="dimmed">Absent</Text>
@@ -266,8 +267,8 @@ export default function MyAttendance() {
               <Text size="xs" c="dimmed" tt="uppercase" fw={700}>Today · {dayjs().format('ddd, D MMM')}</Text>
               <Group gap="lg" mt={4}>
                 <Group gap={6}>
-                  <ThemeIcon size={30} radius="md" variant="light" color={t?.check_in_at ? (t.late ? 'orange' : 'teal') : 'gray'}>
-                    <IconLogin2 size={16} />
+                  <ThemeIcon size={24} radius="md" variant="light" color={t?.check_in_at ? (t.late ? 'orange' : 'teal') : 'gray'}>
+                    <IconLogin2 size={14} />
                   </ThemeIcon>
                   <div>
                     <Text size="sm" fw={700}>{t?.check_in_at ?? '—'}</Text>
@@ -276,8 +277,8 @@ export default function MyAttendance() {
                   {t?.late && <Badge size="xs" color="orange" variant="light">late</Badge>}
                 </Group>
                 <Group gap={6}>
-                  <ThemeIcon size={30} radius="md" variant="light" color={t?.check_out_at ? (t.left_early ? 'orange' : 'teal') : 'gray'}>
-                    <IconLogout2 size={16} />
+                  <ThemeIcon size={24} radius="md" variant="light" color={t?.check_out_at ? (t.left_early ? 'orange' : 'teal') : 'gray'}>
+                    <IconLogout2 size={14} />
                   </ThemeIcon>
                   <div>
                     <Text size="sm" fw={700}>{t?.check_out_at ?? '—'}</Text>
@@ -288,7 +289,7 @@ export default function MyAttendance() {
               </Group>
             </div>
 
-            <Badge size="lg" variant="light"
+            <Badge size="sm" variant="light"
               color={t?.status ? 'grape' : !t?.check_in_at ? 'gray' : t.late ? 'orange' : 'teal'}>
               {t?.status ? (statusLabel[t.status] ?? t.status) : !t?.check_in_at ? 'Not marked yet' : t.late ? 'Present (late)' : 'Present'}
             </Badge>
@@ -300,13 +301,13 @@ export default function MyAttendance() {
               Full report
             </Button>
             <Group gap={6}>
-              <IconClockHour4 size={14} />
-              <Text size="sm">{a.present_days} day{a.present_days === 1 ? '' : 's'} present · {a.month_label}</Text>
+              <IconClockHour4 size={13} />
+              <Text size="xs">{a.present_days} day{a.present_days === 1 ? '' : 's'} present · {a.month_label}</Text>
             </Group>
             {s.penalties_enabled && a.deduction_total > 0 && (
               <Group gap={6}>
-                <IconReceiptOff size={14} color="var(--mantine-color-red-6)" />
-                <Text size="sm" c="red" fw={600}>−TZS {a.deduction_total.toLocaleString()} deducted</Text>
+                <IconReceiptOff size={13} color="var(--mantine-color-red-6)" />
+                <Text size="xs" c="red" fw={600}>−TZS {a.deduction_total.toLocaleString()} deducted</Text>
               </Group>
             )}
           </Stack>
