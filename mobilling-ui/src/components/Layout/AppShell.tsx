@@ -12,7 +12,7 @@ import {
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
-  IconDatabase,
+  IconDatabase, IconShoppingCart,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -226,6 +226,10 @@ export default function AppLayout() {
               {can('menu.clients') && (
                 <NavLink label="Clients" leftSection={<IconUsers size={16} />}
                   active={isActive('/clients')} onClick={() => navigateAndClose('/clients')} />
+              )}
+              {can('orders.create') && (
+                <NavLink label="Add Order" leftSection={<IconShoppingCart size={16} />}
+                  active={isActive('/orders')} onClick={() => navigateAndClose('/orders')} />
               )}
               {can('menu.products') && (
                 <NavLink label="Products & Services" leftSection={<IconPackages size={16} />}

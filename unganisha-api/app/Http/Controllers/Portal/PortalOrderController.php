@@ -19,10 +19,31 @@ use Illuminate\Validation\Rule;
  */
 class PortalOrderController extends Controller
 {
+    /**
+     * The client an order is placed for. Portal users carry their own
+     * client_id; staff (admin ordering on behalf, WHMCS-style) must name the
+     * client explicitly.
+     */
+    private function clientIdFor(Request $request): string
+    {
+        $user = $request->user();
+        if ($user->client_id) {
+            return $user->client_id;
+        }
+
+        return $request->validate([
+            'client_id' => ['required', 'uuid',
+                Rule::exists('clients', 'id')->where('tenant_id', $user->tenant_id)],
+        ])['client_id'];
+    }
+
     /** Grouped product catalog for the shopping-cart page. */
     public function catalog(Request $request)
     {
         $tenantId = $request->user()->tenant_id;
+        // Staff ordering on behalf may pick from the full active catalog, not
+        // just what is exposed on the public storefront.
+        $isStaff = !$request->user()->client_id;
 
         // Group ordering is inherited from WHMCS, which is being retired. It is
         // cosmetic — a missing entry just sorts the group last — so a dead or
@@ -38,7 +59,7 @@ class PortalOrderController extends Controller
         $products = ProductService::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
             ->where('is_active', true)
-            ->where('portal_visible', true)
+            ->when(!$isStaff, fn ($q) => $q->where('portal_visible', true))
             ->where('price', '>', 0)
             ->whereNotNull('category')
             ->where('category', '!=', 'Server Sync Tool Auto-Created Products')
@@ -200,7 +221,7 @@ class PortalOrderController extends Controller
 
         $orderBase = (float) $product->price;
         $result = app(\App\Services\CouponService::class)->validateForOrder(
-            $data['code'], $tenantId, $product, $orderBase, $request->user()->client_id
+            $data['code'], $tenantId, $product, $orderBase, $this->clientIdFor($request)
         );
 
         if ($result['error']) {
@@ -220,6 +241,8 @@ class PortalOrderController extends Controller
     {
         $user = $request->user();
         $tenantId = $user->tenant_id;
+        $clientId = $this->clientIdFor($request);
+        $isStaff  = !$user->client_id;
 
         $data = $request->validate([
             'product_service_id' => ['required', 'uuid',
@@ -248,7 +271,7 @@ class PortalOrderController extends Controller
         $couponDiscount = 0.0;
         if (!empty($data['coupon_code'])) {
             $couponResult = app(\App\Services\CouponService::class)->validateForOrder(
-                $data['coupon_code'], $tenantId, $product, (float) $product->price, $user->client_id
+                $data['coupon_code'], $tenantId, $product, (float) $product->price, $clientId
             );
             if ($couponResult['error']) {
                 return response()->json(['message' => $couponResult['error']], 422);
@@ -379,7 +402,7 @@ class PortalOrderController extends Controller
         }
 
         try {
-            [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $product, $data, $mode, $domain, $domainPricing, $years, $addons, $productAddons, $configSelections, $coupon, $couponDiscount) {
+            [$subscription, $document] = DB::transaction(function () use ($user, $tenantId, $clientId, $isStaff, $product, $data, $mode, $domain, $domainPricing, $years, $addons, $productAddons, $configSelections, $coupon, $couponDiscount) {
             $start = now()->startOfDay();
             $expire = match ($product->billing_cycle) {
                 'monthly'     => $start->copy()->addMonth(),
@@ -391,7 +414,7 @@ class PortalOrderController extends Controller
 
             $subscription = ClientSubscription::create([
                 'tenant_id'          => $tenantId,
-                'client_id'          => $user->client_id,
+                'client_id'          => $clientId,
                 'product_service_id' => $product->id,
                 'label'              => $data['label'] ?? null,
                 'quantity'           => 1,
@@ -401,7 +424,9 @@ class PortalOrderController extends Controller
                 // Keep the legacy free-text promo_code AND record the real coupon.
                 'promo_code'         => $coupon?->code,
                 'metadata'           => array_filter([
-                    'portal_order' => true,
+                    'portal_order' => !$isStaff,
+                    'admin_order'  => $isStaff,
+                    'ordered_by'   => $isStaff ? $user->id : null,
                     'domain'       => $product->provisioning_type === 'whm_cpanel' ? strtolower($data['label']) : null,
                     'applied_coupon' => $coupon ? [
                         'coupon_id' => $coupon->id,
@@ -445,7 +470,7 @@ class PortalOrderController extends Controller
 
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $tenantId,
-                'client_id'       => $user->client_id,
+                'client_id'       => $clientId,
                 'type'            => 'invoice',
                 'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
                 'date'            => now()->toDateString(),
@@ -455,7 +480,7 @@ class PortalOrderController extends Controller
                 'tax_amount'      => round($lineTax + $productAddonsTax + $configTax, 2),
                 'total'           => $total,
                 'status'          => 'sent',
-                'notes'           => 'Portal order: new subscription'
+                'notes'           => ($isStaff ? 'Admin order: new subscription' : 'Portal order: new subscription')
                                      . ($coupon ? " (promo {$coupon->code})" : ''),
             ]);
 
@@ -527,7 +552,7 @@ class PortalOrderController extends Controller
 
                 \App\Models\Domain::create([
                     'tenant_id'            => $tenantId,
-                    'client_id'            => $user->client_id,
+                    'client_id'            => $clientId,
                     'registrar_account_id' => app(\App\Services\Registrar\DomainRegistrarManager::class)->accountFor($tenantId)->id,
                     'name'                 => $domain,
                     'status'               => 'pending',
@@ -538,7 +563,7 @@ class PortalOrderController extends Controller
                         'pending_action'    => $mode,
                         'pending_years'     => $years,
                         'order_document_id' => $document->id,
-                        'portal_order'      => true,
+                        'portal_order'      => !$isStaff,
                         'addons'            => $addons->pluck('name')->values()->all(),
                     ],
                 ]);
@@ -576,7 +601,7 @@ class PortalOrderController extends Controller
             RecurringInvoiceLog::withoutGlobalScopes()->updateOrCreate(
                 [
                     'tenant_id'          => $tenantId,
-                    'client_id'          => $user->client_id,
+                    'client_id'          => $clientId,
                     'product_service_id' => $product->id,
                     'next_bill_date'     => $start->toDateString(),
                 ],
@@ -594,7 +619,7 @@ class PortalOrderController extends Controller
             // charged a discounted total that the coupon can't back.
             if ($coupon && $discount > 0) {
                 $ok = app(\App\Services\CouponService::class)
-                    ->redeem($coupon, $user->client_id, $document->id, $discount);
+                    ->redeem($coupon, $clientId, $document->id, $discount);
                 if (!$ok) {
                     throw new \App\Exceptions\CouponUnavailableException();
                 }

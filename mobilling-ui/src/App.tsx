@@ -24,6 +24,7 @@ import Coupons from './pages/Coupons';
 import Quotations from './pages/Quotations';
 import Proformas from './pages/Proformas';
 import Invoices from './pages/Invoices';
+import Orders from './pages/Orders';
 import CreditNotes from './pages/CreditNotes';
 import BillCategories from './pages/BillCategories';
 import Bills from './pages/Bills';
@@ -205,6 +206,7 @@ export default function App() {
                   <Route path="/quotations" element={<Quotations />} />
                   <Route path="/proformas" element={<Proformas />} />
                   <Route path="/invoices" element={<Invoices />} />
+                  <Route path="/orders" element={<Orders />} />
                   <Route path="/credit-notes" element={<CreditNotes />} />
                   <Route path="/payments-in" element={<PaymentsIn />} />
                   <Route path="/client-subscriptions" element={<ClientSubscriptions />} />

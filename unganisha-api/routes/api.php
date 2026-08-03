@@ -568,6 +568,18 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/domains/{domain}/logs',    [\App\Http\Controllers\DomainController::class, 'logs']);
     });
     Route::middleware('permission:domains.create')->post('/domains/order', [\App\Http\Controllers\DomainController::class, 'order']);
+
+    // Admin ordering on behalf of a client (WHMCS-style "Add New Order").
+    // Reuses the portal storefront controller; staff pass client_id explicitly.
+    Route::middleware('permission:orders.create')->group(function () {
+        Route::get('/orders/catalog',       [\App\Http\Controllers\Portal\PortalOrderController::class, 'catalog']);
+        Route::get('/orders/domain-tlds',   [\App\Http\Controllers\Portal\PortalOrderController::class, 'tlds']);
+        Route::get('/orders/domain-addons', [\App\Http\Controllers\Portal\PortalOrderController::class, 'domainAddons']);
+        Route::get('/orders/products/{product}/addons',         [\App\Http\Controllers\Portal\PortalOrderController::class, 'productAddons']);
+        Route::get('/orders/products/{product}/config-options', [\App\Http\Controllers\Portal\PortalOrderController::class, 'configOptions']);
+        Route::post('/orders/coupons/validate', [\App\Http\Controllers\Portal\PortalOrderController::class, 'validateCoupon']);
+        Route::post('/orders', [\App\Http\Controllers\Portal\PortalOrderController::class, 'store']);
+    });
     Route::middleware('permission:domains.renew')->post('/domains/{domain}/renew', [\App\Http\Controllers\DomainController::class, 'renew']);
     Route::middleware('permission:domains.renew')->put('/domains/{domain}/auto-renew', [\App\Http\Controllers\DomainController::class, 'setAutoRenew']);
     Route::middleware('permission:domains.read')->get('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'nameservers']);
