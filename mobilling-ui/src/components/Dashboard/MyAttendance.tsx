@@ -46,6 +46,8 @@ function MyReportModal({ opened, onClose }: { opened: boolean; onClose: () => vo
         {isLoading ? (
           <Center py="xl"><Loader /></Center>
         ) : r && (
+          <>
+          <ChartSvg r={r} full />
           <Table.ScrollContainer minWidth={480}>
             <Table highlightOnHover verticalSpacing={4} fz="sm">
               <Table.Thead>
@@ -85,6 +87,7 @@ function MyReportModal({ opened, onClose }: { opened: boolean; onClose: () => vo
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
+          </>
         )}
       </Stack>
     </Modal>
@@ -98,17 +101,9 @@ const CHART = {
   ok: '#099268', warn: '#e8590c', excused: '#6741d9', absent: '#c92a2a',
 };
 
-function MyAttendanceChart() {
-  const now = new Date();
-  const m = now.getMonth() + 1;
-  const y = now.getFullYear();
-  const { data } = useQuery({
-    queryKey: ['my-attendance-report', m, y],
-    queryFn: () => getMyAttendanceReport(m, y),
-  });
+function ChartSvg({ r, full = false }: { r: AttendanceReport; full?: boolean }) {
   const [hover, setHover] = useState<number | null>(null);
-  const r: AttendanceReport | undefined = data?.data?.data;
-  if (!r || r.days.length === 0) return null;
+  if (r.days.length === 0) return null;
 
   const toMin = (t: string | null) => {
     if (!t) return null;
@@ -116,8 +111,10 @@ function MyAttendanceChart() {
     return h * 60 + mm;
   };
   const DOM_MIN = 6 * 60, DOM_MAX = 22 * 60;           // 06:00 → 22:00
-  const ML = 32, MR = 4, MT = 4, MB = 13, H = 52;
-  const dayW = 10, barW = 5;
+  // Compact (dashboard): a slim colour strip with no axis text at all — the
+  // time/day labels are what made the card tall. Full (report modal): labelled.
+  const ML = full ? 32 : 4, MR = 4, MT = full ? 4 : 2, MB = full ? 13 : 3, H = full ? 64 : 26;
+  const dayW = full ? 12 : 8, barW = full ? 6 : 4.5;
   const W = ML + MR + r.days.length * dayW;
   const yPos = (min: number) => MT + ((Math.min(Math.max(min, DOM_MIN), DOM_MAX) - DOM_MIN) / (DOM_MAX - DOM_MIN)) * H;
   const inTarget = yPos(toMin(r.check_in_time) ?? 450);
@@ -125,8 +122,10 @@ function MyAttendanceChart() {
   const hovered = hover !== null ? r.days[hover] : null;
 
   return (
-    <div style={{ position: 'relative', marginTop: 8, maxWidth: 400 }}>
-      <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Check-in / check-out · {r.month_label}</Text>
+    <div style={{ position: 'relative', marginTop: full ? 4 : 8, maxWidth: full ? 560 : 340 }}>
+      {!full && (
+        <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Check-in / check-out · {r.month_label}</Text>
+      )}
       <svg viewBox={`0 0 ${W} ${MT + H + MB}`} style={{ width: '100%', display: 'block' }} role="img"
         aria-label={`Daily check-in and check-out times for ${r.month_label}`}>
         {/* target lines */}
@@ -134,8 +133,10 @@ function MyAttendanceChart() {
           <g key={String(label)}>
             <line x1={ML} x2={W - MR} y1={yy as number} y2={yy as number}
               stroke="var(--mantine-color-default-border)" strokeDasharray="3 3" strokeWidth={1} />
-            <text x={ML - 4} y={(yy as number) + 2.5} textAnchor="end" fontSize={7}
-              fill="var(--mantine-color-dimmed)">{label}</text>
+            {full && (
+              <text x={ML - 4} y={(yy as number) + 2.5} textAnchor="end" fontSize={7}
+                fill="var(--mantine-color-dimmed)">{label}</text>
+            )}
           </g>
         ))}
         {r.days.map((d, i) => {
@@ -166,8 +167,8 @@ function MyAttendanceChart() {
                   <line x1={cx - 2.2} y1={inTarget + 2.2} x2={cx + 2.2} y2={inTarget - 2.2} />
                 </g>
               )}
-              {/* day label every 5th day */}
-              {(i % 5 === 0 || i === r.days.length - 1) && (
+              {/* day label every 5th day (full chart only) */}
+              {full && (i % 5 === 0 || i === r.days.length - 1) && (
                 <text x={cx} y={MT + H + 9} textAnchor="middle" fontSize={6}
                   fill="var(--mantine-color-dimmed)">{dayjs(d.date).format('D')}</text>
               )}
@@ -219,6 +220,19 @@ function MyAttendanceChart() {
       </Group>
     </div>
   );
+}
+
+function MyAttendanceChart() {
+  const now = new Date();
+  const m = now.getMonth() + 1;
+  const y = now.getFullYear();
+  const { data } = useQuery({
+    queryKey: ['my-attendance-report', m, y],
+    queryFn: () => getMyAttendanceReport(m, y),
+  });
+  const r: AttendanceReport | undefined = data?.data?.data;
+  if (!r) return null;
+  return <ChartSvg r={r} />;
 }
 
 const dtypeLabel: Record<string, string> = {
