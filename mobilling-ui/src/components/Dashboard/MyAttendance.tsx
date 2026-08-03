@@ -116,8 +116,8 @@ function MyAttendanceChart() {
     return h * 60 + mm;
   };
   const DOM_MIN = 6 * 60, DOM_MAX = 22 * 60;           // 06:00 → 22:00
-  const ML = 36, MR = 6, MT = 6, MB = 16, H = 84;
-  const dayW = 14, barW = 7;
+  const ML = 32, MR = 4, MT = 4, MB = 13, H = 52;
+  const dayW = 10, barW = 5;
   const W = ML + MR + r.days.length * dayW;
   const yPos = (min: number) => MT + ((Math.min(Math.max(min, DOM_MIN), DOM_MAX) - DOM_MIN) / (DOM_MAX - DOM_MIN)) * H;
   const inTarget = yPos(toMin(r.check_in_time) ?? 450);
@@ -125,8 +125,8 @@ function MyAttendanceChart() {
   const hovered = hover !== null ? r.days[hover] : null;
 
   return (
-    <div style={{ position: 'relative', marginTop: 10, maxWidth: 520 }}>
-      <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={4}>Check-in / check-out · {r.month_label}</Text>
+    <div style={{ position: 'relative', marginTop: 8, maxWidth: 400 }}>
+      <Text size="xs" fw={700} c="dimmed" tt="uppercase" mb={2}>Check-in / check-out · {r.month_label}</Text>
       <svg viewBox={`0 0 ${W} ${MT + H + MB}`} style={{ width: '100%', display: 'block' }} role="img"
         aria-label={`Daily check-in and check-out times for ${r.month_label}`}>
         {/* target lines */}
@@ -134,7 +134,7 @@ function MyAttendanceChart() {
           <g key={String(label)}>
             <line x1={ML} x2={W - MR} y1={yy as number} y2={yy as number}
               stroke="var(--mantine-color-default-border)" strokeDasharray="3 3" strokeWidth={1} />
-            <text x={ML - 4} y={(yy as number) + 3} textAnchor="end" fontSize={8}
+            <text x={ML - 4} y={(yy as number) + 2.5} textAnchor="end" fontSize={7}
               fill="var(--mantine-color-dimmed)">{label}</text>
           </g>
         ))}
@@ -159,14 +159,16 @@ function MyAttendanceChart() {
                   stroke={d.no_checkout ? color : 'none'} strokeDasharray={d.no_checkout ? '2 2' : undefined}
                   fillOpacity={d.no_checkout ? 0.45 : 1} />
               )}
-              {/* absent marker */}
+              {/* absent marker: drawn cross (a text glyph renders inconsistently) */}
               {d.absent && (
-                <text x={cx} y={inTarget + 3.5} textAnchor="middle" fontSize={9} fontWeight={700}
-                  fill={CHART.absent}>✕</text>
+                <g stroke={CHART.absent} strokeWidth={1.3} strokeLinecap="round">
+                  <line x1={cx - 2.2} y1={inTarget - 2.2} x2={cx + 2.2} y2={inTarget + 2.2} />
+                  <line x1={cx - 2.2} y1={inTarget + 2.2} x2={cx + 2.2} y2={inTarget - 2.2} />
+                </g>
               )}
-              {/* day label every other day */}
-              {i % 2 === 0 && (
-                <text x={cx} y={MT + H + 11} textAnchor="middle" fontSize={7}
+              {/* day label every 5th day */}
+              {(i % 5 === 0 || i === r.days.length - 1) && (
+                <text x={cx} y={MT + H + 9} textAnchor="middle" fontSize={6}
                   fill="var(--mantine-color-dimmed)">{dayjs(d.date).format('D')}</text>
               )}
               {/* hover hit target (full column) */}
@@ -199,14 +201,21 @@ function MyAttendanceChart() {
       )}
 
       <Group gap={10} mt={2} wrap="wrap">
-        {[[CHART.ok, 'On time'], [CHART.warn, 'Late / early / no out'], [CHART.excused, 'Excused'], [CHART.absent, '✕ Absent']].map(([c, l]) => (
+        {[[CHART.ok, 'On time'], [CHART.warn, 'Late / early / no out'], [CHART.excused, 'Excused']].map(([c, l]) => (
           <Group key={l} gap={4} wrap="nowrap">
-            <span style={{ width: 8, height: 8, borderRadius: 2, background: l === '✕ Absent' ? 'transparent' : c, color: c, fontSize: 9, fontWeight: 700, lineHeight: '8px' }}>
-              {l === '✕ Absent' ? '✕' : ''}
-            </span>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: c, flexShrink: 0 }} />
             <Text size="xs" c="dimmed">{l}</Text>
           </Group>
         ))}
+        <Group gap={4} wrap="nowrap">
+          <svg width={8} height={8} style={{ flexShrink: 0 }}>
+            <g stroke={CHART.absent} strokeWidth={1.4} strokeLinecap="round">
+              <line x1={1.5} y1={1.5} x2={6.5} y2={6.5} />
+              <line x1={1.5} y1={6.5} x2={6.5} y2={1.5} />
+            </g>
+          </svg>
+          <Text size="xs" c="dimmed">Absent</Text>
+        </Group>
       </Group>
     </div>
   );
@@ -235,7 +244,7 @@ export default function MyAttendance() {
         <Text fw={700} size="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.5 }}>My Attendance</Text>
       </div>
 
-      <Card withBorder radius="md" p="md" shadow="xs" className={classes.statCard}
+      <Card withBorder radius="md" p="sm" shadow="xs" className={classes.statCard}
         style={{ ['--stat-accent' as string]: 'var(--mantine-color-blue-6)' }}>
         <Group justify="space-between" wrap="wrap" gap="md">
           <Group gap="lg" wrap="wrap">
@@ -293,7 +302,7 @@ export default function MyAttendance() {
           <Group gap={6} mt="sm">
             {(['absent', 'late', 'left_early', 'no_checkout'] as const).map((tp) =>
               a.deduction_by_type![tp] > 0 ? (
-                <Badge key={tp} variant="light" color={tp === 'absent' ? 'red' : 'orange'} radius="sm">
+                <Badge key={tp} size="xs" variant="light" color={tp === 'absent' ? 'red' : 'orange'} radius="sm">
                   {dtypeLabel[tp]}: {a.deduction_by_type![tp]}
                 </Badge>
               ) : null,
@@ -303,21 +312,14 @@ export default function MyAttendance() {
 
         <MyAttendanceChart />
 
-        {/* Rules & deduction amounts — so staff know what applies */}
-        <Stack gap={4} mt="sm" pt="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
-          <Text size="xs" c="dimmed">
-            <b>Rules:</b> check in by <b>{s.check_in_time}</b>, check out by <b>{s.check_out_time}</b>. A missing check-in counts as absent even if you check out.
-          </Text>
+        {/* Rules & deduction amounts — one compact line so staff know what applies */}
+        <Text size="xs" c="dimmed" mt="xs" pt={6} style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
+          <b>Rules:</b> in by <b>{s.check_in_time}</b> · out by <b>{s.check_out_time}</b> · no check-in = absent
           {s.penalties_enabled && (
-            <Group gap={6}>
-              {([['absent', s.penalty_absent], ['late', s.penalty_late], ['left_early', s.penalty_left_early], ['no_checkout', s.penalty_no_checkout]] as const).map(([tp, amt]) => (
-                <Badge key={tp} variant="outline" color="gray" radius="sm" size="sm">
-                  {dtypeLabel[tp]} −TZS {Number(amt).toLocaleString()}
-                </Badge>
-              ))}
-            </Group>
+            <> · {([['absent', s.penalty_absent], ['late', s.penalty_late], ['left_early', s.penalty_left_early], ['no_checkout', s.penalty_no_checkout]] as const)
+              .map(([tp, amt]) => `${dtypeLabel[tp]} −${Number(amt).toLocaleString()}`).join(' · ')}</>
           )}
-        </Stack>
+        </Text>
       </Card>
 
       <MyReportModal opened={reportOpen} onClose={() => setReportOpen(false)} />
