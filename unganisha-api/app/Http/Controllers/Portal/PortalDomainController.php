@@ -269,6 +269,17 @@ class PortalDomainController extends Controller
             return response()->json(['message' => 'Renewal is not available for this domain — please contact us.'], 422);
         }
 
+        // Ping the client with the renewal invoice (WhatsApp with Pay Now /
+        // email / SMS per tenant settings). Best-effort.
+        try {
+            $document->loadMissing('client');
+            if ($document->client && ($document->client->phone || $document->client->email)) {
+                $document->client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return response()->json([
             'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
             'message' => "Renewal invoice {$document->document_number} created — pay it to renew instantly.",
@@ -381,6 +392,17 @@ class PortalDomainController extends Controller
 
             return [$domain, $document];
         });
+
+        // Ping the client with the invoice (WhatsApp with Pay Now / email / SMS
+        // per tenant settings). Best-effort — the order already exists.
+        try {
+            $document->loadMissing('client');
+            if ($document->client && ($document->client->phone || $document->client->email)) {
+                $document->client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         return response()->json([
             'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],

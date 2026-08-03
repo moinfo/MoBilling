@@ -374,6 +374,17 @@ class DomainController extends Controller
 
         [$domain, $document] = $result;
 
+        // Ping the client with the invoice (WhatsApp with Pay Now / email / SMS
+        // per tenant settings). Best-effort — the order already exists.
+        try {
+            $document->loadMissing('client');
+            if ($document->client && ($document->client->phone || $document->client->email)) {
+                $document->client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return response()->json([
             'data'     => $domain->load('client:id,name'),
             'document' => ['id' => $document->id, 'document_number' => $document->document_number, 'total' => $document->total],
@@ -390,6 +401,17 @@ class DomainController extends Controller
             $document = $billing->createRenewalInvoice($domain, $data['years'], auth()->id());
         } catch (\RuntimeException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        // Ping the client with the renewal invoice (WhatsApp with Pay Now /
+        // email / SMS per tenant settings). Best-effort.
+        try {
+            $document->loadMissing('client');
+            if ($document->client && ($document->client->phone || $document->client->email)) {
+                $document->client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            }
+        } catch (\Throwable $e) {
+            report($e);
         }
 
         return response()->json([

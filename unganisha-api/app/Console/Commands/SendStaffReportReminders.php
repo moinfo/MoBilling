@@ -52,22 +52,24 @@ class SendStaffReportReminders extends Command
             }
 
             CronLog::withoutGlobalScopes()->create([
-                'command'      => $this->signature,
-                'status'       => 'success',
-                'records'      => $sent,
-                'started_at'   => $startedAt,
-                'completed_at' => now(),
+                'command'     => $this->signature,
+                'description' => "Sent {$sent} staff report reminder(s)",
+                'results'     => ['sent' => $sent],
+                'status'      => 'success',
+                'started_at'  => $startedAt,
+                'finished_at' => now(),
             ]);
 
             $this->info("Sent {$sent} staff report reminder(s).");
             return 0;
         } catch (\Throwable $e) {
             CronLog::withoutGlobalScopes()->create([
-                'command'      => $this->signature,
-                'status'       => 'failed',
-                'message'      => $e->getMessage(),
-                'started_at'   => $startedAt,
-                'completed_at' => now(),
+                'command'     => $this->signature,
+                'description' => 'Failed to send staff report reminders',
+                'status'      => 'failed',
+                'error'       => $e->getMessage(),
+                'started_at'  => $startedAt,
+                'finished_at' => now(),
             ]);
 
             $this->error($e->getMessage());

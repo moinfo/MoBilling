@@ -631,6 +631,18 @@ class PortalOrderController extends Controller
             return response()->json(['message' => 'This promo code has just reached its usage limit — please try again without it.'], 422);
         }
 
+        // Tell the client about the new invoice (WhatsApp with Pay Now / email /
+        // SMS per tenant settings). Best-effort: a delivery failure must not
+        // undo an order that already exists.
+        try {
+            $client = \App\Models\Client::withoutGlobalScopes()->find($clientId);
+            if ($client && ($client->phone || $client->email)) {
+                $client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return response()->json([
             'data'    => [
                 'subscription_id' => $subscription->id,
