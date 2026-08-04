@@ -16,7 +16,7 @@ export default function ProtectedRoute({ children, requiredRole, requiredUserTyp
   if (loading) return <LoadingOverlay visible />;
   if (!user) {
     // logged-out visitors to client-area URLs go to the portal login
-    return <Navigate to={location.pathname.startsWith('/portal') ? '/portal/login' : '/'} replace />;
+    return <Navigate to={location.pathname.startsWith('/portal/') ? '/portal/login' : '/'} replace />;
   }
 
   // User type routing
@@ -28,12 +28,12 @@ export default function ProtectedRoute({ children, requiredRole, requiredUserTyp
   }
 
   // Client portal users can only access /portal/* paths
-  if (userType === 'client' && !location.pathname.startsWith('/portal')) {
+  if (userType === 'client' && !location.pathname.startsWith('/portal/')) {
     return <Navigate to="/portal/dashboard" replace />;
   }
 
   // Tenant users should not access /portal/* paths
-  if (userType === 'tenant' && location.pathname.startsWith('/portal')) {
+  if (userType === 'tenant' && location.pathname.startsWith('/portal/')) {
     return <Navigate to="/dashboard" replace />;
   }
 
