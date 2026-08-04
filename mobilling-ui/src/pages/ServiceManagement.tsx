@@ -14,7 +14,7 @@ import {
   IconLock, IconLockOpen, IconExternalLink, IconChevronDown,
   IconFileInvoice, IconArrowsUpDown, IconUserShare, IconTrash,
   IconRefresh, IconDeviceFloppy, IconMail, IconMailForward, IconKey, IconCopy,
-  IconMessage, IconBrandWhatsapp,
+  IconMessage, IconBrandWhatsapp, IconEye,
 } from '@tabler/icons-react';
 import { getClients, getClientCommunications, ClientCommunicationLog } from '../api/clients';
 import {
@@ -547,39 +547,81 @@ function MessagesLog({ clientId }: { clientId: string }) {
     queryFn: () => getClientCommunications(clientId, { types: HOSTING_MSG_TYPES, limit: 20 }),
   });
   const logs = data?.data?.data ?? [];
+  const [viewing, setViewing] = useState<ClientCommunicationLog | null>(null);
 
   if (isLoading) return <Center py="md"><Loader size="xs" /></Center>;
   if (!logs.length) return <Text size="xs" c="dimmed">No welcome/password/status messages sent for this service yet.</Text>;
 
   return (
-    <Table striped withTableBorder fz="xs">
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>Sent</Table.Th><Table.Th>Channel</Table.Th><Table.Th>Type</Table.Th>
-          <Table.Th>To</Table.Th><Table.Th>Message</Table.Th><Table.Th>Status</Table.Th>
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {logs.map((l) => (
-          <Table.Tr key={l.id}>
-            <Table.Td c="dimmed" style={{ whiteSpace: 'nowrap' }}>{new Date(l.created_at).toLocaleString('en-GB')}</Table.Td>
-            <Table.Td>
-              <Group gap={4} wrap="nowrap">{CHANNEL_META[l.channel]?.icon}<Text size="xs">{CHANNEL_META[l.channel]?.label ?? l.channel}</Text></Group>
-            </Table.Td>
-            <Table.Td style={{ whiteSpace: 'nowrap' }}>{MSG_TYPE_LABEL[l.type] ?? l.type}</Table.Td>
-            <Table.Td style={{ whiteSpace: 'nowrap' }}>{l.recipient || '—'}</Table.Td>
-            <Table.Td maw={280}>
-              <Tooltip label={l.error || l.message || l.subject || '—'} multiline w={300} disabled={!(l.error || l.message || l.subject)}>
+    <>
+      <Table striped withTableBorder fz="xs">
+        <Table.Thead>
+          <Table.Tr>
+            <Table.Th>Sent</Table.Th><Table.Th>Channel</Table.Th><Table.Th>Type</Table.Th>
+            <Table.Th>To</Table.Th><Table.Th>Message</Table.Th><Table.Th>Status</Table.Th><Table.Th /></Table.Tr>
+        </Table.Thead>
+        <Table.Tbody>
+          {logs.map((l) => (
+            <Table.Tr key={l.id}>
+              <Table.Td c="dimmed" style={{ whiteSpace: 'nowrap' }}>{new Date(l.created_at).toLocaleString('en-GB')}</Table.Td>
+              <Table.Td>
+                <Group gap={4} wrap="nowrap">{CHANNEL_META[l.channel]?.icon}<Text size="xs">{CHANNEL_META[l.channel]?.label ?? l.channel}</Text></Group>
+              </Table.Td>
+              <Table.Td style={{ whiteSpace: 'nowrap' }}>{MSG_TYPE_LABEL[l.type] ?? l.type}</Table.Td>
+              <Table.Td style={{ whiteSpace: 'nowrap' }}>{l.recipient || '—'}</Table.Td>
+              <Table.Td maw={280}>
                 <Text size="xs" lineClamp={1} c={l.error ? 'red' : undefined}>{l.error || l.subject || l.message || '—'}</Text>
-              </Tooltip>
-            </Table.Td>
-            <Table.Td>
-              <Badge size="xs" color={l.status === 'sent' ? 'green' : 'red'} variant="light">{l.status}</Badge>
-            </Table.Td>
-          </Table.Tr>
-        ))}
-      </Table.Tbody>
-    </Table>
+              </Table.Td>
+              <Table.Td>
+                <Badge size="xs" color={l.status === 'sent' ? 'green' : 'red'} variant="light">{l.status}</Badge>
+              </Table.Td>
+              <Table.Td>
+                <Tooltip label="View full message">
+                  <Button size="compact-xs" variant="subtle" px={4} onClick={() => setViewing(l)}>
+                    <IconEye size={14} />
+                  </Button>
+                </Tooltip>
+              </Table.Td>
+            </Table.Tr>
+          ))}
+        </Table.Tbody>
+      </Table>
+
+      <Modal opened={!!viewing} onClose={() => setViewing(null)} title="Message" centered size="md">
+        {viewing && (
+          <Stack gap="xs">
+            <Group gap="xs">
+              <Group gap={4} wrap="nowrap">{CHANNEL_META[viewing.channel]?.icon}<Text size="sm">{CHANNEL_META[viewing.channel]?.label ?? viewing.channel}</Text></Group>
+              <Badge size="sm" color={viewing.status === 'sent' ? 'green' : 'red'} variant="light">{viewing.status}</Badge>
+            </Group>
+            <Text size="xs" c="dimmed">
+              {MSG_TYPE_LABEL[viewing.type] ?? viewing.type} · to {viewing.recipient} · {new Date(viewing.created_at).toLocaleString('en-GB')}
+            </Text>
+            {viewing.subject && (
+              <div>
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">Subject</Text>
+                <Text size="sm">{viewing.subject}</Text>
+              </div>
+            )}
+            {viewing.message && (
+              <div>
+                <Text size="xs" fw={700} c="dimmed" tt="uppercase">Content</Text>
+                <Text size="sm" style={{ whiteSpace: 'pre-wrap' }}>{viewing.message}</Text>
+              </div>
+            )}
+            {!viewing.subject && !viewing.message && !viewing.error && (
+              <Text size="sm" c="dimmed">No content was captured for this message.</Text>
+            )}
+            {viewing.error && (
+              <div>
+                <Text size="xs" fw={700} c="red" tt="uppercase">Error</Text>
+                <Text size="sm" c="red" style={{ whiteSpace: 'pre-wrap' }}>{viewing.error}</Text>
+              </div>
+            )}
+          </Stack>
+        )}
+      </Modal>
+    </>
   );
 }
 
