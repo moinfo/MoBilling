@@ -283,13 +283,13 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
                 Send Message
               </Menu.Item>
               <Menu.Item leftSection={<IconMailForward size={14} />} disabled={!ha}
-                onClick={() => runModule('Resend Welcome Email', () => resendWelcomeEmail(subId))}>
-                Resend Welcome Email
+                onClick={() => runModule('Resend Welcome Message', () => resendWelcomeEmail(subId))}>
+                Resend Welcome Message
               </Menu.Item>
               <Menu.Item leftSection={<IconKey size={14} />} disabled={!ha}
                 onClick={() => modals.openConfirmModal({
                   title: 'Reset Password & Send Welcome',
-                  children: <Text size="sm">This sets a NEW cPanel password on the server and emails the client the welcome message with the new password. Continue?</Text>,
+                  children: <Text size="sm">This sets a NEW cPanel password on the server and sends the client the welcome message (email/WhatsApp/SMS) with the new password. Continue?</Text>,
                   labels: { confirm: 'Reset & Send', cancel: 'Cancel' },
                   onConfirm: async () => {
                     setBusy('reset-welcome');

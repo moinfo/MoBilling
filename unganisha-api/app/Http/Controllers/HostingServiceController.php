@@ -59,7 +59,10 @@ class HostingServiceController extends Controller
                 'hostname' => $s->hostname,
             ]);
 
-        $products = ProductService::where('type', 'service')->where('is_active', true)
+        // Any active, non-WHMCS-variant product/service is a valid re-assignment
+        // target — a `type` filter here would hide the modern order-flow catalog
+        // (type=product) and leave only stale WHMCS billing-variant SKUs.
+        $products = ProductService::where('is_active', true)
             ->where(fn ($q) => $q->whereNull('code')->orWhere('code', 'not like', 'WHMCS-P%-%'))
             ->orderBy('name')->get(['id', 'name', 'price', 'billing_cycle', 'cpanel_package'])
             ->unique('name')->values();
@@ -189,9 +192,11 @@ class HostingServiceController extends Controller
         $svc = app(\App\Services\Hosting\PlanChangeService::class);
         $current = $sub->productService;
 
-        $plans = ProductService::where('type', 'service')->where('is_active', true)
+        // Same note as show() above: don't filter by `type` — real catalog
+        // products (type=product) are valid upgrade/downgrade targets too.
+        $plans = ProductService::where('is_active', true)
             ->where('tenant_id', $sub->tenant_id)
-            // same product group as the current plan (WHMCS upgrade paths)
+            // same product group as the current plan
             ->when($current->category, fn ($q) => $q->where('category', $current->category))
             ->where(fn ($q) => $q->whereNull('code')->orWhere('code', 'not like', 'WHMCS-P%-%'))
             ->orderBy('price')->get()
@@ -319,13 +324,13 @@ class HostingServiceController extends Controller
         abort_unless($ha, 422, 'This service has no hosting account to send a welcome email for.');
 
         $client = $clientSubscription->client;
-        abort_unless($client?->email, 422, 'The client has no email address on file.');
+        abort_unless($client && ($client->email || $client->phone), 422, 'The client has no email address or phone number on file.');
 
         try {
             $client->notify(new \App\Notifications\HostingAccountProvisionedNotification($ha, null));
-            return response()->json(['message' => "Welcome email sent to {$client->email}."]);
+            return response()->json(['message' => "Welcome message sent" . ($client->email ? " to {$client->email}" : " via WhatsApp/SMS to {$client->phone}") . '.']);
         } catch (\Throwable $e) {
-            return response()->json(['message' => 'Could not send the email: ' . $e->getMessage()], 422);
+            return response()->json(['message' => 'Could not send the welcome message: ' . $e->getMessage()], 422);
         }
     }
 
@@ -371,21 +376,21 @@ class HostingServiceController extends Controller
         }
 
         $client = $hostingAccount->subscription?->client;
-        $emailed = false;
-        if ($client?->email) {
+        $notified = false;
+        if ($client && ($client->email || $client->phone)) {
             try {
                 $client->notify(new \App\Notifications\HostingAccountProvisionedNotification($hostingAccount, $password));
-                $emailed = true;
+                $notified = true;
             } catch (\Throwable $e) {
-                \Illuminate\Support\Facades\Log::warning("Welcome email failed after reset for {$hostingAccount->domain}: {$e->getMessage()}");
+                \Illuminate\Support\Facades\Log::warning("Welcome message failed after reset for {$hostingAccount->domain}: {$e->getMessage()}");
             }
         }
 
         return response()->json([
             'password' => $password,
-            'message'  => $emailed
-                ? "Password reset and welcome email sent to {$client->email}."
-                : 'Password reset on the server, but the welcome email could not be sent (no client email or mail error).',
+            'message'  => $notified
+                ? 'Password reset and welcome message sent to the client.'
+                : 'Password reset on the server, but the welcome message could not be sent (no client contact info or delivery error).',
         ]);
     }
 

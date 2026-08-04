@@ -88,12 +88,13 @@ class ProvisionHostingAccount extends BaseHostingJob
 
             $account->update(['status' => 'active']);
 
-            // Credentials are sent once and never stored.
-            if ($sub->client?->email) {
+            // Credentials are sent once and never stored. A client with only a
+            // phone still gets the WhatsApp/SMS welcome — don't gate on email.
+            if ($sub->client && ($sub->client->email || $sub->client->phone)) {
                 try {
                     $sub->client->notify(new HostingAccountProvisionedNotification($account, $password));
                 } catch (\Throwable $e) {
-                    Log::warning("Provision welcome email failed for {$account->id}: {$e->getMessage()}");
+                    Log::warning("Provision welcome failed for {$account->id}: {$e->getMessage()}");
                 }
             }
         });
