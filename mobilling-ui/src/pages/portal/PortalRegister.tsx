@@ -29,6 +29,12 @@ export default function PortalRegister() {
   const [loading, setLoading] = useState(false);
   const [clientName, setClientName] = useState<string | null>(null);
   const [isNewClient, setIsNewClient] = useState(true);
+  // Whether the verify step needs to collect name/password itself — true for
+  // the "claim an imported account" flow, which skips the details step and
+  // arrives with those fields empty. Set once per flow entry, NOT derived
+  // from the live form values: doing that made the fields disappear the
+  // moment both had something typed into them, mid-entry.
+  const [needsDetails, setNeedsDetails] = useState(false);
 
   const form = useForm({
     initialValues: {
@@ -49,6 +55,7 @@ export default function PortalRegister() {
     if (searchParams.get('email') && searchParams.get('sent')) {
       setStep('verify');
       setIsNewClient(false);
+      setNeedsDetails(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -221,7 +228,7 @@ export default function PortalRegister() {
                 </Group>
 
                 {/* Claim flow (from login) arrives without details — collect them here */}
-                {(!form.values.name || !form.values.password) && (
+                {needsDetails && (
                   <Stack gap="sm">
                     <TextInput label="Your Name" required {...form.getInputProps('name')} />
                     <TextInput label="Phone" {...form.getInputProps('phone')} />
