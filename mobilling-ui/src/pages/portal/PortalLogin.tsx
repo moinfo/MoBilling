@@ -184,7 +184,7 @@ export default function PortalLogin() {
               <div className={classes.field}>
                 <label className={classes.label} htmlFor="password">
                   <span>{t('login.password')}</span>
-                  <Link className={classes.forgot} to="/forgot-password">{t('login.forgot')}</Link>
+                  <Link className={classes.forgot} to="/portal/forgot-password">{t('login.forgot')}</Link>
                 </label>
                 <div className={classes.pwWrap}>
                   <input

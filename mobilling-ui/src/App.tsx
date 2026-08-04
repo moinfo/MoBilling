@@ -97,6 +97,7 @@ import PortalInvoiceView from './pages/portal/PortalInvoiceView';
 import PortalTicketNew from './pages/portal/PortalTicketNew';
 import PortalTicketView from './pages/portal/PortalTicketView';
 import PortalLogin from './pages/portal/PortalLogin';
+import PortalForgotPassword from './pages/portal/PortalForgotPassword';
 import PortalRegister from './pages/portal/PortalRegister';
 import PortalAnnouncements from './pages/portal/PortalAnnouncements';
 import PortalKnowledgebase from './pages/portal/PortalKnowledgebase';
@@ -148,6 +149,7 @@ export default function App() {
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
                 <Route path="/portal/login" element={<PortalLogin />} />
+                <Route path="/portal/forgot-password" element={<PortalForgotPassword />} />
                 <Route path="/portal/register" element={<PortalRegister />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
