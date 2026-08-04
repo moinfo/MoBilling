@@ -89,14 +89,17 @@ class HostingAccountProvisionedNotification extends Notification
 
         $mail = (new MailMessage)
             ->subject("Your hosting account for {$domain} is ready")
-            ->greeting("Dear {$notifiable->name},")
-            ->line('**PLEASE READ THIS EMAIL IN FULL AND KEEP IT FOR YOUR RECORDS**')
+            ->greeting("Dear {$this->properCase($notifiable->name)},")
+            ->line('**PLEASE READ THIS EMAIL IN FULL AND PRINT IT FOR YOUR RECORDS**')
             ->line('Thank you for your order! Your hosting account has now been set up and this email contains all the information you need to begin using it.')
             ->line('If you registered a domain name during signup, please note it will not be visible on the internet instantly — this is called propagation and can take up to 48 hours. Until it propagates, use the temporary URLs below.')
             ->line('---')
-            ->line('**New Account Information**')
-            ->line("Hosting Package: {$product?->name}")
-            ->line("Domain: {$domain}");
+            ->line('**New Account Information**');
+
+        if ($product) {
+            $mail->line("Hosting Package: {$product->name}");
+        }
+        $mail->line("Domain: {$domain}");
 
         if ($firstPayment !== null) $mail->line("First Payment Amount: {$money($firstPayment)}");
         if ($recurring !== null)    $mail->line("Recurring Amount: {$money($recurring)}");

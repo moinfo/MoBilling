@@ -46,4 +46,21 @@ trait HasTenantBranding
             ? $tenant->portalUrl($path)
             : rtrim(config('app.frontend_url', 'https://mobilling.co.tz'), '/') . $path;
     }
+
+    /**
+     * Many WHMCS-imported client names are stored ALL CAPS ("MATHIAS MHANDO"),
+     * which reads as shouting in a greeting. Only reformats names that are
+     * entirely uppercase — anything already mixed-case (a deliberately
+     * stylised company name, an acronym mid-name, etc.) is left untouched.
+     */
+    protected function properCase(?string $name): ?string
+    {
+        if (!$name) {
+            return $name;
+        }
+
+        return $name === mb_strtoupper($name, 'UTF-8')
+            ? mb_convert_case(mb_strtolower($name, 'UTF-8'), MB_CASE_TITLE, 'UTF-8')
+            : $name;
+    }
 }
