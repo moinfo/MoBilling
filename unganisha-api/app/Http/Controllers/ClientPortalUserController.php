@@ -97,9 +97,30 @@ class ClientPortalUserController extends Controller
                 return response()->json(['message' => 'Client has no email address. Add an email first.'], 422);
             }
 
+            $tenantId = $request->user()->tenant_id;
+
+            // Portal logins are unique per (email, tenant) — a contact who
+            // represents more than one client (e.g. runs their own business
+            // AND a school) can legitimately share one email across separate
+            // client records. Don't crash on the collision; say so clearly.
+            $conflict = ClientUser::where('email', $client->email)
+                ->where('tenant_id', $tenantId)
+                ->where('client_id', '!=', $client->id)
+                ->first();
+
+            if ($conflict) {
+                $otherClient = Client::withoutGlobalScopes()->find($conflict->client_id);
+                return response()->json([
+                    'message' => "A portal login for {$client->email} already exists under a different client"
+                        . ($otherClient ? " ({$otherClient->name})" : '')
+                        . ' — portal logins are unique per email. Use a different email for this client, or log in via '
+                        . ($otherClient ? "\"{$otherClient->name}\"'s" : 'that') . ' account instead.',
+                ], 422);
+            }
+
             $portalUser = ClientUser::create([
                 'client_id' => $client->id,
-                'tenant_id' => $request->user()->tenant_id,
+                'tenant_id' => $tenantId,
                 'name' => $client->name,
                 'email' => $client->email,
                 'phone' => $client->phone,
