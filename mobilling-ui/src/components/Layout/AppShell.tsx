@@ -227,6 +227,10 @@ export default function AppLayout() {
                 <NavLink label="Clients" leftSection={<IconUsers size={16} />}
                   active={isActive('/clients')} onClick={() => navigateAndClose('/clients')} />
               )}
+              {can('clients.update') && (
+                <NavLink label="Portal Users" leftSection={<IconShieldLock size={16} />}
+                  active={isActive('/portal-users')} onClick={() => navigateAndClose('/portal-users')} />
+              )}
               {can('orders.create') && (
                 <NavLink label="Add Order" leftSection={<IconShoppingCart size={16} />}
                   active={isActive('/orders')} onClick={() => navigateAndClose('/orders')} />

@@ -758,6 +758,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
+        Route::get('/portal-users', [ClientPortalUserController::class, 'indexAll']);
         Route::get('/clients/{client}/portal-users', [ClientPortalUserController::class, 'index']);
         Route::post('/clients/{client}/portal-users', [ClientPortalUserController::class, 'store']);
         Route::put('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'update']);

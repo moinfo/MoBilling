@@ -9,6 +9,40 @@ use Illuminate\Validation\ValidationException;
 
 class ClientPortalUserController extends Controller
 {
+    /**
+     * Tenant-wide portal user directory — every client's portal login in one
+     * searchable list, since ClientUser has no admin-facing view of its own
+     * otherwise (only the per-client tab on the Client Profile page).
+     */
+    public function indexAll(Request $request)
+    {
+        $tenantId = $request->user()->tenant_id;
+
+        $query = ClientUser::where('tenant_id', $tenantId)
+            ->with('client:id,name');
+
+        if ($request->filled('search')) {
+            $s = $request->string('search');
+            $query->where(fn ($q) => $q
+                ->where('name', 'like', "%{$s}%")
+                ->orWhere('email', 'like', "%{$s}%")
+                ->orWhereHas('client', fn ($c) => $c->where('name', 'like', "%{$s}%")));
+        }
+
+        if ($request->filled('role')) {
+            $query->where('role', $request->string('role'));
+        }
+
+        if ($request->has('is_active')) {
+            $query->where('is_active', $request->boolean('is_active'));
+        }
+
+        $users = $query->orderByDesc('last_login_at')
+            ->paginate($request->integer('per_page', 25));
+
+        return response()->json(['data' => $users]);
+    }
+
     public function index(Request $request, Client $client)
     {
         $users = ClientUser::where('client_id', $client->id)

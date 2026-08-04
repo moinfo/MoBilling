@@ -149,6 +149,19 @@ export const portalLoginAsClient = (clientId: string) =>
 export const changePortalPassword = (clientId: string, password: string, portalUserId?: string) =>
   api.post<{ message: string }>(`/clients/${clientId}/portal-password`, { password, portal_user_id: portalUserId });
 
+// ── Portal user directory (all clients, admin-wide) ─────────────────────────
+export interface PortalUserRow extends ClientPortalUser {
+  client: { id: string; name: string };
+}
+export interface PortalUserPage {
+  data: PortalUserRow[];
+  total: number;
+  current_page: number;
+  last_page: number;
+}
+export const getAllPortalUsers = (params?: { search?: string; role?: string; is_active?: 0 | 1; page?: number; per_page?: number }) =>
+  api.get<{ data: PortalUserPage }>('/portal-users', { params });
+
 // ── Client credit (staff) ─────────────────────────────────────────────────────
 
 export const getClientCredit = (clientId: string) =>

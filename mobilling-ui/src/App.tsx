@@ -17,6 +17,7 @@ import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
 import Clients from './pages/Clients';
 import ClientProfile from './pages/ClientProfile';
+import PortalUsersAdmin from './pages/PortalUsersAdmin';
 import ProductServices from './pages/ProductServices';
 import ProductAddons from './pages/ProductAddons';
 import ConfigOptions from './pages/ConfigOptions';
@@ -201,6 +202,7 @@ export default function App() {
                   <Route path="/dashboard" element={<Dashboard />} />
                   <Route path="/clients" element={<Clients />} />
                   <Route path="/clients/:clientId" element={<ClientProfile />} />
+                  <Route path="/portal-users" element={<PortalUsersAdmin />} />
                   <Route path="/product-services" element={<ProductServices />} />
                   <Route path="/product-addons" element={<ProductAddons />} />
                   <Route path="/config-options" element={<ConfigOptions />} />
