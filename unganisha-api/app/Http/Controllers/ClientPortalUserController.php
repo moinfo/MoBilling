@@ -102,27 +102,28 @@ class ClientPortalUserController extends Controller
             // Portal logins are unique per (email, tenant) — a contact who
             // represents more than one client (e.g. runs their own business
             // AND a school) can legitimately share one email across separate
-            // client records. Don't crash on the collision; say so clearly.
-            $conflict = ClientUser::where('email', $client->email)
-                ->where('tenant_id', $tenantId)
-                ->where('client_id', '!=', $client->id)
-                ->first();
+            // client records. This auto-created user is impersonation-only —
+            // its password is a random string never handed to anyone, and
+            // notifications go to Client::email, not this row's — so on a
+            // collision we just need a non-colliding placeholder, not a block.
+            $email = $client->email;
+            $taken = fn ($e) => ClientUser::where('email', $e)->where('tenant_id', $tenantId)->exists();
 
-            if ($conflict) {
-                $otherClient = Client::withoutGlobalScopes()->find($conflict->client_id);
-                return response()->json([
-                    'message' => "A portal login for {$client->email} already exists under a different client"
-                        . ($otherClient ? " ({$otherClient->name})" : '')
-                        . ' — portal logins are unique per email. Use a different email for this client, or log in via '
-                        . ($otherClient ? "\"{$otherClient->name}\"'s" : 'that') . ' account instead.',
-                ], 422);
+            if ($taken($email)) {
+                [$local, $domain] = explode('@', $email, 2) + [1 => 'portal.local'];
+                $email = "{$local}+{$client->id}@{$domain}";
+
+                // Vanishingly unlikely, but never loop forever on a fixed key.
+                if ($taken($email)) {
+                    $email = "portal-{$client->id}@portal.local";
+                }
             }
 
             $portalUser = ClientUser::create([
                 'client_id' => $client->id,
                 'tenant_id' => $tenantId,
                 'name' => $client->name,
-                'email' => $client->email,
+                'email' => $email,
                 'phone' => $client->phone,
                 'password' => 'portal-' . str()->random(12),
                 'role' => 'admin',
@@ -139,7 +140,7 @@ class ClientPortalUserController extends Controller
             'permissions' => $portalUser->isPortalAdmin()
                 ? ['portal.view', 'portal.profile', 'portal.users']
                 : ['portal.view', 'portal.profile'],
-            'message' => "Logged in as {$portalUser->name} ({$portalUser->email})",
+            'message' => "Logged in as {$portalUser->name}" . ($client->email ? " ({$client->email})" : ''),
         ]);
     }
 
