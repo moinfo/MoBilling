@@ -308,10 +308,13 @@
 }
 
 .forgot {
-  font-size: 10.5px;
-  letter-spacing: 0.14em;
+  font-family: var(--dc-font-body);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: normal;
   color: var(--dc-accent-text);
-  text-decoration: none;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 .forgot:hover {
