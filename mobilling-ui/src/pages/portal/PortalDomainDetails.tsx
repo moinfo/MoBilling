@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconSettings, IconPlus, IconChevronDown, IconChevronUp, IconRefresh, IconWorld,
-  IconArrowRight, IconLock, IconLockOpen, IconKey, IconCopy, IconServer,
+  IconArrowRight, IconLock, IconLockOpen, IconKey, IconCopy, IconServer, IconMailForward,
   IconAddressBook, IconRepeat, IconLayoutDashboard, IconPuzzle, IconHistory,
   IconCheck, IconX,
 } from '@tabler/icons-react';
@@ -60,6 +60,7 @@ export default function PortalDomainDetails() {
   const [actionsOpen, setActionsOpen] = useState(true);
   const [renewOpen, setRenewOpen] = useState(false);
   const [eppCode, setEppCode] = useState<string | null>(null);
+  const [eppSentInfo, setEppSentInfo] = useState<{ message: string; hint: string | null } | null>(null);
   const [eppLoading, setEppLoading] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -85,9 +86,13 @@ export default function PortalDomainDetails() {
     setEppLoading(true);
     try {
       const res = await portalGetEppCode(id!);
-      setEppCode(res.data.auth_info);
+      if (res.data.sent_by_registry) {
+        setEppSentInfo({ message: res.data.message ?? 'The transfer code has been sent by the registry.', hint: res.data.contact_hint ?? null });
+      } else if (res.data.auth_info) {
+        setEppCode(res.data.auth_info);
+      }
     } catch (e: any) {
-      notifications.show({ message: e?.response?.data?.message ?? 'Could not fetch the transfer code.', color: 'red' });
+      notifications.show({ message: e?.response?.data?.message ?? 'Could not request the transfer code.', color: 'red' });
     } finally {
       setEppLoading(false);
     }
@@ -349,9 +354,7 @@ export default function PortalDomainDetails() {
                   Keep it secret — anyone with this code can move your domain.
                 </Text>
                 {!isPortalAdmin ? (
-                  <Alert color="gray" variant="light">Only portal administrators can view the transfer code.</Alert>
-                ) : !d.has_epp_code ? (
-                  <Alert color="orange" variant="light">No transfer code is stored for this domain — please contact us.</Alert>
+                  <Alert color="gray" variant="light">Only portal administrators can request the transfer code.</Alert>
                 ) : eppCode ? (
                   <Group>
                     <Code fz="md">{eppCode}</Code>
@@ -364,9 +367,16 @@ export default function PortalDomainDetails() {
                       )}
                     </CopyButton>
                   </Group>
+                ) : eppSentInfo ? (
+                  <Alert color="teal" variant="light" icon={<IconMailForward size={16} />}>
+                    <Text size="sm">{eppSentInfo.message}</Text>
+                    {eppSentInfo.hint && (
+                      <Text size="sm" mt={4}>Check <b>{eppSentInfo.hint}</b> — that's the email on file with the registry for this domain.</Text>
+                    )}
+                  </Alert>
                 ) : (
                   <Button w="fit-content" leftSection={<IconKey size={15} />} loading={eppLoading} onClick={revealEpp}>
-                    Reveal EPP Code
+                    {d.has_epp_code ? 'Reveal EPP Code' : 'Request Transfer Code'}
                   </Button>
                 )}
                 <Text size="xs" c="dimmed">Every access to this code is recorded in the domain's activity log.</Text>

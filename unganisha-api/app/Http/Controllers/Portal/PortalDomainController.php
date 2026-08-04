@@ -124,6 +124,7 @@ class PortalDomainController extends Controller
     {
         return match (true) {
             $action === 'auth_info_revealed'      => 'Transfer code viewed',
+            $action === 'sent_by_registry'        => 'Transfer code requested from registry',
             $action === 'nameservers_changed'     => 'Nameservers changed',
             str_contains($action, '/renew/')      => 'Domain renewed',
             str_contains($action, '/register/')   => 'Domain registered',
@@ -195,14 +196,56 @@ class PortalDomainController extends Controller
         abort_unless($domain->client_id === $user->client_id, 404);
         abort_unless($user->role === 'admin', 403, 'Only portal administrators can view the transfer code.');
 
-        if (empty($domain->epp_auth_info)) {
-            return response()->json(['message' => 'No transfer code is stored for this domain — please contact us.'], 422);
+        // A stored code (rare — usually only set at transfer-in) can be shown
+        // straight away. Otherwise, for a .tz domain, ask the registry to
+        // send it: EPP's SendAuthInfo delivers the code directly to the
+        // domain's registrant contact email on file — we never see it either.
+        if (!empty($domain->epp_auth_info)) {
+            $this->logAndNotifyAuthInfo($domain, $user);
+            return response()->json(['auth_info' => $domain->epp_auth_info]);
         }
 
+        if ($domain->meta['unmanaged'] ?? false) {
+            return response()->json(['message' => 'This domain is managed externally — please contact us for the transfer code.'], 422);
+        }
+
+        try {
+            app(DomainRegistrarManager::class)->driverFor($domain->tenant_id, $domain->id)->sendAuthInfo($domain->name);
+        } catch (RegistrarApiException $e) {
+            return response()->json(['message' => 'Could not request the transfer code from the registry right now — please try again shortly, or contact us.'], 422);
+        }
+
+        $this->logAndNotifyAuthInfo($domain, $user, 'sent_by_registry');
+
+        return response()->json([
+            'sent_by_registry' => true,
+            'contact_hint'     => $this->registrantEmailHint($domain),
+            'message'          => 'The transfer code has been sent by the registry to this domain\'s registrant contact email.',
+        ]);
+    }
+
+    /** Masked hint of where the registry-mediated code actually lands — read-only, staff-scoped lookup. */
+    private function registrantEmailHint(Domain $domain): ?string
+    {
+        if (!$domain->registrant_handle) {
+            return null;
+        }
+        try {
+            $info = app(DomainRegistrarManager::class)->driverFor($domain->tenant_id, $domain->id)
+                ->contactInfo($domain->registrant_handle);
+            $email = $info['email'] ?? null;
+            return $email ? \Illuminate\Support\Str::mask($email, '*', 2, -strpos(strrev($email), '@') - 1) : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function logAndNotifyAuthInfo(Domain $domain, $user, string $action = 'auth_info_revealed'): void
+    {
         \App\Models\DomainLog::create([
             'tenant_id' => $domain->tenant_id,
             'domain_id' => $domain->id,
-            'action'    => 'auth_info_revealed',
+            'action'    => $action,
             'request'   => ['by_portal_user' => $user->id],
             'status'    => 'success',
         ]);
@@ -216,8 +259,6 @@ class PortalDomainController extends Controller
         } catch (\Throwable $e) {
             \Illuminate\Support\Facades\Log::warning('AuthInfo notice failed', ['error' => $e->getMessage()]);
         }
-
-        return response()->json(['auth_info' => $domain->epp_auth_info]);
     }
 
     /**

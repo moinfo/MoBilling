@@ -295,8 +295,14 @@ export interface PortalDomainDetail {
 export const getPortalDomainDetail = (id: string) =>
   api.get<{ data: PortalDomainDetail }>(`/portal/domains/${id}`);
 
+export interface PortalEppCodeResult {
+  auth_info?: string;
+  sent_by_registry?: boolean;
+  contact_hint?: string | null;
+  message?: string;
+}
 export const portalGetEppCode = (id: string) =>
-  api.post<{ auth_info: string }>(`/portal/domains/${id}/epp-code`);
+  api.post<PortalEppCodeResult>(`/portal/domains/${id}/epp-code`);
 
 export const getPortalDomainNameservers = (id: string) =>
   api.get<{ data: { nameservers: string[]; editable: boolean } }>(`/portal/domains/${id}/nameservers`);

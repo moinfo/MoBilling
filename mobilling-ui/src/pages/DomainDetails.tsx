@@ -37,6 +37,7 @@ export default function DomainDetails() {
   const { can } = usePermissions();
   const [renewOpen, setRenewOpen] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
+  const [authSentInfo, setAuthSentInfo] = useState<{ message: string; hint: string | null } | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -68,10 +69,14 @@ export default function DomainDetails() {
     setAuthLoading(true);
     try {
       const res = await getDomainAuthInfo(id!);
-      setAuthCode(res.data.auth_info ?? '');
+      if (res.data.sent_by_registry) {
+        setAuthSentInfo({ message: res.data.message ?? 'The transfer code has been sent by the registry.', hint: res.data.contact_hint ?? null });
+      } else {
+        setAuthCode(res.data.auth_info ?? '');
+      }
       qc.invalidateQueries({ queryKey: ['domain-logs', id] });
-    } catch {
-      notifications.show({ message: 'Could not fetch the transfer code.', color: 'red' });
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Could not fetch the transfer code.', color: 'red' });
     } finally {
       setAuthLoading(false);
     }
@@ -180,20 +185,23 @@ export default function DomainDetails() {
                   <Field label="NSset:">{(d as any).nsset_handle ? <Code>{(d as any).nsset_handle}</Code> : '—'}</Field>
                 </Group>
                 {can('domains.transfer') && (
-                  authCode !== null ? (
-                    authCode ? (
-                      <Group>
-                        <Code fz="md">{authCode}</Code>
-                        <CopyButton value={authCode}>
-                          {({ copied, copy }) => (
-                            <Button size="xs" variant="light" color={copied ? 'green' : 'blue'}
-                              leftSection={<IconCopy size={13} />} onClick={copy}>
-                              {copied ? 'Copied' : 'Copy'}
-                            </Button>
-                          )}
-                        </CopyButton>
-                      </Group>
-                    ) : <Text size="sm" c="dimmed">No transfer code stored for this domain.</Text>
+                  authCode ? (
+                    <Group>
+                      <Code fz="md">{authCode}</Code>
+                      <CopyButton value={authCode}>
+                        {({ copied, copy }) => (
+                          <Button size="xs" variant="light" color={copied ? 'green' : 'blue'}
+                            leftSection={<IconCopy size={13} />} onClick={copy}>
+                            {copied ? 'Copied' : 'Copy'}
+                          </Button>
+                        )}
+                      </CopyButton>
+                    </Group>
+                  ) : authSentInfo ? (
+                    <Text size="sm" c="teal">
+                      {authSentInfo.message}
+                      {authSentInfo.hint && <> Check <b>{authSentInfo.hint}</b>.</>}
+                    </Text>
                   ) : (
                     <Button size="xs" variant="light" color="orange" w="fit-content"
                       leftSection={<IconKey size={13} />} loading={authLoading} onClick={revealAuth}>

@@ -209,6 +209,24 @@ class FredHttpDriver implements RegistrarDriver
         ]));
     }
 
+    /**
+     * EPP "SendAuthInfo": the registry emails the transfer/auth code directly
+     * to the domain's registrant contact (the email on file at the registry —
+     * not necessarily the same inbox as the MoBilling client record, though
+     * in practice it usually matches for domains we registered on a client's
+     * behalf). We never see the code itself; the registry delivers it.
+     */
+    public function sendAuthInfo(string $domain): array
+    {
+        return $this->call('post', "/api/domains/{$domain}/send-authinfo/");
+    }
+
+    /** Staff-only registry lookup — used to show WHERE a code was sent, never the code itself. */
+    public function contactInfo(string $contactId): array
+    {
+        return $this->call('get', "/api/admin/registry/contact/{$contactId}/");
+    }
+
     public function updateDomain(string $domain, array $changes): array
     {
         return $this->call('put', "/api/domains/{$domain}/update/", $changes);

@@ -59,7 +59,7 @@ export default function Domains() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [logsFor, setLogsFor] = useState<DomainRecord | null>(null);
   const [renewFor, setRenewFor] = useState<DomainRecord | null>(null);
-  const [authInfoFor, setAuthInfoFor] = useState<{ domain: DomainRecord; code: string | null } | null>(null);
+  const [authInfoFor, setAuthInfoFor] = useState<{ domain: DomainRecord; code: string | null; sentInfo?: { message: string; hint: string | null } } | null>(null);
 
   const params: Record<string, string> = { page: String(page) };
   if (statusFilter) params.status = statusFilter;
@@ -146,9 +146,13 @@ export default function Domains() {
   const revealAuthInfo = async (d: DomainRecord) => {
     try {
       const res = await getDomainAuthInfo(d.id);
-      setAuthInfoFor({ domain: d, code: res.data.auth_info });
-    } catch {
-      notifications.show({ message: 'Could not fetch the transfer code.', color: 'red' });
+      if (res.data.sent_by_registry) {
+        setAuthInfoFor({ domain: d, code: null, sentInfo: { message: res.data.message ?? 'The transfer code has been sent by the registry.', hint: res.data.contact_hint ?? null } });
+      } else {
+        setAuthInfoFor({ domain: d, code: res.data.auth_info ?? null });
+      }
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Could not fetch the transfer code.', color: 'red' });
     }
   };
 
@@ -458,8 +462,13 @@ export default function Domains() {
               )}
             </CopyButton>
           </Group>
+        ) : authInfoFor?.sentInfo ? (
+          <Text size="sm" c="teal">
+            {authInfoFor.sentInfo.message}
+            {authInfoFor.sentInfo.hint && <> Check <b>{authInfoFor.sentInfo.hint}</b>.</>}
+          </Text>
         ) : (
-          <Text size="sm" c="dimmed">No transfer code stored for this domain.</Text>
+          <Text size="sm" c="dimmed">No transfer code available for this domain.</Text>
         )}
         <Text size="xs" c="dimmed" mt="sm">This access is recorded in the domain's registry log.</Text>
       </Modal>

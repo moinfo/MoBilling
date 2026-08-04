@@ -13,6 +13,7 @@ use App\Services\Registrar\DomainRegistrarManager;
 use App\Services\TznicWhoisService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class DomainController extends Controller
@@ -420,20 +421,62 @@ class DomainController extends Controller
         ], 201);
     }
 
-    /** Reveal the transfer auth-info code — audited. */
+    /**
+     * Reveal the transfer auth-info code — audited. If none is stored (the
+     * common case for .tz domains — the registry doesn't hand it back on a
+     * plain info query), ask FRED to send it: EPP's SendAuthInfo delivers the
+     * code straight to the domain's registrant contact email on file.
+     */
     public function authInfo(Domain $domain)
     {
+        if (!empty($domain->epp_auth_info)) {
+            DomainLog::create([
+                'tenant_id' => $domain->tenant_id,
+                'domain_id' => $domain->id,
+                'action'    => 'auth_info_revealed',
+                'request'   => ['by_user' => auth()->id()],
+                'status'    => 'success',
+            ]);
+            $this->notifyAuthInfoRevealed($domain);
+
+            return response()->json(['auth_info' => $domain->epp_auth_info]);
+        }
+
+        if ($domain->meta['unmanaged'] ?? false) {
+            return response()->json(['message' => 'This domain is managed externally — no code available here.'], 422);
+        }
+
+        try {
+            $this->registrar->driverFor($domain->tenant_id, $domain->id)->sendAuthInfo($domain->name);
+        } catch (RegistrarApiException $e) {
+            return response()->json(['message' => 'Could not request the transfer code from the registry: '.$e->getMessage()], 422);
+        }
+
         DomainLog::create([
             'tenant_id' => $domain->tenant_id,
             'domain_id' => $domain->id,
-            'action'    => 'auth_info_revealed',
+            'action'    => 'sent_by_registry',
             'request'   => ['by_user' => auth()->id()],
             'status'    => 'success',
         ]);
-
         $this->notifyAuthInfoRevealed($domain);
 
-        return response()->json(['auth_info' => $domain->epp_auth_info]);
+        $hint = null;
+        if ($domain->registrant_handle) {
+            try {
+                $info = $this->registrar->driverFor($domain->tenant_id, $domain->id)->contactInfo($domain->registrant_handle);
+                $email = $info['email'] ?? null;
+                $hint = $email ? Str::mask($email, '*', 2, -strpos(strrev($email), '@') - 1) : null;
+            } catch (\Throwable) {
+                // best-effort hint only
+            }
+        }
+
+        return response()->json([
+            'sent_by_registry' => true,
+            'contact_hint'     => $hint,
+            'message'          => "No code is stored locally — the registry has been asked to email it to the domain's registrant contact" . ($hint ? " ({$hint})" : '') . '.',
+        ]);
     }
 
     private function tldOf(string $name): string

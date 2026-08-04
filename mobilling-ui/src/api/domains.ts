@@ -187,8 +187,14 @@ export const setDomainAutoRenew = (id: string, enabled: boolean) =>
 export const renewDomain = (id: string, years: number) =>
   api.post(`/domains/${id}/renew`, { years });
 
+export interface DomainAuthInfoResult {
+  auth_info?: string;
+  sent_by_registry?: boolean;
+  contact_hint?: string | null;
+  message?: string;
+}
 export const getDomainAuthInfo = (id: string) =>
-  api.get<{ auth_info: string | null }>(`/domains/${id}/auth-info`);
+  api.get<DomainAuthInfoResult>(`/domains/${id}/auth-info`);
 
 // Settings
 export const getRegistrarAccounts = () =>
