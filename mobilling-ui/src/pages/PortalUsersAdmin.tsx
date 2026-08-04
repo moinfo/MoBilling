@@ -1,15 +1,16 @@
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, TextInput, Select,
-  Switch, ActionIcon, Center, Loader, Pagination, Tooltip,
+  Switch, ActionIcon, Center, Loader, Pagination, Tooltip, Modal, Button,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
+import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
 import { useNavigate } from 'react-router-dom';
 import {
-  IconShieldLock, IconSearch, IconTrash, IconLogin, IconKey, IconExternalLink,
+  IconShieldLock, IconSearch, IconTrash, IconLogin, IconKey, IconExternalLink, IconEdit,
 } from '@tabler/icons-react';
 import {
   getAllPortalUsers, updateClientPortalUser, deleteClientPortalUser,
@@ -37,14 +38,17 @@ export default function PortalUsersAdmin() {
   const [role, setRole] = useState<string | null>(null);
   const [active, setActive] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState('25');
+  const [editing, setEditing] = useState<PortalUserRow | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['all-portal-users', debouncedSearch, role, active, page],
+    queryKey: ['all-portal-users', debouncedSearch, role, active, page, perPage],
     queryFn: () => getAllPortalUsers({
       search: debouncedSearch || undefined,
       role: role || undefined,
       is_active: active === '' ? undefined : active === '1' ? 1 : active === '0' ? 0 : undefined,
       page,
+      per_page: Number(perPage),
     }),
   });
 
@@ -56,6 +60,31 @@ export default function PortalUsersAdmin() {
   const toggleActiveMut = useMutation({
     mutationFn: ({ u }: { u: PortalUserRow }) => updateClientPortalUser(u.client.id, u.id, { is_active: !u.is_active }),
     onSuccess: invalidate,
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not update.', color: 'red' }),
+  });
+
+  const editForm = useForm({
+    initialValues: { name: '', phone: '', role: 'viewer' },
+    validate: { name: (v) => (v.trim().length > 0 ? null : 'Required') },
+  });
+
+  const openEdit = (u: PortalUserRow) => {
+    setEditing(u);
+    editForm.setValues({ name: u.name, phone: u.phone ?? '', role: u.role });
+  };
+  const closeEdit = () => {
+    setEditing(null);
+    editForm.reset();
+  };
+
+  const editMut = useMutation({
+    mutationFn: (data: { name: string; phone: string; role: string }) =>
+      updateClientPortalUser(editing!.client.id, editing!.id, data as Partial<PortalUserRow>),
+    onSuccess: () => {
+      notifications.show({ message: 'Portal user updated.', color: 'green' });
+      invalidate();
+      closeEdit();
+    },
     onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not update.', color: 'red' }),
   });
 
@@ -134,6 +163,9 @@ export default function PortalUsersAdmin() {
           <Select placeholder="Status" clearable w={140} value={active}
             onChange={(v) => { setActive(v); setPage(1); }}
             data={[{ value: '1', label: 'Active' }, { value: '0', label: 'Inactive' }]} />
+          <Select w={110} value={perPage}
+            onChange={(v) => { setPerPage(v ?? '25'); setPage(1); }}
+            data={[{ value: '25', label: '25 / page' }, { value: '50', label: '50 / page' }, { value: '100', label: '100 / page' }]} />
         </Group>
       </Paper>
 
@@ -147,6 +179,7 @@ export default function PortalUsersAdmin() {
             <Table striped highlightOnHover verticalSpacing="xs">
               <Table.Thead>
                 <Table.Tr>
+                  <Table.Th w={48}>#</Table.Th>
                   <Table.Th>Name</Table.Th>
                   <Table.Th>Email</Table.Th>
                   <Table.Th>Client</Table.Th>
@@ -157,8 +190,9 @@ export default function PortalUsersAdmin() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {users.map((u) => (
+                {users.map((u, i) => (
                   <Table.Tr key={u.id}>
+                    <Table.Td c="dimmed" fz="sm">{(page - 1) * Number(perPage) + i + 1}</Table.Td>
                     <Table.Td fw={500}>{u.name}</Table.Td>
                     <Table.Td>{u.email}</Table.Td>
                     <Table.Td>
@@ -195,6 +229,13 @@ export default function PortalUsersAdmin() {
                           </Tooltip>
                         )}
                         {can('clients.update') && (
+                          <Tooltip label="Edit">
+                            <ActionIcon variant="subtle" size="sm" onClick={() => openEdit(u)}>
+                              <IconEdit size={14} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        {can('clients.update') && (
                           <Tooltip label="Delete">
                             <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmDelete(u)}>
                               <IconTrash size={14} />
@@ -211,11 +252,38 @@ export default function PortalUsersAdmin() {
         )}
       </Paper>
 
-      {result && result.last_page > 1 && (
-        <Group justify="center">
-          <Pagination value={page} onChange={setPage} total={result.last_page} />
+      {result && result.total > 0 && (
+        <Group justify="space-between">
+          <Text size="sm" c="dimmed">
+            Showing {(page - 1) * Number(perPage) + 1}–{Math.min(page * Number(perPage), result.total)} of {result.total}
+          </Text>
+          {result.last_page > 1 && (
+            <Pagination value={page} onChange={setPage} total={result.last_page} />
+          )}
         </Group>
       )}
+
+      <Modal opened={!!editing} onClose={closeEdit} title={editing ? `Edit — ${editing.name}` : 'Edit'}>
+        <form onSubmit={editForm.onSubmit((v) => editMut.mutate(v))}>
+          <Stack gap="sm">
+            <TextInput label="Email" value={editing?.email ?? ''} disabled />
+            <TextInput label="Name" required {...editForm.getInputProps('name')} />
+            <TextInput label="Phone" {...editForm.getInputProps('phone')} />
+            <Select
+              label="Role"
+              data={[
+                { value: 'admin', label: 'Admin (can manage portal users)' },
+                { value: 'viewer', label: 'Viewer (view only)' },
+              ]}
+              {...editForm.getInputProps('role')}
+            />
+            <Group justify="flex-end" mt="xs">
+              <Button variant="default" onClick={closeEdit}>Cancel</Button>
+              <Button type="submit" loading={editMut.isPending}>Save</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
     </Stack>
   );
 }
