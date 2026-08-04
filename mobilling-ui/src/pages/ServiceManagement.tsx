@@ -228,6 +228,29 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
     } finally { setBusy(null); }
   };
 
+  // cPanel passwords are never stored — the only way to "see" one is to set a
+  // fresh one and display it once. Shared by the Password row's button and
+  // the More menu's "Reset Password & Send Welcome".
+  const resetAndShowPassword = () => {
+    if (!ha) return;
+    modals.openConfirmModal({
+      title: 'Reset Password & Send Welcome',
+      children: <Text size="sm">This sets a NEW cPanel password on the server, shows it to you here, and sends the client the welcome message (email/WhatsApp/SMS) with it. Continue?</Text>,
+      labels: { confirm: 'Reset & Show', cancel: 'Cancel' },
+      onConfirm: async () => {
+        setBusy('reset-welcome');
+        try {
+          const res = await resetPasswordAndWelcome(ha.id);
+          setResetPw(res.data.password);
+          notifications.show({ message: res.data.message, color: 'green', autoClose: 9000 });
+          if (d) qc.invalidateQueries({ queryKey: ['client-comms', d.client.id] });
+        } catch (e: any) {
+          notifications.show({ message: e?.response?.data?.message ?? 'Reset failed.', color: 'red' });
+        } finally { setBusy(null); }
+      },
+    });
+  };
+
   const refreshUsage = async () => {
     if (!ha) return;
     setBusy('usage');
@@ -288,22 +311,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
                 onClick={() => runModule('Resend Welcome Message', () => resendWelcomeEmail(subId))}>
                 Resend Welcome Message
               </Menu.Item>
-              <Menu.Item leftSection={<IconKey size={14} />} disabled={!ha}
-                onClick={() => modals.openConfirmModal({
-                  title: 'Reset Password & Send Welcome',
-                  children: <Text size="sm">This sets a NEW cPanel password on the server and sends the client the welcome message (email/WhatsApp/SMS) with the new password. Continue?</Text>,
-                  labels: { confirm: 'Reset & Send', cancel: 'Cancel' },
-                  onConfirm: async () => {
-                    setBusy('reset-welcome');
-                    try {
-                      const res = await resetPasswordAndWelcome(ha!.id);
-                      setResetPw(res.data.password);
-                      notifications.show({ message: res.data.message, color: 'green', autoClose: 9000 });
-                    } catch (e: any) {
-                      notifications.show({ message: e?.response?.data?.message ?? 'Reset failed.', color: 'red' });
-                    } finally { setBusy(null); }
-                  },
-                })}>
+              <Menu.Item leftSection={<IconKey size={14} />} disabled={!ha} onClick={resetAndShowPassword}>
                 Reset Password &amp; Send Welcome
               </Menu.Item>
               <Menu.Divider />
@@ -355,12 +363,19 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
             )}
           </Row>
           <Row label="Password" alt>
-            <Group gap="xs">
-              <Button size="compact-xs" variant="default" disabled={!ha} onClick={() => setPwModal(true)}>
-                Change Password…
-              </Button>
-              {!ha && <Text size="xs" c="dimmed">no server account</Text>}
-            </Group>
+            <Stack gap={4}>
+              <Group gap="xs">
+                <Button size="compact-xs" variant="default" disabled={!ha} onClick={() => setPwModal(true)}>
+                  Set Password…
+                </Button>
+                <Button size="compact-xs" variant="light" color="orange" leftSection={<IconKey size={13} />}
+                  disabled={!ha} loading={busy === 'reset-welcome'} onClick={resetAndShowPassword}>
+                  Generate & Show
+                </Button>
+                {!ha && <Text size="xs" c="dimmed">no server account</Text>}
+              </Group>
+              {ha && <Text size="xs" c="dimmed">Not stored — cPanel doesn't expose the current one. Set a new one to see it.</Text>}
+            </Stack>
           </Row>
           <Row label="Status">
             <Select size="xs" data={d.options.statuses.map((s) => ({ value: s, label: s }))}
