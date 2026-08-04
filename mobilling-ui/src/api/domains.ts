@@ -189,6 +189,7 @@ export const renewDomain = (id: string, years: number) =>
 
 export interface DomainAuthInfoResult {
   auth_info?: string;
+  generated?: boolean;
   sent_by_registry?: boolean;
   contact_hint?: string | null;
   message?: string;

@@ -37,6 +37,7 @@ export default function DomainDetails() {
   const { can } = usePermissions();
   const [renewOpen, setRenewOpen] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
+  const [authGenerated, setAuthGenerated] = useState(false);
   const [authSentInfo, setAuthSentInfo] = useState<{ message: string; hint: string | null } | null>(null);
   const [authLoading, setAuthLoading] = useState(false);
 
@@ -73,6 +74,7 @@ export default function DomainDetails() {
         setAuthSentInfo({ message: res.data.message ?? 'The transfer code has been sent by the registry.', hint: res.data.contact_hint ?? null });
       } else {
         setAuthCode(res.data.auth_info ?? '');
+        setAuthGenerated(!!res.data.generated);
       }
       qc.invalidateQueries({ queryKey: ['domain-logs', id] });
     } catch (e: any) {
@@ -186,17 +188,23 @@ export default function DomainDetails() {
                 </Group>
                 {can('domains.transfer') && (
                   authCode ? (
-                    <Group>
-                      <Code fz="md">{authCode}</Code>
-                      <CopyButton value={authCode}>
-                        {({ copied, copy }) => (
-                          <Button size="xs" variant="light" color={copied ? 'green' : 'blue'}
-                            leftSection={<IconCopy size={13} />} onClick={copy}>
-                            {copied ? 'Copied' : 'Copy'}
-                          </Button>
-                        )}
-                      </CopyButton>
-                    </Group>
+                    <Stack gap={4}>
+                      <Group>
+                        <Code fz="md">{authCode}</Code>
+                        <CopyButton value={authCode}>
+                          {({ copied, copy }) => (
+                            <Button size="xs" variant="light" color={copied ? 'green' : 'blue'}
+                              leftSection={<IconCopy size={13} />} onClick={copy}>
+                              {copied ? 'Copied' : 'Copy'}
+                            </Button>
+                          )}
+                        </CopyButton>
+                        {authGenerated && <Badge size="xs" color="grape" variant="light">Freshly generated</Badge>}
+                      </Group>
+                      {authGenerated && (
+                        <Text size="xs" c="dimmed">A new code was set at the registry just now — any older code for this domain no longer works.</Text>
+                      )}
+                    </Stack>
                   ) : authSentInfo ? (
                     <Text size="sm" c="teal">
                       {authSentInfo.message}
@@ -205,7 +213,7 @@ export default function DomainDetails() {
                   ) : (
                     <Button size="xs" variant="light" color="orange" w="fit-content"
                       leftSection={<IconKey size={13} />} loading={authLoading} onClick={revealAuth}>
-                      Reveal transfer code (logged)
+                      Get transfer code (logged)
                     </Button>
                   )
                 )}
