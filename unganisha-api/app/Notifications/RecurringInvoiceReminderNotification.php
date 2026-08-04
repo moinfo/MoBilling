@@ -8,7 +8,6 @@ use App\Models\Document;
 use App\Models\Tenant;
 use App\Notifications\Concerns\HasTenantBranding;
 use App\Services\PdfService;
-use App\Services\ReminderTemplateService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -66,30 +65,63 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
         $this->document->loadMissing('items', 'client');
         $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
 
-        $renderer = app(ReminderTemplateService::class);
+        $doc      = $this->document;
+        $client   = $doc->client;
         $currency = $this->tenant->currency;
-        $amount = number_format($this->document->total, 2);
-        $dueDate = $this->document->due_date->format('d M Y');
+        $money    = fn ($n) => $currency . ' ' . number_format((float) $n, 2);
+        $genDate  = $doc->date?->format('l, F jS, Y');
+        $dueDate  = $doc->due_date->format('l, F jS, Y');
 
-        $subject = "Reminder: Invoice {$this->document->document_number} due in {$this->daysRemaining} day(s) — {$this->tenant->name}";
+        $subject = "Reminder: Invoice {$doc->document_number} due in {$this->daysRemaining} day(s) — {$this->tenant->name}";
 
-        $pdf = app(PdfService::class)->generate($this->document);
+        $pdf = app(PdfService::class)->generate($doc);
         $pdfContent = $pdf->output();
+
+        $greetingName = $this->properCase($client->name)
+            . ($client->tax_id ? " (TIN: {$client->tax_id})" : '');
 
         $mail = (new MailMessage)
             ->subject($subject)
-            ->greeting("Hello {$this->document->client->name},")
-            ->line("This is a friendly reminder that invoice {$this->document->document_number} for {$currency} {$amount} is due on {$dueDate}.")
-            ->line("Please ensure payment is made before the due date to avoid any disruption.");
+            ->greeting("Dear {$greetingName},")
+            ->line("This is a billing reminder that your invoice no. {$doc->document_number}"
+                . ($genDate ? " which was generated on {$genDate}" : '') . " is due on {$dueDate}.")
+            ->line('---')
+            ->line('**Invoice Summary**')
+            ->line("Invoice: {$doc->document_number}")
+            ->line('Amount Due: ' . $money($doc->balance_due))
+            ->line("Due Date: {$dueDate}")
+            ->line('---')
+            ->line('**Invoice Items**');
+
+        foreach ($doc->items as $item) {
+            $mail->line("{$item->description} — " . $money($item->total));
+        }
+
+        $mail->line('------------------------------------------------------')
+            ->line('Sub Total: ' . $money($doc->subtotal));
+        if ((float) $doc->discount_amount > 0) {
+            $mail->line('Discount: -' . $money($doc->discount_amount));
+        }
+        if ((float) $doc->tax_amount > 0) {
+            $mail->line('Tax: ' . $money($doc->tax_amount));
+        }
+        $mail->line('Total: ' . $money($doc->total))
+            ->line('---');
 
         // Add "Pay Now" button if tenant has Pesapal enabled and invoice has balance
-        if ($this->tenant->pesapal_enabled && $this->document->balance_due > 0) {
-            $payUrl = $this->tenantPortalUrl($this->document->tenant, "/pay/{$this->document->id}");
+        if ($this->tenant->pesapal_enabled && $doc->balance_due > 0) {
+            $payUrl = $this->tenantPortalUrl($doc->tenant, "/pay/{$doc->id}");
             $mail->action('Pay Now', $payUrl);
         }
 
+        // Only warn about suspension if it's actually going to happen — a
+        // static threat would be false while a tenant has auto-suspend off.
+        if ($this->tenant->auto_suspend_enabled) {
+            $mail->line("Please note that if this invoice is not paid by {$dueDate}, your service may be suspended.");
+        }
+
         $mail->line('Thank you for your business.')
-            ->attachData($pdfContent, "{$this->document->document_number}.pdf", [
+            ->attachData($pdfContent, "{$doc->document_number}.pdf", [
                 'mime' => 'application/pdf',
             ]);
 
