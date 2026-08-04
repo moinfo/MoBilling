@@ -200,6 +200,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
     Route::middleware('permission:clients.read')->get('/clients/stats', [ClientController::class, 'stats']);
     Route::middleware('permission:clients.read')->get('/clients/{client}', [ClientController::class, 'show']);
     Route::middleware('permission:clients.read')->get('/clients/{client}/profile', [ClientController::class, 'profile']);
+    Route::middleware('permission:clients.read')->get('/clients/{client}/communications', [ClientController::class, 'communications']);
     Route::middleware('permission:clients.create')->post('/clients', [ClientController::class, 'store']);
     Route::middleware('permission:clients.update')->put('/clients/{client}', [ClientController::class, 'update']);
     Route::middleware('permission:clients.update')->put('/clients/{client}/notes', [ClientController::class, 'updateNotes']);

@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Client;
 use App\Models\CommunicationLog;
 use App\Models\User;
@@ -20,6 +21,7 @@ class LogNotificationFailure
         $channel = match (true) {
             $event->channel === 'mail' => 'email',
             $event->channel === SmsChannel::class, str_contains($event->channel, 'Sms') => 'sms',
+            $event->channel === WhatsAppChannel::class, str_contains($event->channel, 'WhatsApp') => 'whatsapp',
             default => null,
         };
 

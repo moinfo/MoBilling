@@ -55,7 +55,7 @@ export const deleteClient = (id: string) =>
 
 export interface ClientCommunicationLog {
   id: string;
-  channel: 'email' | 'sms';
+  channel: 'email' | 'sms' | 'whatsapp';
   type: string;
   recipient: string;
   subject: string | null;
@@ -64,6 +64,14 @@ export interface ClientCommunicationLog {
   error: string | null;
   created_at: string;
 }
+
+export const getClientCommunications = (clientId: string, opts?: { types?: string[]; limit?: number }) =>
+  api.get<{ data: ClientCommunicationLog[] }>(`/clients/${clientId}/communications`, {
+    params: {
+      types: opts?.types?.length ? opts.types.join(',') : undefined,
+      limit: opts?.limit,
+    },
+  });
 
 export interface ClientProfile {
   client: Client;

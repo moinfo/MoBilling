@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Client;
 use App\Models\CommunicationLog;
 use App\Models\User;
@@ -20,6 +21,7 @@ class LogNotification
         $channel = match (true) {
             $event->channel === 'mail' => 'email',
             $event->channel === SmsChannel::class, str_contains($event->channel, 'Sms') => 'sms',
+            $event->channel === WhatsAppChannel::class, str_contains($event->channel, 'WhatsApp') => 'whatsapp',
             default => null,
         };
 
@@ -62,6 +64,8 @@ class LogNotification
         } elseif ($channel === 'sms') {
             // SmsChannel::send() returns void, so call toSms() to get the message
             $message = $this->extractSmsMessage($notification, $notifiable);
+        } elseif ($channel === 'whatsapp') {
+            $message = $this->extractWhatsAppMessage($notification, $notifiable);
         }
 
         // Build metadata from public properties on the notification
@@ -104,6 +108,25 @@ class LogNotification
         }
 
         return null;
+    }
+
+    /** toWhatsApp() returns either a plain string or a template array with a 'fallback' text. */
+    private function extractWhatsAppMessage($notification, $notifiable): ?string
+    {
+        if (!method_exists($notification, 'toWhatsApp')) {
+            return null;
+        }
+        try {
+            $msg = $notification->toWhatsApp($notifiable);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if (is_array($msg)) {
+            return $msg['fallback'] ?? (isset($msg['template']) ? "[{$msg['template']}]" : null);
+        }
+
+        return $msg;
     }
 
     private function extractMetadata($notification): array

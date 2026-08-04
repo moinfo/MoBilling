@@ -113,6 +113,26 @@ class ClientController extends Controller
         return response()->json(['message' => 'Notes saved.']);
     }
 
+    /**
+     * Communications sent to a client — email/WhatsApp/SMS with delivery
+     * status. Used by the hosting Service Management page so staff can see
+     * whether a welcome/password message actually went out.
+     */
+    public function communications(Request $request, Client $client)
+    {
+        $query = CommunicationLog::where('client_id', $client->id)
+            ->orderByDesc('created_at');
+
+        if ($request->filled('types')) {
+            $query->whereIn('type', explode(',', $request->string('types')));
+        }
+
+        return response()->json([
+            'data' => $query->limit((int) $request->get('limit', 30))
+                ->get(['id', 'channel', 'type', 'recipient', 'subject', 'message', 'status', 'error', 'created_at']),
+        ]);
+    }
+
     public function profile(Client $client)
     {
         $cycleIntervals = [

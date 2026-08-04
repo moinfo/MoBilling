@@ -14,8 +14,9 @@ import {
   IconLock, IconLockOpen, IconExternalLink, IconChevronDown,
   IconFileInvoice, IconArrowsUpDown, IconUserShare, IconTrash,
   IconRefresh, IconDeviceFloppy, IconMail, IconMailForward, IconKey, IconCopy,
+  IconMessage, IconBrandWhatsapp,
 } from '@tabler/icons-react';
-import { getClients } from '../api/clients';
+import { getClients, getClientCommunications, ClientCommunicationLog } from '../api/clients';
 import {
   getClientServices, getServiceDetail, updateService, changeHostingPassword,
   refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
@@ -202,6 +203,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
         const res = await fn();
         notifications.show({ title: label, message: res?.data?.message ?? `${label} started.`, color: 'blue' });
         qc.invalidateQueries({ queryKey: ['service-detail', subId] });
+        if (d) qc.invalidateQueries({ queryKey: ['client-comms', d.client.id] });
       } catch (e: any) {
         notifications.show({ title: label, message: e?.response?.data?.message ?? `${label} failed.`, color: 'red' });
       } finally { setBusy(null); }
@@ -458,6 +460,16 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
         </Table>
       </Box>
 
+      {/* messages */}
+      <Box p="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+        <Group justify="space-between" mb={6}>
+          <Text size="xs" fw={700} c="dimmed" tt="uppercase">Messages Sent</Text>
+          <Button size="compact-xs" variant="subtle" leftSection={<IconRefresh size={13} />}
+            onClick={() => qc.invalidateQueries({ queryKey: ['client-comms', d.client.id] })}>Refresh</Button>
+        </Group>
+        <MessagesLog clientId={d.client.id} />
+      </Box>
+
       {/* save bar */}
       <Group justify="flex-end" p="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
         <Button variant="default" size="sm" onClick={() => setForm(d)}>Cancel</Button>
@@ -468,7 +480,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       <ChangePasswordModal opened={pwModal} onClose={() => setPwModal(false)} accountId={ha?.id ?? null} />
       <UpgradeModal opened={upgradeOpen} onClose={() => setUpgradeOpen(false)} subId={subId}
         navigate={navigate} onApplied={() => { qc.invalidateQueries({ queryKey: ['service-detail', subId] }); qc.invalidateQueries({ queryKey: ['client-services'] }); }} />
-      <SendMessageModal opened={msgOpen} onClose={() => setMsgOpen(false)} subId={subId} clientName={d.client.name} />
+      <SendMessageModal opened={msgOpen} onClose={() => setMsgOpen(false)} subId={subId} clientId={d.client.id} clientName={d.client.name} />
 
       <Modal opened={!!resetPw} onClose={() => setResetPw(null)} title="New cPanel Password" centered size="sm">
         <Stack>
@@ -491,14 +503,84 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   );
 }
 
-function SendMessageModal({ opened, onClose, subId, clientName }: {
-  opened: boolean; onClose: () => void; subId: string; clientName: string;
+// Communications relevant to a hosting service — welcome message, password
+// resets, status changes, and any free-form "Send Message". Invoice/reminder
+// traffic is intentionally excluded to keep this scoped to the service.
+const HOSTING_MSG_TYPES = [
+  'hosting_account_provisioned_notification',
+  'hosting_password_changed_notification',
+  'hosting_status_changed_notification',
+  'client_message_notification',
+];
+
+const MSG_TYPE_LABEL: Record<string, string> = {
+  hosting_account_provisioned_notification: 'Welcome message',
+  hosting_password_changed_notification: 'Password changed',
+  hosting_status_changed_notification: 'Status changed',
+  client_message_notification: 'Custom message',
+};
+
+const CHANNEL_META: Record<ClientCommunicationLog['channel'], { icon: React.ReactNode; label: string }> = {
+  email: { icon: <IconMail size={13} />, label: 'Email' },
+  whatsapp: { icon: <IconBrandWhatsapp size={13} color="#25D366" />, label: 'WhatsApp' },
+  sms: { icon: <IconMessage size={13} />, label: 'SMS' },
+};
+
+function MessagesLog({ clientId }: { clientId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['client-comms', clientId],
+    queryFn: () => getClientCommunications(clientId, { types: HOSTING_MSG_TYPES, limit: 20 }),
+  });
+  const logs = data?.data?.data ?? [];
+
+  if (isLoading) return <Center py="md"><Loader size="xs" /></Center>;
+  if (!logs.length) return <Text size="xs" c="dimmed">No welcome/password/status messages sent for this service yet.</Text>;
+
+  return (
+    <Table striped withTableBorder fz="xs">
+      <Table.Thead>
+        <Table.Tr>
+          <Table.Th>Sent</Table.Th><Table.Th>Channel</Table.Th><Table.Th>Type</Table.Th>
+          <Table.Th>To</Table.Th><Table.Th>Message</Table.Th><Table.Th>Status</Table.Th>
+        </Table.Tr>
+      </Table.Thead>
+      <Table.Tbody>
+        {logs.map((l) => (
+          <Table.Tr key={l.id}>
+            <Table.Td c="dimmed" style={{ whiteSpace: 'nowrap' }}>{new Date(l.created_at).toLocaleString('en-GB')}</Table.Td>
+            <Table.Td>
+              <Group gap={4} wrap="nowrap">{CHANNEL_META[l.channel]?.icon}<Text size="xs">{CHANNEL_META[l.channel]?.label ?? l.channel}</Text></Group>
+            </Table.Td>
+            <Table.Td style={{ whiteSpace: 'nowrap' }}>{MSG_TYPE_LABEL[l.type] ?? l.type}</Table.Td>
+            <Table.Td style={{ whiteSpace: 'nowrap' }}>{l.recipient || '—'}</Table.Td>
+            <Table.Td maw={280}>
+              <Tooltip label={l.error || l.message || l.subject || '—'} multiline w={300} disabled={!(l.error || l.message || l.subject)}>
+                <Text size="xs" lineClamp={1} c={l.error ? 'red' : undefined}>{l.error || l.subject || l.message || '—'}</Text>
+              </Tooltip>
+            </Table.Td>
+            <Table.Td>
+              <Badge size="xs" color={l.status === 'sent' ? 'green' : 'red'} variant="light">{l.status}</Badge>
+            </Table.Td>
+          </Table.Tr>
+        ))}
+      </Table.Tbody>
+    </Table>
+  );
+}
+
+function SendMessageModal({ opened, onClose, subId, clientId, clientName }: {
+  opened: boolean; onClose: () => void; subId: string; clientId: string; clientName: string;
 }) {
+  const qc = useQueryClient();
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
   const mutation = useMutation({
     mutationFn: () => sendClientMessage(subId, subject.trim(), body.trim()),
-    onSuccess: (res) => { notifications.show({ message: res.data.message, color: 'green' }); setSubject(''); setBody(''); onClose(); },
+    onSuccess: (res) => {
+      notifications.show({ message: res.data.message, color: 'green' });
+      qc.invalidateQueries({ queryKey: ['client-comms', clientId] });
+      setSubject(''); setBody(''); onClose();
+    },
     onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not send.', color: 'red' }),
   });
   return (
