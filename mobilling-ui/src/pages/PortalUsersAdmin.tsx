@@ -17,6 +17,7 @@ import {
 } from '../api/clients';
 import { formatDate } from '../utils/formatDate';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 
 /**
  * Tenant-wide directory of client portal logins — every ClientUser across
@@ -29,6 +30,7 @@ export default function PortalUsersAdmin() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { can } = usePermissions();
+  const { impersonateClient } = useAuth();
 
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
@@ -70,12 +72,7 @@ export default function PortalUsersAdmin() {
     try {
       const res = await portalLoginAsClient(u.client.id);
       const { token, user, user_type, permissions } = res.data;
-      const currentToken = localStorage.getItem('token');
-      const currentUser = localStorage.getItem('user');
-      if (currentToken) localStorage.setItem('impersonate_return_token', currentToken);
-      if (currentUser) localStorage.setItem('impersonate_return_user', currentUser);
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({ ...user, user_type, permissions }));
+      impersonateClient({ ...user, user_type }, token, permissions);
       window.location.href = '/portal/dashboard';
     } catch (e: any) {
       notifications.show({ message: e?.response?.data?.message ?? 'Could not log in as this client.', color: 'red' });

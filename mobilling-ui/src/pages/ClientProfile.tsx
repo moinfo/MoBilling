@@ -29,6 +29,7 @@ import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/sati
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 
 const cycleLabels: Record<string, string> = {
   monthly: 'Monthly',
@@ -71,23 +72,19 @@ const outcomeLabels: Record<string, string> = {
 };
 
 export default function ClientProfile() {
+  const { impersonateClient } = useAuth();
+  const [creditOpen, setCreditOpen] = useState(false);
+  const { clientId } = useParams<{ clientId: string }>();
   const handlePortalLogin = async () => {
     try {
       const res = await portalLoginAsClient(clientId!);
       const { token, user, user_type, permissions } = res.data;
-      const currentToken = localStorage.getItem('token');
-      const currentUser = localStorage.getItem('user');
-      if (currentToken) localStorage.setItem('impersonate_return_token', currentToken);
-      if (currentUser) localStorage.setItem('impersonate_return_user', currentUser);
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({ ...user, user_type, permissions }));
+      impersonateClient({ ...user, user_type }, token, permissions);
       window.location.href = '/portal/dashboard';
     } catch (err: any) {
       notifications.show({ title: 'Error', message: err.response?.data?.message || 'No portal user found', color: 'red' });
     }
   };
-  const [creditOpen, setCreditOpen] = useState(false);
-  const { clientId } = useParams<{ clientId: string }>();
   const navigate = useNavigate();
   const { can } = usePermissions();
 

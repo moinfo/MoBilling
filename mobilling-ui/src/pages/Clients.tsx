@@ -16,6 +16,7 @@ import { getClients, getClientStats, createClient, updateClient, deleteClient, p
 import ClientTable from '../components/Billing/ClientTable';
 import ClientForm from '../components/Billing/ClientForm';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
 
 type SortKey = 'name' | 'subscriptions' | 'amount' | 'newest';
@@ -38,6 +39,7 @@ function StatCard({ icon, color, label, value }: { icon: React.ReactNode; color:
 export default function Clients() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
+  const { impersonateClient } = useAuth();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
@@ -176,14 +178,7 @@ export default function Clients() {
     try {
       const res = await portalLoginAsClient(client.id);
       const { token, user, user_type, permissions } = res.data;
-      // Store current session to allow returning later
-      const currentToken = localStorage.getItem('token');
-      const currentUser = localStorage.getItem('user');
-      if (currentToken) localStorage.setItem('impersonate_return_token', currentToken);
-      if (currentUser) localStorage.setItem('impersonate_return_user', currentUser);
-      // Login as portal user
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify({ ...user, user_type, permissions }));
+      impersonateClient({ ...user, user_type }, token, permissions);
       notifications.show({ title: 'Logged in as client', message: res.data.message, color: 'violet' });
       window.location.href = '/portal/dashboard';
     } catch (err: any) {

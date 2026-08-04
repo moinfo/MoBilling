@@ -1,6 +1,6 @@
 import {
   AppShell, Group, Text, Avatar, Menu, UnstyledButton, Burger,
-  ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, ScrollArea,
+  ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, ScrollArea, Button,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
@@ -10,7 +10,7 @@ import { useCallback } from 'react';
 import {
   IconDashboard, IconFileInvoice, IconFileText, IconCash, IconReceipt,
   IconCalendarRepeat, IconWorld, IconWorldWww, IconMessageCircle, IconNews, IconBook, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
-  IconLock, IconPackage, IconShoppingCart,
+  IconLock, IconPackage, IconShoppingCart, IconArrowBack,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +19,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 
 export default function PortalShell() {
   const [opened, { toggle, close }] = useDisclosure();
-  const { user, logout, permissions } = useAuth();
+  const { user, logout, permissions, isImpersonatingClient, exitClientImpersonation } = useAuth();
   const branding = useBranding();
   const { t } = useLanguage();
   const { toggleColorScheme } = useMantineColorScheme();
@@ -114,12 +114,27 @@ export default function PortalShell() {
 
   return (
     <AppShell
-      header={{ height: 60 }}
+      header={{ height: isImpersonatingClient ? 96 : 60 }}
       navbar={{ width: 244, breakpoint: 'sm', collapsed: { mobile: !opened } }}
       padding="md"
     >
       <AppShell.Header>
-        <Group h="100%" px="md" justify="space-between">
+        {isImpersonatingClient && (
+          <Group h={36} px="md" justify="space-between" bg="orange.6" style={{ color: 'white' }} wrap="nowrap">
+            <Text size="xs" fw={600} truncate>
+              Staff view — logged in as {user?.name} ({user?.client?.name})
+            </Text>
+            <Button
+              size="compact-xs" variant="white" color="orange"
+              leftSection={<IconArrowBack size={14} />}
+              onClick={exitClientImpersonation}
+              style={{ flexShrink: 0 }}
+            >
+              Back to Admin
+            </Button>
+          </Group>
+        )}
+        <Group h={60} px="md" justify="space-between">
           <Group gap="sm">
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
             {(branding.branded ? branding.logo_url : '/moinfotech-logo.png') && (
@@ -152,6 +167,11 @@ export default function PortalShell() {
                 <Menu.Item leftSection={<IconLock size={14} />} onClick={() => navigate('/portal/profile')}>
                   Change Password
                 </Menu.Item>
+                {isImpersonatingClient && (
+                  <Menu.Item leftSection={<IconArrowBack size={14} />} onClick={exitClientImpersonation}>
+                    Back to Admin
+                  </Menu.Item>
+                )}
                 <Menu.Divider />
                 <Menu.Item color="red" leftSection={<IconLogout size={14} />} onClick={handleLogout}>
                   Logout
