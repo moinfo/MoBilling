@@ -14,7 +14,7 @@ import {
 import { forgotPassword, verifyResetOtp, resetPassword } from '../api/auth';
 
 const tips = [
-  { icon: IconMail, text: 'A verification code will be sent to your email' },
+  { icon: IconMail, text: 'A verification code will be sent to your email, SMS, and/or WhatsApp' },
   { icon: IconShieldCheck, text: 'The code expires in 10 minutes for security' },
   { icon: IconLock, text: 'Your account stays secure throughout the process' },
 ];
@@ -277,7 +277,7 @@ export default function ForgotPassword() {
             <>
               <Title order={2} ta="center" mb={4}>Verify code</Title>
               <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>
-                Enter the 6-digit code sent to your email
+                Enter the 6-digit code we sent you
               </Text>
 
               <Paper withBorder shadow="sm" p="xl" radius="md">

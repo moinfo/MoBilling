@@ -50,7 +50,24 @@ class PasswordResetController extends Controller
     }
 
     /**
-     * Step 1: Send OTP to the user's email for password reset or account setup.
+     * A stable per-target key for the OTP record — email when the account has
+     * one, otherwise the normalized phone. Lets phone-only accounts (common
+     * for portal clients) go through forgot-password via SMS/WhatsApp alone.
+     */
+    private function otpIdentifierFor($target): ?string
+    {
+        if ($target->email) {
+            return $target->email;
+        }
+        if ($target->phone) {
+            return 'phone:' . PhoneHelper::normalize($target->phone);
+        }
+        return null;
+    }
+
+    /**
+     * Step 1: Send OTP for password reset or account setup — via email, SMS,
+     * and/or WhatsApp, whichever contact details the account has.
      */
     public function forgotPassword(Request $request)
     {
@@ -67,15 +84,18 @@ class PasswordResetController extends Controller
         }
 
         $email = $target->email;
-        if (!$email) {
+        $phone = $target->phone;
+        $otpKey = $this->otpIdentifierFor($target);
+
+        if (!$otpKey) {
             throw ValidationException::withMessages([
-                'identifier' => ['No email address on this account to send verification code.'],
+                'identifier' => ['This account has no email or phone number on file to send a verification code to.'],
             ]);
         }
 
-        // Rate limit: max 3 per hour
+        // Rate limit: max 10 per hour per identifier
         $recentCount = DB::table('portal_otps')
-            ->where('email', $email)
+            ->where('identifier', $otpKey)
             ->where('created_at', '>=', now()->subHour())
             ->count();
 
@@ -88,6 +108,7 @@ class PasswordResetController extends Controller
         $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
 
         DB::table('portal_otps')->insert([
+            'identifier' => $otpKey,
             'email' => $email,
             'otp' => $otp,
             'client_id' => $type === 'client' ? $target->id : ($target->client_id ?? null),
@@ -98,15 +119,17 @@ class PasswordResetController extends Controller
             'updated_at' => now(),
         ]);
 
-        // Send OTP via email
-        Notification::route('mail', $email)
-            ->notify(new PortalOtpNotification($otp, 'MoBilling'));
+        $tenant = $target->tenant_id ? Tenant::find($target->tenant_id) : null;
+
+        // Send OTP via email, when the account has one.
+        if ($email) {
+            Notification::route('mail', $email)
+                ->notify(new PortalOtpNotification($otp, 'MoBilling'));
+        }
 
         // Send OTP via SMS if phone available and tenant has SMS enabled
         $smsSent = false;
         $waSent = false;
-        $phone = $target->phone;
-        $tenant = $target->tenant_id ? Tenant::find($target->tenant_id) : null;
 
         if ($phone && app(SmsService::class)->canSend($tenant)) {
             try {
@@ -117,7 +140,7 @@ class PasswordResetController extends Controller
                 );
                 $smsSent = true;
             } catch (\Throwable $e) {
-                // SMS failed — email was still sent, so continue
+                // SMS failed — other channels still tried, so continue
             }
         }
 
@@ -135,21 +158,35 @@ class PasswordResetController extends Controller
                     $wa->sendText($tenant, $phone, "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.");
                     $waSent = true;
                 } catch (\Throwable $e2) {
-                    // WhatsApp failed — email (and possibly SMS) still went out
+                    // WhatsApp failed — other channels still tried
                 }
             }
         }
 
-        $sentTo = match (true) {
-            $smsSent && $waSent => 'your email, SMS and WhatsApp',
-            $waSent             => 'your email and WhatsApp',
-            $smsSent            => 'your email and phone',
-            default             => 'your email',
+        if (!$email && !$smsSent && !$waSent) {
+            throw ValidationException::withMessages([
+                'identifier' => ['Could not deliver a verification code to this account — please contact support.'],
+            ]);
+        }
+
+        $channels = array_filter([
+            $email ? 'email' : null,
+            $smsSent ? 'SMS' : null,
+            $waSent ? 'WhatsApp' : null,
+        ]);
+        $sentTo = match (count($channels)) {
+            1 => $channels[array_key_first($channels)],
+            2 => implode(' and ', $channels),
+            default => implode(', ', array_slice($channels, 0, -1)) . ' and ' . end($channels),
         };
 
+        $hint = $email
+            ? Str::mask($email, '*', 3, -strpos(strrev($email), '@') - 1)
+            : ($phone ? Str::mask($phone, '*', 2, -2) : null);
+
         return response()->json([
-            'message' => "Verification code sent to {$sentTo}.",
-            'email_hint' => Str::mask($email, '*', 3, -strpos(strrev($email), '@') - 1),
+            'message' => "Verification code sent to your {$sentTo}.",
+            'email_hint' => $hint,
             'requires_registration' => $type === 'client',
         ]);
     }
@@ -182,7 +219,7 @@ class PasswordResetController extends Controller
         }
 
         $record = DB::table('portal_otps')
-            ->where('email', $target->email)
+            ->where('identifier', $this->otpIdentifierFor($target))
             ->where('otp', $request->otp)
             ->where('verified', false)
             ->where('expires_at', '>', now())
@@ -238,7 +275,7 @@ class PasswordResetController extends Controller
 
         // Check OTP was verified
         $record = DB::table('portal_otps')
-            ->where('email', $target->email)
+            ->where('identifier', $this->otpIdentifierFor($target))
             ->where('otp', $request->otp)
             ->where('verified', true)
             ->where('expires_at', '>', now())
@@ -253,7 +290,7 @@ class PasswordResetController extends Controller
 
         $target->forceFill(['password' => Hash::make($request->password)])->save();
 
-        DB::table('portal_otps')->where('email', $target->email)->delete();
+        DB::table('portal_otps')->where('identifier', $this->otpIdentifierFor($target))->delete();
 
         return response()->json(['message' => 'Password has been reset successfully.']);
     }
@@ -269,9 +306,11 @@ class PasswordResetController extends Controller
             'password' => ['required', 'confirmed', PasswordRule::min(8)],
         ]);
 
+        $otpKey = $this->otpIdentifierFor($client);
+
         // Check OTP was verified
         $record = DB::table('portal_otps')
-            ->where('email', $client->email)
+            ->where('identifier', $otpKey)
             ->where('otp', $request->otp)
             ->where('verified', true)
             ->where('expires_at', '>', now())
@@ -298,7 +337,7 @@ class PasswordResetController extends Controller
             'last_login_at' => now(),
         ]);
 
-        DB::table('portal_otps')->where('email', $client->email)->delete();
+        DB::table('portal_otps')->where('identifier', $otpKey)->delete();
 
         // Auto-login
         $token = $clientUser->createToken('client-portal-token')->plainTextToken;
