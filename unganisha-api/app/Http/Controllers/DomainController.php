@@ -287,6 +287,57 @@ class DomainController extends Controller
     }
 
     /**
+     * Record a domain that's already registered (elsewhere, or at TZNIC under
+     * some other sponsor/import we never billed) — pure bookkeeping so it
+     * shows up under a client for renewal tracking. No invoice, no EPP call;
+     * "TZNIC" only marks it as one of ours for future nameserver/EPP actions,
+     * it does NOT take over sponsorship at the registry.
+     */
+    public function addExisting(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'name'       => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')],
+            'client_id'  => ['required', 'uuid', Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
+            'registrar'  => ['required', 'in:tznic,external'],
+            'expires_at' => 'nullable|date',
+            'notes'      => 'nullable|string|max:255',
+        ]);
+
+        $name = strtolower($data['name']);
+        $isTznic = $data['registrar'] === 'tznic';
+
+        $domain = Domain::create([
+            'tenant_id'            => $tenantId,
+            'client_id'            => $data['client_id'],
+            'registrar_account_id' => $isTznic ? $this->registrar->accountFor($tenantId)->id : null,
+            'name'                 => $name,
+            'status'               => 'active',
+            'auto_renew'           => false,
+            'expires_at'           => $data['expires_at'] ?? null,
+            'meta'                 => array_filter([
+                'unmanaged'         => !$isTznic,
+                'added_existing'    => true,
+                'external_notes'    => $data['notes'] ?? null,
+            ]),
+        ]);
+
+        DomainLog::create([
+            'tenant_id' => $tenantId,
+            'domain_id' => $domain->id,
+            'action'    => 'added_existing',
+            'request'   => ['by_user' => auth()->id(), 'registrar' => $data['registrar']],
+            'status'    => 'success',
+        ]);
+
+        return response()->json([
+            'data'    => $domain->load('client:id,name'),
+            'message' => "{$name} added" . ($isTznic ? '.' : ' as an externally-registered domain.'),
+        ], 201);
+    }
+
+    /**
      * Order a registration or transfer-in: creates the pending Domain row and
      * its invoice. Nothing touches the registry here — the paid EPP call fires
      * from the payment hook (Workstream B3).

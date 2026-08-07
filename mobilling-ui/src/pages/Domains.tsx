@@ -14,7 +14,7 @@ import {
 } from '@tabler/icons-react';
 import {
   checkDomain, getDomains, getDomainStats, getRegistrarCredit, getDomainLogs, orderDomain, renewDomain,
-  getDomainAuthInfo, setDomainAutoRenew, describeDomainAction,
+  getDomainAuthInfo, setDomainAutoRenew, describeDomainAction, addExistingDomain,
   createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
   DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
   whoisDomain, WhoisResult,
@@ -22,6 +22,7 @@ import {
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
+import { DateInput } from '@mantine/dates';
 import dayjs from 'dayjs';
 
 function DomainStatCard({ icon, color, label, value, active, onClick }: {
@@ -565,13 +566,16 @@ function DomainLookup({ canRegister, onRegister }: { canRegister: boolean; onReg
 
 function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const qc = useQueryClient();
-  const [action, setAction] = useState<'register' | 'transfer'>('register');
+  const [action, setAction] = useState<'register' | 'transfer' | 'existing'>('register');
   const [name, setName] = useState('');
   const [checked, setChecked] = useState<DomainCheckResult | null>(null);
   const [checking, setChecking] = useState(false);
   const [clientId, setClientId] = useState<string | null>(null);
   const [years, setYears] = useState<number>(1);
   const [authInfo, setAuthInfo] = useState('');
+  const [existingRegistrar, setExistingRegistrar] = useState<'tznic' | 'external'>('external');
+  const [existingExpiry, setExistingExpiry] = useState<Date | null>(null);
+  const [existingNotes, setExistingNotes] = useState('');
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients-for-domains'],
@@ -599,7 +603,7 @@ function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void
       name: name.trim().toLowerCase(),
       client_id: clientId!,
       years,
-      action,
+      action: action as 'register' | 'transfer',
       auth_info: action === 'transfer' ? authInfo : undefined,
     }),
     onSuccess: (res: any) => {
@@ -612,35 +616,58 @@ function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void
     }),
   });
 
+  const addExistingMutation = useMutation({
+    mutationFn: () => addExistingDomain({
+      name: name.trim().toLowerCase(),
+      client_id: clientId!,
+      registrar: existingRegistrar,
+      expires_at: existingExpiry ? dayjs(existingExpiry).format('YYYY-MM-DD') : undefined,
+      notes: existingNotes || undefined,
+    }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domains'] });
+      notifications.show({ title: 'Domain added', message: res.data.message, color: 'green', autoClose: 8000 });
+      handleClose();
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not add the domain.', color: 'red',
+    }),
+  });
+
   const handleClose = () => {
     setName(''); setChecked(null); setClientId(null); setYears(1); setAuthInfo('');
+    setExistingRegistrar('external'); setExistingExpiry(null); setExistingNotes('');
     onClose();
   };
 
   const pricing = checked?.pricing;
-  const unit = action === 'register' ? pricing?.register_price : pricing?.transfer_price;
-  const canSubmit = clientId && checked && pricing
-    && (action === 'transfer' ? authInfo.trim().length > 0 : checked.available);
+  const unit = action === 'register' ? pricing?.register_price : action === 'transfer' ? pricing?.transfer_price : undefined;
+  const canSubmit = action === 'existing'
+    ? !!(clientId && name.trim())
+    : clientId && checked && pricing && (action === 'transfer' ? authInfo.trim().length > 0 : checked.available);
 
   return (
-    <Modal opened={opened} onClose={handleClose} title="Register / Transfer Domain" centered size="lg">
+    <Modal opened={opened} onClose={handleClose} title="Register / Transfer / Add Domain" centered size="lg">
       <Stack gap="sm">
         <Select label="Action" value={action}
           onChange={(v) => { setAction((v as any) ?? 'register'); setChecked(null); }}
           data={[
             { value: 'register', label: 'Register new domain' },
             { value: 'transfer', label: 'Transfer in (from another registrar)' },
+            { value: 'existing', label: 'Add existing domain (already registered — just track it)' },
           ]} />
 
         <Group align="flex-end" gap="xs">
           <TextInput label="Domain name" placeholder="example.co.tz" style={{ flex: 1 }}
             value={name} onChange={(e) => { setName(e.currentTarget.value); setChecked(null); }} />
-          <Button variant="light" loading={checking} onClick={doCheck} disabled={!name.trim()}>
-            Check
-          </Button>
+          {action !== 'existing' && (
+            <Button variant="light" loading={checking} onClick={doCheck} disabled={!name.trim()}>
+              Check
+            </Button>
+          )}
         </Group>
 
-        {checked && (
+        {action !== 'existing' && checked && (
           <Alert
             color={action === 'transfer' ? 'blue' : checked.available ? 'green' : 'red'}
             icon={checked.available ? <IconCheck size={16} /> : <IconX size={16} />}
@@ -661,16 +688,37 @@ function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void
         <Select label="Client" placeholder="Who is this domain for?" searchable required
           data={clientOptions} value={clientId} onChange={setClientId} />
 
-        <Group grow>
-          <NumberInput label="Years" min={pricing?.years_min ?? 1} max={pricing?.years_max ?? 10}
-            value={years} onChange={(v) => setYears(Number(v) || 1)} />
-          {action === 'transfer' && (
-            <TextInput label="Auth-info (transfer code)" required
-              value={authInfo} onChange={(e) => setAuthInfo(e.currentTarget.value)} />
-          )}
-        </Group>
+        {action === 'existing' ? (
+          <>
+            <Select label="Currently registered at" required value={existingRegistrar}
+              onChange={(v) => setExistingRegistrar((v as 'tznic' | 'external') ?? 'external')}
+              data={[
+                { value: 'tznic', label: 'TZNIC / our registrar (already sponsored, just wasn’t tracked here)' },
+                { value: 'external', label: 'External / another registrar (GoDaddy, Namecheap, etc.)' },
+              ]} />
+            <Group grow>
+              <DateInput label="Expiry date (optional)" placeholder="Pick a date" clearable
+                value={existingExpiry} onChange={(v) => setExistingExpiry(v as unknown as Date | null)} />
+              <TextInput label="Notes (optional)" placeholder="e.g. registrar name, reference"
+                value={existingNotes} onChange={(e) => setExistingNotes(e.currentTarget.value)} />
+            </Group>
+            <Alert color="gray" variant="light">
+              This only records the domain against the client for tracking/renewal reminders — no invoice
+              is created and nothing changes at the registry.
+            </Alert>
+          </>
+        ) : (
+          <Group grow>
+            <NumberInput label="Years" min={pricing?.years_min ?? 1} max={pricing?.years_max ?? 10}
+              value={years} onChange={(v) => setYears(Number(v) || 1)} />
+            {action === 'transfer' && (
+              <TextInput label="Auth-info (transfer code)" required
+                value={authInfo} onChange={(e) => setAuthInfo(e.currentTarget.value)} />
+            )}
+          </Group>
+        )}
 
-        {pricing && unit !== undefined && (
+        {action !== 'existing' && pricing && unit !== undefined && (
           <Paper withBorder p="sm" radius="md">
             <Group justify="space-between">
               <Text size="sm">{years} year(s) × {formatCurrency(unit)}</Text>
@@ -685,8 +733,12 @@ function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void
 
         <Group justify="flex-end">
           <Button variant="default" onClick={handleClose}>Cancel</Button>
-          <Button disabled={!canSubmit} loading={orderMutation.isPending} onClick={() => orderMutation.mutate()}>
-            Create Order & Invoice
+          <Button
+            disabled={!canSubmit}
+            loading={action === 'existing' ? addExistingMutation.isPending : orderMutation.isPending}
+            onClick={() => (action === 'existing' ? addExistingMutation.mutate() : orderMutation.mutate())}
+          >
+            {action === 'existing' ? 'Add Domain' : 'Create Order & Invoice'}
           </Button>
         </Group>
       </Stack>

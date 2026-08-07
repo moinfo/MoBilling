@@ -168,6 +168,11 @@ export const orderDomain = (data: {
   action: 'register' | 'transfer'; auth_info?: string;
 }) => api.post('/domains/order', data);
 
+export const addExistingDomain = (data: {
+  name: string; client_id: string; registrar: 'tznic' | 'external';
+  expires_at?: string; notes?: string;
+}) => api.post<{ data: unknown; message: string }>('/domains/add-existing', data);
+
 export interface DomainNameservers {
   nsset: string | null;
   nameservers: string[];

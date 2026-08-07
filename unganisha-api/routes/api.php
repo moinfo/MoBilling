@@ -570,6 +570,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/domains/{domain}/logs',    [\App\Http\Controllers\DomainController::class, 'logs']);
     });
     Route::middleware('permission:domains.create')->post('/domains/order', [\App\Http\Controllers\DomainController::class, 'order']);
+    Route::middleware('permission:domains.create')->post('/domains/add-existing', [\App\Http\Controllers\DomainController::class, 'addExisting']);
 
     // Admin ordering on behalf of a client (WHMCS-style "Add New Order").
     // Reuses the portal storefront controller; staff pass client_id explicitly.
