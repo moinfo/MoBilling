@@ -26,7 +26,7 @@ export const sw: Translations = {
   'login.invalid': 'Taarifa si sahihi',
   'login.verifyTitle': 'Uthibitisho unahitajika',
   'login.verifyMessage':
-    'Msimbo wa uthibitisho umetumwa kwenye barua pepe yako — kamilisha kuweka akaunti yako.',
+    'Tumeipata akaunti yako — ithibitishe ili uweke ufikiaji wa portal.',
 
   // Brand panel
   'login.brandHeadline': 'Kila kitu unachoendesha nasi, mahali pamoja.',

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useMantineColorScheme, useComputedColorScheme, ActionIcon } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { safeNext } from '../../utils/safeNext';
 import { useBranding } from '../../branding';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { IconSun, IconMoon, IconCheck, IconInfoCircle, IconUserPlus } from '@tabler/icons-react';
@@ -20,6 +21,12 @@ type Step = 'request' | 'verify' | 'reset' | 'done';
 
 export default function PortalForgotPassword() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  // Arriving from a failed login for a known client (no portal password set
+  // yet, e.g. WHMCS-imported) — prefill what they already typed, and carry
+  // through the ?next= they were originally headed to (an /order/* link etc.).
+  const prefillIdentifier = searchParams.get('identifier') ?? '';
+  const next = safeNext(window.location.search);
   const { toggleColorScheme } = useMantineColorScheme();
   const isDark = useComputedColorScheme('dark') === 'dark';
   const branding = useBranding();
@@ -35,7 +42,7 @@ export default function PortalForgotPassword() {
   const [clientName, setClientName] = useState('');
 
   const requestForm = useForm({
-    initialValues: { identifier: '' },
+    initialValues: { identifier: prefillIdentifier },
     validate: { identifier: (v) => (v.length > 0 ? null : 'Email or phone is required') },
   });
 
@@ -97,7 +104,7 @@ export default function PortalForgotPassword() {
         localStorage.setItem('token', res.data.token);
         localStorage.setItem('user_type', res.data.user_type || 'client');
         notifications.show({ title: 'Welcome!', message: 'Portal account created successfully.', color: 'green' });
-        navigate('/portal/dashboard');
+        navigate(next ?? '/portal/dashboard');
         return;
       }
 
@@ -157,8 +164,12 @@ export default function PortalForgotPassword() {
               <>
                 <div className={classes.intro}>
                   <span className={classes.eyebrow}>{t('forgot.eyebrow')}</span>
-                  <h2 className={classes.heading}>{t('forgot.reqHeading')}</h2>
-                  <p className={classes.sub}>{t('forgot.reqSub')}</p>
+                  <h2 className={classes.heading}>{prefillIdentifier ? 'Welcome back' : t('forgot.reqHeading')}</h2>
+                  <p className={classes.sub}>
+                    {prefillIdentifier
+                      ? 'We found your account — verify it below to set up portal access. No need to sign up again.'
+                      : t('forgot.reqSub')}
+                  </p>
                 </div>
                 <form onSubmit={requestForm.onSubmit(handleRequest)}>
                   <div className={classes.fields}>
@@ -182,7 +193,7 @@ export default function PortalForgotPassword() {
                 </form>
                 <p className={classes.newHere}>
                   {t('forgot.rememberPassword')}{' '}
-                  <Link to="/portal/login">{t('forgot.backToSignin')}</Link>
+                  <Link to={`/portal/login${next ? `?next=${encodeURIComponent(next)}` : ''}`}>{t('forgot.backToSignin')}</Link>
                 </p>
               </>
             )}
@@ -280,7 +291,8 @@ export default function PortalForgotPassword() {
                 <div className={own.doneIcon}><IconCheck size={28} /></div>
                 <h2 className={classes.heading}>{t('forgot.doneHeading')}</h2>
                 <p className={classes.sub}>{t('forgot.doneSub')}</p>
-                <button className={classes.submit} style={{ marginTop: 20 }} onClick={() => navigate('/portal/login')}>
+                <button className={classes.submit} style={{ marginTop: 20 }}
+                  onClick={() => navigate(`/portal/login${next ? `?next=${encodeURIComponent(next)}` : ''}`)}>
                   {t('forgot.doneSubmit')}
                 </button>
               </div>

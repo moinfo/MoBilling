@@ -55,7 +55,9 @@ export default function PortalLogin() {
         navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
       }
     } catch (err: any) {
-      // Imported WHMCS client without a portal account yet → claim it via OTP.
+      // Known client (e.g. imported from WHMCS) with no portal password set
+      // yet — they already have a real account, they just need to verify
+      // (email, SMS, or WhatsApp) and set a password, not "sign up".
       if (err.response?.status === 449 && err.response?.data?.requires_otp) {
         notifications.show({
           title: t('login.verifyTitle'),
@@ -63,7 +65,7 @@ export default function PortalLogin() {
           color: 'blue',
         });
         navigate(
-          `/portal/register?email=${encodeURIComponent(values.identifier)}&sent=1`
+          `/portal/forgot-password?identifier=${encodeURIComponent(values.identifier)}`
           + (next ? `&next=${encodeURIComponent(next)}` : '')
         );
         return;

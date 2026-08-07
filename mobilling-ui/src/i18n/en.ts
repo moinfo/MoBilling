@@ -32,7 +32,7 @@ export const en: Translations = {
   'login.invalid': 'Invalid credentials',
   'login.verifyTitle': 'Verification required',
   'login.verifyMessage':
-    'A verification code has been sent to your email — finish setting up your account.',
+    'We found your account — verify it to set up portal access.',
 
   // Brand panel
   'login.brandHeadline': 'Everything you run with us, in one place.',
