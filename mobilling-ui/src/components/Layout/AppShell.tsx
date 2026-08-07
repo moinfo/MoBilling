@@ -264,6 +264,10 @@ export default function AppLayout() {
                   active={isActive('/invoices')} onClick={() => navigateAndClose('/invoices')} />
               )}
               {can('menu.invoices') && (
+                <NavLink label="Unpaid Invoices" leftSection={<IconClock size={16} />}
+                  onClick={() => navigateAndClose('/invoices?status=unpaid&range=all')} />
+              )}
+              {can('menu.invoices') && (
                 <NavLink label="Credit Notes" leftSection={<IconFileInvoice size={16} />}
                   active={isActive('/credit-notes')} onClick={() => navigateAndClose('/credit-notes')} />
               )}

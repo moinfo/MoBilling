@@ -33,12 +33,16 @@ export default function DocumentListPage({ type, title }: Props) {
   const monthStart = dayjs().startOf('month').format('YYYY-MM-DD');
   const monthEnd = dayjs().endOf('month').format('YYYY-MM-DD');
   const [searchParams, setSearchParams] = useSearchParams();
+  // A nav link can arrive with ?status=unpaid&range=all — e.g. Billing → Unpaid
+  // Invoices — to preset the filter instead of the usual "this month" default.
+  const initialStatus = searchParams.get('status');
+  const initialRangeAll = searchParams.get('range') === 'all';
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
-  const [dateFrom, setDateFrom] = useState<string>(monthStart);
-  const [dateTo, setDateTo] = useState<string>(monthEnd);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [dateFrom, setDateFrom] = useState<string>(initialRangeAll ? '' : monthStart);
+  const [dateTo, setDateTo] = useState<string>(initialRangeAll ? '' : monthEnd);
+  const [statusFilter, setStatusFilter] = useState(initialStatus ?? 'all');
   const [formOpen, setFormOpen] = useState(false);
   const [editDoc, setEditDoc] = useState<Document | null>(null);
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
@@ -51,6 +55,13 @@ export default function DocumentListPage({ type, title }: Props) {
     if (previewId) {
       getDocument(previewId).then((res) => setViewDoc(res.data.data)).catch((err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Could not open that document — it may have been deleted.', color: 'red' }));
       searchParams.delete('preview');
+      setSearchParams(searchParams, { replace: true });
+    }
+    // ?status= / ?range=all only seed the initial filter state (above) — drop
+    // them from the URL so they don't look "stuck" once the user changes filters.
+    if (searchParams.has('status') || searchParams.has('range')) {
+      searchParams.delete('status');
+      searchParams.delete('range');
       setSearchParams(searchParams, { replace: true });
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
