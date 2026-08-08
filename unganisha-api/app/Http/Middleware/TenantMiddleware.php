@@ -21,6 +21,13 @@ class TenantMiddleware
             return $next($request);
         }
 
+        // Sanctum tokens never expire (config/sanctum.php) — deactivating a
+        // user only blocks future *logins* unless it's also enforced here,
+        // on every request, against their still-valid existing token.
+        if (!$user->is_active) {
+            return response()->json(['message' => 'Your account has been deactivated.'], 403);
+        }
+
         if (!$user->tenant_id) {
             return response()->json(['message' => 'Tenant not found'], 403);
         }

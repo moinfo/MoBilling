@@ -12,7 +12,7 @@ import {
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
-  IconDatabase, IconShoppingCart,
+  IconDatabase, IconShoppingCart, IconDeviceLaptop,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -474,6 +474,11 @@ export default function AppLayout() {
           {can('menu.roles') && can('settings.users') && (
             <NavLink label="Roles" leftSection={<IconShieldLock size={18} />}
               active={isActive('/roles')} onClick={() => navigateAndClose('/roles')} />
+          )}
+
+          {can('settings.users') && (
+            <NavLink label="Active Sessions" leftSection={<IconDeviceLaptop size={18} />}
+              active={isActive('/sessions')} onClick={() => navigateAndClose('/sessions')} />
           )}
 
           {can('menu.settings') && (

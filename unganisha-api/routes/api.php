@@ -411,6 +411,14 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::post('/users/{user}/impersonate', [UserController::class, 'impersonate']);
     });
 
+    // Active Sessions (staff + client portal logins — visibility into who's
+    // still logged in, since Sanctum tokens never expire on their own)
+    Route::middleware('permission:settings.users')->group(function () {
+        Route::get('/sessions', [\App\Http\Controllers\SessionController::class, 'index']);
+        Route::delete('/sessions/{id}', [\App\Http\Controllers\SessionController::class, 'destroy']);
+        Route::post('/sessions/revoke-inactive', [\App\Http\Controllers\SessionController::class, 'revokeInactive']);
+    });
+
     // Settings
     Route::put('/settings/company', [SettingsController::class, 'updateCompany']);
     Route::post('/settings/logo', [SettingsController::class, 'uploadLogo']);

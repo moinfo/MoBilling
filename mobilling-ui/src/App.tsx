@@ -35,6 +35,7 @@ import ClientSubscriptions from './pages/ClientSubscriptions';
 import PaymentsOut from './pages/PaymentsOut';
 import Settings from './pages/Settings';
 import Users from './pages/Users';
+import Sessions from './pages/Sessions';
 import Roles from './pages/Roles';
 import AdminDashboard from './pages/admin/Dashboard';
 import Tenants from './pages/admin/Tenants';
@@ -227,6 +228,7 @@ export default function App() {
                   <Route path="/system-records" element={<SystemRecords />} />
                   <Route path="/my-verifications" element={<MyVerifications />} />
                   <Route path="/users" element={<Users />} />
+                  <Route path="/sessions" element={<Sessions />} />
                   <Route path="/roles" element={<Roles />} />
                   <Route path="/sms" element={<Sms />} />
                   <Route path="/subscription" element={<Subscription />} />
