@@ -66,6 +66,28 @@ export const getHostingAccounts = (params?: Record<string, string>) =>
   api.get('/hosting-accounts', { params });
 export const getHostingLogs = (id: string) =>
   api.get<{ data: ProvisioningLog[] }>(`/hosting-accounts/${id}/logs`);
+
+export interface DiscoveredAccount {
+  server_id: string;
+  server_name: string;
+  cpanel_username: string;
+  domain: string | null;
+  email: string | null;
+  plan: string | null;
+  disk_used: string | null;
+  disk_limit: string | null;
+  suspended: boolean;
+  hosting_account_id: string | null;
+  client: { id: string; name: string } | null;
+  imported: boolean;
+}
+export const discoverHostingAccounts = (params?: { server_id?: string; search?: string; imported?: 0 | 1 }) =>
+  api.get<{ data: DiscoveredAccount[]; errors: string[] }>('/hosting-accounts/discover', { params });
+
+export const importHostingAccount = (data: {
+  server_id: string; cpanel_username: string; domain: string;
+  client_id: string; product_service_id: string;
+}) => api.post<{ data: unknown; message: string }>('/hosting-accounts/import', data);
 export const provisionSubscription = (subscriptionId: string) =>
   api.post(`/client-subscriptions/${subscriptionId}/provision`);
 export const suspendHosting = (id: string) => api.post(`/hosting-accounts/${id}/suspend`);

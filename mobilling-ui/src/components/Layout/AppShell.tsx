@@ -182,6 +182,8 @@ export default function AppLayout() {
                 onClick={() => navigateAndClose('/hosting')} />
               <NavLink label="Manage Services" active={location.pathname.startsWith('/hosting/services')}
                 onClick={() => navigateAndClose('/hosting/services')} />
+              <NavLink label="Discover Accounts" active={location.pathname === '/hosting/discover'}
+                onClick={() => navigateAndClose('/hosting/discover')} />
             </NavLink>
           )}
 

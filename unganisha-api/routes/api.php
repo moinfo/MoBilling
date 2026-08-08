@@ -538,6 +538,8 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
         Route::get('/servers/{server}/packages',  [\App\Http\Controllers\ServerController::class, 'packages']);
     });
     Route::middleware('permission:hosting.read')->get('/hosting-accounts', [\App\Http\Controllers\HostingAccountController::class, 'index']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/discover', [\App\Http\Controllers\HostingAccountController::class, 'discover']);
+    Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);
     Route::middleware('permission:hosting.suspend')->post('/hosting-accounts/{hostingAccount}/suspend', [\App\Http\Controllers\HostingAccountController::class, 'suspend']);

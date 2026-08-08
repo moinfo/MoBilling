@@ -8,13 +8,158 @@ use App\Jobs\Hosting\ProvisionHostingAccount;
 use App\Jobs\Hosting\ReactivateHostingAccount;
 use App\Jobs\Hosting\SuspendHostingAccount;
 use App\Jobs\Hosting\TerminateHostingAccount;
+use App\Models\Client;
 use App\Models\ClientSubscription;
 use App\Models\HostingAccount;
+use App\Models\ProductService;
+use App\Models\Server;
 use App\Services\WhmService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class HostingAccountController extends Controller
 {
+    /**
+     * Every cPanel account that actually exists on the WHM server(s), cross
+     * referenced against hosting_accounts so staff can see what's already
+     * tracked in MoBilling and what was created directly on the server (or
+     * missed during a WHMCS import) and still needs linking to a client.
+     */
+    public function discover(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $remote = (new WhmService($server))->listAccounts();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($remote as $acct) {
+                $username = (string) ($acct['user'] ?? '');
+                if ($username === '') {
+                    continue;
+                }
+                $local = $known->get($server->id . '|' . strtolower($username));
+
+                $rows[] = [
+                    'server_id'          => $server->id,
+                    'server_name'        => $server->name,
+                    'cpanel_username'    => $username,
+                    'domain'             => $acct['domain'] ?? null,
+                    'email'              => $acct['email'] ?? null,
+                    'plan'               => $acct['plan'] ?? null,
+                    'disk_used'          => $acct['diskused'] ?? null,
+                    'disk_limit'         => $acct['disklimit'] ?? null,
+                    'suspended'          => (bool) ($acct['suspended'] ?? false),
+                    'hosting_account_id' => $local?->id,
+                    'client'             => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                    'imported'           => (bool) $local,
+                ];
+            }
+        }
+
+        // Search across the merged list (username/domain/client name) —
+        // simplest done after merging since it spans two data sources.
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) $r['domain']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+        if ($request->filled('imported')) {
+            $want = $request->boolean('imported');
+            $rows = array_values(array_filter($rows, fn ($r) => $r['imported'] === $want));
+        }
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
+     * Link a discovered-but-untracked cPanel account to a client: creates the
+     * subscription it never had in MoBilling, then the hosting_accounts row
+     * pointing at it. No WHM call — the account already exists on the server.
+     */
+    public function import(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'          => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username'    => 'required|string|max:64',
+            'domain'             => 'required|string|max:255',
+            'client_id'          => ['required', 'uuid', Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
+            'product_service_id' => ['required', 'uuid', Rule::exists('product_services', 'id')->where('tenant_id', $tenantId)],
+        ]);
+
+        $exists = HostingAccount::withoutGlobalScopes()
+            ->where('server_id', $data['server_id'])
+            ->where('cpanel_username', $data['cpanel_username'])
+            ->exists();
+        if ($exists) {
+            return response()->json(['message' => 'This cPanel account is already imported.'], 422);
+        }
+
+        $client = Client::withoutGlobalScopes()->findOrFail($data['client_id']);
+        $product = ProductService::withoutGlobalScopes()->findOrFail($data['product_service_id']);
+
+        // Live status/package straight from the server, so the imported
+        // record isn't just guessed from the discover-list snapshot.
+        $server = Server::findOrFail($data['server_id']);
+        $summary = [];
+        try {
+            $summary = (new WhmService($server))->accountSummary($data['cpanel_username']);
+        } catch (WhmApiException) {
+            // best-effort — fall back to the product's package/active status
+        }
+
+        $subscription = ClientSubscription::create([
+            'tenant_id'          => $tenantId,
+            'client_id'          => $client->id,
+            'product_service_id' => $product->id,
+            'label'              => $data['domain'],
+            'quantity'           => 1,
+            'start_date'         => now(),
+            'status'             => ($summary['suspended'] ?? false) ? 'suspended' : 'active',
+            'metadata'           => ['imported_existing' => true],
+        ]);
+
+        $hostingAccount = HostingAccount::create([
+            'tenant_id'              => $tenantId,
+            'client_subscription_id' => $subscription->id,
+            'server_id'              => $data['server_id'],
+            'domain'                 => $data['domain'],
+            'cpanel_username'        => $data['cpanel_username'],
+            'package'                => $summary['plan'] ?? $product->cpanel_package,
+            'status'                 => ($summary['suspended'] ?? false) ? 'suspended' : 'active',
+            'last_synced_at'         => now(),
+            'meta'                   => ['adopted_existing' => true],
+        ]);
+
+        return response()->json([
+            'data'    => $hostingAccount,
+            'message' => "{$data['domain']} imported and linked to {$client->name}.",
+        ], 201);
+    }
+
     public function index(Request $request)
     {
         $query = HostingAccount::with(['server:id,name,hostname', 'subscription.client:id,name'])

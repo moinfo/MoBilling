@@ -93,6 +93,13 @@ class WhmService
         return (array) (data_get($res, 'data.acct.0') ?? []);
     }
 
+    /** Every cPanel account on this server, per WHM — the server's own truth. */
+    public function listAccounts(): array
+    {
+        $res = $this->call('listaccts');
+        return (array) data_get($res, 'data.acct', []);
+    }
+
     // ── Mutations ──────────────────────────────────────────────────────────────
 
     public function createAccount(string $username, string $domain, string $password, string $plan, ?string $contactEmail = null): array
