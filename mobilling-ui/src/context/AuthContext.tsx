@@ -1,6 +1,15 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { notifications } from '@mantine/notifications';
 import { User, UserType, getMe, login as apiLogin, register as apiRegister, logout as apiLogout, LoginData, RegisterData } from '../api/auth';
 import { setTenantCurrency } from '../utils/formatCurrency';
+
+// Auto sign-out after this many minutes with no real interaction (mouse,
+// keyboard, touch, scroll) — matches the server-side backstop in
+// IdleTimeout.php, but this is what actually fires while someone is sitting
+// on the page: background polling (e.g. the notification bell) alone must
+// never keep a truly-idle session alive, so this only resets on real input.
+const IDLE_MINUTES = 15;
 
 type SubscriptionStatus = 'trial' | 'subscribed' | 'expired' | 'deactivated' | null;
 
@@ -28,6 +37,9 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const navigate = useNavigate();
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastResetRef = useRef(0);
   const [user, setUser] = useState<User | null>(null);
   const [userType, setUserType] = useState<UserType | null>(() => {
     return (localStorage.getItem('user_type') as UserType) || null;
@@ -197,6 +209,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // worth preserving here, so a hard navigation is simpler and safer.
     window.location.href = returnUserType === 'tenant' ? '/dashboard' : '/portal-users';
   };
+
+  // Idle auto sign-out: only real interaction resets the clock. A background
+  // refetchInterval (notification bell, dashboards, etc.) firing every N
+  // seconds must NOT count as activity, or an unattended-but-open tab would
+  // never time out — so this listens for actual input events only.
+  useEffect(() => {
+    if (!user) {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      return;
+    }
+
+    const handleIdle = () => {
+      const wasClient = userType === 'client';
+      // Clear local state immediately — don't wait on a network round-trip
+      // to reflect "signed out" while idle. Best-effort tell the server too.
+      apiLogout().catch(() => {});
+      localStorage.removeItem('token');
+      localStorage.removeItem('user_type');
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('impersonate_return_token');
+      localStorage.removeItem('impersonate_return_user');
+      localStorage.removeItem('impersonate_return_user_type');
+      updateUser(null);
+      setUserType(null);
+      setPermissions([]);
+      setIsImpersonating(false);
+      setIsImpersonatingClient(false);
+      setSubscriptionStatus(null);
+      setDaysRemaining(0);
+
+      notifications.show({
+        title: 'Signed out',
+        message: `You were signed out after ${IDLE_MINUTES} minutes of inactivity.`,
+        color: 'orange',
+      });
+      navigate(wasClient ? '/portal/login' : '/login');
+    };
+
+    const armTimer = () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+      idleTimerRef.current = setTimeout(handleIdle, IDLE_MINUTES * 60 * 1000);
+    };
+
+    // Throttled — mousemove/scroll can fire dozens of times a second, and
+    // this only needs millisecond-scale precision, not that.
+    const onActivity = () => {
+      const now = Date.now();
+      if (now - lastResetRef.current < 1000) return;
+      lastResetRef.current = now;
+      armTimer();
+    };
+
+    const events: (keyof WindowEventMap)[] = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }));
+    armTimer();
+
+    return () => {
+      events.forEach((e) => window.removeEventListener(e, onActivity));
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, userType]);
 
   return (
     <AuthContext.Provider value={{

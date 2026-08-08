@@ -102,7 +102,7 @@ Route::get('/pay/{document}/status/{payment}', [InvoicePaymentController::class,
 Route::get('/pay/status/by-tracking', [InvoicePaymentController::class, 'statusByTracking']);
 
 // Auth (Authenticated, no tenant required)
-Route::middleware(['auth:sanctum'])->group(function () {
+Route::middleware(['auth:sanctum', 'idle.timeout'])->group(function () {
     Route::post('/auth/logout', [LoginController::class, 'logout']);
     Route::get('/auth/me', [LoginController::class, 'me']);
 
@@ -126,7 +126,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 });
 
 // Super Admin routes (no tenant middleware)
-Route::middleware(['auth:sanctum', 'super_admin'])->prefix('admin')->group(function () {
+Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admin')->group(function () {
     Route::get('/dashboard', [AdminDashboardController::class, 'summary']);
     Route::apiResource('tenants', TenantController::class)->except(['destroy']);
     Route::patch('/tenants/{tenant}/toggle-active', [TenantController::class, 'toggleActive']);
@@ -193,7 +193,7 @@ Route::middleware(['auth:sanctum', 'super_admin'])->prefix('admin')->group(funct
 });
 
 // Tenant-scoped routes
-Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
+Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function () {
 
     // Clients
     Route::middleware('permission:clients.read')->get('/clients', [ClientController::class, 'index']);
@@ -794,7 +794,7 @@ Route::middleware(['auth:sanctum', 'tenant'])->group(function () {
 });
 
 // Client Portal routes
-Route::middleware(['auth:sanctum', 'client_portal'])->prefix('portal')->group(function () {
+Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('portal')->group(function () {
     Route::get('/dashboard', [PortalDashboardController::class, 'summary']);
     Route::get('/documents', [PortalDocumentController::class, 'index']);
     Route::get('/documents/{document}', [PortalDocumentController::class, 'show']);

@@ -17,6 +17,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => \App\Http\Middleware\CheckPermission::class,
             'client_portal' => \App\Http\Middleware\ClientPortalMiddleware::class,
             'super_admin' => \App\Http\Middleware\EnsureSuperAdmin::class,
+            'idle.timeout' => \App\Http\Middleware\IdleTimeout::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

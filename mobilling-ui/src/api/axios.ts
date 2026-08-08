@@ -19,7 +19,8 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       // clients land on the client-area login; staff on the main login
-      window.location.href = window.location.pathname.startsWith('/portal')
+      // (note the trailing slash — /portal-users is a STAFF page, not /portal/*)
+      window.location.href = window.location.pathname.startsWith('/portal/')
         ? '/portal/login'
         : '/login';
     }
