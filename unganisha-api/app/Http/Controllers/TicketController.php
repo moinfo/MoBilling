@@ -133,6 +133,8 @@ class TicketController extends Controller
             'id'            => $t->id,
             'ticket_number' => $t->ticket_number,
             'subject'       => $t->subject,
+            'department'    => $t->department,
+            'related_service' => $t->related_service,
             'status'        => $t->status,
             'priority'      => $t->priority,
             'client'        => $t->client ? ['id' => $t->client->id, 'name' => $t->client->name] : null,

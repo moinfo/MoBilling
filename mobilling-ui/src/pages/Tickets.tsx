@@ -13,7 +13,7 @@ import {
 import {
   getTickets, getTicketStats, getTicket, replyTicket, setTicketStatus, assignTicket,
   downloadTicketAttachment,
-  TicketRow, TICKET_STATUS_META, PRIORITY_COLORS,
+  TicketRow, TICKET_STATUS_META, PRIORITY_COLORS, DEPARTMENT_COLORS,
 } from '../api/tickets';
 import { getCannedReplies, CannedReply } from '../api/cannedReplies';
 import { getUsers, TenantUser } from '../api/users';
@@ -78,6 +78,7 @@ export default function Tickets() {
                 <Table.Tr>
                   <Table.Th>#</Table.Th>
                   <Table.Th>Subject</Table.Th>
+                  <Table.Th>Dept.</Table.Th>
                   <Table.Th>Client</Table.Th>
                   <Table.Th>Priority</Table.Th>
                   <Table.Th>Assigned</Table.Th>
@@ -91,7 +92,15 @@ export default function Tickets() {
                   return (
                     <Table.Tr key={t.id} style={{ cursor: 'pointer' }} onClick={() => setOpenId(t.id)}>
                       <Table.Td><Text size="sm" fw={600}>{t.ticket_number}</Text></Table.Td>
-                      <Table.Td><Text size="sm" truncate maw={260}>{t.subject}</Text></Table.Td>
+                      <Table.Td>
+                        <Text size="sm" truncate maw={260}>{t.subject}</Text>
+                        {t.related_service && <Text size="xs" c="dimmed">{t.related_service}</Text>}
+                      </Table.Td>
+                      <Table.Td>
+                        <Badge size="xs" variant="light" color={DEPARTMENT_COLORS[t.department] ?? 'gray'} tt="capitalize">
+                          {t.department}
+                        </Badge>
+                      </Table.Td>
                       <Table.Td><Text size="sm">{t.client?.name ?? '—'}</Text></Table.Td>
                       <Table.Td>
                         <Badge size="xs" variant="light" color={PRIORITY_COLORS[t.priority]}>{t.priority}</Badge>
@@ -195,7 +204,9 @@ function TicketThreadDrawer({ id, onClose, can }: {
                 {TICKET_STATUS_META[t.status].label}
               </Badge>
               <Badge size="sm" variant="light" color={PRIORITY_COLORS[t.priority]}>{t.priority}</Badge>
+              <Badge size="sm" variant="light" color={DEPARTMENT_COLORS[t.department] ?? 'gray'} tt="capitalize">{t.department}</Badge>
               <Text size="sm" c="dimmed">{t.client?.name}</Text>
+              {t.related_service && <Text size="sm" c="dimmed">· {t.related_service}</Text>}
             </Group>
             <Group gap="xs">
               {can('tickets.manage') && (

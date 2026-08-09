@@ -21,6 +21,8 @@ export interface TicketRow {
   id: string;
   ticket_number: string;
   subject: string;
+  department: 'support' | 'billing' | 'sales';
+  related_service: string | null;
   status: 'open' | 'answered' | 'customer_reply' | 'closed';
   priority: 'low' | 'medium' | 'high';
   client: { id: string; name: string } | null;
@@ -39,6 +41,7 @@ export const TICKET_STATUS_META: Record<TicketRow['status'], { label: string; co
 };
 
 export const PRIORITY_COLORS: Record<string, string> = { low: 'gray', medium: 'blue', high: 'red' };
+export const DEPARTMENT_COLORS: Record<string, string> = { support: 'gray', billing: 'grape', sales: 'teal' };
 
 // Staff
 export const getTickets = (params?: Record<string, string>) => api.get('/tickets', { params });
