@@ -95,6 +95,9 @@ export const getPortalDocument = (id: string) =>
 export const resendPortalDocument = (id: string) =>
   api.post<{ message: string }>(`/portal/documents/${id}/resend`);
 
+export const requestPortalDocumentCancellation = (id: string, reason: string) =>
+  api.post<{ message: string }>(`/portal/documents/${id}/request-cancellation`, { reason });
+
 // Payments
 export const getPortalPayments = (params?: { search?: string; page?: number }) =>
   api.get('/portal/payments', { params });

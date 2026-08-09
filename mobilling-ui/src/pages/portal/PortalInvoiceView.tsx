@@ -1,20 +1,23 @@
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Button, Grid, Table, Divider,
-  Alert, Center, Loader, ActionIcon, Accordion,
+  Alert, Center, Loader, ActionIcon, Accordion, Modal, Textarea,
 } from '@mantine/core';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconArrowLeft, IconCreditCard, IconDownload, IconMail, IconCash,
-  IconAlertTriangle, IconBuildingBank,
+  IconAlertTriangle, IconBuildingBank, IconBan,
 } from '@tabler/icons-react';
 import {
   getPortalDocument, downloadPortalDocumentPdf, resendPortalDocument,
-  portalApplyCredit, getPortalCredit,
+  portalApplyCredit, getPortalCredit, requestPortalDocumentCancellation,
 } from '../../api/portal';
 import { portalCheckoutInvoice } from '../../api/payment';
+import { useAuth } from '../../context/AuthContext';
+
+const CANCELLABLE_STATUSES = ['sent', 'overdue', 'partial', 'pending_approval'];
 
 const fmt = (n: number | string | null | undefined) =>
   (parseFloat(String(n ?? 0)) || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -46,10 +49,14 @@ export default function PortalInvoiceView() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isPortalAdmin = (user as any)?.role === 'admin';
   const [paying, setPaying] = useState(false);
   const [applyingCredit, setApplyingCredit] = useState(false);
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [cancelOpen, setCancelOpen] = useState(false);
+  const [cancelReason, setCancelReason] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['portal-document', id],
@@ -126,6 +133,16 @@ export default function PortalInvoiceView() {
     }
   };
 
+  const cancelMut = useMutation({
+    mutationFn: () => requestPortalDocumentCancellation(inv.id, cancelReason.trim()),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Request submitted', message: res.data.message, color: 'green', autoClose: 9000 });
+      setCancelOpen(false);
+      setCancelReason('');
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not submit the request.', color: 'red' }),
+  });
+
   const discount = parseFloat(inv.discount_amount ?? 0) || 0;
   const tax = parseFloat(inv.tax_amount ?? 0) || 0;
   const lateFee = parseFloat(inv.late_fee ?? 0) || 0;
@@ -169,6 +186,11 @@ export default function PortalInvoiceView() {
         <Button variant="light" leftSection={<IconMail size={16} />} loading={sending} onClick={handleResend}>
           Email Me a Copy
         </Button>
+        {isPortalAdmin && isInvoice && CANCELLABLE_STATUSES.includes(inv.status) && (
+          <Button variant="light" color="red" leftSection={<IconBan size={16} />} onClick={() => setCancelOpen(true)}>
+            Request Cancellation
+          </Button>
+        )}
       </Group>
 
       <Paper withBorder radius="md" p="lg">
@@ -337,6 +359,27 @@ export default function PortalInvoiceView() {
       )}
 
       <Text size="xs" c="dimmed" ta="center">Powered by MoBilling</Text>
+
+      <Modal opened={cancelOpen} onClose={() => setCancelOpen(false)} title="Request Cancellation" centered>
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">
+            This opens a support ticket for our billing team — invoice {inv.document_number} won't be cancelled
+            automatically. We'll confirm with you before anything changes.
+          </Text>
+          <Textarea
+            label="Reason for cancellation" required minRows={3} autosize
+            placeholder="Tell us why you'd like this invoice cancelled"
+            value={cancelReason} onChange={(e) => setCancelReason(e.currentTarget.value)}
+          />
+          <Group justify="flex-end" mt="xs">
+            <Button variant="default" onClick={() => setCancelOpen(false)}>Cancel</Button>
+            <Button color="red" disabled={!cancelReason.trim()} loading={cancelMut.isPending}
+              onClick={() => cancelMut.mutate()}>
+              Submit Request
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

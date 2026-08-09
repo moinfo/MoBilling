@@ -119,4 +119,48 @@ class PortalDocumentController extends Controller
 
         return response()->json(['message' => 'Document sent to your registered contacts (email/SMS/WhatsApp).']);
     }
+
+    /** Request cancellation — opens a billing ticket for staff to action (mirrors PortalHostingController). */
+    public function requestCancellation(Request $request, Document $document)
+    {
+        $user = $request->user();
+        abort_unless($document->client_id === $user->client_id, 404);
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can do this.');
+        abort_unless(in_array($document->status, ['sent', 'overdue', 'partial', 'pending_approval']), 422,
+            'This invoice cannot be cancelled — it is already paid or cancelled.');
+
+        $data = $request->validate(['reason' => 'required|string|max:2000']);
+
+        $ticket = \App\Models\Ticket::create([
+            'tenant_id'       => $user->tenant_id,
+            'client_id'       => $user->client_id,
+            'ticket_number'   => \App\Models\Ticket::nextNumber($user->tenant_id),
+            'subject'         => "Cancellation request: {$document->document_number}",
+            'department'      => 'billing',
+            'related_service' => $document->document_number,
+            'status'          => 'open',
+            'priority'        => 'high',
+            'opened_by'       => $user->id,
+            'last_reply_at'   => now(),
+        ]);
+
+        $ticket->replies()->create([
+            'tenant_id'      => $user->tenant_id,
+            'author_type'    => 'client',
+            'client_user_id' => $user->id,
+            'message'        => "Invoice: {$document->document_number} (Tsh." . number_format((float) $document->balance_due, 2) . " balance due)\n\nReason:\n{$data['reason']}",
+        ]);
+
+        try {
+            foreach (\App\Http\Controllers\TicketController::staffToNotify($ticket) as $staff) {
+                $staff->notify(new \App\Notifications\TicketActivityStaffNotification($ticket, 'opened'));
+            }
+        } catch (\Throwable) {
+            // notification failure must not block the request
+        }
+
+        return response()->json([
+            'message' => "Cancellation request submitted as ticket {$ticket->ticket_number} — our team will confirm shortly.",
+        ], 201);
+    }
 }

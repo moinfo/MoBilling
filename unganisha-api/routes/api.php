@@ -801,6 +801,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/documents/{document}', [PortalDocumentController::class, 'show']);
     Route::get('/documents/{document}/pdf', [PortalDocumentController::class, 'downloadPdf']);
     Route::post('/documents/{document}/resend', [PortalDocumentController::class, 'resend']);
+    Route::post('/documents/{document}/request-cancellation', [PortalDocumentController::class, 'requestCancellation']);
     Route::get('/payments', [PortalPaymentController::class, 'index']);
     Route::get('/payments/{payment}/receipt', [PortalPaymentController::class, 'downloadReceipt']);
     Route::get('/statement', [PortalStatementController::class, 'index']);
