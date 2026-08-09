@@ -68,6 +68,16 @@ export default function PortalInvoiceView() {
   const { data: creditData } = useQuery({ queryKey: ['portal-credit'], queryFn: getPortalCredit });
   const creditBalance: number = creditData?.data?.data?.balance ?? 0;
 
+  const cancelMut = useMutation({
+    mutationFn: () => requestPortalDocumentCancellation(inv.id, cancelReason.trim()),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Request submitted', message: res.data.message, color: 'green', autoClose: 9000 });
+      setCancelOpen(false);
+      setCancelReason('');
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not submit the request.', color: 'red' }),
+  });
+
   if (isLoading || !inv) {
     return <Center py="xl"><Loader /></Center>;
   }
@@ -132,16 +142,6 @@ export default function PortalInvoiceView() {
       setSending(false);
     }
   };
-
-  const cancelMut = useMutation({
-    mutationFn: () => requestPortalDocumentCancellation(inv.id, cancelReason.trim()),
-    onSuccess: (res) => {
-      notifications.show({ title: 'Request submitted', message: res.data.message, color: 'green', autoClose: 9000 });
-      setCancelOpen(false);
-      setCancelReason('');
-    },
-    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not submit the request.', color: 'red' }),
-  });
 
   const discount = parseFloat(inv.discount_amount ?? 0) || 0;
   const tax = parseFloat(inv.tax_amount ?? 0) || 0;
