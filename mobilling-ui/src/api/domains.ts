@@ -47,6 +47,7 @@ export interface DomainTldRow {
   register_price: number;
   renew_price: number;
   transfer_price: number;
+  reseller_price: number | null;
   years_min: number;
   years_max: number;
   is_active: boolean;

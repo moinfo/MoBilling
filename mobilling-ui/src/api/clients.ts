@@ -115,10 +115,17 @@ export interface ClientProfile {
     document_number: string | null;
   }[];
   communication_logs: ClientCommunicationLog[];
+  is_reseller?: boolean;
+  reseller_membership?: { expire_date: string | null } | null;
 }
 
 export const getClientProfile = (id: string) =>
   api.get<{ data: ClientProfile }>(`/clients/${id}/profile`);
+
+export const makeClientReseller = (clientId: string) =>
+  api.post<{ data: { subscription_id: string; document_id: string; document_number: string }; message: string }>(
+    `/clients/${clientId}/make-reseller`
+  );
 
 // Client Portal Users (tenant admin)
 export interface ClientPortalUser {

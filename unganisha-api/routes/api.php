@@ -204,6 +204,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:clients.create')->post('/clients', [ClientController::class, 'store']);
     Route::middleware('permission:clients.update')->put('/clients/{client}', [ClientController::class, 'update']);
     Route::middleware('permission:clients.update')->put('/clients/{client}/notes', [ClientController::class, 'updateNotes']);
+    Route::middleware('permission:clients.update')->post('/clients/{client}/make-reseller', [ClientController::class, 'makeReseller']);
     Route::middleware('permission:clients.delete')->delete('/clients/{client}', [ClientController::class, 'destroy']);
 
     // Client Subscriptions
@@ -822,6 +823,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'nameservers']);
     Route::put('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'updateNameservers']);
     Route::put('/domains/{domain}/auto-renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'setAutoRenew']);
+    Route::get('/reseller/status', [\App\Http\Controllers\Portal\PortalResellerController::class, 'status']);
+    Route::get('/reseller/domains/check', [\App\Http\Controllers\Portal\PortalResellerController::class, 'check']);
+    Route::post('/reseller/domains/order', [\App\Http\Controllers\Portal\PortalResellerController::class, 'order']);
+    Route::post('/reseller/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalResellerController::class, 'renew']);
     Route::get('/tickets',                  [\App\Http\Controllers\Portal\PortalTicketController::class, 'index']);
     Route::post('/tickets',                 [\App\Http\Controllers\Portal\PortalTicketController::class, 'store']);
     Route::get('/tickets/{ticket}',         [\App\Http\Controllers\Portal\PortalTicketController::class, 'show']);

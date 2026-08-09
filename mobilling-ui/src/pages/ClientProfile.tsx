@@ -22,7 +22,7 @@ import {
   getClientProfile, ClientProfile as ClientProfileType, ClientCommunicationLog,
   getClientPortalUsers, createClientPortalUser, updateClientPortalUser, deleteClientPortalUser,
   ClientPortalUser,
-  portalLoginAsClient, getClientCredit, adjustClientCredit, updateClientNotes,
+  portalLoginAsClient, getClientCredit, adjustClientCredit, updateClientNotes, makeClientReseller,
 } from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
@@ -87,12 +87,36 @@ export default function ClientProfile() {
   };
   const navigate = useNavigate();
   const { can } = usePermissions();
+  const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
     queryKey: ['client-profile', clientId],
     queryFn: () => getClientProfile(clientId!),
     enabled: !!clientId,
   });
+
+  const makeResellerMut = useMutation({
+    mutationFn: () => makeClientReseller(clientId!),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Reseller invoice created', message: res.data.message, color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-profile', clientId] });
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Could not create reseller invoice', color: 'red' });
+    },
+  });
+
+  const confirmMakeReseller = () => {
+    modals.openConfirmModal({
+      title: 'Make Reseller',
+      children: <Text size="sm">
+        This creates a Reseller Membership subscription and an annual fee invoice for {data?.data?.data?.client?.name ?? 'this client'}.
+        They become a domain reseller (wholesale pricing, wallet-only) once it's paid.
+      </Text>,
+      labels: { confirm: 'Create Invoice', cancel: 'Cancel' },
+      onConfirm: () => makeResellerMut.mutate(),
+    });
+  };
 
   const { data: followupData } = useQuery({
     queryKey: ['client-followups', clientId],
@@ -183,6 +207,18 @@ export default function ClientProfile() {
               onClick={() => setCreditOpen(true)}>
               Credit: {formatCurrency((profile as any).credit_balance ?? 0)}
             </Button>
+          )}
+          {can('clients.update') && (
+            profile.is_reseller ? (
+              <Badge size="lg" variant="light" color="grape" leftSection={<IconWorldWww size={14} />}>
+                Reseller{profile.reseller_membership?.expire_date ? ` · until ${formatDate(profile.reseller_membership.expire_date)}` : ''}
+              </Badge>
+            ) : (
+              <Button size="xs" variant="light" color="grape" leftSection={<IconWorldWww size={14} />}
+                loading={makeResellerMut.isPending} onClick={confirmMakeReseller}>
+                Make Reseller
+              </Button>
+            )
           )}
         </Group>
       </Group>

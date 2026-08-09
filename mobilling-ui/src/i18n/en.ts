@@ -73,6 +73,7 @@ export const en: Translations = {
   'nav.invoices': 'Invoices',
   'nav.payments': 'Payments',
   'nav.wallet': 'Wallet',
+  'nav.reseller': 'Reseller',
   'nav.quotations': 'Quotations',
   'nav.creditNotes': 'Credit Notes',
   'nav.statement': 'Statement',

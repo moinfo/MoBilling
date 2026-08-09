@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Document;
 use App\Models\PaymentIn;
 use App\Models\PesapalInvoicePayment;
+use App\Services\SubscriptionActivationService;
 use App\Services\TenantPesapalService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -123,6 +124,12 @@ class TenantPesapalWebhookController extends Controller
 
         if ($balance <= 0) {
             $doc->update(['status' => 'paid']);
+            // Manual payments (PaymentInController) and wallet credit
+            // (CreditService) both flip a pending ClientSubscription to
+            // active on payment — this was the one path that didn't, so an
+            // order paid online via Pesapal stayed "pending" forever even
+            // though hosting/domain provisioning (a separate trigger) ran fine.
+            app(SubscriptionActivationService::class)->activateFor($doc);
         } elseif ($balance < (float) $doc->total) {
             $doc->update(['status' => 'partial']);
         }

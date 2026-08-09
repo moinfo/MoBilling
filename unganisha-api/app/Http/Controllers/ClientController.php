@@ -9,9 +9,12 @@ use App\Models\ClientSubscription;
 use App\Models\CommunicationLog;
 use App\Models\Document;
 use App\Models\PaymentIn;
+use App\Models\ProductService;
 use App\Models\RecurringInvoiceLog;
+use App\Services\DocumentNumberService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ClientController extends Controller
 {
@@ -131,6 +134,106 @@ class ClientController extends Controller
             'data' => $query->limit((int) $request->get('limit', 30))
                 ->get(['id', 'channel', 'type', 'recipient', 'subject', 'message', 'status', 'error', 'created_at']),
         ]);
+    }
+
+    /**
+     * Grant domain-reseller status: creates a subscription (+ its first
+     * invoice) to the tenant's "Reseller Membership" product. Status is
+     * derived live from that subscription being active — never a separate
+     * flag — so non-payment silently and automatically revokes it via the
+     * existing recurring-billing/auto-suspend engine.
+     */
+    public function makeReseller(Client $client)
+    {
+        if ($client->isReseller()) {
+            return response()->json(['message' => "{$client->name} is already a reseller."], 422);
+        }
+
+        $tenantId = auth()->user()->tenant_id;
+        $product = ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)->where('name', 'Reseller Membership')->first();
+
+        if (!$product) {
+            return response()->json(['message' => 'Reseller Membership product not found — contact support.'], 422);
+        }
+
+        [$subscription, $document] = DB::transaction(function () use ($client, $product, $tenantId) {
+            $start = now()->startOfDay();
+
+            // No expire_date here: SubscriptionActivationService::activateFor()
+            // sets it to start_date + 1 cycle when the invoice below gets paid
+            // (it bases the new expiry on the existing expire_date, or
+            // start_date if unset — pre-setting it here would double-count
+            // the first year the moment payment activates the subscription).
+            $subscription = ClientSubscription::create([
+                'tenant_id'          => $tenantId,
+                'client_id'          => $client->id,
+                'product_service_id' => $product->id,
+                'label'              => 'Reseller Membership',
+                'quantity'           => 1,
+                'start_date'         => $start,
+                'status'             => 'pending',
+                'recurring_amount'   => $product->price,
+            ]);
+
+            $document = Document::withoutGlobalScopes()->create([
+                'tenant_id'       => $tenantId,
+                'client_id'       => $client->id,
+                'type'            => 'invoice',
+                'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
+                'date'            => now()->toDateString(),
+                'due_date'        => now()->addDays(7)->toDateString(),
+                'subtotal'        => $product->price,
+                'discount_amount' => 0,
+                'tax_amount'      => 0,
+                'total'           => $product->price,
+                'status'          => 'sent',
+                'notes'           => 'Reseller Membership — annual fee',
+            ]);
+
+            $document->items()->create([
+                'product_service_id' => $product->id,
+                'item_type'          => 'service',
+                'description'        => 'Reseller Membership — annual fee',
+                'quantity'           => 1,
+                'price'              => $product->price,
+                'tax_percent'        => 0,
+                'tax_amount'         => 0,
+                'total'              => $product->price,
+            ]);
+
+            // Links the invoice to the subscription so payment (any method)
+            // activates it — same mechanism every other order flow uses.
+            RecurringInvoiceLog::withoutGlobalScopes()->create([
+                'tenant_id'               => $tenantId,
+                'client_id'               => $client->id,
+                'product_service_id'      => $product->id,
+                'next_bill_date'          => $start->toDateString(),
+                'client_subscription_id'  => $subscription->id,
+                'document_id'             => $document->id,
+                'invoice_created_at'      => now(),
+                'reminders_sent'          => [],
+            ]);
+
+            return [$subscription, $document];
+        });
+
+        try {
+            if ($client->email || $client->phone) {
+                $client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        return response()->json([
+            'data' => [
+                'subscription_id' => $subscription->id,
+                'document_id'     => $document->id,
+                'document_number' => $document->document_number,
+            ],
+            'message' => "Reseller invoice {$document->document_number} created — {$client->name} becomes a reseller once it's paid.",
+        ], 201);
     }
 
     public function profile(Client $client)
@@ -321,6 +424,10 @@ class ClientController extends Controller
             'tickets' => $tickets,
             'hosting_accounts' => $hosting,
             'credit_balance' => (float) $client->credit_balance,
+            'is_reseller' => $client->isReseller(),
+            'reseller_membership' => $client->resellerSubscription()
+                ? ['expire_date' => $client->resellerSubscription()->expire_date?->toDateString()]
+                : null,
             'client_since' => $client->created_at?->format('Y-m-d'),
             'client_status' => $client->status ?? 'active',
             'admin_notes' => $client->notes,

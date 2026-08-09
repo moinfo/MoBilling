@@ -90,6 +90,7 @@ import PortalDashboard from './pages/portal/PortalDashboard';
 import PortalDocuments from './pages/portal/PortalDocuments';
 import PortalPayments from './pages/portal/PortalPayments';
 import PortalWallet from './pages/portal/PortalWallet';
+import PortalReseller from './pages/portal/PortalReseller';
 import PortalStatement from './pages/portal/PortalStatement';
 import PortalSubscriptions from './pages/portal/PortalSubscriptions';
 import PortalHosting from './pages/portal/PortalHosting';
@@ -286,6 +287,7 @@ export default function App() {
                   <Route path="/portal/credit-notes" element={<PortalDocuments type="credit_note" />} />
                   <Route path="/portal/payments" element={<PortalPayments />} />
                   <Route path="/portal/wallet" element={<PortalWallet />} />
+                  <Route path="/portal/reseller" element={<PortalReseller />} />
                   <Route path="/portal/statement" element={<PortalStatement />} />
                   <Route path="/portal/products-services" element={<PortalProductServices />} />
                   <Route path="/portal/subscriptions" element={<PortalSubscriptions />} />

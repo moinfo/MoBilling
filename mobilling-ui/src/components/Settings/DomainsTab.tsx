@@ -313,7 +313,7 @@ function TldPricingSection() {
 
   const form = useForm({
     initialValues: {
-      tld: '', register_price: 0, renew_price: 0, transfer_price: 0,
+      tld: '', register_price: 0, renew_price: 0, transfer_price: 0, reseller_price: null as number | null,
       years_min: 1, years_max: 10, is_active: true,
     },
   });
@@ -322,10 +322,11 @@ function TldPricingSection() {
     setEditing(row);
     form.setValues(row ? {
       tld: row.tld, register_price: row.register_price, renew_price: row.renew_price,
-      transfer_price: row.transfer_price, years_min: row.years_min, years_max: row.years_max,
+      transfer_price: row.transfer_price, reseller_price: row.reseller_price,
+      years_min: row.years_min, years_max: row.years_max,
       is_active: row.is_active,
     } : {
-      tld: '', register_price: 0, renew_price: 0, transfer_price: 0,
+      tld: '', register_price: 0, renew_price: 0, transfer_price: 0, reseller_price: null,
       years_min: 1, years_max: 10, is_active: true,
     });
     setModalOpen(true);
@@ -359,6 +360,7 @@ function TldPricingSection() {
                 <Table.Th>Register/yr</Table.Th>
                 <Table.Th>Renew/yr</Table.Th>
                 <Table.Th>Transfer</Table.Th>
+                <Table.Th>Reseller (wholesale)</Table.Th>
                 <Table.Th>Source</Table.Th>
                 <Table.Th>Active</Table.Th>
                 <Table.Th></Table.Th>
@@ -371,6 +373,11 @@ function TldPricingSection() {
                   <Table.Td>{formatCurrency(t.register_price)}</Table.Td>
                   <Table.Td>{formatCurrency(t.renew_price)}</Table.Td>
                   <Table.Td>{formatCurrency(t.transfer_price)}</Table.Td>
+                  <Table.Td>
+                    {t.reseller_price !== null
+                      ? <Text size="sm" c="grape" fw={500}>{formatCurrency(t.reseller_price)}</Text>
+                      : <Text size="sm" c="dimmed">—</Text>}
+                  </Table.Td>
                   <Table.Td>
                     <Badge size="xs" variant="light" color={t.is_platform ? 'blue' : 'grape'}>
                       {t.is_platform ? 'Platform' : 'My price'}
@@ -418,6 +425,8 @@ function TldPricingSection() {
               <NumberInput label="Min years" min={1} max={10} {...form.getInputProps('years_min')} />
               <NumberInput label="Max years" min={1} max={10} {...form.getInputProps('years_max')} />
             </Group>
+            <NumberInput label="Reseller (wholesale) price / year" description="What we pay TZNIC — leave blank to keep this TLD unavailable to resellers"
+              min={0} placeholder="Not set" {...form.getInputProps('reseller_price')} />
             <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setModalOpen(false)}>Cancel</Button>

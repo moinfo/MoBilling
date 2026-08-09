@@ -27,4 +27,24 @@ class Client extends Model
     {
         return $this->hasMany(ClientSubscription::class);
     }
+
+    /**
+     * Reseller status is never a stored flag — it's derived live from an
+     * active subscription to the "Reseller Membership" product, so the
+     * existing recurring-billing/auto-suspend engine is the single source of
+     * truth (non-payment silently revokes it, no separate code path needed).
+     */
+    public function resellerSubscription(): ?ClientSubscription
+    {
+        return $this->subscriptions()
+            ->withoutGlobalScopes()
+            ->where('status', 'active')
+            ->whereHas('productService', fn ($q) => $q->withoutGlobalScopes()->where('name', 'Reseller Membership'))
+            ->first();
+    }
+
+    public function isReseller(): bool
+    {
+        return $this->resellerSubscription() !== null;
+    }
 }

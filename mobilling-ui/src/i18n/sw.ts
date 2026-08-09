@@ -68,6 +68,7 @@ export const sw: Translations = {
   'nav.invoices': 'Ankara',
   'nav.payments': 'Malipo',
   'nav.wallet': 'Akaunti ya Fedha',
+  'nav.reseller': 'Muuzaji (Reseller)',
   'nav.quotations': 'Nukuu',
   'nav.creditNotes': 'Hati za Mikopo',
   'nav.statement': 'Taarifa ya Akaunti',
