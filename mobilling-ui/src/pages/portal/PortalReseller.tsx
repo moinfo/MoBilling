@@ -132,7 +132,7 @@ export default function PortalReseller() {
           </Group>
 
           <Button fullWidth mt="md" size="md" color="grape" leftSection={<IconWorldWww size={16} />}
-            loading={subscribeMut.isPending} disabled={!status?.membership_price}
+            loading={subscribeMut.isPending} disabled={!status?.membership_price || subscribeMut.isPending}
             onClick={() => subscribeMut.mutate()}>
             Become a Reseller — {formatCurrency(price)}
           </Button>
