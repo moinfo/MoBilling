@@ -30,8 +30,15 @@ class PortalDocumentController extends Controller
 
         $paginated = $query->paginate($request->get('per_page', 20));
 
+        // One query for every open billing-cancellation ticket this client has,
+        // instead of a per-row lookup — see Ticket::hasPendingCancellation().
+        $pendingCancellations = \App\Models\Ticket::where('client_id', $clientId)
+            ->where('department', 'billing')
+            ->where('status', '!=', 'closed')
+            ->pluck('related_service')->filter()->flip();
+
         // Append computed fields
-        $paginated->getCollection()->transform(function ($doc) {
+        $paginated->getCollection()->transform(function ($doc) use ($pendingCancellations) {
             $lateFee = $doc->items
                 ->filter(fn ($item) => str_contains($item->description ?? '', 'Late payment fee'))
                 ->sum('total');
@@ -40,6 +47,7 @@ class PortalDocumentController extends Controller
             $doc->setAttribute('original_amount', round((float) $doc->total - $lateFee, 2));
             $doc->setAttribute('paid_amount', round((float) $doc->paid_amount, 2));
             $doc->setAttribute('balance_due', round((float) $doc->balance_due, 2));
+            $doc->setAttribute('cancellation_requested', $pendingCancellations->has($doc->document_number));
 
             return $doc;
         });

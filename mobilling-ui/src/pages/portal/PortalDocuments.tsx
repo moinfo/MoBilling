@@ -294,13 +294,20 @@ export default function PortalDocuments({ type = 'invoice' }: { type?: string })
                       <Table.Td ta="right">{fmt(doc.total)}</Table.Td>
                     )}
                     <Table.Td>
-                      <Badge color={statusColor[doc.status] || 'gray'} variant="light" size="sm">
-                        {statusLabels[doc.status] || doc.status}
-                      </Badge>
+                      <Group gap={4} wrap="nowrap">
+                        <Badge color={statusColor[doc.status] || 'gray'} variant="light" size="sm">
+                          {statusLabels[doc.status] || doc.status}
+                        </Badge>
+                        {doc.cancellation_requested && (
+                          <Tooltip label="Cancellation requested — payment on hold">
+                            <Badge color="orange" variant="light" size="sm">Cancel pending</Badge>
+                          </Tooltip>
+                        )}
+                      </Group>
                     </Table.Td>
                     {isInvoice && (
                       <Table.Td>
-                        {hasBalance && (
+                        {hasBalance && !doc.cancellation_requested && (
                           <Tooltip label={`Pay ${fmt(doc.balance_due)}`}>
                             <Button
                               variant="light"
