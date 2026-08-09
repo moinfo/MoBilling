@@ -101,6 +101,8 @@ class PortalCreditController extends Controller
             ->whereIn('type', ['topup_pending', 'topup_consumed'])
             ->where('document_id', $document->id)->exists();
         abort_if($isTopup, 422, 'Top-up invoices cannot be paid with credit.');
+        abort_if(\App\Models\Ticket::hasPendingCancellation($user->tenant_id, $user->client_id, $document->document_number), 422,
+            'This invoice has a pending cancellation request — payment is on hold until it is resolved.');
 
         $client = Client::find($user->client_id);
 

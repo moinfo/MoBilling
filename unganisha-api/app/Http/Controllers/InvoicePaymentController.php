@@ -79,6 +79,10 @@ class InvoicePaymentController extends Controller
             return response()->json(['message' => 'Invoice is already paid.'], 400);
         }
 
+        if (\App\Models\Ticket::hasPendingCancellation($doc->tenant_id, $doc->client_id, $doc->document_number)) {
+            return response()->json(['message' => 'This invoice has a pending cancellation request — payment is on hold until it is resolved.'], 400);
+        }
+
         $tenant = $doc->tenant;
         if (!$tenant || !$tenant->pesapal_enabled || !$tenant->pesapal_consumer_key) {
             return response()->json(['message' => 'Online payment is not available for this invoice.'], 400);

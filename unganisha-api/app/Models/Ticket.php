@@ -55,4 +55,16 @@ class Ticket extends Model
 
         return 'TKT-' . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
     }
+
+    /** Is there a still-open billing cancellation request for this document? See PortalDocumentController::requestCancellation. */
+    public static function hasPendingCancellation(string $tenantId, string $clientId, string $documentNumber): bool
+    {
+        return static::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('client_id', $clientId)
+            ->where('department', 'billing')
+            ->where('related_service', $documentNumber)
+            ->where('status', '!=', 'closed')
+            ->exists();
+    }
 }

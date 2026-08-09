@@ -78,11 +78,16 @@ class PortalDocumentController extends Controller
             ->filter(fn ($item) => str_contains($item->description ?? '', 'Late payment fee'))
             ->sum('total');
 
+        $cancellationRequested = \App\Models\Ticket::hasPendingCancellation(
+            $document->tenant_id, $document->client_id, $document->document_number
+        );
+
         return response()->json([
             'data' => array_merge($document->toArray(), [
-                'paid_amount' => (float) $document->paid_amount,
-                'balance_due' => (float) $document->balance_due,
-                'late_fee'    => round($lateFee, 2),
+                'paid_amount'             => (float) $document->paid_amount,
+                'balance_due'             => (float) $document->balance_due,
+                'late_fee'                => round($lateFee, 2),
+                'cancellation_requested'  => $cancellationRequested,
                 // WHMCS-style invoice view panels
                 'invoiced_to' => [
                     'name'    => $client?->name,
@@ -128,6 +133,8 @@ class PortalDocumentController extends Controller
         abort_unless($user->role === 'admin', 403, 'Only portal administrators can do this.');
         abort_unless(in_array($document->status, ['sent', 'overdue', 'partial', 'pending_approval']), 422,
             'This invoice cannot be cancelled — it is already paid or cancelled.');
+        abort_if(\App\Models\Ticket::hasPendingCancellation($user->tenant_id, $user->client_id, $document->document_number), 422,
+            'A cancellation request for this invoice is already pending — check your Support Tickets.');
 
         $data = $request->validate(['reason' => 'required|string|max:2000']);
 

@@ -162,20 +162,27 @@ export default function PortalInvoiceView() {
         </Badge>
       </Group>
 
-      {inv.status === 'overdue' && balance > 0 && (
+      {inv.status === 'overdue' && balance > 0 && !inv.cancellation_requested && (
         <Alert color="red" variant="light" icon={<IconAlertTriangle size={18} />}>
           This invoice is overdue. Please pay {fmt(balance)} as soon as possible to avoid service interruption.
         </Alert>
       )}
 
+      {inv.cancellation_requested && (
+        <Alert color="orange" variant="light" icon={<IconBan size={18} />}>
+          A cancellation request for this invoice is pending with our billing team — payment is on hold until
+          it's resolved. Check your Support Tickets for updates.
+        </Alert>
+      )}
+
       {/* Actions */}
       <Group gap="xs" wrap="wrap">
-        {isInvoice && balance > 0 && (
+        {isInvoice && balance > 0 && !inv.cancellation_requested && (
           <Button color="green" leftSection={<IconCreditCard size={18} />} loading={paying} onClick={handlePay}>
             Pay {fmt(balance)} Now
           </Button>
         )}
-        {isInvoice && balance > 0 && creditBalance > 0 && (
+        {isInvoice && balance > 0 && creditBalance > 0 && !inv.cancellation_requested && (
           <Button variant="light" color="teal" leftSection={<IconCash size={16} />} loading={applyingCredit} onClick={handleCredit}>
             Use Credit ({fmt(Math.min(creditBalance, balance))})
           </Button>
@@ -186,7 +193,7 @@ export default function PortalInvoiceView() {
         <Button variant="light" leftSection={<IconMail size={16} />} loading={sending} onClick={handleResend}>
           Email Me a Copy
         </Button>
-        {isPortalAdmin && isInvoice && CANCELLABLE_STATUSES.includes(inv.status) && (
+        {isPortalAdmin && isInvoice && !inv.cancellation_requested && CANCELLABLE_STATUSES.includes(inv.status) && (
           <Button variant="light" color="red" leftSection={<IconBan size={16} />} onClick={() => setCancelOpen(true)}>
             Request Cancellation
           </Button>
@@ -293,7 +300,7 @@ export default function PortalInvoiceView() {
       </Paper>
 
       {/* Offline payment instructions */}
-      {isInvoice && balance > 0 && (inv.payment_methods?.length ?? 0) > 0 && (
+      {isInvoice && balance > 0 && !inv.cancellation_requested && (inv.payment_methods?.length ?? 0) > 0 && (
         <Paper withBorder radius="md" p="lg">
           <Group gap="xs" mb="sm"><IconBuildingBank size={18} /><Text fw={700}>Other Ways to Pay</Text></Group>
           <Text size="sm" c="dimmed" mb="sm">
