@@ -140,6 +140,22 @@ export default function PortalReseller() {
             </Text>
           )}
         </Paper>
+
+        <Paper withBorder p="md" radius="md">
+          <Title order={5} mb="sm">Wholesale prices you'll get</Title>
+          {!status?.tlds.length ? (
+            <Text size="sm" c="dimmed">No TLDs are configured for reseller pricing yet — contact us.</Text>
+          ) : (
+            <SimpleGrid cols={{ base: 2, sm: 4 }}>
+              {status.tlds.map((t) => (
+                <div key={t.tld}>
+                  <Text size="xs" c="dimmed">.{t.tld}</Text>
+                  <Text size="sm" fw={600}>{formatCurrency(t.reseller_price)}/yr</Text>
+                </div>
+              ))}
+            </SimpleGrid>
+          )}
+        </Paper>
       </Stack>
     );
   }
