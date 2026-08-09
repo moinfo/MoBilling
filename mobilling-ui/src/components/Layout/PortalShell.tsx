@@ -8,7 +8,7 @@ import { getPortalDashboard } from '../../api/portal';
 import classes from './PortalShell.module.css';
 import { useCallback } from 'react';
 import {
-  IconDashboard, IconFileInvoice, IconFileText, IconCash, IconReceipt,
+  IconDashboard, IconFileInvoice, IconFileText, IconCash, IconReceipt, IconWallet,
   IconCalendarRepeat, IconWorld, IconWorldWww, IconMessageCircle, IconNews, IconBook, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
   IconLock, IconPackage, IconShoppingCart, IconArrowBack,
 } from '@tabler/icons-react';
@@ -91,6 +91,7 @@ export default function PortalShell() {
           alert: (counts?.overdue_count ?? 0) > 0,
         },
         { icon: IconCash, label: t('nav.payments'), path: '/portal/payments' },
+        { icon: IconWallet, label: t('nav.wallet'), path: '/portal/wallet' },
         { icon: IconFileText, label: t('nav.quotations'), path: '/portal/quotations' },
         { icon: IconReceipt, label: t('nav.creditNotes'), path: '/portal/credit-notes' },
         { icon: IconReceipt, label: t('nav.statement'), path: '/portal/statement' },

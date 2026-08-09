@@ -89,6 +89,7 @@ import PortalShell from './components/Layout/PortalShell';
 import PortalDashboard from './pages/portal/PortalDashboard';
 import PortalDocuments from './pages/portal/PortalDocuments';
 import PortalPayments from './pages/portal/PortalPayments';
+import PortalWallet from './pages/portal/PortalWallet';
 import PortalStatement from './pages/portal/PortalStatement';
 import PortalSubscriptions from './pages/portal/PortalSubscriptions';
 import PortalHosting from './pages/portal/PortalHosting';
@@ -284,6 +285,7 @@ export default function App() {
                   <Route path="/portal/quotations" element={<PortalDocuments type="quotation" />} />
                   <Route path="/portal/credit-notes" element={<PortalDocuments type="credit_note" />} />
                   <Route path="/portal/payments" element={<PortalPayments />} />
+                  <Route path="/portal/wallet" element={<PortalWallet />} />
                   <Route path="/portal/statement" element={<PortalStatement />} />
                   <Route path="/portal/products-services" element={<PortalProductServices />} />
                   <Route path="/portal/subscriptions" element={<PortalSubscriptions />} />
