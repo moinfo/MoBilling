@@ -6,6 +6,7 @@ import {
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
+import { useNavigate } from 'react-router-dom';
 import {
   IconWorldWww, IconWallet, IconSearch, IconRefresh,
   IconDiscount2, IconBolt, IconCheck,
@@ -18,6 +19,7 @@ import { formatCurrency } from '../../utils/formatCurrency';
 
 export default function PortalReseller() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const [checkName, setCheckName] = useState('');
   const [checkResult, setCheckResult] = useState<{ name: string; available: boolean; pricing: { reseller_price: number; years_min: number; years_max: number } | null; message?: string } | null>(null);
   const [checking, setChecking] = useState(false);
@@ -66,10 +68,11 @@ export default function PortalReseller() {
   const subscribeMut = useMutation({
     mutationFn: subscribeReseller,
     onSuccess: (res) => {
-      notifications.show({ title: 'Welcome, reseller!', message: res.data.message, color: 'grape' });
+      notifications.show({ title: 'Invoice created', message: res.data.message, color: 'green', autoClose: 8000 });
       qc.invalidateQueries({ queryKey: ['reseller-status'] });
+      navigate(`/pay/${res.data.data.document_id}`);
     },
-    onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not activate reseller membership.', color: 'red' }),
+    onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not create the membership invoice.', color: 'red' }),
   });
 
   const handleCheck = async () => {
@@ -93,7 +96,6 @@ export default function PortalReseller() {
 
   if (!status?.is_reseller) {
     const price = status?.membership_price ?? 0;
-    const canAfford = (status?.wallet_balance ?? 0) >= price;
     return (
       <Stack gap="lg">
         <Group gap="xs">
@@ -111,7 +113,7 @@ export default function PortalReseller() {
               Wholesale pricing on domain registration, transfer and renewal
             </List.Item>
             <List.Item icon={<ThemeIcon color="grape" variant="light" size={20} radius="xl"><IconBolt size={13} /></ThemeIcon>}>
-              Instant activation — no waiting, paid straight from your wallet
+              Pay the membership fee any way you like — card, mobile money, bank transfer, or wallet credit
             </List.Item>
             <List.Item icon={<ThemeIcon color="grape" variant="light" size={20} radius="xl"><IconRefresh size={13} /></ThemeIcon>}>
               Renews automatically every year while your membership stays active
@@ -130,15 +132,13 @@ export default function PortalReseller() {
           </Group>
 
           <Button fullWidth mt="md" size="md" color="grape" leftSection={<IconWorldWww size={16} />}
-            loading={subscribeMut.isPending} disabled={!canAfford || !status?.membership_price}
+            loading={subscribeMut.isPending} disabled={!status?.membership_price}
             onClick={() => subscribeMut.mutate()}>
-            Become a Reseller — Pay {formatCurrency(price)} from wallet
+            Become a Reseller — {formatCurrency(price)}
           </Button>
-          {!canAfford && status?.membership_price && (
-            <Text size="xs" c="red" ta="center" mt={6}>
-              Insufficient wallet balance — top up at least {formatCurrency(price - (status?.wallet_balance ?? 0))} more.
-            </Text>
-          )}
+          <Text size="xs" c="dimmed" ta="center" mt={6}>
+            You'll get an invoice you can pay by card, mobile money, bank transfer, or wallet credit.
+          </Text>
         </Paper>
 
         <Paper withBorder p="md" radius="md">

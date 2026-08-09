@@ -67,8 +67,15 @@ class PortalResellerController extends Controller
         ]]);
     }
 
-    /** Self-service: client pays the annual membership fee from their own wallet and becomes a reseller instantly. */
-    public function subscribe(Request $request, CreditService $credit)
+    /**
+     * Self-service: create the annual membership invoice and let the client
+     * pay it any way they like — Pesapal (card/mobile money), bank transfer
+     * via the public /pay/{id} page, or applying wallet credit from the
+     * portal invoice view. Becoming a reseller only needs the invoice paid;
+     * SubscriptionActivationService::activateFor() (already wired into every
+     * payment path) flips the membership to active the moment it is.
+     */
+    public function subscribe(Request $request)
     {
         $tenantId = $request->user()->tenant_id;
         $client = $this->client($request);
@@ -83,82 +90,87 @@ class PortalResellerController extends Controller
             return response()->json(['message' => 'Reseller membership is not available right now — please contact us.'], 422);
         }
 
-        $total = (float) $product->price;
-        if ((float) $client->credit_balance < $total) {
-            return response()->json([
-                'message' => 'Insufficient wallet balance. Reseller membership costs TZS ' . number_format($total, 2)
-                    . ' but your wallet holds TZS ' . number_format((float) $client->credit_balance, 2) . '. Please top up first.',
-            ], 422);
+        // Re-use an already-pending, unpaid membership invoice rather than
+        // spawning a duplicate every time the client revisits this page.
+        $pendingSubscription = ClientSubscription::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)->where('client_id', $client->id)
+            ->where('product_service_id', $product->id)->where('status', 'pending')
+            ->latest('created_at')->first();
+
+        if ($pendingSubscription) {
+            $pendingLog = RecurringInvoiceLog::withoutGlobalScopes()
+                ->where('client_subscription_id', $pendingSubscription->id)
+                ->latest('invoice_created_at')->first();
+            $document = $pendingLog
+                ? Document::withoutGlobalScopes()->whereIn('status', ['sent', 'partial'])->find($pendingLog->document_id)
+                : null;
+            if ($document) {
+                return response()->json([
+                    'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+                    'message' => "Invoice {$document->document_number} is awaiting payment — pay it to activate your reseller membership.",
+                ]);
+            }
         }
 
-        try {
-            $document = DB::transaction(function () use ($client, $product, $tenantId, $credit) {
-                $start = now()->startOfDay();
+        $document = DB::transaction(function () use ($client, $product, $tenantId) {
+            $start = now()->startOfDay();
 
-                // No expire_date here — SubscriptionActivationService::activateFor()
-                // sets it to start_date + 1 cycle on payment (see ClientController::makeReseller).
-                $subscription = ClientSubscription::create([
-                    'tenant_id'          => $tenantId,
-                    'client_id'          => $client->id,
-                    'product_service_id' => $product->id,
-                    'label'              => 'Reseller Membership',
-                    'quantity'           => 1,
-                    'start_date'         => $start,
-                    'status'             => 'pending',
-                    'recurring_amount'   => $product->price,
-                ]);
+            // No expire_date here — SubscriptionActivationService::activateFor()
+            // sets it to start_date + 1 cycle on payment (see ClientController::makeReseller).
+            $subscription = ClientSubscription::create([
+                'tenant_id'          => $tenantId,
+                'client_id'          => $client->id,
+                'product_service_id' => $product->id,
+                'label'              => 'Reseller Membership',
+                'quantity'           => 1,
+                'start_date'         => $start,
+                'status'             => 'pending',
+                'recurring_amount'   => $product->price,
+            ]);
 
-                $document = Document::withoutGlobalScopes()->create([
-                    'tenant_id'       => $tenantId,
-                    'client_id'       => $client->id,
-                    'type'            => 'invoice',
-                    'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
-                    'date'            => now()->toDateString(),
-                    'due_date'        => now()->toDateString(),
-                    'subtotal'        => $product->price,
-                    'discount_amount' => 0,
-                    'tax_amount'      => 0,
-                    'total'           => $product->price,
-                    'status'          => 'sent',
-                    'notes'           => 'Reseller Membership — annual fee (self-service, portal)',
-                ]);
+            $document = Document::withoutGlobalScopes()->create([
+                'tenant_id'       => $tenantId,
+                'client_id'       => $client->id,
+                'type'            => 'invoice',
+                'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
+                'date'            => now()->toDateString(),
+                'due_date'        => now()->addDays(7)->toDateString(),
+                'subtotal'        => $product->price,
+                'discount_amount' => 0,
+                'tax_amount'      => 0,
+                'total'           => $product->price,
+                'status'          => 'sent',
+                'notes'           => 'Reseller Membership — annual fee (self-service, portal)',
+            ]);
 
-                $document->items()->create([
-                    'product_service_id' => $product->id,
-                    'item_type'          => 'service',
-                    'description'        => 'Reseller Membership — annual fee',
-                    'quantity'           => 1,
-                    'price'              => $product->price,
-                    'tax_percent'        => 0,
-                    'tax_amount'         => 0,
-                    'total'              => $product->price,
-                ]);
+            $document->items()->create([
+                'product_service_id' => $product->id,
+                'item_type'          => 'service',
+                'description'        => 'Reseller Membership — annual fee',
+                'quantity'           => 1,
+                'price'              => $product->price,
+                'tax_percent'        => 0,
+                'tax_amount'         => 0,
+                'total'              => $product->price,
+            ]);
 
-                RecurringInvoiceLog::withoutGlobalScopes()->create([
-                    'tenant_id'              => $tenantId,
-                    'client_id'              => $client->id,
-                    'product_service_id'     => $product->id,
-                    'next_bill_date'         => $start->toDateString(),
-                    'client_subscription_id' => $subscription->id,
-                    'document_id'            => $document->id,
-                    'invoice_created_at'     => now(),
-                    'reminders_sent'         => [],
-                ]);
+            RecurringInvoiceLog::withoutGlobalScopes()->create([
+                'tenant_id'              => $tenantId,
+                'client_id'              => $client->id,
+                'product_service_id'     => $product->id,
+                'next_bill_date'         => $start->toDateString(),
+                'client_subscription_id' => $subscription->id,
+                'document_id'            => $document->id,
+                'invoice_created_at'     => now(),
+                'reminders_sent'         => [],
+            ]);
 
-                $credit->applyToInvoice($client, $document, null, null);
-                if ($document->fresh()->status !== 'paid') {
-                    throw new \RuntimeException('Wallet balance changed — please try again.');
-                }
-
-                return $document;
-            });
-        } catch (\RuntimeException $e) {
-            return response()->json(['message' => $e->getMessage()], 422);
-        }
+            return $document;
+        });
 
         return response()->json([
             'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
-            'message' => "You're now a domain reseller! Wholesale pricing is unlocked below.",
+            'message' => "Invoice {$document->document_number} created — pay it any way you like to activate your reseller membership.",
         ], 201);
     }
 
