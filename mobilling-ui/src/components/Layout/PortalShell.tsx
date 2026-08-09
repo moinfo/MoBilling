@@ -5,7 +5,6 @@ import {
 import { useDisclosure } from '@mantine/hooks';
 import { useQuery } from '@tanstack/react-query';
 import { getPortalDashboard } from '../../api/portal';
-import { getResellerStatus } from '../../api/reseller';
 import classes from './PortalShell.module.css';
 import { useCallback } from 'react';
 import {
@@ -48,14 +47,6 @@ export default function PortalShell() {
   });
   const counts = dash?.data as Record<string, number> | undefined;
 
-  // Nav visibility only — the page itself re-checks server-side on every action.
-  const { data: resellerData } = useQuery({
-    queryKey: ['reseller-status'],
-    queryFn: getResellerStatus,
-    staleTime: 60_000,
-  });
-  const isReseller = resellerData?.data?.data?.is_reseller ?? false;
-
   /**
    * Five labelled groups, per the design. The original 17 flat items were
    * unscannable — grouping is the whole point of this sidebar.
@@ -89,12 +80,12 @@ export default function PortalShell() {
         { icon: IconShoppingCart, label: t('nav.orderServices'), path: '/order' },
       ],
     },
-    ...(isReseller ? [{
+    {
       label: t('nav.reseller'),
       items: [
         { icon: IconWorldWww, label: t('nav.reseller'), path: '/portal/reseller' },
       ],
-    }] : []),
+    },
     {
       label: t('nav.billing'),
       items: [

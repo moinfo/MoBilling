@@ -824,6 +824,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::put('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'updateNameservers']);
     Route::put('/domains/{domain}/auto-renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'setAutoRenew']);
     Route::get('/reseller/status', [\App\Http\Controllers\Portal\PortalResellerController::class, 'status']);
+    Route::post('/reseller/subscribe', [\App\Http\Controllers\Portal\PortalResellerController::class, 'subscribe']);
     Route::get('/reseller/domains/check', [\App\Http\Controllers\Portal\PortalResellerController::class, 'check']);
     Route::post('/reseller/domains/order', [\App\Http\Controllers\Portal\PortalResellerController::class, 'order']);
     Route::post('/reseller/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalResellerController::class, 'renew']);

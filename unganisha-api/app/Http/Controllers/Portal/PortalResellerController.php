@@ -5,9 +5,12 @@ namespace App\Http\Controllers\Portal;
 use App\Exceptions\RegistrarApiException;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
+use App\Models\ClientSubscription;
 use App\Models\Document;
 use App\Models\Domain;
 use App\Models\DomainTld;
+use App\Models\ProductService;
+use App\Models\RecurringInvoiceLog;
 use App\Services\CreditService;
 use App\Services\DocumentNumberService;
 use App\Services\Registrar\DomainRegistrarManager;
@@ -52,13 +55,111 @@ class PortalResellerController extends Controller
             ]);
 
         $membership = $client->resellerSubscription();
+        $product = ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)->where('name', 'Reseller Membership')->first();
 
         return response()->json(['data' => [
-            'is_reseller'     => $membership !== null,
-            'expire_date'     => $membership?->expire_date?->toDateString(),
-            'wallet_balance'  => (float) $client->credit_balance,
-            'tlds'            => $tlds,
+            'is_reseller'      => $membership !== null,
+            'expire_date'      => $membership?->expire_date?->toDateString(),
+            'wallet_balance'   => (float) $client->credit_balance,
+            'membership_price' => $product ? (float) $product->price : null,
+            'tlds'             => $tlds,
         ]]);
+    }
+
+    /** Self-service: client pays the annual membership fee from their own wallet and becomes a reseller instantly. */
+    public function subscribe(Request $request, CreditService $credit)
+    {
+        $tenantId = $request->user()->tenant_id;
+        $client = $this->client($request);
+
+        if ($client->isReseller()) {
+            return response()->json(['message' => 'You are already a reseller.'], 422);
+        }
+
+        $product = ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)->where('name', 'Reseller Membership')->first();
+        if (!$product) {
+            return response()->json(['message' => 'Reseller membership is not available right now — please contact us.'], 422);
+        }
+
+        $total = (float) $product->price;
+        if ((float) $client->credit_balance < $total) {
+            return response()->json([
+                'message' => 'Insufficient wallet balance. Reseller membership costs TZS ' . number_format($total, 2)
+                    . ' but your wallet holds TZS ' . number_format((float) $client->credit_balance, 2) . '. Please top up first.',
+            ], 422);
+        }
+
+        try {
+            $document = DB::transaction(function () use ($client, $product, $tenantId, $credit) {
+                $start = now()->startOfDay();
+
+                // No expire_date here — SubscriptionActivationService::activateFor()
+                // sets it to start_date + 1 cycle on payment (see ClientController::makeReseller).
+                $subscription = ClientSubscription::create([
+                    'tenant_id'          => $tenantId,
+                    'client_id'          => $client->id,
+                    'product_service_id' => $product->id,
+                    'label'              => 'Reseller Membership',
+                    'quantity'           => 1,
+                    'start_date'         => $start,
+                    'status'             => 'pending',
+                    'recurring_amount'   => $product->price,
+                ]);
+
+                $document = Document::withoutGlobalScopes()->create([
+                    'tenant_id'       => $tenantId,
+                    'client_id'       => $client->id,
+                    'type'            => 'invoice',
+                    'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenantId),
+                    'date'            => now()->toDateString(),
+                    'due_date'        => now()->toDateString(),
+                    'subtotal'        => $product->price,
+                    'discount_amount' => 0,
+                    'tax_amount'      => 0,
+                    'total'           => $product->price,
+                    'status'          => 'sent',
+                    'notes'           => 'Reseller Membership — annual fee (self-service, portal)',
+                ]);
+
+                $document->items()->create([
+                    'product_service_id' => $product->id,
+                    'item_type'          => 'service',
+                    'description'        => 'Reseller Membership — annual fee',
+                    'quantity'           => 1,
+                    'price'              => $product->price,
+                    'tax_percent'        => 0,
+                    'tax_amount'         => 0,
+                    'total'              => $product->price,
+                ]);
+
+                RecurringInvoiceLog::withoutGlobalScopes()->create([
+                    'tenant_id'              => $tenantId,
+                    'client_id'              => $client->id,
+                    'product_service_id'     => $product->id,
+                    'next_bill_date'         => $start->toDateString(),
+                    'client_subscription_id' => $subscription->id,
+                    'document_id'            => $document->id,
+                    'invoice_created_at'     => now(),
+                    'reminders_sent'         => [],
+                ]);
+
+                $credit->applyToInvoice($client, $document, null, null);
+                if ($document->fresh()->status !== 'paid') {
+                    throw new \RuntimeException('Wallet balance changed — please try again.');
+                }
+
+                return $document;
+            });
+        } catch (\RuntimeException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+            'message' => "You're now a domain reseller! Wholesale pricing is unlocked below.",
+        ], 201);
     }
 
     /** Availability check at wholesale pricing. */

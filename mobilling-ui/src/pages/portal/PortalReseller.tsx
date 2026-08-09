@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, LoadingOverlay, Button, SimpleGrid,
-  TextInput, NumberInput, Select, Alert, Table, ThemeIcon,
+  TextInput, NumberInput, Select, Table, ThemeIcon, List,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconWorldWww, IconWallet, IconInfoCircle, IconSearch, IconRefresh } from '@tabler/icons-react';
 import {
-  getResellerStatus, checkResellerDomain, orderResellerDomain, renewResellerDomain,
+  IconWorldWww, IconWallet, IconSearch, IconRefresh,
+  IconDiscount2, IconBolt, IconCheck,
+} from '@tabler/icons-react';
+import {
+  getResellerStatus, subscribeReseller, checkResellerDomain, orderResellerDomain, renewResellerDomain,
 } from '../../api/reseller';
 import { getPortalDomains, PortalDomain } from '../../api/portal';
 import { formatCurrency } from '../../utils/formatCurrency';
@@ -60,6 +63,15 @@ export default function PortalReseller() {
     onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Renewal failed.', color: 'red' }),
   });
 
+  const subscribeMut = useMutation({
+    mutationFn: subscribeReseller,
+    onSuccess: (res) => {
+      notifications.show({ title: 'Welcome, reseller!', message: res.data.message, color: 'grape' });
+      qc.invalidateQueries({ queryKey: ['reseller-status'] });
+    },
+    onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not activate reseller membership.', color: 'red' }),
+  });
+
   const handleCheck = async () => {
     if (!checkName.trim()) return;
     setChecking(true);
@@ -80,17 +92,54 @@ export default function PortalReseller() {
   }
 
   if (!status?.is_reseller) {
+    const price = status?.membership_price ?? 0;
+    const canAfford = (status?.wallet_balance ?? 0) >= price;
     return (
       <Stack gap="lg">
         <Group gap="xs">
           <IconWorldWww size={22} />
-          <Title order={3}>Reseller</Title>
+          <Title order={3}>Become a Domain Reseller</Title>
         </Group>
-        <Alert icon={<IconInfoCircle size={18} />} color="blue" variant="light">
-          You're not a domain reseller yet. As a reseller you can register, transfer and renew domains at our
-          wholesale cost — the same price we pay the registry — paid straight from your wallet. Contact us to
-          get set up with a reseller membership.
-        </Alert>
+
+        <Paper withBorder p="lg" radius="md">
+          <Text size="sm" mb="md">
+            As a reseller you buy .tz and other domains at our own <b>wholesale cost</b> — the same price we
+            pay the registry — instead of retail. Perfect if you register or renew domains for your own clients.
+          </Text>
+          <List spacing="xs" size="sm" icon={<ThemeIcon color="grape" variant="light" size={20} radius="xl"><IconCheck size={13} /></ThemeIcon>}>
+            <List.Item icon={<ThemeIcon color="grape" variant="light" size={20} radius="xl"><IconDiscount2 size={13} /></ThemeIcon>}>
+              Wholesale pricing on domain registration, transfer and renewal
+            </List.Item>
+            <List.Item icon={<ThemeIcon color="grape" variant="light" size={20} radius="xl"><IconBolt size={13} /></ThemeIcon>}>
+              Instant activation — no waiting, paid straight from your wallet
+            </List.Item>
+            <List.Item icon={<ThemeIcon color="grape" variant="light" size={20} radius="xl"><IconRefresh size={13} /></ThemeIcon>}>
+              Renews automatically every year while your membership stays active
+            </List.Item>
+          </List>
+
+          <Group justify="space-between" align="center" mt="lg">
+            <div>
+              <Text size="xs" c="dimmed">Annual membership fee</Text>
+              <Text size="lg" fw={700}>{formatCurrency(price)}<Text span size="xs" c="dimmed"> /year</Text></Text>
+            </div>
+            <Group gap={6}>
+              <ThemeIcon variant="light" color="teal" size="sm"><IconWallet size={14} /></ThemeIcon>
+              <Text size="sm" c="dimmed">Wallet: {formatCurrency(status?.wallet_balance ?? 0)}</Text>
+            </Group>
+          </Group>
+
+          <Button fullWidth mt="md" size="md" color="grape" leftSection={<IconWorldWww size={16} />}
+            loading={subscribeMut.isPending} disabled={!canAfford || !status?.membership_price}
+            onClick={() => subscribeMut.mutate()}>
+            Become a Reseller — Pay {formatCurrency(price)} from wallet
+          </Button>
+          {!canAfford && status?.membership_price && (
+            <Text size="xs" c="red" ta="center" mt={6}>
+              Insufficient wallet balance — top up at least {formatCurrency(price - (status?.wallet_balance ?? 0))} more.
+            </Text>
+          )}
+        </Paper>
       </Stack>
     );
   }
