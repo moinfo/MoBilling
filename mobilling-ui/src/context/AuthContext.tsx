@@ -1,7 +1,8 @@
 import { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
-import { User, UserType, getMe, login as apiLogin, register as apiRegister, logout as apiLogout, LoginData, RegisterData } from '../api/auth';
+import { User, UserType, AuthResponse, TwoFactorChallenge, getMe, login as apiLogin, register as apiRegister, logout as apiLogout, LoginData, RegisterData } from '../api/auth';
+import { verifyTwoFactorLogin } from '../api/twoFactor';
 import { setTenantCurrency } from '../utils/formatCurrency';
 
 // Auto sign-out after this many minutes with no real interaction (mouse,
@@ -23,7 +24,8 @@ interface AuthContextType {
   subscriptionStatus: SubscriptionStatus;
   daysRemaining: number;
   hasAccess: boolean;
-  login: (data: LoginData) => Promise<{ user: User; userType: UserType }>;
+  login: (data: LoginData) => Promise<{ user: User; userType: UserType } | TwoFactorChallenge>;
+  completeTwoFactorLogin: (challengeId: string, codeOrRecovery: { code?: string; recovery_code?: string }) => Promise<{ user: User; userType: UserType }>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -79,16 +81,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const applyAuthResponse = (data: AuthResponse) => {
+    localStorage.setItem('token', data.token);
+    localStorage.setItem('user_type', data.user_type);
+    updateUser(data.user);
+    setUserType(data.user_type);
+    setPermissions(data.permissions ?? []);
+    setSubscriptionStatus(data.subscription_status ?? null);
+    setDaysRemaining(data.days_remaining ?? 0);
+    return { user: data.user, userType: data.user_type };
+  };
+
   const login = async (data: LoginData) => {
     const res = await apiLogin(data);
-    localStorage.setItem('token', res.data.token);
-    localStorage.setItem('user_type', res.data.user_type);
-    updateUser(res.data.user);
-    setUserType(res.data.user_type);
-    setPermissions(res.data.permissions ?? []);
-    setSubscriptionStatus(res.data.subscription_status ?? null);
-    setDaysRemaining(res.data.days_remaining ?? 0);
-    return { user: res.data.user, userType: res.data.user_type };
+    if ('requires_2fa' in res.data) {
+      return res.data;
+    }
+    return applyAuthResponse(res.data);
+  };
+
+  /** Second step of login when the account has TOTP 2FA enabled. */
+  const completeTwoFactorLogin = async (challengeId: string, codeOrRecovery: { code?: string; recovery_code?: string }) => {
+    const res = await verifyTwoFactorLogin(challengeId, codeOrRecovery);
+    return applyAuthResponse(res.data);
   };
 
   const register = async (data: RegisterData) => {
@@ -276,7 +291,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       user, userType, loading, isImpersonating, isImpersonatingClient, permissions,
       subscriptionStatus, daysRemaining, hasAccess,
-      login, register, logout, refreshUser, impersonate, exitImpersonation,
+      login, completeTwoFactorLogin, register, logout, refreshUser, impersonate, exitImpersonation,
       impersonateClient, exitClientImpersonation,
     }}>
       {children}

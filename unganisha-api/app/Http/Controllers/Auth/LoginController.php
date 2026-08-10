@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\ClientUser;
 use App\Models\User;
+use App\Services\TwoFactorChallengeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
@@ -77,6 +78,16 @@ class LoginController extends Controller
             ]);
         }
 
+        if ($user->hasEnabledTwoFactorAuth()) {
+            return $this->twoFactorChallengeResponse('tenant', $user->id);
+        }
+
+        return $this->issueTenantToken($user);
+    }
+
+    /** Also called by TwoFactorAuthController::verifyLogin() once the second factor checks out. */
+    public function issueTenantToken(User $user)
+    {
         $token = $user->createToken('auth-token')->plainTextToken;
 
         if ($user->tenant_id) {
@@ -116,6 +127,16 @@ class LoginController extends Controller
             ]);
         }
 
+        if ($clientUser->hasEnabledTwoFactorAuth()) {
+            return $this->twoFactorChallengeResponse('client', $clientUser->id);
+        }
+
+        return $this->issueClientToken($clientUser);
+    }
+
+    /** Also called by TwoFactorAuthController::verifyLogin() once the second factor checks out. */
+    public function issueClientToken(ClientUser $clientUser)
+    {
         $clientUser->update(['last_login_at' => now()]);
 
         $token = $clientUser->createToken('client-portal-token')->plainTextToken;
@@ -128,6 +149,17 @@ class LoginController extends Controller
             'permissions' => $clientUser->isPortalAdmin()
                 ? ['portal.view', 'portal.profile', 'portal.users']
                 : ['portal.view', 'portal.profile'],
+        ]);
+    }
+
+    private function twoFactorChallengeResponse(string $type, string $id)
+    {
+        $challengeId = app(TwoFactorChallengeService::class)->create($type, $id);
+
+        return response()->json([
+            'requires_2fa' => true,
+            'challenge_id' => $challengeId,
+            'message'      => 'Enter the 6-digit code from your authenticator app.',
         ]);
     }
 

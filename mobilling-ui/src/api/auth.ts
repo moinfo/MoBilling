@@ -67,6 +67,12 @@ export interface LoginData {
   password: string;
 }
 
+export interface TwoFactorChallenge {
+  requires_2fa: true;
+  challenge_id: string;
+  message: string;
+}
+
 export interface RegisterData {
   company_name: string;
   name: string;
@@ -77,7 +83,7 @@ export interface RegisterData {
 }
 
 export const login = (data: LoginData) =>
-  api.post<AuthResponse>('/auth/login', data);
+  api.post<AuthResponse | TwoFactorChallenge>('/auth/login', data);
 
 export const register = (data: RegisterData) =>
   api.post<AuthResponse>('/auth/register', data);

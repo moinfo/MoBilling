@@ -22,7 +22,7 @@ const features = [
 ];
 
 export default function Login() {
-  const { login } = useAuth();
+  const { login, completeTwoFactorLogin } = useAuth();
   const navigate = useNavigate();
   // Set when the visitor came from an /order/* link — see OrderRoute.
   const next = safeNext(useLocation().search);
@@ -36,6 +36,13 @@ export default function Login() {
   const [otpValue, setOtpValue] = useState('');
   const [otpLoading, setOtpLoading] = useState(false);
   const [otpDone, setOtpDone] = useState(false);
+
+  // 2FA (authenticator app) login-challenge state
+  const [twoFaChallengeId, setTwoFaChallengeId] = useState<string | null>(null);
+  const [twoFaCode, setTwoFaCode] = useState('');
+  const [twoFaRecoveryCode, setTwoFaRecoveryCode] = useState('');
+  const [twoFaUseRecovery, setTwoFaUseRecovery] = useState(false);
+  const [twoFaLoading, setTwoFaLoading] = useState(false);
 
   const form = useForm({
     initialValues: { identifier: '', password: '' },
@@ -56,7 +63,12 @@ export default function Login() {
 
   const handleSubmit = async (values: typeof form.values) => {
     try {
-      const { user, userType } = await login(values);
+      const result = await login(values);
+      if ('requires_2fa' in result) {
+        setTwoFaChallengeId(result.challenge_id);
+        return;
+      }
+      const { user, userType } = result;
       if (userType === 'client') {
         // Came from an /order/* link? Return to the plan they picked.
         navigate(next ?? '/portal/dashboard');
@@ -112,6 +124,31 @@ export default function Login() {
       });
     } finally {
       setOtpLoading(false);
+    }
+  };
+
+  const handleTwoFactorVerify = async () => {
+    if (!twoFaChallengeId) return;
+    setTwoFaLoading(true);
+    try {
+      const { user, userType } = await completeTwoFactorLogin(
+        twoFaChallengeId,
+        twoFaUseRecovery ? { recovery_code: twoFaRecoveryCode.trim() } : { code: twoFaCode }
+      );
+      if (userType === 'client') {
+        navigate(next ?? '/portal/dashboard');
+      } else {
+        navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
+      }
+    } catch (err: any) {
+      notifications.show({
+        title: 'Verification failed',
+        message: err.response?.data?.message || err.response?.data?.errors?.code?.[0] || 'That code was not correct.',
+        color: 'red',
+      });
+      setTwoFaCode('');
+    } finally {
+      setTwoFaLoading(false);
     }
   };
 
@@ -232,7 +269,48 @@ export default function Login() {
             <Text size="xl" fw={800}>MoBilling</Text>
           </Group>
 
-          {!otpMode ? (
+          {twoFaChallengeId ? (
+            <>
+              <Title order={2} ta="center" mb={4}>Two-Factor Verification</Title>
+              <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>
+                {twoFaUseRecovery ? 'Enter one of your recovery codes' : 'Enter the 6-digit code from your authenticator app'}
+              </Text>
+
+              <Paper withBorder shadow="sm" p="xl" radius="md">
+                <Stack gap="md" align="center">
+                  {!twoFaUseRecovery ? (
+                    <PinInput length={6} type="number" size="md" value={twoFaCode} onChange={setTwoFaCode}
+                      oneTimeCode onComplete={handleTwoFactorVerify} />
+                  ) : (
+                    <TextInput
+                      w="100%" label="Recovery code" placeholder="XXXX-XXXX"
+                      value={twoFaRecoveryCode} onChange={(e) => setTwoFaRecoveryCode(e.currentTarget.value)}
+                    />
+                  )}
+                  <Button fullWidth size="md" loading={twoFaLoading}
+                    disabled={twoFaUseRecovery ? !twoFaRecoveryCode.trim() : twoFaCode.length !== 6}
+                    onClick={handleTwoFactorVerify}>
+                    Verify
+                  </Button>
+                  <Anchor size="sm" ta="center" onClick={() => {
+                    setTwoFaUseRecovery(!twoFaUseRecovery);
+                    setTwoFaCode('');
+                    setTwoFaRecoveryCode('');
+                  }}>
+                    {twoFaUseRecovery ? 'Use authenticator code instead' : "Lost your device? Use a recovery code"}
+                  </Anchor>
+                  <Anchor size="sm" ta="center" c="dimmed" onClick={() => {
+                    setTwoFaChallengeId(null);
+                    setTwoFaCode('');
+                    setTwoFaRecoveryCode('');
+                    setTwoFaUseRecovery(false);
+                  }}>
+                    Back to Sign in
+                  </Anchor>
+                </Stack>
+              </Paper>
+            </>
+          ) : !otpMode ? (
             <>
               <Title order={2} ta="center" mb={4}>Welcome back</Title>
               <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>

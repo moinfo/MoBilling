@@ -22,7 +22,7 @@ const PERKS = [
 ];
 
 export default function PortalLogin() {
-  const { login } = useAuth();
+  const { login, completeTwoFactorLogin } = useAuth();
   const navigate = useNavigate();
   // Set when the visitor came from an /order/* link — see OrderRoute.
   const next = safeNext(useLocation().search);
@@ -37,6 +37,13 @@ export default function PortalLogin() {
   const [remember, setRemember] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
+  // 2FA (authenticator app) login-challenge state
+  const [twoFaChallengeId, setTwoFaChallengeId] = useState<string | null>(null);
+  const [twoFaCode, setTwoFaCode] = useState('');
+  const [twoFaRecoveryCode, setTwoFaRecoveryCode] = useState('');
+  const [twoFaUseRecovery, setTwoFaUseRecovery] = useState(false);
+  const [twoFaSubmitting, setTwoFaSubmitting] = useState(false);
+
   const form = useForm({
     initialValues: { identifier: '', password: '' },
     validate: {
@@ -48,7 +55,12 @@ export default function PortalLogin() {
   const handleSubmit = async (values: typeof form.values) => {
     setSubmitting(true);
     try {
-      const { user, userType } = await login(values);
+      const result = await login(values);
+      if ('requires_2fa' in result) {
+        setTwoFaChallengeId(result.challenge_id);
+        return;
+      }
+      const { user, userType } = result;
       if (userType === 'client') {
         navigate(next ?? '/portal/dashboard');
       } else {
@@ -77,6 +89,31 @@ export default function PortalLogin() {
       });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleTwoFactorVerify = async () => {
+    if (!twoFaChallengeId) return;
+    setTwoFaSubmitting(true);
+    try {
+      const { user, userType } = await completeTwoFactorLogin(
+        twoFaChallengeId,
+        twoFaUseRecovery ? { recovery_code: twoFaRecoveryCode.trim() } : { code: twoFaCode }
+      );
+      if (userType === 'client') {
+        navigate(next ?? '/portal/dashboard');
+      } else {
+        navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
+      }
+    } catch (err: any) {
+      notifications.show({
+        title: t('login.failed'),
+        message: err.response?.data?.message || 'That code was not correct.',
+        color: 'red',
+      });
+      setTwoFaCode('');
+    } finally {
+      setTwoFaSubmitting(false);
     }
   };
 
@@ -161,6 +198,62 @@ export default function PortalLogin() {
         </div>
 
         <div className={classes.formWrap}>
+          {twoFaChallengeId ? (
+            <div className={classes.form}>
+              <div className={classes.intro}>
+                <span className={classes.eyebrow}>{t('login.eyebrow')}</span>
+                <h2 className={classes.heading}>Two-Factor Verification</h2>
+                <p className={classes.sub}>
+                  {twoFaUseRecovery ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}
+                </p>
+              </div>
+
+              <div className={classes.fields}>
+                <div className={classes.field}>
+                  <label className={classes.label} htmlFor="twofa-code">
+                    <span>{twoFaUseRecovery ? 'Recovery code' : 'Authentication code'}</span>
+                  </label>
+                  <input
+                    id="twofa-code"
+                    className={classes.input}
+                    placeholder={twoFaUseRecovery ? 'XXXX-XXXX' : '123456'}
+                    inputMode={twoFaUseRecovery ? 'text' : 'numeric'}
+                    autoFocus
+                    value={twoFaUseRecovery ? twoFaRecoveryCode : twoFaCode}
+                    onChange={(e) => (twoFaUseRecovery ? setTwoFaRecoveryCode(e.target.value) : setTwoFaCode(e.target.value))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleTwoFactorVerify()}
+                  />
+                </div>
+
+                <button className={classes.submit} type="button" disabled={twoFaSubmitting}
+                  onClick={handleTwoFactorVerify}>
+                  {twoFaSubmitting ? t('login.submitting') : 'Verify'}
+                </button>
+              </div>
+
+              <p className={classes.newHere}>
+                <Link to="#" onClick={(e) => {
+                  e.preventDefault();
+                  setTwoFaUseRecovery(!twoFaUseRecovery);
+                  setTwoFaCode('');
+                  setTwoFaRecoveryCode('');
+                }}>
+                  {twoFaUseRecovery ? 'Use authenticator code instead' : 'Lost your device? Use a recovery code'}
+                </Link>
+              </p>
+              <p className={classes.newHere}>
+                <Link to="#" onClick={(e) => {
+                  e.preventDefault();
+                  setTwoFaChallengeId(null);
+                  setTwoFaCode('');
+                  setTwoFaRecoveryCode('');
+                  setTwoFaUseRecovery(false);
+                }}>
+                  Back to Sign in
+                </Link>
+              </p>
+            </div>
+          ) : (
           <form className={classes.form} onSubmit={form.onSubmit(handleSubmit)}>
             <div className={classes.intro}>
               <span className={classes.eyebrow}>{t('login.eyebrow')}</span>
@@ -256,6 +349,7 @@ export default function PortalLogin() {
               </Link>
             </p>
           </form>
+          )}
         </div>
 
         <div className={classes.legal}>

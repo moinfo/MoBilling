@@ -5,6 +5,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPortalProfile, updatePortalProfile, changePortalPassword } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
+import TwoFactorSetup from '../../components/TwoFactorSetup';
 
 export default function PortalProfile() {
   const { refreshUser } = useAuth();
@@ -138,6 +139,8 @@ export default function PortalProfile() {
               </form>
             )}
           </Paper>
+
+          <TwoFactorSetup />
         </>
       )}
     </Stack>

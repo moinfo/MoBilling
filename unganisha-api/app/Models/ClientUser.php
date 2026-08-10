@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\HasTwoFactorAuth;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -10,7 +11,7 @@ use Laravel\Sanctum\HasApiTokens;
 
 class ClientUser extends Authenticatable
 {
-    use HasUuids, SoftDeletes, HasApiTokens, Notifiable;
+    use HasUuids, SoftDeletes, HasApiTokens, Notifiable, HasTwoFactorAuth;
 
     protected $fillable = [
         'client_id', 'tenant_id', 'name', 'email',
@@ -19,6 +20,8 @@ class ClientUser extends Authenticatable
 
     protected $hidden = [
         'password',
+        'two_factor_secret',
+        'two_factor_recovery_codes',
     ];
 
     protected function casts(): array
@@ -27,6 +30,9 @@ class ClientUser extends Authenticatable
             'password' => 'hashed',
             'is_active' => 'boolean',
             'last_login_at' => 'datetime',
+            'two_factor_secret' => 'encrypted',
+            'two_factor_recovery_codes' => 'encrypted:array',
+            'two_factor_confirmed_at' => 'datetime',
         ];
     }
 

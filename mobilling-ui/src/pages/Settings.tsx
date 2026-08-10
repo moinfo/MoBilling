@@ -8,6 +8,7 @@ import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock, IconStack2, IconBuildingBank, IconAdjustments, IconShieldCheck, IconServer, IconWorldWww } from '@tabler/icons-react';
+import TwoFactorSetup from '../components/TwoFactorSetup';
 import LateFeeTab from '../components/Settings/LateFeeTab';
 import ServersTab from '../components/Settings/ServersTab';
 import DomainsTab from '../components/Settings/DomainsTab';
@@ -386,25 +387,29 @@ function ProfileTab({ user, refreshUser }: {
   };
 
   return (
-    <Paper p="lg" withBorder maw={600}>
-      <form onSubmit={form.onSubmit(handleSubmit)}>
-        <Stack>
-          <TextInput label="Name" required {...form.getInputProps('name')} />
-          <TextInput label="Email" required {...form.getInputProps('email')} />
-          <TextInput label="Phone" {...form.getInputProps('phone')} />
+    <Stack maw={600}>
+      <Paper p="lg" withBorder>
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <Stack>
+            <TextInput label="Name" required {...form.getInputProps('name')} />
+            <TextInput label="Email" required {...form.getInputProps('email')} />
+            <TextInput label="Phone" {...form.getInputProps('phone')} />
 
-          <Divider label="Change Password" labelPosition="left" mt="sm" />
+            <Divider label="Change Password" labelPosition="left" mt="sm" />
 
-          <PasswordInput label="Current Password" {...form.getInputProps('current_password')} />
-          <PasswordInput label="New Password" {...form.getInputProps('password')} />
-          <PasswordInput label="Confirm Password" {...form.getInputProps('password_confirmation')} />
+            <PasswordInput label="Current Password" {...form.getInputProps('current_password')} />
+            <PasswordInput label="New Password" {...form.getInputProps('password')} />
+            <PasswordInput label="Confirm Password" {...form.getInputProps('password_confirmation')} />
 
-          <Group justify="flex-end">
-            <Button type="submit" loading={loading}>Save Profile</Button>
-          </Group>
-        </Stack>
-      </form>
-    </Paper>
+            <Group justify="flex-end">
+              <Button type="submit" loading={loading}>Save Profile</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Paper>
+
+      <TwoFactorSetup />
+    </Stack>
   );
 }
 

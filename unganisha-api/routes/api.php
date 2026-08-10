@@ -72,6 +72,8 @@ Route::post('/auth/login', [LoginController::class, 'login']);
 Route::post('/auth/forgot-password', [PasswordResetController::class, 'forgotPassword']);
 Route::post('/auth/verify-reset-otp', [PasswordResetController::class, 'verifyOtp']);
 Route::post('/auth/reset-password', [PasswordResetController::class, 'resetPassword']);
+Route::post('/auth/2fa/verify-login', [\App\Http\Controllers\Auth\TwoFactorAuthController::class, 'verifyLogin'])
+    ->middleware('throttle:8,1');
 
 // White-label branding by hostname (public)
 Route::get('/public/branding', [\App\Http\Controllers\PublicBrandingController::class, 'show']);
@@ -105,6 +107,13 @@ Route::get('/pay/status/by-tracking', [InvoicePaymentController::class, 'statusB
 Route::middleware(['auth:sanctum', 'idle.timeout'])->group(function () {
     Route::post('/auth/logout', [LoginController::class, 'logout']);
     Route::get('/auth/me', [LoginController::class, 'me']);
+
+    // Two-factor authentication (self-service; works for both staff and portal users)
+    Route::get('/auth/2fa/status', [\App\Http\Controllers\Auth\TwoFactorAuthController::class, 'status']);
+    Route::post('/auth/2fa/enable', [\App\Http\Controllers\Auth\TwoFactorAuthController::class, 'enable']);
+    Route::post('/auth/2fa/confirm', [\App\Http\Controllers\Auth\TwoFactorAuthController::class, 'confirm']);
+    Route::post('/auth/2fa/disable', [\App\Http\Controllers\Auth\TwoFactorAuthController::class, 'disable']);
+    Route::post('/auth/2fa/recovery-codes/regenerate', [\App\Http\Controllers\Auth\TwoFactorAuthController::class, 'regenerateRecoveryCodes']);
 
     // Notifications (available to all authenticated users — tenant + admin)
     Route::get('/notifications', [NotificationController::class, 'index']);
