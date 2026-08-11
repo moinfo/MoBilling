@@ -196,12 +196,24 @@ class CronLogEntry {
 
   bool get failed => status == 'failed';
 
+  /// `/automation/cron-logs` names the job `command` and its outcome
+  /// `description`; `job`/`name`/`message` are not keys it sends, which left
+  /// every run showing "—" with the command sitting unread in the payload.
   factory CronLogEntry.fromJson(Map<String, dynamic> json) => CronLogEntry(
         id: json.id(),
-        job: json.strOr('job', json.strOr('name', '—')),
+        job: json.str('command') ??
+            json.str('job') ??
+            json.strOr('name', 'Scheduled job'),
         status: json.strOr('status', 'success'),
-        message: json.str('message') ?? json.str('output'),
-        ranAt: json.date('ran_at') ?? json.date('created_at'),
+        message: json.str('description') ??
+            json.str('error') ??
+            json.str('message') ??
+            json.str('output'),
+        // started_at is when the job ran; created_at is when the row was
+        // written, which for a long job is a different time.
+        ranAt: json.date('started_at') ??
+            json.date('ran_at') ??
+            json.date('created_at'),
         durationMs:
             json['duration_ms'] == null ? null : json.count('duration_ms'),
       );

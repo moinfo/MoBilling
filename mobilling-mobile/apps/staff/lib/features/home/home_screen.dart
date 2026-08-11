@@ -1,16 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_auth/mobilling_auth.dart';
 
+import '../../navigation/tabs.dart';
 import '../../providers.dart';
 import '../auth/session_expired_sheet.dart';
 import 'app_drawer.dart';
-import '../clients/clients_tab.dart';
-import '../dashboard/dashboard_tab.dart';
-import '../documents/documents_tab.dart';
-import '../payments/payments_tab.dart';
-import '../tickets/tickets_tab.dart';
 
 /// The staff shell. Tabs are filtered by the signed-in user's role
 /// permissions (from the login response), so a cashier without tickets.read
@@ -23,7 +18,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _tab = 0;
   bool _promptOpen = false;
 
   Future<void> _promptReauthentication() async {
@@ -47,56 +41,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       if (next == SessionStatus.expired) _promptReauthentication();
     });
 
-    // Dashboard is always present (the endpoint self-censors per metric);
-    // the rest appear only with their read permission.
-    final tabs = <(String, Widget, NavigationDestination)>[
-      (
-        'Dashboard',
-        const DashboardTab(),
-        const NavigationDestination(
-            icon: Icon(Icons.dashboard_outlined),
-            selectedIcon: Icon(Icons.dashboard),
-            label: 'Dashboard'),
-      ),
-      if (auth?.can(Permissions.clientsRead) ?? false)
-        (
-          'Clients',
-          const ClientsTab(),
-          const NavigationDestination(
-              icon: Icon(Icons.people_outline),
-              selectedIcon: Icon(Icons.people),
-              label: 'Clients'),
-        ),
-      if (auth?.can(Permissions.documentsRead) ?? false)
-        (
-          'Invoices',
-          const DocumentsTab(),
-          const NavigationDestination(
-              icon: Icon(Icons.receipt_long_outlined),
-              selectedIcon: Icon(Icons.receipt_long),
-              label: 'Invoices'),
-        ),
-      if (auth?.can(Permissions.paymentsRead) ?? false)
-        (
-          'Payments',
-          const PaymentsTab(),
-          const NavigationDestination(
-              icon: Icon(Icons.payments_outlined),
-              selectedIcon: Icon(Icons.payments),
-              label: 'Payments'),
-        ),
-      if (auth?.can(Permissions.ticketsRead) ?? false)
-        (
-          'Tickets',
-          const TicketsTab(),
-          const NavigationDestination(
-              icon: Icon(Icons.support_agent_outlined),
-              selectedIcon: Icon(Icons.support_agent),
-              label: 'Tickets'),
-        ),
-    ];
+    final tabs = staffTabs(auth);
 
-    final tab = _tab.clamp(0, tabs.length - 1);
+    final tab = ref.watch(staffTabProvider).clamp(0, tabs.length - 1);
 
     return Scaffold(
       // The drawer carries the full web menu; the bottom bar is the shortcut
@@ -113,9 +60,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           };
           final title = tabPaths[path];
           if (title == null) return false;
-          final index = tabs.indexWhere((t) => t.$1 == title);
+          final index = tabs.indexWhere((t) => t.title == title);
           if (index < 0) return false;
-          setState(() => _tab = index);
+          ref.read(staffTabProvider.notifier).state = index;
           return true;
         },
       ),
@@ -123,7 +70,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(tabs[tab].$1, style: theme.textTheme.titleMedium),
+            Text(tabs[tab].title, style: theme.textTheme.titleMedium),
             if (user != null)
               Text(
                 user.tenant?.name ?? user.name,
@@ -142,15 +89,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ),
       body: IndexedStack(
         index: tab,
-        children: [for (final t in tabs) t.$2],
+        children: [for (final t in tabs) t.screen],
       ),
-      bottomNavigationBar: tabs.length < 2
-          ? null
-          : NavigationBar(
-              selectedIndex: tab,
-              onDestinationSelected: (i) => setState(() => _tab = i),
-              destinations: [for (final t in tabs) t.$3],
-            ),
     );
   }
 }

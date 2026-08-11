@@ -534,6 +534,11 @@ class StaffSubscription {
 
   double get lineTotal => price * quantity;
 
+  /// `/client-subscriptions` flattens the client and product into
+  /// `client_name`, `product_service_name` and a top-level `price`, while
+  /// other endpoints nest them. Reading only the nested shape left every row
+  /// titled "—" at TZS 0.00 with the real values sitting in the payload, so
+  /// the flat keys are preferred and the nested ones kept as the fallback.
   factory StaffSubscription.fromJson(Map<String, dynamic> json) {
     final client = json.object('client');
     final product = json.object('product_service');
@@ -541,12 +546,14 @@ class StaffSubscription {
       id: json.id(),
       status: json.strOr('status', 'active'),
       quantity: json.count('quantity', fallback: 1),
-      price: readDouble(product?['price']),
+      price: json['price'] != null
+          ? json.money('price')
+          : readDouble(product?['price']),
       label: json.str('label'),
       clientId: json.str('client_id') ?? client?.str('id'),
-      clientName: client?.str('name'),
-      productName: product?.str('name'),
-      billingCycle: product?.str('billing_cycle') ?? json.str('billing_cycle'),
+      clientName: json.str('client_name') ?? client?.str('name'),
+      productName: json.str('product_service_name') ?? product?.str('name'),
+      billingCycle: json.str('billing_cycle') ?? product?.str('billing_cycle'),
       startDate: json.date('start_date'),
       expireDate: json.date('expire_date'),
     );

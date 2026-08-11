@@ -33,6 +33,12 @@ final ChangeNotifierProvider<SessionController> sessionControllerProvider =
   ),
 );
 
+/// Which bottom tab the staff shell is showing.
+///
+/// Lifted out of the home screen's State so the persistent bottom bar in
+/// [AppChrome] can drive it from anywhere in the app.
+final StateProvider<int> staffTabProvider = StateProvider<int>((ref) => 0);
+
 final Provider<SessionStatus> sessionStatusProvider = Provider<SessionStatus>(
   (ref) => ref.watch(sessionControllerProvider).status,
 );

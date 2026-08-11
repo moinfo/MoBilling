@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import 'config/app_config.dart';
+import 'navigation/app_chrome.dart';
 import 'providers.dart';
 import 'router.dart';
 
@@ -28,6 +29,8 @@ class StaffApp extends ConsumerWidget {
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
       routerConfig: router,
+      // Outside the navigator, so the bottom bar persists across pushes.
+      builder: (context, child) => AppChrome(child: child ?? const SizedBox()),
     );
   }
 }
