@@ -12,6 +12,7 @@ use App\Models\Followup;
 use App\Models\HostingAccount;
 use App\Models\Ticket;
 use App\Models\PaymentIn;
+use App\Models\Refund;
 use App\Models\SatisfactionCall;
 use App\Models\Statutory;
 use App\Services\ResellerService;
@@ -141,20 +142,57 @@ class DashboardController extends Controller
                 ->map(fn ($row) => ['method' => $row->payment_method, 'amount' => round((float) $row->amount, 2)])
             : [];
 
-        // Top 5 clients by invoiced amount
-        $topClients = $can('dashboard.top_clients')
-            ? Document::with('client')->where('type', 'invoice')
-                ->selectRaw('client_id, SUM(total) as total')->groupBy('client_id')
-                ->orderByDesc('total')->limit(5)->get()
-                ->map(function ($row) {
-                    $paid = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $row->client_id))->sum('amount');
-                    return [
-                        'name' => $row->client?->name ?? 'Unknown',
-                        'total' => round((float) $row->total, 2),
-                        'paid' => round((float) $paid, 2),
-                    ];
-                })
-            : [];
+        // Top 5 clients by invoiced amount.
+        //
+        // Both columns describe the same documents — live invoices — so that
+        // total and paid can be compared. Paid previously summed payments
+        // against any document of the client, including quotes and cancelled
+        // invoices, which let a row report more paid than invoiced.
+        //
+        // The paid side is one grouped query rather than one per row: this
+        // ran five SUMs each with a correlated subquery, on the screen every
+        // staff member opens first.
+        $topClients = [];
+        if ($can('dashboard.top_clients')) {
+            $rows = Document::with('client')
+                ->where('type', 'invoice')
+                ->whereNotIn('status', ['draft', 'cancelled'])
+                ->selectRaw('client_id, SUM(total) as total')
+                ->groupBy('client_id')
+                ->orderByDesc('total')
+                ->limit(5)
+                ->get();
+
+            $clientIds = $rows->pluck('client_id')->all();
+
+            $paidByClient = PaymentIn::query()
+                ->join('documents', 'payments_in.document_id', '=', 'documents.id')
+                ->whereIn('documents.client_id', $clientIds)
+                ->where('documents.type', 'invoice')
+                ->whereNotIn('documents.status', ['draft', 'cancelled'])
+                ->groupBy('documents.client_id')
+                ->selectRaw('documents.client_id, SUM(payments_in.amount) as paid')
+                ->pluck('paid', 'documents.client_id');
+
+            $refundedByClient = Refund::query()
+                ->join('documents', 'refunds.document_id', '=', 'documents.id')
+                ->whereIn('documents.client_id', $clientIds)
+                ->where('documents.type', 'invoice')
+                ->whereNotIn('documents.status', ['draft', 'cancelled'])
+                ->groupBy('documents.client_id')
+                ->selectRaw('documents.client_id, SUM(refunds.amount) as refunded')
+                ->pluck('refunded', 'documents.client_id');
+
+            $topClients = $rows->map(fn ($row) => [
+                'name' => $row->client?->name ?? 'Unknown',
+                'total' => round((float) $row->total, 2),
+                'paid' => round(
+                    (float) ($paidByClient[$row->client_id] ?? 0)
+                    - (float) ($refundedByClient[$row->client_id] ?? 0),
+                    2
+                ),
+            ]);
+        }
 
         // Subscription stats
         $subscriptionStats = null;

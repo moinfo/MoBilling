@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ClientSubscription;
 use App\Models\Document;
 use App\Models\PaymentIn;
+use App\Models\Refund;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
@@ -20,9 +21,30 @@ class PortalDashboardController extends Controller
             ->where('type', 'invoice')
             ->whereNotIn('status', ['draft', 'cancelled']);
 
+        // The three figures below have to describe one set of documents.
+        //
+        // They previously did not: invoiced summed this client's live invoices
+        // while paid summed payments against *any* document of theirs —
+        // quotes, proformas, credit notes, and invoices since drafted or
+        // cancelled — and ignored refunds entirely. On a client with a long
+        // history that drives the balance negative, so the portal reported a
+        // large credit to someone holding overdue invoices.
+        //
+        // Scoped to the same invoices, and netting refunds, this now agrees
+        // with Document::getBalanceDueAttribute() summed over those invoices —
+        // so the headline matches the rows underneath it.
+        $onTheseInvoices = fn ($q) => $q
+            ->where('client_id', $clientId)
+            ->where('type', 'invoice')
+            ->whereNotIn('status', ['draft', 'cancelled']);
+
         $totalInvoiced = (clone $invoices)->sum('total');
-        $totalPaid = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $clientId))->sum('amount');
-        $totalBalance = $totalInvoiced - $totalPaid;
+        $totalPaid = round(
+            (float) PaymentIn::whereHas('document', $onTheseInvoices)->sum('amount')
+            - (float) Refund::whereHas('document', $onTheseInvoices)->sum('amount'),
+            2
+        );
+        $totalBalance = round($totalInvoiced - $totalPaid, 2);
 
         $overdueCount = (clone $invoices)
             ->where('status', '!=', 'paid')

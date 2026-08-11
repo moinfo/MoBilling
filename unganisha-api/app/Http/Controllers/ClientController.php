@@ -11,6 +11,7 @@ use App\Models\Document;
 use App\Models\PaymentIn;
 use App\Models\ProductService;
 use App\Models\RecurringInvoiceLog;
+use App\Models\Refund;
 use App\Services\DocumentNumberService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -395,12 +396,28 @@ class ClientController extends Controller
                 'status'          => $h->status,
             ]);
 
-        // Summary stats
+        // Summary stats.
+        //
+        // Both figures describe one set of documents: this client's live
+        // invoices. Previously invoiced counted drafts and cancelled invoices
+        // while paid counted payments against any document of theirs —
+        // quotes, proformas, credit notes — and ignored refunds, so the pair
+        // could not be subtracted to give anything meaningful. Same shape as
+        // the fix in Portal\PortalDashboardController::summary().
+        $liveInvoices = fn ($q) => $q
+            ->where('client_id', $client->id)
+            ->where('type', 'invoice')
+            ->whereNotIn('status', ['draft', 'cancelled']);
+
         $totalInvoiced = Document::where('client_id', $client->id)
             ->where('type', 'invoice')
+            ->whereNotIn('status', ['draft', 'cancelled'])
             ->sum('total');
-        $totalPaid = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $client->id))
-            ->sum('amount');
+        $totalPaid = round(
+            (float) PaymentIn::whereHas('document', $liveInvoices)->sum('amount')
+            - (float) Refund::whereHas('document', $liveInvoices)->sum('amount'),
+            2
+        );
         $activeSubscriptions = $subscriptions->where('status', 'active')->count();
 
         // Total subscription value = sum of (price * quantity) for active subs
