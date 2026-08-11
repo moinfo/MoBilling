@@ -23,6 +23,10 @@ use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
+    /// Statuses that are not live invoices: a draft has never been issued and
+    /// a cancelled invoice has been withdrawn.
+    private const EXCLUDED_STATUSES = ['draft', 'cancelled'];
+
     public function summary(Request $request)
     {
         $user = auth()->user();
@@ -36,16 +40,40 @@ class DashboardController extends Controller
         $periodStart = Carbon::createFromDate($year, $month, 1)->startOfMonth();
         $periodEnd   = $periodStart->copy()->endOfMonth();
 
+        // One definition of "a live invoice" for the whole screen. A draft has
+        // not been issued and a cancelled invoice has been withdrawn, so
+        // neither is receivable, neither can be overdue, and money cannot be
+        // collected against them. Counting them made invoiced, collected and
+        // their difference describe three different sets of documents.
+        $liveInvoice = fn ($q) => $q
+            ->where('type', 'invoice')
+            ->whereNotIn('status', self::EXCLUDED_STATUSES);
+
         // Invoice money stats (only if any of the three money cards is allowed)
         $totalReceivable = 0.0;
         $totalReceived = 0.0;
         if ($can('dashboard.total_receivable') || $can('dashboard.total_received') || $can('dashboard.outstanding')) {
             $totalReceivable = (float) Document::where('type', 'invoice')
-                ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])->sum('total');
-            $totalReceived = (float) PaymentIn::whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])->sum('amount');
+                ->whereNotIn('status', self::EXCLUDED_STATUSES)
+                ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->sum('total');
+
+            // Receipts against those same invoices, net of refunds, so that
+            // invoiced minus collected is a figure worth showing. Refunds
+            // carry no date column of their own, so the record timestamp
+            // stands in for when the money went back out.
+            $received = (float) PaymentIn::whereHas('document', $liveInvoice)
+                ->whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+                ->sum('amount');
+            $refunded = (float) Refund::whereHas('document', $liveInvoice)
+                ->whereBetween('created_at', [$periodStart, $periodEnd])
+                ->sum('amount');
+            $totalReceived = round($received - $refunded, 2);
         }
         $overdueInvoices = $can('dashboard.overdue_invoices')
-            ? Document::where('type', 'invoice')->where('status', '!=', 'paid')
+            ? Document::where('type', 'invoice')
+                ->whereNotIn('status', self::EXCLUDED_STATUSES)
+                ->where('status', '!=', 'paid')
                 ->whereNotNull('due_date')->where('due_date', '<', now())->count()
             : null;
 
@@ -106,12 +134,14 @@ class DashboardController extends Controller
         if ($can('dashboard.revenue_chart')) {
             $sixMonthsAgo = Carbon::now()->subMonths(5)->startOfMonth();
             $monthlyInvoiced = Document::where('type', 'invoice')
+                ->whereNotIn('status', self::EXCLUDED_STATUSES)
                 ->where('date', '>=', $sixMonthsAgo)
                 ->selectRaw("DATE_FORMAT(date, '%Y-%m') as month, SUM(total) as invoiced")
                 ->groupBy('month')
                 ->pluck('invoiced', 'month');
 
-            $monthlyCollected = PaymentIn::where('payment_date', '>=', $sixMonthsAgo)
+            $monthlyCollected = PaymentIn::whereHas('document', $liveInvoice)
+                ->where('payment_date', '>=', $sixMonthsAgo)
                 ->selectRaw("DATE_FORMAT(payment_date, '%Y-%m') as month, SUM(amount) as collected")
                 ->groupBy('month')
                 ->pluck('collected', 'month');
@@ -137,7 +167,8 @@ class DashboardController extends Controller
 
         // Payment method breakdown for selected month
         $paymentMethodBreakdown = $can('dashboard.payment_method_chart')
-            ? PaymentIn::whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
+            ? PaymentIn::whereHas('document', $liveInvoice)
+                ->whereBetween('payment_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
                 ->selectRaw('payment_method, SUM(amount) as amount')->groupBy('payment_method')->get()
                 ->map(fn ($row) => ['method' => $row->payment_method, 'amount' => round((float) $row->amount, 2)])
             : [];
