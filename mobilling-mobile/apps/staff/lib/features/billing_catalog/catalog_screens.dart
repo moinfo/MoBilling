@@ -92,8 +92,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
-                      Text(Formatting.currency(product.price),
-                          style: theme.textTheme.labelLarge),
+                      Money(product.price),
                       if (!product.isActive)
                         const StatusChip('draft', dense: true),
                     ],
@@ -152,8 +151,7 @@ class ProductAddonsScreen extends ConsumerWidget {
                                 child: Text(addon.name,
                                     style: theme.textTheme.titleSmall),
                               ),
-                              Text(Formatting.currency(addon.price),
-                                  style: theme.textTheme.labelLarge),
+                              Money(addon.price),
                             ],
                           ),
                           if (addon.description != null) ...[

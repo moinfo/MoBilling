@@ -18,6 +18,17 @@ deploy.log
 *.png
 !mobilling-ui/public/moinfotech-logo.png
 
+# ...but shipped image assets are not screenshots. Without these the mobile
+# app has no launcher icon, no brand mark and no golden references on a
+# fresh clone.
+!mobilling-mobile/**/assets/**/*.png
+!mobilling-mobile/**/ios/Runner/Assets.xcassets/**/*.png
+!mobilling-mobile/**/android/app/src/main/res/**/*.png
+!mobilling-mobile/**/test/goldens/*.png
+
+# Kotlin incremental-compile session files (Gradle scratch)
+.kotlin/
+
 # Playwright MCP
 .playwright-mcp/
 

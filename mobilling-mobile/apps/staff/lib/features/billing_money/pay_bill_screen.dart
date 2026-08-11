@@ -109,8 +109,7 @@ class _PayBillScreenState extends ConsumerState<PayBillScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(Formatting.currency(bill.remaining),
-                    style: Theme.of(context).textTheme.labelLarge),
+                Money(bill.remaining),
                 StatusChip(bill.status, dense: true),
               ],
             ),

@@ -160,10 +160,12 @@ class _BalanceCard extends StatelessWidget {
             Text('Available now',
                 style: theme.textTheme.labelMedium
                     ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            Text(
-              Formatting.currency(data.committedBalance),
-              style: theme.textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.w700,
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Money(
+                data.committedBalance,
+                scale: MoneyScale.display,
                 color: data.committedBalance <= 0 ? status.overdue : null,
               ),
             ),

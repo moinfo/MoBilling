@@ -122,8 +122,7 @@ class SubscriptionScreen extends ConsumerWidget {
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.end,
                                   children: [
-                                    Text(Formatting.currency(entry.amount),
-                                        style: theme.textTheme.labelLarge),
+                                    Money(entry.amount),
                                     StatusChip(entry.status, dense: true),
                                   ],
                                 ),

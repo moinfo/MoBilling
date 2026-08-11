@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
 /// Money and date formatting, deliberately identical to the web client so the
@@ -38,9 +39,40 @@ class Formatting {
     return '$code ${_amount.format(_toDouble(amount))}';
   }
 
+  static final NumberFormat _integer = NumberFormat('#,##0', 'en_US');
+
+  /// A grouped whole number: `11158` -> `11,158`.
+  ///
+  /// Counts are grouped for the same reason amounts are — a five-digit run of
+  /// bare digits has to be counted rather than read. Every figure in the app
+  /// goes through one of these two formatters, so nothing appears ungrouped.
+  static String integer(Object? value) => _integer.format(_toDouble(value));
+
   /// The bare number, no currency code — for table columns that carry the
   /// currency in the header instead of on every row.
   static String amount(Object? value) => _amount.format(_toDouble(value));
+
+  /// Split an amount into the three pieces the [Money] readout sets at
+  /// different sizes.
+  ///
+  /// Done here rather than in the widget so a figure can never be formatted
+  /// two ways: [currency] and [parts] round the same value through the same
+  /// [NumberFormat], so the grouped digits always agree.
+  static MoneyParts parts(Object? value, {String? currencyCode}) {
+    final amount = _toDouble(value);
+    // Format the magnitude, then re-attach the sign. Otherwise the minus
+    // lands inside the integer group and the split below picks it up as a
+    // digit.
+    final formatted = _amount.format(amount.abs());
+    final dot = formatted.lastIndexOf('.');
+    return MoneyParts(
+      code: currencyCode ?? _tenantCurrency,
+      whole: '${amount.isNegative ? '-' : ''}'
+          '${dot < 0 ? formatted : formatted.substring(0, dot)}',
+      fraction: dot < 0 ? '00' : formatted.substring(dot + 1),
+      isNegative: amount.isNegative,
+    );
+  }
 
   static double _toDouble(Object? value) => switch (value) {
         num v when v.isFinite => v.toDouble(),
@@ -96,4 +128,30 @@ class Formatting {
       _ => 'Due in $days days',
     };
   }
+}
+
+/// One amount, pre-split for typesetting. See [Formatting.parts].
+@immutable
+class MoneyParts {
+  const MoneyParts({
+    required this.code,
+    required this.whole,
+    required this.fraction,
+    required this.isNegative,
+  });
+
+  /// `TZS`, `KES`, `USD` — the tenant's currency, never assumed.
+  final String code;
+
+  /// Grouped integer digits, carrying the minus sign if there is one.
+  final String whole;
+
+  /// Exactly two digits, always — a money column with a ragged right edge
+  /// stops being a column.
+  final String fraction;
+
+  final bool isNegative;
+
+  /// The whole figure on one line, for tooltips, semantics and sharing.
+  String get plain => '$code $whole.$fraction';
 }

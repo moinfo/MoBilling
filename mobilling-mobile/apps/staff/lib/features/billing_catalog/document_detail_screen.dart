@@ -160,11 +160,12 @@ class _Body extends StatelessWidget {
                 Text(doc.isPayable ? 'Balance due' : 'Total',
                     style: theme.textTheme.labelMedium
                         ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-                Text(
-                  Formatting.currency(
-                      doc.isPayable ? doc.balanceDue : doc.total),
-                  style: theme.textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.w700,
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Money(
+                    doc.isPayable ? doc.balanceDue : doc.total,
+                    scale: MoneyScale.display,
                     color: doc.isPayable ? status.overdue : status.settled,
                   ),
                 ),
@@ -281,8 +282,7 @@ class _Body extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: Spacing.sm),
-                        Text(Formatting.currency(item.total),
-                            style: theme.textTheme.bodyMedium),
+                        Money(item.total),
                       ],
                     ),
                   ),
@@ -321,8 +321,7 @@ class _Body extends StatelessWidget {
                           payment.paymentMethod!,
                         if (payment.reference != null) payment.reference!,
                       ].join(' · ')),
-                      trailing: Text(Formatting.currency(payment.amount),
-                          style: theme.textTheme.labelLarge),
+                      trailing: Money(payment.amount),
                     ),
                 ],
               ),
@@ -368,8 +367,7 @@ class _Body extends StatelessWidget {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(Formatting.currency(note.total),
-                              style: theme.textTheme.labelLarge),
+                          Money(note.total),
                           const SizedBox(width: Spacing.sm),
                           StatusChip(note.status, dense: true),
                         ],
@@ -423,7 +421,7 @@ class _TotalRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: style),
-          Text(Formatting.currency(value), style: style),
+          Money(value),
         ],
       ),
     );

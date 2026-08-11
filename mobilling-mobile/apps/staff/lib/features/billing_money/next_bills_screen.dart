@@ -95,9 +95,9 @@ class _NextBillsScreenState extends ConsumerState<NextBillsScreen> {
                     ),
                     const SizedBox(width: Spacing.sm),
                     Expanded(
-                      child: StatTile(
+                      child: StatTile.money(
                         label: 'Expected value',
-                        value: Formatting.amount(expected),
+                        amount: expected,
                       ),
                     ),
                   ],
@@ -182,9 +182,7 @@ class _BillCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                 ),
-                Text(Formatting.currency(bill.lineTotal),
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Money(bill.lineTotal),
               ],
             ),
             const SizedBox(height: 2),

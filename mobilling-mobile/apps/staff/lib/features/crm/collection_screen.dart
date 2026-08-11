@@ -123,27 +123,27 @@ class _SummaryGrid extends StatelessWidget {
       crossAxisSpacing: Spacing.sm,
       childAspectRatio: 1.9,
       children: [
-        StatTile(
+        StatTile.money(
           label: 'Outstanding',
-          value: Formatting.amount(summary.totalOutstanding),
+          amount: summary.totalOutstanding,
           emphasis: summary.totalOutstanding > 0 ? status.overdue : null,
           icon: Icons.account_balance_wallet_outlined,
         ),
-        StatTile(
+        StatTile.money(
           label: 'Collected today',
-          value: Formatting.amount(summary.todayCollected),
+          amount: summary.todayCollected,
           emphasis: status.settled,
           icon: Icons.today_outlined,
         ),
-        StatTile(
+        StatTile.money(
           label: 'Overdue balance',
-          value: Formatting.amount(summary.overdueBalance),
+          amount: summary.overdueBalance,
           emphasis: summary.overdueBalance > 0 ? status.attention : null,
           icon: Icons.warning_amber_rounded,
         ),
-        StatTile(
+        StatTile.money(
           label: 'Month collected',
-          value: Formatting.amount(summary.monthCollected),
+          amount: summary.monthCollected,
           icon: Icons.calendar_month_outlined,
         ),
       ],
@@ -274,9 +274,7 @@ class _InvoiceCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(Formatting.currency(invoice.balanceDue),
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Money(invoice.balanceDue),
                 StatusChip(invoice.status, dense: true),
               ],
             ),

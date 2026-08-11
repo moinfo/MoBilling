@@ -7,5 +7,6 @@ abstract final class AppConfig {
     defaultValue: 'http://10.0.2.2:8000/api',
   );
 
-  static const String appName = 'MoBilling Staff';
+  /// One app, three shells — so the name is the product, not one audience.
+  static const String appName = 'MoBilling';
 }

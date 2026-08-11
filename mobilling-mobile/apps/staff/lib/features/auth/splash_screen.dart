@@ -30,8 +30,7 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.business_center_rounded,
-                size: 56, color: theme.colorScheme.primary),
+            const BrandMark(size: 56),
             const SizedBox(height: Spacing.md),
             Text(AppConfig.appName, style: theme.textTheme.headlineSmall),
             const SizedBox(height: Spacing.xl),

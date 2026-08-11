@@ -151,9 +151,7 @@ class StaffInvoiceCard extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Text(Formatting.currency(document.total),
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Money(document.total),
                 const SizedBox(height: Spacing.xs),
                 StatusChip(document.status, dense: true),
               ],

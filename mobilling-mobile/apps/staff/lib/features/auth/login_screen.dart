@@ -1,18 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_auth/mobilling_auth.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../config/app_config.dart';
 import '../../providers.dart';
+import '../portal/portal_routes.dart';
 
-/// Staff sign-in.
+/// The single sign-in for all three audiences.
 ///
-/// The shared /auth/login endpoint resolves staff users first but will also
-/// happily sign in a client portal user — this app is for staff only, so a
-/// `user_type: client` result is rejected and the session torn down rather
-/// than presenting a client with an app full of 403s.
+/// `/auth/login` resolves the identifier against the staff `User` table, then
+/// `ClientUser`, then falls back to matching a client with no portal account
+/// yet — which answers 449 and means "we emailed a code", not "wrong
+/// password". Nothing here decides *where* a user lands: the router reads the
+/// resulting session and picks the portal, staff or admin shell.
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
@@ -54,19 +57,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       if (!mounted) return;
 
       switch (outcome) {
-        case LoginSucceeded(session: final s):
-          if (s.user.userType != UserType.tenant) {
-            // A client credential — valid, but not for this app.
-            await ref.read(sessionControllerProvider).logout();
-            if (mounted) {
-              setState(() => _formError =
-                  'This is the staff app — please use the MoBilling client app instead.');
-            }
-          }
-        case LoginNeedsOtp():
-          // The OTP handshake only fires for client self-registration.
-          setState(() => _formError =
-              'This account is not a staff account. Use the client app to register.');
+        case LoginSucceeded():
+          // No navigation here — the router redirects off the session, and
+          // picks the shell from user_type + role.
+          break;
+        case LoginNeedsOtp(:final challenge):
+          // 449: a known client without a portal login. The code is already
+          // sent, so go straight to the code step.
+          context.push(
+            PortalRoutes.register,
+            extra: RegisterArgs(
+              email: _identifier.text.trim(),
+              clientName: challenge.clientName,
+            ),
+          );
       }
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -85,7 +89,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(Spacing.lg),
+            padding: const EdgeInsets.fromLTRB(
+                Spacing.lg, Spacing.lg, Spacing.lg, Spacing.xxl),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 420),
               child: Form(
@@ -93,12 +98,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Icon(Icons.business_center_rounded,
-                        size: 48, color: theme.colorScheme.primary),
-                    const SizedBox(height: Spacing.md),
-                    Text(AppConfig.appName,
-                        style: theme.textTheme.headlineSmall,
-                        textAlign: TextAlign.center),
+                    const Align(
+                      alignment: Alignment.centerLeft,
+                      child: BrandMark(size: 64),
+                    ),
+                    const SizedBox(height: Spacing.lg),
+                    Text(
+                      AppConfig.appName,
+                      style: theme.textTheme.headlineMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.6,
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.xs),
+                    // One door for three audiences. Saying so up front stops
+                    // clients wondering whether they downloaded the staff app.
+                    Text(
+                      'One sign-in for clients, staff and administrators.',
+                      style: theme.textTheme.bodyMedium
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
                     const SizedBox(height: Spacing.xl),
                     if (_formError != null) ...[
                       ErrorBanner(message: _formError!),
@@ -151,6 +170,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               child:
                                   CircularProgressIndicator(strokeWidth: 2))
                           : const Text('Sign in'),
+                    ),
+                    const SizedBox(height: Spacing.lg),
+                    // The 449 path is invisible otherwise: a client who has
+                    // never set a password has no way to guess that signing
+                    // in *is* how they get an account.
+                    Text(
+                      'No account yet? Enter the email address on your '
+                      'invoices and we’ll send you a code.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall
+                          ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ],
                 ),

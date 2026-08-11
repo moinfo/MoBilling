@@ -79,6 +79,14 @@ class AuthUser {
   /// Portal admins may add and remove other portal users for their company.
   bool get isPortalAdmin => userType == UserType.client && role == 'admin';
 
+  /// Platform super admin — `User::isSuperAdmin()` is `role === 'super_admin'`.
+  ///
+  /// Checked by role rather than by permissions: the login response gives a
+  /// super admin `['*']`, but so could a fully-privileged tenant admin, and
+  /// only the real super admin has no tenant and reaches `/admin/*`.
+  bool get isSuperAdmin =>
+      userType == UserType.tenant && role == 'super_admin';
+
   factory AuthUser.fromJson(
     Map<String, dynamic> json, {
     required UserType userType,

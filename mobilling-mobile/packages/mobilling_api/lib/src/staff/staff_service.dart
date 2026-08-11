@@ -13,10 +13,10 @@ class StaffService {
 
   final ApiClient _api;
 
-  /// GET /dashboard — per-field permission-gated summary.
+  /// GET /dashboard/summary — per-field permission-gated summary.
   Future<StaffDashboard> dashboard({int? month, int? year}) async {
     final body = await _api.get<Map<String, dynamic>>(
-      '/dashboard',
+      '/dashboard/summary',
       query: {'month': month, 'year': year},
     );
     return StaffDashboard.fromJson(body);

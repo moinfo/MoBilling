@@ -8,7 +8,6 @@ environment:
   sdk: ^3.10.7
 
 workspace:
-  - apps/client_portal
   - apps/staff
   - packages/mobilling_api
   - packages/mobilling_auth

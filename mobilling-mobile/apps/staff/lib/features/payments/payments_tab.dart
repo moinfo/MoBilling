@@ -75,11 +75,7 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                   ].join(' · '),
                   style: theme.textTheme.bodySmall,
                 ),
-                trailing: Text(
-                  Formatting.currency(p.amount),
-                  style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w700, color: status.settled),
-                ),
+                trailing: Money(p.amount),
               ),
             ),
             emptyIcon: Icons.payments_outlined,

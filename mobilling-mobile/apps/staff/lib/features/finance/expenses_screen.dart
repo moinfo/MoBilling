@@ -173,9 +173,7 @@ class _ExpenseCard extends ConsumerWidget {
                       overflow: TextOverflow.ellipsis),
                 ),
                 const SizedBox(width: Spacing.sm),
-                Text(Formatting.currency(expense.amount),
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Money(expense.amount),
               ],
             ),
             const SizedBox(height: 2),

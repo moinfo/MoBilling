@@ -75,9 +75,9 @@ class AttendanceScreen extends ConsumerWidget {
                   if (data.settings.penaltiesEnabled) ...[
                     const SizedBox(width: Spacing.sm),
                     Expanded(
-                      child: StatTile(
+                      child: StatTile.money(
                         label: 'Deductions',
-                        value: Formatting.amount(data.deductionTotal),
+                        amount: data.deductionTotal,
                         emphasis: data.deductionTotal > 0
                             ? status.overdue
                             : null,
@@ -102,8 +102,7 @@ class AttendanceScreen extends ConsumerWidget {
                               size: 20, color: status.overdue),
                           title: Text(penalty.label),
                           subtitle: Text(Formatting.date(penalty.date)),
-                          trailing: Text(Formatting.currency(penalty.amount),
-                              style: theme.textTheme.labelLarge),
+                          trailing: Money(penalty.amount),
                         ),
                       ],
                     ],

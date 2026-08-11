@@ -50,11 +50,7 @@ class _PaymentsOutScreenState extends ConsumerState<PaymentsOutScreen> {
               ].join(' · '),
               style: theme.textTheme.bodySmall,
             ),
-            trailing: Text(
-              Formatting.currency(payment.amount),
-              style: theme.textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
+            trailing: Money(payment.amount),
           ),
         ),
         emptyIcon: Icons.history_outlined,

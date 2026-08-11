@@ -158,10 +158,8 @@ class _TargetCard extends ConsumerWidget {
                           color: theme.colorScheme.onSurfaceVariant),
                     ),
                   ),
-                  Text(Formatting.currency(target.totalCommission),
-                      style: theme.textTheme.labelLarge?.copyWith(
-                          color:
-                              target.isVerified ? status.settled : null)),
+                  Money(target.totalCommission,
+                      color: target.isVerified ? status.settled : null),
                 ],
               ),
             ],
@@ -570,8 +568,7 @@ class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
               ].join(' · '),
               style: theme.textTheme.bodySmall,
             ),
-            trailing: Text(Formatting.currency(record.amount),
-                style: theme.textTheme.labelLarge),
+            trailing: Money(record.amount),
           ),
         ),
         emptyIcon: Icons.dns_outlined,

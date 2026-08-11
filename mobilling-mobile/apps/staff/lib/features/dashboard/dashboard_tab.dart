@@ -28,32 +28,53 @@ class DashboardTab extends ConsumerWidget {
         onAction: () => ref.invalidate(dashboardProvider),
       ),
       data: (d) {
-        final moneyTiles = <Widget>[
-          if (d.totalReceivable != null)
-            StatTile(
-                label: 'Invoiced (this month)',
-                value: Formatting.amount(d.totalReceivable)),
+        // The API scopes these three to the selected month, and scopes the
+        // counters below to all time. Leaving both unlabelled produced a
+        // dashboard that read "Outstanding 0.00" beside "572 overdue" — the
+        // figures were right and the screen was still wrong. The two section
+        // headers are the fix: they carry the scoping the numbers cannot.
+        //
+        // "Outstanding" is also not what the API returns. It is this month's
+        // invoiced minus this month's receipts, which is a gap, not a
+        // receivables balance, so it is named for what it is.
+        final money = [
           if (d.totalReceived != null)
-            StatTile(
-                label: 'Collected',
-                value: Formatting.amount(d.totalReceived),
-                emphasis: status.settled),
+            (label: 'Collected', amount: d.totalReceived, tone: status.settled),
+          if (d.totalReceivable != null)
+            (label: 'Invoiced', amount: d.totalReceivable, tone: null),
           if (d.outstanding != null)
-            StatTile(
-                label: 'Outstanding',
-                value: Formatting.amount(d.outstanding),
-                emphasis: (d.outstanding ?? 0) > 0 ? status.overdue : null),
-          if (d.overdueInvoices != null)
-            StatTile(
-                label: 'Overdue invoices',
-                value: '${d.overdueInvoices}',
-                emphasis:
-                    (d.overdueInvoices ?? 0) > 0 ? status.attention : null),
-          if (d.totalClients != null)
-            StatTile(label: 'Clients', value: '${d.totalClients}'),
-          if (d.smsBalance != null)
-            StatTile(label: 'SMS balance', value: '${d.smsBalance}'),
+            (
+              label: 'Gap',
+              amount: d.outstanding,
+              tone: (d.outstanding ?? 0) > 0 ? status.attention : null,
+            ),
         ];
+
+        // Counts, which are small integers and do not deserve a card each.
+        final counts = [
+          if (d.overdueInvoices != null)
+            StatRailItem(
+              label: 'Overdue',
+              value: Formatting.integer(d.overdueInvoices),
+              emphasis:
+                  (d.overdueInvoices ?? 0) > 0 ? status.attention : null,
+            ),
+          if (d.totalClients != null)
+            StatRailItem(label: 'Clients', value: Formatting.integer(d.totalClients)),
+          if (d.smsBalance != null)
+            StatRailItem(label: 'SMS', value: Formatting.integer(d.smsBalance)),
+        ];
+
+        if (money.isEmpty && counts.isEmpty) {
+          return const StateMessage(
+            icon: Icons.lock_outline,
+            title: 'No dashboard metrics available',
+            message: 'Your role does not include any dashboard permissions.',
+          );
+        }
+
+        final hero = money.isEmpty ? null : money.first;
+        final rest = money.skip(1).toList();
 
         return RefreshIndicator(
           onRefresh: () => ref.refresh(dashboardProvider.future),
@@ -61,7 +82,19 @@ class DashboardTab extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(Spacing.md),
             children: [
-              if (moneyTiles.isNotEmpty)
+              if (money.isNotEmpty) ...[
+                const SectionHeader('This month'),
+                const SizedBox(height: Spacing.sm),
+              ],
+              if (hero != null) ...[
+                _HeroFigure(
+                  label: hero.label,
+                  amount: hero.amount,
+                  tone: hero.tone ?? theme.colorScheme.onSurface,
+                ),
+                const SizedBox(height: Spacing.sm),
+              ],
+              if (rest.isNotEmpty) ...[
                 GridView.count(
                   crossAxisCount: 2,
                   shrinkWrap: true,
@@ -69,18 +102,26 @@ class DashboardTab extends ConsumerWidget {
                   mainAxisSpacing: Spacing.sm,
                   crossAxisSpacing: Spacing.sm,
                   childAspectRatio: 1.9,
-                  children: moneyTiles,
-                )
-              else
-                const StateMessage(
-                  icon: Icons.lock_outline,
-                  title: 'No dashboard metrics available',
-                  message:
-                      'Your role does not include any dashboard permissions.',
+                  children: [
+                    for (final m in rest)
+                      StatTile.money(
+                        label: m.label,
+                        amount: m.amount,
+                        emphasis: m.tone,
+                      ),
+                  ],
                 ),
+                const SizedBox(height: Spacing.sm),
+              ],
+              if (counts.isNotEmpty) ...[
+                const SizedBox(height: Spacing.md),
+                const SectionHeader('All time'),
+                const SizedBox(height: Spacing.sm),
+                StatRail(items: counts),
+              ],
               if (d.monthlyRevenue.isNotEmpty) ...[
                 const SizedBox(height: Spacing.lg),
-                Text('Last 6 months', style: theme.textTheme.titleSmall),
+                const SectionHeader('Last 6 months'),
                 const SizedBox(height: Spacing.sm),
                 Card(
                   child: Padding(
@@ -91,7 +132,7 @@ class DashboardTab extends ConsumerWidget {
               ],
               if (d.recentInvoices.isNotEmpty) ...[
                 const SizedBox(height: Spacing.lg),
-                Text('Recent invoices', style: theme.textTheme.titleSmall),
+                const SectionHeader('Recent invoices'),
                 const SizedBox(height: Spacing.sm),
                 Card(
                   child: Column(
@@ -101,19 +142,27 @@ class DashboardTab extends ConsumerWidget {
                         ListTile(
                           dense: true,
                           title: Text(inv.clientName ?? inv.documentNumber),
-                          subtitle: Text([
-                            inv.documentNumber,
-                            if (inv.date != null) Formatting.date(inv.date),
-                          ].join(' · ')),
-                          trailing: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.end,
+                          // Status moves down here beside the reference, so
+                          // the trailing column is amounts only and reads as
+                          // one aligned column of money.
+                          subtitle: Row(
                             children: [
-                              Text(Formatting.currency(inv.total),
-                                  style: theme.textTheme.labelLarge),
                               StatusChip(inv.status, dense: true),
+                              const SizedBox(width: Spacing.sm),
+                              Flexible(
+                                child: Text(
+                                  [
+                                    inv.documentNumber,
+                                    if (inv.date != null)
+                                      Formatting.date(inv.date),
+                                  ].join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
                             ],
                           ),
+                          trailing: Money(inv.total),
                         ),
                       ],
                     ],
@@ -125,6 +174,57 @@ class DashboardTab extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// The single figure a dashboard leads with.
+///
+/// Same shape as the client portal's balance card on purpose: staff and
+/// clients are looking at two sides of the same money, and the app should not
+/// invent a second visual language for the second audience.
+class _HeroFigure extends StatelessWidget {
+  const _HeroFigure({
+    required this.label,
+    required this.amount,
+    required this.tone,
+  });
+
+  final String label;
+  final Object? amount;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      color: Color.alphaBlend(
+        tone.withValues(alpha: 0.06),
+        theme.colorScheme.surface,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+                letterSpacing: Type.eyebrowTracking,
+              ),
+            ),
+            const SizedBox(height: Spacing.sm),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Money(amount, scale: MoneyScale.display, color: tone),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobilling_api/mobilling_api.dart' show CatalogProduct;
 import 'package:mobilling_auth/mobilling_auth.dart';
 
 import 'features/auth/login_screen.dart';
@@ -27,6 +28,28 @@ import 'features/crm/followups_screen.dart';
 import 'features/crm/satisfaction_calls_screen.dart';
 import 'features/crm/served_customers_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/portal/account/credit_screen.dart';
+import 'features/portal/account/portal_users_screen.dart';
+import 'features/portal/account/profile_screen.dart';
+import 'features/portal/billing/invoice_detail_screen.dart';
+import 'features/portal/billing/payments_tab.dart';
+import 'features/portal/billing/statement_tab.dart';
+import 'features/portal/portal_home_screen.dart';
+import 'features/portal/portal_routes.dart';
+import 'features/portal/register_screen.dart';
+import 'features/portal/services/domain_detail_screen.dart';
+import 'features/portal/services/hosting_detail_screen.dart';
+import 'features/portal/store/configure_order_screen.dart';
+import 'features/portal/store/domain_search_screen.dart';
+import 'features/portal/store/store_screen.dart';
+import 'features/portal/support/kb_article_screen.dart';
+import 'features/portal/support/new_ticket_screen.dart';
+import 'features/portal/support/ticket_detail_screen.dart' as portal_ticket;
+import 'features/platform/platform_screens.dart';
+import 'features/platform/platform_shell.dart';
+import 'features/platform/tenants_screens.dart';
+import 'navigation/admin_menu.dart';
+import 'navigation/shell.dart';
 import 'features/reports/reports_screens.dart';
 import 'features/staff_self/attendance_screen.dart';
 import 'features/staff_self/staff_reports_screen.dart';
@@ -58,18 +81,38 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       final status = session.status;
       final location = state.matchedLocation;
 
+      // Where this user belongs, decided once from the login response.
+      final home = switch (session.session.shell) {
+        AppShell.portal => PortalRoutes.home,
+        AppShell.staff => Routes.home,
+        AppShell.admin => AdminRoutes.home,
+      };
+
       return switch (status) {
         SessionStatus.unknown ||
         SessionStatus.restoring =>
           location == Routes.splash ? null : Routes.splash,
+
+        // Registration is reachable while signed out — it is how a client
+        // with no portal account gets one.
         SessionStatus.signedOut =>
-          location == Routes.login ? null : Routes.login,
-        // As in the client app, `expired` stays in place so the re-auth sheet
-        // can overlay the current screen.
+          (location == Routes.login || location == PortalRoutes.register)
+              ? null
+              : Routes.login,
+
+        // `expired` deliberately stays put so the re-auth sheet can overlay
+        // the current screen rather than discarding half-typed work.
         SessionStatus.authenticated || SessionStatus.expired =>
-          (location == Routes.login || location == Routes.splash)
-              ? Routes.home
-              : null,
+          (location == Routes.login ||
+                  location == Routes.splash ||
+                  location == PortalRoutes.register)
+              ? home
+              // A client must not wander into a staff route and vice versa:
+              // the API would 403, but bouncing to their own home is clearer
+              // than a screen full of errors.
+              : _isForeignShell(location, session.session.shell)
+                  ? home
+                  : null,
       };
     },
     routes: [
@@ -84,6 +127,155 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.home,
         builder: (context, state) => const HomeScreen(),
+      ),
+
+      // ── Platform super-admin shell ─────────────────────────────────────
+      GoRoute(
+        path: AdminRoutes.home,
+        builder: (context, state) => const PlatformHomeScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.tenants,
+        builder: (context, state) => const TenantsScreen(),
+      ),
+      // Static admin paths precede '/admin/tenants/:id' below.
+      GoRoute(
+        path: AdminRoutes.plans,
+        builder: (context, state) => const PlatformPlansScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.currencies,
+        builder: (context, state) => const CurrenciesScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.smsPackages,
+        builder: (context, state) => const SmsPackagesScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.smsPurchases,
+        builder: (context, state) => const SmsPurchasesScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.permissions,
+        builder: (context, state) => const PlatformPermissionsScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.roleTemplates,
+        builder: (context, state) => const RoleTemplatesScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.settings,
+        builder: (context, state) => const PlatformSettingsScreen(),
+      ),
+      GoRoute(
+        path: '/admin/tenants/:id/email',
+        builder: (context, state) => TenantEmailSettingsScreen(
+          tenantId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/admin/tenants/:id/sms',
+        builder: (context, state) => TenantSmsSettingsScreen(
+          tenantId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/admin/tenants/:id/templates',
+        builder: (context, state) => TenantTemplatesScreen(
+          tenantId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/admin/tenants/:id',
+        builder: (context, state) => TenantDetailScreen(
+          tenantId: state.pathParameters['id']!,
+        ),
+      ),
+
+      // ── Client portal shell ────────────────────────────────────────────
+      // Everything under /portal is the client-facing app. Namespaced so a
+      // client route can never collide with a staff one of the same name.
+      GoRoute(
+        path: PortalRoutes.home,
+        builder: (context, state) => const PortalHomeScreen(),
+      ),
+      GoRoute(
+        path: PortalRoutes.register,
+        builder: (context, state) {
+          final args = state.extra;
+          return RegisterScreen(
+            email: args is RegisterArgs ? args.email : null,
+            clientName: args is RegisterArgs ? args.clientName : null,
+          );
+        },
+      ),
+      GoRoute(
+        path: '/portal/invoices/:id',
+        builder: (context, state) => PortalInvoiceDetailScreen(
+          documentId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: PortalRoutes.payments,
+        builder: (context, state) => const PortalPaymentsTab(),
+      ),
+      GoRoute(
+        path: PortalRoutes.statement,
+        builder: (context, state) => const StatementTab(),
+      ),
+      // 'new' precedes ':id' — go_router matches in declaration order.
+      GoRoute(
+        path: PortalRoutes.newTicket,
+        builder: (context, state) => const NewTicketScreen(),
+      ),
+      GoRoute(
+        path: '/portal/tickets/:id',
+        builder: (context, state) => portal_ticket.TicketDetailScreen(
+          ticketId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/portal/kb/:slug',
+        builder: (context, state) => KbArticleScreen(
+          slug: state.pathParameters['slug']!,
+        ),
+      ),
+      GoRoute(
+        path: '/portal/hosting/:id',
+        builder: (context, state) => PortalHostingDetailScreen(
+          accountId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: '/portal/domains/:id',
+        builder: (context, state) => PortalDomainDetailScreen(
+          domainId: state.pathParameters['id']!,
+        ),
+      ),
+      GoRoute(
+        path: PortalRoutes.store,
+        builder: (context, state) => const StoreScreen(),
+      ),
+      GoRoute(
+        path: PortalRoutes.configureOrder,
+        builder: (context, state) =>
+            ConfigureOrderScreen(product: state.extra! as CatalogProduct),
+      ),
+      GoRoute(
+        path: PortalRoutes.domainSearch,
+        builder: (context, state) => const DomainSearchScreen(),
+      ),
+      GoRoute(
+        path: PortalRoutes.profile,
+        builder: (context, state) => const PortalProfileScreen(),
+      ),
+      GoRoute(
+        path: PortalRoutes.portalUsers,
+        builder: (context, state) => const PortalUsersScreen(),
+      ),
+      GoRoute(
+        path: PortalRoutes.credit,
+        builder: (context, state) => const CreditScreen(),
       ),
       GoRoute(
         path: '/clients/:id',
@@ -318,3 +510,20 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
+
+/// True when [location] belongs to a shell other than [shell].
+///
+/// Only cross-shell leakage is blocked; within a shell every screen is already
+/// gated by the drawer's permission filter and, ultimately, by the API. The
+/// prefixes are the whole contract: `/portal/*` is the client app, `/admin/*`
+/// is the platform area, everything else is staff.
+bool _isForeignShell(String location, AppShell shell) {
+  final isPortalRoute = location.startsWith('/portal');
+  final isAdminRoute = location.startsWith('/admin');
+
+  return switch (shell) {
+    AppShell.portal => !isPortalRoute,
+    AppShell.admin => !isAdminRoute,
+    AppShell.staff => isPortalRoute || isAdminRoute,
+  };
+}

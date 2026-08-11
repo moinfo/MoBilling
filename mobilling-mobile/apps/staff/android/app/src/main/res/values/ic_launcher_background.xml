@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The mark is drawn for a light ground; on the app's ink the blue node
+         loses almost all of its contrast. -->
+    <color name="ic_launcher_background">#FFFFFF</color>
+</resources>

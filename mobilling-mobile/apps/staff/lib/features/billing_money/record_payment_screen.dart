@@ -93,8 +93,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    Text(Formatting.currency(invoice.balanceDue),
-                        style: Theme.of(context).textTheme.labelLarge),
+                    Money(invoice.balanceDue),
                     StatusChip(invoice.status, dense: true),
                   ],
                 ),

@@ -197,9 +197,7 @@ class StatutoryCard extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis),
                 ),
-                Text(Formatting.currency(statutory.amount),
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Money(statutory.amount),
               ],
             ),
             const SizedBox(height: 2),
@@ -316,9 +314,7 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis),
                           ),
-                          Text(Formatting.currency(bill.amount),
-                              style: theme.textTheme.titleSmall
-                                  ?.copyWith(fontWeight: FontWeight.w700)),
+                          Money(bill.amount),
                         ],
                       ),
                       const SizedBox(height: 2),
