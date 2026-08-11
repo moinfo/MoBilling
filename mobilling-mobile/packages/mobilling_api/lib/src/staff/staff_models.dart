@@ -15,13 +15,26 @@ class StaffDashboard {
     this.totalReceived,
     this.outstanding,
     this.overdueInvoices,
+    this.overdueBills,
     this.totalClients,
     this.totalDocuments,
     this.totalExpenses,
     this.smsBalance,
+    this.whatsappContacts,
+    this.fieldVisits,
+    this.hosting,
+    this.statutory,
+    this.subscriptions,
+    this.penalties,
+    this.systemRecords,
     required this.recentInvoices,
     required this.monthlyRevenue,
     required this.invoiceStatusBreakdown,
+    required this.paymentMethodBreakdown,
+    required this.topClients,
+    required this.upcomingBills,
+    required this.upcomingRenewals,
+    required this.urgentObligations,
   });
 
   final double? totalReceivable;
@@ -32,9 +45,25 @@ class StaffDashboard {
   final int? totalDocuments;
   final double? totalExpenses;
   final int? smsBalance;
+  final int? overdueBills;
+  final int? whatsappContacts;
+  final int? fieldVisits;
+
+  /// Grouped blocks. Null means the role cannot see that whole section.
+  final HostingDomainsStats? hosting;
+  final StatutoryStats? statutory;
+  final SubscriptionStats? subscriptions;
+  final StaffPenalties? penalties;
+  final SystemRecordsStats? systemRecords;
+
   final List<StaffInvoiceRow> recentInvoices;
   final List<MonthlyRevenuePoint> monthlyRevenue;
   final List<StatusCount> invoiceStatusBreakdown;
+  final List<MethodTotal> paymentMethodBreakdown;
+  final List<TopClient> topClients;
+  final List<UpcomingBill> upcomingBills;
+  final List<UpcomingRenewal> upcomingRenewals;
+  final List<UrgentObligation> urgentObligations;
 
   factory StaffDashboard.fromJson(Map<String, dynamic> json) => StaffDashboard(
         totalReceivable: json['total_receivable'] == null
@@ -59,8 +88,371 @@ class StaffDashboard {
         recentInvoices: json.list('recent_invoices', StaffInvoiceRow.fromJson),
         monthlyRevenue:
             json.list('monthly_revenue', MonthlyRevenuePoint.fromJson),
+        overdueBills:
+            json['overdue_bills'] == null ? null : json.count('overdue_bills'),
+        whatsappContacts: json['total_whatsapp_contacts'] == null
+            ? null
+            : json.count('total_whatsapp_contacts'),
+        fieldVisits: json['total_field_visits'] == null
+            ? null
+            : json.count('total_field_visits'),
+        hosting: switch (json.object('hosting_domains')) {
+          final o? => HostingDomainsStats.fromJson(o),
+          _ => null,
+        },
+        statutory: switch (json.object('statutory_stats')) {
+          final o? => StatutoryStats.fromJson(o),
+          _ => null,
+        },
+        subscriptions: switch (json.object('subscription_stats')) {
+          final o? => SubscriptionStats.fromJson(o),
+          _ => null,
+        },
+        penalties: switch (json.object('staff_penalties')) {
+          final o? => StaffPenalties.fromJson(o),
+          _ => null,
+        },
+        systemRecords: switch (json.object('system_records')) {
+          final o? => SystemRecordsStats.fromJson(o),
+          _ => null,
+        },
         invoiceStatusBreakdown:
             json.list('invoice_status_breakdown', StatusCount.fromJson),
+        paymentMethodBreakdown:
+            json.list('payment_method_breakdown', MethodTotal.fromJson),
+        topClients: json.list('top_clients', TopClient.fromJson),
+        upcomingBills: json.list('upcoming_bills', UpcomingBill.fromJson),
+        upcomingRenewals:
+            json.list('upcoming_renewals', UpcomingRenewal.fromJson),
+        urgentObligations:
+            json.list('urgent_obligations', UrgentObligation.fromJson),
+      );
+}
+
+/// Hosting accounts and domains, with the counts the web dashboard shows.
+///
+/// The endpoint sends its own `can` map here rather than simply omitting the
+/// block, so a role with hosting but not domains still gets the hosting half.
+class HostingDomainsStats {
+  const HostingDomainsStats({
+    required this.canHosting,
+    required this.canDomains,
+    required this.canTickets,
+    required this.hostingTotal,
+    required this.hostingActive,
+    required this.hostingSuspended,
+    required this.domainsTotal,
+    required this.domainsActive,
+    required this.domainsExpiringSoon,
+    required this.openTickets,
+    required this.registrarCredit,
+    required this.expiringDomains,
+  });
+
+  final bool canHosting;
+  final bool canDomains;
+  final bool canTickets;
+  final int hostingTotal;
+  final int hostingActive;
+  final int hostingSuspended;
+  final int domainsTotal;
+  final int domainsActive;
+  final int domainsExpiringSoon;
+  final int openTickets;
+
+  /// Null when the registrar balance has not been synced — must render as
+  /// "not synced", never as zero credit.
+  final double? registrarCredit;
+
+  final List<ExpiringDomain> expiringDomains;
+
+  factory HostingDomainsStats.fromJson(Map<String, dynamic> json) {
+    final can = json.object('can');
+    final hosting = json.object('hosting');
+    final domains = json.object('domains');
+    return HostingDomainsStats(
+      canHosting: can?.flag('hosting') ?? false,
+      canDomains: can?.flag('domains') ?? false,
+      canTickets: can?.flag('tickets') ?? false,
+      hostingTotal: hosting?.count('total') ?? 0,
+      hostingActive: hosting?.count('active') ?? 0,
+      hostingSuspended: hosting?.count('suspended') ?? 0,
+      domainsTotal: domains?.count('total') ?? 0,
+      domainsActive: domains?.count('active') ?? 0,
+      domainsExpiringSoon: domains?.count('expiring_soon') ?? 0,
+      openTickets: json.count('open_tickets'),
+      registrarCredit: json['registrar_credit_total'] == null
+          ? null
+          : json.money('registrar_credit_total'),
+      expiringDomains:
+          json.list('expiring_domains', ExpiringDomain.fromJson),
+    );
+  }
+}
+
+class ExpiringDomain {
+  const ExpiringDomain({
+    required this.id,
+    required this.name,
+    this.clientName,
+    this.expiresAt,
+    this.daysLeft,
+    required this.autoRenew,
+  });
+
+  final String id;
+  final String name;
+  final String? clientName;
+  final DateTime? expiresAt;
+
+  /// Negative once expired.
+  final int? daysLeft;
+  final bool autoRenew;
+
+  factory ExpiringDomain.fromJson(Map<String, dynamic> json) => ExpiringDomain(
+        id: json.id(),
+        name: json.strOr('name', '—'),
+        clientName: json.str('client_name'),
+        expiresAt: json.date('expires_at'),
+        daysLeft:
+            json['days_left'] == null ? null : json.count('days_left'),
+        autoRenew: json.flag('auto_renew'),
+      );
+}
+
+class StatutoryStats {
+  const StatutoryStats({
+    required this.totalActive,
+    required this.overdue,
+    required this.dueSoon,
+  });
+
+  final int totalActive;
+  final int overdue;
+  final int dueSoon;
+
+  factory StatutoryStats.fromJson(Map<String, dynamic> json) => StatutoryStats(
+        totalActive: json.count('total_active'),
+        overdue: json.count('overdue'),
+        dueSoon: json.count('due_soon'),
+      );
+}
+
+class SubscriptionStats {
+  const SubscriptionStats({
+    required this.active,
+    required this.pending,
+    required this.cancelled,
+  });
+
+  final int active;
+  final int pending;
+  final int cancelled;
+
+  int get total => active + pending + cancelled;
+
+  factory SubscriptionStats.fromJson(Map<String, dynamic> json) =>
+      SubscriptionStats(
+        active: json.count('active'),
+        pending: json.count('pending'),
+        cancelled: json.count('cancelled'),
+      );
+}
+
+/// What this month's missed reports have cost the signed-in user.
+///
+/// Personal, not company-wide — it is the one block on the dashboard about
+/// the reader rather than the business.
+class StaffPenalties {
+  const StaffPenalties({
+    required this.monthLabel,
+    required this.monthTotal,
+    required this.countThisMonth,
+    required this.byType,
+  });
+
+  final String monthLabel;
+  final double monthTotal;
+  final int countThisMonth;
+  final List<PenaltyByType> byType;
+
+  factory StaffPenalties.fromJson(Map<String, dynamic> json) => StaffPenalties(
+        monthLabel: json.strOr('month_label', ''),
+        monthTotal: json.money('month_total'),
+        countThisMonth: json.count('count_this_month'),
+        byType: json.list('by_type', PenaltyByType.fromJson),
+      );
+}
+
+class PenaltyByType {
+  const PenaltyByType({
+    required this.reportType,
+    required this.count,
+    required this.total,
+  });
+
+  /// daily | weekly | monthly.
+  final String reportType;
+  final int count;
+  final double total;
+
+  factory PenaltyByType.fromJson(Map<String, dynamic> json) => PenaltyByType(
+        reportType: json.strOr('report_type', ''),
+        count: json.count('count'),
+        total: json.money('total'),
+      );
+}
+
+class SystemRecordsStats {
+  const SystemRecordsStats({
+    required this.total,
+    required this.systems,
+    required this.byBank,
+  });
+
+  final double total;
+  final List<NamedTotal> systems;
+  final List<NamedTotal> byBank;
+
+  factory SystemRecordsStats.fromJson(Map<String, dynamic> json) =>
+      SystemRecordsStats(
+        total: json.money('total'),
+        systems: json.list('systems', NamedTotal.fromSystem),
+        byBank: json.list('by_bank', NamedTotal.fromBank),
+      );
+}
+
+/// A label and an amount — the shape both system-record breakdowns share.
+class NamedTotal {
+  const NamedTotal({required this.name, required this.total, this.detail});
+
+  final String name;
+  final double total;
+  final String? detail;
+
+  factory NamedTotal.fromSystem(Map<String, dynamic> json) => NamedTotal(
+        name: json.strOr('name', '—'),
+        total: json.money('total'),
+        detail: json.str('detail'),
+      );
+
+  factory NamedTotal.fromBank(Map<String, dynamic> json) => NamedTotal(
+        name: json.strOr('bank_name', '—'),
+        total: json.money('total'),
+        detail: json.str('account_number'),
+      );
+}
+
+class MethodTotal {
+  const MethodTotal({required this.method, required this.amount});
+
+  final String method;
+  final double amount;
+
+  factory MethodTotal.fromJson(Map<String, dynamic> json) => MethodTotal(
+        method: json.strOr('method', json.strOr('payment_method', '—')),
+        amount: json.money('amount'),
+      );
+}
+
+class TopClient {
+  const TopClient({
+    required this.name,
+    required this.total,
+    required this.paid,
+  });
+
+  final String name;
+  final double total;
+  final double paid;
+
+  factory TopClient.fromJson(Map<String, dynamic> json) => TopClient(
+        name: json.strOr('name', 'Unknown'),
+        total: json.money('total'),
+        paid: json.money('paid'),
+      );
+}
+
+class UpcomingBill {
+  const UpcomingBill({
+    required this.id,
+    required this.name,
+    required this.amount,
+    this.dueDate,
+    this.category,
+  });
+
+  final String id;
+  final String name;
+  final double amount;
+  final DateTime? dueDate;
+  final String? category;
+
+  factory UpcomingBill.fromJson(Map<String, dynamic> json) => UpcomingBill(
+        id: json.id(),
+        name: json.strOr('name', '—'),
+        amount: json.money('amount'),
+        dueDate: json.date('due_date'),
+        category: json.str('category'),
+      );
+}
+
+class UpcomingRenewal {
+  const UpcomingRenewal({
+    this.clientName,
+    this.productName,
+    this.label,
+    this.nextBillDate,
+    required this.price,
+  });
+
+  final String? clientName;
+  final String? productName;
+
+  /// The domain or service instance the subscription is for.
+  final String? label;
+  final DateTime? nextBillDate;
+  final double price;
+
+  factory UpcomingRenewal.fromJson(Map<String, dynamic> json) =>
+      UpcomingRenewal(
+        clientName: json.str('client_name'),
+        productName: json.str('product_name'),
+        label: json.str('label'),
+        nextBillDate: json.date('next_bill_date'),
+        price: json.money('price'),
+      );
+}
+
+class UrgentObligation {
+  const UrgentObligation({
+    required this.id,
+    required this.name,
+    required this.amount,
+    this.nextDueDate,
+    this.daysRemaining,
+    this.cycle,
+  });
+
+  final String id;
+  final String name;
+  final double amount;
+  final DateTime? nextDueDate;
+
+  /// Negative once past due.
+  final int? daysRemaining;
+  final String? cycle;
+
+  factory UrgentObligation.fromJson(Map<String, dynamic> json) =>
+      UrgentObligation(
+        id: json.id(),
+        name: json.strOr('name', '—'),
+        amount: json.money('amount'),
+        nextDueDate: json.date('next_due_date'),
+        daysRemaining: json['days_remaining'] == null
+            ? null
+            : json.count('days_remaining'),
+        cycle: json.str('cycle'),
       );
 }
 
