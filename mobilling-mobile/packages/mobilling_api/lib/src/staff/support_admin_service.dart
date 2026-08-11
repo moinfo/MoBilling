@@ -24,7 +24,7 @@ class SupportAdminService {
 
   /// GET /canned-replies — readable with `tickets.reply`.
   Future<List<CannedReply>> cannedReplies() async {
-    final body = await _api.get<Map<String, dynamic>>('/canned-replies');
+    final body = await _api.get<dynamic>('/canned-replies');
     return Paginated.fromJson(body, CannedReply.fromJson).items;
   }
 
@@ -55,7 +55,7 @@ class SupportAdminService {
 
   /// GET /announcements — includes drafts (staff view).
   Future<List<StaffAnnouncement>> announcements() async {
-    final body = await _api.get<Map<String, dynamic>>('/announcements');
+    final body = await _api.get<dynamic>('/announcements');
     return Paginated.fromJson(body, StaffAnnouncement.fromJson).items;
   }
 
@@ -93,7 +93,7 @@ class SupportAdminService {
 
   /// GET /kb/categories — with article counts.
   Future<List<StaffKbCategory>> kbCategories() async {
-    final body = await _api.get<Map<String, dynamic>>('/kb/categories');
+    final body = await _api.get<dynamic>('/kb/categories');
     return Paginated.fromJson(body, StaffKbCategory.fromJson).items;
   }
 
@@ -125,7 +125,7 @@ class SupportAdminService {
 
   /// GET /kb/articles — all articles, optionally one category's.
   Future<List<StaffKbArticle>> kbArticles({String? categoryId}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/kb/articles',
       query: {'category_id': categoryId},
     );
@@ -173,7 +173,7 @@ class SupportAdminService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/hosting-accounts',
       query: {
         'status': status,
@@ -269,7 +269,7 @@ class SupportAdminService {
   /// `domains.transfer`.
   Future<String> domainAuthInfo(String domainId) async {
     final body =
-        await _api.get<Map<String, dynamic>>('/domains/$domainId/auth-info');
+        await _api.get<dynamic>('/domains/$domainId/auth-info');
     return body['auth_info']?.toString() ??
         (body['data'] is Map
             ? (body['data'] as Map)['auth_info']?.toString() ?? ''

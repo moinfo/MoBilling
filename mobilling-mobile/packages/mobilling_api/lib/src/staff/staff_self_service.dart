@@ -20,7 +20,7 @@ class StaffSelfService {
   /// GET /attendance/mine — this month's record, today's state, and any
   /// penalties accrued.
   Future<MyAttendance> myAttendance() async {
-    final body = await _api.get<Map<String, dynamic>>('/attendance/mine');
+    final body = await _api.get<dynamic>('/attendance/mine');
     return MyAttendance.fromJson(body);
   }
 
@@ -33,7 +33,7 @@ class StaffSelfService {
     String? reportType,
     String? status,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/staff-reports',
       query: {'report_type': reportType, 'status': status},
     );
@@ -83,7 +83,7 @@ class StaffSelfService {
 
   /// GET /staff-targets — unpaginated.
   Future<List<StaffTarget>> staffTargets({String? status}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/staff-targets',
       query: {'status': status},
     );
@@ -115,7 +115,7 @@ class StaffSelfService {
   /// attached when already submitted.
   Future<List<SystemVerification>> systemVerifications() async {
     final body =
-        await _api.get<Map<String, dynamic>>('/system-verifications');
+        await _api.get<dynamic>('/system-verifications');
     return Paginated.fromJson(body, SystemVerification.fromJson).items;
   }
 
@@ -132,7 +132,7 @@ class StaffSelfService {
   /// GET /system-verifications/{id}/reports — the check history.
   Future<List<SystemVerificationReport>> verificationReports(
       String verificationId) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
         '/system-verifications/$verificationId/reports');
     return Paginated.fromJson(body, SystemVerificationReport.fromJson).items;
   }
@@ -143,7 +143,7 @@ class StaffSelfService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/system-records',
       query: {'system_id': systemId, 'page': page, 'per_page': perPage},
     );

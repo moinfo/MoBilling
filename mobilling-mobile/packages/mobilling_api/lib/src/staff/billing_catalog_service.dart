@@ -63,7 +63,7 @@ class BillingCatalogService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/credit-notes',
       query: {
         'status': status,
@@ -91,7 +91,7 @@ class BillingCatalogService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/product-services',
       query: {
         'type': type,
@@ -106,7 +106,7 @@ class BillingCatalogService {
 
   /// GET /product-addons — unpaginated.
   Future<List<StaffProductAddon>> addons({String? search}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/product-addons',
       query: {'search': search},
     );
@@ -115,7 +115,7 @@ class BillingCatalogService {
 
   /// GET /config-option-groups — unpaginated, with options and choices nested.
   Future<List<StaffConfigGroup>> configGroups({String? search}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/config-option-groups',
       query: {'search': search},
     );
@@ -124,7 +124,7 @@ class BillingCatalogService {
 
   /// GET /coupons — unpaginated, with redemption counts.
   Future<List<StaffCoupon>> coupons({String? search}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/coupons',
       query: {'search': search},
     );
@@ -138,7 +138,7 @@ class BillingCatalogService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/client-subscriptions',
       query: {
         'status': status,

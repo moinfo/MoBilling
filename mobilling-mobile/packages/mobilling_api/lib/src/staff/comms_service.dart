@@ -19,7 +19,7 @@ class CommsService {
 
   /// GET /sms/packages — the active credit tiers, cheapest first.
   Future<List<SmsPackageOption>> smsPackages() async {
-    final body = await _api.get<Map<String, dynamic>>('/sms/packages');
+    final body = await _api.get<dynamic>('/sms/packages');
     return Paginated.fromJson(body, SmsPackageOption.fromJson).items;
   }
 
@@ -48,7 +48,7 @@ class CommsService {
 
   /// GET /sms/purchases — paginated history, newest first.
   Future<Paginated<SmsPurchase>> smsPurchases({int page = 1}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/sms/purchases',
       query: {'page': page},
     );
@@ -86,7 +86,7 @@ class CommsService {
     int page = 1,
     int perPage = 15,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/broadcasts',
       query: {'page': page, 'per_page': perPage},
     );
@@ -203,7 +203,7 @@ class CommsService {
   /// GET /social/platforms — needs social.read. The tenant's configured
   /// platforms, in display order.
   Future<List<SocialPlatformConfig>> socialPlatforms() async {
-    final body = await _api.get<Map<String, dynamic>>('/social/platforms');
+    final body = await _api.get<dynamic>('/social/platforms');
     return Paginated.fromJson(body, SocialPlatformConfig.fromJson).items;
   }
 
@@ -215,7 +215,7 @@ class CommsService {
     String? status,
     String? type,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/social/posts',
       query: {
         'week_start': weekStart == null ? null : _day(weekStart),

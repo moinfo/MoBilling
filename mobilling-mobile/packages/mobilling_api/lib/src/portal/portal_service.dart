@@ -36,7 +36,7 @@ class PortalService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/portal/documents',
       query: {
         'type': type,
@@ -70,7 +70,7 @@ class PortalService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/portal/payments',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -132,7 +132,7 @@ class PortalService {
   /// GET /portal/statement — ledger of invoices vs payments with a running
   /// balance, optionally windowed by date (Y-m-d).
   Future<Statement> statement({String? startDate, String? endDate}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/portal/statement',
       query: {'start_date': startDate, 'end_date': endDate},
     );
@@ -145,7 +145,7 @@ class PortalService {
 
   /// GET /portal/tickets — all of the client's tickets, open first.
   Future<List<PortalTicket>> tickets() async {
-    final body = await _api.get<Map<String, dynamic>>('/portal/tickets');
+    final body = await _api.get<dynamic>('/portal/tickets');
     return Paginated.fromJson(body, PortalTicket.fromJson).items;
   }
 
@@ -200,14 +200,14 @@ class PortalService {
   /// GET /portal/announcements — the tenant's published announcements.
   Future<List<Announcement>> announcements() async {
     final body =
-        await _api.get<Map<String, dynamic>>('/portal/announcements');
+        await _api.get<dynamic>('/portal/announcements');
     return Paginated.fromJson(body, Announcement.fromJson).items;
   }
 
   /// GET /portal/knowledgebase — categories with published articles,
   /// optionally filtered by [search] (matching categories only).
   Future<List<KbCategory>> knowledgebase({String? search}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/portal/knowledgebase',
       query: {'search': search},
     );
@@ -217,7 +217,7 @@ class PortalService {
   /// GET /portal/knowledgebase/{slug} — a full article (increments views).
   Future<KbArticle> kbArticle(String slug) async {
     final body =
-        await _api.get<Map<String, dynamic>>('/portal/knowledgebase/$slug');
+        await _api.get<dynamic>('/portal/knowledgebase/$slug');
     return KbArticle.fromJson(_unwrap(body));
   }
 
@@ -228,7 +228,7 @@ class PortalService {
   /// GET /portal/subscriptions — everything except cancelled ones.
   Future<List<ClientSubscription>> subscriptions() async {
     final body =
-        await _api.get<Map<String, dynamic>>('/portal/subscriptions');
+        await _api.get<dynamic>('/portal/subscriptions');
     return Paginated.fromJson(body, ClientSubscription.fromJson).items;
   }
 
@@ -241,7 +241,7 @@ class PortalService {
 
   /// GET /portal/hosting.
   Future<List<HostingAccount>> hostingAccounts() async {
-    final body = await _api.get<Map<String, dynamic>>('/portal/hosting');
+    final body = await _api.get<dynamic>('/portal/hosting');
     return Paginated.fromJson(body, HostingAccount.fromJson).items;
   }
 
@@ -374,7 +374,7 @@ class PortalService {
 
   /// GET /portal/users — portal admins only (403 otherwise).
   Future<List<PortalUser>> portalUsers() async {
-    final body = await _api.get<Map<String, dynamic>>('/portal/users');
+    final body = await _api.get<dynamic>('/portal/users');
     return Paginated.fromJson(body, PortalUser.fromJson).items;
   }
 
@@ -460,20 +460,20 @@ class PortalService {
 
   /// GET /portal/catalog — grouped, portal-visible products.
   Future<List<CatalogGroup>> catalog() async {
-    final body = await _api.get<Map<String, dynamic>>('/portal/catalog');
+    final body = await _api.get<dynamic>('/portal/catalog');
     return Paginated.fromJson(body, CatalogGroup.fromJson).items;
   }
 
   /// GET /portal/domain-tlds — offered TLDs with pricing.
   Future<List<TldPricing>> tlds() async {
-    final body = await _api.get<Map<String, dynamic>>('/portal/domain-tlds');
+    final body = await _api.get<dynamic>('/portal/domain-tlds');
     return Paginated.fromJson(body, TldPricing.fromJson).items;
   }
 
   /// GET /portal/domain-addons — addons offered with a bundled domain.
   Future<List<DomainAddon>> domainAddons() async {
     final body =
-        await _api.get<Map<String, dynamic>>('/portal/domain-addons');
+        await _api.get<dynamic>('/portal/domain-addons');
     return Paginated.fromJson(body, DomainAddon.fromJson).items;
   }
 
@@ -486,7 +486,7 @@ class PortalService {
 
   /// GET /portal/products/{id}/config-options.
   Future<List<ConfigOptionGroup>> configOptions(String productId) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
         '/portal/products/$productId/config-options');
     return Paginated.fromJson(body, ConfigOptionGroup.fromJson).items;
   }

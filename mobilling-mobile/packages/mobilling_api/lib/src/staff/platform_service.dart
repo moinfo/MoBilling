@@ -17,7 +17,7 @@ class PlatformService {
   // ---------------------------------------------------------------------
 
   Future<PlatformDashboard> dashboard() async {
-    final body = await _api.get<Map<String, dynamic>>('/admin/dashboard');
+    final body = await _api.get<dynamic>('/admin/dashboard');
     return PlatformDashboard.fromJson(body);
   }
 
@@ -30,7 +30,7 @@ class PlatformService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/admin/tenants',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -39,7 +39,7 @@ class PlatformService {
 
   Future<PlatformTenant> tenant(String id) async {
     final body =
-        await _api.get<Map<String, dynamic>>('/admin/tenants/$id');
+        await _api.get<dynamic>('/admin/tenants/$id');
     return PlatformTenant.fromJson(_unwrap(body));
   }
 
@@ -51,7 +51,7 @@ class PlatformService {
   /// GET /admin/tenants/{id}/users.
   Future<List<StaffUser>> tenantUsers(String tenantId) async {
     final body =
-        await _api.get<Map<String, dynamic>>('/admin/tenants/$tenantId/users');
+        await _api.get<dynamic>('/admin/tenants/$tenantId/users');
     return Paginated.fromJson(body, StaffUser.fromJson).items;
   }
 
@@ -164,7 +164,7 @@ class PlatformService {
 
   Future<List<PlatformPlan>> plans() async {
     final body =
-        await _api.get<Map<String, dynamic>>('/admin/subscription-plans');
+        await _api.get<dynamic>('/admin/subscription-plans');
     return Paginated.fromJson(_unwrapPage(body), PlatformPlan.fromJson).items;
   }
 
@@ -189,7 +189,7 @@ class PlatformService {
   }
 
   Future<List<PlatformCurrency>> currencies() async {
-    final body = await _api.get<Map<String, dynamic>>('/admin/currencies');
+    final body = await _api.get<dynamic>('/admin/currencies');
     return Paginated.fromJson(_unwrapPage(body), PlatformCurrency.fromJson)
         .items;
   }
@@ -213,7 +213,7 @@ class PlatformService {
   }
 
   Future<List<SmsPackage>> smsPackages() async {
-    final body = await _api.get<Map<String, dynamic>>('/admin/sms-packages');
+    final body = await _api.get<dynamic>('/admin/sms-packages');
     return Paginated.fromJson(_unwrapPage(body), SmsPackage.fromJson).items;
   }
 
@@ -240,7 +240,7 @@ class PlatformService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/admin/sms-purchases',
       query: {'status': status, 'page': page, 'per_page': perPage},
     );
@@ -253,14 +253,14 @@ class PlatformService {
 
   /// The permission catalogue every tenant role is built from.
   Future<List<PermissionInfo>> permissions() async {
-    final body = await _api.get<Map<String, dynamic>>('/permissions');
+    final body = await _api.get<dynamic>('/permissions');
     return Paginated.fromJson(body, PermissionInfo.fromJson).items;
   }
 
   /// Role templates — the starting roles a new tenant is seeded with.
   Future<List<StaffRole>> roleTemplates() async {
     final body =
-        await _api.get<Map<String, dynamic>>('/admin/role-templates');
+        await _api.get<dynamic>('/admin/role-templates');
     return Paginated.fromJson(body, StaffRole.fromJson).items;
   }
 

@@ -38,13 +38,13 @@ class CrmService {
 
   /// GET /followups/dashboard — due today + overdue + counters.
   Future<FollowupDashboard> followupDashboard() async {
-    final body = await _api.get<Map<String, dynamic>>('/followups/dashboard');
+    final body = await _api.get<dynamic>('/followups/dashboard');
     return FollowupDashboard.fromJson(body);
   }
 
   /// GET /followups — the full list, optionally narrowed by status.
   Future<List<FollowupEntry>> followups({String? status}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/followups',
       query: {'status': status},
     );
@@ -98,7 +98,7 @@ class CrmService {
   /// GET /followups/client/{clientId} — every follow-up for one client.
   Future<List<FollowupEntry>> clientFollowupHistory(String clientId) async {
     final body =
-        await _api.get<Map<String, dynamic>>('/followups/client/$clientId');
+        await _api.get<dynamic>('/followups/client/$clientId');
     return Paginated.fromJson(body, FollowupEntry.fromJson).items;
   }
 
@@ -109,13 +109,13 @@ class CrmService {
   /// GET /satisfaction-calls/dashboard — queue + team and personal stats.
   Future<SatisfactionDashboard> satisfactionDashboard() async {
     final body =
-        await _api.get<Map<String, dynamic>>('/satisfaction-calls/dashboard');
+        await _api.get<dynamic>('/satisfaction-calls/dashboard');
     return SatisfactionDashboard.fromJson(body);
   }
 
   /// GET /satisfaction-calls — the call queue.
   Future<List<SatisfactionCall>> satisfactionCalls({String? status}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/satisfaction-calls',
       query: {'status': status},
     );
@@ -201,7 +201,7 @@ class CrmService {
 
   /// GET /served/services — the service types a walk-in can be recorded under.
   Future<List<ServedService>> servedServices() async {
-    final body = await _api.get<Map<String, dynamic>>('/served/services');
+    final body = await _api.get<dynamic>('/served/services');
     return Paginated.fromJson(body, ServedService.fromJson).items;
   }
 
@@ -211,7 +211,7 @@ class CrmService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/served/customers',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -268,7 +268,7 @@ class CrmService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/field-sessions',
       query: {'page': page, 'per_page': perPage},
     );
@@ -333,7 +333,7 @@ class CrmService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/field-visits-report',
       query: {'status': status, 'page': page, 'per_page': perPage},
     );
@@ -342,7 +342,7 @@ class CrmService {
 
   /// GET /field-targets — monthly conversion targets per officer.
   Future<List<FieldTarget>> fieldTargets({int? month, int? year}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/field-targets',
       query: {'month': month, 'year': year},
     );

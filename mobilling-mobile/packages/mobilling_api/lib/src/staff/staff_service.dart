@@ -15,7 +15,7 @@ class StaffService {
 
   /// GET /dashboard/summary — per-field permission-gated summary.
   Future<StaffDashboard> dashboard({int? month, int? year}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/dashboard/summary',
       query: {'month': month, 'year': year},
     );
@@ -28,7 +28,7 @@ class StaffService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/clients',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -44,7 +44,7 @@ class StaffService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/documents',
       query: {
         'type': type,
@@ -64,7 +64,7 @@ class StaffService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/payments-in',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -73,7 +73,7 @@ class StaffService {
 
   /// GET /tickets — staff queue (all clients).
   Future<List<StaffTicket>> tickets({String? status}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/tickets',
       query: {'status': status},
     );

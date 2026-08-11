@@ -33,7 +33,7 @@ class FinanceService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/expenses',
       query: {
         'approval_status': approvalStatus,
@@ -92,7 +92,7 @@ class FinanceService {
   /// GET /expense-categories — parents with their sub-categories nested.
   Future<List<ExpenseCategory>> expenseCategories() async {
     final body =
-        await _api.get<Map<String, dynamic>>('/expense-categories');
+        await _api.get<dynamic>('/expense-categories');
     return Paginated.fromJson(body, ExpenseCategory.fromJson).items;
   }
 
@@ -151,7 +151,7 @@ class FinanceService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/statutories',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -176,7 +176,7 @@ class FinanceService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/bills',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -185,7 +185,7 @@ class FinanceService {
 
   /// GET /bill-categories — nested one level.
   Future<List<BillCategory>> billCategories() async {
-    final body = await _api.get<Map<String, dynamic>>('/bill-categories');
+    final body = await _api.get<dynamic>('/bill-categories');
     return Paginated.fromJson(body, BillCategory.fromJson).items;
   }
 

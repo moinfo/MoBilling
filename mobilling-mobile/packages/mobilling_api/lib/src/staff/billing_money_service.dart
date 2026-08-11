@@ -48,7 +48,7 @@ class BillingMoneyService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/documents',
       query: {
         'type': 'invoice',
@@ -95,7 +95,7 @@ class BillingMoneyService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/payments-out',
       query: {'bill_id': billId, 'page': page, 'per_page': perPage},
     );
@@ -111,7 +111,7 @@ class BillingMoneyService {
     int page = 1,
     int perPage = 50,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/bills',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -144,7 +144,7 @@ class BillingMoneyService {
   /// GET /next-bills — projected upcoming recurring charges (not persisted
   /// rows; the controller walks each active subscription's cycle forward).
   Future<List<NextBill>> nextBills() async {
-    final body = await _api.get<Map<String, dynamic>>('/next-bills');
+    final body = await _api.get<dynamic>('/next-bills');
     return Paginated.fromJson(body, NextBill.fromJson).items;
   }
 

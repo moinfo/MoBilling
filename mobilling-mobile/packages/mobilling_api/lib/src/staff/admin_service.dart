@@ -17,19 +17,19 @@ class AdminService {
 
   /// GET /subscription/current — status, days remaining and the active plan.
   Future<TenantSubscription> currentSubscription() async {
-    final body = await _api.get<Map<String, dynamic>>('/subscription/current');
+    final body = await _api.get<dynamic>('/subscription/current');
     return TenantSubscription.fromJson(body);
   }
 
   /// GET /subscription/plans.
   Future<List<SubscriptionPlan>> plans() async {
-    final body = await _api.get<Map<String, dynamic>>('/subscription/plans');
+    final body = await _api.get<dynamic>('/subscription/plans');
     return Paginated.fromJson(body, SubscriptionPlan.fromJson).items;
   }
 
   /// GET /subscription/history — past payments.
   Future<List<SubscriptionHistoryEntry>> subscriptionHistory() async {
-    final body = await _api.get<Map<String, dynamic>>('/subscription/history');
+    final body = await _api.get<dynamic>('/subscription/history');
     return Paginated.fromJson(body, SubscriptionHistoryEntry.fromJson).items;
   }
 
@@ -53,7 +53,7 @@ class AdminService {
   /// GET /automation/summary — what the scheduled jobs did.
   /// [date] is Y-m-d; defaults server-side to today.
   Future<AutomationSummary> automationSummary({String? date}) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/automation/summary',
       query: {'date': date},
     );
@@ -62,7 +62,7 @@ class AdminService {
 
   /// GET /automation/cron-logs — recent scheduled-job runs.
   Future<List<CronLogEntry>> cronLogs() async {
-    final body = await _api.get<Map<String, dynamic>>('/automation/cron-logs');
+    final body = await _api.get<dynamic>('/automation/cron-logs');
     return Paginated.fromJson(body, CronLogEntry.fromJson).items;
   }
 
@@ -76,7 +76,7 @@ class AdminService {
     int page = 1,
     int perPage = 20,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/users',
       query: {'search': search, 'page': page, 'per_page': perPage},
     );
@@ -119,14 +119,14 @@ class AdminService {
 
   /// GET /roles — with user counts and the permissions each grants.
   Future<List<StaffRole>> roles() async {
-    final body = await _api.get<Map<String, dynamic>>('/roles');
+    final body = await _api.get<dynamic>('/roles');
     return Paginated.fromJson(body, StaffRole.fromJson).items;
   }
 
   /// GET /permissions — every permission the platform defines, for the
   /// role editor's checklist.
   Future<List<PermissionInfo>> permissions() async {
-    final body = await _api.get<Map<String, dynamic>>('/permissions');
+    final body = await _api.get<dynamic>('/permissions');
     return Paginated.fromJson(body, PermissionInfo.fromJson).items;
   }
 
@@ -185,7 +185,7 @@ class AdminService {
     int page = 1,
     int perPage = 50,
   }) async {
-    final body = await _api.get<Map<String, dynamic>>(
+    final body = await _api.get<dynamic>(
       '/bank-accounts',
       query: {'page': page, 'per_page': perPage},
     );
