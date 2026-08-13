@@ -439,39 +439,6 @@
   cursor: not-allowed;
 }
 
-.quickLinks {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-
-.quick {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 14px 16px;
-  border: 1px solid var(--dc-border);
-  border-radius: var(--dc-radius-panel);
-  text-decoration: none;
-  transition: border-color 150ms ease;
-}
-
-.quick:hover {
-  border-color: var(--dc-blue-line);
-}
-
-.quickLabel {
-  font-family: var(--dc-font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  color: var(--dc-blue-text);
-}
-
-.quickText {
-  font-size: 14px;
-  color: var(--dc-text-body);
-}
-
 .newHere {
   font-family: var(--dc-font-body);
   font-size: 14px;

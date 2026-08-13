@@ -50,10 +50,6 @@ export const en: Translations = {
   'login.platformStatus': 'PLATFORM STATUS',
   'login.operational': 'All systems operational',
   'login.uptimeGuarantee': 'UPTIME GUARANTEE',
-  'login.cpanel': 'CPANEL',
-  'login.cpanelDesc': 'Manage files & databases',
-  'login.webmail': 'WEBMAIL',
-  'login.webmailDesc': 'Read your email',
   'login.privacy': 'PRIVACY',
   'login.terms': 'TERMS',
 

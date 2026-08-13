@@ -45,10 +45,6 @@ export const sw: Translations = {
   'login.platformStatus': 'HALI YA MFUMO',
   'login.operational': 'Mifumo yote inafanya kazi',
   'login.uptimeGuarantee': 'DHAMANA YA UPATIKANAJI',
-  'login.cpanel': 'CPANEL',
-  'login.cpanelDesc': 'Simamia faili na hifadhidata',
-  'login.webmail': 'WEBMAIL',
-  'login.webmailDesc': 'Soma barua pepe zako',
   'login.privacy': 'FARAGHA',
   'login.terms': 'MASHARTI',
 

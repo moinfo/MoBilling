@@ -321,27 +321,6 @@ export default function PortalLogin() {
               </button>
             </div>
 
-            <div className={classes.quickLinks}>
-              <a
-                className={classes.quick}
-                href="https://moinfo.co.tz:2083"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <span className={classes.quickLabel}>{t('login.cpanel')}</span>
-                <span className={classes.quickText}>{t('login.cpanelDesc')}</span>
-              </a>
-              <a
-                className={classes.quick}
-                href="https://moinfo.co.tz:2096"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <span className={classes.quickLabel}>{t('login.webmail')}</span>
-                <span className={classes.quickText}>{t('login.webmailDesc')}</span>
-              </a>
-            </div>
-
             <p className={classes.newHere}>
               {t('login.newHere')} {brandName}?{' '}
               <Link to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}>
