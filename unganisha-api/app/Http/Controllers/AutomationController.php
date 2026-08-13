@@ -20,6 +20,51 @@ class AutomationController extends Controller
         ]);
     }
 
+    /** Export the upcoming-reminders forecast as PDF or CSV (Excel-friendly) — one row per client per event. */
+    public function exportUpcomingReminders(Request $request, ReminderForecastService $forecast)
+    {
+        $data = $request->validate([
+            'days' => 'nullable|integer|min:1|max:60',
+            'format' => 'required|in:pdf,csv',
+        ]);
+        $days = (int) ($data['days'] ?? 14);
+        $tenant = auth()->user()->tenant;
+
+        $events = $forecast->forecast($tenant->id, $days);
+        $generatedAt = now();
+
+        if ($data['format'] === 'pdf') {
+            $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.upcoming-reminders', [
+                'events' => $events,
+                'tenant' => $tenant,
+                'days' => $days,
+                'generatedAt' => $generatedAt,
+            ]);
+
+            return $pdf->download("upcoming-reminders-{$days}d.pdf");
+        }
+
+        $rows = [['Date', 'Client', 'Type', 'Detail', 'Channels', 'Email', 'Phone']];
+        foreach ($events as $e) {
+            $rows[] = [
+                $e['date'], $e['client_name'], $e['category'], $e['label'],
+                implode('/', $e['channels']), $e['recipient_email'] ?? '', $e['recipient_phone'] ?? '',
+            ];
+        }
+
+        $csv = fopen('php://temp', 'r+');
+        fwrite($csv, "\xEF\xBB\xBF");   // BOM so Excel reads UTF-8
+        foreach ($rows as $r) {
+            fputcsv($csv, $r);
+        }
+        rewind($csv);
+
+        return response(stream_get_contents($csv), 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=upcoming-reminders-{$days}d.csv",
+        ]);
+    }
+
     public function summary(Request $request)
     {
         $date = $request->get('date', today()->toDateString());

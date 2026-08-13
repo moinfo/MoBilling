@@ -60,6 +60,9 @@ export interface UpcomingReminderEvent {
 export const getUpcomingReminders = (days?: number) =>
   api.get<{ data: UpcomingReminderEvent[] }>('/automation/upcoming-reminders', { params: { days } });
 
+export const exportUpcomingReminders = (days: number, format: 'pdf' | 'csv') =>
+  api.get('/automation/upcoming-reminders/export', { params: { days, format }, responseType: 'blob' });
+
 export const getCommunicationLogs = (params?: {
   date?: string;
   search?: string;

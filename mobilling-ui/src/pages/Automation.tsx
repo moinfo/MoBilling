@@ -2,21 +2,23 @@ import { useState } from 'react';
 import {
   Title, Stack, SimpleGrid, Paper, Text, Group, Badge, Table,
   ThemeIcon, LoadingOverlay, Pagination, Select, SegmentedControl,
-  Modal, TextInput, Switch,
+  Modal, TextInput, Switch, Button,
 } from '@mantine/core';
 import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { DatePickerInput } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
+import { notifications } from '@mantine/notifications';
 import {
   IconFileInvoice, IconBell, IconFileSpreadsheet, IconCreditCardOff,
   IconMail, IconMessage, IconAlertTriangle, IconRobot, IconSearch,
-  IconCalendarDue, IconBrandWhatsapp,
+  IconCalendarDue, IconBrandWhatsapp, IconFileDownload,
 } from '@tabler/icons-react';
 import {
   getAutomationSummary,
   getCronLogs,
   getCommunicationLogs,
   getUpcomingReminders,
+  exportUpcomingReminders,
   type AutomationSummary,
   type CommunicationLogEntry,
 } from '../api/automation';
@@ -77,6 +79,24 @@ export default function Automation() {
     (acc[ev.date] ??= []).push(ev);
     return acc;
   }, {});
+
+  const [upcomingExporting, setUpcomingExporting] = useState<'pdf' | 'csv' | null>(null);
+  const doExportUpcoming = async (format: 'pdf' | 'csv') => {
+    setUpcomingExporting(format);
+    try {
+      const res = await exportUpcomingReminders(Number(upcomingDays), format);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = `upcoming-reminders-${upcomingDays}d.${format === 'pdf' ? 'pdf' : 'csv'}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      notifications.show({ message: 'Export failed.', color: 'red' });
+    } finally {
+      setUpcomingExporting(null);
+    }
+  };
 
   const { data: commData, isLoading: commLoading } = useQuery({
     queryKey: ['comm-logs', dateStr, channelFilter, statusFilter, debouncedCommSearch, clientOnly, commPage],
@@ -193,17 +213,31 @@ export default function Automation() {
             <IconCalendarDue size={18} />
             <Title order={4}>Upcoming Reminders</Title>
           </Group>
-          <SegmentedControl
-            size="xs"
-            value={upcomingDays}
-            onChange={setUpcomingDays}
-            data={[
-              { label: '7 days', value: '7' },
-              { label: '14 days', value: '14' },
-              { label: '30 days', value: '30' },
-              { label: '60 days', value: '60' },
-            ]}
-          />
+          <Group gap="sm" wrap="wrap">
+            <SegmentedControl
+              size="xs"
+              value={upcomingDays}
+              onChange={setUpcomingDays}
+              data={[
+                { label: '7 days', value: '7' },
+                { label: '14 days', value: '14' },
+                { label: '30 days', value: '30' },
+                { label: '60 days', value: '60' },
+              ]}
+            />
+            <Group gap={6}>
+              <Button size="xs" variant="light" leftSection={<IconFileDownload size={14} />}
+                loading={upcomingExporting === 'pdf'} disabled={upcomingEvents.length === 0}
+                onClick={() => doExportUpcoming('pdf')}>
+                PDF
+              </Button>
+              <Button size="xs" variant="light" color="teal" leftSection={<IconFileSpreadsheet size={14} />}
+                loading={upcomingExporting === 'csv'} disabled={upcomingEvents.length === 0}
+                onClick={() => doExportUpcoming('csv')}>
+                Excel
+              </Button>
+            </Group>
+          </Group>
         </Group>
         <Text size="xs" c="dimmed" mb="sm">
           Projected from today's data — a payment, cancellation, or setting change before the date arrives
