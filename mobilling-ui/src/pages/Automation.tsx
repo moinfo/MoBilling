@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Title, Stack, SimpleGrid, Paper, Text, Group, Badge, Table,
   ThemeIcon, LoadingOverlay, Pagination, Select, SegmentedControl,
@@ -46,6 +47,7 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export default function Automation() {
+  const navigate = useNavigate();
   const [date, setDate] = useState<string | null>(new Date().toISOString().slice(0, 10));
   const [cronPage, setCronPage] = useState(1);
   const [commPage, setCommPage] = useState(1);
@@ -261,6 +263,7 @@ export default function Automation() {
                         <Table.Th>Type</Table.Th>
                         <Table.Th>Detail</Table.Th>
                         <Table.Th>Channels</Table.Th>
+                        <Table.Th></Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
@@ -286,6 +289,14 @@ export default function Automation() {
                                 );
                               })}
                             </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            {ev.document_id && (
+                              <Button size="compact-xs" variant="subtle"
+                                onClick={() => navigate(`/invoices?preview=${ev.document_id}`)}>
+                                View
+                              </Button>
+                            )}
                           </Table.Td>
                         </Table.Tr>
                       ))}

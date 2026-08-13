@@ -55,6 +55,7 @@ export interface UpcomingReminderEvent {
   channels: ('email' | 'sms' | 'whatsapp')[];
   recipient_email: string | null;
   recipient_phone: string | null;
+  document_id: string | null;
 }
 
 export const getUpcomingReminders = (days?: number) =>

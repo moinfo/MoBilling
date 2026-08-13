@@ -111,6 +111,7 @@ class ReminderForecastService
                 },
                 reference: $doc->document_number,
                 gates: $gates,
+                documentId: $doc->id,
             );
         }
 
@@ -296,6 +297,7 @@ class ReminderForecastService
                     category: 'recurring_invoice_reminder',
                     label: "Renewal reminder ({$offset}d) — {$document->document_number}",
                     reference: $document->document_number,
+                    documentId: $document->id,
                 );
             }
         }
@@ -390,6 +392,7 @@ class ReminderForecastService
         array $gates = ['email' => true, 'sms' => true, 'whatsapp' => true],
         bool $smsCapable = true,
         bool $whatsappCapable = true,
+        ?string $documentId = null,
     ): array {
         $channels = [
             'email' => (bool) $tenant->email_enabled && (!$gates['email'] || $tenant->reminder_email_enabled) && (bool) $client->email,
@@ -407,6 +410,7 @@ class ReminderForecastService
             'channels' => array_keys(array_filter($channels)),
             'recipient_email' => $client->email,
             'recipient_phone' => $client->phone,
+            'document_id' => $documentId,
         ];
     }
 }
