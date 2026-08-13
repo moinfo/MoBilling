@@ -76,11 +76,23 @@ class AutomationController extends Controller
 
     public function communicationLogs(Request $request)
     {
-        $query = CommunicationLog::query()->orderByDesc('created_at');
+        $query = CommunicationLog::with('client:id,name')->orderByDesc('created_at');
 
-        if ($request->has('date')) {
+        // A search overrides the date filter — staff looking up what a
+        // specific client received need every historical message, not just
+        // today's, and typing a search term makes that intent explicit.
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(fn ($q) => $q
+                ->where('recipient', 'like', "%{$search}%")
+                ->orWhereHas('client', fn ($c) => $c->where('name', 'like', "%{$search}%")));
+        } elseif ($request->has('date')) {
             $date = Carbon::parse($request->date);
             $query->whereBetween('created_at', [$date->startOfDay(), $date->copy()->endOfDay()]);
+        }
+
+        if ($request->boolean('client_only')) {
+            $query->whereNotNull('client_id');
         }
 
         if ($request->has('channel')) {

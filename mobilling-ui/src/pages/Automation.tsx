@@ -2,14 +2,14 @@ import { useState } from 'react';
 import {
   Title, Stack, SimpleGrid, Paper, Text, Group, Badge, Table,
   ThemeIcon, LoadingOverlay, Pagination, Select, SegmentedControl,
-  Modal,
+  Modal, TextInput, Switch,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { DatePickerInput } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
 import {
   IconFileInvoice, IconBell, IconFileSpreadsheet, IconCreditCardOff,
-  IconMail, IconMessage, IconAlertTriangle, IconRobot,
+  IconMail, IconMessage, IconAlertTriangle, IconRobot, IconSearch,
 } from '@tabler/icons-react';
 import {
   getAutomationSummary,
@@ -20,12 +20,17 @@ import {
 } from '../api/automation';
 import dayjs from 'dayjs';
 
+const CHANNEL_COLORS: Record<string, string> = { email: 'blue', sms: 'green', whatsapp: 'teal' };
+
 export default function Automation() {
   const [date, setDate] = useState<string | null>(new Date().toISOString().slice(0, 10));
   const [cronPage, setCronPage] = useState(1);
   const [commPage, setCommPage] = useState(1);
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [commSearch, setCommSearch] = useState('');
+  const [debouncedCommSearch] = useDebouncedValue(commSearch, 300);
+  const [clientOnly, setClientOnly] = useState(true);
   const [detailOpened, { open: openDetail, close: closeDetail }] = useDisclosure(false);
   const [selectedLog, setSelectedLog] = useState<CommunicationLogEntry | null>(null);
 
@@ -42,10 +47,12 @@ export default function Automation() {
   });
 
   const { data: commData, isLoading: commLoading } = useQuery({
-    queryKey: ['comm-logs', dateStr, channelFilter, statusFilter, commPage],
+    queryKey: ['comm-logs', dateStr, channelFilter, statusFilter, debouncedCommSearch, clientOnly, commPage],
     queryFn: () =>
       getCommunicationLogs({
         date: dateStr,
+        search: debouncedCommSearch || undefined,
+        client_only: clientOnly,
         channel: channelFilter || undefined,
         status: statusFilter || undefined,
         page: commPage,
@@ -151,7 +158,21 @@ export default function Automation() {
         <LoadingOverlay visible={commLoading} />
         <Group justify="space-between" mb="sm" wrap="wrap">
           <Title order={4}>Communication Log</Title>
-          <Group gap="sm">
+          <Group gap="sm" wrap="wrap">
+            <TextInput
+              size="xs"
+              placeholder="Search recipient or client…"
+              leftSection={<IconSearch size={13} />}
+              w={220}
+              value={commSearch}
+              onChange={(e) => { setCommSearch(e.currentTarget.value); setCommPage(1); }}
+            />
+            <Switch
+              size="xs"
+              label="Client only"
+              checked={clientOnly}
+              onChange={(e) => { setClientOnly(e.currentTarget.checked); setCommPage(1); }}
+            />
             <SegmentedControl
               size="xs"
               value={channelFilter ?? 'all'}
@@ -160,6 +181,7 @@ export default function Automation() {
                 { label: 'All', value: 'all' },
                 { label: 'Email', value: 'email' },
                 { label: 'SMS', value: 'sms' },
+                { label: 'WhatsApp', value: 'whatsapp' },
               ]}
             />
             <Select
@@ -176,14 +198,18 @@ export default function Automation() {
             />
           </Group>
         </Group>
+        {commSearch && (
+          <Text size="xs" c="dimmed" mb="sm">Searching all dates for "{commSearch}" — the date picker above is ignored while searching.</Text>
+        )}
         {commLogs.length === 0 ? (
-          <Text c="dimmed" size="sm">No communications for this date.</Text>
+          <Text c="dimmed" size="sm">No communications found.</Text>
         ) : (
           <>
             <Table.ScrollContainer minWidth={700}>
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th>Client</Table.Th>
                     <Table.Th>Recipient</Table.Th>
                     <Table.Th>Channel</Table.Th>
                     <Table.Th>Type</Table.Th>
@@ -200,10 +226,13 @@ export default function Automation() {
                       onClick={() => { setSelectedLog(log); openDetail(); }}
                     >
                       <Table.Td>
+                        <Text size="sm" truncate maw={160}>{log.client?.name ?? '—'}</Text>
+                      </Table.Td>
+                      <Table.Td>
                         <Text size="sm" truncate maw={200}>{log.recipient}</Text>
                       </Table.Td>
                       <Table.Td>
-                        <Badge variant="light" color={log.channel === 'email' ? 'blue' : 'green'} size="sm">
+                        <Badge variant="light" color={CHANNEL_COLORS[log.channel] ?? 'gray'} size="sm">
                           {log.channel}
                         </Badge>
                       </Table.Td>
@@ -242,7 +271,7 @@ export default function Automation() {
         {selectedLog && (
           <Stack gap="sm">
             <Group justify="space-between">
-              <Badge variant="light" color={selectedLog.channel === 'email' ? 'blue' : 'green'} size="lg">
+              <Badge variant="light" color={CHANNEL_COLORS[selectedLog.channel] ?? 'gray'} size="lg">
                 {selectedLog.channel}
               </Badge>
               <Badge color={selectedLog.status === 'sent' ? 'green' : 'red'} size="lg">
@@ -254,6 +283,13 @@ export default function Automation() {
               <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Type</Text>
               <Text size="sm">{selectedLog.type.replace(/_/g, ' ')}</Text>
             </div>
+
+            {selectedLog.client && (
+              <div>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Client</Text>
+                <Text size="sm">{selectedLog.client.name}</Text>
+              </div>
+            )}
 
             <div>
               <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Recipient</Text>

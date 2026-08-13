@@ -6,6 +6,7 @@ use App\Helpers\PhoneHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\ClientUser;
+use App\Models\CommunicationLog;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Notifications\PortalOtpNotification;
@@ -106,12 +107,13 @@ class PasswordResetController extends Controller
         }
 
         $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $clientId = $type === 'client' ? $target->id : ($target->client_id ?? null);
 
         DB::table('portal_otps')->insert([
             'identifier' => $otpKey,
             'email' => $email,
             'otp' => $otp,
-            'client_id' => $type === 'client' ? $target->id : ($target->client_id ?? null),
+            'client_id' => $clientId,
             'tenant_id' => $target->tenant_id ?? null,
             'expires_at' => now()->addMinutes(10),
             'verified' => false,
@@ -132,15 +134,21 @@ class PasswordResetController extends Controller
         $waSent = false;
 
         if ($phone && app(SmsService::class)->canSend($tenant)) {
+            $smsMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
             try {
-                app(SmsService::class)->send(
-                    $tenant,
-                    $phone,
-                    "Your MoBilling verification code is: {$otp}. It expires in 10 minutes."
-                );
+                app(SmsService::class)->send($tenant, $phone, $smsMessage);
                 $smsSent = true;
+                CommunicationLog::withoutGlobalScopes()->create([
+                    'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'sms',
+                    'type' => 'portal_otp', 'recipient' => $phone, 'message' => $smsMessage, 'status' => 'sent',
+                ]);
             } catch (\Throwable $e) {
                 // SMS failed — other channels still tried, so continue
+                CommunicationLog::withoutGlobalScopes()->create([
+                    'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'sms',
+                    'type' => 'portal_otp', 'recipient' => $phone, 'message' => $smsMessage,
+                    'status' => 'failed', 'error' => $e->getMessage(),
+                ]);
             }
         }
 
@@ -148,17 +156,31 @@ class PasswordResetController extends Controller
         // number or their linked MoSMS account (WhatsAppService dual-mode).
         if ($phone && $tenant && $tenant->whatsapp_enabled && $this->canSendWhatsApp($tenant)) {
             $wa = app(\App\Services\WhatsAppService::class);
+            $waMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
             try {
                 // Official Meta AUTHENTICATION template (copy-code button).
                 $wa->sendTemplate($tenant, $phone, config('whatsapp.otp_template', 'otp_code'), [$otp], config('whatsapp.otp_language', 'en'));
                 $waSent = true;
+                CommunicationLog::withoutGlobalScopes()->create([
+                    'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'whatsapp',
+                    'type' => 'portal_otp', 'recipient' => $phone, 'message' => $waMessage, 'status' => 'sent',
+                ]);
             } catch (\Throwable $e) {
                 try {
                     // Template unavailable — plain text fallback.
-                    $wa->sendText($tenant, $phone, "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.");
+                    $wa->sendText($tenant, $phone, $waMessage);
                     $waSent = true;
+                    CommunicationLog::withoutGlobalScopes()->create([
+                        'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'whatsapp',
+                        'type' => 'portal_otp', 'recipient' => $phone, 'message' => $waMessage, 'status' => 'sent',
+                    ]);
                 } catch (\Throwable $e2) {
                     // WhatsApp failed — other channels still tried
+                    CommunicationLog::withoutGlobalScopes()->create([
+                        'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'whatsapp',
+                        'type' => 'portal_otp', 'recipient' => $phone, 'message' => $waMessage,
+                        'status' => 'failed', 'error' => $e2->getMessage(),
+                    ]);
                 }
             }
         }

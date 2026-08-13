@@ -27,7 +27,8 @@ export interface CronLogEntry {
 export interface CommunicationLogEntry {
   id: string;
   client_id: string | null;
-  channel: 'email' | 'sms';
+  client: { id: string; name: string } | null;
+  channel: 'email' | 'sms' | 'whatsapp';
   type: string;
   recipient: string;
   subject: string | null;
@@ -46,6 +47,8 @@ export const getCronLogs = (params?: { date?: string; page?: number; per_page?: 
 
 export const getCommunicationLogs = (params?: {
   date?: string;
+  search?: string;
+  client_only?: boolean;
   channel?: string;
   type?: string;
   status?: string;
