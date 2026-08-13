@@ -93,8 +93,8 @@ export const logout = () => api.post('/auth/logout');
 export const getMe = () =>
   api.get<MeResponse>('/auth/me');
 
-export const forgotPassword = (identifier: string) =>
-  api.post<{ message: string; email_hint?: string; requires_registration?: boolean }>('/auth/forgot-password', { identifier });
+export const forgotPassword = (identifier: string, channel?: 'email' | 'whatsapp') =>
+  api.post<{ message: string; email_hint?: string; requires_registration?: boolean }>('/auth/forgot-password', { identifier, channel });
 
 export const verifyResetOtp = (data: { identifier: string; otp: string }) =>
   api.post<{ message: string; requires_registration?: boolean; client_name?: string }>('/auth/verify-reset-otp', data);

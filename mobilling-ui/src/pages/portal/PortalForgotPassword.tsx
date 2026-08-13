@@ -6,7 +6,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { safeNext } from '../../utils/safeNext';
 import { useBranding } from '../../branding';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { IconSun, IconMoon, IconCheck, IconInfoCircle, IconUserPlus } from '@tabler/icons-react';
+import { IconSun, IconMoon, IconCheck, IconInfoCircle, IconUserPlus, IconMail, IconBrandWhatsapp } from '@tabler/icons-react';
 import { forgotPassword, verifyResetOtp, resetPassword } from '../../api/auth';
 import classes from './PortalLogin.module.css';
 import own from './PortalForgotPassword.module.css';
@@ -35,6 +35,10 @@ export default function PortalForgotPassword() {
 
   const [step, setStep] = useState<Step>('request');
   const [loading, setLoading] = useState(false);
+  // If we arrived with a prefilled phone (not an email), default to WhatsApp.
+  const [channel, setChannel] = useState<'email' | 'whatsapp'>(
+    prefillIdentifier && !prefillIdentifier.includes('@') ? 'whatsapp' : 'email'
+  );
   const [identifier, setIdentifier] = useState('');
   const [contactHint, setContactHint] = useState('');
   const [otp, setOtp] = useState('');
@@ -57,7 +61,7 @@ export default function PortalForgotPassword() {
   const handleRequest = async (values: typeof requestForm.values) => {
     setLoading(true);
     try {
-      const res = await forgotPassword(values.identifier);
+      const res = await forgotPassword(values.identifier, channel);
       setIdentifier(values.identifier);
       setContactHint(res.data.email_hint || '');
       setIsRegistration(!!res.data.requires_registration);
@@ -173,16 +177,29 @@ export default function PortalForgotPassword() {
                 </div>
                 <form onSubmit={requestForm.onSubmit(handleRequest)}>
                   <div className={classes.fields}>
+                    <div className={own.channelToggle}>
+                      <button type="button"
+                        className={`${own.channelBtn} ${channel === 'email' ? own.channelBtnActive : ''}`}
+                        onClick={() => setChannel('email')}>
+                        <IconMail size={16} /> {t('forgot.viaEmail')}
+                      </button>
+                      <button type="button"
+                        className={`${own.channelBtn} ${channel === 'whatsapp' ? own.channelBtnActive : ''}`}
+                        onClick={() => setChannel('whatsapp')}>
+                        <IconBrandWhatsapp size={16} /> {t('forgot.viaWhatsapp')}
+                      </button>
+                    </div>
                     <div className={classes.field}>
                       <label className={classes.label} htmlFor="identifier">
-                        <span>{t('login.identifier')}</span>
+                        <span>{channel === 'email' ? t('forgot.emailLabel') : t('forgot.phoneLabel')}</span>
                         <span className={classes.labelHint}>{t('login.required')}</span>
                       </label>
                       <input
                         id="identifier"
                         className={classes.input}
-                        placeholder={t('forgot.reqPlaceholder')}
-                        autoComplete="username"
+                        placeholder={channel === 'email' ? t('forgot.emailPlaceholder') : t('forgot.phonePlaceholder')}
+                        autoComplete={channel === 'email' ? 'email' : 'tel'}
+                        inputMode={channel === 'email' ? 'email' : 'tel'}
                         {...requestForm.getInputProps('identifier')}
                       />
                     </div>

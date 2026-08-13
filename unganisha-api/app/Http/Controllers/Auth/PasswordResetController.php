@@ -74,7 +74,13 @@ class PasswordResetController extends Controller
     {
         $request->validate([
             'identifier' => 'required|string',
+            // Portal UI lets the client pick exactly one delivery channel
+            // instead of blasting every channel the account has on file.
+            // Omitted (e.g. the staff /forgot-password page) keeps the
+            // original "send to everything available" behavior.
+            'channel' => 'nullable|in:email,whatsapp',
         ]);
+        $channel = $request->channel;
 
         [$target, $type] = $this->resolveTarget($request->identifier);
 
@@ -91,6 +97,17 @@ class PasswordResetController extends Controller
         if (!$otpKey) {
             throw ValidationException::withMessages([
                 'identifier' => ['This account has no email or phone number on file to send a verification code to.'],
+            ]);
+        }
+
+        if ($channel === 'email' && !$email) {
+            throw ValidationException::withMessages([
+                'identifier' => ['This account has no email address on file — try WhatsApp instead.'],
+            ]);
+        }
+        if ($channel === 'whatsapp' && !$phone) {
+            throw ValidationException::withMessages([
+                'identifier' => ['This account has no phone number on file — try email instead.'],
             ]);
         }
 
@@ -123,17 +140,22 @@ class PasswordResetController extends Controller
 
         $tenant = $target->tenant_id ? Tenant::find($target->tenant_id) : null;
 
-        // Send OTP via email, when the account has one.
-        if ($email) {
+        // Send OTP via email, when the account has one — unless the client
+        // explicitly picked WhatsApp instead.
+        $emailSent = false;
+        if ($email && $channel !== 'whatsapp') {
             Notification::route('mail', $email)
                 ->notify(new PortalOtpNotification($otp, 'MoBilling'));
+            $emailSent = true;
         }
 
-        // Send OTP via SMS if phone available and tenant has SMS enabled
+        // Send OTP via SMS if phone available and tenant has SMS enabled —
+        // skipped when a specific channel was requested (email or WhatsApp
+        // only, no bonus SMS the client didn't ask for).
         $smsSent = false;
         $waSent = false;
 
-        if ($phone && app(SmsService::class)->canSend($tenant)) {
+        if ($phone && !$channel && app(SmsService::class)->canSend($tenant)) {
             $smsMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
             try {
                 app(SmsService::class)->send($tenant, $phone, $smsMessage);
@@ -154,7 +176,7 @@ class PasswordResetController extends Controller
 
         // Send OTP via WhatsApp too — routes through the tenant's own Meta
         // number or their linked MoSMS account (WhatsAppService dual-mode).
-        if ($phone && $tenant && $tenant->whatsapp_enabled && $this->canSendWhatsApp($tenant)) {
+        if ($phone && $channel !== 'email' && $tenant && $tenant->whatsapp_enabled && $this->canSendWhatsApp($tenant)) {
             $wa = app(\App\Services\WhatsAppService::class);
             $waMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
             try {
@@ -185,14 +207,14 @@ class PasswordResetController extends Controller
             }
         }
 
-        if (!$email && !$smsSent && !$waSent) {
+        if (!$emailSent && !$smsSent && !$waSent) {
             throw ValidationException::withMessages([
                 'identifier' => ['Could not deliver a verification code to this account — please contact support.'],
             ]);
         }
 
         $channels = array_filter([
-            $email ? 'email' : null,
+            $emailSent ? 'email' : null,
             $smsSent ? 'SMS' : null,
             $waSent ? 'WhatsApp' : null,
         ]);
@@ -202,7 +224,7 @@ class PasswordResetController extends Controller
             default => implode(', ', array_slice($channels, 0, -1)) . ' and ' . end($channels),
         };
 
-        $hint = $email
+        $hint = $emailSent
             ? Str::mask($email, '*', 3, -strpos(strrev($email), '@') - 1)
             : ($phone ? Str::mask($phone, '*', 2, -2) : null);
 
