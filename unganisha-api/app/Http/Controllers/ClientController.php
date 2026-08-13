@@ -316,6 +316,37 @@ class ClientController extends Controller
                 ];
             });
 
+        // Quotations (Document.type = 'quotation') — WHMCS "Current Quotes"
+        $quotations = Document::where('client_id', $client->id)
+            ->where('type', 'quotation')
+            ->with('items')
+            ->orderByDesc('date')
+            ->limit(50)
+            ->get()
+            ->map(fn ($q) => [
+                'id' => $q->id,
+                'document_number' => $q->document_number,
+                'subject' => $q->items->first()?->description ?? $q->notes,
+                'date' => $q->date?->format('Y-m-d'),
+                'valid_until' => $q->due_date?->format('Y-m-d'),
+                'total' => $q->total,
+                'status' => $q->status,
+            ]);
+
+        // Subscription addons — WHMCS "Addons" table
+        $addons = \App\Models\SubscriptionAddon::whereHas('subscription', fn ($q) => $q->where('client_id', $client->id))
+            ->with('subscription')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($a) => [
+                'id' => $a->id,
+                'name' => $a->name,
+                'price' => $a->price,
+                'billing_cycle' => $a->billing_cycle,
+                'start_date' => $a->subscription?->start_date?->format('Y-m-d'),
+                'status' => $a->status,
+            ]);
+
         // Payments
         $payments = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $client->id))
             ->with('document')
@@ -358,6 +389,12 @@ class ClientController extends Controller
                 'count' => (int) ($breakdownRaw[$st]->n ?? 0),
                 'total' => (float) ($breakdownRaw[$st]->sum ?? 0),
             ]]);
+        $refundAgg = \App\Models\Refund::where('client_id', $client->id)
+            ->selectRaw('COUNT(*) as n, SUM(amount) as sum')->first();
+        $breakdown['refunded'] = [
+            'count' => (int) ($refundAgg->n ?? 0),
+            'total' => (float) ($refundAgg->sum ?? 0),
+        ];
 
         // Domains
         $domains = \App\Models\Domain::where('client_id', $client->id)
@@ -439,7 +476,9 @@ class ClientController extends Controller
                     'total_subscription_value' => round($totalSubscriptionValue, 2),
                 ],
                 'subscriptions' => $subscriptions->values(),
+                'addons' => $addons->values(),
                 'invoices' => $invoices->values(),
+                'quotations' => $quotations->values(),
                 'payments' => $payments->values(),
                 'communication_logs' => $communicationLogs->values(),
             ],

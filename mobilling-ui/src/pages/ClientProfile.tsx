@@ -23,6 +23,7 @@ import {
   getClientPortalUsers, createClientPortalUser, updateClientPortalUser, deleteClientPortalUser,
   ClientPortalUser,
   portalLoginAsClient, getClientCredit, adjustClientCredit, updateClientNotes, makeClientReseller,
+  deleteClient,
 } from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
@@ -115,6 +116,30 @@ export default function ClientProfile() {
       </Text>,
       labels: { confirm: 'Create Invoice', cancel: 'Cancel' },
       onConfirm: () => makeResellerMut.mutate(),
+    });
+  };
+
+  const deleteClientMut = useMutation({
+    mutationFn: () => deleteClient(clientId!),
+    onSuccess: () => {
+      notifications.show({ title: 'Client deleted', message: 'The client account has been removed.', color: 'green' });
+      navigate('/clients');
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Could not delete this client.', color: 'red' });
+    },
+  });
+
+  const confirmDeleteClient = () => {
+    modals.openConfirmModal({
+      title: 'Delete Client Account',
+      children: <Text size="sm">
+        Delete {data?.data?.data?.client?.name ?? 'this client'}? This removes the client record — invoices,
+        subscriptions and history stay for audit purposes but the client will no longer appear in listings.
+      </Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteClientMut.mutate(),
     });
   };
 
@@ -220,6 +245,12 @@ export default function ClientProfile() {
               </Button>
             )
           )}
+          {can('clients.delete') && (
+            <Button size="xs" variant="light" color="red" leftSection={<IconTrash size={14} />}
+              loading={deleteClientMut.isPending} onClick={confirmDeleteClient}>
+              Delete
+            </Button>
+          )}
         </Group>
       </Group>
 
@@ -311,6 +342,37 @@ export default function ClientProfile() {
           </Table.ScrollContainer>
         )}
       </Paper>
+
+      {/* Addons */}
+      {(profile.addons ?? []).length > 0 && (
+        <Paper withBorder p="md" radius="md">
+          <Title order={4} mb="sm">Addons</Title>
+          <Table.ScrollContainer minWidth={500}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Cycle</Table.Th>
+                  {can('client_profile.subscription_price') && <Table.Th>Price</Table.Th>}
+                  <Table.Th>Start</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {profile.addons.map((a) => (
+                  <Table.Tr key={a.id}>
+                    <Table.Td fw={500}>{a.name}</Table.Td>
+                    <Table.Td><Badge variant="light" size="sm">{cycleLabels[a.billing_cycle] || a.billing_cycle}</Badge></Table.Td>
+                    {can('client_profile.subscription_price') && <Table.Td>{formatCurrency(a.price)}</Table.Td>}
+                    <Table.Td>{a.start_date ? formatDate(a.start_date) : '—'}</Table.Td>
+                    <Table.Td><Badge color={statusColors[a.status] || 'gray'} size="sm">{a.status}</Badge></Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
 
       {/* Domains */}
       {((profile as any).domains ?? []).length > 0 && (
@@ -557,6 +619,39 @@ export default function ClientProfile() {
           );
         })()}
       </Paper>
+
+      {/* Quotations */}
+      {(profile.quotations ?? []).length > 0 && (
+        <Paper withBorder p="md" radius="md">
+          <Title order={4} mb="sm">Quotes</Title>
+          <Table.ScrollContainer minWidth={600}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>#</Table.Th>
+                  <Table.Th>Subject</Table.Th>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th>Valid Until</Table.Th>
+                  <Table.Th>Total</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {profile.quotations.map((q) => (
+                  <Table.Tr key={q.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/quotations')}>
+                    <Table.Td fw={500}>{q.document_number}</Table.Td>
+                    <Table.Td><Text size="sm" c="dimmed">{q.subject || '—'}</Text></Table.Td>
+                    <Table.Td>{formatDate(q.date)}</Table.Td>
+                    <Table.Td>{q.valid_until ? formatDate(q.valid_until) : '—'}</Table.Td>
+                    <Table.Td>{formatCurrency(q.total)}</Table.Td>
+                    <Table.Td><Badge color={statusColors[q.status] || 'gray'} size="sm">{q.status}</Badge></Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
 
       {/* Payments */}
       <Paper withBorder p="md" radius="md">

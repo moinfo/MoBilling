@@ -93,6 +93,14 @@ export interface ClientProfile {
     status: string;
     next_bill: string | null;
   }[];
+  addons: {
+    id: string;
+    name: string;
+    price: string;
+    billing_cycle: string;
+    start_date: string | null;
+    status: string;
+  }[];
   invoices: {
     id: string;
     document_number: string;
@@ -104,6 +112,15 @@ export interface ClientProfile {
     total: string;
     paid_amount: number;
     balance_due: number;
+    status: string;
+  }[];
+  quotations: {
+    id: string;
+    document_number: string;
+    subject?: string | null;
+    date: string;
+    valid_until: string | null;
+    total: string;
     status: string;
   }[];
   payments: {
