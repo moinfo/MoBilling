@@ -215,6 +215,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:clients.update')->put('/clients/{client}/notes', [ClientController::class, 'updateNotes']);
     Route::middleware('permission:clients.update')->post('/clients/{client}/make-reseller', [ClientController::class, 'makeReseller']);
     Route::middleware('permission:clients.delete')->delete('/clients/{client}', [ClientController::class, 'destroy']);
+    Route::middleware('permission:clients.delete')->post('/clients/{client}/merge', [ClientController::class, 'merge']);
 
     // Client Subscriptions
     Route::middleware('permission:client_subscriptions.read')->get('/client-subscriptions', [ClientSubscriptionController::class, 'index']);

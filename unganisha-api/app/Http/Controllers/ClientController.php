@@ -107,6 +107,34 @@ class ClientController extends Controller
         return response()->json(['message' => 'Client deleted successfully']);
     }
 
+    /**
+     * WHMCS-style "Merge Clients": {client} is the "First Client" (the one
+     * being viewed); the request names the "Second Client" and which of the
+     * two survives. See ClientMergeService for exactly what moves.
+     */
+    public function merge(Request $request, Client $client, \App\Services\ClientMergeService $merger)
+    {
+        $data = $request->validate([
+            'second_client_id' => 'required|uuid',
+            'keep'              => 'required|in:first,second',
+        ]);
+
+        $second = Client::findOrFail($data['second_client_id']);
+
+        if ($second->id === $client->id) {
+            return response()->json(['message' => 'Choose two different clients to merge.'], 422);
+        }
+
+        [$survivor, $absorbed] = $data['keep'] === 'first' ? [$client, $second] : [$second, $client];
+
+        $moved = $merger->merge($survivor, $absorbed);
+
+        return response()->json([
+            'data'    => ['survivor_id' => $survivor->id, 'moved' => $moved],
+            'message' => "Merged {$absorbed->name} into {$survivor->name}.",
+        ]);
+    }
+
     /** Staff-only admin notes (never shown to the client). */
     public function updateNotes(\Illuminate\Http\Request $request, Client $client)
     {

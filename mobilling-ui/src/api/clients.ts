@@ -245,3 +245,11 @@ export const adjustClientCredit = (clientId: string, amount: number, notes: stri
 
 export const updateClientNotes = (clientId: string, notes: string) =>
   api.put(`/clients/${clientId}/notes`, { notes });
+
+// ── Merge Clients (WHMCS-style) ──────────────────────────────────────────────
+
+export const mergeClients = (firstClientId: string, secondClientId: string, keep: 'first' | 'second') =>
+  api.post<{ data: { survivor_id: string; moved: Record<string, number> }; message: string }>(
+    `/clients/${firstClientId}/merge`,
+    { second_client_id: secondClientId, keep }
+  );

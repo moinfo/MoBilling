@@ -16,7 +16,7 @@ import {
   IconHeartHandshake, IconUserPlus, IconEdit, IconTrash, IconShieldLock,
   IconArrowUp, IconArrowDown, IconArrowsSort,
   IconLogin, IconWallet, IconWorldWww, IconMessageCircle, IconServer, IconNote,
-  IconAddressBook,
+  IconAddressBook, IconArrowsJoin,
 } from '@tabler/icons-react';
 import { Rating } from '@mantine/core';
 import {
@@ -26,6 +26,7 @@ import {
   portalLoginAsClient, getClientCredit, adjustClientCredit, updateClientNotes, makeClientReseller,
   deleteClient,
   getClientContacts, createClientContact, updateClientContact, deleteClientContact, ClientContact,
+  mergeClients, getClients,
 } from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
@@ -77,6 +78,7 @@ const outcomeLabels: Record<string, string> = {
 export default function ClientProfile() {
   const { impersonateClient } = useAuth();
   const [creditOpen, setCreditOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const { clientId } = useParams<{ clientId: string }>();
   const handlePortalLogin = async () => {
     try {
@@ -259,6 +261,12 @@ export default function ClientProfile() {
                 Make Reseller
               </Button>
             )
+          )}
+          {can('clients.delete') && (
+            <Button size="xs" variant="light" color="orange" leftSection={<IconArrowsJoin size={14} />}
+              onClick={() => setMergeOpen(true)}>
+              Merge
+            </Button>
           )}
           {can('clients.delete') && (
             <Button size="xs" variant="light" color="red" leftSection={<IconTrash size={14} />}
@@ -482,6 +490,12 @@ export default function ClientProfile() {
       )}
 
       <CreditModal clientId={clientId!} opened={creditOpen} onClose={() => setCreditOpen(false)} />
+      <MergeClientModal
+        clientId={clientId!}
+        clientName={client.name}
+        opened={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+      />
 
       {/* Invoices */}
       <Paper withBorder p="md" radius="md">
@@ -1355,6 +1369,102 @@ function CreditModal({ clientId, opened, onClose }: { clientId: string; opened: 
             </Table.Tbody>
           </Table>
         )}
+      </Stack>
+    </Modal>
+  );
+}
+
+function MergeClientModal({ clientId, clientName, opened, onClose }: { clientId: string; clientName: string; opened: boolean; onClose: () => void }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [secondClientId, setSecondClientId] = useState<string | null>(null);
+
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients-simple'],
+    queryFn: () => getClients({ per_page: 200 }),
+    enabled: opened,
+  });
+
+  const clientOptions = (clientsData?.data?.data ?? [])
+    .filter((c: any) => c.id !== clientId)
+    .map((c: any) => ({
+      value: c.id,
+      label: `${c.name}${c.email ? ` (${c.email})` : c.phone ? ` (${c.phone})` : ''}`,
+    }));
+
+  const secondClientName = clientOptions.find((c: { value: string; label: string }) => c.value === secondClientId)?.label ?? '';
+
+  const mergeMut = useMutation({
+    mutationFn: (keep: 'first' | 'second') => mergeClients(clientId, secondClientId!, keep),
+    onSuccess: (res, keep) => {
+      notifications.show({ title: 'Clients merged', message: res.data.message, color: 'green' });
+      onClose();
+      setSecondClientId(null);
+      if (keep === 'first') {
+        queryClient.invalidateQueries({ queryKey: ['client-profile', clientId] });
+      } else {
+        navigate(`/clients/${res.data.data.survivor_id}`);
+      }
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Merge failed', color: 'red' });
+    },
+  });
+
+  const confirmMerge = (keep: 'first' | 'second') => {
+    const survivorName = keep === 'first' ? clientName : secondClientName;
+    const absorbedName = keep === 'first' ? secondClientName : clientName;
+    modals.openConfirmModal({
+      title: 'Merge Client',
+      children: <Text size="sm">
+        This will merge <b>{absorbedName}</b> into <b>{survivorName}</b>. All invoices, subscriptions, domains, tickets,
+        payments and wallet balance move to {survivorName}, and {absorbedName} is retired. This cannot be undone.
+      </Text>,
+      labels: { confirm: `Merge to ${survivorName}`, cancel: 'Cancel' },
+      confirmProps: { color: 'orange' },
+      onConfirm: () => mergeMut.mutate(keep),
+    });
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Merge Client" size="md">
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">This process allows you to merge two client accounts into one.</Text>
+
+        <Group gap="xs">
+          <Text size="sm" fw={600} w={110}>First Client</Text>
+          <Text size="sm">{clientName}</Text>
+        </Group>
+
+        <Select
+          label="Second Client"
+          placeholder="Enter Name, Company or Email to Search"
+          data={clientOptions}
+          searchable
+          value={secondClientId}
+          onChange={setSecondClientId}
+        />
+
+        <Group justify="flex-end" mt="sm">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="light"
+            disabled={!secondClientId}
+            loading={mergeMut.isPending}
+            onClick={() => confirmMerge('first')}
+          >
+            Merge to First Client
+          </Button>
+          <Button
+            variant="light"
+            color="orange"
+            disabled={!secondClientId}
+            loading={mergeMut.isPending}
+            onClick={() => confirmMerge('second')}
+          >
+            Merge to Second Client
+          </Button>
+        </Group>
       </Stack>
     </Modal>
   );
