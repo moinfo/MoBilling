@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Title, Stack, SimpleGrid, Paper, Text, Group, Badge, Table,
   ThemeIcon, LoadingOverlay, Pagination, Select, SegmentedControl,
-  Modal, TextInput, Switch, Button,
+  Modal, TextInput, Switch, Button, Drawer,
 } from '@mantine/core';
 import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { DatePickerInput } from '@mantine/dates';
@@ -23,6 +22,8 @@ import {
   type AutomationSummary,
   type CommunicationLogEntry,
 } from '../api/automation';
+import { getDocument, type Document } from '../api/documents';
+import DocumentView from '../components/Billing/DocumentView';
 import dayjs from 'dayjs';
 
 const CHANNEL_COLORS: Record<string, string> = { email: 'blue', sms: 'green', whatsapp: 'teal' };
@@ -47,8 +48,20 @@ const CATEGORY_COLORS: Record<string, string> = {
 };
 
 export default function Automation() {
-  const navigate = useNavigate();
   const [date, setDate] = useState<string | null>(new Date().toISOString().slice(0, 10));
+  const [viewDoc, setViewDoc] = useState<Document | null>(null);
+  const [viewDocLoading, setViewDocLoading] = useState(false);
+  const openInvoicePreview = async (documentId: string) => {
+    setViewDocLoading(true);
+    try {
+      const res = await getDocument(documentId);
+      setViewDoc(res.data.data);
+    } catch {
+      notifications.show({ message: 'Could not open that invoice — it may have been deleted.', color: 'red' });
+    } finally {
+      setViewDocLoading(false);
+    }
+  };
   const [cronPage, setCronPage] = useState(1);
   const [commPage, setCommPage] = useState(1);
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
@@ -292,8 +305,8 @@ export default function Automation() {
                           </Table.Td>
                           <Table.Td>
                             {ev.document_id && (
-                              <Button size="compact-xs" variant="subtle"
-                                onClick={() => navigate(`/invoices?preview=${ev.document_id}`)}>
+                              <Button size="compact-xs" variant="subtle" loading={viewDocLoading}
+                                onClick={() => openInvoicePreview(ev.document_id!)}>
                                 View
                               </Button>
                             )}
@@ -495,6 +508,17 @@ export default function Automation() {
           </Stack>
         )}
       </Modal>
+
+      {/* Invoice preview — opened from Upcoming Reminders, without leaving this page */}
+      <Drawer opened={!!viewDoc} onClose={() => setViewDoc(null)} title="Document Details" size="xl" position="right">
+        {viewDoc && (
+          <DocumentView
+            document={viewDoc}
+            onRefresh={() => viewDoc && openInvoicePreview(viewDoc.id)}
+            onClose={() => setViewDoc(null)}
+          />
+        )}
+      </Drawer>
     </Stack>
   );
 }
