@@ -275,7 +275,7 @@ class ReminderForecastService
         foreach ($logs as $log) {
             $document = $log->document;
             $client = $log->client;
-            if (!$document || $document->status === 'paid' || !$client) {
+            if (!$document || in_array($document->status, ['paid', 'cancelled']) || !$client) {
                 continue;
             }
 
@@ -346,7 +346,7 @@ class ReminderForecastService
             }
 
             $document = $log->document;
-            $isUnpaid = !in_array($document->status, ['paid', 'draft']);
+            $isUnpaid = !in_array($document->status, ['paid', 'draft', 'cancelled']);
             $dueDate = $document->due_date;
             if (!$isUnpaid || !$dueDate) {
                 continue;

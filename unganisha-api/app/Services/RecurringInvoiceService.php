@@ -391,7 +391,11 @@ class RecurringInvoiceService
             }
 
             $document = Document::withoutGlobalScopes()->find($log->document_id);
-            if (!$document || $document->status === 'paid') {
+            // A cancelled invoice is not owed — reminding the client to pay
+            // one right after telling them it was cancelled is confusing and
+            // wrong (real incident: WHMCS-1339 got a cancellation notice on
+            // 07 Aug, then a "pay this soon" reminder on 11 Aug).
+            if (!$document || in_array($document->status, ['paid', 'cancelled'])) {
                 continue;
             }
 

@@ -95,7 +95,9 @@ class SuspendUnpaidSubscriptions extends Command
                 $document = $log->document;
 
                 // Check: is the document unpaid and past the grace period?
-                $isUnpaid = !in_array($document->status, ['paid', 'draft']);
+                // A cancelled invoice is not owed — suspending a subscription
+                // over one would be a genuine billing error, not dunning.
+                $isUnpaid = !in_array($document->status, ['paid', 'draft', 'cancelled']);
                 $dueDate = $document->due_date;
 
                 if (!$isUnpaid || !$dueDate) {
