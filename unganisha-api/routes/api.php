@@ -786,6 +786,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/clients/{client}/portal-users', [ClientPortalUserController::class, 'store']);
         Route::put('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'update']);
         Route::delete('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'destroy']);
+        Route::get('/clients/{client}/contacts', [\App\Http\Controllers\ClientContactController::class, 'index']);
+        Route::post('/clients/{client}/contacts', [\App\Http\Controllers\ClientContactController::class, 'store']);
+        Route::put('/clients/{client}/contacts/{contact}', [\App\Http\Controllers\ClientContactController::class, 'update']);
+        Route::delete('/clients/{client}/contacts/{contact}', [\App\Http\Controllers\ClientContactController::class, 'destroy']);
     });
     Route::middleware('permission:clients.portal_login')
         ->post('/clients/{client}/portal-login', [ClientPortalUserController::class, 'impersonate']);

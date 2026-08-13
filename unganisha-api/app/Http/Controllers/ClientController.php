@@ -396,6 +396,11 @@ class ClientController extends Controller
             'total' => (float) ($refundAgg->sum ?? 0),
         ];
 
+        // Additional contacts (WHMCS-style secondary people at the client's company)
+        $contacts = \App\Models\ClientContact::where('client_id', $client->id)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'phone', 'role', 'notes']);
+
         // Domains
         $domains = \App\Models\Domain::where('client_id', $client->id)
             ->orderBy('name')
@@ -455,8 +460,18 @@ class ClientController extends Controller
                     'address' => $client->address,
                     'tax_id' => $client->tax_id,
                     'created_at' => $client->created_at,
+                    'first_name' => $client->first_name,
+                    'last_name' => $client->last_name,
+                    'company_name' => $client->company_name,
+                    'address_1' => $client->address_1,
+                    'address_2' => $client->address_2,
+                    'city' => $client->city,
+                    'state' => $client->state,
+                    'postcode' => $client->postcode,
+                    'country' => $client->country,
                 ],
                 'billing_breakdown' => $breakdown,
+            'contacts' => $contacts,
             'domains' => $domains,
             'tickets' => $tickets,
             'hosting_accounts' => $hosting,

@@ -16,6 +16,8 @@ class Client extends Model
     protected $fillable = [
         'tenant_id', 'name', 'email', 'phone',
         'address', 'tax_id', 'status', 'notes', 'legacy_id', 'credit_balance',
+        'first_name', 'last_name', 'company_name',
+        'address_1', 'address_2', 'city', 'state', 'postcode', 'country',
     ];
 
     public function documents()
@@ -26,6 +28,11 @@ class Client extends Model
     public function subscriptions()
     {
         return $this->hasMany(ClientSubscription::class);
+    }
+
+    public function contacts()
+    {
+        return $this->hasMany(ClientContact::class);
     }
 
     /**

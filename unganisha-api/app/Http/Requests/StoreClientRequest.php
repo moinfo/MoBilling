@@ -29,6 +29,18 @@ class StoreClientRequest extends FormRequest
             ],
             'address' => 'nullable|string|max:1000',
             'tax_id'  => 'nullable|string|max:50',
+
+            // WHMCS-style structured fields — all optional, purely additive
+            // alongside the flat name/address above (see migration docblock).
+            'first_name'   => 'nullable|string|max:255',
+            'last_name'    => 'nullable|string|max:255',
+            'company_name' => 'nullable|string|max:255',
+            'address_1'    => 'nullable|string|max:255',
+            'address_2'    => 'nullable|string|max:255',
+            'city'         => 'nullable|string|max:255',
+            'state'        => 'nullable|string|max:255',
+            'postcode'     => 'nullable|string|max:30',
+            'country'      => 'nullable|string|size:2',
         ];
     }
 

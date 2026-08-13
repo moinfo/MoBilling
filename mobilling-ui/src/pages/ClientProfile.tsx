@@ -16,6 +16,7 @@ import {
   IconHeartHandshake, IconUserPlus, IconEdit, IconTrash, IconShieldLock,
   IconArrowUp, IconArrowDown, IconArrowsSort,
   IconLogin, IconWallet, IconWorldWww, IconMessageCircle, IconServer, IconNote,
+  IconAddressBook,
 } from '@tabler/icons-react';
 import { Rating } from '@mantine/core';
 import {
@@ -24,6 +25,7 @@ import {
   ClientPortalUser,
   portalLoginAsClient, getClientCredit, adjustClientCredit, updateClientNotes, makeClientReseller,
   deleteClient,
+  getClientContacts, createClientContact, updateClientContact, deleteClientContact, ClientContact,
 } from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
@@ -205,8 +207,21 @@ export default function ClientProfile() {
               <Group gap={4}><IconId size={14} color="gray" /><Text size="sm" c="dimmed">{client.tax_id}</Text></Group>
             )}
           </Group>
-          {client.address && (
-            <Group gap={4} mt={2}><IconMapPin size={14} color="gray" /><Text size="sm" c="dimmed">{client.address}</Text></Group>
+          {(() => {
+            const structuredLine = [
+              [client.address_1, client.address_2].filter(Boolean).join(', '),
+              [client.city, client.state, client.postcode].filter(Boolean).join(', '),
+              client.country,
+            ].filter(Boolean).join(' — ');
+            const line = structuredLine || client.address;
+            return line ? (
+              <Group gap={4} mt={2}><IconMapPin size={14} color="gray" /><Text size="sm" c="dimmed">{line}</Text></Group>
+            ) : null;
+          })()}
+          {(client.first_name || client.last_name || client.company_name) && (
+            <Text size="xs" c="dimmed" mt={2}>
+              {[client.company_name, [client.first_name, client.last_name].filter(Boolean).join(' ')].filter(Boolean).join(' · ')}
+            </Text>
           )}
           <Group gap="xs" mt={6}>
             <Badge size="sm" variant="light" color={((profile as any).client_status ?? 'active') === 'active' ? 'green' : 'gray'}>
@@ -856,6 +871,9 @@ export default function ClientProfile() {
         )}
       </Paper>
 
+      {/* Additional Contacts */}
+      <ContactsSection clientId={clientId!} />
+
       {/* Portal Users */}
       <PortalUsersSection clientId={clientId!} />
 
@@ -919,6 +937,160 @@ export default function ClientProfile() {
         )}
       </Modal>
     </Stack>
+  );
+}
+
+function ContactsSection({ clientId }: { clientId: string }) {
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ClientContact | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['client-contacts', clientId],
+    queryFn: () => getClientContacts(clientId),
+  });
+
+  const contacts = data?.data?.data || [];
+
+  const form = useForm({
+    initialValues: { name: '', email: '', phone: '', role: '', notes: '' },
+    validate: {
+      name: (v) => (v.length > 0 ? null : 'Required'),
+      email: (v) => (!v || /^\S+@\S+$/.test(v) ? null : 'Invalid email'),
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: (data: any) => createClientContact(clientId, data),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Contact added', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-contacts', clientId] });
+      closeModal();
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed', color: 'red' });
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => updateClientContact(clientId, id, data),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Contact updated', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-contacts', clientId] });
+      closeModal();
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteClientContact(clientId, id),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Contact removed', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-contacts', clientId] });
+    },
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    form.reset();
+    setModalOpen(true);
+  };
+
+  const openEdit = (c: ClientContact) => {
+    setEditing(c);
+    form.setValues({ name: c.name, email: c.email || '', phone: c.phone || '', role: c.role || '', notes: c.notes || '' });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditing(null);
+    form.reset();
+  };
+
+  const handleSubmit = (values: typeof form.values) => {
+    if (editing) {
+      updateMut.mutate({ id: editing.id, data: values });
+    } else {
+      createMut.mutate(values);
+    }
+  };
+
+  const confirmDelete = (c: ClientContact) => {
+    modals.openConfirmModal({
+      title: 'Remove Contact',
+      children: <Text size="sm">Remove {c.name}?</Text>,
+      labels: { confirm: 'Remove', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteMut.mutate(c.id),
+    });
+  };
+
+  return (
+    <>
+      <Paper withBorder p="md" radius="md">
+        <Group justify="space-between" mb="sm">
+          <Group gap="sm">
+            <IconAddressBook size={20} />
+            <Title order={4}>Contacts</Title>
+            {contacts.length > 0 && <Badge variant="light" size="sm">{contacts.length}</Badge>}
+          </Group>
+          <Button leftSection={<IconUserPlus size={16} />} size="xs" onClick={openCreate}>
+            Add Contact
+          </Button>
+        </Group>
+        {isLoading ? (
+          <Center py="md"><Loader size="sm" /></Center>
+        ) : contacts.length === 0 ? (
+          <Text c="dimmed" size="sm">No additional contacts.</Text>
+        ) : (
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Role</Table.Th>
+                <Table.Th>Email</Table.Th>
+                <Table.Th>Phone</Table.Th>
+                <Table.Th>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {contacts.map((c) => (
+                <Table.Tr key={c.id}>
+                  <Table.Td fw={500}>{c.name}</Table.Td>
+                  <Table.Td>{c.role ? <Badge variant="light" size="sm">{c.role}</Badge> : '—'}</Table.Td>
+                  <Table.Td>{c.email || '—'}</Table.Td>
+                  <Table.Td>{c.phone || '—'}</Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon variant="subtle" size="sm" onClick={() => openEdit(c)}><IconEdit size={14} /></ActionIcon>
+                      <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmDelete(c)}><IconTrash size={14} /></ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+      </Paper>
+
+      <Modal opened={modalOpen} onClose={closeModal} title={editing ? 'Edit Contact' : 'Add Contact'}>
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <Stack gap="sm">
+            <TextInput label="Name" required {...form.getInputProps('name')} />
+            <TextInput label="Role" placeholder="e.g. Billing, Technical" {...form.getInputProps('role')} />
+            <TextInput label="Email" {...form.getInputProps('email')} />
+            <TextInput label="Phone" {...form.getInputProps('phone')} />
+            <Textarea label="Notes" {...form.getInputProps('notes')} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={closeModal}>Cancel</Button>
+              <Button type="submit" loading={createMut.isPending || updateMut.isPending}>
+                {editing ? 'Save' : 'Add Contact'}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+    </>
   );
 }
 

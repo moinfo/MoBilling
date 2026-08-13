@@ -306,6 +306,15 @@ export default function Clients() {
             phone: editing.phone || '',
             address: editing.address || '',
             tax_id: editing.tax_id || '',
+            first_name: editing.first_name || '',
+            last_name: editing.last_name || '',
+            company_name: editing.company_name || '',
+            address_1: editing.address_1 || '',
+            address_2: editing.address_2 || '',
+            city: editing.city || '',
+            state: editing.state || '',
+            postcode: editing.postcode || '',
+            country: editing.country || '',
           } : undefined}
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}
