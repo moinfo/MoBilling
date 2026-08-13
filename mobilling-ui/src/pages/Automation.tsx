@@ -47,6 +47,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   subscription_suspension: 'red',
 };
 
+// LogNotification::extractMetadata() stores either a single 'document_id' or,
+// for bundled sends, a 'document_ids' array — metadata's declared type is
+// loosely Record<string, string> since most entries are plain strings.
+function commLogDocumentIds(log: CommunicationLogEntry): string[] {
+  const meta = log.metadata as Record<string, unknown> | null;
+  if (!meta) return [];
+  if (Array.isArray(meta.document_ids)) return meta.document_ids as string[];
+  if (typeof meta.document_id === 'string') return [meta.document_id];
+  return [];
+}
+
 export default function Automation() {
   const [date, setDate] = useState<string | null>(new Date().toISOString().slice(0, 10));
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
@@ -440,12 +451,20 @@ export default function Automation() {
         {selectedLog && (
           <Stack gap="sm">
             <Group justify="space-between">
-              <Badge variant="light" color={CHANNEL_COLORS[selectedLog.channel] ?? 'gray'} size="lg">
-                {selectedLog.channel}
-              </Badge>
-              <Badge color={selectedLog.status === 'sent' ? 'green' : 'red'} size="lg">
-                {selectedLog.status}
-              </Badge>
+              <Group gap="xs">
+                <Badge variant="light" color={CHANNEL_COLORS[selectedLog.channel] ?? 'gray'} size="lg">
+                  {selectedLog.channel}
+                </Badge>
+                <Badge color={selectedLog.status === 'sent' ? 'green' : 'red'} size="lg">
+                  {selectedLog.status}
+                </Badge>
+              </Group>
+              {commLogDocumentIds(selectedLog).map((docId) => (
+                <Button key={docId} size="compact-xs" variant="light" loading={viewDocLoading}
+                  onClick={() => openInvoicePreview(docId)}>
+                  View Invoice
+                </Button>
+              ))}
             </Group>
 
             <div>
