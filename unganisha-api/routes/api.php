@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminClientSearchController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
@@ -139,6 +140,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
     Route::get('/dashboard', [AdminDashboardController::class, 'summary']);
     Route::apiResource('tenants', TenantController::class)->except(['destroy']);
     Route::patch('/tenants/{tenant}/toggle-active', [TenantController::class, 'toggleActive']);
+    Route::post('/tenants/promote-from-client', [TenantController::class, 'promoteFromClient']);
+    Route::get('/clients/search', [AdminClientSearchController::class, 'index']);
 
     // Tenant user management
     Route::get('/tenants/{tenant}/users', [AdminUserController::class, 'index']);

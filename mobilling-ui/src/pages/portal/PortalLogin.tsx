@@ -125,12 +125,12 @@ export default function PortalLogin() {
         <div className={classes.brandOrb} aria-hidden="true" />
 
         <div className={classes.brandRow}>
-          <img src="/moinfotech-logo.png" alt="" height={40} />
+          <img src={branding.branded && branding.logo_url ? branding.logo_url : '/moinfotech-logo.png'} alt="" height={40} />
           <span className={classes.brandLockup}>
             <span className={classes.brandName}>
-              Moinfo<span className={classes.brandNameAccent}>Tech</span>
+              {branding.branded ? brandName : <>Moinfo<span className={classes.brandNameAccent}>Tech</span></>}
             </span>
-            <span className={classes.brandKicker}>TCRA REGISTRAR · TZ</span>
+            {!branding.branded && <span className={classes.brandKicker}>TCRA REGISTRAR · TZ</span>}
           </span>
         </div>
 

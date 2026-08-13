@@ -78,6 +78,7 @@ All reports include stat cards, interactive charts (Recharts), detail tables, da
 - **Multi-tenant** — Isolated workspaces per business with tenant-scoped data
 - **Roles & Permissions** — Custom roles with granular menu and action permissions per tenant
 - **Super Admin** — Manage tenants, subscription plans, currencies, SMS packages, platform settings, tenant permissions
+- **White-Label Tenants** — Custom domain (`custom_domain`) + logo per tenant, resolved by request `Host` for portal branding/OTP; a super admin can also **promote an existing client into a brand-new independent tenant** ("Admin → Tenants → Promote from Client"), prefilled from that client's identity fields, when a reseller needs their own fully white-labeled business rather than just wholesale pricing under the current tenant
 - **Tenant Subscriptions** — Trial periods, plan-based billing via Pesapal integration
 - **SMS** — SMS credits via reseller API with package purchasing
 - **Email** — Tenant-configurable SMTP with platform fallback
@@ -237,3 +238,4 @@ All API routes are prefixed with `/api` and require Sanctum authentication (exce
 - **Reports**: All 10 reports accept `start_date` and `end_date` query params (default: current month). Frontend uses React Query with date-dependent query keys for auto-refetch.
 - **Charts**: Recharts v3 for all data visualizations (BarChart, AreaChart, PieChart).
 - **CSV Export**: Client-side CSV generation with proper escaping — no server dependency.
+- **White-label custom domains**: `tenants.custom_domain` is "bring your own domain" — there is no wildcard `*.mobilling.co.tz` DNS/cert. Each white-labeled tenant (including one created via "Promote from Client") needs one manual nginx `server{}` block + one certbot certificate for their chosen hostname before their custom domain will actually resolve; setting `custom_domain` in Settings alone does not serve traffic on it.

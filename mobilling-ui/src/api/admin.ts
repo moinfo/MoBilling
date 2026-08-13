@@ -104,6 +104,38 @@ export const impersonateUserAsTenantAdmin = (userId: string) =>
     days_remaining?: number;
   }>(`/users/${userId}/impersonate`);
 
+// --- Promote Client to independent white-label Tenant ---
+
+export interface ClientSearchResult {
+  id: string;
+  tenant_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  tax_id: string | null;
+  address: string | null;
+  tenant?: { id: string; name: string; currency: string };
+}
+
+export const searchAdminClients = (search: string) =>
+  api.get<{ data: ClientSearchResult[] }>('/admin/clients/search', { params: { search } });
+
+export interface PromoteClientData {
+  client_id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  tax_id: string;
+  currency: string;
+  admin_name: string;
+  admin_email: string;
+  admin_password: string;
+}
+
+export const promoteClientToTenant = (data: PromoteClientData) =>
+  api.post<{ data: Tenant }>('/admin/tenants/promote-from-client', data);
+
 // --- Tenant User Management ---
 
 export { type TenantUser, type UserFormData } from './users';

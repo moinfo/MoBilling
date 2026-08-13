@@ -3,12 +3,18 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Client;
+use App\Models\Permission;
+use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
 use App\Models\User;
+use App\Notifications\NewTenantNotification;
+use App\Notifications\WelcomeNotification;
 use App\Services\SubscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rules\Password;
 
 class TenantController extends Controller
@@ -78,6 +84,137 @@ class TenantController extends Controller
                 'email' => $request->admin_email,
                 'password' => $request->admin_password,
                 'role' => 'admin',
+            ]);
+
+            $tenant->loadCount('users');
+
+            return response()->json(['data' => $tenant], 201);
+        });
+    }
+
+    /**
+     * Turn an existing client into a brand-new, fully independent tenant —
+     * their own staff, product catalog, branding, and billing lifecycle. Used
+     * when a domain-reseller client wants a real white-label business rather
+     * than just wholesale pricing under the current tenant (see
+     * ClientController::makeReseller for that unrelated, same-tenant flow).
+     *
+     * Provisioning mirrors Auth\RegisterController::register() (roles +
+     * permissions + notifications) rather than store() above, which never
+     * assigns role_id/permissions to its admin user. Nothing about the
+     * originating client — invoices, subscriptions, domains, wallet — moves;
+     * this only reads its identity fields and leaves an audit note behind.
+     */
+    public function promoteFromClient(Request $request)
+    {
+        $this->authorize();
+
+        $request->validate([
+            'client_id' => 'required|uuid|exists:clients,id',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'phone' => 'nullable|string|max:20',
+            'address' => 'nullable|string|max:500',
+            'tax_id' => 'nullable|string|max:50',
+            'currency' => 'nullable|string|max:10',
+            'admin_name' => 'required|string|max:255',
+            'admin_email' => 'required|email|unique:users,email',
+            'admin_password' => ['required', Password::min(8)],
+        ]);
+
+        $client = Client::withoutGlobalScopes()->with('tenant')->findOrFail($request->client_id);
+
+        return DB::transaction(function () use ($request, $client) {
+            $tenant = Tenant::create([
+                'name' => $request->name,
+                'email' => $request->email,
+                'phone' => $request->phone,
+                'address' => $request->address,
+                'tax_id' => $request->tax_id,
+                'currency' => $request->currency ?? $client->tenant?->currency ?? 'KES',
+                'trial_ends_at' => now()->addDays(7),
+            ]);
+
+            $allPermissionIds = Permission::pluck('id');
+            $tenant->allowedPermissions()->sync($allPermissionIds);
+
+            // BelongsToTenant::creating() force-sets tenant_id from the
+            // *authenticated* caller's own tenant_id on every tenant-scoped
+            // model it touches (Role, CommunicationLog via the notification
+            // log listeners below, etc). That's a no-op for the public,
+            // unauthenticated RegisterController::register() this section
+            // mirrors, but here the caller is a logged-in super admin whose
+            // own tenant_id is null — which would silently null out (and
+            // constraint-violate) every one of those writes. Temporarily
+            // pointing the acting user's in-memory tenant_id at the new
+            // tenant for this block — never persisted, restored in finally —
+            // makes every one of those hooks do the right thing for free.
+            $actingUser = auth()->user();
+            $originalTenantId = $actingUser->tenant_id;
+            $actingUser->tenant_id = $tenant->id;
+
+            try {
+                $adminRole = Role::create(['tenant_id' => $tenant->id, 'name' => 'admin', 'label' => 'Administrator', 'is_system' => true]);
+                $adminRole->permissions()->sync($allPermissionIds);
+
+                $userRole = Role::create(['tenant_id' => $tenant->id, 'name' => 'user', 'label' => 'User', 'is_system' => true]);
+                $userPermNames = [
+                    'menu.dashboard',
+                    'dashboard.total_receivable', 'dashboard.total_received', 'dashboard.outstanding',
+                    'dashboard.expenses', 'dashboard.overdue_invoices', 'dashboard.overdue_bills',
+                    'dashboard.total_clients', 'dashboard.total_documents',
+                    'dashboard.overdue_obligations', 'dashboard.due_soon_obligations', 'dashboard.sms_balance',
+                    'dashboard.revenue_chart', 'dashboard.invoice_status_chart', 'dashboard.payment_method_chart',
+                    'dashboard.top_clients', 'dashboard.subscription_stats',
+                    'dashboard.recent_invoices', 'dashboard.upcoming_bills',
+                    'dashboard.urgent_obligations', 'dashboard.upcoming_renewals', 'dashboard.activity_calendar',
+                    'menu.clients', 'menu.products',
+                    'menu.quotations', 'menu.proformas', 'menu.invoices',
+                    'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills',
+                    'menu.collection', 'menu.followups',
+                    'menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out',
+                    'menu.expense_categories', 'menu.expenses',
+                    'menu.automation', 'menu.reports', 'menu.sms',
+                    'menu.satisfaction_calls',
+                    'client_profile.total_invoiced', 'client_profile.total_paid', 'client_profile.balance_due',
+                    'client_profile.active_subscriptions', 'client_profile.subscription_value', 'client_profile.subscription_price',
+                    'clients.read', 'products.read', 'documents.read',
+                    'payments_in.read', 'client_subscriptions.read',
+                    'statutories.read', 'bills.read', 'payments_out.read',
+                    'expense_categories.read', 'expenses.read',
+                    'documents.create', 'documents.update', 'documents.send', 'documents.download', 'documents.approve',
+                    'payments_in.create', 'payments_in.update',
+                    'expenses.create', 'expenses.update',
+                    'settings.profile',
+                    'reports.revenue', 'reports.aging', 'reports.client_statement',
+                    'reports.payment_collection', 'reports.expense', 'reports.profit_loss',
+                    'reports.statutory', 'reports.subscription', 'reports.collection',
+                    'reports.satisfaction', 'reports.communication',
+                ];
+                $userPermIds = Permission::whereIn('name', $userPermNames)->pluck('id');
+                $userRole->permissions()->sync($userPermIds);
+
+                $adminUser = User::create([
+                    'tenant_id' => $tenant->id,
+                    'name' => $request->admin_name,
+                    'email' => $request->admin_email,
+                    'password' => $request->admin_password,
+                    'role' => 'admin',
+                    'role_id' => $adminRole->id,
+                ]);
+
+                $adminUser->notify(new WelcomeNotification($tenant));
+
+                $superAdmins = User::where('role', 'super_admin')->get();
+                Notification::send($superAdmins, new NewTenantNotification($tenant));
+            } finally {
+                $actingUser->tenant_id = $originalTenantId;
+            }
+
+            $client->update([
+                'notes' => trim(($client->notes ? $client->notes . "\n\n" : '')
+                    . "Promoted to independent tenant \"{$tenant->name}\" ({$tenant->id}) on "
+                    . now()->toDateString() . ' by ' . auth()->user()->name . '.'),
             ]);
 
             $tenant->loadCount('users');
