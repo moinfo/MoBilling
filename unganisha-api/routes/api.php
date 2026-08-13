@@ -493,6 +493,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/summary', [AutomationController::class, 'summary']);
         Route::get('/cron-logs', [AutomationController::class, 'cronLogs']);
         Route::get('/communication-logs', [AutomationController::class, 'communicationLogs']);
+        Route::get('/upcoming-reminders', [AutomationController::class, 'upcomingReminders']);
     });
 
     // Reports

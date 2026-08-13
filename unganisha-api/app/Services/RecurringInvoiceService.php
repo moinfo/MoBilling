@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
 
 class RecurringInvoiceService
 {
-    private const REMINDER_DAYS = [21, 14, 7, 3, 1];
+    public const REMINDER_DAYS = [21, 14, 7, 3, 1];
 
     private const CYCLE_INTERVALS = [
         'monthly' => '1 month',

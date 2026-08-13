@@ -4,11 +4,22 @@ namespace App\Http\Controllers;
 
 use App\Models\CommunicationLog;
 use App\Models\CronLog;
+use App\Services\ReminderForecastService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class AutomationController extends Controller
 {
+    /** Read-only projection of what the reminder crons will send over the next N days. */
+    public function upcomingReminders(Request $request, ReminderForecastService $forecast)
+    {
+        $days = max(1, min(60, (int) $request->get('days', 14)));
+
+        return response()->json([
+            'data' => $forecast->forecast(auth()->user()->tenant_id, $days),
+        ]);
+    }
+
     public function summary(Request $request)
     {
         $date = $request->get('date', today()->toDateString());

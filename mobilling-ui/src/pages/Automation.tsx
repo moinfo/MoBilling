@@ -10,17 +10,38 @@ import { useQuery } from '@tanstack/react-query';
 import {
   IconFileInvoice, IconBell, IconFileSpreadsheet, IconCreditCardOff,
   IconMail, IconMessage, IconAlertTriangle, IconRobot, IconSearch,
+  IconCalendarDue, IconBrandWhatsapp,
 } from '@tabler/icons-react';
 import {
   getAutomationSummary,
   getCronLogs,
   getCommunicationLogs,
+  getUpcomingReminders,
   type AutomationSummary,
   type CommunicationLogEntry,
 } from '../api/automation';
 import dayjs from 'dayjs';
 
 const CHANNEL_COLORS: Record<string, string> = { email: 'blue', sms: 'green', whatsapp: 'teal' };
+const CHANNEL_ICONS: Record<string, typeof IconMail> = { email: IconMail, sms: IconMessage, whatsapp: IconBrandWhatsapp };
+const CATEGORY_LABELS: Record<string, string> = {
+  invoice_late_fee: 'Late Fee',
+  invoice_overdue_reminder: 'Overdue Reminder',
+  invoice_termination_warning: 'Termination Warning',
+  domain_expiry: 'Domain Expiry',
+  ssl_expiry: 'SSL Expiry',
+  recurring_invoice_reminder: 'Renewal Reminder',
+  subscription_suspension: 'Subscription Suspension',
+};
+const CATEGORY_COLORS: Record<string, string> = {
+  invoice_late_fee: 'orange',
+  invoice_overdue_reminder: 'red',
+  invoice_termination_warning: 'red',
+  domain_expiry: 'violet',
+  ssl_expiry: 'grape',
+  recurring_invoice_reminder: 'blue',
+  subscription_suspension: 'red',
+};
 
 export default function Automation() {
   const [date, setDate] = useState<string | null>(new Date().toISOString().slice(0, 10));
@@ -33,6 +54,7 @@ export default function Automation() {
   const [clientOnly, setClientOnly] = useState(true);
   const [detailOpened, { open: openDetail, close: closeDetail }] = useDisclosure(false);
   const [selectedLog, setSelectedLog] = useState<CommunicationLogEntry | null>(null);
+  const [upcomingDays, setUpcomingDays] = useState('14');
 
   const dateStr = date ? dayjs(date).format('YYYY-MM-DD') : undefined;
 
@@ -45,6 +67,16 @@ export default function Automation() {
     queryKey: ['cron-logs', dateStr, cronPage],
     queryFn: () => getCronLogs({ date: dateStr, page: cronPage, per_page: 10 }),
   });
+
+  const { data: upcomingData, isLoading: upcomingLoading } = useQuery({
+    queryKey: ['upcoming-reminders', upcomingDays],
+    queryFn: () => getUpcomingReminders(Number(upcomingDays)),
+  });
+  const upcomingEvents = upcomingData?.data?.data ?? [];
+  const upcomingByDate = upcomingEvents.reduce<Record<string, typeof upcomingEvents>>((acc, ev) => {
+    (acc[ev.date] ??= []).push(ev);
+    return acc;
+  }, {});
 
   const { data: commData, isLoading: commLoading } = useQuery({
     queryKey: ['comm-logs', dateStr, channelFilter, statusFilter, debouncedCommSearch, clientOnly, commPage],
@@ -150,6 +182,85 @@ export default function Automation() {
               </Group>
             )}
           </>
+        )}
+      </Paper>
+
+      {/* Upcoming Reminders — projection, not a guarantee */}
+      <Paper withBorder p="md" radius="md" pos="relative">
+        <LoadingOverlay visible={upcomingLoading} />
+        <Group justify="space-between" mb="sm" wrap="wrap">
+          <Group gap="xs">
+            <IconCalendarDue size={18} />
+            <Title order={4}>Upcoming Reminders</Title>
+          </Group>
+          <SegmentedControl
+            size="xs"
+            value={upcomingDays}
+            onChange={setUpcomingDays}
+            data={[
+              { label: '7 days', value: '7' },
+              { label: '14 days', value: '14' },
+              { label: '30 days', value: '30' },
+              { label: '60 days', value: '60' },
+            ]}
+          />
+        </Group>
+        <Text size="xs" c="dimmed" mb="sm">
+          Projected from today's data — a payment, cancellation, or setting change before the date arrives
+          will change the outcome. This is not a guarantee of what will send.
+        </Text>
+        {Object.keys(upcomingByDate).length === 0 ? (
+          <Text c="dimmed" size="sm">No reminders projected in this window.</Text>
+        ) : (
+          <Stack gap="md">
+            {Object.entries(upcomingByDate).map(([d, events]) => (
+              <div key={d}>
+                <Text size="sm" fw={700} mb={4}>
+                  {dayjs(d).isSame(dayjs(), 'day') ? 'Today' : dayjs(d).isSame(dayjs().add(1, 'day'), 'day') ? 'Tomorrow' : dayjs(d).format('dddd, D MMM YYYY')}
+                  <Text span c="dimmed" fw={400} ml={6}>({events.length})</Text>
+                </Text>
+                <Table.ScrollContainer minWidth={600}>
+                  <Table striped withTableBorder>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Client</Table.Th>
+                        <Table.Th>Type</Table.Th>
+                        <Table.Th>Detail</Table.Th>
+                        <Table.Th>Channels</Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {events.map((ev, i) => (
+                        <Table.Tr key={`${ev.client_id}-${ev.category}-${ev.reference}-${i}`}>
+                          <Table.Td><Text size="sm">{ev.client_name}</Text></Table.Td>
+                          <Table.Td>
+                            <Badge size="sm" variant="light" color={CATEGORY_COLORS[ev.category] ?? 'gray'}>
+                              {CATEGORY_LABELS[ev.category] ?? ev.category}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td><Text size="sm" c="dimmed">{ev.label}</Text></Table.Td>
+                          <Table.Td>
+                            <Group gap={4}>
+                              {ev.channels.length === 0 ? (
+                                <Text size="xs" c="red">none — no valid contact/channel</Text>
+                              ) : ev.channels.map((c) => {
+                                const Icon = CHANNEL_ICONS[c];
+                                return (
+                                  <ThemeIcon key={c} size={20} variant="light" color={CHANNEL_COLORS[c]}>
+                                    <Icon size={12} />
+                                  </ThemeIcon>
+                                );
+                              })}
+                            </Group>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              </div>
+            ))}
+          </Stack>
         )}
       </Paper>
 

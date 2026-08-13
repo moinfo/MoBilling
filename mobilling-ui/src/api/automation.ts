@@ -45,6 +45,21 @@ export const getAutomationSummary = (date?: string) =>
 export const getCronLogs = (params?: { date?: string; page?: number; per_page?: number }) =>
   api.get<{ data: CronLogEntry[]; meta: { last_page: number } }>('/automation/cron-logs', { params });
 
+export interface UpcomingReminderEvent {
+  date: string;
+  client_id: string;
+  client_name: string;
+  category: string;
+  label: string;
+  reference: string;
+  channels: ('email' | 'sms' | 'whatsapp')[];
+  recipient_email: string | null;
+  recipient_phone: string | null;
+}
+
+export const getUpcomingReminders = (days?: number) =>
+  api.get<{ data: UpcomingReminderEvent[] }>('/automation/upcoming-reminders', { params: { days } });
+
 export const getCommunicationLogs = (params?: {
   date?: string;
   search?: string;

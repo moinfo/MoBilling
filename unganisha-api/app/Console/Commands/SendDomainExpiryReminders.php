@@ -20,8 +20,9 @@ class SendDomainExpiryReminders extends Command
     protected $signature = 'domains:send-expiry-reminders {--dry-run}';
     protected $description = 'Remind clients about expiring domains (45/30/7/1 days) and expiring SSL certificates (14/7)';
 
-    private const MARKS_MANUAL = [45, 30, 7, 1];
-    private const MARKS_AUTO   = [7, 1];
+    public const MARKS_MANUAL = [45, 30, 7, 1];
+    public const MARKS_AUTO   = [7, 1];
+    public const MARKS_SSL    = [14, 7];
 
     public function handle(): int
     {
@@ -96,7 +97,7 @@ class SendDomainExpiryReminders extends Command
     private function sslPass(bool $dry, array &$tenants): int
     {
         $sent = 0;
-        $marks = [14, 7];
+        $marks = self::MARKS_SSL;
 
         $domains = Domain::withoutGlobalScopes()
             ->where('status', 'active')
