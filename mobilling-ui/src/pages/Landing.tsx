@@ -919,7 +919,7 @@ function LandingContent() {
               c="violet"
               rightSection={<IconArrowRight size={18} />}
               component={Link}
-              to="/register"
+              to="/register?tier=reseller"
             >
               Become a Reseller
             </Button>
