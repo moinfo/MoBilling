@@ -16,6 +16,7 @@ import {
   getDeductions, createDeduction, updateDeduction, deleteDeduction, getDeductionSubscriptions, subscribeDeduction,
   getStatutoryRates, createStatutoryRate, updateStatutoryRate, deleteStatutoryRate,
   getStatutoryRateSubscriptions, subscribeStatutoryRate,
+  getPayeSubscriptions, subscribePaye,
   getPayrollRuns, getPayrollRun, generatePayrollRun, finalizePayrollRun, downloadPayslipPdf,
   getMyPayslips, downloadMyPayslipPdf,
   PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun,
@@ -620,6 +621,7 @@ function SettingsTab() {
 
   const [brackets, setBrackets] = useState<PayeBracket[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [payeModalOpen, setPayeModalOpen] = useState(false);
 
   if (data?.data?.data && !loaded) {
     setBrackets(data.data.data.paye_brackets);
@@ -683,10 +685,53 @@ function SettingsTab() {
         Add Bracket
       </Button>
 
+      <Group justify="space-between" mt="md">
+        <div>
+          <Text size="sm" fw={600}>PAYE Exemptions</Text>
+          <Text size="xs" c="dimmed">Opt individual employees out of PAYE (e.g. a PAYE-exempt category) — on by default for everyone.</Text>
+        </div>
+        <Button size="xs" variant="light" onClick={() => setPayeModalOpen(true)}>Assign</Button>
+      </Group>
+
       <Group justify="flex-end">
         <Button loading={saveMut.isPending} onClick={() => saveMut.mutate()}>Save Settings</Button>
       </Group>
+
+      {payeModalOpen && <PayeSubscriptionModal onClose={() => setPayeModalOpen(false)} />}
     </Stack>
+  );
+}
+
+function PayeSubscriptionModal({ onClose }: { onClose: () => void }) {
+  const { data, isLoading } = useQuery({ queryKey: ['paye-subscriptions'], queryFn: getPayeSubscriptions });
+
+  const subscribeMut = useMutation({
+    mutationFn: (vars: { user_id: string; is_active: boolean }) => subscribePaye(vars),
+  });
+
+  const users = data?.data?.data?.users ?? [];
+  const subscriptions = data?.data?.data?.subscriptions ?? {};
+
+  return (
+    <Modal opened onClose={onClose} title="Assign PAYE" size="md">
+      <Text size="xs" c="dimmed" mb="sm">On = subject to PAYE. Off = exempt (opted out).</Text>
+      {isLoading ? <Center py="md"><Loader size="sm" /></Center> : (
+        <Stack gap="xs">
+          {users.map((u) => {
+            const sub = subscriptions[u.id];
+            return (
+              <Group key={u.id} justify="space-between">
+                <Text size="sm">{u.name}</Text>
+                <Switch
+                  checked={sub?.is_active ?? true}
+                  onChange={(e) => subscribeMut.mutate({ user_id: u.id, is_active: e.currentTarget.checked })}
+                />
+              </Group>
+            );
+          })}
+        </Stack>
+      )}
+    </Modal>
   );
 }
 

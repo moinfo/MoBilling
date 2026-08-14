@@ -103,6 +103,13 @@ export const getStatutoryRateSubscriptions = (id: string) =>
 export const subscribeStatutoryRate = (id: string, data: { user_id: string; is_active?: boolean }) =>
   api.post<{ data: Subscription }>(`/statutory-rates/${id}/subscriptions`, data);
 
+// PAYE exemptions — same "Assign" shape as Statutory Rates, backed by
+// EmployeeProfile.subject_to_paye (PAYE is bracket-based, not a catalog row)
+export const getPayeSubscriptions = () =>
+  api.get<{ data: { users: { id: string; name: string }[]; subscriptions: Record<string, { is_active: boolean }> } }>('/employees/paye-subscriptions');
+export const subscribePaye = (data: { user_id: string; is_active?: boolean }) =>
+  api.post<{ data: { is_active: boolean } }>('/employees/paye-subscriptions', data);
+
 // Staff Salaries
 export const getStaffSalaries = (userId?: string) => api.get<{ data: StaffSalary[] }>('/staff-salaries', { params: { user_id: userId } });
 export const createStaffSalary = (data: { user_id: string; basic_salary: number; effective_from: string; notes?: string }) =>

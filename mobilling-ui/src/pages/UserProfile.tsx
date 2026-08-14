@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
-  Anchor, Loader, Center, Button, TextInput, Select, Textarea, Switch,
+  Anchor, Loader, Center, Button, TextInput, Select, Textarea,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -74,7 +74,6 @@ export default function UserProfile() {
       mobile_money_provider: profile?.mobile_money_provider ?? '',
       mobile_money_number: profile?.mobile_money_number ?? '',
       notes: profile?.notes ?? '',
-      subject_to_paye: profile?.subject_to_paye ?? true,
     },
   });
 
@@ -97,7 +96,6 @@ export default function UserProfile() {
       mobile_money_provider: profile?.mobile_money_provider ?? '',
       mobile_money_number: profile?.mobile_money_number ?? '',
       notes: profile?.notes ?? '',
-      subject_to_paye: profile?.subject_to_paye ?? true,
     });
     setEditing(true);
   };
@@ -169,9 +167,8 @@ export default function UserProfile() {
               </SimpleGrid>
               <Textarea label="Notes" minRows={2} {...form.getInputProps('notes')} />
 
-              <Switch label="Subject to PAYE" mt="xs" {...form.getInputProps('subject_to_paye', { type: 'checkbox' })} />
-              <Text size="xs" c="dimmed" mt={-8}>
-                NSSF/WCF/SDL/etc. exemptions are managed per rate under Payroll &gt; Statutory Rates &gt; Assign.
+              <Text size="xs" c="dimmed" mt="xs">
+                PAYE/NSSF/WCF/SDL/etc. exemptions are managed under Payroll &gt; Settings/Statutory Rates &gt; Assign.
               </Text>
 
               <Group justify="flex-end">

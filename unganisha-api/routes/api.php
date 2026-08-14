@@ -786,6 +786,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     // ── HR Phase 1: Employee Profiles & Leave (permission checks in-controller, same as Attendance/Staff Reports above) ──
     Route::get('/employees',            [\App\Http\Controllers\EmployeeProfileController::class, 'index']);
     Route::get('/employees/mine',       [\App\Http\Controllers\EmployeeProfileController::class, 'mine']);
+    Route::get('/employees/paye-subscriptions',  [\App\Http\Controllers\EmployeeProfileController::class, 'payeSubscriptions']);
+    Route::post('/employees/paye-subscriptions', [\App\Http\Controllers\EmployeeProfileController::class, 'subscribePaye']);
     Route::get('/employees/{user}',     [\App\Http\Controllers\EmployeeProfileController::class, 'show']);
     Route::put('/employees/{user}',     [\App\Http\Controllers\EmployeeProfileController::class, 'update']);
 

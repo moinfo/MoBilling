@@ -94,4 +94,42 @@ class EmployeeProfileController extends Controller
             'profile' => $user->employeeProfile,
         ]]);
     }
+
+    /**
+     * Every employee + whether they're subject to PAYE — same "Assign" shape
+     * as StatutoryRateController::subscriptions(), so PAYE exemption is
+     * managed the same consistent way as NSSF/WCF/SDL/etc, just backed by
+     * EmployeeProfile.subject_to_paye instead of a StatutoryRateSubscription
+     * (PAYE is bracket-based, not a percent-of-gross catalog row).
+     */
+    public function payeSubscriptions()
+    {
+        $this->authorizePermission('payroll.manage', 'payroll.view');
+        $tenantId = auth()->user()->tenant_id;
+
+        $users = User::where('tenant_id', $tenantId)->where('is_active', true)->orderBy('name')->get(['id', 'name']);
+        $profiles = EmployeeProfile::where('tenant_id', $tenantId)->get()->keyBy('user_id');
+
+        $subscriptions = $profiles->map(fn ($p) => ['is_active' => (bool) $p->subject_to_paye]);
+
+        return response()->json(['data' => ['users' => $users, 'subscriptions' => $subscriptions]]);
+    }
+
+    public function subscribePaye(Request $request)
+    {
+        $this->authorizePermission('payroll.manage');
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'user_id' => ['required', 'uuid', \Illuminate\Validation\Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
+            'is_active' => 'boolean',
+        ]);
+
+        $profile = EmployeeProfile::updateOrCreate(
+            ['user_id' => $data['user_id']],
+            ['tenant_id' => $tenantId, 'subject_to_paye' => $data['is_active'] ?? true],
+        );
+
+        return response()->json(['data' => ['is_active' => (bool) $profile->subject_to_paye]]);
+    }
 }
