@@ -13,6 +13,7 @@ import {
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
   IconDatabase, IconShoppingCart, IconDeviceLaptop,
+  IconCalendarTime,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -451,6 +452,15 @@ export default function AppLayout() {
               leftSection={<IconTargetArrow size={18} />}
               active={isActive('/staff-targets')}
               onClick={() => navigateAndClose('/staff-targets')}
+            />
+          )}
+
+          {can('menu.leave') && (
+            <NavLink
+              label="Leave"
+              leftSection={<IconCalendarTime size={18} />}
+              active={isActive('/leave')}
+              onClick={() => navigateAndClose('/leave')}
             />
           )}
 

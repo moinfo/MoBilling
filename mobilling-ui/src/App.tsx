@@ -81,6 +81,8 @@ import ServedCustomers from './pages/ServedCustomers';
 import StaffReports from './pages/StaffReports';
 import Attendance from './pages/Attendance';
 import StaffTargets from './pages/StaffTargets';
+import UserProfile from './pages/UserProfile';
+import Leave from './pages/Leave';
 import Collection from './pages/Collection';
 import Followups from './pages/Followups';
 import SatisfactionCalls from './pages/SatisfactionCalls';
@@ -230,6 +232,8 @@ export default function App() {
                   <Route path="/system-records" element={<SystemRecords />} />
                   <Route path="/my-verifications" element={<MyVerifications />} />
                   <Route path="/users" element={<Users />} />
+                  <Route path="/users/:userId/profile" element={<UserProfile />} />
+                  <Route path="/leave" element={<Leave />} />
                   <Route path="/sessions" element={<Sessions />} />
                   <Route path="/roles" element={<Roles />} />
                   <Route path="/sms" element={<Sms />} />

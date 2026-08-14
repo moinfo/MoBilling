@@ -783,6 +783,25 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::post('/staff-targets/{staffTarget}/self-report',       [\App\Http\Controllers\StaffTargetsController::class, 'selfReport']);
     Route::post('/staff-targets/{staffTarget}/verify',            [\App\Http\Controllers\StaffTargetsController::class, 'verify']);
 
+    // ── HR Phase 1: Employee Profiles & Leave (permission checks in-controller, same as Attendance/Staff Reports above) ──
+    Route::get('/employees',            [\App\Http\Controllers\EmployeeProfileController::class, 'index']);
+    Route::get('/employees/mine',       [\App\Http\Controllers\EmployeeProfileController::class, 'mine']);
+    Route::get('/employees/{user}',     [\App\Http\Controllers\EmployeeProfileController::class, 'show']);
+    Route::put('/employees/{user}',     [\App\Http\Controllers\EmployeeProfileController::class, 'update']);
+
+    Route::get('/leave-types',                 [\App\Http\Controllers\LeaveTypeController::class, 'index']);
+    Route::post('/leave-types',                [\App\Http\Controllers\LeaveTypeController::class, 'store']);
+    Route::put('/leave-types/{leaveType}',      [\App\Http\Controllers\LeaveTypeController::class, 'update']);
+    Route::delete('/leave-types/{leaveType}',   [\App\Http\Controllers\LeaveTypeController::class, 'destroy']);
+    Route::post('/leave-balances',              [\App\Http\Controllers\LeaveTypeController::class, 'setBalance']);
+    Route::get('/leave-balances',               [\App\Http\Controllers\LeaveTypeController::class, 'balances']);
+
+    Route::get('/leave-requests',               [\App\Http\Controllers\LeaveRequestController::class, 'index']);
+    Route::post('/leave-requests',              [\App\Http\Controllers\LeaveRequestController::class, 'store']);
+    Route::get('/leave-requests/my-balance',    [\App\Http\Controllers\LeaveRequestController::class, 'myBalance']);
+    Route::post('/leave-requests/{leaveRequest}/cancel', [\App\Http\Controllers\LeaveRequestController::class, 'cancel']);
+    Route::post('/leave-requests/{leaveRequest}/review', [\App\Http\Controllers\LeaveRequestController::class, 'review']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/portal-users', [ClientPortalUserController::class, 'indexAll']);

@@ -1,5 +1,5 @@
 import { Table, ActionIcon, Group, Text, Badge } from '@mantine/core';
-import { IconEdit, IconLogin, IconUserCheck, IconUserOff } from '@tabler/icons-react';
+import { IconEdit, IconLogin, IconUserCheck, IconUserOff, IconId } from '@tabler/icons-react';
 import { TenantUser } from '../../api/users';
 
 interface Props {
@@ -10,9 +10,10 @@ interface Props {
   onToggleActive: (user: TenantUser) => void;
   onLoginAs?: (user: TenantUser) => void;
   showLoginAs?: boolean;
+  onViewProfile?: (user: TenantUser) => void;
 }
 
-export default function UserTable({ users, isAdmin, currentUserId, onEdit, onToggleActive, onLoginAs, showLoginAs }: Props) {
+export default function UserTable({ users, isAdmin, currentUserId, onEdit, onToggleActive, onLoginAs, showLoginAs, onViewProfile }: Props) {
   if (users.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No team members found</Text>;
   }
@@ -49,6 +50,11 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
             {isAdmin && (
               <Table.Td>
                 <Group gap="xs" wrap="nowrap">
+                  {onViewProfile && (
+                    <ActionIcon variant="light" color="teal" title="View profile" onClick={() => onViewProfile(user)}>
+                      <IconId size={16} />
+                    </ActionIcon>
+                  )}
                   <ActionIcon variant="light" onClick={() => onEdit(user)}>
                     <IconEdit size={16} />
                   </ActionIcon>

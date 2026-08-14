@@ -65,6 +65,11 @@ class User extends Authenticatable implements CanResetPasswordContract
         return $this->hasMany(User::class, 'supervisor_id');
     }
 
+    public function employeeProfile()
+    {
+        return $this->hasOne(EmployeeProfile::class);
+    }
+
     /**
      * Check if the user has a specific permission via their role.
      * Super admins bypass all permission checks.
