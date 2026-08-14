@@ -13,7 +13,7 @@ import {
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
   IconDatabase, IconShoppingCart, IconDeviceLaptop,
-  IconCalendarTime, IconMoneybag,
+  IconCalendarTime, IconMoneybag, IconUserCog,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -36,12 +36,14 @@ export default function AppLayout() {
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
+  const hrPaths = ['/staff-reports', '/attendance', '/staff-targets', '/leave', '/payroll'];
 
   const getActiveSection = () => {
     if (billingPaths.some((p) => location.pathname === p)) return 'billing';
     if (statutoryPaths.some((p) => location.pathname === p)) return 'statutory';
     if (expensePaths.some((p) => location.pathname === p)) return 'expenses';
     if (reportPaths.some((p) => location.pathname === p)) return 'reports';
+    if (hrPaths.some((p) => location.pathname === p)) return 'hr';
     return null;
   };
 
@@ -78,6 +80,7 @@ export default function AppLayout() {
   // top-level data-entry CRUD (System Records) appears here.
   const showSystemRecords = can('menu.system_records');
   const showReports = can('menu.reports');
+  const showHr = canAny(['menu.staff_reports', 'attendance.manage', 'menu.staff_targets', 'menu.leave', 'menu.payroll']);
 
   return (
     <AppShell
@@ -428,49 +431,30 @@ export default function AppLayout() {
             />
           )}
 
-          {can('menu.staff_reports') && (
-            <NavLink
-              label="Staff Reports"
-              leftSection={<IconClipboardList size={18} />}
-              active={isActive('/staff-reports')}
-              onClick={() => navigateAndClose('/staff-reports')}
-            />
-          )}
-
-          {can('attendance.manage') && (
-            <NavLink
-              label="Attendance"
-              leftSection={<IconClipboardCheck size={18} />}
-              active={isActive('/attendance')}
-              onClick={() => navigateAndClose('/attendance')}
-            />
-          )}
-
-          {can('menu.staff_targets') && (
-            <NavLink
-              label="Staff Targets"
-              leftSection={<IconTargetArrow size={18} />}
-              active={isActive('/staff-targets')}
-              onClick={() => navigateAndClose('/staff-targets')}
-            />
-          )}
-
-          {can('menu.leave') && (
-            <NavLink
-              label="Leave"
-              leftSection={<IconCalendarTime size={18} />}
-              active={isActive('/leave')}
-              onClick={() => navigateAndClose('/leave')}
-            />
-          )}
-
-          {can('menu.payroll') && (
-            <NavLink
-              label="Payroll"
-              leftSection={<IconMoneybag size={18} />}
-              active={isActive('/payroll')}
-              onClick={() => navigateAndClose('/payroll')}
-            />
+          {showHr && (
+            <NavLink label="HR" leftSection={<IconUserCog size={18} />}
+              opened={openSection === 'hr'} onChange={() => toggleSection('hr')}>
+              {can('menu.staff_reports') && (
+                <NavLink label="Staff Reports" leftSection={<IconClipboardList size={16} />}
+                  active={isActive('/staff-reports')} onClick={() => navigateAndClose('/staff-reports')} />
+              )}
+              {can('attendance.manage') && (
+                <NavLink label="Attendance" leftSection={<IconClipboardCheck size={16} />}
+                  active={isActive('/attendance')} onClick={() => navigateAndClose('/attendance')} />
+              )}
+              {can('menu.staff_targets') && (
+                <NavLink label="Staff Targets" leftSection={<IconTargetArrow size={16} />}
+                  active={isActive('/staff-targets')} onClick={() => navigateAndClose('/staff-targets')} />
+              )}
+              {can('menu.leave') && (
+                <NavLink label="Leave" leftSection={<IconCalendarTime size={16} />}
+                  active={isActive('/leave')} onClick={() => navigateAndClose('/leave')} />
+              )}
+              {can('menu.payroll') && (
+                <NavLink label="Payroll" leftSection={<IconMoneybag size={16} />}
+                  active={isActive('/payroll')} onClick={() => navigateAndClose('/payroll')} />
+              )}
+            </NavLink>
           )}
 
           {can('menu.subscription') && (
