@@ -843,6 +843,18 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/payslips/{payslip}',              [\App\Http\Controllers\PayslipController::class, 'show']);
     Route::get('/payslips/{payslip}/pdf',          [\App\Http\Controllers\PayslipController::class, 'downloadPdf']);
 
+    // ── HR Phase 3: Loans & Salary Advances ──
+    Route::get('/loans',                    [\App\Http\Controllers\LoanController::class, 'index']);
+    Route::post('/loans',                   [\App\Http\Controllers\LoanController::class, 'store']);
+    Route::get('/loans/{loan}',             [\App\Http\Controllers\LoanController::class, 'show']);
+    Route::get('/loans/{loan}/payments',    [\App\Http\Controllers\LoanController::class, 'payments']);
+    Route::post('/loans/{loan}/cancel',     [\App\Http\Controllers\LoanController::class, 'cancel']);
+
+    Route::get('/salary-advances',                 [\App\Http\Controllers\SalaryAdvanceController::class, 'index']);
+    Route::post('/salary-advances',                [\App\Http\Controllers\SalaryAdvanceController::class, 'store']);
+    Route::get('/salary-advances/{salaryAdvance}',  [\App\Http\Controllers\SalaryAdvanceController::class, 'show']);
+    Route::post('/salary-advances/{salaryAdvance}/cancel', [\App\Http\Controllers\SalaryAdvanceController::class, 'cancel']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/portal-users', [ClientPortalUserController::class, 'indexAll']);

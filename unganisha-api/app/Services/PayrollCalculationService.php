@@ -6,7 +6,9 @@ use App\Models\AllowanceSubscription;
 use App\Models\AttendancePenalty;
 use App\Models\DeductionSubscription;
 use App\Models\EmployeeProfile;
+use App\Models\Loan;
 use App\Models\PayrollSettings;
+use App\Models\SalaryAdvance;
 use App\Models\StaffReportPenalty;
 use App\Models\StaffSalary;
 use App\Models\StatutoryRate;
@@ -90,7 +92,19 @@ class PayrollCalculationService
             $deductionsBreakdown[] = ['name' => 'Late Report Penalties', 'amount' => round($reportPenalties, 2)];
         }
 
-        $otherDeductionsTotal = round($subscribedDeductionsTotal + $attendancePenalties + $reportPenalties, 2);
+        $loanTotal = 0.0;
+        foreach ($this->resolveLoanDeductions($user) as $ld) {
+            $loanTotal += $ld['amount'];
+            $deductionsBreakdown[] = ['name' => 'Loan Repayment', 'amount' => $ld['amount']];
+        }
+
+        $advanceTotal = 0.0;
+        foreach ($this->resolveAdvanceRecoveries($user, $monthKey) as $ar) {
+            $advanceTotal += $ar['amount'];
+            $deductionsBreakdown[] = ['name' => 'Salary Advance Recovery', 'amount' => $ar['amount']];
+        }
+
+        $otherDeductionsTotal = round($subscribedDeductionsTotal + $attendancePenalties + $reportPenalties + $loanTotal + $advanceTotal, 2);
 
         $netPay = round($gross - $statutoryEmployeeTotal - $paye - $otherDeductionsTotal, 2);
         $employerCostTotal = round($gross + $statutoryEmployerTotal, 2);
@@ -162,6 +176,55 @@ class PayrollCalculationService
         }
 
         return [round($employeeTotal, 2), $employeeBreakdown, round($employerTotal, 2), $employerBreakdown, round($taxableReduction, 2)];
+    }
+
+    /**
+     * Read-only projection of what each active loan would collect this
+     * period — never writes anything. finalize() calls this same method to
+     * decide what to actually collect, so a draft preview and the real
+     * collection can never drift apart.
+     *
+     * @return array<int, array{loan: Loan, amount: float}>
+     */
+    public function resolveLoanDeductions(User $user): array
+    {
+        $loans = Loan::withoutGlobalScopes()
+            ->where('user_id', $user->id)->where('status', 'active')->where('balance', '>', 0)
+            ->orderBy('issued_date')->get();
+
+        $result = [];
+        foreach ($loans as $loan) {
+            $amount = round(min((float) $loan->monthly_installment, (float) $loan->balance), 2);
+            if ($amount > 0) {
+                $result[] = ['loan' => $loan, 'amount' => $amount];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Read-only projection of pending advances recoverable this period
+     * (recovery_month_key match) — never writes anything. Same
+     * shared-source-of-truth reasoning as resolveLoanDeductions().
+     *
+     * @return array<int, array{advance: SalaryAdvance, amount: float}>
+     */
+    public function resolveAdvanceRecoveries(User $user, string $monthKey): array
+    {
+        $advances = SalaryAdvance::withoutGlobalScopes()
+            ->where('user_id', $user->id)->where('status', 'pending')
+            ->where('recovery_month_key', $monthKey)->get();
+
+        $result = [];
+        foreach ($advances as $advance) {
+            $amount = round((float) $advance->amount, 2);
+            if ($amount > 0) {
+                $result[] = ['advance' => $advance, 'amount' => $amount];
+            }
+        }
+
+        return $result;
     }
 
     /** Shared fixed/percent_of_basic resolution for both allowance and deduction subscriptions. */

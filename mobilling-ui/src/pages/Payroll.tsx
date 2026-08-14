@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack,
-  Modal, TextInput, Select, NumberInput, ActionIcon, Switch, Center, Loader, Alert,
+  Modal, TextInput, Select, NumberInput, ActionIcon, Switch, Center, Loader, Alert, SegmentedControl, Textarea,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -19,7 +19,9 @@ import {
   getPayeSubscriptions, subscribePaye,
   getPayrollRuns, getPayrollRun, generatePayrollRun, finalizePayrollRun, downloadPayslipPdf,
   getMyPayslips, downloadMyPayslipPdf,
-  PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun,
+  getLoans, createLoan, getLoanPayments, cancelLoan,
+  getSalaryAdvances, createSalaryAdvance, cancelSalaryAdvance,
+  PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance,
 } from '../api/payroll';
 import { getUsers } from '../api/users';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -49,6 +51,7 @@ export default function Payroll() {
           {canManage && <Tabs.Tab value="allowances">Allowances</Tabs.Tab>}
           {canManage && <Tabs.Tab value="deductions">Deductions</Tabs.Tab>}
           {canManage && <Tabs.Tab value="statutory">Statutory Rates</Tabs.Tab>}
+          {canManage && <Tabs.Tab value="loans">Loans & Advances</Tabs.Tab>}
           {canManage && <Tabs.Tab value="settings">Settings</Tabs.Tab>}
           <Tabs.Tab value="mine">My Payslips</Tabs.Tab>
         </Tabs.List>
@@ -58,6 +61,7 @@ export default function Payroll() {
         {canManage && <Tabs.Panel value="allowances" pt="md"><CatalogTab kind="allowance" /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="deductions" pt="md"><CatalogTab kind="deduction" /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="statutory" pt="md"><StatutoryRatesTab /></Tabs.Panel>}
+        {canManage && <Tabs.Panel value="loans" pt="md"><LoansAdvancesTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>}
         <Tabs.Panel value="mine" pt="md"><MyPayslipsTab /></Tabs.Panel>
       </Tabs>
@@ -281,6 +285,289 @@ function SalariesTab() {
             <Select label="Employee" required searchable data={users.map((u) => ({ value: u.id, label: u.name }))} {...form.getInputProps('user_id')} />
             <NumberInput label="Basic Salary" required min={0} {...form.getInputProps('basic_salary')} />
             <TextInput label="Effective From" type="date" required {...form.getInputProps('effective_from')} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setModalOpen(false)}>Cancel</Button>
+              <Button type="submit" loading={createMut.isPending}>Save</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+    </Stack>
+  );
+}
+
+function LoansAdvancesTab() {
+  const [view, setView] = useState<'loans' | 'advances'>('loans');
+  return (
+    <Stack gap="md">
+      <SegmentedControl value={view} onChange={(v) => setView(v as 'loans' | 'advances')} data={[
+        { value: 'loans', label: 'Loans' },
+        { value: 'advances', label: 'Salary Advances' },
+      ]} style={{ alignSelf: 'flex-start' }} />
+      {view === 'loans' ? <LoansPanel /> : <AdvancesPanel />}
+    </Stack>
+  );
+}
+
+function LoansPanel() {
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [paymentsFor, setPaymentsFor] = useState<Loan | null>(null);
+
+  const { data: usersData } = useQuery({ queryKey: ['users-simple'], queryFn: () => getUsers({ per_page: 200 }) });
+  const { data, isLoading } = useQuery({ queryKey: ['loans'], queryFn: () => getLoans() });
+
+  const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];
+  const loans = data?.data?.data ?? [];
+
+  const form = useForm({
+    initialValues: { user_id: '', principal: 0, monthly_installment: 0, issued_date: new Date().toISOString().slice(0, 10), notes: '' },
+    validate: {
+      user_id: (v) => (v ? null : 'Required'),
+      principal: (v) => (v > 0 ? null : 'Must be greater than 0'),
+      monthly_installment: (v) => (v > 0 ? null : 'Must be greater than 0'),
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: (values: typeof form.values) => createLoan(values),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Loan recorded', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+      setModalOpen(false);
+      form.reset();
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to record loan', color: 'red',
+    }),
+  });
+
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => cancelLoan(id),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Loan cancelled', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['loans'] });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to cancel loan', color: 'red',
+    }),
+  });
+
+  const confirmCancel = (loan: Loan) => {
+    modals.openConfirmModal({
+      title: 'Cancel Loan',
+      children: <Text size="sm">Cancel this loan for {loan.user?.name}? Only possible while no repayment has been collected yet.</Text>,
+      labels: { confirm: 'Cancel Loan', cancel: 'Back' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => cancelMut.mutate(loan.id),
+    });
+  };
+
+  const statusColors: Record<string, string> = { active: 'blue', paid_off: 'green', cancelled: 'gray' };
+
+  return (
+    <Stack gap="md">
+      <Group justify="flex-end">
+        <Button leftSection={<IconPlus size={14} />} size="xs" onClick={() => setModalOpen(true)}>Add Loan</Button>
+      </Group>
+
+      {isLoading ? <Center py="md"><Loader size="sm" /></Center> : loans.length === 0 ? (
+        <Text c="dimmed" size="sm">No loans recorded yet.</Text>
+      ) : (
+        <Table.ScrollContainer minWidth={650}>
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Employee</Table.Th>
+                <Table.Th>Principal</Table.Th>
+                <Table.Th>Balance</Table.Th>
+                <Table.Th>Monthly Installment</Table.Th>
+                <Table.Th>Status</Table.Th>
+                <Table.Th />
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {loans.map((l) => (
+                <Table.Tr key={l.id}>
+                  <Table.Td>{l.user?.name ?? '—'}</Table.Td>
+                  <Table.Td>{formatCurrency(l.principal)}</Table.Td>
+                  <Table.Td fw={600}>{formatCurrency(l.balance)}</Table.Td>
+                  <Table.Td>{formatCurrency(l.monthly_installment)}</Table.Td>
+                  <Table.Td><Badge size="sm" color={statusColors[l.status]}>{l.status.replace('_', ' ')}</Badge></Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <Button size="xs" variant="light" onClick={() => setPaymentsFor(l)}>Payments</Button>
+                      {l.status === 'active' && l.balance === l.principal && (
+                        <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmCancel(l)}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      )}
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+
+      <Modal opened={modalOpen} onClose={() => setModalOpen(false)} title="Add Loan">
+        <form onSubmit={form.onSubmit((values) => createMut.mutate(values))}>
+          <Stack gap="sm">
+            <Select label="Employee" required searchable data={users.map((u) => ({ value: u.id, label: u.name }))} {...form.getInputProps('user_id')} />
+            <NumberInput label="Principal" required min={0} {...form.getInputProps('principal')} />
+            <NumberInput label="Monthly Installment" required min={0} {...form.getInputProps('monthly_installment')} />
+            <TextInput label="Issued Date" type="date" required {...form.getInputProps('issued_date')} />
+            <Textarea label="Notes" minRows={2} {...form.getInputProps('notes')} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setModalOpen(false)}>Cancel</Button>
+              <Button type="submit" loading={createMut.isPending}>Save</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      {paymentsFor && <LoanPaymentsModal loan={paymentsFor} onClose={() => setPaymentsFor(null)} />}
+    </Stack>
+  );
+}
+
+function LoanPaymentsModal({ loan, onClose }: { loan: Loan; onClose: () => void }) {
+  const { data, isLoading } = useQuery({ queryKey: ['loan-payments', loan.id], queryFn: () => getLoanPayments(loan.id) });
+  const payments = data?.data?.data ?? [];
+
+  return (
+    <Modal opened onClose={onClose} title={`Payments — ${loan.user?.name ?? ''}`} size="md">
+      {isLoading ? <Center py="md"><Loader size="sm" /></Center> : payments.length === 0 ? (
+        <Text c="dimmed" size="sm">No repayments collected yet.</Text>
+      ) : (
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Month</Table.Th>
+              <Table.Th>Amount</Table.Th>
+              <Table.Th>Balance After</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {payments.map((p) => (
+              <Table.Tr key={p.id}>
+                <Table.Td>{p.payroll_run?.month_key ?? 'Manual'}</Table.Td>
+                <Table.Td>{formatCurrency(p.amount)}</Table.Td>
+                <Table.Td>{formatCurrency(p.balance_after)}</Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+    </Modal>
+  );
+}
+
+function AdvancesPanel() {
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: usersData } = useQuery({ queryKey: ['users-simple'], queryFn: () => getUsers({ per_page: 200 }) });
+  const { data, isLoading } = useQuery({ queryKey: ['salary-advances'], queryFn: () => getSalaryAdvances() });
+
+  const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];
+  const advances = data?.data?.data ?? [];
+
+  const form = useForm({
+    initialValues: {
+      user_id: '', amount: 0, issued_date: new Date().toISOString().slice(0, 10),
+      recovery_month_key: new Date().toISOString().slice(0, 7), notes: '',
+    },
+    validate: {
+      user_id: (v) => (v ? null : 'Required'),
+      amount: (v) => (v > 0 ? null : 'Must be greater than 0'),
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: (values: typeof form.values) => createSalaryAdvance(values),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Salary advance recorded', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+      setModalOpen(false);
+      form.reset();
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to record advance', color: 'red',
+    }),
+  });
+
+  const cancelMut = useMutation({
+    mutationFn: (id: string) => cancelSalaryAdvance(id),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Advance cancelled', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['salary-advances'] });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to cancel advance', color: 'red',
+    }),
+  });
+
+  const confirmCancel = (advance: SalaryAdvance) => {
+    modals.openConfirmModal({
+      title: 'Cancel Salary Advance',
+      children: <Text size="sm">Cancel this advance for {advance.user?.name}?</Text>,
+      labels: { confirm: 'Cancel Advance', cancel: 'Back' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => cancelMut.mutate(advance.id),
+    });
+  };
+
+  const statusColors: Record<string, string> = { pending: 'yellow', recovered: 'green', cancelled: 'gray' };
+
+  return (
+    <Stack gap="md">
+      <Group justify="flex-end">
+        <Button leftSection={<IconPlus size={14} />} size="xs" onClick={() => setModalOpen(true)}>Add Advance</Button>
+      </Group>
+
+      {isLoading ? <Center py="md"><Loader size="sm" /></Center> : advances.length === 0 ? (
+        <Text c="dimmed" size="sm">No salary advances recorded yet.</Text>
+      ) : (
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Employee</Table.Th>
+              <Table.Th>Amount</Table.Th>
+              <Table.Th>Recovery Month</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {advances.map((a) => (
+              <Table.Tr key={a.id}>
+                <Table.Td>{a.user?.name ?? '—'}</Table.Td>
+                <Table.Td>{formatCurrency(a.amount)}</Table.Td>
+                <Table.Td>{a.recovery_month_key}</Table.Td>
+                <Table.Td><Badge size="sm" color={statusColors[a.status]}>{a.status}</Badge></Table.Td>
+                <Table.Td>
+                  {a.status === 'pending' && (
+                    <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmCancel(a)}>
+                      <IconTrash size={14} />
+                    </ActionIcon>
+                  )}
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+
+      <Modal opened={modalOpen} onClose={() => setModalOpen(false)} title="Add Salary Advance">
+        <form onSubmit={form.onSubmit((values) => createMut.mutate(values))}>
+          <Stack gap="sm">
+            <Select label="Employee" required searchable data={users.map((u) => ({ value: u.id, label: u.name }))} {...form.getInputProps('user_id')} />
+            <NumberInput label="Amount" required min={0} {...form.getInputProps('amount')} />
+            <TextInput label="Issued Date" type="date" required {...form.getInputProps('issued_date')} />
+            <TextInput label="Recovery Month" type="month" required {...form.getInputProps('recovery_month_key')} />
+            <Textarea label="Notes" minRows={2} {...form.getInputProps('notes')} />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setModalOpen(false)}>Cancel</Button>
               <Button type="submit" loading={createMut.isPending}>Save</Button>

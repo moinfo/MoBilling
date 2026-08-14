@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\PayrollRun;
 use App\Models\Payslip;
 use App\Models\User;
+use App\Services\LoanService;
 use App\Services\PayrollCalculationService;
 use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
@@ -88,7 +89,16 @@ class PayrollRunController extends Controller
         ], $existing ? 200 : 201);
     }
 
-    public function finalize(PayrollRun $payrollRun)
+    /**
+     * Finalizing is the one true collection point: it re-resolves the same
+     * loan/advance projections computeForUser() used to build the last
+     * generated payslips and actually collects them (Loan.balance decrement
+     * + LoanPayment ledger row, SalaryAdvance -> recovered). Never done
+     * during generate()/computeForUser(), which stay read-only, so
+     * regenerating a draft can never double-apply or silently skip a
+     * collection.
+     */
+    public function finalize(PayrollRun $payrollRun, PayrollCalculationService $calculator, LoanService $loanService)
     {
         $this->authorizePermission('payroll.manage');
         if ($payrollRun->tenant_id !== auth()->user()->tenant_id) {
@@ -101,11 +111,28 @@ class PayrollRunController extends Controller
             return response()->json(['message' => 'Cannot finalize a run with no payslips.'], 422);
         }
 
-        $payrollRun->update([
-            'status' => 'finalized',
-            'finalized_by' => auth()->id(),
-            'finalized_at' => now(),
-        ]);
+        DB::transaction(function () use ($payrollRun, $calculator, $loanService) {
+            $payrollRun->update([
+                'status' => 'finalized',
+                'finalized_by' => auth()->id(),
+                'finalized_at' => now(),
+            ]);
+
+            $payslips = $payrollRun->payslips()->with('user')->get();
+            foreach ($payslips as $payslip) {
+                if (!$payslip->user) {
+                    continue;
+                }
+
+                foreach ($calculator->resolveLoanDeductions($payslip->user) as $ld) {
+                    $loanService->recordPayment($ld['loan'], $ld['amount'], $payrollRun->id, auth()->id());
+                }
+
+                foreach ($calculator->resolveAdvanceRecoveries($payslip->user, $payrollRun->month_key) as $ar) {
+                    $ar['advance']->update(['status' => 'recovered']);
+                }
+            }
+        });
 
         return response()->json(['data' => $payrollRun]);
     }

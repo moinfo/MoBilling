@@ -151,3 +151,49 @@ export const getPayslip = (id: string) => api.get<{ data: Payslip }>(`/payslips/
 export const downloadPayslipPdf = (id: string) => api.get(`/payslips/${id}/pdf`, { responseType: 'blob' });
 export const getMyPayslips = () => api.get<{ data: Payslip[] }>('/payslips/mine');
 export const downloadMyPayslipPdf = (id: string) => api.get(`/payslips/mine/${id}/pdf`, { responseType: 'blob' });
+
+// Loans & Salary Advances
+export interface Loan {
+  id: string;
+  user_id: string;
+  principal: number;
+  balance: number;
+  monthly_installment: number;
+  issued_date: string;
+  status: 'active' | 'paid_off' | 'cancelled';
+  notes: string | null;
+  user?: { id: string; name: string };
+}
+
+export interface LoanPayment {
+  id: string;
+  loan_id: string;
+  payroll_run_id: string | null;
+  amount: number;
+  balance_after: number;
+  notes: string | null;
+  created_at: string;
+  payroll_run?: { id: string; month_key: string } | null;
+}
+
+export interface SalaryAdvance {
+  id: string;
+  user_id: string;
+  amount: number;
+  issued_date: string;
+  recovery_month_key: string;
+  status: 'pending' | 'recovered' | 'cancelled';
+  notes: string | null;
+  user?: { id: string; name: string };
+}
+
+export const getLoans = (userId?: string) => api.get<{ data: Loan[] }>('/loans', { params: { user_id: userId } });
+export const createLoan = (data: { user_id: string; principal: number; monthly_installment: number; issued_date: string; notes?: string }) =>
+  api.post<{ data: Loan }>('/loans', data);
+export const getLoanPayments = (id: string) => api.get<{ data: LoanPayment[] }>(`/loans/${id}/payments`);
+export const cancelLoan = (id: string) => api.post<{ data: Loan }>(`/loans/${id}/cancel`);
+
+export const getSalaryAdvances = (userId?: string) => api.get<{ data: SalaryAdvance[] }>('/salary-advances', { params: { user_id: userId } });
+export const createSalaryAdvance = (data: { user_id: string; amount: number; issued_date: string; recovery_month_key: string; notes?: string }) =>
+  api.post<{ data: SalaryAdvance }>('/salary-advances', data);
+export const cancelSalaryAdvance = (id: string) => api.post<{ data: SalaryAdvance }>(`/salary-advances/${id}/cancel`);
