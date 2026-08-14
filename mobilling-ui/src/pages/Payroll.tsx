@@ -36,6 +36,12 @@ function downloadBlob(data: BlobPart, filename: string) {
   window.URL.revokeObjectURL(url);
 }
 
+/** Decimal columns come back from Laravel as numeric strings — parseFloat before arithmetic (same fix as Bills.tsx's payment sum). */
+function num(v: number | string | null | undefined): number {
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  return Number.isFinite(n as number) ? (n as number) : 0;
+}
+
 export default function Payroll() {
   const { can } = usePermissions();
   const canManage = can('payroll.manage');
@@ -178,6 +184,7 @@ function RunsTab({ canManage }: { canManage: boolean }) {
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
+                  <Table.Th>#</Table.Th>
                   <Table.Th>Employee</Table.Th>
                   <Table.Th>Gross</Table.Th>
                   <Table.Th>Deductions</Table.Th>
@@ -186,11 +193,12 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {(runDetail.data.data.payslips ?? []).map((p) => (
+                {(runDetail.data.data.payslips ?? []).map((p, i) => (
                   <Table.Tr key={p.id}>
+                    <Table.Td>{i + 1}</Table.Td>
                     <Table.Td>{p.user?.name ?? '—'}</Table.Td>
                     <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
-                    <Table.Td>{formatCurrency(p.statutory_employee_total + p.paye_amount + p.other_deductions_total)}</Table.Td>
+                    <Table.Td>{formatCurrency(num(p.statutory_employee_total) + num(p.paye_amount) + num(p.other_deductions_total))}</Table.Td>
                     <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
                     <Table.Td>
                       <ActionIcon variant="subtle" size="sm" onClick={() => downloadPdf(p.id, p.user?.name ?? 'payslip', runDetail.data!.data.month_key)}>
@@ -200,6 +208,16 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                   </Table.Tr>
                 ))}
               </Table.Tbody>
+              <Table.Tfoot>
+                <Table.Tr>
+                  <Table.Th />
+                  <Table.Th>Total</Table.Th>
+                  <Table.Th>{formatCurrency((runDetail.data.data.payslips ?? []).reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
+                  <Table.Th>{formatCurrency((runDetail.data.data.payslips ?? []).reduce((sum, p) => sum + num(p.statutory_employee_total) + num(p.paye_amount) + num(p.other_deductions_total), 0))}</Table.Th>
+                  <Table.Th>{formatCurrency((runDetail.data.data.payslips ?? []).reduce((sum, p) => sum + num(p.net_pay), 0))}</Table.Th>
+                  <Table.Th />
+                </Table.Tr>
+              </Table.Tfoot>
             </Table>
           </Table.ScrollContainer>
         </Paper>
@@ -256,6 +274,7 @@ function SalariesTab() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
+              <Table.Th>#</Table.Th>
               <Table.Th>Employee</Table.Th>
               <Table.Th>Basic Salary</Table.Th>
               <Table.Th>Effective From</Table.Th>
@@ -263,8 +282,9 @@ function SalariesTab() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {salaries.map((s) => (
+            {salaries.map((s, i) => (
               <Table.Tr key={s.id}>
+                <Table.Td>{i + 1}</Table.Td>
                 <Table.Td>{s.user?.name ?? '—'}</Table.Td>
                 <Table.Td>{formatCurrency(s.basic_salary)}</Table.Td>
                 <Table.Td>{s.effective_from}</Table.Td>
@@ -378,6 +398,7 @@ function LoansPanel() {
           <Table striped highlightOnHover>
             <Table.Thead>
               <Table.Tr>
+                <Table.Th>#</Table.Th>
                 <Table.Th>Employee</Table.Th>
                 <Table.Th>Principal</Table.Th>
                 <Table.Th>Balance</Table.Th>
@@ -387,8 +408,9 @@ function LoansPanel() {
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {loans.map((l) => (
+              {loans.map((l, i) => (
                 <Table.Tr key={l.id}>
+                  <Table.Td>{i + 1}</Table.Td>
                   <Table.Td>{l.user?.name ?? '—'}</Table.Td>
                   <Table.Td>{formatCurrency(l.principal)}</Table.Td>
                   <Table.Td fw={600}>{formatCurrency(l.balance)}</Table.Td>
@@ -407,6 +429,17 @@ function LoansPanel() {
                 </Table.Tr>
               ))}
             </Table.Tbody>
+            <Table.Tfoot>
+              <Table.Tr>
+                <Table.Th />
+                <Table.Th>Total</Table.Th>
+                <Table.Th>{formatCurrency(loans.reduce((sum, l) => sum + num(l.principal), 0))}</Table.Th>
+                <Table.Th>{formatCurrency(loans.reduce((sum, l) => sum + num(l.balance), 0))}</Table.Th>
+                <Table.Th>{formatCurrency(loans.reduce((sum, l) => sum + num(l.monthly_installment), 0))}</Table.Th>
+                <Table.Th />
+                <Table.Th />
+              </Table.Tr>
+            </Table.Tfoot>
           </Table>
         </Table.ScrollContainer>
       )}
@@ -444,20 +477,30 @@ function LoanPaymentsModal({ loan, onClose }: { loan: Loan; onClose: () => void 
         <Table>
           <Table.Thead>
             <Table.Tr>
+              <Table.Th>#</Table.Th>
               <Table.Th>Month</Table.Th>
               <Table.Th>Amount</Table.Th>
               <Table.Th>Balance After</Table.Th>
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {payments.map((p) => (
+            {payments.map((p, i) => (
               <Table.Tr key={p.id}>
+                <Table.Td>{i + 1}</Table.Td>
                 <Table.Td>{p.payroll_run?.month_key ?? 'Manual'}</Table.Td>
                 <Table.Td>{formatCurrency(p.amount)}</Table.Td>
                 <Table.Td>{formatCurrency(p.balance_after)}</Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
+          <Table.Tfoot>
+            <Table.Tr>
+              <Table.Th />
+              <Table.Th>Total</Table.Th>
+              <Table.Th>{formatCurrency(payments.reduce((sum, p) => sum + num(p.amount), 0))}</Table.Th>
+              <Table.Th />
+            </Table.Tr>
+          </Table.Tfoot>
         </Table>
       )}
     </Modal>
@@ -533,6 +576,7 @@ function AdvancesPanel() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
+              <Table.Th>#</Table.Th>
               <Table.Th>Employee</Table.Th>
               <Table.Th>Amount</Table.Th>
               <Table.Th>Recovery Month</Table.Th>
@@ -541,8 +585,9 @@ function AdvancesPanel() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {advances.map((a) => (
+            {advances.map((a, i) => (
               <Table.Tr key={a.id}>
+                <Table.Td>{i + 1}</Table.Td>
                 <Table.Td>{a.user?.name ?? '—'}</Table.Td>
                 <Table.Td>{formatCurrency(a.amount)}</Table.Td>
                 <Table.Td>{a.recovery_month_key}</Table.Td>
@@ -557,6 +602,16 @@ function AdvancesPanel() {
               </Table.Tr>
             ))}
           </Table.Tbody>
+          <Table.Tfoot>
+            <Table.Tr>
+              <Table.Th />
+              <Table.Th>Total</Table.Th>
+              <Table.Th>{formatCurrency(advances.reduce((sum, a) => sum + num(a.amount), 0))}</Table.Th>
+              <Table.Th />
+              <Table.Th />
+              <Table.Th />
+            </Table.Tr>
+          </Table.Tfoot>
         </Table>
       )}
 
@@ -651,6 +706,7 @@ function CatalogTab({ kind }: { kind: 'allowance' | 'deduction' }) {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
+              <Table.Th>#</Table.Th>
               <Table.Th>Name</Table.Th>
               <Table.Th>Type</Table.Th>
               <Table.Th>Default Amount</Table.Th>
@@ -658,8 +714,9 @@ function CatalogTab({ kind }: { kind: 'allowance' | 'deduction' }) {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {items.map((item) => (
+            {items.map((item, i) => (
               <Table.Tr key={item.id}>
+                <Table.Td>{i + 1}</Table.Td>
                 <Table.Td fw={500}>{item.name}</Table.Td>
                 <Table.Td><Badge size="sm" variant="light">{item.calculation_type === 'fixed' ? 'Fixed' : '% of Basic'}</Badge></Table.Td>
                 <Table.Td>{item.calculation_type === 'fixed' ? formatCurrency(item.default_amount) : `${item.default_amount}%`}</Table.Td>
@@ -816,6 +873,7 @@ function StatutoryRatesTab() {
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
+              <Table.Th>#</Table.Th>
               <Table.Th>Name</Table.Th>
               <Table.Th>Employee %</Table.Th>
               <Table.Th>Employer %</Table.Th>
@@ -824,8 +882,9 @@ function StatutoryRatesTab() {
             </Table.Tr>
           </Table.Thead>
           <Table.Tbody>
-            {items.map((item) => (
+            {items.map((item, i) => (
               <Table.Tr key={item.id}>
+                <Table.Td>{i + 1}</Table.Td>
                 <Table.Td fw={500}>{item.name}</Table.Td>
                 <Table.Td>{item.employee_percent}%</Table.Td>
                 <Table.Td>{item.employer_percent}%</Table.Td>
@@ -1042,6 +1101,7 @@ function MyPayslipsTab() {
     <Table striped highlightOnHover>
       <Table.Thead>
         <Table.Tr>
+          <Table.Th>#</Table.Th>
           <Table.Th>Month</Table.Th>
           <Table.Th>Gross Pay</Table.Th>
           <Table.Th>Net Pay</Table.Th>
@@ -1049,8 +1109,9 @@ function MyPayslipsTab() {
         </Table.Tr>
       </Table.Thead>
       <Table.Tbody>
-        {payslips.map((p) => (
+        {payslips.map((p, i) => (
           <Table.Tr key={p.id}>
+            <Table.Td>{i + 1}</Table.Td>
             <Table.Td>{p.payroll_run?.month_key ?? '—'}</Table.Td>
             <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
             <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
@@ -1062,6 +1123,15 @@ function MyPayslipsTab() {
           </Table.Tr>
         ))}
       </Table.Tbody>
+      <Table.Tfoot>
+        <Table.Tr>
+          <Table.Th />
+          <Table.Th>Total</Table.Th>
+          <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
+          <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.net_pay), 0))}</Table.Th>
+          <Table.Th />
+        </Table.Tr>
+      </Table.Tfoot>
     </Table>
   );
 }
