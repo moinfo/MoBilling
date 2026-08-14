@@ -21,7 +21,7 @@ import {
   getMyPayslips, downloadMyPayslipPdf,
   getLoans, createLoan, getLoanPayments, cancelLoan,
   getSalaryAdvances, createSalaryAdvance, cancelSalaryAdvance,
-  PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance,
+  PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance, Payslip,
 } from '../api/payroll';
 import { getUsers } from '../api/users';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -40,6 +40,15 @@ function downloadBlob(data: BlobPart, filename: string) {
 function num(v: number | string | null | undefined): number {
   const n = typeof v === 'string' ? parseFloat(v) : v;
   return Number.isFinite(n as number) ? (n as number) : 0;
+}
+
+/** Every line that reduces net pay, itemized: PAYE + each statutory rate (NSSF, WCF, SDL, ...) + each other deduction (catalog, penalties, loan, advance). */
+function deductionItems(p: Payslip): { name: string; amount: number }[] {
+  const items: { name: string; amount: number }[] = [];
+  if (num(p.paye_amount) > 0) items.push({ name: 'PAYE', amount: num(p.paye_amount) });
+  for (const b of p.statutory_employee_breakdown ?? []) items.push({ name: b.name, amount: num(b.amount) });
+  for (const b of p.deductions_breakdown ?? []) items.push({ name: b.name, amount: num(b.amount) });
+  return items;
 }
 
 export default function Payroll() {
@@ -180,8 +189,8 @@ function RunsTab({ canManage }: { canManage: boolean }) {
       {expandedRun && runDetail?.data?.data && (
         <Paper withBorder p="md" radius="md">
           <Title order={5} mb="sm">Payslips — {runDetail.data.data.month_key}</Title>
-          <Table.ScrollContainer minWidth={700}>
-            <Table striped highlightOnHover>
+          <Table.ScrollContainer minWidth={850}>
+            <Table striped highlightOnHover verticalSpacing="sm">
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>#</Table.Th>
@@ -198,7 +207,15 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                     <Table.Td>{i + 1}</Table.Td>
                     <Table.Td>{p.user?.name ?? '—'}</Table.Td>
                     <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
-                    <Table.Td>{formatCurrency(num(p.statutory_employee_total) + num(p.paye_amount) + num(p.other_deductions_total))}</Table.Td>
+                    <Table.Td>
+                      {deductionItems(p).length === 0 ? <Text size="xs" c="dimmed">—</Text> : (
+                        <Stack gap={2}>
+                          {deductionItems(p).map((it, idx) => (
+                            <Text size="xs" key={idx}>{it.name}: {formatCurrency(it.amount)}</Text>
+                          ))}
+                        </Stack>
+                      )}
+                    </Table.Td>
                     <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
                     <Table.Td>
                       <ActionIcon variant="subtle" size="sm" onClick={() => downloadPdf(p.id, p.user?.name ?? 'payslip', runDetail.data!.data.month_key)}>
