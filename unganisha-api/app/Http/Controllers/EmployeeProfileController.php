@@ -74,6 +74,8 @@ class EmployeeProfileController extends Controller
             'termination_date' => 'nullable|date',
             'notes' => 'nullable|string|max:2000',
             'subject_to_paye' => 'sometimes|boolean',
+            'subject_to_attendance_penalty' => 'sometimes|boolean',
+            'subject_to_report_penalty' => 'sometimes|boolean',
         ]);
 
         $profile = EmployeeProfile::updateOrCreate(
@@ -96,13 +98,13 @@ class EmployeeProfileController extends Controller
     }
 
     /**
-     * Every employee + whether they're subject to PAYE — same "Assign" shape
-     * as StatutoryRateController::subscriptions(), so PAYE exemption is
-     * managed the same consistent way as NSSF/WCF/SDL/etc, just backed by
-     * EmployeeProfile.subject_to_paye instead of a StatutoryRateSubscription
-     * (PAYE is bracket-based, not a percent-of-gross catalog row).
+     * Every employee + whether they're subject to a given EmployeeProfile
+     * exemption flag (PAYE, attendance penalties, late-report penalties) —
+     * same "Assign" shape as StatutoryRateController::subscriptions(), just
+     * backed by a boolean column instead of a StatutoryRateSubscription row
+     * (each of these is a blanket on/off, not a percent-of-gross catalog item).
      */
-    public function payeSubscriptions()
+    private function exemptionSubscriptions(string $field)
     {
         $this->authorizePermission('payroll.manage', 'payroll.view');
         $tenantId = auth()->user()->tenant_id;
@@ -110,12 +112,12 @@ class EmployeeProfileController extends Controller
         $users = User::where('tenant_id', $tenantId)->where('is_active', true)->orderBy('name')->get(['id', 'name']);
         $profiles = EmployeeProfile::where('tenant_id', $tenantId)->get()->keyBy('user_id');
 
-        $subscriptions = $profiles->map(fn ($p) => ['is_active' => (bool) $p->subject_to_paye]);
+        $subscriptions = $profiles->map(fn ($p) => ['is_active' => (bool) $p->$field]);
 
         return response()->json(['data' => ['users' => $users, 'subscriptions' => $subscriptions]]);
     }
 
-    public function subscribePaye(Request $request)
+    private function subscribeExemption(Request $request, string $field)
     {
         $this->authorizePermission('payroll.manage');
         $tenantId = auth()->user()->tenant_id;
@@ -127,9 +129,39 @@ class EmployeeProfileController extends Controller
 
         $profile = EmployeeProfile::updateOrCreate(
             ['user_id' => $data['user_id']],
-            ['tenant_id' => $tenantId, 'subject_to_paye' => $data['is_active'] ?? true],
+            ['tenant_id' => $tenantId, $field => $data['is_active'] ?? true],
         );
 
-        return response()->json(['data' => ['is_active' => (bool) $profile->subject_to_paye]]);
+        return response()->json(['data' => ['is_active' => (bool) $profile->$field]]);
+    }
+
+    public function payeSubscriptions()
+    {
+        return $this->exemptionSubscriptions('subject_to_paye');
+    }
+
+    public function subscribePaye(Request $request)
+    {
+        return $this->subscribeExemption($request, 'subject_to_paye');
+    }
+
+    public function attendancePenaltySubscriptions()
+    {
+        return $this->exemptionSubscriptions('subject_to_attendance_penalty');
+    }
+
+    public function subscribeAttendancePenalty(Request $request)
+    {
+        return $this->subscribeExemption($request, 'subject_to_attendance_penalty');
+    }
+
+    public function reportPenaltySubscriptions()
+    {
+        return $this->exemptionSubscriptions('subject_to_report_penalty');
+    }
+
+    public function subscribeReportPenalty(Request $request)
+    {
+        return $this->subscribeExemption($request, 'subject_to_report_penalty');
     }
 }

@@ -17,6 +17,8 @@ import {
   getStatutoryRates, createStatutoryRate, updateStatutoryRate, deleteStatutoryRate,
   getStatutoryRateSubscriptions, subscribeStatutoryRate,
   getPayeSubscriptions, subscribePaye,
+  getAttendancePenaltySubscriptions, subscribeAttendancePenalty,
+  getReportPenaltySubscriptions, subscribeReportPenalty,
   getPayrollRuns, getPayrollRun, generatePayrollRun, finalizePayrollRun, downloadPayslipPdf,
   getMyPayslips, downloadMyPayslipPdf,
   getLoans, createLoan, getLoanPayments, cancelLoan,
@@ -995,7 +997,7 @@ function SettingsTab() {
 
   const [brackets, setBrackets] = useState<PayeBracket[]>([]);
   const [loaded, setLoaded] = useState(false);
-  const [payeModalOpen, setPayeModalOpen] = useState(false);
+  const [exemptionModal, setExemptionModal] = useState<'paye' | 'attendance' | 'report' | null>(null);
 
   if (data?.data?.data && !loaded) {
     setBrackets(data.data.data.paye_brackets);
@@ -1059,36 +1061,59 @@ function SettingsTab() {
         Add Bracket
       </Button>
 
-      <Group justify="space-between" mt="md">
-        <div>
-          <Text size="sm" fw={600}>PAYE Exemptions</Text>
-          <Text size="xs" c="dimmed">Opt individual employees out of PAYE (e.g. a PAYE-exempt category) — on by default for everyone.</Text>
-        </div>
-        <Button size="xs" variant="light" onClick={() => setPayeModalOpen(true)}>Assign</Button>
-      </Group>
+      <Stack gap="sm" mt="md">
+        <Group justify="space-between">
+          <div>
+            <Text size="sm" fw={600}>PAYE Exemptions</Text>
+            <Text size="xs" c="dimmed">Opt individual employees out of PAYE (e.g. a PAYE-exempt category) — on by default for everyone.</Text>
+          </div>
+          <Button size="xs" variant="light" onClick={() => setExemptionModal('paye')}>Assign</Button>
+        </Group>
+        <Group justify="space-between">
+          <div>
+            <Text size="sm" fw={600}>Attendance Penalty Exemptions</Text>
+            <Text size="xs" c="dimmed">Opt individual employees out of attendance-lateness deductions on payroll — on by default for everyone.</Text>
+          </div>
+          <Button size="xs" variant="light" onClick={() => setExemptionModal('attendance')}>Assign</Button>
+        </Group>
+        <Group justify="space-between">
+          <div>
+            <Text size="sm" fw={600}>Late Report Penalty Exemptions</Text>
+            <Text size="xs" c="dimmed">Opt individual employees out of late-report deductions on payroll — on by default for everyone.</Text>
+          </div>
+          <Button size="xs" variant="light" onClick={() => setExemptionModal('report')}>Assign</Button>
+        </Group>
+      </Stack>
 
       <Group justify="flex-end">
         <Button loading={saveMut.isPending} onClick={() => saveMut.mutate()}>Save Settings</Button>
       </Group>
 
-      {payeModalOpen && <PayeSubscriptionModal onClose={() => setPayeModalOpen(false)} />}
+      {exemptionModal && <ExemptionSubscriptionModal kind={exemptionModal} onClose={() => setExemptionModal(null)} />}
     </Stack>
   );
 }
 
-function PayeSubscriptionModal({ onClose }: { onClose: () => void }) {
-  const { data, isLoading } = useQuery({ queryKey: ['paye-subscriptions'], queryFn: getPayeSubscriptions });
+const EXEMPTION_KINDS = {
+  paye: { title: 'Assign PAYE', hint: 'On = subject to PAYE. Off = exempt (opted out).', queryKey: 'paye-subscriptions', getFn: getPayeSubscriptions, subscribeFn: subscribePaye },
+  attendance: { title: 'Assign Attendance Penalties', hint: 'On = subject to attendance-lateness deductions. Off = exempt.', queryKey: 'attendance-penalty-subscriptions', getFn: getAttendancePenaltySubscriptions, subscribeFn: subscribeAttendancePenalty },
+  report: { title: 'Assign Late Report Penalties', hint: 'On = subject to late-report deductions. Off = exempt.', queryKey: 'report-penalty-subscriptions', getFn: getReportPenaltySubscriptions, subscribeFn: subscribeReportPenalty },
+} as const;
+
+function ExemptionSubscriptionModal({ kind, onClose }: { kind: keyof typeof EXEMPTION_KINDS; onClose: () => void }) {
+  const { title, hint, queryKey, getFn, subscribeFn } = EXEMPTION_KINDS[kind];
+  const { data, isLoading } = useQuery({ queryKey: [queryKey], queryFn: getFn });
 
   const subscribeMut = useMutation({
-    mutationFn: (vars: { user_id: string; is_active: boolean }) => subscribePaye(vars),
+    mutationFn: (vars: { user_id: string; is_active: boolean }) => subscribeFn(vars),
   });
 
   const users = data?.data?.data?.users ?? [];
   const subscriptions = data?.data?.data?.subscriptions ?? {};
 
   return (
-    <Modal opened onClose={onClose} title="Assign PAYE" size="md">
-      <Text size="xs" c="dimmed" mb="sm">On = subject to PAYE. Off = exempt (opted out).</Text>
+    <Modal opened onClose={onClose} title={title} size="md">
+      <Text size="xs" c="dimmed" mb="sm">{hint}</Text>
       {isLoading ? <Center py="md"><Loader size="sm" /></Center> : (
         <Stack gap="xs">
           {users.map((u) => {

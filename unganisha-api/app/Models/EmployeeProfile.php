@@ -16,7 +16,7 @@ class EmployeeProfile extends Model
         'employment_type', 'national_id', 'nssf_number', 'tin_number', 'date_of_birth', 'gender',
         'next_of_kin_name', 'next_of_kin_phone', 'bank_name', 'bank_branch', 'bank_account_name',
         'bank_account_number', 'mobile_money_provider', 'mobile_money_number', 'termination_date', 'notes',
-        'subject_to_paye',
+        'subject_to_paye', 'subject_to_attendance_penalty', 'subject_to_report_penalty',
     ];
 
     protected $casts = [
@@ -24,6 +24,8 @@ class EmployeeProfile extends Model
         'date_of_birth' => 'date',
         'termination_date' => 'date',
         'subject_to_paye' => 'boolean',
+        'subject_to_attendance_penalty' => 'boolean',
+        'subject_to_report_penalty' => 'boolean',
     ];
 
     public function user(): BelongsTo

@@ -788,6 +788,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/employees/mine',       [\App\Http\Controllers\EmployeeProfileController::class, 'mine']);
     Route::get('/employees/paye-subscriptions',  [\App\Http\Controllers\EmployeeProfileController::class, 'payeSubscriptions']);
     Route::post('/employees/paye-subscriptions', [\App\Http\Controllers\EmployeeProfileController::class, 'subscribePaye']);
+    Route::get('/employees/attendance-penalty-subscriptions',  [\App\Http\Controllers\EmployeeProfileController::class, 'attendancePenaltySubscriptions']);
+    Route::post('/employees/attendance-penalty-subscriptions', [\App\Http\Controllers\EmployeeProfileController::class, 'subscribeAttendancePenalty']);
+    Route::get('/employees/report-penalty-subscriptions',  [\App\Http\Controllers\EmployeeProfileController::class, 'reportPenaltySubscriptions']);
+    Route::post('/employees/report-penalty-subscriptions', [\App\Http\Controllers\EmployeeProfileController::class, 'subscribeReportPenalty']);
     Route::get('/employees/{user}',     [\App\Http\Controllers\EmployeeProfileController::class, 'show']);
     Route::put('/employees/{user}',     [\App\Http\Controllers\EmployeeProfileController::class, 'update']);
 

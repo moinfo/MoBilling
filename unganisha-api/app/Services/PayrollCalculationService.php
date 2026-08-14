@@ -60,6 +60,8 @@ class PayrollCalculationService
 
         $profile = EmployeeProfile::withoutGlobalScopes()->where('user_id', $user->id)->first();
         $subjectToPaye = $profile?->subject_to_paye ?? true;
+        $subjectToAttendancePenalty = $profile?->subject_to_attendance_penalty ?? true;
+        $subjectToReportPenalty = $profile?->subject_to_report_penalty ?? true;
 
         [$statutoryEmployeeTotal, $statutoryEmployeeBreakdown, $statutoryEmployerTotal, $statutoryEmployerBreakdown, $taxableReduction] =
             $this->computeStatutoryRates($user, $gross);
@@ -76,18 +78,18 @@ class PayrollCalculationService
             $basic,
         );
 
-        $attendancePenalties = (float) AttendancePenalty::withoutGlobalScopes()
+        $attendancePenalties = $subjectToAttendancePenalty ? (float) AttendancePenalty::withoutGlobalScopes()
             ->where('user_id', $user->id)->where('waived', false)
             ->whereBetween('date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-            ->sum('amount');
+            ->sum('amount') : 0.0;
         if ($attendancePenalties > 0) {
             $deductionsBreakdown[] = ['name' => 'Attendance Penalties', 'amount' => round($attendancePenalties, 2)];
         }
 
-        $reportPenalties = (float) StaffReportPenalty::withoutGlobalScopes()
+        $reportPenalties = $subjectToReportPenalty ? (float) StaffReportPenalty::withoutGlobalScopes()
             ->where('user_id', $user->id)->where('waived', false)
             ->whereBetween('period_date', [$periodStart->toDateString(), $periodEnd->toDateString()])
-            ->sum('amount');
+            ->sum('amount') : 0.0;
         if ($reportPenalties > 0) {
             $deductionsBreakdown[] = ['name' => 'Late Report Penalties', 'amount' => round($reportPenalties, 2)];
         }

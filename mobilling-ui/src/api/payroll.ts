@@ -103,12 +103,23 @@ export const getStatutoryRateSubscriptions = (id: string) =>
 export const subscribeStatutoryRate = (id: string, data: { user_id: string; is_active?: boolean }) =>
   api.post<{ data: Subscription }>(`/statutory-rates/${id}/subscriptions`, data);
 
-// PAYE exemptions — same "Assign" shape as Statutory Rates, backed by
-// EmployeeProfile.subject_to_paye (PAYE is bracket-based, not a catalog row)
+// PAYE / attendance-penalty / late-report-penalty exemptions — same "Assign"
+// shape as Statutory Rates, each backed by its own EmployeeProfile boolean
+// flag (blanket on/off, not a percent-of-gross catalog row).
 export const getPayeSubscriptions = () =>
   api.get<{ data: { users: { id: string; name: string }[]; subscriptions: Record<string, { is_active: boolean }> } }>('/employees/paye-subscriptions');
 export const subscribePaye = (data: { user_id: string; is_active?: boolean }) =>
   api.post<{ data: { is_active: boolean } }>('/employees/paye-subscriptions', data);
+
+export const getAttendancePenaltySubscriptions = () =>
+  api.get<{ data: { users: { id: string; name: string }[]; subscriptions: Record<string, { is_active: boolean }> } }>('/employees/attendance-penalty-subscriptions');
+export const subscribeAttendancePenalty = (data: { user_id: string; is_active?: boolean }) =>
+  api.post<{ data: { is_active: boolean } }>('/employees/attendance-penalty-subscriptions', data);
+
+export const getReportPenaltySubscriptions = () =>
+  api.get<{ data: { users: { id: string; name: string }[]; subscriptions: Record<string, { is_active: boolean }> } }>('/employees/report-penalty-subscriptions');
+export const subscribeReportPenalty = (data: { user_id: string; is_active?: boolean }) =>
+  api.post<{ data: { is_active: boolean } }>('/employees/report-penalty-subscriptions', data);
 
 // Staff Salaries
 export const getStaffSalaries = (userId?: string) => api.get<{ data: StaffSalary[] }>('/staff-salaries', { params: { user_id: userId } });
