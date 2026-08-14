@@ -156,6 +156,7 @@ export const getPayrollRuns = () => api.get<{ data: PayrollRun[] }>('/payroll-ru
 export const getPayrollRun = (id: string) => api.get<{ data: PayrollRun }>(`/payroll-runs/${id}`);
 export const generatePayrollRun = (monthKey: string) => api.post<{ data: PayrollRun; message: string }>('/payroll-runs/generate', { month_key: monthKey });
 export const finalizePayrollRun = (id: string) => api.post<{ data: PayrollRun }>(`/payroll-runs/${id}/finalize`);
+export const deletePayrollRun = (id: string) => api.delete(`/payroll-runs/${id}`);
 
 // Payslips
 export const getPayslip = (id: string) => api.get<{ data: Payslip }>(`/payslips/${id}`);

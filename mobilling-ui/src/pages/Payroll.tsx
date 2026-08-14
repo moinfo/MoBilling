@@ -19,7 +19,7 @@ import {
   getPayeSubscriptions, subscribePaye,
   getAttendancePenaltySubscriptions, subscribeAttendancePenalty,
   getReportPenaltySubscriptions, subscribeReportPenalty,
-  getPayrollRuns, getPayrollRun, generatePayrollRun, finalizePayrollRun, downloadPayslipPdf,
+  getPayrollRuns, getPayrollRun, generatePayrollRun, finalizePayrollRun, deletePayrollRun, downloadPayslipPdf,
   getMyPayslips, downloadMyPayslipPdf,
   getLoans, createLoan, getLoanPayments, cancelLoan,
   getSalaryAdvances, createSalaryAdvance, cancelSalaryAdvance,
@@ -137,6 +137,30 @@ function RunsTab({ canManage }: { canManage: boolean }) {
     });
   };
 
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deletePayrollRun(id),
+    onSuccess: (_res, id) => {
+      notifications.show({ title: 'Success', message: 'Payroll run deleted', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['payroll-runs'] });
+      if (expandedRun === id) setExpandedRun(null);
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to delete', color: 'red',
+    }),
+  });
+
+  const confirmDelete = (run: PayrollRun) => {
+    modals.openConfirmModal({
+      title: 'Delete Payroll Run',
+      children: <Text size="sm">
+        Delete the draft payroll run for {run.month_key}? This removes all {run.payslips_count ?? 0} payslip(s) generated for it. This cannot be undone.
+      </Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteMut.mutate(run.id),
+    });
+  };
+
   const downloadPdf = async (payslipId: string, name: string, mk: string) => {
     try {
       const res = await downloadPayslipPdf(payslipId);
@@ -177,9 +201,14 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                 <Table.Td>{r.payslips_count ?? '—'}</Table.Td>
                 <Table.Td onClick={(e) => e.stopPropagation()}>
                   {canManage && r.status === 'draft' && (
-                    <Button size="xs" variant="light" color="green" leftSection={<IconLock size={14} />} onClick={() => confirmFinalize(r)}>
-                      Finalize
-                    </Button>
+                    <Group gap="xs">
+                      <Button size="xs" variant="light" color="green" leftSection={<IconLock size={14} />} onClick={() => confirmFinalize(r)}>
+                        Finalize
+                      </Button>
+                      <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmDelete(r)}>
+                        <IconTrash size={14} />
+                      </ActionIcon>
+                    </Group>
                   )}
                 </Table.Td>
               </Table.Tr>

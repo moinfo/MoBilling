@@ -136,4 +136,20 @@ class PayrollRunController extends Controller
 
         return response()->json(['data' => $payrollRun]);
     }
+
+    /** Only while draft — a finalized run is payroll history and must not be erasable (Payslips cascade-delete with it). */
+    public function destroy(PayrollRun $payrollRun)
+    {
+        $this->authorizePermission('payroll.manage');
+        if ($payrollRun->tenant_id !== auth()->user()->tenant_id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if ($payrollRun->status === 'finalized') {
+            return response()->json(['message' => 'Cannot delete a finalized payroll run.'], 422);
+        }
+
+        $payrollRun->delete();
+
+        return response()->json(null, 204);
+    }
 }
