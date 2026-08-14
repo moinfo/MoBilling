@@ -111,7 +111,7 @@ class TenantProvisioningService
         'menu.expense_categories', 'menu.expenses',
         'menu.automation', 'menu.reports', 'menu.sms',
         'menu.satisfaction_calls',
-        'menu.employees', 'menu.leave', 'leave.submit',
+        'menu.employees', 'menu.leave', 'leave.submit', 'menu.payroll',
         'client_profile.total_invoiced', 'client_profile.total_paid', 'client_profile.balance_due',
         'client_profile.active_subscriptions', 'client_profile.subscription_value', 'client_profile.subscription_price',
         'clients.read', 'products.read', 'documents.read',

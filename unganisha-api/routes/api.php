@@ -802,6 +802,38 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::post('/leave-requests/{leaveRequest}/cancel', [\App\Http\Controllers\LeaveRequestController::class, 'cancel']);
     Route::post('/leave-requests/{leaveRequest}/review', [\App\Http\Controllers\LeaveRequestController::class, 'review']);
 
+    // ── HR Phase 2: Basic Payroll (permission checks in-controller, same convention as above) ──
+    Route::get('/payroll-settings',             [\App\Http\Controllers\PayrollSettingsController::class, 'show']);
+    Route::put('/payroll-settings',             [\App\Http\Controllers\PayrollSettingsController::class, 'update']);
+
+    Route::get('/staff-salaries',               [\App\Http\Controllers\StaffSalaryController::class, 'index']);
+    Route::post('/staff-salaries',              [\App\Http\Controllers\StaffSalaryController::class, 'store']);
+    Route::delete('/staff-salaries/{staffSalary}', [\App\Http\Controllers\StaffSalaryController::class, 'destroy']);
+
+    Route::get('/allowances',                             [\App\Http\Controllers\AllowanceController::class, 'index']);
+    Route::post('/allowances',                            [\App\Http\Controllers\AllowanceController::class, 'store']);
+    Route::put('/allowances/{allowance}',                 [\App\Http\Controllers\AllowanceController::class, 'update']);
+    Route::delete('/allowances/{allowance}',              [\App\Http\Controllers\AllowanceController::class, 'destroy']);
+    Route::get('/allowances/{allowance}/subscriptions',   [\App\Http\Controllers\AllowanceController::class, 'subscriptions']);
+    Route::post('/allowances/{allowance}/subscriptions',  [\App\Http\Controllers\AllowanceController::class, 'subscribe']);
+
+    Route::get('/deductions',                             [\App\Http\Controllers\DeductionController::class, 'index']);
+    Route::post('/deductions',                            [\App\Http\Controllers\DeductionController::class, 'store']);
+    Route::put('/deductions/{deduction}',                 [\App\Http\Controllers\DeductionController::class, 'update']);
+    Route::delete('/deductions/{deduction}',              [\App\Http\Controllers\DeductionController::class, 'destroy']);
+    Route::get('/deductions/{deduction}/subscriptions',   [\App\Http\Controllers\DeductionController::class, 'subscriptions']);
+    Route::post('/deductions/{deduction}/subscriptions',  [\App\Http\Controllers\DeductionController::class, 'subscribe']);
+
+    Route::get('/payroll-runs',                    [\App\Http\Controllers\PayrollRunController::class, 'index']);
+    Route::post('/payroll-runs/generate',          [\App\Http\Controllers\PayrollRunController::class, 'generate']);
+    Route::get('/payroll-runs/{payrollRun}',       [\App\Http\Controllers\PayrollRunController::class, 'show']);
+    Route::post('/payroll-runs/{payrollRun}/finalize', [\App\Http\Controllers\PayrollRunController::class, 'finalize']);
+
+    Route::get('/payslips/mine',                   [\App\Http\Controllers\PayslipController::class, 'mine']);
+    Route::get('/payslips/mine/{payslip}/pdf',     [\App\Http\Controllers\PayslipController::class, 'downloadMinePdf']);
+    Route::get('/payslips/{payslip}',              [\App\Http\Controllers\PayslipController::class, 'show']);
+    Route::get('/payslips/{payslip}/pdf',          [\App\Http\Controllers\PayslipController::class, 'downloadPdf']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/portal-users', [ClientPortalUserController::class, 'indexAll']);
