@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, SimpleGrid, Stack,
-  Anchor, Loader, Center, Button, TextInput, Select, Textarea,
+  Anchor, Loader, Center, Button, TextInput, Select, Textarea, Switch,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -74,6 +74,7 @@ export default function UserProfile() {
       mobile_money_provider: profile?.mobile_money_provider ?? '',
       mobile_money_number: profile?.mobile_money_number ?? '',
       notes: profile?.notes ?? '',
+      subject_to_paye: profile?.subject_to_paye ?? true,
     },
   });
 
@@ -96,6 +97,7 @@ export default function UserProfile() {
       mobile_money_provider: profile?.mobile_money_provider ?? '',
       mobile_money_number: profile?.mobile_money_number ?? '',
       notes: profile?.notes ?? '',
+      subject_to_paye: profile?.subject_to_paye ?? true,
     });
     setEditing(true);
   };
@@ -166,6 +168,12 @@ export default function UserProfile() {
                 <TextInput label="Mobile Money Number" {...form.getInputProps('mobile_money_number')} />
               </SimpleGrid>
               <Textarea label="Notes" minRows={2} {...form.getInputProps('notes')} />
+
+              <Switch label="Subject to PAYE" mt="xs" {...form.getInputProps('subject_to_paye', { type: 'checkbox' })} />
+              <Text size="xs" c="dimmed" mt={-8}>
+                NSSF/WCF/SDL/etc. exemptions are managed per rate under Payroll &gt; Statutory Rates &gt; Assign.
+              </Text>
+
               <Group justify="flex-end">
                 <Button variant="default" onClick={() => setEditing(false)}>Cancel</Button>
                 <Button type="submit" loading={updateMut.isPending}>Save</Button>
@@ -173,20 +181,28 @@ export default function UserProfile() {
             </Stack>
           </form>
         ) : profile ? (
-          <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
-            <ProfileField label="Employee Number" value={profile.employee_number} />
-            <ProfileField label="Hire Date" value={profile.hire_date ? formatDate(profile.hire_date) : null} />
-            <ProfileField label="Department" value={profile.department} />
-            <ProfileField label="Position" value={profile.position} />
-            <ProfileField label="Employment Type" value={profile.employment_type} />
-            <ProfileField label="National ID" value={profile.national_id} />
-            <ProfileField label="NSSF Number" value={profile.nssf_number} />
-            <ProfileField label="TIN Number" value={profile.tin_number} />
-            <ProfileField label="Next of Kin" value={profile.next_of_kin_name} />
-            <ProfileField label="Next of Kin Phone" value={profile.next_of_kin_phone} />
-            <ProfileField label="Bank" value={[profile.bank_name, profile.bank_account_number].filter(Boolean).join(' — ')} />
-            <ProfileField label="Mobile Money" value={[profile.mobile_money_provider, profile.mobile_money_number].filter(Boolean).join(' — ')} />
-          </SimpleGrid>
+          <Stack gap="sm">
+            <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="sm">
+              <ProfileField label="Employee Number" value={profile.employee_number} />
+              <ProfileField label="Hire Date" value={profile.hire_date ? formatDate(profile.hire_date) : null} />
+              <ProfileField label="Department" value={profile.department} />
+              <ProfileField label="Position" value={profile.position} />
+              <ProfileField label="Employment Type" value={profile.employment_type} />
+              <ProfileField label="National ID" value={profile.national_id} />
+              <ProfileField label="NSSF Number" value={profile.nssf_number} />
+              <ProfileField label="TIN Number" value={profile.tin_number} />
+              <ProfileField label="Next of Kin" value={profile.next_of_kin_name} />
+              <ProfileField label="Next of Kin Phone" value={profile.next_of_kin_phone} />
+              <ProfileField label="Bank" value={[profile.bank_name, profile.bank_account_number].filter(Boolean).join(' — ')} />
+              <ProfileField label="Mobile Money" value={[profile.mobile_money_provider, profile.mobile_money_number].filter(Boolean).join(' — ')} />
+            </SimpleGrid>
+            {!profile.subject_to_paye && (
+              <Group gap="xs">
+                <Text size="xs" c="dimmed">Exempt from:</Text>
+                <Badge size="sm" color="orange" variant="light">PAYE</Badge>
+              </Group>
+            )}
+          </Stack>
         ) : (
           <Text c="dimmed" size="sm">No employee details on file yet.{canUpdate ? ' Click "Edit Profile" to add them.' : ''}</Text>
         )}

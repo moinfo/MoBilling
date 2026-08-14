@@ -73,6 +73,7 @@ class EmployeeProfileController extends Controller
             'mobile_money_number' => 'nullable|string|max:50',
             'termination_date' => 'nullable|date',
             'notes' => 'nullable|string|max:2000',
+            'subject_to_paye' => 'sometimes|boolean',
         ]);
 
         $profile = EmployeeProfile::updateOrCreate(

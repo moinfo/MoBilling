@@ -810,6 +810,13 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::post('/staff-salaries',              [\App\Http\Controllers\StaffSalaryController::class, 'store']);
     Route::delete('/staff-salaries/{staffSalary}', [\App\Http\Controllers\StaffSalaryController::class, 'destroy']);
 
+    Route::get('/statutory-rates',                             [\App\Http\Controllers\StatutoryRateController::class, 'index']);
+    Route::post('/statutory-rates',                            [\App\Http\Controllers\StatutoryRateController::class, 'store']);
+    Route::put('/statutory-rates/{statutoryRate}',              [\App\Http\Controllers\StatutoryRateController::class, 'update']);
+    Route::delete('/statutory-rates/{statutoryRate}',           [\App\Http\Controllers\StatutoryRateController::class, 'destroy']);
+    Route::get('/statutory-rates/{statutoryRate}/subscriptions',  [\App\Http\Controllers\StatutoryRateController::class, 'subscriptions']);
+    Route::post('/statutory-rates/{statutoryRate}/subscriptions', [\App\Http\Controllers\StatutoryRateController::class, 'subscribe']);
+
     Route::get('/allowances',                             [\App\Http\Controllers\AllowanceController::class, 'index']);
     Route::post('/allowances',                            [\App\Http\Controllers\AllowanceController::class, 'store']);
     Route::put('/allowances/{allowance}',                 [\App\Http\Controllers\AllowanceController::class, 'update']);

@@ -27,10 +27,6 @@ class PayrollSettingsController extends Controller
             'paye_brackets.*.max' => 'nullable|numeric|gt:paye_brackets.*.min',
             'paye_brackets.*.rate' => 'required|numeric|min:0|max:100',
             'paye_brackets.*.base_deduction' => 'required|numeric|min:0',
-            'nssf_employee_percent' => 'required|numeric|min:0|max:100',
-            'nssf_employer_percent' => 'required|numeric|min:0|max:100',
-            'wcf_percent' => 'required|numeric|min:0|max:100',
-            'sdl_percent' => 'required|numeric|min:0|max:100',
         ]);
 
         $settings = PayrollSettings::forTenant(auth()->user()->tenant_id);

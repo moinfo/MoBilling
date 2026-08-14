@@ -10,10 +10,15 @@ export interface PayeBracket {
 export interface PayrollSettings {
   id: string;
   paye_brackets: PayeBracket[];
-  nssf_employee_percent: number;
-  nssf_employer_percent: number;
-  wcf_percent: number;
-  sdl_percent: number;
+}
+
+export interface StatutoryRate {
+  id: string;
+  name: string;
+  employee_percent: number;
+  employer_percent: number;
+  reduces_taxable_income: boolean;
+  is_active: boolean;
 }
 
 export interface StaffSalary {
@@ -68,23 +73,35 @@ export interface Payslip {
   allowances_total: number;
   allowances_breakdown: { name: string; amount: number }[];
   gross_pay: number;
-  nssf_employee_amount: number;
+  statutory_employee_total: number;
+  statutory_employee_breakdown: { name: string; amount: number }[];
   taxable_income: number;
   paye_amount: number;
   other_deductions_total: number;
   deductions_breakdown: { name: string; amount: number }[];
   net_pay: number;
-  nssf_employer_amount: number;
-  wcf_amount: number;
-  sdl_amount: number;
+  statutory_employer_total: number;
+  statutory_employer_breakdown: { name: string; amount: number }[];
   employer_cost_total: number;
   user?: { id: string; name: string };
   payroll_run?: { id: string; month_key: string; status: string };
 }
 
-// Settings
+// Settings (PAYE brackets only — NSSF/WCF/SDL/etc. live in the Statutory Rates catalog below)
 export const getPayrollSettings = () => api.get<{ data: PayrollSettings }>('/payroll-settings');
-export const updatePayrollSettings = (data: Omit<PayrollSettings, 'id'>) => api.put<{ data: PayrollSettings }>('/payroll-settings', data);
+export const updatePayrollSettings = (data: { paye_brackets: PayeBracket[] }) => api.put<{ data: PayrollSettings }>('/payroll-settings', data);
+
+// Statutory Rates (tenant-configurable catalog: NSSF, WCF, SDL, NHIF, or anything else)
+export const getStatutoryRates = () => api.get<{ data: StatutoryRate[] }>('/statutory-rates');
+export const createStatutoryRate = (data: { name: string; employee_percent: number; employer_percent: number; reduces_taxable_income?: boolean }) =>
+  api.post<{ data: StatutoryRate }>('/statutory-rates', data);
+export const updateStatutoryRate = (id: string, data: { name: string; employee_percent: number; employer_percent: number; reduces_taxable_income?: boolean; is_active?: boolean }) =>
+  api.put<{ data: StatutoryRate }>(`/statutory-rates/${id}`, data);
+export const deleteStatutoryRate = (id: string) => api.delete(`/statutory-rates/${id}`);
+export const getStatutoryRateSubscriptions = (id: string) =>
+  api.get<{ data: { users: { id: string; name: string }[]; subscriptions: Record<string, Subscription> } }>(`/statutory-rates/${id}/subscriptions`);
+export const subscribeStatutoryRate = (id: string, data: { user_id: string; is_active?: boolean }) =>
+  api.post<{ data: Subscription }>(`/statutory-rates/${id}/subscriptions`, data);
 
 // Staff Salaries
 export const getStaffSalaries = (userId?: string) => api.get<{ data: StaffSalary[] }>('/staff-salaries', { params: { user_id: userId } });

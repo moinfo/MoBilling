@@ -7,22 +7,21 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * One row per tenant (firstOrCreate — see ::forTenant()). Every rate here
- * is tenant-editable via Settings. `DEFAULT_PAYE_BRACKETS` below is a
- * commonly-cited bracket structure, NOT guaranteed to be the currently
- * correct TRA schedule — Tanzania's PAYE brackets, NSSF/WCF/SDL
- * percentages change with the annual Finance Act. Seeded only as a
- * starting point; verify with TRA/an accountant before relying on this
- * for a real payroll run.
+ * One row per tenant (firstOrCreate — see ::forTenant()), holding just the
+ * PAYE bracket table now — NSSF/WCF/SDL (and anything else, e.g. NHIF)
+ * live in the tenant-configurable `statutory_rates` catalog instead, since
+ * PAYE is the one statutory item that's bracket-based rather than a flat
+ * percentage, and every tenant has exactly one PAYE schedule (not a list
+ * you'd add more of). `DEFAULT_PAYE_BRACKETS` below is a commonly-cited
+ * bracket structure, NOT guaranteed to be the currently correct TRA
+ * schedule — verify with TRA/an accountant before relying on this for a
+ * real payroll run.
  */
 class PayrollSettings extends Model
 {
     use HasUuids, BelongsToTenant;
 
-    protected $fillable = [
-        'tenant_id', 'paye_brackets', 'nssf_employee_percent',
-        'nssf_employer_percent', 'wcf_percent', 'sdl_percent',
-    ];
+    protected $fillable = ['tenant_id', 'paye_brackets'];
 
     protected $casts = [
         'paye_brackets' => 'array',
@@ -41,13 +40,7 @@ class PayrollSettings extends Model
     {
         return static::withoutGlobalScopes()->firstOrCreate(
             ['tenant_id' => $tenantId],
-            [
-                'paye_brackets' => self::DEFAULT_PAYE_BRACKETS,
-                'nssf_employee_percent' => 10.00,
-                'nssf_employer_percent' => 10.00,
-                'wcf_percent' => 0.50,
-                'sdl_percent' => 3.50,
-            ],
+            ['paye_brackets' => self::DEFAULT_PAYE_BRACKETS],
         );
     }
 }

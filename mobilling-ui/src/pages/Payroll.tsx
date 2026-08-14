@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack, SimpleGrid,
+  Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack,
   Modal, TextInput, Select, NumberInput, ActionIcon, Switch, Center, Loader, Alert,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -14,9 +14,11 @@ import {
   getPayrollSettings, updatePayrollSettings, getStaffSalaries, createStaffSalary, deleteStaffSalary,
   getAllowances, createAllowance, updateAllowance, deleteAllowance, getAllowanceSubscriptions, subscribeAllowance,
   getDeductions, createDeduction, updateDeduction, deleteDeduction, getDeductionSubscriptions, subscribeDeduction,
+  getStatutoryRates, createStatutoryRate, updateStatutoryRate, deleteStatutoryRate,
+  getStatutoryRateSubscriptions, subscribeStatutoryRate,
   getPayrollRuns, getPayrollRun, generatePayrollRun, finalizePayrollRun, downloadPayslipPdf,
   getMyPayslips, downloadMyPayslipPdf,
-  PayeBracket, Allowance, Deduction, PayrollRun,
+  PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun,
 } from '../api/payroll';
 import { getUsers } from '../api/users';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -45,6 +47,7 @@ export default function Payroll() {
           {canManage && <Tabs.Tab value="salaries">Salaries</Tabs.Tab>}
           {canManage && <Tabs.Tab value="allowances">Allowances</Tabs.Tab>}
           {canManage && <Tabs.Tab value="deductions">Deductions</Tabs.Tab>}
+          {canManage && <Tabs.Tab value="statutory">Statutory Rates</Tabs.Tab>}
           {canManage && <Tabs.Tab value="settings">Settings</Tabs.Tab>}
           <Tabs.Tab value="mine">My Payslips</Tabs.Tab>
         </Tabs.List>
@@ -53,6 +56,7 @@ export default function Payroll() {
         {canManage && <Tabs.Panel value="salaries" pt="md"><SalariesTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="allowances" pt="md"><CatalogTab kind="allowance" /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="deductions" pt="md"><CatalogTab kind="deduction" /></Tabs.Panel>}
+        {canManage && <Tabs.Panel value="statutory" pt="md"><StatutoryRatesTab /></Tabs.Panel>}
         {canManage && <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>}
         <Tabs.Panel value="mine" pt="md"><MyPayslipsTab /></Tabs.Panel>
       </Tabs>
@@ -181,7 +185,7 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                   <Table.Tr key={p.id}>
                     <Table.Td>{p.user?.name ?? '—'}</Table.Td>
                     <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
-                    <Table.Td>{formatCurrency(p.nssf_employee_amount + p.paye_amount + p.other_deductions_total)}</Table.Td>
+                    <Table.Td>{formatCurrency(p.statutory_employee_total + p.paye_amount + p.other_deductions_total)}</Table.Td>
                     <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
                     <Table.Td>
                       <ActionIcon variant="subtle" size="sm" onClick={() => downloadPdf(p.id, p.user?.name ?? 'payslip', runDetail.data!.data.month_key)}>
@@ -446,27 +450,184 @@ function SubscriptionModal({ kind, item, onClose }: { kind: 'allowance' | 'deduc
   );
 }
 
+function StatutoryRatesTab() {
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<StatutoryRate | null>(null);
+  const [subscribingTo, setSubscribingTo] = useState<StatutoryRate | null>(null);
+
+  const listQuery = useQuery({ queryKey: ['statutory-rates'], queryFn: getStatutoryRates });
+  const items = listQuery.data?.data?.data ?? [];
+
+  const form = useForm({
+    initialValues: { name: '', employee_percent: 0, employer_percent: 0, reduces_taxable_income: false, is_active: true },
+    validate: { name: (v) => (v.length > 0 ? null : 'Required') },
+  });
+
+  const createMut = useMutation({
+    mutationFn: (values: typeof form.values) => createStatutoryRate(values),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Statutory rate created', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['statutory-rates'] });
+      closeModal();
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: (values: typeof form.values) => updateStatutoryRate(editing!.id, values),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Updated', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['statutory-rates'] });
+      closeModal();
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteStatutoryRate(id),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Removed', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['statutory-rates'] });
+    },
+  });
+
+  const openCreate = () => { setEditing(null); form.reset(); setModalOpen(true); };
+  const openEdit = (item: StatutoryRate) => {
+    setEditing(item);
+    form.setValues({
+      name: item.name, employee_percent: item.employee_percent, employer_percent: item.employer_percent,
+      reduces_taxable_income: item.reduces_taxable_income, is_active: item.is_active,
+    });
+    setModalOpen(true);
+  };
+  const closeModal = () => { setModalOpen(false); setEditing(null); form.reset(); };
+
+  const confirmDelete = (item: StatutoryRate) => {
+    modals.openConfirmModal({
+      title: 'Remove Statutory Rate',
+      children: <Text size="sm">Remove "{item.name}"?</Text>,
+      labels: { confirm: 'Remove', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteMut.mutate(item.id),
+    });
+  };
+
+  return (
+    <Stack gap="md">
+      <Text size="xs" c="dimmed">
+        NSSF, WCF and SDL are pre-configured — add NHIF or anything else here. Employee % is deducted from pay;
+        Employer % is a business cost only, never deducted. Use "Assign" to opt individual employees out (e.g. not an NSSF member).
+      </Text>
+      <Group justify="space-between">
+        <Title order={4}>Statutory Rates</Title>
+        <Button leftSection={<IconPlus size={14} />} size="xs" onClick={openCreate}>Add Rate</Button>
+      </Group>
+
+      {listQuery.isLoading ? <Center py="md"><Loader size="sm" /></Center> : items.length === 0 ? (
+        <Text c="dimmed" size="sm">None configured yet.</Text>
+      ) : (
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Name</Table.Th>
+              <Table.Th>Employee %</Table.Th>
+              <Table.Th>Employer %</Table.Th>
+              <Table.Th>Pre-tax</Table.Th>
+              <Table.Th>Actions</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {items.map((item) => (
+              <Table.Tr key={item.id}>
+                <Table.Td fw={500}>{item.name}</Table.Td>
+                <Table.Td>{item.employee_percent}%</Table.Td>
+                <Table.Td>{item.employer_percent}%</Table.Td>
+                <Table.Td><Badge size="sm" variant="light" color={item.reduces_taxable_income ? 'blue' : 'gray'}>{item.reduces_taxable_income ? 'Yes' : 'No'}</Badge></Table.Td>
+                <Table.Td>
+                  <Group gap="xs">
+                    <Button size="xs" variant="light" onClick={() => setSubscribingTo(item)}>Assign</Button>
+                    <ActionIcon variant="subtle" size="sm" onClick={() => openEdit(item)}><IconEdit size={14} /></ActionIcon>
+                    <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmDelete(item)}><IconTrash size={14} /></ActionIcon>
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      )}
+
+      <Modal opened={modalOpen} onClose={closeModal} title={editing ? 'Edit Statutory Rate' : 'Add Statutory Rate'}>
+        <form onSubmit={form.onSubmit((values) => editing ? updateMut.mutate(values) : createMut.mutate(values))}>
+          <Stack gap="sm">
+            <TextInput label="Name" placeholder="e.g. NHIF" required {...form.getInputProps('name')} />
+            <NumberInput label="Employee %" min={0} max={100} {...form.getInputProps('employee_percent')} />
+            <NumberInput label="Employer %" min={0} max={100} {...form.getInputProps('employer_percent')} />
+            <Switch label="Deduct before PAYE (pre-tax, like NSSF)" {...form.getInputProps('reduces_taxable_income', { type: 'checkbox' })} />
+            {editing && <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />}
+            <Group justify="flex-end">
+              <Button variant="default" onClick={closeModal}>Cancel</Button>
+              <Button type="submit" loading={createMut.isPending || updateMut.isPending}>{editing ? 'Save' : 'Create'}</Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+
+      {subscribingTo && (
+        <StatutorySubscriptionModal item={subscribingTo} onClose={() => setSubscribingTo(null)} />
+      )}
+    </Stack>
+  );
+}
+
+function StatutorySubscriptionModal({ item, onClose }: { item: StatutoryRate; onClose: () => void }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['statutory-rate-subscriptions', item.id],
+    queryFn: () => getStatutoryRateSubscriptions(item.id),
+  });
+
+  const subscribeMut = useMutation({
+    mutationFn: (vars: { user_id: string; is_active: boolean }) => subscribeStatutoryRate(item.id, vars),
+  });
+
+  const users = data?.data?.data?.users ?? [];
+  const subscriptions = data?.data?.data?.subscriptions ?? {};
+
+  return (
+    <Modal opened onClose={onClose} title={`Assign "${item.name}"`} size="md">
+      <Text size="xs" c="dimmed" mb="sm">On = subject to this rate. Off = exempt (opted out).</Text>
+      {isLoading ? <Center py="md"><Loader size="sm" /></Center> : (
+        <Stack gap="xs">
+          {users.map((u) => {
+            const sub = subscriptions[u.id];
+            return (
+              <Group key={u.id} justify="space-between">
+                <Text size="sm">{u.name}</Text>
+                <Switch
+                  checked={sub?.is_active ?? true}
+                  onChange={(e) => subscribeMut.mutate({ user_id: u.id, is_active: e.currentTarget.checked })}
+                />
+              </Group>
+            );
+          })}
+        </Stack>
+      )}
+    </Modal>
+  );
+}
+
 function SettingsTab() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['payroll-settings'], queryFn: getPayrollSettings });
 
   const [brackets, setBrackets] = useState<PayeBracket[]>([]);
-  const [rates, setRates] = useState({ nssf_employee_percent: 10, nssf_employer_percent: 10, wcf_percent: 0.5, sdl_percent: 3.5 });
   const [loaded, setLoaded] = useState(false);
 
   if (data?.data?.data && !loaded) {
     setBrackets(data.data.data.paye_brackets);
-    setRates({
-      nssf_employee_percent: data.data.data.nssf_employee_percent,
-      nssf_employer_percent: data.data.data.nssf_employer_percent,
-      wcf_percent: data.data.data.wcf_percent,
-      sdl_percent: data.data.data.sdl_percent,
-    });
     setLoaded(true);
   }
 
   const saveMut = useMutation({
-    mutationFn: () => updatePayrollSettings({ paye_brackets: brackets, ...rates }),
+    mutationFn: () => updatePayrollSettings({ paye_brackets: brackets }),
     onSuccess: () => {
       notifications.show({ title: 'Success', message: 'Payroll settings saved', color: 'green' });
       queryClient.invalidateQueries({ queryKey: ['payroll-settings'] });
@@ -488,10 +649,10 @@ function SettingsTab() {
   return (
     <Stack gap="md">
       <Alert color="yellow" icon={<IconAlertTriangle size={18} />} title="Verify before real use">
-        These statutory rates (PAYE brackets, NSSF/WCF/SDL) are seeded with commonly-cited default figures —
-        they are <strong>not guaranteed to be current</strong>. Tanzania's tax brackets and NSSF/WCF/SDL
-        percentages change with the annual Finance Act. Please verify with TRA/your accountant before
-        relying on this for a real payroll run.
+        These PAYE brackets (and the default NSSF/WCF/SDL rates under the "Statutory Rates" tab) are seeded
+        with commonly-cited default figures — they are <strong>not guaranteed to be current</strong>.
+        Tanzania's tax brackets and statutory percentages change with the annual Finance Act. Please verify
+        with TRA/your accountant before relying on this for a real payroll run.
       </Alert>
 
       <Title order={4}>PAYE Brackets</Title>
@@ -521,14 +682,6 @@ function SettingsTab() {
       <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addBracket} style={{ alignSelf: 'flex-start' }}>
         Add Bracket
       </Button>
-
-      <Title order={4} mt="md">NSSF / WCF / SDL</Title>
-      <SimpleGrid cols={{ base: 2, sm: 4 }}>
-        <NumberInput label="NSSF (Employee) %" min={0} max={100} value={rates.nssf_employee_percent} onChange={(v) => setRates((r) => ({ ...r, nssf_employee_percent: Number(v) || 0 }))} />
-        <NumberInput label="NSSF (Employer) %" min={0} max={100} value={rates.nssf_employer_percent} onChange={(v) => setRates((r) => ({ ...r, nssf_employer_percent: Number(v) || 0 }))} />
-        <NumberInput label="WCF %" min={0} max={100} value={rates.wcf_percent} onChange={(v) => setRates((r) => ({ ...r, wcf_percent: Number(v) || 0 }))} />
-        <NumberInput label="SDL %" min={0} max={100} value={rates.sdl_percent} onChange={(v) => setRates((r) => ({ ...r, sdl_percent: Number(v) || 0 }))} />
-      </SimpleGrid>
 
       <Group justify="flex-end">
         <Button loading={saveMut.isPending} onClick={() => saveMut.mutate()}>Save Settings</Button>

@@ -16,12 +16,14 @@ class EmployeeProfile extends Model
         'employment_type', 'national_id', 'nssf_number', 'tin_number', 'date_of_birth', 'gender',
         'next_of_kin_name', 'next_of_kin_phone', 'bank_name', 'bank_branch', 'bank_account_name',
         'bank_account_number', 'mobile_money_provider', 'mobile_money_number', 'termination_date', 'notes',
+        'subject_to_paye',
     ];
 
     protected $casts = [
         'hire_date' => 'date',
         'date_of_birth' => 'date',
         'termination_date' => 'date',
+        'subject_to_paye' => 'boolean',
     ];
 
     public function user(): BelongsTo

@@ -72,7 +72,9 @@
     <table class="lines">
         <thead><tr><th>Deductions</th><th class="amount" style="text-align:right">Amount ({{ $tenant?->currency }})</th></tr></thead>
         <tbody>
-            <tr><td>NSSF (Employee)</td><td class="amount">{{ number_format($payslip->nssf_employee_amount, 2) }}</td></tr>
+            @foreach($payslip->statutory_employee_breakdown ?? [] as $line)
+                <tr><td>{{ $line['name'] }}</td><td class="amount">{{ number_format($line['amount'], 2) }}</td></tr>
+            @endforeach
             <tr><td>PAYE</td><td class="amount">{{ number_format($payslip->paye_amount, 2) }}</td></tr>
             @foreach($payslip->deductions_breakdown ?? [] as $line)
                 <tr><td>{{ $line['name'] }}</td><td class="amount">{{ number_format($line['amount'], 2) }}</td></tr>
@@ -86,12 +88,14 @@
         </table>
     </div>
 
-    <div class="employer-costs">
-        <h3>Employer Contributions (not deducted from employee)</h3>
-        <p>NSSF (Employer): {{ number_format($payslip->nssf_employer_amount, 2) }}</p>
-        <p>WCF: {{ number_format($payslip->wcf_amount, 2) }}</p>
-        <p>SDL: {{ number_format($payslip->sdl_amount, 2) }}</p>
-    </div>
+    @if(!empty($payslip->statutory_employer_breakdown))
+        <div class="employer-costs">
+            <h3>Employer Contributions (not deducted from employee)</h3>
+            @foreach($payslip->statutory_employer_breakdown as $line)
+                <p>{{ $line['name'] }}: {{ number_format($line['amount'], 2) }}</p>
+            @endforeach
+        </div>
+    @endif
 
     <div class="footer">
         Generated {{ now()->format('d M Y H:i') }} · {{ config('app.name') }}

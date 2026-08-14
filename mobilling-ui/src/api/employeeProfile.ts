@@ -23,6 +23,10 @@ export interface EmployeeProfile {
   mobile_money_number: string | null;
   termination_date: string | null;
   notes: string | null;
+  subject_to_paye: boolean;
+  subject_to_nssf: boolean;
+  subject_to_wcf: boolean;
+  subject_to_sdl: boolean;
 }
 
 export interface EmployeeProfileFormData {
@@ -46,6 +50,10 @@ export interface EmployeeProfileFormData {
   mobile_money_number?: string;
   termination_date?: string;
   notes?: string;
+  subject_to_paye?: boolean;
+  subject_to_nssf?: boolean;
+  subject_to_wcf?: boolean;
+  subject_to_sdl?: boolean;
 }
 
 export interface EmployeeUser {
