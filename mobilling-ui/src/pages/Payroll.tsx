@@ -186,59 +186,70 @@ function RunsTab({ canManage }: { canManage: boolean }) {
         </Table>
       )}
 
-      {expandedRun && runDetail?.data?.data && (
-        <Paper withBorder p="md" radius="md">
-          <Title order={5} mb="sm">Payslips — {runDetail.data.data.month_key}</Title>
-          <Table.ScrollContainer minWidth={850}>
-            <Table striped highlightOnHover verticalSpacing="sm">
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>#</Table.Th>
-                  <Table.Th>Employee</Table.Th>
-                  <Table.Th>Gross</Table.Th>
-                  <Table.Th>Deductions</Table.Th>
-                  <Table.Th>Net Pay</Table.Th>
-                  <Table.Th />
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {(runDetail.data.data.payslips ?? []).map((p, i) => (
-                  <Table.Tr key={p.id}>
-                    <Table.Td>{i + 1}</Table.Td>
-                    <Table.Td>{p.user?.name ?? '—'}</Table.Td>
-                    <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
-                    <Table.Td>
-                      {deductionItems(p).length === 0 ? <Text size="xs" c="dimmed">—</Text> : (
-                        <Stack gap={2}>
-                          {deductionItems(p).map((it, idx) => (
-                            <Text size="xs" key={idx}>{it.name}: {formatCurrency(it.amount)}</Text>
-                          ))}
-                        </Stack>
-                      )}
-                    </Table.Td>
-                    <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
-                    <Table.Td>
-                      <ActionIcon variant="subtle" size="sm" onClick={() => downloadPdf(p.id, p.user?.name ?? 'payslip', runDetail.data!.data.month_key)}>
-                        <IconDownload size={14} />
-                      </ActionIcon>
-                    </Table.Td>
+      {expandedRun && runDetail?.data?.data && (() => {
+        const payslips = runDetail.data!.data.payslips ?? [];
+        // One column per distinct deduction name across the whole run (PAYE, NSSF, Attendance Penalties, ...),
+        // in order of first appearance, so every employee's row lines up under the same headers.
+        const dedNames: string[] = [];
+        const dedMaps = payslips.map((p) => {
+          const map: Record<string, number> = {};
+          for (const it of deductionItems(p)) {
+            map[it.name] = (map[it.name] ?? 0) + it.amount;
+            if (!dedNames.includes(it.name)) dedNames.push(it.name);
+          }
+          return map;
+        });
+
+        return (
+          <Paper withBorder p="md" radius="md">
+            <Title order={5} mb="sm">Payslips — {runDetail.data!.data.month_key}</Title>
+            <Table.ScrollContainer minWidth={550 + dedNames.length * 140}>
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>#</Table.Th>
+                    <Table.Th>Employee</Table.Th>
+                    <Table.Th>Gross</Table.Th>
+                    {dedNames.map((name) => <Table.Th key={name}>{name}</Table.Th>)}
+                    <Table.Th>Net Pay</Table.Th>
+                    <Table.Th />
                   </Table.Tr>
-                ))}
-              </Table.Tbody>
-              <Table.Tfoot>
-                <Table.Tr>
-                  <Table.Th />
-                  <Table.Th>Total</Table.Th>
-                  <Table.Th>{formatCurrency((runDetail.data.data.payslips ?? []).reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
-                  <Table.Th>{formatCurrency((runDetail.data.data.payslips ?? []).reduce((sum, p) => sum + num(p.statutory_employee_total) + num(p.paye_amount) + num(p.other_deductions_total), 0))}</Table.Th>
-                  <Table.Th>{formatCurrency((runDetail.data.data.payslips ?? []).reduce((sum, p) => sum + num(p.net_pay), 0))}</Table.Th>
-                  <Table.Th />
-                </Table.Tr>
-              </Table.Tfoot>
-            </Table>
-          </Table.ScrollContainer>
-        </Paper>
-      )}
+                </Table.Thead>
+                <Table.Tbody>
+                  {payslips.map((p, i) => (
+                    <Table.Tr key={p.id}>
+                      <Table.Td>{i + 1}</Table.Td>
+                      <Table.Td>{p.user?.name ?? '—'}</Table.Td>
+                      <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
+                      {dedNames.map((name) => (
+                        <Table.Td key={name}>{dedMaps[i][name] ? formatCurrency(dedMaps[i][name]) : '—'}</Table.Td>
+                      ))}
+                      <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
+                      <Table.Td>
+                        <ActionIcon variant="subtle" size="sm" onClick={() => downloadPdf(p.id, p.user?.name ?? 'payslip', runDetail.data!.data.month_key)}>
+                          <IconDownload size={14} />
+                        </ActionIcon>
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+                <Table.Tfoot>
+                  <Table.Tr>
+                    <Table.Th />
+                    <Table.Th>Total</Table.Th>
+                    <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
+                    {dedNames.map((name) => (
+                      <Table.Th key={name}>{formatCurrency(dedMaps.reduce((sum, m) => sum + (m[name] ?? 0), 0))}</Table.Th>
+                    ))}
+                    <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.net_pay), 0))}</Table.Th>
+                    <Table.Th />
+                  </Table.Tr>
+                </Table.Tfoot>
+              </Table>
+            </Table.ScrollContainer>
+          </Paper>
+        );
+      })()}
     </Stack>
   );
 }
