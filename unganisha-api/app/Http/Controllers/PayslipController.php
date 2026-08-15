@@ -30,12 +30,17 @@ class PayslipController extends Controller
         return $this->streamPdf($payslip, $pdfService);
     }
 
-    /** Self-service: an employee's own payslips (list + download own), no permission required. */
+    /**
+     * Self-service: an employee's own payslips, no permission required.
+     * Includes draft-run payslips too — staff should be able to see their
+     * current deductions building up before the run is finalized, not just
+     * past finalized ones. PDF download stays finalized-only (see below);
+     * a draft is still a live projection that can change on regeneration.
+     */
     public function mine()
     {
         $payslips = Payslip::where('user_id', auth()->id())
             ->with('payrollRun:id,month_key,status')
-            ->whereHas('payrollRun', fn ($q) => $q->where('status', 'finalized'))
             ->orderByDesc('created_at')
             ->get();
 

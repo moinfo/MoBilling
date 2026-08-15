@@ -1180,40 +1180,69 @@ function MyPayslipsTab() {
   if (payslips.length === 0) return <Text c="dimmed" size="sm">No payslips yet.</Text>;
 
   return (
-    <Table striped highlightOnHover>
-      <Table.Thead>
-        <Table.Tr>
-          <Table.Th>#</Table.Th>
-          <Table.Th>Month</Table.Th>
-          <Table.Th>Gross Pay</Table.Th>
-          <Table.Th>Net Pay</Table.Th>
-          <Table.Th />
-        </Table.Tr>
-      </Table.Thead>
-      <Table.Tbody>
-        {payslips.map((p, i) => (
-          <Table.Tr key={p.id}>
-            <Table.Td>{i + 1}</Table.Td>
-            <Table.Td>{p.payroll_run?.month_key ?? '—'}</Table.Td>
-            <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
-            <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
-            <Table.Td>
-              <ActionIcon variant="subtle" size="sm" onClick={() => download(p.id, p.payroll_run?.month_key ?? '')}>
-                <IconDownload size={14} />
-              </ActionIcon>
-            </Table.Td>
-          </Table.Tr>
-        ))}
-      </Table.Tbody>
-      <Table.Tfoot>
-        <Table.Tr>
-          <Table.Th />
-          <Table.Th>Total</Table.Th>
-          <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
-          <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.net_pay), 0))}</Table.Th>
-          <Table.Th />
-        </Table.Tr>
-      </Table.Tfoot>
-    </Table>
+    <Stack gap="xs">
+      <Text size="xs" c="dimmed">
+        A "Draft" row is this period's payroll still being prepared — deductions shown are current but may still
+        change until it's finalized. A downloadable payslip is only available once finalized.
+      </Text>
+      <Table.ScrollContainer minWidth={700}>
+        <Table striped highlightOnHover>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>#</Table.Th>
+              <Table.Th>Month</Table.Th>
+              <Table.Th>Status</Table.Th>
+              <Table.Th>Gross Pay</Table.Th>
+              <Table.Th>Deductions</Table.Th>
+              <Table.Th>Net Pay</Table.Th>
+              <Table.Th />
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {payslips.map((p, i) => {
+              const finalized = p.payroll_run?.status === 'finalized';
+              return (
+                <Table.Tr key={p.id}>
+                  <Table.Td>{i + 1}</Table.Td>
+                  <Table.Td>{p.payroll_run?.month_key ?? '—'}</Table.Td>
+                  <Table.Td><Badge size="sm" color={finalized ? 'green' : 'yellow'}>{finalized ? 'Finalized' : 'Draft'}</Badge></Table.Td>
+                  <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
+                  <Table.Td>
+                    {deductionItems(p).length === 0 ? <Text size="xs" c="dimmed">—</Text> : (
+                      <Stack gap={2}>
+                        {deductionItems(p).map((it, idx) => (
+                          <Text size="xs" key={idx}>{it.name}: {formatCurrency(it.amount)}</Text>
+                        ))}
+                      </Stack>
+                    )}
+                  </Table.Td>
+                  <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
+                  <Table.Td>
+                    {finalized ? (
+                      <ActionIcon variant="subtle" size="sm" onClick={() => download(p.id, p.payroll_run?.month_key ?? '')}>
+                        <IconDownload size={14} />
+                      </ActionIcon>
+                    ) : (
+                      <Text size="xs" c="dimmed">—</Text>
+                    )}
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+          <Table.Tfoot>
+            <Table.Tr>
+              <Table.Th />
+              <Table.Th>Total</Table.Th>
+              <Table.Th />
+              <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
+              <Table.Th />
+              <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.net_pay), 0))}</Table.Th>
+              <Table.Th />
+            </Table.Tr>
+          </Table.Tfoot>
+        </Table>
+      </Table.ScrollContainer>
+    </Stack>
   );
 }
