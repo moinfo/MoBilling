@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack,
+  Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack, SimpleGrid,
   Modal, TextInput, Select, NumberInput, ActionIcon, Switch, Center, Loader, Alert, SegmentedControl, Textarea,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -231,7 +231,23 @@ function RunsTab({ canManage }: { canManage: boolean }) {
           return map;
         });
 
-        return (
+        // Employer-side statutory costs (NSSF employer share, WCF, SDL, ...) — never
+        // deducted from anyone's pay, but the employer still owes these to the
+        // relevant authority. Same aggregate-by-name approach as the deduction columns.
+        const employerNames: string[] = [];
+        const employerMaps = payslips.map((p) => {
+          const map: Record<string, number> = {};
+          for (const b of p.statutory_employer_breakdown ?? []) {
+            map[b.name] = (map[b.name] ?? 0) + num(b.amount);
+            if (!employerNames.includes(b.name)) employerNames.push(b.name);
+          }
+          return map;
+        });
+        const totalGross = payslips.reduce((sum, p) => sum + num(p.gross_pay), 0);
+        const totalEmployerStatutory = payslips.reduce((sum, p) => sum + num(p.statutory_employer_total), 0);
+        const totalEmployerCost = payslips.reduce((sum, p) => sum + num(p.employer_cost_total), 0);
+
+        return (<>
           <Paper withBorder p="md" radius="md">
             <Title order={5} mb="sm">Payslips — {runDetail.data!.data.month_key}</Title>
             <Table.ScrollContainer minWidth={550 + dedNames.length * 140}>
@@ -279,9 +295,33 @@ function RunsTab({ canManage }: { canManage: boolean }) {
               </Table>
             </Table.ScrollContainer>
           </Paper>
-        );
+
+          <Paper withBorder p="md" radius="md">
+            <Title order={5} mb={4}>Employer Obligations — {runDetail.data!.data.month_key}</Title>
+            <Text size="xs" c="dimmed" mb="sm">
+              What the business owes on top of net pay — employer-side statutory contributions (never deducted from staff) plus total payroll cost.
+            </Text>
+            <SimpleGrid cols={{ base: 1, sm: 2, md: employerNames.length + 2 }} spacing="sm">
+              <StatBox label="Total Gross Pay" value={formatCurrency(totalGross)} />
+              {employerNames.map((name) => (
+                <StatBox key={name} label={name} value={formatCurrency(employerMaps.reduce((sum, m) => sum + (m[name] ?? 0), 0))} />
+              ))}
+              <StatBox label="Total Employer Statutory" value={formatCurrency(totalEmployerStatutory)} />
+              <StatBox label="Total Cost to Company" value={formatCurrency(totalEmployerCost)} emphasize />
+            </SimpleGrid>
+          </Paper>
+        </>);
       })()}
     </Stack>
+  );
+}
+
+function StatBox({ label, value, emphasize }: { label: string; value: string; emphasize?: boolean }) {
+  return (
+    <Paper withBorder p="sm" radius="md" bg={emphasize ? 'var(--mantine-color-blue-light)' : undefined}>
+      <Text size="xs" c="dimmed" tt="uppercase" fw={600}>{label}</Text>
+      <Text size="lg" fw={700}>{value}</Text>
+    </Paper>
   );
 }
 
