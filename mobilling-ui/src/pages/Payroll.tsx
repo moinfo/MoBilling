@@ -1179,13 +1179,25 @@ function MyPayslipsTab() {
   if (isLoading) return <Center py="md"><Loader size="sm" /></Center>;
   if (payslips.length === 0) return <Text c="dimmed" size="sm">No payslips yet.</Text>;
 
+  // Same shape as the admin Payslips table: one column per distinct deduction name
+  // (PAYE, Attendance Penalties, Late Report Penalties, ...) across all of my payslips.
+  const dedNames: string[] = [];
+  const dedMaps = payslips.map((p) => {
+    const map: Record<string, number> = {};
+    for (const it of deductionItems(p)) {
+      map[it.name] = (map[it.name] ?? 0) + it.amount;
+      if (!dedNames.includes(it.name)) dedNames.push(it.name);
+    }
+    return map;
+  });
+
   return (
     <Stack gap="xs">
       <Text size="xs" c="dimmed">
         A "Draft" row is this period's payroll still being prepared — deductions shown are current but may still
         change until it's finalized. A downloadable payslip is only available once finalized.
       </Text>
-      <Table.ScrollContainer minWidth={700}>
+      <Table.ScrollContainer minWidth={550 + dedNames.length * 140}>
         <Table striped highlightOnHover>
           <Table.Thead>
             <Table.Tr>
@@ -1193,7 +1205,7 @@ function MyPayslipsTab() {
               <Table.Th>Month</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th>Gross Pay</Table.Th>
-              <Table.Th>Deductions</Table.Th>
+              {dedNames.map((name) => <Table.Th key={name}>{name}</Table.Th>)}
               <Table.Th>Net Pay</Table.Th>
               <Table.Th />
             </Table.Tr>
@@ -1207,15 +1219,9 @@ function MyPayslipsTab() {
                   <Table.Td>{p.payroll_run?.month_key ?? '—'}</Table.Td>
                   <Table.Td><Badge size="sm" color={finalized ? 'green' : 'yellow'}>{finalized ? 'Finalized' : 'Draft'}</Badge></Table.Td>
                   <Table.Td>{formatCurrency(p.gross_pay)}</Table.Td>
-                  <Table.Td>
-                    {deductionItems(p).length === 0 ? <Text size="xs" c="dimmed">—</Text> : (
-                      <Stack gap={2}>
-                        {deductionItems(p).map((it, idx) => (
-                          <Text size="xs" key={idx}>{it.name}: {formatCurrency(it.amount)}</Text>
-                        ))}
-                      </Stack>
-                    )}
-                  </Table.Td>
+                  {dedNames.map((name) => (
+                    <Table.Td key={name}>{dedMaps[i][name] ? formatCurrency(dedMaps[i][name]) : '—'}</Table.Td>
+                  ))}
                   <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
                   <Table.Td>
                     {finalized ? (
@@ -1236,7 +1242,9 @@ function MyPayslipsTab() {
               <Table.Th>Total</Table.Th>
               <Table.Th />
               <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.gross_pay), 0))}</Table.Th>
-              <Table.Th />
+              {dedNames.map((name) => (
+                <Table.Th key={name}>{formatCurrency(dedMaps.reduce((sum, m) => sum + (m[name] ?? 0), 0))}</Table.Th>
+              ))}
               <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.net_pay), 0))}</Table.Th>
               <Table.Th />
             </Table.Tr>
