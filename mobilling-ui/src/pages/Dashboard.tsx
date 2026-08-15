@@ -79,7 +79,7 @@ export default function Dashboard() {
       </Group>
 
       {/* Everyone's own attendance/payroll — independent of billing summary */}
-      <MyAttendance />
+      {can('dashboard.my_attendance') && <MyAttendance />}
       <MyPayroll />
 
       {summary && (
@@ -102,9 +102,9 @@ export default function Dashboard() {
             periodLabel={periodLabel}
           />
 
-          <TotalDeductions reportPenalties={summary.staff_penalties} />
+          {can('dashboard.my_total_deductions') && <TotalDeductions reportPenalties={summary.staff_penalties} />}
 
-          {summary.staff_penalties && <StaffPenalties data={summary.staff_penalties} />}
+          {can('dashboard.my_report_deductions') && summary.staff_penalties && <StaffPenalties data={summary.staff_penalties} />}
 
           {summary.hosting_domains && <HostingDomains data={summary.hosting_domains} />}
 
