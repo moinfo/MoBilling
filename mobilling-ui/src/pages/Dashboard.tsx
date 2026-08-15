@@ -22,6 +22,7 @@ import SubscriptionStats from '../components/Dashboard/SubscriptionStats';
 import HostingDomains from '../components/Dashboard/HostingDomains';
 import StaffPenalties from '../components/Dashboard/StaffPenalties';
 import MyAttendance from '../components/Dashboard/MyAttendance';
+import MyPayroll from '../components/Dashboard/MyPayroll';
 import TotalDeductions from '../components/Dashboard/TotalDeductions';
 import RecentInvoices from '../components/Dashboard/RecentInvoices';
 import UpcomingBills from '../components/Dashboard/UpcomingBills';
@@ -77,8 +78,9 @@ export default function Dashboard() {
         )}
       </Group>
 
-      {/* Everyone's own attendance (check-in/out) — independent of billing summary */}
+      {/* Everyone's own attendance/payroll — independent of billing summary */}
       <MyAttendance />
+      <MyPayroll />
 
       {summary && (
         <>

@@ -61,7 +61,7 @@ export default function Payroll() {
   return (
     <Stack gap="lg">
       <Title order={2}>Payroll</Title>
-      <Tabs defaultValue="runs" keepMounted={false}>
+      <Tabs defaultValue={canView ? 'runs' : 'mine'} keepMounted={false}>
         <Tabs.List>
           {canView && <Tabs.Tab value="runs">Runs</Tabs.Tab>}
           {canManage && <Tabs.Tab value="salaries">Salaries</Tabs.Tab>}
