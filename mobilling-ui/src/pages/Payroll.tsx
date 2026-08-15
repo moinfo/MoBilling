@@ -1033,7 +1033,7 @@ function StatutorySubscriptionModal({ item, onClose }: { item: StatutoryRate; on
   });
 
   const subscribeMut = useMutation({
-    mutationFn: (vars: { user_id: string; is_active: boolean }) => subscribeStatutoryRate(item.id, vars),
+    mutationFn: (vars: { user_id: string; is_active: boolean; reference_number?: string | null }) => subscribeStatutoryRate(item.id, vars),
   });
 
   const users = data?.data?.data?.users ?? [];
@@ -1041,17 +1041,24 @@ function StatutorySubscriptionModal({ item, onClose }: { item: StatutoryRate; on
 
   return (
     <Modal opened onClose={onClose} title={`Assign "${item.name}"`} size="md">
-      <Text size="xs" c="dimmed" mb="sm">On = subject to this rate. Off = exempt (opted out).</Text>
+      <Text size="xs" c="dimmed" mb="sm">
+        On = subject to this rate. Off = exempt (opted out). Reference number is the employee's ID with this
+        statutory body (e.g. NSSF number, HESLB registration number) — optional, for your own records.
+      </Text>
       {isLoading ? <Center py="md"><Loader size="sm" /></Center> : (
-        <Stack gap="xs">
+        <Stack gap="sm">
           {users.map((u) => {
             const sub = subscriptions[u.id];
             return (
-              <Group key={u.id} justify="space-between">
-                <Text size="sm">{u.name}</Text>
+              <Group key={u.id} justify="space-between" wrap="nowrap">
+                <Text size="sm" style={{ flex: 1 }}>{u.name}</Text>
+                <StatutoryRefNumberInput
+                  initial={sub?.reference_number ?? ''}
+                  onSave={(refNum) => subscribeMut.mutate({ user_id: u.id, is_active: sub?.is_active ?? true, reference_number: refNum })}
+                />
                 <Switch
                   checked={sub?.is_active ?? true}
-                  onChange={(e) => subscribeMut.mutate({ user_id: u.id, is_active: e.currentTarget.checked })}
+                  onChange={(e) => subscribeMut.mutate({ user_id: u.id, is_active: e.currentTarget.checked, reference_number: sub?.reference_number ?? undefined })}
                 />
               </Group>
             );
@@ -1059,6 +1066,23 @@ function StatutorySubscriptionModal({ item, onClose }: { item: StatutoryRate; on
         </Stack>
       )}
     </Modal>
+  );
+}
+
+function StatutoryRefNumberInput({ initial, onSave }: { initial: string; onSave: (value: string | null) => void }) {
+  const [value, setValue] = useState(initial);
+
+  return (
+    <TextInput
+      size="xs"
+      placeholder="Reference no."
+      w={140}
+      value={value}
+      onChange={(e) => setValue(e.currentTarget.value)}
+      onBlur={() => {
+        if (value !== (initial ?? '')) onSave(value.trim() === '' ? null : value.trim());
+      }}
+    />
   );
 }
 

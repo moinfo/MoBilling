@@ -92,11 +92,20 @@ class StatutoryRateController extends Controller
         $data = $request->validate([
             'user_id' => ['required', 'uuid', Rule::exists('users', 'id')->where('tenant_id', $tenantId)],
             'is_active' => 'boolean',
+            'reference_number' => 'nullable|string|max:100',
         ]);
+
+        $values = ['tenant_id' => $tenantId, 'is_active' => $data['is_active'] ?? true];
+        // Only touch reference_number when the caller actually sent it — a
+        // toggle-only request (just flipping is_active) must not wipe out a
+        // reference number that was entered separately.
+        if ($request->has('reference_number')) {
+            $values['reference_number'] = $data['reference_number'];
+        }
 
         $sub = StatutoryRateSubscription::updateOrCreate(
             ['user_id' => $data['user_id'], 'statutory_rate_id' => $statutoryRate->id],
-            ['tenant_id' => $tenantId, 'is_active' => $data['is_active'] ?? true],
+            $values,
         );
 
         return response()->json(['data' => $sub]);

@@ -53,6 +53,13 @@ export interface Subscription {
   is_active: boolean;
 }
 
+export interface StatutoryRateSubscription {
+  id: string;
+  user_id: string;
+  is_active: boolean;
+  reference_number: string | null;
+}
+
 export interface PayrollRun {
   id: string;
   month_key: string;
@@ -99,9 +106,9 @@ export const updateStatutoryRate = (id: string, data: { name: string; employee_p
   api.put<{ data: StatutoryRate }>(`/statutory-rates/${id}`, data);
 export const deleteStatutoryRate = (id: string) => api.delete(`/statutory-rates/${id}`);
 export const getStatutoryRateSubscriptions = (id: string) =>
-  api.get<{ data: { users: { id: string; name: string }[]; subscriptions: Record<string, Subscription> } }>(`/statutory-rates/${id}/subscriptions`);
-export const subscribeStatutoryRate = (id: string, data: { user_id: string; is_active?: boolean }) =>
-  api.post<{ data: Subscription }>(`/statutory-rates/${id}/subscriptions`, data);
+  api.get<{ data: { users: { id: string; name: string }[]; subscriptions: Record<string, StatutoryRateSubscription> } }>(`/statutory-rates/${id}/subscriptions`);
+export const subscribeStatutoryRate = (id: string, data: { user_id: string; is_active?: boolean; reference_number?: string | null }) =>
+  api.post<{ data: StatutoryRateSubscription }>(`/statutory-rates/${id}/subscriptions`, data);
 
 // PAYE / attendance-penalty / late-report-penalty exemptions — same "Assign"
 // shape as Statutory Rates, each backed by its own EmployeeProfile boolean

@@ -11,7 +11,7 @@ class StatutoryRateSubscription extends Model
 {
     use HasUuids, BelongsToTenant;
 
-    protected $fillable = ['tenant_id', 'user_id', 'statutory_rate_id', 'is_active'];
+    protected $fillable = ['tenant_id', 'user_id', 'statutory_rate_id', 'is_active', 'reference_number'];
 
     protected $casts = [
         'is_active' => 'boolean',
