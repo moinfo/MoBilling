@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack, SimpleGrid,
+  Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack, SimpleGrid, Accordion,
   Modal, TextInput, Select, NumberInput, ActionIcon, Switch, Center, Loader, Alert, SegmentedControl, Textarea,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -311,6 +311,25 @@ function RunsTab({ canManage }: { canManage: boolean }) {
               <StatBox label="Total Employer Statutory" value={formatCurrency(totalEmployerStatutory)} />
               <StatBox label="Total Cost to Company" value={formatCurrency(totalEmployerCost)} emphasize />
             </SimpleGrid>
+
+            <Text size="xs" c="dimmed" tt="uppercase" fw={600} mt="md" mb={4}>Remittance lists</Text>
+            <Accordion variant="separated" multiple>
+              <RemittanceListItem
+                label="PAYE"
+                total={payslips.reduce((sum, p) => sum + num(p.paye_amount), 0)}
+                rows={payslips.filter((p) => num(p.paye_amount) > 0).map((p) => ({ name: p.user?.name ?? '—', amount: num(p.paye_amount) }))}
+              />
+              {employerNames.map((name) => (
+                <RemittanceListItem
+                  key={name}
+                  label={name}
+                  total={employerMaps.reduce((sum, m) => sum + (m[name] ?? 0), 0)}
+                  rows={payslips
+                    .map((p, i) => ({ name: p.user?.name ?? '—', amount: employerMaps[i][name] ?? 0 }))
+                    .filter((r) => r.amount > 0)}
+                />
+              ))}
+            </Accordion>
           </Paper>
         </>);
       })()}
@@ -324,6 +343,37 @@ function StatBox({ label, value, emphasize }: { label: string; value: string; em
       <Text size="xs" c="dimmed" tt="uppercase" fw={600}>{label}</Text>
       <Text size="lg" fw={700}>{value}</Text>
     </Paper>
+  );
+}
+
+/** Who's included in one remittance category (PAYE, NSSF, WCF, SDL, ...) and how much each owes — for filing. */
+function RemittanceListItem({ label, total, rows }: { label: string; total: number; rows: { name: string; amount: number }[] }) {
+  return (
+    <Accordion.Item value={label}>
+      <Accordion.Control>
+        <Group justify="space-between" pr="md">
+          <Text size="sm" fw={600}>{label}</Text>
+          <Group gap="xs">
+            <Text size="xs" c="dimmed">{rows.length} employee{rows.length === 1 ? '' : 's'}</Text>
+            <Text size="sm" fw={700}>{formatCurrency(total)}</Text>
+          </Group>
+        </Group>
+      </Accordion.Control>
+      <Accordion.Panel>
+        {rows.length === 0 ? <Text size="xs" c="dimmed">No one this month.</Text> : (
+          <Table striped verticalSpacing={4} fz="sm">
+            <Table.Tbody>
+              {rows.map((r, i) => (
+                <Table.Tr key={i}>
+                  <Table.Td>{i + 1}. {r.name}</Table.Td>
+                  <Table.Td ta="right">{formatCurrency(r.amount)}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+      </Accordion.Panel>
+    </Accordion.Item>
   );
 }
 
