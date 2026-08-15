@@ -299,10 +299,12 @@ function RunsTab({ canManage }: { canManage: boolean }) {
           <Paper withBorder p="md" radius="md">
             <Title order={5} mb={4}>Employer Obligations — {runDetail.data!.data.month_key}</Title>
             <Text size="xs" c="dimmed" mb="sm">
-              What the business owes on top of net pay — employer-side statutory contributions (never deducted from staff) plus total payroll cost.
+              What the business owes on top of net pay — employer-side statutory contributions (never deducted from
+              staff) plus total payroll cost, and PAYE withheld from staff that the business must remit to TRA.
             </Text>
-            <SimpleGrid cols={{ base: 1, sm: 2, md: employerNames.length + 2 }} spacing="sm">
+            <SimpleGrid cols={{ base: 1, sm: 2, md: employerNames.length + 3 }} spacing="sm">
               <StatBox label="Total Gross Pay" value={formatCurrency(totalGross)} />
+              <StatBox label="Total PAYE (to remit)" value={formatCurrency(payslips.reduce((sum, p) => sum + num(p.paye_amount), 0))} />
               {employerNames.map((name) => (
                 <StatBox key={name} label={name} value={formatCurrency(employerMaps.reduce((sum, m) => sum + (m[name] ?? 0), 0))} />
               ))}
