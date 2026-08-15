@@ -90,7 +90,10 @@ export interface Payslip {
   statutory_employer_total: number;
   statutory_employer_breakdown: { name: string; amount: number }[];
   employer_cost_total: number;
-  user?: { id: string; name: string };
+  user?: {
+    id: string; name: string;
+    employee_profile?: { tin_number: string | null; bank_name: string | null; bank_account_number: string | null } | null;
+  };
   payroll_run?: { id: string; month_key: string; status: string };
 }
 

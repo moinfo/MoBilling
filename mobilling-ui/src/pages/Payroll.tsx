@@ -317,7 +317,9 @@ function RunsTab({ canManage }: { canManage: boolean }) {
               <RemittanceListItem
                 label="PAYE"
                 total={payslips.reduce((sum, p) => sum + num(p.paye_amount), 0)}
-                rows={payslips.filter((p) => num(p.paye_amount) > 0).map((p) => ({ name: p.user?.name ?? '—', amount: num(p.paye_amount) }))}
+                rows={payslips.filter((p) => num(p.paye_amount) > 0).map((p) => ({
+                  name: p.user?.name ?? '—', amount: num(p.paye_amount), tin: p.user?.employee_profile?.tin_number ?? null,
+                }))}
               />
               {employerNames.map((name) => (
                 <RemittanceListItem
@@ -330,6 +332,44 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                 />
               ))}
             </Accordion>
+          </Paper>
+
+          <Paper withBorder p="md" radius="md">
+            <Title order={5} mb={4}>Net Salary Payment List — {runDetail.data!.data.month_key}</Title>
+            <Text size="xs" c="dimmed" mb="sm">Bank transfer schedule — one row per employee's net pay.</Text>
+            <Table.ScrollContainer minWidth={600}>
+              <Table striped highlightOnHover>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>#</Table.Th>
+                    <Table.Th>Name</Table.Th>
+                    <Table.Th>Bank Name</Table.Th>
+                    <Table.Th>Bank Account</Table.Th>
+                    <Table.Th>Net Salary</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {payslips.map((p, i) => (
+                    <Table.Tr key={p.id}>
+                      <Table.Td>{i + 1}</Table.Td>
+                      <Table.Td>{p.user?.name ?? '—'}</Table.Td>
+                      <Table.Td c={p.user?.employee_profile?.bank_name ? undefined : 'dimmed'}>{p.user?.employee_profile?.bank_name || '—'}</Table.Td>
+                      <Table.Td c={p.user?.employee_profile?.bank_account_number ? undefined : 'dimmed'}>{p.user?.employee_profile?.bank_account_number || '—'}</Table.Td>
+                      <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+                <Table.Tfoot>
+                  <Table.Tr>
+                    <Table.Th />
+                    <Table.Th>Total</Table.Th>
+                    <Table.Th />
+                    <Table.Th />
+                    <Table.Th>{formatCurrency(payslips.reduce((sum, p) => sum + num(p.net_pay), 0))}</Table.Th>
+                  </Table.Tr>
+                </Table.Tfoot>
+              </Table>
+            </Table.ScrollContainer>
           </Paper>
         </>);
       })()}
@@ -347,7 +387,7 @@ function StatBox({ label, value, emphasize }: { label: string; value: string; em
 }
 
 /** Who's included in one remittance category (PAYE, NSSF, WCF, SDL, ...) and how much each owes — for filing. */
-function RemittanceListItem({ label, total, rows }: { label: string; total: number; rows: { name: string; amount: number }[] }) {
+function RemittanceListItem({ label, total, rows }: { label: string; total: number; rows: { name: string; tin?: string | null; amount: number }[] }) {
   return (
     <Accordion.Item value={label}>
       <Accordion.Control>
@@ -366,6 +406,7 @@ function RemittanceListItem({ label, total, rows }: { label: string; total: numb
               {rows.map((r, i) => (
                 <Table.Tr key={i}>
                   <Table.Td>{i + 1}. {r.name}</Table.Td>
+                  {r.tin !== undefined && <Table.Td c="dimmed">{r.tin || '—'}</Table.Td>}
                   <Table.Td ta="right">{formatCurrency(r.amount)}</Table.Td>
                 </Table.Tr>
               ))}

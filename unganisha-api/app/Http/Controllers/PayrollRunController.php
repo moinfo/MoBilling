@@ -35,7 +35,12 @@ class PayrollRunController extends Controller
             return response()->json(['message' => 'Not found'], 404);
         }
 
-        return response()->json(['data' => $payrollRun->load(['payslips.user:id,name', 'generatedBy:id,name', 'finalizedBy:id,name'])]);
+        return response()->json(['data' => $payrollRun->load([
+            'payslips.user:id,name',
+            'payslips.user.employeeProfile:user_id,tin_number,bank_name,bank_account_number',
+            'generatedBy:id,name',
+            'finalizedBy:id,name',
+        ])]);
     }
 
     /** Creates the run (if new) and one Payslip per active employee with a StaffSalary on file. Re-runnable while draft. */
