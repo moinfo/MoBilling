@@ -52,15 +52,16 @@ export default function ProtectedRoute({ children, requiredRole, requiredUserTyp
     return <Navigate to="/dashboard" replace />;
   }
 
-  // Subscription check for non-admin users (skip if allowExpired or on subscription paths)
+  // Subscription/license check for non-admin users (skip if allowExpired or already on the relevant standalone page)
   if (
     !allowExpired &&
     userType === 'tenant' &&
     user.role !== 'super_admin' &&
     !hasAccess &&
-    !location.pathname.startsWith('/subscription')
+    !location.pathname.startsWith('/subscription') &&
+    location.pathname !== '/license-inactive'
   ) {
-    return <Navigate to="/subscription/expired" replace />;
+    return <Navigate to={user.tenant?.is_self_hosted ? '/license-inactive' : '/subscription/expired'} replace />;
   }
 
   return <>{children}</>;

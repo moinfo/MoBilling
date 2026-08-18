@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>(null);
   const [daysRemaining, setDaysRemaining] = useState(0);
 
-  const hasAccess = subscriptionStatus === 'trial' || subscriptionStatus === 'subscribed';
+  const hasAccess = subscriptionStatus === 'trial' || subscriptionStatus === 'subscribed' || subscriptionStatus === 'licensed';
 
   const updateUser = (u: User | null) => {
     setUser(u);

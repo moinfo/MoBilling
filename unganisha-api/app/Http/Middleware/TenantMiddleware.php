@@ -34,8 +34,19 @@ class TenantMiddleware
 
         $tenant = $user->tenant;
 
-        // Block access if tenant is admin-deactivated
+        // Block access if tenant is deactivated — a self-hosted install
+        // deactivated by license:check gets a distinct code so the
+        // frontend can show a license-specific screen (with a path to
+        // /license-status, itself deliberately outside this middleware)
+        // instead of the generic "deactivated by an admin" message, which
+        // would be actively misleading here.
         if (!$tenant->is_active) {
+            if ($tenant->is_self_hosted) {
+                return response()->json([
+                    'message' => 'This install\'s license is inactive.',
+                    'code' => 'LICENSE_INACTIVE',
+                ], 403);
+            }
             return response()->json(['message' => 'Your organization has been deactivated.'], 403);
         }
 

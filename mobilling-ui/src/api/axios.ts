@@ -32,6 +32,13 @@ api.interceptors.response.use(
       }
     }
 
+    // Self-hosted install's license failed license:check — redirect to its own explanatory page
+    if (error.response?.status === 403 && error.response?.data?.code === 'LICENSE_INACTIVE') {
+      if (window.location.pathname !== '/license-inactive') {
+        window.location.href = '/license-inactive';
+      }
+    }
+
     return Promise.reject(error);
   }
 );

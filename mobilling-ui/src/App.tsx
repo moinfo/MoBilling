@@ -133,6 +133,7 @@ import CollectionEffectivenessReport from './pages/reports/CollectionEffectivene
 import CommunicationLogReport from './pages/reports/CommunicationLogReport';
 import SatisfactionReportPage from './pages/reports/SatisfactionReport';
 import SubscriptionExpired from './pages/SubscriptionExpired';
+import LicenseInactive from './pages/LicenseInactive';
 import PesapalCallback from './pages/PesapalCallback';
 import PayInvoice from './pages/PayInvoice';
 
@@ -174,6 +175,16 @@ export default function App() {
                   element={
                     <ProtectedRoute allowExpired>
                       <SubscriptionExpired />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Self-hosted install's license inactive (standalone, no sidebar) */}
+                <Route
+                  path="/license-inactive"
+                  element={
+                    <ProtectedRoute allowExpired>
+                      <LicenseInactive />
                     </ProtectedRoute>
                   }
                 />

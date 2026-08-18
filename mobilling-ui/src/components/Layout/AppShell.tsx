@@ -481,7 +481,7 @@ export default function AppLayout() {
           {showAccount && (
             <NavLink label="Account" leftSection={<IconSettings size={18} />}
               opened={openSection === 'account'} onChange={() => toggleSection('account')}>
-              {can('menu.subscription') && (
+              {can('menu.subscription') && !user?.tenant?.is_self_hosted && (
                 <NavLink label="Subscription" leftSection={<IconCreditCard size={16} />}
                   active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
               )}
