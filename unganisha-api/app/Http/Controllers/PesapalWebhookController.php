@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\License;
+use App\Models\LicensePurchase;
 use App\Models\SmsPurchase;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
@@ -35,7 +37,7 @@ class PesapalWebhookController extends Controller
             ], 400);
         }
 
-        // Dual-lookup: try SmsPurchase first, then TenantSubscription
+        // Triple-lookup: try SmsPurchase, then TenantSubscription, then LicensePurchase
         $purchase = SmsPurchase::withoutGlobalScopes()
             ->where('order_tracking_id', $orderTrackingId)
             ->first();
@@ -47,7 +49,12 @@ class PesapalWebhookController extends Controller
                 ->first();
         }
 
+        $licensePurchase = null;
         if (!$purchase && !$subscription) {
+            $licensePurchase = LicensePurchase::where('order_tracking_id', $orderTrackingId)->first();
+        }
+
+        if (!$purchase && !$subscription && !$licensePurchase) {
             Log::warning('Pesapal IPN: no matching record', ['order_tracking_id' => $orderTrackingId]);
             return response()->json([
                 'orderNotificationType' => $orderNotificationType,
@@ -93,6 +100,24 @@ class PesapalWebhookController extends Controller
                 $this->processSmsCompleted($purchase);
             } elseif (in_array($statusCode, [0, 2, 3])) {
                 $this->processSmsFailed($purchase, $description);
+            }
+        } elseif ($licensePurchase) {
+            $licensePurchase->update([
+                'payment_status_description' => $description,
+                'confirmation_code' => $status['confirmation_code'] ?? null,
+                'payment_method_used' => $status['payment_method'] ?? null,
+                'gateway_response' => $status,
+            ]);
+
+            Log::info('Pesapal IPN: license purchase status', [
+                'purchase_id' => $licensePurchase->id,
+                'status_code' => $statusCode,
+            ]);
+
+            if ($statusCode === 1 && $description === 'Completed') {
+                $this->processLicensePurchaseCompleted($licensePurchase);
+            } elseif (in_array($statusCode, [0, 2, 3])) {
+                $this->processLicensePurchaseFailed($licensePurchase);
             }
         } else {
             $subscription->update([
@@ -150,6 +175,14 @@ class PesapalWebhookController extends Controller
                 if ($record) {
                     $type = 'subscription';
                     $status = $record->status;
+                } else {
+                    // Try license purchase
+                    $record = LicensePurchase::where('order_tracking_id', $orderTrackingId)->first();
+
+                    if ($record) {
+                        $type = 'license_purchase';
+                        $status = $record->status;
+                    }
                 }
             }
 
@@ -170,11 +203,18 @@ class PesapalWebhookController extends Controller
             }
         }
 
+        $license = null;
+        if ($type === 'license_purchase' && $status === 'completed' && $record->license_id) {
+            $license = License::find($record->license_id);
+        }
+
         return response()->json([
             'type' => $type,
             'status' => $status,
             'record_id' => $record?->id,
             'order_tracking_id' => $orderTrackingId,
+            'license_key' => $license?->license_key,
+            'license_expires_at' => $license?->expires_at?->toDateString(),
         ]);
     }
 
@@ -242,5 +282,49 @@ class PesapalWebhookController extends Controller
             'purchase_id' => $purchase->id,
             'status' => $statusDescription,
         ]);
+    }
+
+    private function processLicensePurchaseCompleted(LicensePurchase $purchase): void
+    {
+        if ($purchase->status !== 'pending') {
+            Log::info('Pesapal: license purchase already processed, skipping', ['purchase_id' => $purchase->id]);
+            return;
+        }
+
+        $license = License::create([
+            'license_key' => License::generateKey(),
+            'customer_name' => $purchase->customer_name,
+            'customer_email' => $purchase->customer_email,
+            'product' => $purchase->product,
+            'billing_period' => $purchase->billing_period,
+            'starts_at' => now()->toDateString(),
+            'expires_at' => License::calculateExpiry(now()->toDateString(), $purchase->billing_period),
+            'status' => 'active',
+            'amount_paid' => $purchase->amount,
+            'notes' => "Auto-issued via Pesapal purchase #{$purchase->id}",
+        ]);
+
+        $purchase->update([
+            'status' => 'completed',
+            'license_id' => $license->id,
+            'completed_at' => now(),
+        ]);
+
+        Log::info('Pesapal: license auto-issued', [
+            'purchase_id' => $purchase->id,
+            'license_id' => $license->id,
+            'license_key' => $license->license_key,
+        ]);
+    }
+
+    private function processLicensePurchaseFailed(LicensePurchase $purchase): void
+    {
+        if ($purchase->status !== 'pending') {
+            return;
+        }
+
+        $purchase->update(['status' => 'failed']);
+
+        Log::info('Pesapal: license purchase failed/reversed', ['purchase_id' => $purchase->id]);
     }
 }

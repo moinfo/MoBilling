@@ -13,6 +13,7 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import Install from './pages/Install';
 import LicenseAgreement from './pages/LicenseAgreement';
+import BuyLicense from './pages/BuyLicense';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
@@ -164,6 +165,7 @@ export default function App() {
                 <Route path="/register" element={<Register />} />
                 <Route path="/install" element={<Install />} />
                 <Route path="/license-agreement" element={<LicenseAgreement />} />
+                <Route path="/buy-license" element={<BuyLicense />} />
                 <Route path="/portal/login" element={<PortalLogin />} />
                 <Route path="/portal/forgot-password" element={<PortalForgotPassword />} />
                 <Route path="/portal/register" element={<PortalRegister />} />

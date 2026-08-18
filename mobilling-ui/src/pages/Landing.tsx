@@ -16,6 +16,7 @@ import {
   IconChevronUp, IconCurrencyDollar, IconQuote,
   IconServer, IconWorldWww, IconRepeat, IconTicket,
   IconLayoutDashboard, IconPalette, IconLock, IconRefresh,
+  IconCreditCard,
 } from '@tabler/icons-react';
 import { Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -1331,15 +1332,36 @@ function SelfHostedSection() {
                     <Text size="xs" c="dimmed" mt={2}>or TZS {Number(plan.annual_price).toLocaleString()}/year</Text>
                   )}
 
-                  <Button
-                    fullWidth mt="xl" radius="xl" variant="light" color={color}
-                    component="a"
-                    href={`https://wa.me/255689011111?text=${encodeURIComponent(`I want a self-hosted ${plan.name} license`)}`}
-                    target="_blank"
-                    rightSection={<IconBrandWhatsapp size={16} />}
-                  >
-                    Talk to Sales
-                  </Button>
+                  {(plan.monthly_price || plan.quarterly_price || plan.semi_annual_price || plan.annual_price || plan.perpetual_price) ? (
+                    <>
+                      <Button
+                        fullWidth mt="xl" radius="xl" color={color}
+                        component={Link}
+                        to={`/buy-license?product=${plan.product}`}
+                        rightSection={<IconCreditCard size={16} />}
+                      >
+                        Buy Now
+                      </Button>
+                      <Anchor
+                        component="a"
+                        href={`https://wa.me/255689011111?text=${encodeURIComponent(`I want a self-hosted ${plan.name} license`)}`}
+                        target="_blank"
+                        size="xs" ta="center" display="block" mt={8}
+                      >
+                        Or talk to sales first
+                      </Anchor>
+                    </>
+                  ) : (
+                    <Button
+                      fullWidth mt="xl" radius="xl" variant="light" color={color}
+                      component="a"
+                      href={`https://wa.me/255689011111?text=${encodeURIComponent(`I want a self-hosted ${plan.name} license`)}`}
+                      target="_blank"
+                      rightSection={<IconBrandWhatsapp size={16} />}
+                    >
+                      Talk to Sales
+                    </Button>
+                  )}
                 </Paper>
               </motion.div>
             );

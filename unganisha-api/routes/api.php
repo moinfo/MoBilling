@@ -82,6 +82,9 @@ Route::get('/plans', [SubscriptionController::class, 'plans']);
 Route::get('/license-plans', [\App\Http\Controllers\LicensePlanController::class, 'index']);
 Route::get('/releases/latest', [\App\Http\Controllers\ReleaseController::class, 'latest']);
 Route::get('/license-agreement', [\App\Http\Controllers\LicenseAgreementController::class, 'show']);
+Route::post('/license-purchases', [\App\Http\Controllers\LicensePurchaseController::class, 'checkout'])
+    ->middleware('throttle:10,1');
+Route::get('/license-purchases/{licensePurchase}', [\App\Http\Controllers\LicensePurchaseController::class, 'status']);
 
 // Auth (Public)
 Route::post('/auth/register', [RegisterController::class, 'register']);
