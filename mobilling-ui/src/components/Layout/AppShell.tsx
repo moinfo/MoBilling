@@ -233,7 +233,7 @@ export default function AppLayout() {
                 <NavLink label="Clients" leftSection={<IconUsers size={16} />}
                   active={isActive('/clients')} onClick={() => navigateAndClose('/clients')} />
               )}
-              {can('clients.update') && (
+              {can('menu.portal_users') && (
                 <NavLink label="Portal Users" leftSection={<IconShieldLock size={16} />}
                   active={isActive('/portal-users')} onClick={() => navigateAndClose('/portal-users')} />
               )}
@@ -245,15 +245,15 @@ export default function AppLayout() {
                 <NavLink label="Products & Services" leftSection={<IconPackages size={16} />}
                   active={isActive('/product-services')} onClick={() => navigateAndClose('/product-services')} />
               )}
-              {can('menu.products') && (
+              {can('menu.product_addons') && (
                 <NavLink label="Product Add-ons" leftSection={<IconPackages size={16} />}
                   active={isActive('/product-addons')} onClick={() => navigateAndClose('/product-addons')} />
               )}
-              {can('menu.products') && (
+              {can('menu.config_options') && (
                 <NavLink label="Configurable Options" leftSection={<IconPackages size={16} />}
                   active={isActive('/config-options')} onClick={() => navigateAndClose('/config-options')} />
               )}
-              {can('menu.products') && (
+              {can('menu.coupons') && (
                 <NavLink label="Promotions / Coupons" leftSection={<IconPackages size={16} />}
                   active={isActive('/coupons')} onClick={() => navigateAndClose('/coupons')} />
               )}
