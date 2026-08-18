@@ -101,3 +101,7 @@ export const uploadPettyCashTransactionVoucher = (id: string, file: File) => {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 };
+
+// Only top-ups/returns entered in error — reconciliation adjustments are never deletable.
+export const deletePettyCashTransaction = (id: string) =>
+  api.delete(`/petty-cash/transactions/${id}`);

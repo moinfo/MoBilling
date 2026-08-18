@@ -403,6 +403,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:petty_cash.reconcile')->post('/petty-cash/reconciliations', [PettyCashController::class, 'storeReconciliation']);
     Route::middleware('permission:petty_cash.read')->get('/petty-cash/transactions/{transaction}/voucher', [PettyCashController::class, 'downloadTransactionVoucher']);
     Route::middleware('permission:petty_cash.topup,petty_cash.reconcile')->post('/petty-cash/transactions/{transaction}/voucher', [PettyCashController::class, 'uploadTransactionVoucher']);
+    Route::middleware('permission:petty_cash.delete')->delete('/petty-cash/transactions/{transaction}', [PettyCashController::class, 'destroyTransaction']);
 
     // Dashboard
     Route::middleware('permission:menu.dashboard')->get('/dashboard/summary', [DashboardController::class, 'summary']);

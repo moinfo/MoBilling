@@ -6,15 +6,16 @@ import {
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconCash, IconArrowsExchange, IconChecklist, IconFileDownload, IconUpload,
-  IconCheck, IconAlertTriangle, IconEye,
+  IconCheck, IconAlertTriangle, IconEye, IconTrash,
 } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
   getPettyCash, createPettyCashTransaction, createPettyCashReconciliation,
-  downloadPettyCashTransactionVoucher, uploadPettyCashTransactionVoucher,
+  downloadPettyCashTransactionVoucher, uploadPettyCashTransactionVoucher, deletePettyCashTransaction,
   PettyCashHistoryItem, PettyCashHistoryKind,
 } from '../api/pettyCash';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -45,6 +46,7 @@ export default function PettyCash() {
   const { can } = usePermissions();
   const canTopUp = can('petty_cash.topup');
   const canReconcile = can('petty_cash.reconcile');
+  const canDelete = can('petty_cash.delete');
 
   const [topUpOpen, setTopUpOpen] = useState(false);
   const [reconcileOpen, setReconcileOpen] = useState(false);
@@ -177,6 +179,29 @@ export default function PettyCash() {
     } finally {
       setUploadingFor(null);
     }
+  };
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deletePettyCashTransaction(id),
+    onSuccess: () => {
+      notifications.show({ title: 'Deleted', message: 'Transaction deleted.', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to delete transaction',
+      color: 'red',
+    }),
+  });
+
+  const confirmDeleteTransaction = (item: PettyCashHistoryItem) => {
+    modals.openConfirmModal({
+      title: 'Delete Transaction',
+      children: <Text size="sm">Delete this {kindLabel[item.kind].toLowerCase()} of {formatCurrency(item.amount)}? This cannot be undone.</Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteMutation.mutate(item.id),
+    });
   };
 
   return (
@@ -329,6 +354,16 @@ export default function PettyCash() {
                               </Tooltip>
                             )}
                           </FileButton>
+                        )}
+                        {/* Only top-ups/returns entered in error — reconciliation
+                            adjustments and expenses are never deletable here. */}
+                        {(item.kind === 'top_up' || item.kind === 'return') && canDelete && (
+                          <Tooltip label="Delete transaction">
+                            <ActionIcon variant="light" color="red" loading={deleteMutation.isPending && deleteMutation.variables === item.id}
+                              onClick={() => confirmDeleteTransaction(item)}>
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Tooltip>
                         )}
                       </Group>
                     </Table.Td>
