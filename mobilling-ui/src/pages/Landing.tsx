@@ -16,7 +16,6 @@ import {
   IconChevronUp, IconCurrencyDollar, IconQuote,
   IconServer, IconWorldWww, IconRepeat, IconTicket,
   IconLayoutDashboard, IconPalette, IconLock, IconRefresh,
-  IconFeather, IconServer2, IconBriefcase,
 } from '@tabler/icons-react';
 import { Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -45,24 +44,6 @@ const hostingFeatures = [
   { icon: IconLock,     color: 'green',  title: 'SSL & DNS Management',      description: 'Nightly SSL monitoring on every domain, self-service nameserver changes, EPP transfer codes — all from the portal.' },
   { icon: IconLayoutDashboard, color: 'orange', title: 'One-Click cPanel Login', description: 'Clients jump into cPanel, webmail, file manager or phpMyAdmin from their portal — no passwords to share.' },
   { icon: IconRepeat,   color: 'grape',  title: 'Order → Pay → Provision',   description: 'A WHMCS-style shopping cart: clients choose a plan, pick a domain, pay online — and the service goes live automatically.' },
-];
-
-const packageTiers = [
-  {
-    value: 'lite', icon: IconFeather, color: 'grape', title: 'MoBilling Lite',
-    desc: 'Billing & CRM basics — everything you need to invoice and manage clients, without the extras.',
-    points: ['Clients, invoices, quotations & proformas', 'Payments & client subscriptions', 'Reports & collections'],
-  },
-  {
-    value: 'reseller', icon: IconServer2, color: 'blue', title: 'MoBilling Reseller', highlight: true,
-    desc: 'The WHMCS-style toolkit — everything in Lite, plus domains and hosting for your own reseller business.',
-    points: ['Everything in Lite', '.tz domain registration', 'Hosting account management', 'Support ticketing'],
-  },
-  {
-    value: 'general', icon: IconBriefcase, color: 'teal', title: 'MoBilling Complete',
-    desc: 'The full platform — billing, domains/hosting, statutory compliance, HR & payroll, all in one.',
-    points: ['Everything in Reseller', 'Statutory compliance (NHIF/PAYE/VAT)', 'Expenses & petty cash', 'HR, attendance & payroll'],
-  },
 ];
 
 const resellerPoints = [
@@ -135,7 +116,6 @@ const planColors = ['blue', 'teal', 'violet', 'orange'];
 const NAV_LINKS = [
   { label: 'Features',          href: '#features'        },
   { label: 'Hosting & Domains', href: '#hosting-domains' },
-  { label: 'Packages',          href: '#packages'        },
   { label: 'Reseller',          href: '#reseller'        },
   { label: 'Pricing',           href: '#pricing'         },
   { label: 'Contact',           href: '#contact'         },
@@ -871,61 +851,6 @@ function LandingContent() {
                       <Text size="xs" c="dimmed">{t.company}</Text>
                     </div>
                   </Group>
-                </Paper>
-              </motion.div>
-            ))}
-          </SimpleGrid>
-        </Container>
-      </Box>
-
-      {/* ── Packages ── */}
-      <Box id="packages" py={{ base: 64, sm: 96 }} bg={altBg}>
-        <Container size="lg">
-          <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
-            <Stack align="center" mb={48}>
-              <Badge size="lg" radius="xl" variant="light">Packages</Badge>
-              <Title order={2} ta="center" style={{ fontSize: 'clamp(1.5rem, 3vw, 2.2rem)' }}>
-                Three ways to run MoBilling
-              </Title>
-              <Text ta="center" maw={560} c="dimmed">
-                Pick the toolkit that matches your business — every pricing plan below is available on each package.
-              </Text>
-            </Stack>
-          </motion.div>
-
-          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="xl">
-            {packageTiers.map((tier, i) => (
-              <motion.div
-                key={tier.value}
-                initial={{ opacity: 0, y: 24 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-40px' }}
-                transition={{ duration: 0.4, delay: i * 0.1 }}
-              >
-                <Paper
-                  withBorder p="xl" radius="xl" h="100%"
-                  style={{
-                    borderColor: tier.highlight ? `var(--mantine-color-${tier.color}-filled)` : undefined,
-                    borderWidth: tier.highlight ? 2 : 1,
-                  }}
-                >
-                  <ThemeIcon size={52} radius="xl" variant="light" color={tier.color}>
-                    <tier.icon size={28} />
-                  </ThemeIcon>
-                  <Text fw={700} size="lg" mt="md">{tier.title}</Text>
-                  <Text size="sm" mt={6} c="dimmed" lh={1.6}>{tier.desc}</Text>
-                  <List spacing={6} size="sm" mt="md"
-                    icon={<ThemeIcon size={18} radius="xl" color={tier.color} variant="light"><IconCheck size={11} /></ThemeIcon>}>
-                    {tier.points.map((pt) => <List.Item key={pt}>{pt}</List.Item>)}
-                  </List>
-                  <Button
-                    fullWidth mt="xl" radius="xl"
-                    variant={tier.highlight ? 'filled' : 'light'} color={tier.color}
-                    component={Link} to={`/register?tier=${tier.value}`}
-                    rightSection={<IconArrowRight size={16} />}
-                  >
-                    Get Started
-                  </Button>
                 </Paper>
               </motion.div>
             ))}
