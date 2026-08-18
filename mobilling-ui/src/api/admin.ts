@@ -271,6 +271,54 @@ export const updateSmsPackage = (id: string, data: SmsPackageFormData) =>
 export const deleteSmsPackage = (id: string) =>
   api.delete(`/admin/sms-packages/${id}`);
 
+// --- Licenses (Super Admin) — self-hosted WHMCS-style licensing ---
+
+export interface License {
+  id: string;
+  license_key: string;
+  customer_name: string;
+  customer_email: string;
+  product: string;
+  domain: string | null;
+  status: 'active' | 'suspended' | 'expired';
+  expires_at: string | null;
+  last_validated_at: string | null;
+  notes: string | null;
+  activations_count: number;
+  created_at: string;
+}
+
+export interface LicenseCreateFormData {
+  customer_name: string;
+  customer_email: string;
+  product?: string;
+  expires_at: string | null;
+  notes?: string;
+}
+
+export interface LicenseUpdateFormData {
+  customer_name: string;
+  customer_email: string;
+  status: 'active' | 'suspended' | 'expired';
+  expires_at: string | null;
+  notes?: string;
+}
+
+export const getLicenses = (params?: { search?: string; page?: number; per_page?: number }) =>
+  api.get<{ data: License[]; meta: { current_page: number; last_page: number; total: number } }>('/admin/licenses', { params });
+
+export const createLicense = (data: LicenseCreateFormData) =>
+  api.post<{ data: License }>('/admin/licenses', data);
+
+export const updateLicense = (id: string, data: LicenseUpdateFormData) =>
+  api.put<{ data: License }>(`/admin/licenses/${id}`, data);
+
+export const unbindLicenseDomain = (id: string) =>
+  api.post<{ data: License }>(`/admin/licenses/${id}/unbind-domain`);
+
+export const deleteLicense = (id: string) =>
+  api.delete(`/admin/licenses/${id}`);
+
 // --- Subscription Plans (Super Admin) ---
 
 export interface SubscriptionPlanAdmin {

@@ -104,6 +104,10 @@ Route::post('/pay/{document}/checkout', [InvoicePaymentController::class, 'check
 Route::get('/pay/{document}/status/{payment}', [InvoicePaymentController::class, 'status']);
 Route::get('/pay/status/by-tracking', [InvoicePaymentController::class, 'statusByTracking']);
 
+// Self-hosted license check-in (no auth — called by an external install, not a logged-in browser)
+Route::post('/license/validate', [\App\Http\Controllers\LicenseValidationController::class, 'validate'])
+    ->middleware('throttle:30,1');
+
 // Auth (Authenticated, no tenant required)
 Route::middleware(['auth:sanctum', 'idle.timeout'])->group(function () {
     Route::post('/auth/logout', [LoginController::class, 'logout']);
@@ -170,6 +174,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
 
     // SMS packages (super admin)
     Route::apiResource('sms-packages', SmsPackageController::class)->except(['show']);
+
+    // Self-hosted licensing (super admin)
+    Route::apiResource('licenses', \App\Http\Controllers\Admin\LicenseController::class)->except(['show']);
+    Route::post('/licenses/{license}/unbind-domain', [\App\Http\Controllers\Admin\LicenseController::class, 'unbindDomain']);
 
     // SMS purchases (super admin view)
     Route::get('/sms-purchases', [AdminSmsPurchaseController::class, 'index']);
