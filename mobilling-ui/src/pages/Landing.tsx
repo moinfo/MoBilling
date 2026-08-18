@@ -20,7 +20,7 @@ import {
 import { Link, Navigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getPublicPlans, SubscriptionPlan } from '../api/subscription';
+import { getPublicPlans, SubscriptionPlan, getPublicLicensePlans } from '../api/subscription';
 import { isBrandedHost } from '../branding';
 
 // ── Data ─────────────────────────────────────────────────────────────────────
@@ -118,6 +118,7 @@ const NAV_LINKS = [
   { label: 'Hosting & Domains', href: '#hosting-domains' },
   { label: 'Reseller',          href: '#reseller'        },
   { label: 'Pricing',           href: '#pricing'         },
+  { label: 'Self-Hosted',       href: '#self-hosted'     },
   { label: 'Contact',           href: '#contact'         },
 ];
 
@@ -945,6 +946,11 @@ function LandingContent() {
         <PricingSection />
       </Box>
 
+      {/* ── Self-Hosted Licensing (separate from the hosted Pricing above) ── */}
+      <Box id="self-hosted">
+        <SelfHostedSection />
+      </Box>
+
       {/* ── FAQ ── */}
       <Box py={{ base: 64, sm: 96 }}>
         <Container size="md">
@@ -1253,6 +1259,88 @@ function PricingSection() {
                     </Button>
                   </Stack>
                 </Card>
+              </motion.div>
+            );
+          })}
+        </SimpleGrid>
+      </Container>
+    </Box>
+  );
+}
+
+// ── Self-hosted licensing section ───────────────────────────────────────────
+// Separate product line from the hosted Pricing above: a customer running
+// MoBilling on their own server buys a license instead of a subscription.
+const selfHostedColors: Record<string, string> = { lite: 'grape', reseller: 'blue', general: 'teal' };
+
+function SelfHostedSection() {
+  const { data, isLoading } = useQuery({ queryKey: ['public-license-plans'], queryFn: getPublicLicensePlans });
+  const plans = data?.data?.data || [];
+
+  if (isLoading || plans.length === 0) return null;
+
+  return (
+    <Box py={{ base: 64, sm: 96 }}>
+      <Container size="lg">
+        <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.5 }}>
+          <Stack align="center" mb={48}>
+            <Badge variant="light" size="lg" radius="xl" color="grape">Self-Hosted</Badge>
+            <Title order={2} ta="center" style={{ fontSize: 'clamp(1.5rem, 3vw, 2.2rem)' }}>
+              Prefer to run it on your own server?
+            </Title>
+            <Text c="dimmed" ta="center" maw={560}>
+              Buy a license and install MoBilling on your own infrastructure — your database, your server, your
+              control. Same three packages as the hosted plans above, licensed instead of subscribed.
+            </Text>
+          </Stack>
+        </motion.div>
+
+        <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="lg">
+          {plans.map((plan, i) => {
+            const color = selfHostedColors[plan.product] ?? 'gray';
+            return (
+              <motion.div
+                key={plan.id}
+                initial={{ opacity: 0, y: 24 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true, margin: '-40px' }}
+                transition={{ duration: 0.4, delay: i * 0.1 }}
+              >
+                <Paper withBorder p="xl" radius="xl" h="100%" style={{ borderTop: `4px solid var(--mantine-color-${color}-6)` }}>
+                  <Text fw={700} size="lg">{plan.name}</Text>
+                  {plan.description && <Text size="sm" c="dimmed" mt={4}>{plan.description}</Text>}
+
+                  {plan.monthly_price ? (
+                    <Group gap={4} align="baseline" mt="md">
+                      <Text style={{ fontSize: 'clamp(1.4rem, 3vw, 1.9rem)' }} fw={900} lh={1}>
+                        TZS {Number(plan.monthly_price).toLocaleString()}
+                      </Text>
+                      <Text size="sm" c="dimmed">/month</Text>
+                    </Group>
+                  ) : plan.annual_price ? (
+                    <Group gap={4} align="baseline" mt="md">
+                      <Text style={{ fontSize: 'clamp(1.4rem, 3vw, 1.9rem)' }} fw={900} lh={1}>
+                        TZS {Number(plan.annual_price).toLocaleString()}
+                      </Text>
+                      <Text size="sm" c="dimmed">/year</Text>
+                    </Group>
+                  ) : (
+                    <Text fw={900} mt="md" style={{ fontSize: 'clamp(1.2rem, 3vw, 1.5rem)' }}>Contact us for pricing</Text>
+                  )}
+                  {plan.monthly_price && plan.annual_price && (
+                    <Text size="xs" c="dimmed" mt={2}>or TZS {Number(plan.annual_price).toLocaleString()}/year</Text>
+                  )}
+
+                  <Button
+                    fullWidth mt="xl" radius="xl" variant="light" color={color}
+                    component="a"
+                    href={`https://wa.me/255689011111?text=${encodeURIComponent(`I want a self-hosted ${plan.name} license`)}`}
+                    target="_blank"
+                    rightSection={<IconBrandWhatsapp size={16} />}
+                  >
+                    Talk to Sales
+                  </Button>
+                </Paper>
               </motion.div>
             );
           })}

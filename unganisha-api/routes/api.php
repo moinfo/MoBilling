@@ -66,6 +66,7 @@ use Illuminate\Support\Facades\Route;
 
 // Public
 Route::get('/plans', [SubscriptionController::class, 'plans']);
+Route::get('/license-plans', [\App\Http\Controllers\LicensePlanController::class, 'index']);
 
 // Auth (Public)
 Route::post('/auth/register', [RegisterController::class, 'register']);
