@@ -75,6 +75,7 @@ rm -rf "$PKG_DIR/mobilling-ui"
 
 log "Adding install docs…"
 cp "$ROOT/scripts/package-templates/INSTALL.md" "$PKG_DIR/INSTALL.md"
+cp "$ROOT/scripts/package-templates/INSTALL-CPANEL.md" "$PKG_DIR/INSTALL-CPANEL.md"
 cp "$ROOT/scripts/package-templates/nginx.conf.example" "$PKG_DIR/nginx.conf.example"
 
 mkdir -p "$OUT_DIR"

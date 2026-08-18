@@ -160,6 +160,18 @@ class InstallController extends Controller
             return response()->json(['message' => 'Migration failed: ' . $e->getMessage()], 500);
         }
 
+        // Best-effort — needed for uploaded logos/attachments to be
+        // reachable, but plenty of shared-hosting customers (cPanel
+        // without shell access) have no way to run `storage:link`
+        // themselves, and some hosts disable PHP's symlink() outright.
+        // Never block the install over it either way.
+        try {
+            Artisan::call('storage:link', ['--force' => true]);
+        } catch (\Throwable $e) {
+            // Swallow — logo/attachment URLs just won't resolve until this
+            // is fixed manually (or the host allows it after all).
+        }
+
         return response()->json(['message' => 'Database schema created.']);
     }
 

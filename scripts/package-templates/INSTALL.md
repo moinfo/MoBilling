@@ -5,6 +5,11 @@ the frontend's production bundle are already included. You do **not** need
 Composer, Node, or npm on this server; you only need PHP, MySQL, and a web
 server.
 
+This guide assumes a VPS with root access and Nginx. On shared/reseller
+**cPanel hosting**, use `INSTALL-CPANEL.md` instead — the app is the same,
+but cPanel only gives you one Apache document root per domain, so the
+web-server setup differs.
+
 ## 1. Requirements
 
 | Requirement | Version |
@@ -78,12 +83,32 @@ chown www-data:www-data /var/www/mobilling/api/.env
 chmod 640 /var/www/mobilling/api/.env
 ```
 
+## 7. Scheduled tasks (cron)
+
+The daily license re-validation and a few other background jobs are
+registered in the app but don't run on their own — Laravel needs one cron
+entry to drive its scheduler. As root (or the app's system user):
+
+```bash
+crontab -e
+```
+
+Add:
+
+```
+* * * * * cd /var/www/mobilling/api && php artisan schedule:run >> /dev/null 2>&1
+```
+
+Without this, `license:check` never actually runs and the install's
+license status will silently go stale — it'll still say "Active" under
+Settings → License even well past when a check should have happened.
+
 ## After installation
 
-- This install re-validates its license once a day. As long as the license
-  is active, nothing further is needed. Its status is visible any time
-  under **Settings → License**, including whether a newer version has been
-  published.
+- This install re-validates its license once a day (via the cron job from
+  step 7). As long as the license is active, nothing further is needed.
+  Its status is visible any time under **Settings → License**, including
+  whether a newer version has been published.
 - The `/install` wizard permanently disables itself the moment your first
   company/admin exists — it cannot be run again against this install.
 - For anything not covered here (mail/SMTP, SMS gateway, payment gateway
