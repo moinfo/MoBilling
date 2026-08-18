@@ -202,6 +202,8 @@ class InstallController extends Controller
                 'email' => $data['company_email'],
                 'currency' => $data['currency'] ?? 'TZS',
                 'is_self_hosted' => true,
+                'license_key' => $data['license_key'],
+                'license_last_valid_at' => now(),
             ],
             [
                 'name' => $data['admin_name'],
