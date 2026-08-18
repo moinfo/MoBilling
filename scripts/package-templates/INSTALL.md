@@ -45,6 +45,10 @@ chown -R www-data:www-data /var/www/mobilling/api/storage /var/www/mobilling/api
 chmod -R 775 /var/www/mobilling/api/storage /var/www/mobilling/api/bootstrap/cache
 ```
 
+`.env` ships world-writable so the setup wizard's first step (which checks
+it's writable by whichever user PHP-FPM runs as) passes regardless of that
+user's name — see step 6 below to lock it back down once setup is done.
+
 ## 5. Run the setup wizard
 
 Visit `https://<yourdomain>/install` in a browser. It will walk you
@@ -63,6 +67,16 @@ through, in order:
 
 Once the wizard finishes, log in at `https://<yourdomain>/login` with the
 admin account you just created.
+
+## 6. Lock down `.env`
+
+The wizard just wrote your database password into `.env`, which is still
+world-writable from step 4. Tighten it now:
+
+```bash
+chown www-data:www-data /var/www/mobilling/api/.env
+chmod 640 /var/www/mobilling/api/.env
+```
 
 ## After installation
 

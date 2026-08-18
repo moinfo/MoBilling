@@ -59,6 +59,13 @@ sed -i \
   -e 's/^APP_DEBUG=.*/APP_DEBUG=false/' \
   -e 's/^DB_CONNECTION=.*/DB_CONNECTION=mysql/' \
   "$PKG_DIR/api/.env"
+# The installer's first step checks .env is writable by whichever user
+# PHP-FPM runs as — unknown at packaging time, so make it writable by
+# everyone for setup and tell the customer to tighten it back down
+# afterwards (INSTALL.md's last step), rather than leaving them stuck on
+# an opaque "env not writable" failure if they run the wizard before (or
+# instead of) following the ownership steps in INSTALL.md.
+chmod 666 "$PKG_DIR/api/.env"
 
 log "Building frontend (production bundle)…"
 (cd "$PKG_DIR/mobilling-ui" && npm ci --silent && npm run build --silent)
