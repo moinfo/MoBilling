@@ -365,6 +365,30 @@ export const unbindLicenseDomain = (id: string) =>
 export const deleteLicense = (id: string) =>
   api.delete(`/admin/licenses/${id}`);
 
+// --- Releases (Super Admin) — "Check for Updates" catalog for self-hosted installs ---
+
+export interface Release {
+  id: string;
+  version: string;
+  changelog: string | null;
+  download_url: string | null;
+  is_active: boolean;
+  released_at: string;
+}
+
+export interface ReleaseFormData {
+  version: string;
+  changelog?: string;
+  download_url?: string;
+  released_at: string;
+  is_active: boolean;
+}
+
+export const getReleases = () => api.get<{ data: Release[] }>('/admin/releases');
+export const createRelease = (data: ReleaseFormData) => api.post<{ data: Release }>('/admin/releases', data);
+export const updateRelease = (id: string, data: ReleaseFormData) => api.put<{ data: Release }>(`/admin/releases/${id}`, data);
+export const deleteRelease = (id: string) => api.delete(`/admin/releases/${id}`);
+
 // --- Subscription Plans (Super Admin) ---
 
 export interface SubscriptionPlanAdmin {

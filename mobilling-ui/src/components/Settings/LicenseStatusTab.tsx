@@ -1,8 +1,8 @@
-import { Stack, Paper, Text, Badge, Group, Center, Loader, Alert } from '@mantine/core';
+import { Stack, Paper, Text, Badge, Group, Center, Loader, Alert, Button } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { IconKey, IconAlertTriangle } from '@tabler/icons-react';
+import { IconKey, IconAlertTriangle, IconDownload, IconRocket } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import { getLicenseStatus } from '../../api/license';
+import { getLicenseStatus, getLatestRelease } from '../../api/license';
 
 export default function LicenseStatusTab() {
   const { data, isLoading, isError } = useQuery({
@@ -63,6 +63,45 @@ export default function LicenseStatusTab() {
           </Group>
         </Stack>
       </Paper>
+
+      <UpdatesSection currentVersion={status.app_version} />
     </Stack>
+  );
+}
+
+function UpdatesSection({ currentVersion }: { currentVersion: string | null }) {
+  const { data } = useQuery({ queryKey: ['latest-release'], queryFn: getLatestRelease, retry: false });
+  const release = data?.data?.data;
+
+  if (!release) return null;
+
+  const isNewer = !!currentVersion && currentVersion !== 'dev' && release.version !== currentVersion;
+
+  return (
+    <Paper withBorder p="md" radius="md">
+      <Group justify="space-between" mb="xs">
+        <Group gap="xs"><IconRocket size={16} /><Text size="sm" fw={600}>Software Updates</Text></Group>
+        <Badge color={isNewer ? 'yellow' : 'gray'} variant="light">
+          {isNewer ? 'Update available' : 'Up to date'}
+        </Badge>
+      </Group>
+      <Group justify="space-between">
+        <Text size="sm" c="dimmed">Installed Version</Text>
+        <Text size="sm">{currentVersion ?? 'unknown'}</Text>
+      </Group>
+      <Group justify="space-between" mt={4}>
+        <Text size="sm" c="dimmed">Latest Version</Text>
+        <Text size="sm" fw={600}>{release.version} ({dayjs(release.released_at).format('DD MMM YYYY')})</Text>
+      </Group>
+      {release.changelog && (
+        <Text size="xs" c="dimmed" mt="sm" style={{ whiteSpace: 'pre-line' }}>{release.changelog}</Text>
+      )}
+      {isNewer && release.download_url && (
+        <Button component="a" href={release.download_url} target="_blank" mt="md" size="xs" variant="light"
+          leftSection={<IconDownload size={14} />}>
+          Download Update
+        </Button>
+      )}
+    </Paper>
   );
 }

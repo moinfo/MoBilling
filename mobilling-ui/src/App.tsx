@@ -46,6 +46,7 @@ import SmsSettingsAdmin from './pages/admin/SmsSettings';
 import SmsPackagesAdmin from './pages/admin/SmsPackages';
 import LicensesAdmin from './pages/admin/Licenses';
 import LicensePlansAdmin from './pages/admin/LicensePlans';
+import ReleasesAdmin from './pages/admin/Releases';
 import SmsPurchasesAdmin from './pages/admin/SmsPurchases';
 import SubscriptionPlansAdmin from './pages/admin/SubscriptionPlans';
 import TenantProfile from './pages/admin/TenantProfile';
@@ -207,6 +208,7 @@ export default function App() {
                   <Route path="/admin/sms-packages" element={<SmsPackagesAdmin />} />
                   <Route path="/admin/licenses" element={<LicensesAdmin />} />
                   <Route path="/admin/license-plans" element={<LicensePlansAdmin />} />
+                  <Route path="/admin/releases" element={<ReleasesAdmin />} />
                   <Route path="/admin/sms-purchases" element={<SmsPurchasesAdmin />} />
                   <Route path="/admin/subscription-plans" element={<SubscriptionPlansAdmin />} />
                   <Route path="/admin/currencies" element={<CurrenciesAdmin />} />

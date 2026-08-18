@@ -18,6 +18,7 @@ class LicenseStatusController extends Controller
             'status' => $tenant->is_active ? 'active' : 'inactive',
             'expires_at' => $tenant->license_expires_at?->toDateString(),
             'last_checked_at' => $tenant->license_last_valid_at?->toIso8601String(),
+            'app_version' => config('app.version'),
         ]]);
     }
 

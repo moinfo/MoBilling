@@ -80,6 +80,7 @@ Route::prefix('install')->group(function () {
 // Public
 Route::get('/plans', [SubscriptionController::class, 'plans']);
 Route::get('/license-plans', [\App\Http\Controllers\LicensePlanController::class, 'index']);
+Route::get('/releases/latest', [\App\Http\Controllers\ReleaseController::class, 'latest']);
 
 // Auth (Public)
 Route::post('/auth/register', [RegisterController::class, 'register']);
@@ -193,6 +194,9 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
     // Self-hosted licensing (super admin)
     Route::apiResource('licenses', \App\Http\Controllers\Admin\LicenseController::class)->except(['show']);
     Route::post('/licenses/{license}/unbind-domain', [\App\Http\Controllers\Admin\LicenseController::class, 'unbindDomain']);
+
+    // Releases (self-hosted "Check for Updates" catalog)
+    Route::apiResource('releases', \App\Http\Controllers\Admin\ReleaseController::class)->except(['show']);
 
     // Self-hosted license pricing catalog (separate from subscription-plans, which prices MoBilling SaaS itself)
     Route::get('/license-plans', [\App\Http\Controllers\Admin\LicensePlanController::class, 'index']);
