@@ -18,7 +18,7 @@ class Tenant extends Model
     protected $fillable = [
         'name', 'email', 'phone', 'address',
         'logo_url', 'tax_id', 'currency', 'is_active', 'is_self_hosted',
-        'license_key', 'license_last_valid_at',
+        'license_key', 'license_last_valid_at', 'license_expires_at',
         'trial_ends_at',
         'email_enabled', 'smtp_host', 'smtp_port', 'smtp_username',
         'smtp_password', 'smtp_encryption', 'smtp_from_email', 'smtp_from_name',
@@ -61,6 +61,7 @@ class Tenant extends Model
         'is_active' => 'boolean',
         'is_self_hosted' => 'boolean',
         'license_last_valid_at' => 'datetime',
+        'license_expires_at' => 'date',
         'email_enabled' => 'boolean',
         'sms_enabled' => 'boolean',
         'smtp_password' => 'encrypted',

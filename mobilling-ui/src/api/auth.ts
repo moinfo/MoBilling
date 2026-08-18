@@ -30,6 +30,7 @@ export interface User {
     late_fee_enabled: boolean;
     late_fee_percent: number;
     late_fee_days: number;
+    is_self_hosted?: boolean;
   };
   // Client portal fields (only present when user_type === 'client')
   client_id?: string;

@@ -146,6 +146,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout'])->group(function () {
     // Subscription (no tenant middleware — expired tenants must access)
     Route::get('/subscription/plans', [SubscriptionController::class, 'plans']);
     Route::get('/subscription/current', [SubscriptionController::class, 'current']);
+    Route::get('/license-status', [\App\Http\Controllers\LicenseStatusController::class, 'show']);
     Route::post('/subscription/checkout', [SubscriptionController::class, 'checkout']);
     Route::get('/subscription/history', [SubscriptionController::class, 'history']);
     Route::get('/subscription/{tenantSubscription}/status', [SubscriptionController::class, 'status']);

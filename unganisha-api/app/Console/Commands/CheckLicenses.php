@@ -76,7 +76,11 @@ class CheckLicenses extends Command
 
         // The server was reached and gave an authoritative answer — trust it immediately either way.
         if ($response->successful() && ($body['valid'] ?? false)) {
-            $tenant->update(['license_last_valid_at' => now(), 'is_active' => true]);
+            $tenant->update([
+                'license_last_valid_at' => now(),
+                'license_expires_at' => $body['expires_at'] ?? null,
+                'is_active' => true,
+            ]);
             return $tenant->wasChanged('is_active') ? 'reactivated' : 'valid';
         }
 

@@ -204,6 +204,7 @@ class InstallController extends Controller
                 'is_self_hosted' => true,
                 'license_key' => $data['license_key'],
                 'license_last_valid_at' => now(),
+                'license_expires_at' => $result['expires_at'] ?? null,
             ],
             [
                 'name' => $data['admin_name'],
