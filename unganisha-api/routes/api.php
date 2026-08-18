@@ -64,6 +64,19 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
+// Self-hosted installer — no auth, and the first two steps work with no DB
+// connection configured yet (that's the point). Every action re-checks
+// isInstalled() itself; this whole surface permanently locks out once a
+// tenant exists, so it's inert (and safe) on an already-running instance.
+Route::prefix('install')->group(function () {
+    Route::get('/status', [\App\Http\Controllers\InstallController::class, 'status']);
+    Route::get('/requirements', [\App\Http\Controllers\InstallController::class, 'requirements']);
+    Route::post('/database', [\App\Http\Controllers\InstallController::class, 'testDatabase']);
+    Route::post('/migrate', [\App\Http\Controllers\InstallController::class, 'migrate']);
+    Route::post('/license', [\App\Http\Controllers\InstallController::class, 'checkLicense']);
+    Route::post('/tenant', [\App\Http\Controllers\InstallController::class, 'createTenant']);
+});
+
 // Public
 Route::get('/plans', [SubscriptionController::class, 'plans']);
 Route::get('/license-plans', [\App\Http\Controllers\LicensePlanController::class, 'index']);

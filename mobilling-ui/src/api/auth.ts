@@ -50,7 +50,7 @@ export interface AuthResponse {
   token: string;
   user_type: UserType;
   permissions: string[];
-  subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+  subscription_status?: 'trial' | 'subscribed' | 'licensed' | 'expired' | 'deactivated';
   days_remaining?: number;
 }
 
@@ -58,7 +58,7 @@ export interface MeResponse {
   user: User;
   user_type: UserType;
   permissions: string[];
-  subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+  subscription_status?: 'trial' | 'subscribed' | 'licensed' | 'expired' | 'deactivated';
   days_remaining?: number;
 }
 

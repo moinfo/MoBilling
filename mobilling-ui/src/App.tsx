@@ -11,6 +11,7 @@ import AppLayout from './components/Layout/AppShell';
 import AdminShell from './components/Layout/AdminShell';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Install from './pages/Install';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
@@ -158,6 +159,7 @@ export default function App() {
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/install" element={<Install />} />
                 <Route path="/portal/login" element={<PortalLogin />} />
                 <Route path="/portal/forgot-password" element={<PortalForgotPassword />} />
                 <Route path="/portal/register" element={<PortalRegister />} />

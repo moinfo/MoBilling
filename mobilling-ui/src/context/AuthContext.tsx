@@ -12,7 +12,7 @@ import { setTenantCurrency } from '../utils/formatCurrency';
 // never keep a truly-idle session alive, so this only resets on real input.
 const IDLE_MINUTES = 15;
 
-type SubscriptionStatus = 'trial' | 'subscribed' | 'expired' | 'deactivated' | null;
+type SubscriptionStatus = 'trial' | 'subscribed' | 'licensed' | 'expired' | 'deactivated' | null;
 
 interface AuthContextType {
   user: User | null;
