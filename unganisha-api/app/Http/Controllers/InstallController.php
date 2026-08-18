@@ -189,6 +189,7 @@ class InstallController extends Controller
             'admin_name' => 'required|string|max:255',
             'admin_email' => 'required|email|max:255',
             'admin_password' => ['required', Password::min(8)],
+            'license_agreement_accepted' => 'accepted',
         ]);
 
         $result = $this->callLicenseServer($data['license_key'], $request->getHost());
@@ -205,6 +206,8 @@ class InstallController extends Controller
                 'license_key' => $data['license_key'],
                 'license_last_valid_at' => now(),
                 'license_expires_at' => $result['expires_at'] ?? null,
+                'license_agreement_version' => LicenseAgreementController::VERSION,
+                'license_agreement_accepted_at' => now(),
             ],
             [
                 'name' => $data['admin_name'],

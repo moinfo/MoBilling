@@ -1,0 +1,117 @@
+MOBILLING SELF-HOSTED SOFTWARE LICENSE AGREEMENT
+
+This is a template starting point, not a document that has been reviewed
+by a lawyer. Have it reviewed for your jurisdiction before relying on it
+commercially.
+
+1. PARTIES AND DEFINITIONS
+
+"Licensor" means Moinfotech Company Limited, the publisher of MoBilling.
+"Licensee" means the individual or organization that purchases a License
+Key and installs the Software.
+"Software" means the MoBilling application (backend and frontend), any
+updates to it made available by Licensor, and its accompanying
+documentation.
+"License Key" means the unique key issued to Licensee that identifies the
+product tier (MoBilling Lite, MoBilling Reseller, or MoBilling Complete),
+billing period, and permitted domain for a specific installation.
+
+2. GRANT OF LICENSE
+
+Subject to Licensee's compliance with this Agreement and continued payment
+of applicable fees, Licensor grants Licensee a non-exclusive,
+non-transferable, revocable license to install and run one copy of the
+Software on servers Licensee owns or controls, bound to the single domain
+recorded against the License Key at installation, for Licensee's own
+internal business use. This is a license to use the Software, not a sale
+of it — Licensor retains all right, title, and interest in the Software,
+including all intellectual property rights.
+
+3. RESTRICTIONS
+
+Licensee shall not: (a) redistribute, resell, sublicense, rent, or lease
+the Software or the License Key to any third party; (b) use the Software
+to build or operate a product or service that competes with MoBilling;
+(c) remove, obscure, or alter any copyright, trademark, or proprietary
+notice contained in the Software; (d) reverse engineer, decompile, or
+disassemble the Software except to the extent such restriction is
+prohibited by applicable law; (e) run the Software on a domain other than
+the one bound to the License Key, or share a single License Key across
+multiple independent installations, without Licensor's written consent.
+
+4. LICENSE VALIDATION
+
+The Software periodically contacts Licensor's license server to confirm
+the License Key remains valid, sending only the License Key, the bound
+domain, the server's IP address, and the installed software version — no
+Licensee business data is transmitted. Licensee's business data (clients,
+invoices, financial records, and all other content Licensee enters into
+the Software) resides solely on Licensee's own server and is never sent
+to Licensor.
+
+If validation fails because the License Key was suspended, expired, or
+found invalid, the Software may deactivate itself immediately. If
+validation fails because Licensor's server or Licensee's own internet
+connection is temporarily unreachable, the Software continues operating
+normally for up to ten (10) days from the last successful check before
+deactivating, so that a temporary outage on either side does not
+interrupt Licensee's business without warning.
+
+5. FEES AND TERM
+
+Fees are due in advance for the billing period selected at purchase
+(monthly, quarterly, semi-annual, annual, or a one-time perpetual fee, as
+applicable to the License Key issued). A License Key not renewed before
+its expiry date will lapse and, subject to the grace period in Section 4,
+the Software will deactivate. Licensor may, in its discretion, offer a
+grace period beyond the ten (10) days described above, but is not
+obligated to do so.
+
+6. UPDATES AND SUPPORT
+
+Licensee may check for and download updates Licensor makes available for
+Licensee's product tier through the Software's built-in "Check for
+Updates" feature. Updates are not applied automatically; Licensee is
+responsible for downloading and installing them on their own server.
+This Agreement does not include custom development, data migration, or
+guaranteed response-time support unless separately agreed in writing.
+
+7. WARRANTY DISCLAIMER
+
+THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS
+OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT.
+LICENSOR DOES NOT WARRANT THAT THE SOFTWARE WILL BE UNINTERRUPTED OR
+ERROR-FREE.
+
+8. LIMITATION OF LIABILITY
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR'S TOTAL LIABILITY UNDER
+THIS AGREEMENT SHALL NOT EXCEED THE FEES PAID BY LICENSEE IN THE TWELVE
+(12) MONTHS PRECEDING THE CLAIM, AND LICENSOR SHALL NOT BE LIABLE FOR ANY
+INDIRECT, INCIDENTAL, SPECIAL, OR CONSEQUENTIAL DAMAGES, INCLUDING LOST
+PROFITS OR LOST DATA, ARISING FROM USE OF THE SOFTWARE.
+
+9. TERMINATION
+
+This Agreement terminates automatically if Licensee breaches any material
+term and fails to cure the breach within fourteen (14) days of notice, or
+if the License Key lapses under Section 5 and is not renewed. Upon
+termination, Licensee must cease using the Software; Licensee's own data
+remains on Licensee's own server and is unaffected, since Licensor never
+held a copy of it.
+
+10. GOVERNING LAW
+
+This Agreement is governed by the laws of the United Republic of
+Tanzania. [Confirm and adjust this section, and add a dispute-resolution
+/ venue clause, before use.]
+
+11. ENTIRE AGREEMENT
+
+This Agreement, together with the order confirming Licensee's purchase,
+constitutes the entire agreement between the parties regarding the
+Software and supersedes any prior discussions. Licensor may update this
+Agreement for future License Key purchases; the version in effect at the
+time Licensee accepted it during installation continues to govern
+Licensee's existing License Key unless Licensee agrees to a new version.

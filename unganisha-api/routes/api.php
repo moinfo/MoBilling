@@ -81,6 +81,7 @@ Route::prefix('install')->group(function () {
 Route::get('/plans', [SubscriptionController::class, 'plans']);
 Route::get('/license-plans', [\App\Http\Controllers\LicensePlanController::class, 'index']);
 Route::get('/releases/latest', [\App\Http\Controllers\ReleaseController::class, 'latest']);
+Route::get('/license-agreement', [\App\Http\Controllers\LicenseAgreementController::class, 'show']);
 
 // Auth (Public)
 Route::post('/auth/register', [RegisterController::class, 'register']);

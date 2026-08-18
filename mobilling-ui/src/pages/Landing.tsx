@@ -1345,6 +1345,11 @@ function SelfHostedSection() {
             );
           })}
         </SimpleGrid>
+
+        <Text ta="center" size="xs" c="dimmed" mt="xl">
+          Self-hosted licenses are governed by the{' '}
+          <Anchor component={Link} to="/license-agreement" size="xs">MoBilling License Agreement</Anchor>.
+        </Text>
       </Container>
     </Box>
   );

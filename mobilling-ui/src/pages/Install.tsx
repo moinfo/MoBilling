@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Container, Paper, Title, Text, Stepper, Button, Group, Stack, TextInput,
-  PasswordInput, NumberInput, Center, Loader, ThemeIcon, Alert, Image,
+  PasswordInput, NumberInput, Center, Loader, ThemeIcon, Alert, Image, Checkbox, Anchor,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { Link, useNavigate } from 'react-router-dom';
@@ -231,6 +231,7 @@ function AdminStep({ licenseKey, onDone }: { licenseKey: string; onDone: () => v
     initialValues: {
       company_name: '', company_email: '', currency: 'TZS',
       admin_name: '', admin_email: '', admin_password: '', admin_password_confirmation: '',
+      license_agreement_accepted: false,
     },
     validate: {
       company_name: (v) => (v.trim() ? null : 'Required'),
@@ -239,6 +240,7 @@ function AdminStep({ licenseKey, onDone }: { licenseKey: string; onDone: () => v
       admin_email: (v) => (/^\S+@\S+\.\S+$/.test(v) ? null : 'Valid email required'),
       admin_password: (v) => (v.length >= 8 ? null : 'At least 8 characters'),
       admin_password_confirmation: (v, values) => (v === values.admin_password ? null : 'Passwords do not match'),
+      license_agreement_accepted: (v) => (v ? null : 'You must accept the License Agreement to continue'),
     },
   });
 
@@ -254,6 +256,7 @@ function AdminStep({ licenseKey, onDone }: { licenseKey: string; onDone: () => v
         admin_name: values.admin_name,
         admin_email: values.admin_email,
         admin_password: values.admin_password,
+        license_agreement_accepted: values.license_agreement_accepted,
       });
       onDone();
     } catch (err: any) {
@@ -276,6 +279,16 @@ function AdminStep({ licenseKey, onDone }: { licenseKey: string; onDone: () => v
         <TextInput label="Your Email" required {...form.getInputProps('admin_email')} />
         <PasswordInput label="Password" required {...form.getInputProps('admin_password')} />
         <PasswordInput label="Confirm Password" required {...form.getInputProps('admin_password_confirmation')} />
+        <Checkbox
+          mt="sm"
+          label={
+            <Text size="sm">
+              I have read and agree to the{' '}
+              <Anchor component={Link} to="/license-agreement" target="_blank">MoBilling License Agreement</Anchor>
+            </Text>
+          }
+          {...form.getInputProps('license_agreement_accepted', { type: 'checkbox' })}
+        />
         <Group justify="flex-end" mt="md">
           <Button type="submit" loading={loading} leftSection={<IconServerCog size={16} />}>Finish Setup</Button>
         </Group>

@@ -25,6 +25,13 @@ export interface TenantFormData {
   admin_name: string;
   admin_email: string;
   admin_password: string;
+  license_agreement_accepted: boolean;
+}
+
+export interface LicenseAgreement {
+  version: string;
+  effective_date: string;
+  content: string;
 }
 
 export const getInstallStatus = () => api.get<{ installed: boolean }>('/install/status');
@@ -35,3 +42,4 @@ export const checkInstallLicense = (license_key: string) =>
   api.post<{ data: { valid: boolean; product: string; expires_at: string | null } }>('/install/license', { license_key });
 export const createInstallTenant = (data: TenantFormData) =>
   api.post<{ message: string; data: { tenant_id: string; admin_email: string } }>('/install/tenant', data);
+export const getLicenseAgreement = () => api.get<{ data: LicenseAgreement }>('/license-agreement');
