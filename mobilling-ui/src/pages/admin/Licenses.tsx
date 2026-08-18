@@ -11,12 +11,32 @@ import { IconPlus, IconEdit, IconTrash, IconCopy, IconCheck, IconLockOpen } from
 import dayjs from 'dayjs';
 import {
   getLicenses, createLicense, updateLicense, unbindLicenseDomain, deleteLicense,
-  License, LicenseCreateFormData, LicenseUpdateFormData,
+  License, LicenseBillingPeriod, LicenseCreateFormData, LicenseUpdateFormData,
 } from '../../api/admin';
 
 const statusColors: Record<License['status'], string> = {
   active: 'green', suspended: 'red', expired: 'gray',
 };
+
+const billingPeriodLabels: Record<LicenseBillingPeriod, string> = {
+  perpetual: 'Perpetual (no expiry)',
+  monthly: 'Monthly',
+  quarterly: 'Quarterly (3 months)',
+  semi_annual: 'Semi-Annual (6 months)',
+  annual: 'Annual (12 months)',
+};
+
+const PERIOD_MONTHS: Partial<Record<LicenseBillingPeriod, number>> = {
+  monthly: 1, quarterly: 3, semi_annual: 6, annual: 12,
+};
+
+// Mirrors License::calculateExpiry() on the backend — client-side preview only.
+function previewExpiry(startsAt: Date | null, period: LicenseBillingPeriod): string {
+  if (period === 'perpetual') return 'No expiry';
+  if (!startsAt) return '—';
+  const months = PERIOD_MONTHS[period];
+  return dayjs(startsAt).add(months ?? 0, 'month').format('DD MMM YYYY');
+}
 
 export default function Licenses() {
   const queryClient = useQueryClient();
@@ -165,9 +185,17 @@ export default function Licenses() {
   );
 }
 
+const billingPeriodOptions = (Object.keys(billingPeriodLabels) as LicenseBillingPeriod[])
+  .map((value) => ({ value, label: billingPeriodLabels[value] }));
+
 function CreateForm({ onSaved }: { onSaved: () => void }) {
   const form = useForm<LicenseCreateFormData>({
-    initialValues: { customer_name: '', customer_email: '', expires_at: null, notes: '' },
+    initialValues: {
+      customer_name: '', customer_email: '',
+      starts_at: dayjs().format('YYYY-MM-DD'),
+      billing_period: 'annual',
+      notes: '',
+    },
     validate: {
       customer_name: (v) => (v.trim() ? null : 'Required'),
       customer_email: (v) => (/^\S+@\S+\.\S+$/.test(v) ? null : 'Valid email required'),
@@ -190,9 +218,12 @@ function CreateForm({ onSaved }: { onSaved: () => void }) {
       <Stack>
         <TextInput label="Customer Name" required {...form.getInputProps('customer_name')} />
         <TextInput label="Customer Email" required {...form.getInputProps('customer_email')} />
-        <DateInput label="Expires" placeholder="Leave empty for perpetual" clearable
-          value={form.values.expires_at ? new Date(form.values.expires_at) : null}
-          onChange={(v) => form.setFieldValue('expires_at', v ? dayjs(v as unknown as string).format('YYYY-MM-DD') : null)} />
+        <DateInput label="Start Date" required
+          value={new Date(form.values.starts_at)}
+          onChange={(v) => v && form.setFieldValue('starts_at', dayjs(v as unknown as string).format('YYYY-MM-DD'))} />
+        <Select label="Billing Period" data={billingPeriodOptions} allowDeselect={false}
+          {...form.getInputProps('billing_period')} />
+        <Text size="sm">Expires: <Text span fw={600}>{previewExpiry(new Date(form.values.starts_at), form.values.billing_period)}</Text></Text>
         <Textarea label="Notes" placeholder="e.g. Sold via invoice #123" minRows={2} {...form.getInputProps('notes')} />
         <Text size="xs" c="dimmed">The license key is generated automatically and locks to whichever domain first checks in.</Text>
         <Group justify="flex-end">
@@ -209,7 +240,8 @@ function EditForm({ existing, onSaved }: { existing: License; onSaved: () => voi
       customer_name: existing.customer_name,
       customer_email: existing.customer_email,
       status: existing.status,
-      expires_at: existing.expires_at,
+      starts_at: existing.starts_at,
+      billing_period: existing.billing_period,
       notes: existing.notes ?? '',
     },
   });
@@ -235,9 +267,15 @@ function EditForm({ existing, onSaved }: { existing: License; onSaved: () => voi
           { value: 'suspended', label: 'Suspended' },
           { value: 'expired', label: 'Expired' },
         ]} allowDeselect={false} {...form.getInputProps('status')} />
-        <DateInput label="Expires" placeholder="Leave empty for perpetual" clearable
-          value={form.values.expires_at ? new Date(form.values.expires_at) : null}
-          onChange={(v) => form.setFieldValue('expires_at', v ? dayjs(v as unknown as string).format('YYYY-MM-DD') : null)} />
+        <DateInput label="Start Date" description="Change this + Billing Period and save to renew"
+          value={form.values.starts_at ? new Date(form.values.starts_at) : null} clearable
+          onChange={(v) => form.setFieldValue('starts_at', v ? dayjs(v as unknown as string).format('YYYY-MM-DD') : null)} />
+        <Select label="Billing Period" data={billingPeriodOptions} clearable
+          {...form.getInputProps('billing_period')} />
+        {form.values.starts_at && form.values.billing_period && (
+          <Text size="sm">New expiry: <Text span fw={600}>{previewExpiry(new Date(form.values.starts_at), form.values.billing_period)}</Text></Text>
+        )}
+        <Text size="xs" c="dimmed">Current expiry: {existing.expires_at ? dayjs(existing.expires_at).format('DD MMM YYYY') : 'Perpetual'}</Text>
         <Textarea label="Notes" minRows={2} {...form.getInputProps('notes')} />
         <Group justify="flex-end">
           <Button type="submit" loading={mutation.isPending}>Save</Button>

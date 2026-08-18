@@ -42,17 +42,25 @@ class LicenseController extends Controller
             'customer_name' => 'required|string|max:255',
             'customer_email' => 'required|email|max:255',
             'product' => 'nullable|string|max:100',
-            'expires_at' => 'nullable|date',
+            'starts_at' => 'required|date',
+            'billing_period' => ['required', Rule::in(['perpetual', 'monthly', 'quarterly', 'semi_annual', 'annual'])],
             'notes' => 'nullable|string|max:2000',
         ]);
         $validated['license_key'] = License::generateKey();
         $validated['status'] = 'active';
+        $validated['expires_at'] = License::calculateExpiry($validated['starts_at'], $validated['billing_period']);
 
         $license = License::create($validated);
 
         return response()->json(['data' => $license], 201);
     }
 
+    /**
+     * Renewal path: pass starts_at + billing_period to recalculate
+     * expires_at (e.g. renewing for another period from today). Omit both
+     * to leave expires_at untouched — e.g. just editing customer details
+     * or status.
+     */
     public function update(Request $request, License $license)
     {
         $this->authorize();
@@ -61,9 +69,14 @@ class LicenseController extends Controller
             'customer_name' => 'required|string|max:255',
             'customer_email' => 'required|email|max:255',
             'status' => ['required', Rule::in(['active', 'suspended', 'expired'])],
-            'expires_at' => 'nullable|date',
+            'starts_at' => 'nullable|date',
+            'billing_period' => ['nullable', Rule::in(['perpetual', 'monthly', 'quarterly', 'semi_annual', 'annual'])],
             'notes' => 'nullable|string|max:2000',
         ]);
+
+        if (!empty($validated['starts_at']) && !empty($validated['billing_period'])) {
+            $validated['expires_at'] = License::calculateExpiry($validated['starts_at'], $validated['billing_period']);
+        }
 
         $license->update($validated);
 

@@ -273,6 +273,8 @@ export const deleteSmsPackage = (id: string) =>
 
 // --- Licenses (Super Admin) — self-hosted WHMCS-style licensing ---
 
+export type LicenseBillingPeriod = 'perpetual' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+
 export interface License {
   id: string;
   license_key: string;
@@ -280,6 +282,8 @@ export interface License {
   customer_email: string;
   product: string;
   domain: string | null;
+  billing_period: LicenseBillingPeriod;
+  starts_at: string | null;
   status: 'active' | 'suspended' | 'expired';
   expires_at: string | null;
   last_validated_at: string | null;
@@ -292,7 +296,8 @@ export interface LicenseCreateFormData {
   customer_name: string;
   customer_email: string;
   product?: string;
-  expires_at: string | null;
+  starts_at: string;
+  billing_period: LicenseBillingPeriod;
   notes?: string;
 }
 
@@ -300,7 +305,8 @@ export interface LicenseUpdateFormData {
   customer_name: string;
   customer_email: string;
   status: 'active' | 'suspended' | 'expired';
-  expires_at: string | null;
+  starts_at?: string | null;
+  billing_period?: LicenseBillingPeriod | null;
   notes?: string;
 }
 
