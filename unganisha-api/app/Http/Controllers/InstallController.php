@@ -132,6 +132,12 @@ class InstallController extends Controller
             'DB_DATABASE' => $data['database'],
             'DB_USERNAME' => $data['username'],
             'DB_PASSWORD' => $data['password'] ?? '',
+            // Critical for license:check later: it validates using
+            // parse_url(config('app.url'))'s host, which must match the
+            // domain actually bound to the license (the request host at
+            // install time) or every scheduled check would look like a
+            // domain mismatch — an explicit rejection with no grace period.
+            'APP_URL' => $request->getSchemeAndHttpHost(),
         ]);
 
         if (!env('APP_KEY')) {
