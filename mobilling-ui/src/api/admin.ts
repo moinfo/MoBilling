@@ -275,12 +275,16 @@ export const deleteSmsPackage = (id: string) =>
 
 export type LicenseBillingPeriod = 'perpetual' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
 
+// Same three packages as signup's product_tier (TenantProvisioningService) —
+// 'general' = MoBilling Complete, 'reseller' = MoBilling Reseller, 'lite' = MoBilling Lite.
+export type LicensePackage = 'lite' | 'reseller' | 'general';
+
 export interface License {
   id: string;
   license_key: string;
   customer_name: string;
   customer_email: string;
-  product: string;
+  product: LicensePackage | string;
   domain: string | null;
   billing_period: LicenseBillingPeriod;
   starts_at: string | null;
@@ -295,7 +299,7 @@ export interface License {
 export interface LicenseCreateFormData {
   customer_name: string;
   customer_email: string;
-  product?: string;
+  product: LicensePackage;
   starts_at: string;
   billing_period: LicenseBillingPeriod;
   notes?: string;

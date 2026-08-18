@@ -80,7 +80,7 @@ export interface RegisterData {
   password: string;
   password_confirmation: string;
   phone?: string;
-  product_tier?: 'general' | 'reseller';
+  product_tier?: 'general' | 'reseller' | 'lite';
 }
 
 export const login = (data: LoginData) =>

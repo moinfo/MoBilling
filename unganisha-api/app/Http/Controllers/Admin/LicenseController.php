@@ -41,12 +41,13 @@ class LicenseController extends Controller
         $validated = $request->validate([
             'customer_name' => 'required|string|max:255',
             'customer_email' => 'required|email|max:255',
-            'product' => 'nullable|string|max:100',
+            'product' => ['nullable', Rule::in(['lite', 'reseller', 'general'])],
             'starts_at' => 'required|date',
             'billing_period' => ['required', Rule::in(['perpetual', 'monthly', 'quarterly', 'semi_annual', 'annual'])],
             'notes' => 'nullable|string|max:2000',
         ]);
         $validated['license_key'] = License::generateKey();
+        $validated['product'] = $validated['product'] ?? 'general';
         $validated['status'] = 'active';
         $validated['expires_at'] = License::calculateExpiry($validated['starts_at'], $validated['billing_period']);
 
@@ -68,6 +69,7 @@ class LicenseController extends Controller
         $validated = $request->validate([
             'customer_name' => 'required|string|max:255',
             'customer_email' => 'required|email|max:255',
+            'product' => ['nullable', Rule::in(['lite', 'reseller', 'general'])],
             'status' => ['required', Rule::in(['active', 'suspended', 'expired'])],
             'starts_at' => 'nullable|date',
             'billing_period' => ['nullable', Rule::in(['perpetual', 'monthly', 'quarterly', 'semi_annual', 'annual'])],

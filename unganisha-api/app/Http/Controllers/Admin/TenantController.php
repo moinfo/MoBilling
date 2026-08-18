@@ -119,7 +119,7 @@ class TenantController extends Controller
             'admin_name' => 'required|string|max:255',
             'admin_email' => 'required|email|unique:users,email',
             'admin_password' => ['required', Password::min(8)],
-            'tier' => 'nullable|in:general,reseller',
+            'tier' => 'nullable|in:general,reseller,lite',
         ]);
 
         $client = Client::withoutGlobalScopes()->with('tenant')->findOrFail($request->client_id);

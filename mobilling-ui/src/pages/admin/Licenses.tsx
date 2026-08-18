@@ -11,7 +11,7 @@ import { IconPlus, IconEdit, IconTrash, IconCopy, IconCheck, IconLockOpen, IconR
 import dayjs from 'dayjs';
 import {
   getLicenses, createLicense, updateLicense, unbindLicenseDomain, deleteLicense,
-  License, LicenseBillingPeriod, LicenseCreateFormData, LicenseUpdateFormData,
+  License, LicenseBillingPeriod, LicenseCreateFormData, LicenseUpdateFormData, LicensePackage,
 } from '../../api/admin';
 
 const statusColors: Record<License['status'], string> = {
@@ -25,6 +25,18 @@ const billingPeriodLabels: Record<LicenseBillingPeriod, string> = {
   semi_annual: 'Semi-Annual (6 months)',
   annual: 'Annual (12 months)',
 };
+
+// Same three packages offered at signup (TenantProvisioningService).
+const packageLabels: Record<LicensePackage, string> = {
+  lite: 'MoBilling Lite',
+  reseller: 'MoBilling Reseller',
+  general: 'MoBilling Complete',
+};
+const packageColors: Record<LicensePackage, string> = {
+  lite: 'grape', reseller: 'blue', general: 'teal',
+};
+const packageOptions = (Object.keys(packageLabels) as LicensePackage[])
+  .map((value) => ({ value, label: packageLabels[value] }));
 
 const PERIOD_MONTHS: Partial<Record<LicenseBillingPeriod, number>> = {
   monthly: 1, quarterly: 3, semi_annual: 6, annual: 12,
@@ -91,11 +103,12 @@ export default function Licenses() {
         <Center py="xl"><Loader /></Center>
       ) : (
         <Paper withBorder>
-          <Table.ScrollContainer minWidth={900}>
+          <Table.ScrollContainer minWidth={1030}>
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th>Customer</Table.Th>
+                  <Table.Th>Package</Table.Th>
                   <Table.Th>License Key</Table.Th>
                   <Table.Th>Domain</Table.Th>
                   <Table.Th>Status</Table.Th>
@@ -110,6 +123,11 @@ export default function Licenses() {
                     <Table.Td>
                       <Text fw={500}>{lic.customer_name}</Text>
                       <Text size="xs" c="dimmed">{lic.customer_email}</Text>
+                    </Table.Td>
+                    <Table.Td>
+                      <Badge color={packageColors[lic.product as LicensePackage] ?? 'gray'} variant="light">
+                        {packageLabels[lic.product as LicensePackage] ?? lic.product}
+                      </Badge>
                     </Table.Td>
                     <Table.Td>
                       <Group gap={4} wrap="nowrap">
@@ -161,7 +179,7 @@ export default function Licenses() {
                 ))}
                 {licenses.length === 0 && (
                   <Table.Tr>
-                    <Table.Td colSpan={7}>
+                    <Table.Td colSpan={8}>
                       <Text ta="center" c="dimmed" py="md">No licenses issued yet</Text>
                     </Table.Td>
                   </Table.Tr>
@@ -204,6 +222,7 @@ function CreateForm({ onSaved }: { onSaved: () => void }) {
   const form = useForm<LicenseCreateFormData>({
     initialValues: {
       customer_name: '', customer_email: '',
+      product: 'general',
       starts_at: dayjs().format('YYYY-MM-DD'),
       billing_period: 'annual',
       notes: '',
@@ -230,6 +249,8 @@ function CreateForm({ onSaved }: { onSaved: () => void }) {
       <Stack>
         <TextInput label="Customer Name" required {...form.getInputProps('customer_name')} />
         <TextInput label="Customer Email" required {...form.getInputProps('customer_email')} />
+        <Select label="Package" data={packageOptions} allowDeselect={false}
+          {...form.getInputProps('product')} />
         <DateInput label="Start Date" required
           value={new Date(form.values.starts_at)}
           onChange={(v) => v && form.setFieldValue('starts_at', dayjs(v as unknown as string).format('YYYY-MM-DD'))} />

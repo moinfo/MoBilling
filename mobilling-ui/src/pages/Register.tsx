@@ -9,7 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   IconRocket, IconUsers, IconLock, IconSun, IconMoon, IconArrowLeft,
-  IconBriefcase, IconServer2, IconCheck,
+  IconBriefcase, IconServer2, IconCheck, IconFeather,
 } from '@tabler/icons-react';
 
 const highlights = [
@@ -20,18 +20,25 @@ const highlights = [
 
 const productTiers = [
   {
-    value: 'general' as const,
-    icon: IconBriefcase,
-    color: 'teal',
-    title: 'General Business Billing',
-    desc: 'Invoicing, expenses, statutory compliance (NHIF/PAYE/VAT), collections and more.',
+    value: 'lite' as const,
+    icon: IconFeather,
+    color: 'grape',
+    title: 'MoBilling Lite',
+    desc: 'Clients, invoices, payments, products — the billing/CRM basics. No domains, hosting, or statutory clutter.',
   },
   {
     value: 'reseller' as const,
     icon: IconServer2,
     color: 'blue',
-    title: 'Domain & Hosting Reseller',
-    desc: 'The WHMCS-style toolkit only — clients, invoices, domains, hosting, tickets. No statutory/expense clutter.',
+    title: 'MoBilling Reseller',
+    desc: 'The WHMCS-style toolkit — clients, invoices, domains, hosting, tickets. No statutory/expense clutter.',
+  },
+  {
+    value: 'general' as const,
+    icon: IconBriefcase,
+    color: 'teal',
+    title: 'MoBilling Complete',
+    desc: 'Everything — invoicing, expenses, statutory compliance (NHIF/PAYE/VAT), collections, domains, hosting, HR and more.',
   },
 ];
 
@@ -43,7 +50,8 @@ export default function Register() {
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
 
-  const initialTier = searchParams.get('tier') === 'reseller' ? 'reseller' : 'general';
+  const tierParam = searchParams.get('tier');
+  const initialTier = tierParam === 'reseller' || tierParam === 'lite' ? tierParam : 'general';
 
   const form = useForm({
     initialValues: {
@@ -53,7 +61,7 @@ export default function Register() {
       phone: '',
       password: '',
       password_confirmation: '',
-      product_tier: initialTier as 'general' | 'reseller',
+      product_tier: initialTier as 'general' | 'reseller' | 'lite',
     },
     validate: {
       company_name: (v) => (v.length > 0 ? null : 'Company name is required'),
@@ -204,7 +212,7 @@ export default function Register() {
             Set up your business in under 2 minutes
           </Text>
 
-          <SimpleGrid cols={2} spacing="sm" mb="md">
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" mb="md">
             {productTiers.map((tier) => {
               const selected = form.values.product_tier === tier.value;
               return (

@@ -16,22 +16,40 @@ use App\Models\User;
  * a byte-for-byte copy of this logic, which is exactly the kind of thing
  * that quietly drifts out of sync when only one of the two gets updated.
  *
- * `$tier` selects the product being sold:
- *  - 'general'  — every permission in the system (unchanged from the
- *                 original behavior both callers had before this existed).
- *  - 'reseller' — "Domain & Hosting Reseller" — a curated WHMCS-parity
- *                 subset (clients/products/documents/payments/domains/
- *                 hosting/tickets/etc.), deliberately excluding the Kenya/
- *                 Tanzania statutory-compliance vertical (statutories,
- *                 bills, payments_out, expenses) and the separate CRM/
- *                 field-ops vertical (WhatsApp, social, field marketing,
- *                 satisfaction calls, served customers, system records/
- *                 verifications/properties, staff reports/targets, petty
- *                 cash, attendance, announcements) that a hosting-reseller
- *                 customer has no use for.
+ * `$tier` selects the product being sold — three packages, "MoBilling
+ * Lite" / "MoBilling Reseller" / "MoBilling Complete":
+ *  - 'general'  ("MoBilling Complete") — every permission in the system
+ *                 (unchanged from the original behavior both callers had
+ *                 before this existed).
+ *  - 'reseller' ("MoBilling Reseller") — "Domain & Hosting Reseller" — a
+ *                 curated WHMCS-parity subset (clients/products/documents/
+ *                 payments/domains/hosting/tickets/etc.), deliberately
+ *                 excluding the Kenya/Tanzania statutory-compliance
+ *                 vertical (statutories, bills, payments_out, expenses)
+ *                 and the separate CRM/field-ops vertical (WhatsApp,
+ *                 social, field marketing, satisfaction calls, served
+ *                 customers, system records/verifications/properties,
+ *                 staff reports/targets, petty cash, attendance,
+ *                 announcements) that a hosting-reseller customer has no
+ *                 use for.
+ *  - 'lite'     ("MoBilling Lite") — exactly the reseller set minus every
+ *                 domain/hosting permission (menu.domains/menu.hosting,
+ *                 domains.*, hosting.*, dashboard.domains/dashboard.hosting)
+ *                 — billing/CRM basics for a customer who isn't reselling
+ *                 domains or hosting at all. Derived by subtraction rather
+ *                 than a second hand-maintained list, so it can never
+ *                 silently drift out of sync with RESELLER_PERMISSIONS.
  */
 class TenantProvisioningService
 {
+    private const DOMAIN_HOSTING_PERMISSIONS = [
+        'menu.domains', 'menu.hosting',
+        'domains.create', 'domains.manage_dns', 'domains.read', 'domains.renew',
+        'domains.settings', 'domains.transfer',
+        'hosting.change_package', 'hosting.create', 'hosting.read', 'hosting.settings',
+        'hosting.sso', 'hosting.suspend', 'hosting.terminate',
+        'dashboard.domains', 'dashboard.hosting',
+    ];
     private const RESELLER_PERMISSIONS = [
         // menu
         'menu.client_subscriptions', 'menu.clients', 'menu.invoices', 'menu.next_bills',
@@ -128,6 +146,11 @@ class TenantProvisioningService
         'reports.satisfaction', 'reports.communication',
     ];
 
+    private static function litePermissions(): array
+    {
+        return array_values(array_diff(self::RESELLER_PERMISSIONS, self::DOMAIN_HOSTING_PERMISSIONS));
+    }
+
     /**
      * @param array $tenantData Tenant::create() fields (name, email, phone, address, tax_id, currency, trial_ends_at, ...)
      * @param array $adminData  User::create() fields for the first admin (name, email, password, phone?)
@@ -145,9 +168,11 @@ class TenantProvisioningService
         }
 
         $allPermissionIds = Permission::pluck('id');
-        $ceilingIds = $tier === 'reseller'
-            ? Permission::whereIn('name', self::RESELLER_PERMISSIONS)->pluck('id')
-            : $allPermissionIds;
+        $ceilingIds = match ($tier) {
+            'reseller' => Permission::whereIn('name', self::RESELLER_PERMISSIONS)->pluck('id'),
+            'lite' => Permission::whereIn('name', self::litePermissions())->pluck('id'),
+            default => $allPermissionIds,
+        };
 
         $tenant->allowedPermissions()->sync($ceilingIds);
 
