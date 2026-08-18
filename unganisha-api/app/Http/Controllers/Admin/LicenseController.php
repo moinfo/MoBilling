@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\License;
+use App\Models\LicensePlan;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
@@ -44,12 +45,21 @@ class LicenseController extends Controller
             'product' => ['nullable', Rule::in(['lite', 'reseller', 'general'])],
             'starts_at' => 'required|date',
             'billing_period' => ['required', Rule::in(['perpetual', 'monthly', 'quarterly', 'semi_annual', 'annual'])],
+            'amount_paid' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:2000',
         ]);
         $validated['license_key'] = License::generateKey();
         $validated['product'] = $validated['product'] ?? 'general';
         $validated['status'] = 'active';
         $validated['expires_at'] = License::calculateExpiry($validated['starts_at'], $validated['billing_period']);
+
+        // Default amount_paid to the license_plans catalog price for this
+        // product+period if the caller didn't send an explicit figure
+        // (e.g. a discounted deal).
+        if (!array_key_exists('amount_paid', $validated) || $validated['amount_paid'] === null) {
+            $plan = LicensePlan::where('product', $validated['product'])->first();
+            $validated['amount_paid'] = $plan?->priceFor($validated['billing_period']);
+        }
 
         $license = License::create($validated);
 
@@ -73,11 +83,21 @@ class LicenseController extends Controller
             'status' => ['required', Rule::in(['active', 'suspended', 'expired'])],
             'starts_at' => 'nullable|date',
             'billing_period' => ['nullable', Rule::in(['perpetual', 'monthly', 'quarterly', 'semi_annual', 'annual'])],
+            'amount_paid' => 'nullable|numeric|min:0',
             'notes' => 'nullable|string|max:2000',
         ]);
 
         if (!empty($validated['starts_at']) && !empty($validated['billing_period'])) {
             $validated['expires_at'] = License::calculateExpiry($validated['starts_at'], $validated['billing_period']);
+
+            // Renewal: default the new amount_paid to the catalog price for
+            // the (possibly new) product+period, same fallback as store(),
+            // unless the caller sent an explicit override.
+            if (!array_key_exists('amount_paid', $validated) || $validated['amount_paid'] === null) {
+                $product = $validated['product'] ?? $license->product;
+                $plan = LicensePlan::where('product', $product)->first();
+                $validated['amount_paid'] = $plan?->priceFor($validated['billing_period']);
+            }
         }
 
         $license->update($validated);

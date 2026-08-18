@@ -179,6 +179,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
     Route::apiResource('licenses', \App\Http\Controllers\Admin\LicenseController::class)->except(['show']);
     Route::post('/licenses/{license}/unbind-domain', [\App\Http\Controllers\Admin\LicenseController::class, 'unbindDomain']);
 
+    // Self-hosted license pricing catalog (separate from subscription-plans, which prices MoBilling SaaS itself)
+    Route::get('/license-plans', [\App\Http\Controllers\Admin\LicensePlanController::class, 'index']);
+    Route::put('/license-plans/{licensePlan}', [\App\Http\Controllers\Admin\LicensePlanController::class, 'update']);
+
     // SMS purchases (super admin view)
     Route::get('/sms-purchases', [AdminSmsPurchaseController::class, 'index']);
 

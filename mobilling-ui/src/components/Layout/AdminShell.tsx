@@ -125,6 +125,12 @@ export default function AdminShell() {
             onClick={() => navigateAndClose('/admin/licenses')}
           />
           <NavLink
+            label="License Plans"
+            leftSection={<IconKey size={18} />}
+            active={location.pathname === '/admin/license-plans'}
+            onClick={() => navigateAndClose('/admin/license-plans')}
+          />
+          <NavLink
             label="Subscription Plans"
             leftSection={<IconCreditCard size={18} />}
             active={location.pathname === '/admin/subscription-plans'}

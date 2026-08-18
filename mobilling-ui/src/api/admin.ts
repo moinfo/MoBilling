@@ -288,6 +288,7 @@ export interface License {
   domain: string | null;
   billing_period: LicenseBillingPeriod;
   starts_at: string | null;
+  amount_paid: string | null;
   status: 'active' | 'suspended' | 'expired';
   expires_at: string | null;
   last_validated_at: string | null;
@@ -302,6 +303,7 @@ export interface LicenseCreateFormData {
   product: LicensePackage;
   starts_at: string;
   billing_period: LicenseBillingPeriod;
+  amount_paid?: number | null;
   notes?: string;
 }
 
@@ -311,8 +313,42 @@ export interface LicenseUpdateFormData {
   status: 'active' | 'suspended' | 'expired';
   starts_at?: string | null;
   billing_period?: LicenseBillingPeriod | null;
+  amount_paid?: number | null;
   notes?: string;
 }
+
+// --- License Plans (Super Admin) — pricing catalog for self-hosted licenses,
+// separate from SubscriptionPlan which prices MoBilling SaaS itself. ---
+
+export interface LicensePlan {
+  id: string;
+  product: LicensePackage;
+  name: string;
+  description: string | null;
+  monthly_price: string | null;
+  quarterly_price: string | null;
+  semi_annual_price: string | null;
+  annual_price: string | null;
+  perpetual_price: string | null;
+  is_active: boolean;
+}
+
+export interface LicensePlanFormData {
+  name: string;
+  description?: string;
+  monthly_price: number | string | null;
+  quarterly_price: number | string | null;
+  semi_annual_price: number | string | null;
+  annual_price: number | string | null;
+  perpetual_price: number | string | null;
+  is_active: boolean;
+}
+
+export const getLicensePlans = () =>
+  api.get<{ data: LicensePlan[] }>('/admin/license-plans');
+
+export const updateLicensePlan = (id: string, data: LicensePlanFormData) =>
+  api.put<{ data: LicensePlan }>(`/admin/license-plans/${id}`, data);
 
 export const getLicenses = (params?: { search?: string; page?: number; per_page?: number }) =>
   api.get<{ data: License[]; meta: { current_page: number; last_page: number; total: number } }>('/admin/licenses', { params });

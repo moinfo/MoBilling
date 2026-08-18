@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Table, Badge, ActionIcon, Modal, Stack, TextInput, Textarea,
-  Select, Button, Group, Text, Loader, Center, Paper, Tooltip, CopyButton, Pagination,
+  Select, NumberInput, Button, Group, Text, Loader, Center, Paper, Tooltip, CopyButton, Pagination,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -10,9 +10,21 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconEdit, IconTrash, IconCopy, IconCheck, IconLockOpen, IconRefresh } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
-  getLicenses, createLicense, updateLicense, unbindLicenseDomain, deleteLicense,
-  License, LicenseBillingPeriod, LicenseCreateFormData, LicenseUpdateFormData, LicensePackage,
+  getLicenses, createLicense, updateLicense, unbindLicenseDomain, deleteLicense, getLicensePlans,
+  License, LicenseBillingPeriod, LicenseCreateFormData, LicenseUpdateFormData, LicensePackage, LicensePlan,
 } from '../../api/admin';
+import { formatCurrency } from '../../utils/formatCurrency';
+
+const PLAN_PRICE_FIELD: Record<LicenseBillingPeriod, keyof LicensePlan> = {
+  perpetual: 'perpetual_price', monthly: 'monthly_price', quarterly: 'quarterly_price',
+  semi_annual: 'semi_annual_price', annual: 'annual_price',
+};
+
+function catalogPriceFor(plans: LicensePlan[], product: LicensePackage, period: LicenseBillingPeriod): number | null {
+  const plan = plans.find((p) => p.product === product);
+  const val = plan?.[PLAN_PRICE_FIELD[period]];
+  return val ? Number(val) : null;
+}
 
 const statusColors: Record<License['status'], string> = {
   active: 'green', suspended: 'red', expired: 'gray',
@@ -103,7 +115,7 @@ export default function Licenses() {
         <Center py="xl"><Loader /></Center>
       ) : (
         <Paper withBorder>
-          <Table.ScrollContainer minWidth={1030}>
+          <Table.ScrollContainer minWidth={1150}>
             <Table striped highlightOnHover>
               <Table.Thead>
                 <Table.Tr>
@@ -112,6 +124,7 @@ export default function Licenses() {
                   <Table.Th>License Key</Table.Th>
                   <Table.Th>Domain</Table.Th>
                   <Table.Th>Status</Table.Th>
+                  <Table.Th>Amount Paid</Table.Th>
                   <Table.Th>Expires</Table.Th>
                   <Table.Th>Last Check-in</Table.Th>
                   <Table.Th w={180}>Actions</Table.Th>
@@ -145,6 +158,7 @@ export default function Licenses() {
                     </Table.Td>
                     <Table.Td>{lic.domain || <Text c="dimmed" size="sm">Not activated yet</Text>}</Table.Td>
                     <Table.Td><Badge color={statusColors[lic.status]} variant="light">{lic.status}</Badge></Table.Td>
+                    <Table.Td>{lic.amount_paid ? formatCurrency(lic.amount_paid) : '—'}</Table.Td>
                     <Table.Td>{lic.expires_at ? dayjs(lic.expires_at).format('DD MMM YYYY') : 'Perpetual'}</Table.Td>
                     <Table.Td>{lic.last_validated_at ? dayjs(lic.last_validated_at).format('DD MMM YYYY HH:mm') : 'Never'}</Table.Td>
                     <Table.Td>
@@ -179,7 +193,7 @@ export default function Licenses() {
                 ))}
                 {licenses.length === 0 && (
                   <Table.Tr>
-                    <Table.Td colSpan={8}>
+                    <Table.Td colSpan={9}>
                       <Text ta="center" c="dimmed" py="md">No licenses issued yet</Text>
                     </Table.Td>
                   </Table.Tr>
@@ -219,12 +233,16 @@ const billingPeriodOptions = (Object.keys(billingPeriodLabels) as LicenseBilling
   .map((value) => ({ value, label: billingPeriodLabels[value] }));
 
 function CreateForm({ onSaved }: { onSaved: () => void }) {
+  const { data: plansData } = useQuery({ queryKey: ['admin-license-plans'], queryFn: getLicensePlans });
+  const plans: LicensePlan[] = plansData?.data?.data || [];
+
   const form = useForm<LicenseCreateFormData>({
     initialValues: {
       customer_name: '', customer_email: '',
       product: 'general',
       starts_at: dayjs().format('YYYY-MM-DD'),
       billing_period: 'annual',
+      amount_paid: null,
       notes: '',
     },
     validate: {
@@ -232,6 +250,8 @@ function CreateForm({ onSaved }: { onSaved: () => void }) {
       customer_email: (v) => (/^\S+@\S+\.\S+$/.test(v) ? null : 'Valid email required'),
     },
   });
+
+  const catalogPrice = catalogPriceFor(plans, form.values.product, form.values.billing_period);
 
   const mutation = useMutation({
     mutationFn: (values: LicenseCreateFormData) => createLicense(values),
@@ -257,8 +277,11 @@ function CreateForm({ onSaved }: { onSaved: () => void }) {
         <Select label="Billing Period" data={billingPeriodOptions} allowDeselect={false}
           {...form.getInputProps('billing_period')} />
         <Text size="sm">Expires: <Text span fw={600}>{previewExpiry(new Date(form.values.starts_at), form.values.billing_period)}</Text></Text>
+        <NumberInput label="Amount Paid (TZS)" min={0}
+          placeholder={catalogPrice !== null ? `List price: ${formatCurrency(catalogPrice)}` : 'No list price set — enter manually'}
+          {...form.getInputProps('amount_paid')} />
         <Textarea label="Notes" placeholder="e.g. Sold via invoice #123" minRows={2} {...form.getInputProps('notes')} />
-        <Text size="xs" c="dimmed">The license key is generated automatically and locks to whichever domain first checks in.</Text>
+        <Text size="xs" c="dimmed">The license key is generated automatically and locks to whichever domain first checks in. Leave Amount Paid blank to use the List Price above.</Text>
         <Group justify="flex-end">
           <Button type="submit" loading={mutation.isPending}>Issue License</Button>
         </Group>
@@ -309,6 +332,9 @@ function EditForm({ existing, onSaved }: { existing: License; onSaved: () => voi
 }
 
 function RenewForm({ existing, onSaved }: { existing: License; onSaved: () => void }) {
+  const { data: plansData } = useQuery({ queryKey: ['admin-license-plans'], queryFn: getLicensePlans });
+  const plans: LicensePlan[] = plansData?.data?.data || [];
+
   // Renewing before expiry should extend from where the current period ends,
   // not from today (otherwise the customer loses the time they already paid
   // for). Only default to today if there's no expiry yet or it's already past.
@@ -316,21 +342,25 @@ function RenewForm({ existing, onSaved }: { existing: License; onSaved: () => vo
     ? existing.expires_at
     : dayjs().format('YYYY-MM-DD');
 
-  const form = useForm<{ starts_at: string; billing_period: LicenseBillingPeriod }>({
+  const form = useForm<{ starts_at: string; billing_period: LicenseBillingPeriod; amount_paid: number | null }>({
     initialValues: {
       starts_at: defaultStart,
       billing_period: existing.billing_period === 'perpetual' ? 'annual' : existing.billing_period,
+      amount_paid: null,
     },
   });
 
+  const catalogPrice = catalogPriceFor(plans, existing.product as LicensePackage, form.values.billing_period);
+
   const mutation = useMutation({
-    mutationFn: (values: { starts_at: string; billing_period: LicenseBillingPeriod }) =>
+    mutationFn: (values: { starts_at: string; billing_period: LicenseBillingPeriod; amount_paid: number | null }) =>
       updateLicense(existing.id, {
         customer_name: existing.customer_name,
         customer_email: existing.customer_email,
         status: existing.status === 'expired' ? 'active' : existing.status,
         starts_at: values.starts_at,
         billing_period: values.billing_period,
+        amount_paid: values.amount_paid,
       }),
     onSuccess: () => {
       notifications.show({ title: 'Renewed', message: 'License expiry extended.', color: 'green' });
@@ -351,6 +381,9 @@ function RenewForm({ existing, onSaved }: { existing: License; onSaved: () => vo
           value={new Date(form.values.starts_at)}
           onChange={(v) => v && form.setFieldValue('starts_at', dayjs(v as unknown as string).format('YYYY-MM-DD'))} />
         <Text size="sm">New expiry: <Text span fw={600}>{previewExpiry(new Date(form.values.starts_at), form.values.billing_period)}</Text></Text>
+        <NumberInput label="Amount Paid (TZS)" min={0}
+          placeholder={catalogPrice !== null ? `List price: ${formatCurrency(catalogPrice)}` : 'No list price set — enter manually'}
+          {...form.getInputProps('amount_paid')} />
         <Group justify="flex-end">
           <Button type="submit" color="teal" loading={mutation.isPending}>Renew</Button>
         </Group>

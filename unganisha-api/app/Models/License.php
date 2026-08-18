@@ -13,13 +13,14 @@ class License extends Model
 
     protected $fillable = [
         'license_key', 'customer_name', 'customer_email', 'product',
-        'domain', 'billing_period', 'starts_at', 'status', 'expires_at', 'last_validated_at', 'notes',
+        'domain', 'billing_period', 'starts_at', 'amount_paid', 'status', 'expires_at', 'last_validated_at', 'notes',
     ];
 
     protected $casts = [
         'starts_at' => 'date',
         'expires_at' => 'date',
         'last_validated_at' => 'datetime',
+        'amount_paid' => 'decimal:2',
     ];
 
     private const PERIOD_MONTHS = [
