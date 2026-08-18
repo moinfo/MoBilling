@@ -7,7 +7,7 @@ import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconCopy, IconCheck, IconLockOpen } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconCopy, IconCheck, IconLockOpen, IconRefresh } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
   getLicenses, createLicense, updateLicense, unbindLicenseDomain, deleteLicense,
@@ -42,6 +42,7 @@ export default function Licenses() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [editLicense, setEditLicense] = useState<License | null>(null);
+  const [renewLicense, setRenewLicense] = useState<License | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -100,7 +101,7 @@ export default function Licenses() {
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Expires</Table.Th>
                   <Table.Th>Last Check-in</Table.Th>
-                  <Table.Th w={140}>Actions</Table.Th>
+                  <Table.Th w={180}>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
@@ -133,6 +134,11 @@ export default function Licenses() {
                         <ActionIcon variant="subtle" onClick={() => setEditLicense(lic)}>
                           <IconEdit size={16} />
                         </ActionIcon>
+                        <Tooltip label="Renew (extend expiry)">
+                          <ActionIcon variant="subtle" color="teal" onClick={() => setRenewLicense(lic)}>
+                            <IconRefresh size={16} />
+                          </ActionIcon>
+                        </Tooltip>
                         {lic.domain && (
                           <Tooltip label="Unbind domain (move to a new install)">
                             <ActionIcon variant="subtle" color="orange" loading={unbindMut.isPending}
@@ -179,6 +185,12 @@ export default function Licenses() {
       <Modal opened={!!editLicense} onClose={() => setEditLicense(null)} title={`Edit — ${editLicense?.customer_name}`}>
         {editLicense && (
           <EditForm existing={editLicense} onSaved={() => { queryClient.invalidateQueries({ queryKey: ['admin-licenses'] }); setEditLicense(null); }} />
+        )}
+      </Modal>
+
+      <Modal opened={!!renewLicense} onClose={() => setRenewLicense(null)} title={`Renew — ${renewLicense?.customer_name}`}>
+        {renewLicense && (
+          <RenewForm existing={renewLicense} onSaved={() => { queryClient.invalidateQueries({ queryKey: ['admin-licenses'] }); setRenewLicense(null); }} />
         )}
       </Modal>
     </>
@@ -240,8 +252,6 @@ function EditForm({ existing, onSaved }: { existing: License; onSaved: () => voi
       customer_name: existing.customer_name,
       customer_email: existing.customer_email,
       status: existing.status,
-      starts_at: existing.starts_at,
-      billing_period: existing.billing_period,
       notes: existing.notes ?? '',
     },
   });
@@ -267,18 +277,61 @@ function EditForm({ existing, onSaved }: { existing: License; onSaved: () => voi
           { value: 'suspended', label: 'Suspended' },
           { value: 'expired', label: 'Expired' },
         ]} allowDeselect={false} {...form.getInputProps('status')} />
-        <DateInput label="Start Date" description="Change this + Billing Period and save to renew"
-          value={form.values.starts_at ? new Date(form.values.starts_at) : null} clearable
-          onChange={(v) => form.setFieldValue('starts_at', v ? dayjs(v as unknown as string).format('YYYY-MM-DD') : null)} />
-        <Select label="Billing Period" data={billingPeriodOptions} clearable
-          {...form.getInputProps('billing_period')} />
-        {form.values.starts_at && form.values.billing_period && (
-          <Text size="sm">New expiry: <Text span fw={600}>{previewExpiry(new Date(form.values.starts_at), form.values.billing_period)}</Text></Text>
-        )}
-        <Text size="xs" c="dimmed">Current expiry: {existing.expires_at ? dayjs(existing.expires_at).format('DD MMM YYYY') : 'Perpetual'}</Text>
         <Textarea label="Notes" minRows={2} {...form.getInputProps('notes')} />
+        <Text size="xs" c="dimmed">To extend the expiry date, use the Renew action instead.</Text>
         <Group justify="flex-end">
           <Button type="submit" loading={mutation.isPending}>Save</Button>
+        </Group>
+      </Stack>
+    </form>
+  );
+}
+
+function RenewForm({ existing, onSaved }: { existing: License; onSaved: () => void }) {
+  // Renewing before expiry should extend from where the current period ends,
+  // not from today (otherwise the customer loses the time they already paid
+  // for). Only default to today if there's no expiry yet or it's already past.
+  const defaultStart = existing.expires_at && dayjs(existing.expires_at).isAfter(dayjs())
+    ? existing.expires_at
+    : dayjs().format('YYYY-MM-DD');
+
+  const form = useForm<{ starts_at: string; billing_period: LicenseBillingPeriod }>({
+    initialValues: {
+      starts_at: defaultStart,
+      billing_period: existing.billing_period === 'perpetual' ? 'annual' : existing.billing_period,
+    },
+  });
+
+  const mutation = useMutation({
+    mutationFn: (values: { starts_at: string; billing_period: LicenseBillingPeriod }) =>
+      updateLicense(existing.id, {
+        customer_name: existing.customer_name,
+        customer_email: existing.customer_email,
+        status: existing.status === 'expired' ? 'active' : existing.status,
+        starts_at: values.starts_at,
+        billing_period: values.billing_period,
+      }),
+    onSuccess: () => {
+      notifications.show({ title: 'Renewed', message: 'License expiry extended.', color: 'green' });
+      onSaved();
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error', message: err.response?.data?.message || 'Failed to renew license', color: 'red',
+    }),
+  });
+
+  return (
+    <form onSubmit={form.onSubmit((values) => mutation.mutate(values))}>
+      <Stack>
+        <Text size="sm" c="dimmed">Current expiry: {existing.expires_at ? dayjs(existing.expires_at).format('DD MMM YYYY') : 'Perpetual'}</Text>
+        <Select label="Billing Period" data={billingPeriodOptions} allowDeselect={false}
+          {...form.getInputProps('billing_period')} />
+        <DateInput label="Extend From" description="Defaults to the current expiry date so no paid time is lost" required
+          value={new Date(form.values.starts_at)}
+          onChange={(v) => v && form.setFieldValue('starts_at', dayjs(v as unknown as string).format('YYYY-MM-DD'))} />
+        <Text size="sm">New expiry: <Text span fw={600}>{previewExpiry(new Date(form.values.starts_at), form.values.billing_period)}</Text></Text>
+        <Group justify="flex-end">
+          <Button type="submit" color="teal" loading={mutation.isPending}>Renew</Button>
         </Group>
       </Stack>
     </form>
