@@ -1,0 +1,219 @@
+/*
+ * Marketing surface tokens — landing page and sign-in.
+ *
+ * Values come verbatim from design_handoff_mobilling/README.md ("Design
+ * tokens"), which is the single source of truth: change a value there first,
+ * then mirror it here.
+ *
+ * Why these are NOT in tokens.css: that file is the portal's "Control Room"
+ * language, is dark-only, and is kept byte-identical with the moinfo_hosting
+ * repo. The marketing pages are a different, light-first design with its own
+ * palette, so they get their own layer scoped to `.mkt`. Nothing here leaks
+ * into the dashboard.
+ *
+ * Dark mode keys off Mantine's own `data-mantine-color-scheme` attribute
+ * instead of the prototype's separate localStorage key, so one toggle drives
+ * the whole app.
+ */
+
+.mkt {
+  /* ── Surfaces ───────────────────────────────────────────────────────── */
+  --mk-bg: #ffffff;
+  --mk-bg-alt: #f6f9fc;
+  --mk-panel: #ffffff;
+  --mk-border: #e9eef4;
+  --mk-border-2: #e3eaf2;
+  --mk-row: #f3f6fa;
+  --mk-field: #ffffff;
+  /* The near-black used for hero, footer and the "Business" price card. Stays
+     dark in both themes — it is a brand surface, not a background. */
+  --mk-ink: #0c1220;
+
+  /* ── Text ───────────────────────────────────────────────────────────── */
+  --mk-text: #101725;
+  --mk-text-2: #5b6779;
+  --mk-text-3: #7b8798;
+
+  /* ── Tinted fills + the text colour that is legible on them ─────────── */
+  --mk-tint-b: #eef5fc;
+  --mk-tint-g: #ecf7f0;
+  --mk-tint-y: #fdf4e0;
+  --mk-tint-o: #fdeee9;
+  --mk-on-b: #1a68b0;
+  --mk-on-g: #23874a;
+  --mk-on-y: #99700a;
+  --mk-on-o: #c2461f;
+
+  /* ── Brand hues — theme-independent ─────────────────────────────────── */
+  --mk-blue: #1a68b0;
+  --mk-blue-deep: #12507f;
+  --mk-blue-lift: #56a9e8; /* blue on a dark surface */
+  --mk-green: #2fae60;
+  --mk-green-deep: #23874a;
+  --mk-green-lift: #4fd189;
+  --mk-yellow: #f5c518;
+  --mk-yellow-deep: #e0a512;
+  --mk-yellow-lift: #ffd24a;
+  --mk-orange: #f0632c;
+  --mk-orange-lift: #f5a11d;
+
+  /* Text colours used only on the ink surfaces, where the light-theme
+     --mk-text-* values would be invisible. */
+  --mk-on-ink: #b3bdcb;
+  --mk-on-ink-2: #c3ccd8;
+  --mk-on-ink-3: #9aa6b6;
+  --mk-on-ink-faint: #6b7789;
+
+  --mk-cta: linear-gradient(90deg, #f5a11d, #f0632c);
+  --mk-cta-hover: linear-gradient(90deg, #f7ae3a, #f4784a);
+  --mk-rule: linear-gradient(90deg, #f5c518 0%, #2fae60 38%, #1a68b0 68%, #f0632c 100%);
+
+  /* ── Type ───────────────────────────────────────────────────────────── */
+  --mk-font: 'Archivo', -apple-system, BlinkMacSystemFont, sans-serif;
+  --mk-mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+  /* ── Shadows ────────────────────────────────────────────────────────── */
+  --mk-shadow-card: 0 24px 44px -30px rgba(16, 23, 37, 0.35);
+  --mk-shadow-ink: 0 34px 60px -30px rgba(12, 18, 32, 0.65);
+  --mk-shadow-panel: 0 40px 80px -32px rgba(0, 0, 0, 0.6);
+  --mk-shadow-blue: 0 16px 30px -18px rgba(26, 104, 176, 0.9);
+  --mk-shadow-orange: 0 18px 34px -18px rgba(240, 99, 44, 0.85);
+  --mk-focus-ring: 0 0 0 4px rgba(26, 104, 176, 0.14);
+
+  /* ── Fluid scale ────────────────────────────────────────────────────────
+     Every size below is a two-point line, not a raw vw: it reaches the
+     handoff's exact value at a 1440px viewport (the width the design was
+     drawn at) and interpolates down from there.
+
+     A plain `clamp(min, Nvw, max)` is the trap this replaces — `7.4vw` hits
+     the 78px ceiling at ~1054px, so a 1000px window rendered display type at
+     74px and the whole page read oversized. Anchoring to 1440px fixes that
+     everywhere at once.
+
+     To dial the whole page up or down, change the third value (the ceiling)
+     of the tokens below — nothing else needs touching. */
+  --mk-fs-display: clamp(38px, 20px + 4vw, 78px); /* hero h1 → 78 @1440 */
+  --mk-fs-h2: clamp(28px, 16px + 2.5vw, 52px); /* section h2 → 52 @1440 */
+  --mk-fs-h2-sm: clamp(26px, 14px + 1.95vw, 42px); /* faq/contact → 42 @1440 */
+  --mk-fs-h2-cta: clamp(30px, 17px + 2.7vw, 56px); /* closing cta → 56 @1440 */
+  --mk-fs-h3: clamp(19px, 17px + 0.35vw, 22px);
+  --mk-fs-lead: clamp(15.5px, 14.4px + 0.28vw, 18.5px);
+  --mk-fs-hero-body: clamp(16px, 14.2px + 0.37vw, 19.5px);
+  --mk-fs-cta: clamp(15px, 14.3px + 0.15vw, 16.5px);
+  --mk-fs-stat: clamp(28px, 14px + 1.95vw, 42px);
+  --mk-fs-price: clamp(24px, 16px + 1.11vw, 32px);
+  --mk-fs-metric: clamp(18px, 14.5px + 0.6vw, 23px);
+
+  /* Vertical rhythm and gutters scale on the same 1440px anchor, so type and
+     space shrink together instead of type outrunning its container. */
+  --mk-space-section: clamp(48px, 28px + 4.17vw, 88px);
+  --mk-space-gap: clamp(32px, 20px + 2.5vw, 56px);
+  --mk-gutter: clamp(20px, 14px + 1.25vw, 32px);
+
+  background: var(--mk-bg);
+  color: var(--mk-text);
+  font-family: var(--mk-font);
+  -webkit-font-smoothing: antialiased;
+}
+
+[data-mantine-color-scheme='dark'] .mkt {
+  --mk-bg: #0f1626;
+  --mk-bg-alt: #141d2e;
+  --mk-panel: #172032;
+  --mk-border: #26324a;
+  --mk-border-2: #33405c;
+  --mk-row: #1d2739;
+  --mk-field: #121a2a;
+  --mk-ink: #080e19;
+
+  --mk-text: #eff3f8;
+  --mk-text-2: #a7b3c4;
+  --mk-text-3: #8d9aad;
+
+  --mk-tint-b: rgba(86, 169, 232, 0.16);
+  --mk-tint-g: rgba(79, 209, 137, 0.16);
+  --mk-tint-y: rgba(245, 197, 24, 0.16);
+  --mk-tint-o: rgba(240, 99, 44, 0.16);
+  --mk-on-b: #7ab6ec;
+  --mk-on-g: #5ed294;
+  --mk-on-y: #f0c645;
+  --mk-on-o: #f58a5f;
+
+  --mk-shadow-card: 0 24px 44px -30px rgba(0, 0, 0, 0.6);
+}
+
+/* Marketing pages own the whole viewport, so the body must match — otherwise
+   overscroll reveals the portal's background behind the page. */
+body:has(.mkt) {
+  background: var(--mk-bg, #ffffff);
+}
+
+/* ── Scroll reveal ────────────────────────────────────────────────────────
+   Fail-open by design: elements are visible as authored. `useReveal` adds
+   `data-reveal="pending"` only once the observer is attached, so if
+   IntersectionObserver never runs the content is never hidden. */
+.mkt [data-reveal='pending'] {
+  opacity: 0;
+  transform: translateY(22px);
+}
+
+.mkt [data-reveal='shown'] {
+  opacity: 1;
+  transform: none;
+  transition:
+    opacity 0.8s cubic-bezier(0.22, 0.72, 0.2, 1),
+    transform 0.8s cubic-bezier(0.22, 0.72, 0.2, 1);
+}
+
+@keyframes mk-in {
+  from {
+    opacity: 0;
+    transform: translateY(22px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes mk-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes mk-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.82);
+  }
+}
+
+@keyframes mk-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mkt *,
+  .mkt *::before,
+  .mkt *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .mkt [data-reveal='pending'] {
+    opacity: 1;
+    transform: none;
+  }
+}

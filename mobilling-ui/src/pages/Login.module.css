@@ -1,0 +1,528 @@
+/*
+ * Business sign-in — visual layer.
+ *
+ * Follows design_handoff_mobilling "MoBilling Login". Shares the `.mkt` token
+ * layer with the landing page so the two screens cannot drift.
+ *
+ * Below 900px the brand panel is dropped rather than stacked: on a phone it
+ * would push the form a full screen down, and the form is the only reason
+ * anyone opens this page.
+ */
+
+.root {
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr);
+}
+
+/* ── Left brand panel ─────────────────────────────────────────────────────── */
+
+.brandPanel {
+  position: relative;
+  overflow: hidden;
+  background: var(--mk-ink);
+  color: #fff;
+  padding: clamp(28px, 16px + 1.9vw, 44px) clamp(28px, 4px + 3.6vw, 56px)
+    clamp(26px, 16px + 1.7vw, 40px);
+  display: flex;
+  flex-direction: column;
+}
+
+.brandRule {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--mk-rule);
+}
+
+.glowA,
+.glowB {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.glowA {
+  width: 560px;
+  height: 560px;
+  top: -180px;
+  right: -140px;
+  background: radial-gradient(circle at 34% 32%, rgba(26, 104, 176, 0.6), rgba(12, 18, 32, 0) 68%);
+}
+
+.glowB {
+  width: 520px;
+  height: 520px;
+  bottom: -220px;
+  left: -160px;
+  background: radial-gradient(circle at 60% 40%, rgba(47, 174, 96, 0.3), rgba(12, 18, 32, 0) 70%);
+}
+
+.brandTop,
+.brandMiddle,
+.brandBottom {
+  position: relative;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.brand img {
+  height: 36px;
+  width: auto;
+}
+
+.wordmark {
+  font-weight: 800;
+  font-size: 21px;
+  letter-spacing: -0.03em;
+}
+
+.brandMiddle {
+  margin: auto 0;
+  max-width: 460px;
+  padding: 40px 0;
+}
+
+.brandMiddle > * {
+  animation: mk-in 0.85s cubic-bezier(0.22, 0.72, 0.2, 1) both;
+}
+
+.brandMiddle > *:nth-child(1) { animation-delay: 0.06s; }
+.brandMiddle > *:nth-child(2) { animation-delay: 0.15s; }
+.brandMiddle > *:nth-child(3) { animation-delay: 0.24s; }
+.brandMiddle > *:nth-child(4) { animation-delay: 0.33s; }
+.brandMiddle > *:nth-child(5) { animation-delay: 0.42s; }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 999px;
+  padding: 8px 14px;
+  font-family: var(--mk-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.12em;
+  color: var(--mk-yellow-lift);
+}
+
+.pillDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mk-green);
+}
+
+.title {
+  font-size: clamp(28px, 16px + 1.95vw, 44px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  font-weight: 800;
+  margin: 22px 0 18px;
+  text-wrap: balance;
+}
+
+.blurb {
+  font-size: 17px;
+  line-height: 1.6;
+  color: var(--mk-on-ink);
+  max-width: 42ch;
+  margin: 0 0 34px;
+  text-wrap: pretty;
+}
+
+.benefits {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 36px;
+}
+
+.benefit {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 15.5px;
+  color: #dbe2ea;
+}
+
+.benefitTile {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.statStrip {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 16px;
+  padding: 22px 24px;
+  animation: mk-float 7s ease-in-out 1.4s infinite;
+}
+
+.statValue {
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.statLabel {
+  font-family: var(--mk-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--mk-on-ink-3);
+  margin-top: 6px;
+}
+
+.statDivider {
+  width: 1px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.14);
+  flex-shrink: 0;
+}
+
+.brandBottom {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 20px;
+  justify-content: space-between;
+  font-family: var(--mk-mono);
+  font-size: 10.5px;
+  color: var(--mk-on-ink-faint);
+}
+
+/* ── Right form panel ─────────────────────────────────────────────────────── */
+
+.formPanel {
+  background: var(--mk-bg);
+  display: flex;
+  flex-direction: column;
+  padding: 26px 32px 40px;
+}
+
+.formHeader {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+}
+
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--mk-text-2);
+  text-decoration: none;
+}
+
+.backLink:hover {
+  color: var(--mk-text);
+}
+
+.iconBtn {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  border: 1px solid var(--mk-border);
+  background: var(--mk-bg-alt);
+  color: var(--mk-text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* The stage is what stops the form floating in an over-wide empty column. */
+.stage {
+  margin: auto;
+  width: 100%;
+  max-width: 424px;
+  padding: 32px 0;
+}
+
+.mobileBrand {
+  display: none;
+  justify-content: center;
+  margin-bottom: 26px;
+}
+
+.formTitle {
+  font-size: clamp(25px, 20px + 0.97vw, 34px);
+  line-height: 1.1;
+  letter-spacing: -0.035em;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+
+.formSub {
+  font-size: 16px;
+  color: var(--mk-text-2);
+  margin: 0 0 28px;
+}
+
+.errorBanner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(240, 99, 44, 0.1);
+  border: 1px solid rgba(240, 99, 44, 0.35);
+  color: var(--mk-on-o);
+  border-radius: 12px;
+  padding: 13px 15px;
+  font-size: 14.5px;
+  margin-bottom: 20px;
+}
+
+.field {
+  margin-bottom: 18px;
+}
+
+.labelRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.required {
+  color: var(--mk-orange);
+  margin-left: 2px;
+}
+
+.forgot {
+  font-size: 13.5px;
+  font-weight: 600;
+  color: var(--mk-on-b);
+  text-decoration: none;
+}
+
+/* Focus lives on the wrapper, not the input, because the wrapper is what the
+   user sees as "the field" — the input inside it is chromeless. */
+.control {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 52px;
+  padding: 0 15px;
+  background: var(--mk-field);
+  border: 1px solid var(--mk-border-2);
+  border-radius: 12px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.control:focus-within {
+  border-color: var(--mk-blue);
+  box-shadow: var(--mk-focus-ring);
+}
+
+.controlIcon {
+  color: var(--mk-text-3);
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.control input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font-family: inherit;
+  font-size: 15.5px;
+  color: var(--mk-text);
+}
+
+.control input::placeholder {
+  color: var(--mk-text-3);
+}
+
+.reveal {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--mk-text-3);
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.reveal:hover {
+  color: var(--mk-text-2);
+}
+
+.submit {
+  width: 100%;
+  height: 52px;
+  border: 0;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #1a68b0, #12507f);
+  color: #fff;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  box-shadow: var(--mk-shadow-blue);
+  margin-top: 6px;
+  transition: transform 0.2s ease;
+}
+
+.submit:hover:not(:disabled) {
+  transform: translateY(-2px);
+}
+
+.submit:disabled {
+  opacity: 0.75;
+  cursor: wait;
+}
+
+.spinner {
+  display: inline-flex;
+  animation: mk-spin 0.9s linear infinite;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 24px 0;
+  font-family: var(--mk-mono);
+  font-size: 11.5px;
+  color: var(--mk-text-3);
+}
+
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--mk-border);
+}
+
+.secondary {
+  width: 100%;
+  height: 50px;
+  border: 1px solid var(--mk-border-2);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--mk-text);
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-decoration: none;
+  transition: border-color 0.2s ease;
+}
+
+.secondary:hover {
+  border-color: var(--mk-text-3);
+}
+
+.formFooter {
+  font-size: 15px;
+  text-align: center;
+  color: var(--mk-text-2);
+  margin: 24px 0 0;
+}
+
+.formFooter a {
+  color: var(--mk-on-b);
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.panelNote {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--mk-text-3);
+}
+
+/* ── Nested flows (2FA challenge, portal account setup) ───────────────────── */
+
+.subPanel {
+  background: var(--mk-panel);
+  border: 1px solid var(--mk-border);
+  border-radius: 16px;
+  padding: 26px 24px;
+}
+
+.centerLink {
+  display: block;
+  text-align: center;
+  font-size: 14px;
+  color: var(--mk-text-2);
+  background: none;
+  border: 0;
+  font-family: inherit;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 14px;
+}
+
+.centerLink:hover {
+  color: var(--mk-on-b);
+}
+
+/* ── Responsive ───────────────────────────────────────────────────────────── */
+
+@media (max-width: 900px) {
+  .root {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brandPanel {
+    display: none;
+  }
+
+  .mobileBrand {
+    display: flex;
+  }
+
+  .formPanel {
+    padding: 20px 20px 32px;
+    min-height: 100vh;
+  }
+}

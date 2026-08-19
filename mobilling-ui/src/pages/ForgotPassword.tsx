@@ -6,7 +6,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconMail, IconShieldCheck, IconLock, IconSun, IconMoon, IconArrowLeft, IconCheck,
   IconUserPlus,
@@ -23,6 +23,11 @@ type Step = 'request' | 'verify' | 'reset' | 'done';
 
 export default function ForgotPassword() {
   const navigate = useNavigate();
+  // The sign-in page deep-links here as ?channel=whatsapp for its "WhatsApp
+  // sign-in code" action, so the code is delivered over WhatsApp rather than
+  // email. Any other value falls through to the API's default (email + SMS).
+  const [searchParams] = useSearchParams();
+  const channel = searchParams.get('channel') === 'whatsapp' ? 'whatsapp' : undefined;
   const [step, setStep] = useState<Step>('request');
   const [loading, setLoading] = useState(false);
   const [identifier, setIdentifier] = useState('');
@@ -53,7 +58,7 @@ export default function ForgotPassword() {
   const handleRequest = async (values: typeof requestForm.values) => {
     setLoading(true);
     try {
-      const res = await forgotPassword(values.identifier);
+      const res = await forgotPassword(values.identifier, channel);
       setIdentifier(values.identifier);
       setEmailHint(res.data.email_hint || '');
       setIsRegistration(!!res.data.requires_registration);

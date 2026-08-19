@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
+<style>
+  :root {
+    --bg: #ffffff; --bg-alt: #f6f9fc; --panel: #ffffff; --border: #e9eef4; --border-2: #d9e2ec;
+    --text: #101725; --text-2: #5b6779; --text-3: #7b8798; --ink: #0c1220;
+    --field: #ffffff; --tint-b: #eef5fc; --on-b: #1a68b0;
+  }
+  html[data-theme="dark"] {
+    --bg: #0f1626; --bg-alt: #141d2e; --panel: #172032; --border: #26324a; --border-2: #33405c;
+    --text: #eff3f8; --text-2: #a7b3c4; --text-3: #8d9aad; --ink: #080e19;
+    --field: #121a2a; --tint-b: rgba(86,169,232,0.16); --on-b: #7ab6ec;
+  }
+  html, body { margin: 0; padding: 0; background: var(--bg); }
+  * { box-sizing: border-box; }
+  body { font-family: Archivo, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--on-b); text-decoration: none; }
+  a:hover { opacity: 0.78; }
+  button, input { font-family: inherit; }
+  input::placeholder { color: var(--text-3); }
+  .msi { font-family: 'Material Symbols Rounded'; font-weight: 400; font-style: normal; line-height: 1; display: inline-block; white-space: nowrap; -webkit-font-smoothing: antialiased; }
+  @keyframes om-in { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+  @keyframes om-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+  @keyframes om-spin { to { transform: rotate(360deg); } }
+  .om-stage > * { animation: om-in 0.75s cubic-bezier(0.22,0.72,0.2,1) both; }
+  .om-stage > *:nth-child(1) { animation-delay: 0.04s; }
+  .om-stage > *:nth-child(2) { animation-delay: 0.12s; }
+  .om-stage > *:nth-child(3) { animation-delay: 0.2s; }
+  .om-stage > *:nth-child(4) { animation-delay: 0.28s; }
+  .om-stage > *:nth-child(5) { animation-delay: 0.36s; }
+  .om-float { animation: om-float 7s ease-in-out 1s infinite; }
+  .om-btn { transition: transform 0.2s cubic-bezier(0.22,0.72,0.2,1), box-shadow 0.2s ease, background 0.2s ease, opacity 0.2s ease; }
+  .om-btn:hover { transform: translateY(-2px); }
+  .om-btn:active { transform: translateY(0); }
+  .om-field { transition: border-color 0.18s ease, box-shadow 0.18s ease, background 0.18s ease; }
+  .om-field:focus-within { border-color: #1a68b0; box-shadow: 0 0 0 4px rgba(26,104,176,0.14); }
+  .om-field input { border: 0; outline: none; background: transparent; color: var(--text); font-size: 15.5px; width: 100%; padding: 0; }
+  .om-spin { animation: om-spin 0.7s linear infinite; }
+  @media (prefers-reduced-motion: reduce) { .om-stage > *, .om-float { animation: none !important; } }
+</style>
+</helmet>
+
+<div style="min-height: 100vh; display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(0, 1fr); background: var(--bg); color: var(--text)">
+
+  <!-- left: brand -->
+  <div style="background: var(--ink); color: #fff; position: relative; overflow: hidden; padding: 44px 56px 40px; display: flex; flex-direction: column">
+    <div style="position: absolute; top: -180px; right: -140px; width: 560px; height: 560px; border-radius: 50%; background: radial-gradient(circle at 34% 32%, rgba(26,104,176,0.6), rgba(12,18,32,0) 68%)"></div>
+    <div style="position: absolute; bottom: -220px; left: -160px; width: 520px; height: 520px; border-radius: 50%; background: radial-gradient(circle at 60% 40%, rgba(47,174,96,0.3), rgba(12,18,32,0) 70%)"></div>
+    <div style="position: absolute; top: 0; left: 0; right: 0; height: 4px; background: linear-gradient(90deg, #f5c518, #2fae60 38%, #1a68b0 68%, #f0632c)"></div>
+
+    <a href="MoBilling Landing v2.dc.html" style="position: relative; display: flex; align-items: center; gap: 11px; color: #fff; flex-shrink: 0">
+      <img src="assets/mobilling-logo.png" alt="MoBilling" style="height: 36px; width: auto; display: block">
+      <span style="font-weight: 800; font-size: 21px; letter-spacing: -0.03em">MoBilling</span>
+    </a>
+
+    <div class="om-stage" style="position: relative; margin: auto 0; padding: 40px 0; max-width: 460px">
+      <div style="display: inline-flex; align-items: center; gap: 9px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); padding: 7px 13px; border-radius: 999px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.1em; color: #ffd24a; margin-bottom: 26px">
+        <span style="width: 6px; height: 6px; border-radius: 50%; background: #2fae60; display: block"></span>
+        BUILT FOR EAST AFRICA
+      </div>
+      <h1 style="font-size: 44px; line-height: 1.02; letter-spacing: -0.04em; font-weight: 800; margin: 0 0 18px; text-wrap: pretty">Billing &amp; statutory management made simple</h1>
+      <p style="font-size: 17px; line-height: 1.6; color: #b3bdcb; margin: 0 0 34px; max-width: 42ch">Streamline your invoicing, track payments, and stay compliant — all in one platform.</p>
+      <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 38px">
+        <div style="display: flex; align-items: center; gap: 14px">
+          <span style="width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span class="msi" style="font-size: 21px; color: #56a9e8">receipt_long</span></span>
+          <span style="font-size: 15.5px; color: #dbe2ea">Create invoices, quotations &amp; proformas in seconds</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px">
+          <span style="width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span class="msi" style="font-size: 21px; color: #4fd189">insert_chart</span></span>
+          <span style="font-size: 15.5px; color: #dbe2ea">Track payments, bills &amp; statutory obligations</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px">
+          <span style="width: 40px; height: 40px; border-radius: 12px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.14); display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span class="msi" style="font-size: 21px; color: #ffd24a">shield</span></span>
+          <span style="font-size: 15.5px; color: #dbe2ea">Secure multi-tenant platform with role-based access</span>
+        </div>
+      </div>
+      <div class="om-float" style="background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 16px; padding: 22px 24px">
+        <div style="display: flex; align-items: center; gap: 22px; flex-wrap: wrap">
+          <div>
+            <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.03em">500+</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: #8f9aa9; margin-top: 5px">BUSINESSES</div>
+          </div>
+          <div style="width: 1px; height: 34px; background: rgba(255,255,255,0.16)"></div>
+          <div>
+            <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.03em">50K+</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: #8f9aa9; margin-top: 5px">INVOICES</div>
+          </div>
+          <div style="width: 1px; height: 34px; background: rgba(255,255,255,0.16)"></div>
+          <div>
+            <div style="font-size: 26px; font-weight: 800; letter-spacing: -0.03em">99.9%</div>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; color: #8f9aa9; margin-top: 5px">UPTIME</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="position: relative; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: #6b7789; display: flex; flex-wrap: wrap; gap: 8px 20px; justify-content: space-between">
+      <span>© 2026 MOINFOTECH. ALL RIGHTS RESERVED.</span>
+      <span>INFO@MOINFO.CO.TZ</span>
+    </div>
+  </div>
+
+  <!-- right: form -->
+  <div style="position: relative; display: flex; flex-direction: column; padding: 26px 32px 40px; background: var(--bg)">
+    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 14px">
+      <a href="MoBilling Landing v2.dc.html" style="display: inline-flex; align-items: center; gap: 7px; font-size: 14.5px; font-weight: 600; color: var(--text-2)"><span class="msi" style="font-size: 18px">arrow_back</span>Back home</a>
+      <button onClick="{{ toggleTheme }}" aria-label="Toggle theme" style="width: 38px; height: 38px; border-radius: 11px; border: 1px solid var(--border); background: var(--bg-alt); color: var(--text-2); display: flex; align-items: center; justify-content: center; cursor: pointer"><span class="msi" style="font-size: 19px">{{ themeIcon }}</span></button>
+    </div>
+
+    <div class="om-stage" style="margin: auto; width: 100%; max-width: 424px; padding: 34px 0">
+      <div style="margin-bottom: 26px">
+        <h2 style="font-size: 34px; line-height: 1.1; letter-spacing: -0.035em; font-weight: 800; margin: 0 0 8px">Welcome back</h2>
+        <p style="font-size: 16px; color: var(--text-2); margin: 0">Sign in to continue to your dashboard.</p>
+      </div>
+
+
+      <sc-if value="{{ error }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; align-items: flex-start; gap: 10px; background: rgba(240,99,44,0.1); border: 1px solid rgba(240,99,44,0.35); color: #c2461f; border-radius: 12px; padding: 13px 15px; margin-bottom: 18px; font-size: 14.5px">
+          <span class="msi" style="font-size: 19px; flex-shrink: 0">error</span>
+          <span>{{ error }}</span>
+        </div>
+      </sc-if>
+
+      <form onSubmit="{{ submit }}">
+        <div style="margin-bottom: 18px">
+          <label for="om-id" style="display: flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 8px">Email or phone<span style="color: #f0632c">*</span></label>
+          <div class="om-field" style="display: flex; align-items: center; gap: 11px; background: var(--field); border: 1px solid var(--border-2); border-radius: 12px; padding: 0 15px; height: 52px">
+            <span class="msi" style="font-size: 20px; color: var(--text-3)">alternate_email</span>
+            <input id="om-id" name="identifier" type="text" autoComplete="username" placeholder="you@company.com or 0712 345 678" value="{{ identifier }}" onChange="{{ setIdentifier }}">
+          </div>
+        </div>
+
+        <div style="margin-bottom: 14px">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px">
+            <label for="om-pw" style="display: flex; align-items: center; gap: 5px; font-size: 14px; font-weight: 600; color: var(--text)">Password<span style="color: #f0632c">*</span></label>
+            <a href="#" style="font-size: 13.5px; font-weight: 600">Forgot password?</a>
+          </div>
+          <div class="om-field" style="display: flex; align-items: center; gap: 11px; background: var(--field); border: 1px solid var(--border-2); border-radius: 12px; padding: 0 8px 0 15px; height: 52px">
+            <span class="msi" style="font-size: 20px; color: var(--text-3)">lock</span>
+            <input id="om-pw" name="password" type="{{ pwType }}" autoComplete="current-password" placeholder="Your password" value="{{ password }}" onChange="{{ setPassword }}">
+            <button type="button" onClick="{{ togglePw }}" aria-label="Show password" style="width: 36px; height: 36px; border: 0; border-radius: 9px; background: transparent; color: var(--text-3); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0"><span class="msi" style="font-size: 20px">{{ pwIcon }}</span></button>
+          </div>
+        </div>
+
+        <label style="display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--text-2); cursor: pointer; margin-bottom: 22px">
+          <input type="checkbox" checked="{{ remember }}" onChange="{{ toggleRemember }}" style="width: 17px; height: 17px; accent-color: #1a68b0; cursor: pointer">
+          Keep me signed in for 30 days
+        </label>
+
+        <button class="om-btn" type="submit" style="{{ submitStyle }}">
+          <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+            <span class="msi om-spin" style="font-size: 19px">progress_activity</span>
+          </sc-if>
+          {{ submitLabel }}
+        </button>
+      </form>
+
+      <div style="display: flex; align-items: center; gap: 14px; margin: 24px 0">
+        <span style="height: 1px; background: var(--border); flex: 1"></span>
+        <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; color: var(--text-3)">OR</span>
+        <span style="height: 1px; background: var(--border); flex: 1"></span>
+      </div>
+
+      <a class="om-btn" href="#" style="display: flex; align-items: center; justify-content: center; gap: 10px; height: 50px; border: 1px solid var(--border-2); border-radius: 12px; color: var(--text); font-size: 15px; font-weight: 600; background: var(--panel)">
+        <span class="msi" style="font-size: 20px; color: #2fae60">chat</span>
+        Get a WhatsApp sign-in link
+      </a>
+
+      <p style="font-size: 15px; color: var(--text-2); text-align: center; margin: 26px 0 0">Don't have an account? <a href="MoBilling Landing v2.dc.html#pricing" style="font-weight: 700">Create one free</a></p>
+    </div>
+
+    <div style="display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; color: var(--text-3)">
+      <span class="msi" style="font-size: 17px">verified_user</span>
+      Protected by 2FA and role-based access control
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Light&quot;,&quot;Dark&quot;],&quot;default&quot;:&quot;Light&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Appearance&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    let saved = null;
+    try { saved = localStorage.getItem("mobilling-theme"); } catch (e) {}
+    this.state = {
+      theme: saved || (props.theme === "Dark" ? "dark" : "light"),
+      identifier: "", password: "", showPw: false, remember: true, loading: false, error: ""
+    };
+  }
+  applyTheme() { document.documentElement.setAttribute("data-theme", this.state.theme); }
+  componentDidMount() { this.applyTheme(); }
+  componentDidUpdate() { this.applyTheme(); }
+  componentWillUnmount() { clearTimeout(this._t); }
+  renderVals() {
+    const loading = this.state.loading;
+    return {
+      identifier: this.state.identifier,
+      password: this.state.password,
+      remember: this.state.remember,
+      error: this.state.error,
+      loading,
+      pwType: this.state.showPw ? "text" : "password",
+      pwIcon: this.state.showPw ? "visibility_off" : "visibility",
+      themeIcon: this.state.theme === "dark" ? "light_mode" : "dark_mode",
+      submitLabel: loading ? "Signing in…" : "Sign in",
+      submitStyle: {
+        width: "100%", height: "52px", border: 0, borderRadius: "12px", cursor: loading ? "wait" : "pointer",
+        display: "flex", alignItems: "center", justifyContent: "center", gap: "10px",
+        fontSize: "16px", fontWeight: 700, color: "#fff",
+        background: "linear-gradient(90deg, #1a68b0, #12507f)",
+        boxShadow: "0 16px 30px -18px rgba(26,104,176,0.9)",
+        opacity: loading ? 0.75 : 1
+      },
+      setIdentifier: e => this.setState({ identifier: e.target.value, error: "" }),
+      setPassword: e => this.setState({ password: e.target.value, error: "" }),
+      togglePw: () => this.setState(s => ({ showPw: !s.showPw })),
+      toggleRemember: e => this.setState({ remember: e.target.checked }),
+      toggleTheme: () => this.setState(s => {
+        const next = s.theme === "dark" ? "light" : "dark";
+        try { localStorage.setItem("mobilling-theme", next); } catch (err) {}
+        return { theme: next };
+      }),
+      submit: e => {
+        e.preventDefault();
+        const id = this.state.identifier.trim();
+        if (!id) return this.setState({ error: "Enter your email address or phone number." });
+        const looksEmail = id.indexOf("@") > 0;
+        const looksPhone = /^[+0-9 ()-]{9,}$/.test(id);
+        if (!looksEmail && !looksPhone) return this.setState({ error: "That doesn't look like an email or a phone number." });
+        if (this.state.password.length < 6) return this.setState({ error: "Password must be at least 6 characters." });
+        this.setState({ loading: true, error: "" });
+        this._t = setTimeout(() => this.setState({ loading: false, error: "We couldn't find an account with those details. Check and try again." }), 1400);
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

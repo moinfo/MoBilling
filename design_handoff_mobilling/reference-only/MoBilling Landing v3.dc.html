@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0,0&display=block" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f4efe6; --paper-2: #ece5d8; --panel: #fffdf9; --line: #d9d0be; --line-2: #c8bda6;
+    --ink: #14110d; --ink-2: #4f4739; --ink-3: #7c7263;
+    --blue: #1a68b0; --green: #2fae60; --yellow: #f5c518; --orange: #f0632c;
+    --on-b: #1a68b0; --on-g: #23874a; --on-y: #8a6408; --on-o: #c2461f;
+    --tint-b: #e7effa; --tint-g: #e6f3ea; --tint-y: #fbf1d4; --tint-o: #fbe7de;
+  }
+  html[data-theme="dark"] {
+    --paper: #12100e; --paper-2: #1a1714; --panel: #1e1a16; --line: #332c25; --line-2: #453c31;
+    --ink: #f5efe4; --ink-2: #bdb3a4; --ink-3: #90867a;
+    --on-b: #79b7ed; --on-g: #5ed294; --on-y: #f0c645; --on-o: #f58a5f;
+    --tint-b: rgba(121,183,237,0.14); --tint-g: rgba(94,210,148,0.14); --tint-y: rgba(240,198,69,0.14); --tint-o: rgba(245,138,95,0.14);
+  }
+  html, body { margin: 0; padding: 0; background: var(--paper); }
+  * { box-sizing: border-box; }
+  body { font-family: Archivo, Helvetica, Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--on-b); text-decoration: none; }
+  a:hover { opacity: 0.75; }
+  button { font-family: inherit; }
+  .msi { font-family: 'Material Symbols Rounded'; font-weight: 400; font-style: normal; line-height: 1; display: inline-block; white-space: nowrap; -webkit-font-smoothing: antialiased; }
+  .om-grain { position: fixed; inset: 0; pointer-events: none; z-index: 60; opacity: 0.5; mix-blend-mode: multiply; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E"); }
+  @keyframes om-marquee { from { transform: translate3d(0,0,0); } to { transform: translate3d(-50%,0,0); } }
+  @keyframes om-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
+</helmet>
+
+<div style="background: var(--paper); color: var(--ink); position: relative; overflow: hidden">
+
+  <!-- grain -->
+  <div class="om-grain"></div>
+
+  <!-- topbar -->
+  <div style="background: var(--ink); color: var(--paper); font-family: 'IBM Plex Mono', monospace; font-size: 11.5px; letter-spacing: 0.08em">
+    <div style="max-width: 1300px; margin: 0 auto; padding: 10px 34px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 24px">
+      <div style="display: flex; flex-wrap: wrap; gap: 8px 22px; opacity: 0.72">
+        <span style="white-space: nowrap">INFO@MOINFO.CO.TZ</span>
+        <span style="white-space: nowrap">+255 689 011 111</span>
+      </div>
+      <a href="#contact" style="color: var(--yellow); white-space: nowrap">CHAT ON WHATSAPP →</a>
+    </div>
+  </div>
+
+  <!-- nav -->
+  <div style="background: var(--paper); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 40">
+    <div style="max-width: 1300px; margin: 0 auto; padding: 14px 34px; display: flex; align-items: center; gap: 26px">
+      <a href="#" style="display: flex; align-items: center; gap: 10px; color: var(--ink); flex-shrink: 0">
+        <img src="assets/mobilling-logo.png" alt="MoBilling" style="height: 34px; width: auto; display: block">
+        <span style="font-weight: 800; font-size: 20px; letter-spacing: -0.035em">MoBilling</span>
+      </a>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px 20px; font-family: 'IBM Plex Mono', monospace; font-size: 12px; letter-spacing: 0.06em; flex: 1 1 auto; min-width: 0">
+        <a href="#features" style="color: var(--ink-2); white-space: nowrap">FEATURES</a>
+        <a href="#hosting" style="color: var(--ink-2); white-space: nowrap">HOSTING</a>
+        <a href="#reseller" style="color: var(--ink-2); white-space: nowrap">RESELLER</a>
+        <a href="#pricing" style="color: var(--ink-2); white-space: nowrap">PRICING</a>
+        <a href="#faq" style="color: var(--ink-2); white-space: nowrap">FAQ</a>
+        <a href="#contact" style="color: var(--ink-2); white-space: nowrap">CONTACT</a>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0">
+        <button onClick="{{ toggleTheme }}" aria-label="Toggle theme" style="width: 38px; height: 38px; border-radius: 999px; border: 1px solid var(--line-2); background: transparent; color: var(--ink-2); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0" style-hover="color: var(--ink); border-color: var(--ink)"><span class="msi" style="font-size: 19px">{{ themeIcon }}</span></button>
+        <a href="#" style="font-size: 14.5px; font-weight: 600; color: var(--ink); white-space: nowrap">Sign in</a>
+        <a href="#pricing" style="background: var(--ink); color: var(--paper); font-size: 14.5px; font-weight: 700; padding: 11px 20px; border-radius: 999px; white-space: nowrap">Get started</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- hero -->
+  <div style="position: relative; max-width: 1300px; margin: 0 auto; padding: 76px 34px 0">
+    <div style="position: absolute; top: 20px; right: -120px; width: 460px; height: 460px; border-radius: 50%; background: radial-gradient(circle at 34% 32%, var(--tint-b), rgba(0,0,0,0) 70%); pointer-events: none"></div>
+    <div style="position: absolute; top: 380px; left: -160px; width: 420px; height: 420px; border-radius: 50%; background: radial-gradient(circle at 60% 40%, var(--tint-y), rgba(0,0,0,0) 72%); pointer-events: none"></div>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1.06fr) minmax(0, 1fr); gap: 54px; align-items: start; position: relative">
+      <div>
+        <div style="display: flex; align-items: center; gap: 12px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 30px">
+          <span style="width: 40px; height: 1px; background: var(--line-2); display: block"></span>
+          EST. TANZANIA · WHMCS-STYLE PLATFORM
+        </div>
+        <h1 style="font-size: 88px; line-height: 0.9; letter-spacing: -0.045em; font-weight: 900; margin: 0 0 28px; text-wrap: pretty">
+          Billing,<br>
+          hosting &amp;<br>
+          <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; letter-spacing: -0.02em; color: var(--on-b)">.tz domains</span><br>
+          on autopilot<span style="width: 16px; height: 16px; border-radius: 50%; background: var(--orange); display: inline-block; margin-left: 14px; vertical-align: 0.12em"></span>
+        </h1>
+        <p style="font-size: 19px; line-height: 1.62; color: var(--ink-2); max-width: 44ch; margin: 0 0 34px; text-wrap: pretty">
+          Invoices, statutory bills, a client portal, cPanel provisioning and a direct .tz registrar — everything WHMCS does, plus East African billing, in one platform. White-label it and sell it as your own.
+        </p>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 46px">
+          <a href="#pricing" style="background: var(--ink); color: var(--paper); font-size: 16.5px; font-weight: 700; padding: 16px 30px; border-radius: 999px; display: inline-flex; align-items: center; gap: 10px">Start free today <span class="msi" style="font-size: 19px">arrow_outward</span></a>
+          <a href="#contact" style="border: 1px solid var(--line-2); color: var(--ink); font-size: 16.5px; font-weight: 600; padding: 16px 30px; border-radius: 999px" style-hover="border-color: var(--ink)">WhatsApp us</a>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line)">
+          <div style="background: var(--paper); padding: 15px 16px; display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink-2)"><span class="msi" style="font-size: 18px; color: var(--on-b)">public</span>.tz registry connected</div>
+          <div style="background: var(--paper); padding: 15px 16px; display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink-2)"><span class="msi" style="font-size: 18px; color: var(--on-g)">dns</span>cPanel automation</div>
+          <div style="background: var(--paper); padding: 15px 16px; display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink-2)"><span class="msi" style="font-size: 18px; color: var(--on-y)">payments</span>M-Pesa &amp; Pesapal</div>
+          <div style="background: var(--paper); padding: 15px 16px; display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--ink-2)"><span class="msi" style="font-size: 18px; color: var(--on-o)">headset_mic</span>Local support team</div>
+        </div>
+      </div>
+
+      <!-- arch panel -->
+      <div style="position: relative">
+        <div style="position: absolute; inset: -14px -14px auto -14px; height: 240px; border-radius: 240px 240px 0 0; border: 1px solid var(--line-2); pointer-events: none"></div>
+        <div style="position: absolute; top: -26px; right: 6px; z-index: 3; width: 96px; height: 96px; border-radius: 50%; background: var(--yellow); color: #241a00; display: flex; align-items: center; justify-content: center; text-align: center; font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; line-height: 1.3; letter-spacing: 0.08em; transform: rotate(-11deg); box-shadow: 0 14px 28px -18px rgba(0,0,0,0.5)">FREE<br>TRIAL</div>
+        <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 200px 200px 18px 18px; overflow: hidden; box-shadow: 0 40px 70px -46px rgba(20,17,13,0.6)">
+          <div style="padding: 54px 24px 14px; text-align: center">
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.14em; color: var(--ink-3)">MOBILLING / DASHBOARD</div>
+            <div style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 34px; margin-top: 8px; letter-spacing: -0.02em">Leo hii</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line)">
+            <div style="background: var(--panel); padding: 16px 14px; text-align: center">
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 7px">REVENUE</div>
+              <div style="font-size: 20px; font-weight: 800; letter-spacing: -0.03em">4.2M</div>
+            </div>
+            <div style="background: var(--panel); padding: 16px 14px; text-align: center">
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 7px">HOSTING</div>
+              <div style="font-size: 20px; font-weight: 800; letter-spacing: -0.03em">109</div>
+            </div>
+            <div style="background: var(--panel); padding: 16px 14px; text-align: center">
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.1em; color: var(--ink-3); margin-bottom: 7px">DOMAINS</div>
+              <div style="font-size: 20px; font-weight: 800; letter-spacing: -0.03em">317</div>
+            </div>
+          </div>
+          <div style="padding: 16px 22px 4px; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--ink-3)">RECENT INVOICES</div>
+          <div style="padding: 0 22px">
+            <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line)">
+              <span style="width: 30px; height: 30px; border-radius: 50%; background: var(--tint-b); color: var(--on-b); font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">A</span>
+              <span style="font-size: 14.5px; font-weight: 600; flex: 1">Amina Traders</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--ink-2)">450,000</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.06em; color: var(--on-g); background: var(--tint-g); padding: 4px 8px; border-radius: 999px">PAID</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line)">
+              <span style="width: 30px; height: 30px; border-radius: 50%; background: var(--tint-y); color: var(--on-y); font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">K</span>
+              <span style="font-size: 14.5px; font-weight: 600; flex: 1">Kibaha Hardware</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--ink-2)">182,500</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.06em; color: var(--on-y); background: var(--tint-y); padding: 4px 8px; border-radius: 999px">PENDING</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--line)">
+              <span style="width: 30px; height: 30px; border-radius: 50%; background: var(--tint-g); color: var(--on-g); font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">T</span>
+              <span style="font-size: 14.5px; font-weight: 600; flex: 1">TopNet Ltd</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--ink-2)">320,000</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.06em; color: var(--on-g); background: var(--tint-g); padding: 4px 8px; border-radius: 999px">PAID</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px; padding: 13px 0">
+              <span style="width: 30px; height: 30px; border-radius: 50%; background: var(--tint-o); color: var(--on-o); font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">S</span>
+              <span style="font-size: 14.5px; font-weight: 600; flex: 1">Salama Shops</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; color: var(--ink-2)">95,000</span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 9.5px; letter-spacing: 0.06em; color: var(--on-o); background: var(--tint-o); padding: 4px 8px; border-radius: 999px">OVERDUE</span>
+            </div>
+          </div>
+          <div style="border-top: 1px solid var(--line); padding: 16px 22px 20px; display: flex; align-items: center; gap: 12px">
+            <span class="msi" style="font-size: 20px; color: var(--on-g)">check_circle</span>
+            <span style="font-size: 13.5px; color: var(--ink-2)">amina-traders.co.tz registered &amp; provisioned automatically</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- marquee -->
+  <div style="margin-top: 76px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--paper-2); overflow: hidden">
+    <div style="display: flex; width: max-content; animation: om-marquee 34s linear infinite; font-family: 'IBM Plex Mono', monospace; font-size: 12.5px; letter-spacing: 0.14em; color: var(--ink-2); padding: 13px 0">
+      <div style="display: flex; gap: 34px; padding-right: 34px">
+        <span>INVOICING</span><span style="color: var(--blue)">✦</span><span>STATUTORY BILLS</span><span style="color: var(--green)">✦</span><span>CPANEL PROVISIONING</span><span style="color: var(--yellow)">✦</span><span>.TZ DOMAINS</span><span style="color: var(--orange)">✦</span><span>M-PESA</span><span style="color: var(--blue)">✦</span><span>CLIENT PORTAL</span><span style="color: var(--green)">✦</span><span>HELPDESK</span><span style="color: var(--yellow)">✦</span><span>WHITE-LABEL</span><span style="color: var(--orange)">✦</span>
+      </div>
+      <div style="display: flex; gap: 34px; padding-right: 34px">
+        <span>INVOICING</span><span style="color: var(--blue)">✦</span><span>STATUTORY BILLS</span><span style="color: var(--green)">✦</span><span>CPANEL PROVISIONING</span><span style="color: var(--yellow)">✦</span><span>.TZ DOMAINS</span><span style="color: var(--orange)">✦</span><span>M-PESA</span><span style="color: var(--blue)">✦</span><span>CLIENT PORTAL</span><span style="color: var(--green)">✦</span><span>HELPDESK</span><span style="color: var(--yellow)">✦</span><span>WHITE-LABEL</span><span style="color: var(--orange)">✦</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width: 1300px; margin: 0 auto; padding: 0 34px">
+
+    <!-- stats -->
+    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--line); border-bottom: 1px solid var(--line)">
+      <div style="background: var(--paper); padding: 44px 20px 44px 0">
+        <div style="font-size: 52px; font-weight: 900; letter-spacing: -0.05em; line-height: 1; color: var(--on-b)">500<span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400">+</span></div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; color: var(--ink-3); margin-top: 10px">BUSINESSES ONBOARDED</div>
+      </div>
+      <div style="background: var(--paper); padding: 44px 20px 44px 26px">
+        <div style="font-size: 52px; font-weight: 900; letter-spacing: -0.05em; line-height: 1; color: var(--on-g)">50K<span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400">+</span></div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; color: var(--ink-3); margin-top: 10px">INVOICES GENERATED</div>
+      </div>
+      <div style="background: var(--paper); padding: 44px 20px 44px 26px">
+        <div style="font-size: 52px; font-weight: 900; letter-spacing: -0.05em; line-height: 1; color: var(--on-y)">300<span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400">+</span></div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; color: var(--ink-3); margin-top: 10px">DOMAINS AUTOMATED</div>
+      </div>
+      <div style="background: var(--paper); padding: 44px 0 44px 26px">
+        <div style="font-size: 52px; font-weight: 900; letter-spacing: -0.05em; line-height: 1; color: var(--on-o)">99.9<span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400">%</span></div>
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.12em; color: var(--ink-3); margin-top: 10px">UPTIME</div>
+      </div>
+    </div>
+
+    <!-- how it works -->
+    <div style="padding: 88px 0 0">
+      <div style="display: grid; grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr); gap: 54px; align-items: end; margin-bottom: 48px">
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 20px">01 — HOW IT WORKS</div>
+          <h2 style="font-size: 54px; line-height: 0.98; letter-spacing: -0.045em; font-weight: 900; margin: 0">Up and running in <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; color: var(--on-g)">minutes</span></h2>
+        </div>
+        <p style="font-size: 18px; line-height: 1.62; color: var(--ink-2); margin: 0; max-width: 46ch">No complicated setup, no training, no consultant. Sign up, add your services, and start billing the same afternoon.</p>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px">
+        <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 28px 32px; transform: rotate(-0.7deg)">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px">
+            <span style="width: 46px; height: 46px; border-radius: 50%; background: var(--tint-b); color: var(--on-b); display: flex; align-items: center; justify-content: center"><span class="msi" style="font-size: 23px">person_add</span></span>
+            <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 34px; color: var(--line-2)">01</span>
+          </div>
+          <h3 style="font-size: 21px; font-weight: 700; letter-spacing: -0.025em; margin: 0 0 10px">Create your account</h3>
+          <p style="font-size: 15.5px; line-height: 1.62; color: var(--ink-2); margin: 0">Sign up in seconds. Set your business profile and logo, then invite your team.</p>
+        </div>
+        <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 28px 32px; transform: rotate(0.5deg)">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px">
+            <span style="width: 46px; height: 46px; border-radius: 50%; background: var(--tint-g); color: var(--on-g); display: flex; align-items: center; justify-content: center"><span class="msi" style="font-size: 23px">tune</span></span>
+            <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 34px; color: var(--line-2)">02</span>
+          </div>
+          <h3 style="font-size: 21px; font-weight: 700; letter-spacing: -0.025em; margin: 0 0 10px">Add services &amp; pricing</h3>
+          <p style="font-size: 15.5px; line-height: 1.62; color: var(--ink-2); margin: 0">Import clients, define hosting plans and domain pricing — connect your WHM server if you host.</p>
+        </div>
+        <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 28px 32px; transform: rotate(-0.4deg)">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 22px">
+            <span style="width: 46px; height: 46px; border-radius: 50%; background: var(--tint-y); color: var(--on-y); display: flex; align-items: center; justify-content: center"><span class="msi" style="font-size: 23px">rocket_launch</span></span>
+            <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-size: 34px; color: var(--line-2)">03</span>
+          </div>
+          <h3 style="font-size: 21px; font-weight: 700; letter-spacing: -0.025em; margin: 0 0 10px">Sell on autopilot</h3>
+          <p style="font-size: 15.5px; line-height: 1.62; color: var(--ink-2); margin: 0">Clients order and pay in your portal; provisioning, renewals, reminders and dunning run themselves.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- features -->
+    <div id="features" style="padding: 92px 0 0">
+      <div style="display: flex; align-items: end; justify-content: space-between; gap: 44px; flex-wrap: wrap; margin-bottom: 44px">
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 20px">02 — FEATURES / 09</div>
+          <h2 style="font-size: 54px; line-height: 0.98; letter-spacing: -0.045em; font-weight: 900; margin: 0">Everything you need to<br>run the <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; color: var(--on-b)">business</span></h2>
+        </div>
+        <p style="font-size: 17px; line-height: 1.6; color: var(--ink-2); margin: 0; max-width: 32ch">From generating an invoice to running a WhatsApp campaign — one platform, no add-ons.</p>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line); border: 1px solid var(--line)">
+        <sc-for list="{{ features }}" as="ft" hint-placeholder-count="9">
+          <div style="background: var(--panel); padding: 30px 26px 32px" style-hover="background: var(--paper-2)">
+            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px">
+              <span style="width: 42px; height: 42px; border-radius: 13px; background: {{ ft.tint }}; color: {{ ft.on }}; display: flex; align-items: center; justify-content: center"><span class="msi" style="font-size: 22px">{{ ft.icon }}</span></span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; color: var(--ink-3)">{{ ft.num }}</span>
+            </div>
+            <h3 style="font-size: 19.5px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 9px">{{ ft.title }}</h3>
+            <p style="font-size: 15px; line-height: 1.62; color: var(--ink-2); margin: 0">{{ ft.body }}</p>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- hosting: ink section -->
+  <div id="hosting" style="background: var(--ink); color: var(--paper); margin-top: 96px; position: relative; overflow: hidden">
+    <div style="position: absolute; top: -140px; right: -100px; width: 480px; height: 480px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.14)"></div>
+    <div style="position: absolute; top: -60px; right: -20px; width: 320px; height: 320px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.1)"></div>
+    <div style="max-width: 1300px; margin: 0 auto; padding: 90px 34px 96px; position: relative">
+      <div style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 54px; align-items: end; margin-bottom: 48px">
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--yellow); margin-bottom: 20px">03 — HOSTING &amp; DOMAINS</div>
+          <h2 style="font-size: 56px; line-height: 0.98; letter-spacing: -0.045em; font-weight: 900; margin: 0">Everything WHMCS<br>does — <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400">built in</span></h2>
+        </div>
+        <p style="font-size: 18px; line-height: 1.62; opacity: 0.72; margin: 0; max-width: 48ch">Sell cPanel hosting and .tz domains with end-to-end automation: order, pay, provision, renew, suspend. No license fees, no plugins, no cron babysitting.</p>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: rgba(255,255,255,0.16); border: 1px solid rgba(255,255,255,0.16)">
+        <sc-for list="{{ hosting }}" as="h" hint-placeholder-count="6">
+          <div style="background: var(--ink); padding: 30px 26px 34px">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 20px">
+              <span style="width: 42px; height: 42px; border-radius: 13px; background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center"><span class="msi" style="font-size: 21px; color: {{ h.color }}">{{ h.icon }}</span></span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.1em; opacity: 0.5">{{ h.num }}</span>
+            </div>
+            <h3 style="font-size: 19.5px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 9px">{{ h.title }}</h3>
+            <p style="font-size: 15px; line-height: 1.62; opacity: 0.7; margin: 0">{{ h.body }}</p>
+          </div>
+        </sc-for>
+      </div>
+      <div style="margin-top: 26px; border: 1px solid rgba(255,255,255,0.18); border-radius: 20px; padding: 32px; display: flex; align-items: center; gap: 32px; flex-wrap: wrap">
+        <span style="width: 54px; height: 54px; border-radius: 50%; background: var(--orange); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0"><span class="msi" style="font-size: 26px">swap_horiz</span></span>
+        <div style="flex: 1 1 300px">
+          <h3 style="font-size: 22px; font-weight: 700; letter-spacing: -0.025em; margin: 0 0 8px">Migrating from WHMCS?</h3>
+          <p style="font-size: 15.5px; line-height: 1.62; opacity: 0.72; margin: 0; max-width: 66ch">We import your clients, services, invoices, payments and domains — your clients even keep their existing portal passwords. Zero-downtime cutover.</p>
+        </div>
+        <a href="#contact" style="background: var(--paper); color: var(--ink); font-size: 15.5px; font-weight: 700; padding: 14px 26px; border-radius: 999px; white-space: nowrap">Ask about migration →</a>
+      </div>
+    </div>
+  </div>
+
+  <div style="max-width: 1300px; margin: 0 auto; padding: 0 34px">
+
+    <!-- testimonials -->
+    <sc-if value="{{ showTestimonials }}" hint-placeholder-val="{{ true }}">
+      <div style="padding: 92px 0 0">
+        <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 40px">04 — CUSTOMERS / EAST AFRICA</div>
+        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 22px">
+          <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 32px 28px; transform: rotate(-0.6deg)">
+            <div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 56px; line-height: 0.6; color: var(--on-b); margin-bottom: 14px">“</div>
+            <p style="font-size: 18px; line-height: 1.55; color: var(--ink); margin: 0 0 26px; text-wrap: pretty">MoBilling replaced our manual Excel tracking. Now I generate invoices and track M-Pesa payments in seconds. Statutory deadlines? I never miss them anymore.</p>
+            <div style="display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 18px">
+              <span style="width: 38px; height: 38px; border-radius: 50%; background: var(--tint-b); color: var(--on-b); font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">AH</span>
+              <div>
+                <div style="font-size: 14.5px; font-weight: 700">Amina Hassan</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-3); margin-top: 3px">AMINA TRADERS · DAR ES SALAAM</div>
+              </div>
+            </div>
+          </div>
+          <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 32px 28px; transform: rotate(0.5deg)">
+            <div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 56px; line-height: 0.6; color: var(--on-g); margin-bottom: 14px">“</div>
+            <p style="font-size: 18px; line-height: 1.55; color: var(--ink); margin: 0 0 26px; text-wrap: pretty">We moved our whole hosting business off WHMCS. Domains register themselves when clients pay, cPanel accounts provision automatically, and we stopped paying license fees.</p>
+            <div style="display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 18px">
+              <span style="width: 38px; height: 38px; border-radius: 50%; background: var(--tint-g); color: var(--on-g); font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">DO</span>
+              <div>
+                <div style="font-size: 14.5px; font-weight: 700">David Ochieng</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-3); margin-top: 3px">OCHIENG IT SOLUTIONS · NAIROBI</div>
+              </div>
+            </div>
+          </div>
+          <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 32px 28px; transform: rotate(-0.35deg)">
+            <div style="font-family: 'Instrument Serif', Georgia, serif; font-size: 56px; line-height: 0.6; color: var(--on-y); margin-bottom: 14px">“</div>
+            <p style="font-size: 18px; line-height: 1.55; color: var(--ink); margin: 0 0 26px; text-wrap: pretty">Our field sales team now logs every door-to-door visit from their phones. Management sees real-time conversion stats. Best investment we made this year.</p>
+            <div style="display: flex; align-items: center; gap: 12px; border-top: 1px solid var(--line); padding-top: 18px">
+              <span style="width: 38px; height: 38px; border-radius: 50%; background: var(--tint-y); color: var(--on-y); font-size: 12.5px; font-weight: 700; display: flex; align-items: center; justify-content: center">FK</span>
+              <div>
+                <div style="font-size: 14.5px; font-weight: 700">Fatuma Kombo</div>
+                <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.06em; color: var(--ink-3); margin-top: 3px">KOMBO SUPPLIES · MOMBASA</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- reseller -->
+    <div id="reseller" style="padding: 92px 0 0">
+      <div style="background: var(--blue); color: #fff; border-radius: 26px; padding: 58px 48px 54px; position: relative; overflow: hidden">
+        <div style="position: absolute; bottom: -180px; left: -120px; width: 460px; height: 460px; border-radius: 50%; background: radial-gradient(circle, rgba(245,197,24,0.32), rgba(255,255,255,0) 70%)"></div>
+        <div style="position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 50px; align-items: end; margin-bottom: 44px">
+          <div>
+            <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 20px">
+              <span style="width: 62px; height: 62px; border-radius: 50%; border: 1px dashed rgba(255,255,255,0.5); display: flex; align-items: center; justify-content: center; flex-shrink: 0; animation: om-spin 22s linear infinite"><span class="msi" style="font-size: 22px; color: var(--yellow)">star</span></span>
+              <span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: rgba(255,255,255,0.72)">05 — WHITE-LABEL RESELLER</span>
+            </div>
+            <h2 style="font-size: 56px; line-height: 0.96; letter-spacing: -0.05em; font-weight: 900; margin: 0">Your brand.<br><span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; color: var(--yellow)">Our engine.</span></h2>
+          </div>
+          <p style="font-size: 18px; line-height: 1.62; color: rgba(255,255,255,0.84); margin: 0; max-width: 46ch">Start your own hosting and domains business without building any infrastructure. Resell under your own name — we run the registry, servers and billing behind the scenes.</p>
+        </div>
+        <div style="position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: rgba(255,255,255,0.26); border: 1px solid rgba(255,255,255,0.26); border-radius: 4px">
+          <div style="background: var(--blue); padding: 28px 26px 30px">
+            <span class="msi" style="font-size: 24px; color: var(--yellow); margin-bottom: 16px; display: block">sell</span>
+            <h3 style="font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 9px">Your brand, your prices</h3>
+            <p style="font-size: 15px; line-height: 1.62; color: rgba(255,255,255,0.82); margin: 0">Run the whole platform under your business name and logo. Set your own hosting plans and per-TLD pricing — keep the margin.</p>
+          </div>
+          <div style="background: var(--blue); padding: 28px 26px 30px">
+            <span class="msi" style="font-size: 24px; color: var(--yellow); margin-bottom: 16px; display: block">settings_suggest</span>
+            <h3 style="font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 9px">We run the machinery</h3>
+            <p style="font-size: 15px; line-height: 1.62; color: rgba(255,255,255,0.82); margin: 0">Registry connections, cPanel automation, billing engine, portal and SSL monitoring — maintained for you.</p>
+          </div>
+          <div style="background: var(--blue); padding: 28px 26px 30px">
+            <span class="msi" style="font-size: 24px; color: var(--yellow); margin-bottom: 16px; display: block">shield_lock</span>
+            <h3 style="font-size: 19px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 9px">Isolated tenant workspace</h3>
+            <p style="font-size: 15px; line-height: 1.62; color: rgba(255,255,255,0.82); margin: 0">Your clients, invoices and services live in their own isolated workspace. Your customers only ever see your brand.</p>
+          </div>
+        </div>
+        <div style="position: relative; display: flex; flex-wrap: wrap; gap: 12px; margin-top: 36px">
+          <a href="#contact" style="background: #fff; color: var(--blue); font-size: 15.5px; font-weight: 700; padding: 14px 26px; border-radius: 999px">Become a reseller →</a>
+          <a href="#contact" style="border: 1px solid rgba(255,255,255,0.6); color: #fff; font-size: 15.5px; font-weight: 600; padding: 14px 26px; border-radius: 999px">Talk to sales</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- pricing -->
+    <div id="pricing" style="padding: 92px 0 0">
+      <div style="display: flex; align-items: end; justify-content: space-between; gap: 36px; flex-wrap: wrap; margin-bottom: 40px">
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 20px">06 — PRICING</div>
+          <h2 style="font-size: 54px; line-height: 0.98; letter-spacing: -0.045em; font-weight: 900; margin: 0">Simple, <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; color: var(--on-o)">transparent</span><br>pricing</h2>
+        </div>
+        <div style="display: inline-flex; border: 1px solid var(--line-2); border-radius: 999px; padding: 4px; background: var(--panel)">
+          <button onClick="{{ showHosted }}" style="{{ hostedTabStyle }}">Hosted plans</button>
+          <button onClick="{{ showSelf }}" style="{{ selfTabStyle }}">Self-hosted licence</button>
+        </div>
+      </div>
+
+      <sc-if value="{{ isHosted }}" hint-placeholder-val="{{ true }}">
+        <div>
+          <p style="font-size: 16.5px; color: var(--ink-2); margin: 0 0 32px; max-width: 60ch">Start with a free trial. Choose a plan when you're ready — billed per 30 days, cancel any time.</p>
+          <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; align-items: start">
+            <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 26px; display: flex; flex-direction: column">
+              <div style="font-size: 19px; font-weight: 700; margin-bottom: 6px">Starter</div>
+              <div style="font-size: 13.5px; color: var(--ink-3); margin-bottom: 22px; min-height: 38px">Small businesses just getting started</div>
+              <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.05em">TZS 10,000</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-3); margin: 7px 0 24px">PER 30 DAYS</div>
+              <div style="display: flex; flex-direction: column; gap: 11px; font-size: 14.5px; color: var(--ink-2); margin-bottom: 28px">
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-b)">check</span>Up to 50 invoices / month</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-b)">check</span>Up to 20 clients</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-b)">check</span>Email support</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-b)">check</span>Basic reports</div>
+              </div>
+              <a href="#contact" style="margin-top: auto; text-align: center; border: 1px solid var(--line-2); color: var(--ink); font-size: 14.5px; font-weight: 700; padding: 13px 16px; border-radius: 999px" style-hover="border-color: var(--ink)">Get started</a>
+            </div>
+            <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 26px; display: flex; flex-direction: column">
+              <div style="font-size: 19px; font-weight: 700; margin-bottom: 6px">Professional</div>
+              <div style="font-size: 13.5px; color: var(--ink-3); margin-bottom: 22px; min-height: 38px">Growing businesses that need more power</div>
+              <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.05em">TZS 25,000</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-3); margin: 7px 0 24px">PER 30 DAYS</div>
+              <div style="display: flex; flex-direction: column; gap: 11px; font-size: 14.5px; color: var(--ink-2); margin-bottom: 28px">
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-g)">check</span>Unlimited invoices</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-g)">check</span>Unlimited clients</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-g)">check</span>SMS notifications</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-g)">check</span>Advanced reports</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-g)">check</span>Priority support</div>
+              </div>
+              <a href="#contact" style="margin-top: auto; text-align: center; border: 1px solid var(--line-2); color: var(--ink); font-size: 14.5px; font-weight: 700; padding: 13px 16px; border-radius: 999px" style-hover="border-color: var(--ink)">Get started</a>
+            </div>
+            <div style="background: var(--ink); color: var(--paper); border-radius: 20px; padding: 30px 26px; display: flex; flex-direction: column; box-shadow: 0 34px 60px -34px rgba(20,17,13,0.6); position: relative">
+              <div style="position: absolute; top: -14px; right: 18px; background: var(--yellow); color: #241a00; font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.1em; padding: 6px 12px; border-radius: 999px; transform: rotate(3deg)">POPULAR</div>
+              <div style="font-size: 19px; font-weight: 700; margin-bottom: 6px">Business</div>
+              <div style="font-size: 13.5px; opacity: 0.62; margin-bottom: 22px; min-height: 38px">Full-featured plan for established firms</div>
+              <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.05em">TZS 50,000</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; opacity: 0.62; margin: 7px 0 24px">PER 30 DAYS</div>
+              <div style="display: flex; flex-direction: column; gap: 11px; font-size: 14.5px; opacity: 0.9; margin-bottom: 28px">
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--yellow)">check</span>Everything in Professional</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--yellow)">check</span>Multi-user access</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--yellow)">check</span>Custom branding</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--yellow)">check</span>API access</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--yellow)">check</span>Dedicated support</div>
+              </div>
+              <a href="#contact" style="margin-top: auto; text-align: center; background: var(--yellow); color: #241a00; font-size: 14.5px; font-weight: 700; padding: 13px 16px; border-radius: 999px">Get started →</a>
+            </div>
+            <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 26px; display: flex; flex-direction: column">
+              <div style="font-size: 19px; font-weight: 700; margin-bottom: 6px">Enterprise</div>
+              <div style="font-size: 13.5px; color: var(--ink-3); margin-bottom: 22px; min-height: 38px">Large organisations with advanced needs</div>
+              <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.05em">TZS 100,000</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-3); margin: 7px 0 24px">PER 30 DAYS</div>
+              <div style="display: flex; flex-direction: column; gap: 11px; font-size: 14.5px; color: var(--ink-2); margin-bottom: 28px">
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-o)">check</span>Everything in Business</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-o)">check</span>Unlimited users</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-o)">check</span>White-label PDFs</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-o)">check</span>Custom integrations</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-o)">check</span>SLA guarantee</div>
+                <div style="display: flex; gap: 9px"><span class="msi" style="font-size: 17px; color: var(--on-o)">check</span>24/7 support</div>
+              </div>
+              <a href="#contact" style="margin-top: auto; text-align: center; border: 1px solid var(--line-2); color: var(--ink); font-size: 14.5px; font-weight: 700; padding: 13px 16px; border-radius: 999px" style-hover="border-color: var(--ink)">Get started</a>
+            </div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isSelf }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <p style="font-size: 16.5px; color: var(--ink-2); margin: 0 0 32px; max-width: 60ch">Buy a licence and install MoBilling on your own infrastructure — your database, your server, your control.</p>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; align-items: start">
+            <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 26px; display: flex; flex-direction: column">
+              <span style="width: 42px; height: 42px; border-radius: 13px; background: var(--tint-y); color: var(--on-y); display: flex; align-items: center; justify-content: center; margin-bottom: 20px"><span class="msi" style="font-size: 22px">bolt</span></span>
+              <div style="font-size: 19px; font-weight: 700; margin-bottom: 6px">MoBilling Lite</div>
+              <div style="font-size: 13.5px; color: var(--ink-3); margin-bottom: 22px; min-height: 38px">Billing &amp; CRM basics — no domains or hosting</div>
+              <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.05em">TZS 10,000</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-3); margin: 7px 0 26px">PER MONTH · OR 80,000 / YEAR</div>
+              <a href="#contact" style="margin-top: auto; text-align: center; border: 1px solid var(--line-2); color: var(--ink); font-size: 14.5px; font-weight: 700; padding: 13px 16px; border-radius: 999px" style-hover="border-color: var(--ink)">Buy now</a>
+            </div>
+            <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 26px; display: flex; flex-direction: column">
+              <span style="width: 42px; height: 42px; border-radius: 13px; background: var(--tint-b); color: var(--on-b); display: flex; align-items: center; justify-content: center; margin-bottom: 20px"><span class="msi" style="font-size: 22px">storefront</span></span>
+              <div style="font-size: 19px; font-weight: 700; margin-bottom: 6px">MoBilling Reseller</div>
+              <div style="font-size: 13.5px; color: var(--ink-3); margin-bottom: 22px; min-height: 38px">The WHMCS-style toolkit, including domains &amp; hosting</div>
+              <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.05em">TZS 15,000</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-3); margin: 7px 0 26px">PER MONTH · OR 95,000 / YEAR</div>
+              <a href="#contact" style="margin-top: auto; text-align: center; background: var(--blue); color: #fff; font-size: 14.5px; font-weight: 700; padding: 13px 16px; border-radius: 999px">Buy now</a>
+            </div>
+            <div style="background: var(--panel); border: 1px solid var(--line-2); border-radius: 20px; padding: 30px 26px; display: flex; flex-direction: column">
+              <span style="width: 42px; height: 42px; border-radius: 13px; background: var(--tint-g); color: var(--on-g); display: flex; align-items: center; justify-content: center; margin-bottom: 20px"><span class="msi" style="font-size: 22px">workspace_premium</span></span>
+              <div style="font-size: 19px; font-weight: 700; margin-bottom: 6px">MoBilling Complete</div>
+              <div style="font-size: 13.5px; color: var(--ink-3); margin-bottom: 22px; min-height: 38px">The full platform — everything</div>
+              <div style="font-size: 32px; font-weight: 900; letter-spacing: -0.05em">TZS 25,000</div>
+              <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10.5px; letter-spacing: 0.08em; color: var(--ink-3); margin: 7px 0 26px">PER MONTH · OR 175,000 / YEAR</div>
+              <a href="#contact" style="margin-top: auto; text-align: center; border: 1px solid var(--line-2); color: var(--ink); font-size: 14.5px; font-weight: 700; padding: 13px 16px; border-radius: 999px" style-hover="border-color: var(--ink)">Buy now</a>
+            </div>
+          </div>
+          <p style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-3); margin: 22px 0 0">SELF-HOSTED LICENCES ARE GOVERNED BY THE <a href="#">MOBILLING LICENCE AGREEMENT</a>.</p>
+        </div>
+      </sc-if>
+    </div>
+
+    <!-- faq -->
+    <div id="faq" style="padding: 92px 0 0">
+      <div style="display: grid; grid-template-columns: minmax(0, 0.72fr) minmax(0, 1.28fr); gap: 56px; align-items: start">
+        <div style="position: sticky; top: 100px">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 20px">07 — FAQ</div>
+          <h2 style="font-size: 42px; line-height: 1; letter-spacing: -0.045em; font-weight: 900; margin: 0 0 16px">Frequently asked <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; color: var(--on-g)">questions</span></h2>
+          <p style="font-size: 16px; line-height: 1.6; color: var(--ink-2); margin: 0">Still have questions? Reach us on WhatsApp any time — <a href="#contact">+255 689 011 111</a>.</p>
+        </div>
+        <div style="border-top: 1px solid var(--line-2)">
+          <sc-for list="{{ faqs }}" as="f" hint-placeholder-count="10">
+            <div style="border-bottom: 1px solid var(--line-2)">
+              <button onClick="{{ f.toggle }}" style="width: 100%; background: none; border: 0; padding: 21px 4px; display: flex; align-items: center; justify-content: space-between; gap: 22px; cursor: pointer; text-align: left; color: var(--ink)">
+                <span style="font-size: 17.5px; font-weight: 600; letter-spacing: -0.02em">{{ f.q }}</span>
+                <span class="msi" style="font-size: 22px; color: var(--on-b); flex-shrink: 0">{{ f.icon }}</span>
+              </button>
+              <sc-if value="{{ f.open }}" hint-placeholder-val="{{ false }}">
+                <p style="font-size: 16px; line-height: 1.66; color: var(--ink-2); margin: 0; padding: 0 56px 24px 4px; max-width: 72ch">{{ f.a }}</p>
+              </sc-if>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+    </div>
+
+    <!-- cta -->
+    <div style="padding: 96px 0 0">
+      <div style="border: 1px solid var(--line-2); border-radius: 26px; padding: 76px 40px 80px; text-align: center; position: relative; overflow: hidden; background: var(--panel)">
+        <div style="position: absolute; top: -160px; left: 50%; transform: translateX(-50%); width: 620px; height: 340px; background: radial-gradient(ellipse at center, var(--tint-y), rgba(0,0,0,0) 70%)"></div>
+        <div style="position: relative">
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 24px">08 — FREE TO START</div>
+          <h2 style="font-size: 64px; line-height: 0.95; letter-spacing: -0.05em; font-weight: 900; margin: 0 0 20px">Ready to simplify<br>your <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; color: var(--on-o)">billing?</span></h2>
+          <p style="font-size: 18px; line-height: 1.6; color: var(--ink-2); margin: 0 auto 34px; max-width: 50ch">Join hundreds of East African businesses already using MoBilling to stay compliant and grow faster.</p>
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; justify-content: center">
+            <a href="#pricing" style="background: var(--ink); color: var(--paper); font-size: 16.5px; font-weight: 700; padding: 16px 30px; border-radius: 999px">Create free account →</a>
+            <a href="#contact" style="border: 1px solid var(--line-2); color: var(--ink); font-size: 16.5px; font-weight: 600; padding: 16px 30px; border-radius: 999px" style-hover="border-color: var(--ink)">Chat with us</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- contact -->
+    <div id="contact" style="padding: 92px 0 96px">
+      <div style="display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr); gap: 56px; align-items: start">
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.16em; color: var(--ink-3); margin-bottom: 20px">09 — CONTACT</div>
+          <h2 style="font-size: 42px; line-height: 1; letter-spacing: -0.045em; font-weight: 900; margin: 0 0 16px">Get in <span style="font-family: 'Instrument Serif', Georgia, serif; font-style: italic; font-weight: 400; color: var(--on-b)">touch</span></h2>
+          <p style="font-size: 16px; line-height: 1.6; color: var(--ink-2); margin: 0">Have questions or need help? Our local team is ready to assist you in Swahili or English.</p>
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1px; background: var(--line); border: 1px solid var(--line)">
+          <div style="background: var(--panel); padding: 26px">
+            <span style="width: 38px; height: 38px; border-radius: 50%; background: var(--tint-b); color: var(--on-b); display: flex; align-items: center; justify-content: center; margin-bottom: 16px"><span class="msi" style="font-size: 20px">mail</span></span>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--ink-3); margin-bottom: 9px">EMAIL</div>
+            <a href="mailto:info@moinfo.co.tz" style="font-size: 16.5px; font-weight: 600">info@moinfo.co.tz</a>
+          </div>
+          <div style="background: var(--panel); padding: 26px">
+            <span style="width: 38px; height: 38px; border-radius: 50%; background: var(--tint-y); color: var(--on-y); display: flex; align-items: center; justify-content: center; margin-bottom: 16px"><span class="msi" style="font-size: 20px">call</span></span>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--ink-3); margin-bottom: 9px">PHONE</div>
+            <a href="tel:+255689011111" style="font-size: 16.5px; font-weight: 600; color: var(--ink)">+255 689 011 111</a>
+          </div>
+          <div style="background: var(--panel); padding: 26px">
+            <span style="width: 38px; height: 38px; border-radius: 50%; background: var(--tint-g); color: var(--on-g); display: flex; align-items: center; justify-content: center; margin-bottom: 16px"><span class="msi" style="font-size: 20px">chat</span></span>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--ink-3); margin-bottom: 9px">WHATSAPP</div>
+            <a href="#" style="font-size: 16.5px; font-weight: 600; color: var(--on-g)">+255 689 011 111</a>
+          </div>
+          <div style="background: var(--panel); padding: 26px">
+            <span style="width: 38px; height: 38px; border-radius: 50%; background: var(--tint-o); color: var(--on-o); display: flex; align-items: center; justify-content: center; margin-bottom: 16px"><span class="msi" style="font-size: 20px">location_on</span></span>
+            <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; color: var(--ink-3); margin-bottom: 9px">OFFICE</div>
+            <div style="font-size: 15.5px; line-height: 1.5; color: var(--ink-2)">Njuweni Hotel, 1st Floor, Room 134<br>Kibaha, Tanzania</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- footer -->
+  <div style="background: var(--ink); color: var(--paper)">
+    <div style="max-width: 1300px; margin: 0 auto; padding: 66px 34px 30px">
+      <div style="display: grid; grid-template-columns: minmax(0, 1.4fr) repeat(2, minmax(0, 1fr)); gap: 48px">
+        <div>
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 18px">
+            <img src="assets/mobilling-logo.png" alt="MoBilling" style="height: 34px; width: auto; display: block">
+            <span style="font-weight: 800; font-size: 20px; letter-spacing: -0.035em">MoBilling</span>
+          </div>
+          <p style="font-size: 15px; line-height: 1.62; opacity: 0.66; margin: 0; max-width: 40ch">Billing, hosting automation and .tz domain registration — the WHMCS-style platform built for East African businesses. White-label ready.</p>
+        </div>
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; opacity: 0.5; margin-bottom: 18px">NAVIGATION</div>
+          <div style="display: flex; flex-direction: column; gap: 10px; font-size: 15px">
+            <a href="#features" style="color: var(--paper)">Features</a>
+            <a href="#hosting" style="color: var(--paper)">Hosting &amp; Domains</a>
+            <a href="#reseller" style="color: var(--paper)">Reseller</a>
+            <a href="#pricing" style="color: var(--paper)">Pricing &amp; self-hosted</a>
+            <a href="#faq" style="color: var(--paper)">FAQ</a>
+            <a href="#contact" style="color: var(--paper)">Contact</a>
+          </div>
+        </div>
+        <div>
+          <div style="font-family: 'IBM Plex Mono', monospace; font-size: 10px; letter-spacing: 0.12em; opacity: 0.5; margin-bottom: 18px">CONTACT US</div>
+          <div style="display: flex; flex-direction: column; gap: 10px; font-size: 15px">
+            <a href="mailto:info@moinfo.co.tz" style="color: var(--paper)">info@moinfo.co.tz</a>
+            <a href="tel:+255689011111" style="color: var(--paper)">+255 689 011 111</a>
+            <span style="opacity: 0.66">Kibaha, Tanzania</span>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top: 54px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,0.14); display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: 0.08em; opacity: 0.6">
+        <span>© 2026 MOBILLING. ALL RIGHTS RESERVED.</span>
+        <span>POWERED BY <a href="#" style="color: var(--yellow)">MOINFOTECH</a></span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;theme&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Light&quot;,&quot;Dark&quot;],&quot;default&quot;:&quot;Light&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Appearance&quot;},&quot;defaultPricing&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;Hosted&quot;,&quot;Self-hosted&quot;],&quot;default&quot;:&quot;Hosted&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Pricing&quot;},&quot;showTestimonials&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Sections&quot;}}">
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    let saved = null;
+    try { saved = localStorage.getItem("mobilling-theme"); } catch (e) {}
+    const initial = saved || (props.theme === "Dark" ? "dark" : "light");
+    this.state = { tab: props.defaultPricing === "Self-hosted" ? "self" : "hosted", open: 0, theme: initial };
+  }
+  applyTheme() { document.documentElement.setAttribute("data-theme", this.state.theme); }
+  componentDidMount() { this.applyTheme(); }
+  componentDidUpdate() { this.applyTheme(); }
+  tabStyle(active) {
+    return {
+      border: 0, padding: "11px 22px", fontSize: "14px", fontWeight: 700, cursor: "pointer",
+      borderRadius: "999px", whiteSpace: "nowrap", flexShrink: 0,
+      background: active ? "var(--ink)" : "transparent",
+      color: active ? "var(--paper)" : "var(--ink-2)"
+    };
+  }
+  renderVals() {
+    const F = [
+      ["01", "receipt_long", "b", "Invoicing & recurring billing", "Automatic numbering, tax, recurring cycles, late fees and dunning — hands-off."],
+      ["02", "request_quote", "g", "Quotations & proformas", "Polished quotes and proforma invoices that convert to final invoices in one click."],
+      ["03", "account_balance", "y", "Statutory bills", "Never miss NHIF, NSSF, PAYE or VAT deadlines — tracked with due-date reminders."],
+      ["04", "payments", "o", "Payments & wallet", "M-Pesa, Pesapal, bank, cash and cheque — plus a client credit wallet with auto-pay."],
+      ["05", "space_dashboard", "b", "Client portal", "Clients log in to order services, pay invoices, open tickets and manage everything themselves."],
+      ["06", "support_agent", "g", "Support helpdesk", "A full ticketing system — departments, priorities, email notifications — for you and your clients."],
+      ["07", "campaign", "y", "WhatsApp marketing", "Track leads from WhatsApp and social ads through a full pipeline. Log calls, schedule follow-ups, convert."],
+      ["08", "directions_walk", "o", "Field marketing", "Manage door-to-door campaigns. Log visits, track conversion per officer, measure ROI per session."],
+      ["09", "mark_email_unread", "b", "SMS & email notifications", "Payment reminders, invoice and renewal notices sent to clients automatically."]
+    ];
+    const features = F.map(([num, icon, k, title, body]) => ({
+      num, icon, title, body, tint: "var(--tint-" + k + ")", on: "var(--on-" + k + ")"
+    }));
+
+    const H = [
+      ["01", "dns", "var(--green)", "cPanel hosting automation", "Connect your WHM server: accounts are created the moment an invoice is paid, suspended on non-payment, upgraded with prorated billing."],
+      ["02", "language", "var(--yellow)", ".tz domain registrar", "Register, renew and transfer .tz domains directly at the TCRA/tzNIC registry over EPP. Live availability search, your own pricing per TLD."],
+      ["03", "autorenew", "#79b7ed", "Auto-renewals from wallet", "Clients opt in to auto-renew — renewals invoice themselves and draw from the client's credit balance."],
+      ["04", "lock", "var(--green)", "SSL & DNS management", "Nightly SSL monitoring on every domain, self-service nameserver changes and EPP transfer codes — all from the portal."],
+      ["05", "login", "var(--yellow)", "One-click cPanel login", "Clients jump into cPanel, webmail, file manager or phpMyAdmin from their portal — no passwords to share."],
+      ["06", "shopping_cart", "#79b7ed", "Order → pay → provision", "A WHMCS-style cart: clients choose a plan, pick a domain, pay online — and the service goes live automatically."]
+    ];
+    const hosting = H.map(([num, icon, color, title, body]) => ({ num, icon, color, title, body }));
+
+    const items = [
+      ["Is MoBilling a WHMCS alternative?", "Yes — it covers the same ground: a client portal, shopping cart, automated provisioning, recurring invoicing, domain management and a helpdesk. On top of that it handles East African billing realities like M-Pesa, statutory bills and Swahili support, with no per-installation licence fee on hosted plans."],
+      ["Can I sell hosting and domains?", "Yes. Connect your WHM server and MoBilling creates, suspends and upgrades cPanel accounts automatically. .tz domains are registered directly at the TCRA/tzNIC registry over EPP, with your own pricing per TLD."],
+      ["What is the white-label reseller program?", "You sell hosting, domains and billing under your own brand while we run the registry connections, servers and platform. Your clients only ever see your name, and your workspace is isolated from every other tenant."],
+      ["Is there a free trial?", "Yes. Create an account, generate your first invoice immediately, and only pick a paid plan when the trial ends."],
+      ["Which payment methods are supported?", "M-Pesa, Pesapal, bank transfer, cash and cheque, plus a client credit wallet that supports top-ups and automatic payment of renewals."],
+      ["Is MoBilling compliant with TRA/KRA?", "Invoices, proformas and receipts follow the formats local authorities expect, and statutory items — NHIF, NSSF, PAYE and VAT — are tracked with due-date reminders."],
+      ["Can I use it on my phone?", "Yes. The admin, client portal and field-marketing tools all work in a mobile browser — field officers log door-to-door visits directly from their phones."],
+      ["Can I import my existing client data?", "Yes. We import clients, services, invoices, payments and domains, including from WHMCS — your clients even keep their existing portal passwords."],
+      ["Do you offer support in Swahili?", "Our team is based in Tanzania and supports you in both Swahili and English, over WhatsApp, phone or email."],
+      ["What happens if I stop paying?", "Your data stays intact and read-only. Nothing is deleted, and you can export clients, invoices and domains at any time."]
+    ];
+    const faqs = items.map(([q, a], i) => ({
+      q, a,
+      open: this.state.open === i,
+      icon: this.state.open === i ? "remove" : "add",
+      toggle: () => this.setState(s => ({ open: s.open === i ? -1 : i }))
+    }));
+
+    return {
+      features, hosting, faqs,
+      showTestimonials: this.props.showTestimonials ?? true,
+      themeIcon: this.state.theme === "dark" ? "light_mode" : "dark_mode",
+      toggleTheme: () => this.setState(st => {
+        const next = st.theme === "dark" ? "light" : "dark";
+        try { localStorage.setItem("mobilling-theme", next); } catch (e) {}
+        return { theme: next };
+      }),
+      isHosted: this.state.tab === "hosted",
+      isSelf: this.state.tab === "self",
+      showHosted: () => this.setState({ tab: "hosted" }),
+      showSelf: () => this.setState({ tab: "self" }),
+      hostedTabStyle: this.tabStyle(this.state.tab === "hosted"),
+      selfTabStyle: this.tabStyle(this.state.tab === "self")
+    };
+  }
+}
+</script>
+</body>
+</html>
