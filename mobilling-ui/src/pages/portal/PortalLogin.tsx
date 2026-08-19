@@ -125,12 +125,12 @@ export default function PortalLogin() {
         <div className={classes.brandOrb} aria-hidden="true" />
 
         <div className={classes.brandRow}>
-          <img src="/moinfotech-logo.png" alt="" height={40} />
+          <img src={branding.branded && branding.logo_url ? branding.logo_url : '/moinfotech-logo.png'} alt="" height={40} />
           <span className={classes.brandLockup}>
             <span className={classes.brandName}>
-              Moinfo<span className={classes.brandNameAccent}>Tech</span>
+              {branding.branded ? brandName : <>Moinfo<span className={classes.brandNameAccent}>Tech</span></>}
             </span>
-            <span className={classes.brandKicker}>TCRA REGISTRAR · TZ</span>
+            {!branding.branded && <span className={classes.brandKicker}>TCRA REGISTRAR · TZ</span>}
           </span>
         </div>
 
@@ -319,27 +319,6 @@ export default function PortalLogin() {
               <button className={classes.submit} type="submit" disabled={submitting}>
                 {submitting ? t('login.submitting') : t('login.submit')}
               </button>
-            </div>
-
-            <div className={classes.quickLinks}>
-              <a
-                className={classes.quick}
-                href="https://moinfo.co.tz:2083"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <span className={classes.quickLabel}>{t('login.cpanel')}</span>
-                <span className={classes.quickText}>{t('login.cpanelDesc')}</span>
-              </a>
-              <a
-                className={classes.quick}
-                href="https://moinfo.co.tz:2096"
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <span className={classes.quickLabel}>{t('login.webmail')}</span>
-                <span className={classes.quickText}>{t('login.webmailDesc')}</span>
-              </a>
             </div>
 
             <p className={classes.newHere}>

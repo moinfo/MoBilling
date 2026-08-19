@@ -18,6 +18,7 @@ export default function Users() {
   const navigate = useNavigate();
   const { can } = usePermissions();
   const canManageUsers = can('settings.users');
+  const canViewEmployeeProfiles = can('employees.read');
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [page, setPage] = useState(1);
@@ -93,6 +94,10 @@ export default function Users() {
     setModalOpen(true);
   };
 
+  const handleViewProfile = (user: TenantUser) => {
+    navigate(`/users/${user.id}/profile`);
+  };
+
   const handleToggleActive = (user: TenantUser) => {
     toggleMutation.mutate(user.id);
   };
@@ -145,6 +150,7 @@ export default function Users() {
         onToggleActive={handleToggleActive}
         showLoginAs={canManageUsers}
         onLoginAs={handleLoginAs}
+        onViewProfile={canViewEmployeeProfiles ? handleViewProfile : undefined}
       />
 
       {meta && meta.last_page > 1 && (

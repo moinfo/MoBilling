@@ -244,6 +244,37 @@ class PettyCashController extends Controller
     }
 
     /**
+     * Remove a top-up/return entered in error. Reconciliation-generated
+     * adjustments (adjustment_in/adjustment_out) are never deletable here —
+     * they're tied to a PettyCashReconciliation row via reconciliation_id,
+     * and removing one would silently desync the ledger from that record
+     * without updating it. Soft-delete (model already uses SoftDeletes),
+     * so balances()'s default-scoped query excludes it automatically.
+     */
+    public function destroyTransaction(PettyCashTransaction $transaction)
+    {
+        if ($transaction->tenant_id !== auth()->user()->tenant_id) {
+            return response()->json(['message' => 'Not found'], 404);
+        }
+        if (!in_array($transaction->type, ['top_up', 'return'], true)) {
+            return response()->json(['message' => 'Reconciliation adjustments cannot be deleted directly.'], 422);
+        }
+
+        $voucherPath = $transaction->voucher_attachment_path;
+        $transaction->delete();
+        if ($voucherPath) {
+            Storage::disk('public')->delete($voucherPath);
+        }
+
+        $account = $this->getOrCreateAccount();
+
+        return response()->json([
+            'message' => 'Transaction deleted.',
+            'balance' => $account->balances()['verified'],
+        ]);
+    }
+
+    /**
      * Record a cash count. If the user accepts a discrepancy, emit a matching
      * adjustment transaction so the ledger balance equals the counted balance.
      */

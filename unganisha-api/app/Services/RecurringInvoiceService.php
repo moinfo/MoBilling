@@ -18,7 +18,7 @@ use Illuminate\Support\Facades\Log;
 
 class RecurringInvoiceService
 {
-    private const REMINDER_DAYS = [21, 14, 7, 3, 1];
+    public const REMINDER_DAYS = [21, 14, 7, 3, 1];
 
     private const CYCLE_INTERVALS = [
         'monthly' => '1 month',
@@ -391,7 +391,11 @@ class RecurringInvoiceService
             }
 
             $document = Document::withoutGlobalScopes()->find($log->document_id);
-            if (!$document || $document->status === 'paid') {
+            // A cancelled invoice is not owed — reminding the client to pay
+            // one right after telling them it was cancelled is confusing and
+            // wrong (real incident: WHMCS-1339 got a cancellation notice on
+            // 07 Aug, then a "pay this soon" reminder on 11 Aug).
+            if (!$document || in_array($document->status, ['paid', 'cancelled'])) {
                 continue;
             }
 

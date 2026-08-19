@@ -7,11 +7,12 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock, IconStack2, IconBuildingBank, IconAdjustments, IconShieldCheck, IconServer, IconWorldWww } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock, IconStack2, IconBuildingBank, IconAdjustments, IconShieldCheck, IconServer, IconWorldWww, IconKey } from '@tabler/icons-react';
 import TwoFactorSetup from '../components/TwoFactorSetup';
 import LateFeeTab from '../components/Settings/LateFeeTab';
 import ServersTab from '../components/Settings/ServersTab';
 import DomainsTab from '../components/Settings/DomainsTab';
+import LicenseStatusTab from '../components/Settings/LicenseStatusTab';
 import Systems from './Systems';
 import BankAccounts from './BankAccounts';
 import SystemProperties from './SystemProperties';
@@ -53,6 +54,7 @@ export default function Settings() {
   const canSystemVerifications = can('menu.system_verifications');
   const canHosting = can('hosting.settings');
   const canDomains = can('domains.settings');
+  const isSelfHosted = !!user?.tenant?.is_self_hosted;
 
   return (
     <>
@@ -122,6 +124,11 @@ export default function Settings() {
               Domains
             </Tabs.Tab>
           )}
+          {isSelfHosted && (
+            <Tabs.Tab value="license" leftSection={<IconKey size={16} />}>
+              License
+            </Tabs.Tab>
+          )}
         </Tabs.List>
 
         <Tabs.Panel value="company">
@@ -173,6 +180,11 @@ export default function Settings() {
         <Tabs.Panel value="system-verifications">
           <SystemVerifications />
         </Tabs.Panel>
+        {isSelfHosted && (
+          <Tabs.Panel value="license">
+            <LicenseStatusTab />
+          </Tabs.Panel>
+        )}
       </Tabs>
     </>
   );

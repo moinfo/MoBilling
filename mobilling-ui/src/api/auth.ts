@@ -30,6 +30,7 @@ export interface User {
     late_fee_enabled: boolean;
     late_fee_percent: number;
     late_fee_days: number;
+    is_self_hosted?: boolean;
   };
   // Client portal fields (only present when user_type === 'client')
   client_id?: string;
@@ -50,7 +51,7 @@ export interface AuthResponse {
   token: string;
   user_type: UserType;
   permissions: string[];
-  subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+  subscription_status?: 'trial' | 'subscribed' | 'licensed' | 'expired' | 'deactivated';
   days_remaining?: number;
 }
 
@@ -58,7 +59,7 @@ export interface MeResponse {
   user: User;
   user_type: UserType;
   permissions: string[];
-  subscription_status?: 'trial' | 'subscribed' | 'expired' | 'deactivated';
+  subscription_status?: 'trial' | 'subscribed' | 'licensed' | 'expired' | 'deactivated';
   days_remaining?: number;
 }
 
@@ -80,6 +81,7 @@ export interface RegisterData {
   password: string;
   password_confirmation: string;
   phone?: string;
+  product_tier?: 'general' | 'reseller' | 'lite';
 }
 
 export const login = (data: LoginData) =>
@@ -93,8 +95,8 @@ export const logout = () => api.post('/auth/logout');
 export const getMe = () =>
   api.get<MeResponse>('/auth/me');
 
-export const forgotPassword = (identifier: string) =>
-  api.post<{ message: string; email_hint?: string; requires_registration?: boolean }>('/auth/forgot-password', { identifier });
+export const forgotPassword = (identifier: string, channel?: 'email' | 'whatsapp') =>
+  api.post<{ message: string; email_hint?: string; requires_registration?: boolean }>('/auth/forgot-password', { identifier, channel });
 
 export const verifyResetOtp = (data: { identifier: string; otp: string }) =>
   api.post<{ message: string; requires_registration?: boolean; client_name?: string }>('/auth/verify-reset-otp', data);

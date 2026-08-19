@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Portal;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\ClientUser;
+use App\Models\CommunicationLog;
 use App\Notifications\PortalOtpNotification;
 use App\Services\SmsService;
 use Illuminate\Http\Request;
@@ -92,14 +93,20 @@ class PortalAuthController extends Controller
 
         // Also send via SMS if phone available and tenant has SMS enabled
         if ($client?->phone && app(SmsService::class)->canSend($tenant)) {
+            $smsMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
             try {
-                app(SmsService::class)->send(
-                    $tenant,
-                    $client->phone,
-                    "Your MoBilling verification code is: {$otp}. It expires in 10 minutes."
-                );
+                app(SmsService::class)->send($tenant, $client->phone, $smsMessage);
+                CommunicationLog::withoutGlobalScopes()->create([
+                    'tenant_id' => $client->tenant_id, 'client_id' => $client->id, 'channel' => 'sms',
+                    'type' => 'portal_register_otp', 'recipient' => $client->phone, 'message' => $smsMessage, 'status' => 'sent',
+                ]);
             } catch (\Throwable $e) {
                 // SMS failed — email was still sent
+                CommunicationLog::withoutGlobalScopes()->create([
+                    'tenant_id' => $client->tenant_id, 'client_id' => $client->id, 'channel' => 'sms',
+                    'type' => 'portal_register_otp', 'recipient' => $client->phone, 'message' => $smsMessage,
+                    'status' => 'failed', 'error' => $e->getMessage(),
+                ]);
             }
         }
 

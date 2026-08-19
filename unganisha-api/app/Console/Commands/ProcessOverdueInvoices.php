@@ -18,6 +18,9 @@ class ProcessOverdueInvoices extends Command
 
     protected $description = 'Process overdue invoices: apply late fees, send reminders, and termination warnings';
 
+    public const REMINDER_STAGE_DAYS = 7;
+    public const TERMINATION_STAGE_DAYS = 14;
+
     public function handle(): int
     {
         $startedAt = now();
@@ -95,7 +98,7 @@ class ProcessOverdueInvoices extends Command
                 }
 
                 // Stage 2: 7+ days overdue — Send reminder
-                elseif ($document->overdue_stage === 'late_fee_applied' && $daysOverdue >= 7) {
+                elseif ($document->overdue_stage === 'late_fee_applied' && $daysOverdue >= self::REMINDER_STAGE_DAYS) {
                     $document->update(['overdue_stage' => 'reminder_7d']);
 
                     $client->notify(new InvoiceOverdueReminderNotification($document, $tenant, $daysOverdue));
@@ -104,7 +107,7 @@ class ProcessOverdueInvoices extends Command
                 }
 
                 // Stage 3: 14+ days overdue — Termination warning (both email + SMS)
-                elseif ($document->overdue_stage === 'reminder_7d' && $daysOverdue >= 14) {
+                elseif ($document->overdue_stage === 'reminder_7d' && $daysOverdue >= self::TERMINATION_STAGE_DAYS) {
                     $document->update(['overdue_stage' => 'termination_warning']);
 
                     $client->notify(new InvoiceTerminationWarningNotification($document, $tenant));

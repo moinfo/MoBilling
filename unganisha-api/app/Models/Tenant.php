@@ -17,7 +17,9 @@ class Tenant extends Model
 
     protected $fillable = [
         'name', 'email', 'phone', 'address',
-        'logo_url', 'tax_id', 'currency', 'is_active',
+        'logo_url', 'tax_id', 'currency', 'is_active', 'is_self_hosted',
+        'license_key', 'license_last_valid_at', 'license_expires_at',
+        'license_agreement_version', 'license_agreement_accepted_at',
         'trial_ends_at',
         'email_enabled', 'smtp_host', 'smtp_port', 'smtp_username',
         'smtp_password', 'smtp_encryption', 'smtp_from_email', 'smtp_from_name',
@@ -58,6 +60,10 @@ class Tenant extends Model
 
     protected $casts = [
         'is_active' => 'boolean',
+        'is_self_hosted' => 'boolean',
+        'license_last_valid_at' => 'datetime',
+        'license_expires_at' => 'date',
+        'license_agreement_accepted_at' => 'datetime',
         'email_enabled' => 'boolean',
         'sms_enabled' => 'boolean',
         'smtp_password' => 'encrypted',
@@ -138,9 +144,18 @@ class Tenant extends Model
         return $this->activeSubscription()->exists();
     }
 
+    /**
+     * A self-hosted tenant has no MoBilling-billed trial/subscription —
+     * its License (validated by the install itself against our license
+     * server) is what gates access, not TenantSubscription. is_self_hosted
+     * is set once by the installer; ongoing re-validation is a separate,
+     * not-yet-built scheduled job that can flip is_active off if the
+     * license lapses — for now this just means "don't require a fake
+     * trial/subscription row for an install we already licensed".
+     */
     public function hasAccess(): bool
     {
-        return $this->is_active && ($this->isOnTrial() || $this->hasActiveSubscription());
+        return $this->is_active && ($this->isOnTrial() || $this->hasActiveSubscription() || $this->is_self_hosted);
     }
 
     /**
@@ -150,6 +165,10 @@ class Tenant extends Model
     {
         if (!$this->is_active) {
             return 'deactivated';
+        }
+
+        if ($this->is_self_hosted) {
+            return 'licensed';
         }
 
         if ($this->hasActiveSubscription()) {

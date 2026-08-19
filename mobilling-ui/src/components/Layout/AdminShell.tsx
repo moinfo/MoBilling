@@ -1,6 +1,6 @@
 import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, ScrollArea } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconTemplate, IconMessage, IconPackage, IconReceipt, IconCreditCard, IconCoin, IconBuildingBank, IconShieldLock, IconShieldCheck } from '@tabler/icons-react';
+import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconTemplate, IconMessage, IconPackage, IconReceipt, IconCreditCard, IconCoin, IconBuildingBank, IconShieldLock, IconShieldCheck, IconKey, IconRocket } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -117,6 +117,24 @@ export default function AdminShell() {
             leftSection={<IconReceipt size={18} />}
             active={location.pathname === '/admin/sms-purchases'}
             onClick={() => navigateAndClose('/admin/sms-purchases')}
+          />
+          <NavLink
+            label="Licenses"
+            leftSection={<IconKey size={18} />}
+            active={location.pathname === '/admin/licenses'}
+            onClick={() => navigateAndClose('/admin/licenses')}
+          />
+          <NavLink
+            label="License Plans"
+            leftSection={<IconKey size={18} />}
+            active={location.pathname === '/admin/license-plans'}
+            onClick={() => navigateAndClose('/admin/license-plans')}
+          />
+          <NavLink
+            label="Releases"
+            leftSection={<IconRocket size={18} />}
+            active={location.pathname === '/admin/releases'}
+            onClick={() => navigateAndClose('/admin/releases')}
           />
           <NavLink
             label="Subscription Plans"

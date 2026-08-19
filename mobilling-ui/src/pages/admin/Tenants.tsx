@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Pagination, Select, NumberInput, Stack, Text } from '@mantine/core';
+import { Title, Group, Button, TextInput, Modal, Pagination, Select, NumberInput, Stack, Text, Alert } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconArrowUpRight, IconCircleCheck } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
-import { getTenants, createTenant, updateTenant, toggleTenantActive, impersonateTenant, extendTenantSubscription, getAdminSubscriptionPlans, Tenant, TenantFormData, CreateTenantData } from '../../api/admin';
+import { getTenants, createTenant, updateTenant, toggleTenantActive, impersonateTenant, extendTenantSubscription, getAdminSubscriptionPlans, promoteClientToTenant, Tenant, TenantFormData, CreateTenantData, PromoteClientData } from '../../api/admin';
 import { useAuth } from '../../context/AuthContext';
 import TenantTable from '../../components/Admin/TenantTable';
 import TenantForm from '../../components/Admin/TenantForm';
+import PromoteClientForm from '../../components/Admin/PromoteClientForm';
 
 export default function Tenants() {
   const queryClient = useQueryClient();
@@ -22,6 +23,8 @@ export default function Tenants() {
   const [extendTarget, setExtendTarget] = useState<Tenant | null>(null);
   const [extendPlanId, setExtendPlanId] = useState<string | null>(null);
   const [extendDays, setExtendDays] = useState<number | string>(30);
+  const [promoteModalOpen, setPromoteModalOpen] = useState(false);
+  const [promotedTenant, setPromotedTenant] = useState<Tenant | null>(null);
 
   const { data } = useQuery({
     queryKey: ['admin-tenants', debouncedSearch, page],
@@ -101,6 +104,21 @@ export default function Tenants() {
     }),
   });
 
+  const promoteMutation = useMutation({
+    mutationFn: (values: PromoteClientData) => promoteClientToTenant(values),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-tenants'] });
+      setPromoteModalOpen(false);
+      setPromotedTenant(res.data.data);
+      notifications.show({ title: 'Success', message: `Tenant "${res.data.data.name}" created`, color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to promote client',
+      color: 'red',
+    }),
+  });
+
   const handleExtend = (tenant: Tenant) => {
     setExtendTarget(tenant);
     setExtendPlanId(null);
@@ -137,10 +155,28 @@ export default function Tenants() {
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>Tenants</Title>
-        <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
-          Add Tenant
-        </Button>
+        <Group gap="xs">
+          <Button variant="outline" leftSection={<IconArrowUpRight size={16} />} onClick={() => setPromoteModalOpen(true)}>
+            Promote from Client
+          </Button>
+          <Button leftSection={<IconPlus size={16} />} onClick={() => { setEditing(null); setModalOpen(true); }}>
+            Add Tenant
+          </Button>
+        </Group>
       </Group>
+
+      {promotedTenant && (
+        <Alert color="green" icon={<IconCircleCheck size={18} />} mb="md" withCloseButton
+          onClose={() => setPromotedTenant(null)} title={`Tenant "${promotedTenant.name}" created`}>
+          <Group justify="space-between" align="center" wrap="wrap">
+            <Text size="sm">Log in as this tenant now to finish branding and product setup?</Text>
+            <Button size="xs" loading={impersonateMutation.isPending}
+              onClick={() => impersonateMutation.mutate(promotedTenant.id)}>
+              Log in as {promotedTenant.name}
+            </Button>
+          </Group>
+        </Alert>
+      )}
 
       <TextInput
         placeholder="Search tenants..."
@@ -183,6 +219,18 @@ export default function Tenants() {
           } : undefined}
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}
+        />
+      </Modal>
+
+      <Modal
+        opened={promoteModalOpen}
+        onClose={() => setPromoteModalOpen(false)}
+        title="Promote Client to White-Label Tenant"
+        size="md"
+      >
+        <PromoteClientForm
+          onSubmit={(values) => promoteMutation.mutate(values)}
+          loading={promoteMutation.isPending}
         />
       </Modal>
 

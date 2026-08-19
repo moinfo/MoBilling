@@ -6,6 +6,7 @@ use App\Helpers\PhoneHelper;
 use App\Http\Controllers\Controller;
 use App\Models\Client;
 use App\Models\ClientUser;
+use App\Models\CommunicationLog;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Notifications\PortalOtpNotification;
@@ -73,7 +74,13 @@ class PasswordResetController extends Controller
     {
         $request->validate([
             'identifier' => 'required|string',
+            // Portal UI lets the client pick exactly one delivery channel
+            // instead of blasting every channel the account has on file.
+            // Omitted (e.g. the staff /forgot-password page) keeps the
+            // original "send to everything available" behavior.
+            'channel' => 'nullable|in:email,whatsapp',
         ]);
+        $channel = $request->channel;
 
         [$target, $type] = $this->resolveTarget($request->identifier);
 
@@ -93,6 +100,17 @@ class PasswordResetController extends Controller
             ]);
         }
 
+        if ($channel === 'email' && !$email) {
+            throw ValidationException::withMessages([
+                'identifier' => ['This account has no email address on file — try WhatsApp instead.'],
+            ]);
+        }
+        if ($channel === 'whatsapp' && !$phone) {
+            throw ValidationException::withMessages([
+                'identifier' => ['This account has no phone number on file — try email instead.'],
+            ]);
+        }
+
         // Rate limit: max 10 per hour per identifier
         $recentCount = DB::table('portal_otps')
             ->where('identifier', $otpKey)
@@ -106,12 +124,13 @@ class PasswordResetController extends Controller
         }
 
         $otp = str_pad(random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $clientId = $type === 'client' ? $target->id : ($target->client_id ?? null);
 
         DB::table('portal_otps')->insert([
             'identifier' => $otpKey,
             'email' => $email,
             'otp' => $otp,
-            'client_id' => $type === 'client' ? $target->id : ($target->client_id ?? null),
+            'client_id' => $clientId,
             'tenant_id' => $target->tenant_id ?? null,
             'expires_at' => now()->addMinutes(10),
             'verified' => false,
@@ -121,56 +140,81 @@ class PasswordResetController extends Controller
 
         $tenant = $target->tenant_id ? Tenant::find($target->tenant_id) : null;
 
-        // Send OTP via email, when the account has one.
-        if ($email) {
+        // Send OTP via email, when the account has one — unless the client
+        // explicitly picked WhatsApp instead.
+        $emailSent = false;
+        if ($email && $channel !== 'whatsapp') {
             Notification::route('mail', $email)
                 ->notify(new PortalOtpNotification($otp, 'MoBilling'));
+            $emailSent = true;
         }
 
-        // Send OTP via SMS if phone available and tenant has SMS enabled
+        // Send OTP via SMS if phone available and tenant has SMS enabled —
+        // skipped when a specific channel was requested (email or WhatsApp
+        // only, no bonus SMS the client didn't ask for).
         $smsSent = false;
         $waSent = false;
 
-        if ($phone && app(SmsService::class)->canSend($tenant)) {
+        if ($phone && !$channel && app(SmsService::class)->canSend($tenant)) {
+            $smsMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
             try {
-                app(SmsService::class)->send(
-                    $tenant,
-                    $phone,
-                    "Your MoBilling verification code is: {$otp}. It expires in 10 minutes."
-                );
+                app(SmsService::class)->send($tenant, $phone, $smsMessage);
                 $smsSent = true;
+                CommunicationLog::withoutGlobalScopes()->create([
+                    'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'sms',
+                    'type' => 'portal_otp', 'recipient' => $phone, 'message' => $smsMessage, 'status' => 'sent',
+                ]);
             } catch (\Throwable $e) {
                 // SMS failed — other channels still tried, so continue
+                CommunicationLog::withoutGlobalScopes()->create([
+                    'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'sms',
+                    'type' => 'portal_otp', 'recipient' => $phone, 'message' => $smsMessage,
+                    'status' => 'failed', 'error' => $e->getMessage(),
+                ]);
             }
         }
 
         // Send OTP via WhatsApp too — routes through the tenant's own Meta
         // number or their linked MoSMS account (WhatsAppService dual-mode).
-        if ($phone && $tenant && $tenant->whatsapp_enabled && $this->canSendWhatsApp($tenant)) {
+        if ($phone && $channel !== 'email' && $tenant && $tenant->whatsapp_enabled && $this->canSendWhatsApp($tenant)) {
             $wa = app(\App\Services\WhatsAppService::class);
+            $waMessage = "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.";
             try {
                 // Official Meta AUTHENTICATION template (copy-code button).
                 $wa->sendTemplate($tenant, $phone, config('whatsapp.otp_template', 'otp_code'), [$otp], config('whatsapp.otp_language', 'en'));
                 $waSent = true;
+                CommunicationLog::withoutGlobalScopes()->create([
+                    'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'whatsapp',
+                    'type' => 'portal_otp', 'recipient' => $phone, 'message' => $waMessage, 'status' => 'sent',
+                ]);
             } catch (\Throwable $e) {
                 try {
                     // Template unavailable — plain text fallback.
-                    $wa->sendText($tenant, $phone, "Your MoBilling verification code is: {$otp}. It expires in 10 minutes.");
+                    $wa->sendText($tenant, $phone, $waMessage);
                     $waSent = true;
+                    CommunicationLog::withoutGlobalScopes()->create([
+                        'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'whatsapp',
+                        'type' => 'portal_otp', 'recipient' => $phone, 'message' => $waMessage, 'status' => 'sent',
+                    ]);
                 } catch (\Throwable $e2) {
                     // WhatsApp failed — other channels still tried
+                    CommunicationLog::withoutGlobalScopes()->create([
+                        'tenant_id' => $target->tenant_id, 'client_id' => $clientId, 'channel' => 'whatsapp',
+                        'type' => 'portal_otp', 'recipient' => $phone, 'message' => $waMessage,
+                        'status' => 'failed', 'error' => $e2->getMessage(),
+                    ]);
                 }
             }
         }
 
-        if (!$email && !$smsSent && !$waSent) {
+        if (!$emailSent && !$smsSent && !$waSent) {
             throw ValidationException::withMessages([
                 'identifier' => ['Could not deliver a verification code to this account — please contact support.'],
             ]);
         }
 
         $channels = array_filter([
-            $email ? 'email' : null,
+            $emailSent ? 'email' : null,
             $smsSent ? 'SMS' : null,
             $waSent ? 'WhatsApp' : null,
         ]);
@@ -180,7 +224,7 @@ class PasswordResetController extends Controller
             default => implode(', ', array_slice($channels, 0, -1)) . ' and ' . end($channels),
         };
 
-        $hint = $email
+        $hint = $emailSent
             ? Str::mask($email, '*', 3, -strpos(strrev($email), '@') - 1)
             : ($phone ? Str::mask($phone, '*', 2, -2) : null);
 

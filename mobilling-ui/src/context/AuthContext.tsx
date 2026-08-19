@@ -12,7 +12,7 @@ import { setTenantCurrency } from '../utils/formatCurrency';
 // never keep a truly-idle session alive, so this only resets on real input.
 const IDLE_MINUTES = 15;
 
-type SubscriptionStatus = 'trial' | 'subscribed' | 'expired' | 'deactivated' | null;
+type SubscriptionStatus = 'trial' | 'subscribed' | 'licensed' | 'expired' | 'deactivated' | null;
 
 interface AuthContextType {
   user: User | null;
@@ -53,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [subscriptionStatus, setSubscriptionStatus] = useState<SubscriptionStatus>(null);
   const [daysRemaining, setDaysRemaining] = useState(0);
 
-  const hasAccess = subscriptionStatus === 'trial' || subscriptionStatus === 'subscribed';
+  const hasAccess = subscriptionStatus === 'trial' || subscriptionStatus === 'subscribed' || subscriptionStatus === 'licensed';
 
   const updateUser = (u: User | null) => {
     setUser(u);

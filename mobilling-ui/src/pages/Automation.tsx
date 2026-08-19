@@ -2,32 +2,87 @@ import { useState } from 'react';
 import {
   Title, Stack, SimpleGrid, Paper, Text, Group, Badge, Table,
   ThemeIcon, LoadingOverlay, Pagination, Select, SegmentedControl,
-  Modal,
+  Modal, TextInput, Switch, Button, Drawer,
 } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
+import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
 import { DatePickerInput } from '@mantine/dates';
 import { useQuery } from '@tanstack/react-query';
+import { notifications } from '@mantine/notifications';
 import {
   IconFileInvoice, IconBell, IconFileSpreadsheet, IconCreditCardOff,
-  IconMail, IconMessage, IconAlertTriangle, IconRobot,
+  IconMail, IconMessage, IconAlertTriangle, IconRobot, IconSearch,
+  IconCalendarDue, IconBrandWhatsapp, IconFileDownload,
 } from '@tabler/icons-react';
 import {
   getAutomationSummary,
   getCronLogs,
   getCommunicationLogs,
+  getUpcomingReminders,
+  exportUpcomingReminders,
   type AutomationSummary,
   type CommunicationLogEntry,
 } from '../api/automation';
+import { getDocument, type Document } from '../api/documents';
+import DocumentView from '../components/Billing/DocumentView';
 import dayjs from 'dayjs';
+
+const CHANNEL_COLORS: Record<string, string> = { email: 'blue', sms: 'green', whatsapp: 'teal' };
+const CHANNEL_ICONS: Record<string, typeof IconMail> = { email: IconMail, sms: IconMessage, whatsapp: IconBrandWhatsapp };
+const CATEGORY_LABELS: Record<string, string> = {
+  invoice_late_fee: 'Late Fee',
+  invoice_overdue_reminder: 'Overdue Reminder',
+  invoice_termination_warning: 'Termination Warning',
+  domain_expiry: 'Domain Expiry',
+  ssl_expiry: 'SSL Expiry',
+  recurring_invoice_reminder: 'Renewal Reminder',
+  subscription_suspension: 'Subscription Suspension',
+};
+const CATEGORY_COLORS: Record<string, string> = {
+  invoice_late_fee: 'orange',
+  invoice_overdue_reminder: 'red',
+  invoice_termination_warning: 'red',
+  domain_expiry: 'violet',
+  ssl_expiry: 'grape',
+  recurring_invoice_reminder: 'blue',
+  subscription_suspension: 'red',
+};
+
+// LogNotification::extractMetadata() stores either a single 'document_id' or,
+// for bundled sends, a 'document_ids' array — metadata's declared type is
+// loosely Record<string, string> since most entries are plain strings.
+function commLogDocumentIds(log: CommunicationLogEntry): string[] {
+  const meta = log.metadata as Record<string, unknown> | null;
+  if (!meta) return [];
+  if (Array.isArray(meta.document_ids)) return meta.document_ids as string[];
+  if (typeof meta.document_id === 'string') return [meta.document_id];
+  return [];
+}
 
 export default function Automation() {
   const [date, setDate] = useState<string | null>(new Date().toISOString().slice(0, 10));
+  const [viewDoc, setViewDoc] = useState<Document | null>(null);
+  const [viewDocLoading, setViewDocLoading] = useState(false);
+  const openInvoicePreview = async (documentId: string) => {
+    setViewDocLoading(true);
+    try {
+      const res = await getDocument(documentId);
+      setViewDoc(res.data.data);
+    } catch {
+      notifications.show({ message: 'Could not open that invoice — it may have been deleted.', color: 'red' });
+    } finally {
+      setViewDocLoading(false);
+    }
+  };
   const [cronPage, setCronPage] = useState(1);
   const [commPage, setCommPage] = useState(1);
   const [channelFilter, setChannelFilter] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [commSearch, setCommSearch] = useState('');
+  const [debouncedCommSearch] = useDebouncedValue(commSearch, 300);
+  const [clientOnly, setClientOnly] = useState(true);
   const [detailOpened, { open: openDetail, close: closeDetail }] = useDisclosure(false);
   const [selectedLog, setSelectedLog] = useState<CommunicationLogEntry | null>(null);
+  const [upcomingDays, setUpcomingDays] = useState('14');
 
   const dateStr = date ? dayjs(date).format('YYYY-MM-DD') : undefined;
 
@@ -41,11 +96,41 @@ export default function Automation() {
     queryFn: () => getCronLogs({ date: dateStr, page: cronPage, per_page: 10 }),
   });
 
+  const { data: upcomingData, isLoading: upcomingLoading } = useQuery({
+    queryKey: ['upcoming-reminders', upcomingDays],
+    queryFn: () => getUpcomingReminders(Number(upcomingDays)),
+  });
+  const upcomingEvents = upcomingData?.data?.data ?? [];
+  const upcomingByDate = upcomingEvents.reduce<Record<string, typeof upcomingEvents>>((acc, ev) => {
+    (acc[ev.date] ??= []).push(ev);
+    return acc;
+  }, {});
+
+  const [upcomingExporting, setUpcomingExporting] = useState<'pdf' | 'csv' | null>(null);
+  const doExportUpcoming = async (format: 'pdf' | 'csv') => {
+    setUpcomingExporting(format);
+    try {
+      const res = await exportUpcomingReminders(Number(upcomingDays), format);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = window.document.createElement('a');
+      a.href = url;
+      a.download = `upcoming-reminders-${upcomingDays}d.${format === 'pdf' ? 'pdf' : 'csv'}`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      notifications.show({ message: 'Export failed.', color: 'red' });
+    } finally {
+      setUpcomingExporting(null);
+    }
+  };
+
   const { data: commData, isLoading: commLoading } = useQuery({
-    queryKey: ['comm-logs', dateStr, channelFilter, statusFilter, commPage],
+    queryKey: ['comm-logs', dateStr, channelFilter, statusFilter, debouncedCommSearch, clientOnly, commPage],
     queryFn: () =>
       getCommunicationLogs({
         date: dateStr,
+        search: debouncedCommSearch || undefined,
+        client_only: clientOnly,
         channel: channelFilter || undefined,
         status: statusFilter || undefined,
         page: commPage,
@@ -146,12 +231,128 @@ export default function Automation() {
         )}
       </Paper>
 
+      {/* Upcoming Reminders — projection, not a guarantee */}
+      <Paper withBorder p="md" radius="md" pos="relative">
+        <LoadingOverlay visible={upcomingLoading} />
+        <Group justify="space-between" mb="sm" wrap="wrap">
+          <Group gap="xs">
+            <IconCalendarDue size={18} />
+            <Title order={4}>Upcoming Reminders</Title>
+          </Group>
+          <Group gap="sm" wrap="wrap">
+            <SegmentedControl
+              size="xs"
+              value={upcomingDays}
+              onChange={setUpcomingDays}
+              data={[
+                { label: '7 days', value: '7' },
+                { label: '14 days', value: '14' },
+                { label: '30 days', value: '30' },
+                { label: '60 days', value: '60' },
+              ]}
+            />
+            <Group gap={6}>
+              <Button size="xs" variant="light" leftSection={<IconFileDownload size={14} />}
+                loading={upcomingExporting === 'pdf'} disabled={upcomingEvents.length === 0}
+                onClick={() => doExportUpcoming('pdf')}>
+                PDF
+              </Button>
+              <Button size="xs" variant="light" color="teal" leftSection={<IconFileSpreadsheet size={14} />}
+                loading={upcomingExporting === 'csv'} disabled={upcomingEvents.length === 0}
+                onClick={() => doExportUpcoming('csv')}>
+                Excel
+              </Button>
+            </Group>
+          </Group>
+        </Group>
+        <Text size="xs" c="dimmed" mb="sm">
+          Projected from today's data — a payment, cancellation, or setting change before the date arrives
+          will change the outcome. This is not a guarantee of what will send.
+        </Text>
+        {Object.keys(upcomingByDate).length === 0 ? (
+          <Text c="dimmed" size="sm">No reminders projected in this window.</Text>
+        ) : (
+          <Stack gap="md">
+            {Object.entries(upcomingByDate).map(([d, events]) => (
+              <div key={d}>
+                <Text size="sm" fw={700} mb={4}>
+                  {dayjs(d).isSame(dayjs(), 'day') ? 'Today' : dayjs(d).isSame(dayjs().add(1, 'day'), 'day') ? 'Tomorrow' : dayjs(d).format('dddd, D MMM YYYY')}
+                  <Text span c="dimmed" fw={400} ml={6}>({events.length})</Text>
+                </Text>
+                <Table.ScrollContainer minWidth={600}>
+                  <Table striped withTableBorder>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Client</Table.Th>
+                        <Table.Th>Type</Table.Th>
+                        <Table.Th>Detail</Table.Th>
+                        <Table.Th>Channels</Table.Th>
+                        <Table.Th></Table.Th>
+                      </Table.Tr>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {events.map((ev, i) => (
+                        <Table.Tr key={`${ev.client_id}-${ev.category}-${ev.reference}-${i}`}>
+                          <Table.Td><Text size="sm">{ev.client_name}</Text></Table.Td>
+                          <Table.Td>
+                            <Badge size="sm" variant="light" color={CATEGORY_COLORS[ev.category] ?? 'gray'}>
+                              {CATEGORY_LABELS[ev.category] ?? ev.category}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td><Text size="sm" c="dimmed">{ev.label}</Text></Table.Td>
+                          <Table.Td>
+                            <Group gap={4}>
+                              {ev.channels.length === 0 ? (
+                                <Text size="xs" c="red">none — no valid contact/channel</Text>
+                              ) : ev.channels.map((c) => {
+                                const Icon = CHANNEL_ICONS[c];
+                                return (
+                                  <ThemeIcon key={c} size={20} variant="light" color={CHANNEL_COLORS[c]}>
+                                    <Icon size={12} />
+                                  </ThemeIcon>
+                                );
+                              })}
+                            </Group>
+                          </Table.Td>
+                          <Table.Td>
+                            {ev.document_id && (
+                              <Button size="compact-xs" variant="subtle" loading={viewDocLoading}
+                                onClick={() => openInvoicePreview(ev.document_id!)}>
+                                View
+                              </Button>
+                            )}
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              </div>
+            ))}
+          </Stack>
+        )}
+      </Paper>
+
       {/* Communication Log */}
       <Paper withBorder p="md" radius="md" pos="relative">
         <LoadingOverlay visible={commLoading} />
         <Group justify="space-between" mb="sm" wrap="wrap">
           <Title order={4}>Communication Log</Title>
-          <Group gap="sm">
+          <Group gap="sm" wrap="wrap">
+            <TextInput
+              size="xs"
+              placeholder="Search recipient or client…"
+              leftSection={<IconSearch size={13} />}
+              w={220}
+              value={commSearch}
+              onChange={(e) => { setCommSearch(e.currentTarget.value); setCommPage(1); }}
+            />
+            <Switch
+              size="xs"
+              label="Client only"
+              checked={clientOnly}
+              onChange={(e) => { setClientOnly(e.currentTarget.checked); setCommPage(1); }}
+            />
             <SegmentedControl
               size="xs"
               value={channelFilter ?? 'all'}
@@ -160,6 +361,7 @@ export default function Automation() {
                 { label: 'All', value: 'all' },
                 { label: 'Email', value: 'email' },
                 { label: 'SMS', value: 'sms' },
+                { label: 'WhatsApp', value: 'whatsapp' },
               ]}
             />
             <Select
@@ -176,14 +378,18 @@ export default function Automation() {
             />
           </Group>
         </Group>
+        {commSearch && (
+          <Text size="xs" c="dimmed" mb="sm">Searching all dates for "{commSearch}" — the date picker above is ignored while searching.</Text>
+        )}
         {commLogs.length === 0 ? (
-          <Text c="dimmed" size="sm">No communications for this date.</Text>
+          <Text c="dimmed" size="sm">No communications found.</Text>
         ) : (
           <>
             <Table.ScrollContainer minWidth={700}>
               <Table striped highlightOnHover>
                 <Table.Thead>
                   <Table.Tr>
+                    <Table.Th>Client</Table.Th>
                     <Table.Th>Recipient</Table.Th>
                     <Table.Th>Channel</Table.Th>
                     <Table.Th>Type</Table.Th>
@@ -200,10 +406,13 @@ export default function Automation() {
                       onClick={() => { setSelectedLog(log); openDetail(); }}
                     >
                       <Table.Td>
+                        <Text size="sm" truncate maw={160}>{log.client?.name ?? '—'}</Text>
+                      </Table.Td>
+                      <Table.Td>
                         <Text size="sm" truncate maw={200}>{log.recipient}</Text>
                       </Table.Td>
                       <Table.Td>
-                        <Badge variant="light" color={log.channel === 'email' ? 'blue' : 'green'} size="sm">
+                        <Badge variant="light" color={CHANNEL_COLORS[log.channel] ?? 'gray'} size="sm">
                           {log.channel}
                         </Badge>
                       </Table.Td>
@@ -242,18 +451,33 @@ export default function Automation() {
         {selectedLog && (
           <Stack gap="sm">
             <Group justify="space-between">
-              <Badge variant="light" color={selectedLog.channel === 'email' ? 'blue' : 'green'} size="lg">
-                {selectedLog.channel}
-              </Badge>
-              <Badge color={selectedLog.status === 'sent' ? 'green' : 'red'} size="lg">
-                {selectedLog.status}
-              </Badge>
+              <Group gap="xs">
+                <Badge variant="light" color={CHANNEL_COLORS[selectedLog.channel] ?? 'gray'} size="lg">
+                  {selectedLog.channel}
+                </Badge>
+                <Badge color={selectedLog.status === 'sent' ? 'green' : 'red'} size="lg">
+                  {selectedLog.status}
+                </Badge>
+              </Group>
+              {commLogDocumentIds(selectedLog).map((docId) => (
+                <Button key={docId} size="compact-xs" variant="light" loading={viewDocLoading}
+                  onClick={() => openInvoicePreview(docId)}>
+                  View Invoice
+                </Button>
+              ))}
             </Group>
 
             <div>
               <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Type</Text>
               <Text size="sm">{selectedLog.type.replace(/_/g, ' ')}</Text>
             </div>
+
+            {selectedLog.client && (
+              <div>
+                <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Client</Text>
+                <Text size="sm">{selectedLog.client.name}</Text>
+              </div>
+            )}
 
             <div>
               <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Recipient</Text>
@@ -303,6 +527,17 @@ export default function Automation() {
           </Stack>
         )}
       </Modal>
+
+      {/* Invoice preview — opened from Upcoming Reminders, without leaving this page */}
+      <Drawer opened={!!viewDoc} onClose={() => setViewDoc(null)} title="Document Details" size="xl" position="right">
+        {viewDoc && (
+          <DocumentView
+            document={viewDoc}
+            onRefresh={() => viewDoc && openInvoicePreview(viewDoc.id)}
+            onClose={() => setViewDoc(null)}
+          />
+        )}
+      </Drawer>
     </Stack>
   );
 }

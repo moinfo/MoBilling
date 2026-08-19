@@ -17,6 +17,20 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Application Version
+    |--------------------------------------------------------------------------
+    |
+    | Only meaningful for a self-hosted install — compared against the
+    | latest published Release (see ReleaseController) to show "update
+    | available". Bumped when a distributable package is cut; this repo's
+    | own .env doesn't set APP_VERSION, so it's always "dev" here.
+    |
+    */
+
+    'version' => env('APP_VERSION', 'dev'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------
     |

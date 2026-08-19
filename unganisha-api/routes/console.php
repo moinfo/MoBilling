@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Schedule;
 
+// No-op on mobilling.co.tz itself — only matches is_self_hosted tenants (a self-hosted install running this same schedule).
+Schedule::command('license:check')->dailyAt('05:00')->withoutOverlapping();
 Schedule::command('hosting:reconcile')->dailyAt('05:30')->withoutOverlapping();
 Schedule::command('domains:sync')->dailyAt('05:45')->withoutOverlapping();
 Schedule::command('domains:process-renewals')->dailyAt('06:30')->withoutOverlapping();

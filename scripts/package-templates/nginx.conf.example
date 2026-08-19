@@ -1,0 +1,64 @@
+# MoBilling self-hosted vhost template.
+# Replace {{DOMAIN}} and {{PATH}} (the directory this package was unzipped
+# into, e.g. /var/www/mobilling), then adjust the php-fpm socket path for
+# your PHP version if it isn't 8.2.
+#
+# After editing: sudo cp this file to /etc/nginx/sites-available/{{DOMAIN}},
+# symlink into sites-enabled, `nginx -t`, then `systemctl reload nginx`.
+# Get an SSL certificate (e.g. `certbot --nginx -d {{DOMAIN}}`) before going
+# live — the installer and every API call require HTTPS in production.
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name {{DOMAIN}};
+
+    root {{PATH}}/api/public;
+    index index.php index.html;
+
+    client_max_body_size 20M;
+
+    # API routes - handled by Laravel
+    location /api {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # Sanctum CSRF cookie
+    location /sanctum {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    # Laravel public storage (uploaded files)
+    location /storage {
+        alias {{PATH}}/api/storage/app/public;
+        try_files $uri $uri/ =404;
+    }
+
+    # PHP-FPM for Laravel
+    location ~ \.php$ {
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+        fastcgi_hide_header X-Powered-By;
+    }
+
+    # Frontend SPA - hashed build assets are immutable, cache aggressively
+    location /assets/ {
+        root {{PATH}}/public_html;
+        add_header Cache-Control "public, max-age=31536000, immutable";
+        try_files $uri =404;
+    }
+
+    # Frontend SPA - serve the React app for everything else.
+    # no-cache so browsers revalidate index.html and pick up new builds.
+    location / {
+        root {{PATH}}/public_html;
+        add_header Cache-Control "no-cache";
+        try_files $uri $uri/ /index.html;
+    }
+
+    # Deny access to hidden files
+    location ~ /\.(?!well-known) {
+        deny all;
+    }
+}

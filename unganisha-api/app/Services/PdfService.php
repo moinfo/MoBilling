@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Document;
 use App\Models\Expense;
 use App\Models\PaymentIn;
+use App\Models\Payslip;
 use App\Models\PettyCashTransaction;
 use Barryvdh\DomPDF\Facade\Pdf;
 
@@ -103,5 +104,17 @@ class PdfService
             'tenant' => $tenant,
             'voucher' => $payload,
         ])->setPaper('a5');
+    }
+
+    public function generatePayslip(Payslip $payslip)
+    {
+        $payslip->load('user:id,name', 'payrollRun:id,month_key,status', 'user.tenant');
+        $tenant = $payslip->user->tenant;
+
+        return Pdf::loadView('pdf.payslip', [
+            'payslip' => $payslip,
+            'tenant' => $tenant,
+            'employee' => $payslip->user,
+        ])->setPaper('a4');
     }
 }

@@ -8,22 +8,31 @@ return new class extends Migration
 {
     public function up(): void
     {
-        $permId = Str::uuid()->toString();
+        // Idempotent for the same reason as 2026_03_06_100001: the
+        // 2026_02_28_800005 seed migration's current content already
+        // includes this permission (added there after this migration had
+        // already run in production, where each only executes once
+        // regardless of later file edits — but a fresh `migrate` replays
+        // both in order).
+        $existing = DB::table('permissions')->where('name', 'reports.satisfaction')->first();
+        $permId = $existing->id ?? Str::uuid()->toString();
 
-        DB::table('permissions')->insert([
-            'id' => $permId,
-            'name' => 'reports.satisfaction',
-            'label' => 'Satisfaction Report',
-            'category' => 'reports',
-            'group_name' => 'satisfaction',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        if (!$existing) {
+            DB::table('permissions')->insert([
+                'id' => $permId,
+                'name' => 'reports.satisfaction',
+                'label' => 'Satisfaction Report',
+                'category' => 'reports',
+                'group_name' => 'satisfaction',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         $tenantIds = DB::table('tenants')->pluck('id');
 
         foreach ($tenantIds as $tenantId) {
-            DB::table('tenant_permissions')->insert([
+            DB::table('tenant_permissions')->insertOrIgnore([
                 'tenant_id' => $tenantId,
                 'permission_id' => $permId,
             ]);
@@ -34,7 +43,7 @@ return new class extends Migration
                 ->pluck('id');
 
             foreach ($adminRoleIds as $roleId) {
-                DB::table('role_permissions')->insert([
+                DB::table('role_permissions')->insertOrIgnore([
                     'role_id' => $roleId,
                     'permission_id' => $permId,
                 ]);

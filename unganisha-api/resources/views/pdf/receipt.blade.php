@@ -53,8 +53,21 @@
         <div class="info-left">
             <div class="info-box">
                 <h3>Received From</h3>
-                <p><strong>{{ $client->name }}</strong></p>
-                @if($client->address)<p>{{ $client->address }}</p>@endif
+                <p><strong>{{ $client->company_name ?: $client->name }}</strong></p>
+                @if($client->company_name && ($client->first_name || $client->last_name))
+                    <p>{{ trim("{$client->first_name} {$client->last_name}") }}</p>
+                @endif
+                @php
+                    $addressLine = collect([$client->address_1, $client->address_2])->filter()->implode(', ');
+                    $cityLine = collect([$client->city, $client->state, $client->postcode])->filter()->implode(', ');
+                @endphp
+                @if($addressLine || $cityLine || $client->country)
+                    @if($addressLine)<p>{{ $addressLine }}</p>@endif
+                    @if($cityLine)<p>{{ $cityLine }}</p>@endif
+                    @if($client->country)<p>{{ $client->country }}</p>@endif
+                @elseif($client->address)
+                    <p>{{ $client->address }}</p>
+                @endif
                 @if($client->email)<p>{{ $client->email }}</p>@endif
                 @if($client->phone)<p>{{ $client->phone }}</p>@endif
             </div>

@@ -16,6 +16,7 @@ import {
   IconHeartHandshake, IconUserPlus, IconEdit, IconTrash, IconShieldLock,
   IconArrowUp, IconArrowDown, IconArrowsSort,
   IconLogin, IconWallet, IconWorldWww, IconMessageCircle, IconServer, IconNote,
+  IconAddressBook, IconArrowsJoin,
 } from '@tabler/icons-react';
 import { Rating } from '@mantine/core';
 import {
@@ -23,6 +24,9 @@ import {
   getClientPortalUsers, createClientPortalUser, updateClientPortalUser, deleteClientPortalUser,
   ClientPortalUser,
   portalLoginAsClient, getClientCredit, adjustClientCredit, updateClientNotes, makeClientReseller,
+  deleteClient,
+  getClientContacts, createClientContact, updateClientContact, deleteClientContact, ClientContact,
+  mergeClients, getClients,
 } from '../api/clients';
 import { getClientFollowups, FollowupEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
@@ -74,6 +78,7 @@ const outcomeLabels: Record<string, string> = {
 export default function ClientProfile() {
   const { impersonateClient } = useAuth();
   const [creditOpen, setCreditOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const { clientId } = useParams<{ clientId: string }>();
   const handlePortalLogin = async () => {
     try {
@@ -115,6 +120,30 @@ export default function ClientProfile() {
       </Text>,
       labels: { confirm: 'Create Invoice', cancel: 'Cancel' },
       onConfirm: () => makeResellerMut.mutate(),
+    });
+  };
+
+  const deleteClientMut = useMutation({
+    mutationFn: () => deleteClient(clientId!),
+    onSuccess: () => {
+      notifications.show({ title: 'Client deleted', message: 'The client account has been removed.', color: 'green' });
+      navigate('/clients');
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Could not delete this client.', color: 'red' });
+    },
+  });
+
+  const confirmDeleteClient = () => {
+    modals.openConfirmModal({
+      title: 'Delete Client Account',
+      children: <Text size="sm">
+        Delete {data?.data?.data?.client?.name ?? 'this client'}? This removes the client record — invoices,
+        subscriptions and history stay for audit purposes but the client will no longer appear in listings.
+      </Text>,
+      labels: { confirm: 'Delete', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteClientMut.mutate(),
     });
   };
 
@@ -180,8 +209,21 @@ export default function ClientProfile() {
               <Group gap={4}><IconId size={14} color="gray" /><Text size="sm" c="dimmed">{client.tax_id}</Text></Group>
             )}
           </Group>
-          {client.address && (
-            <Group gap={4} mt={2}><IconMapPin size={14} color="gray" /><Text size="sm" c="dimmed">{client.address}</Text></Group>
+          {(() => {
+            const structuredLine = [
+              [client.address_1, client.address_2].filter(Boolean).join(', '),
+              [client.city, client.state, client.postcode].filter(Boolean).join(', '),
+              client.country,
+            ].filter(Boolean).join(' — ');
+            const line = structuredLine || client.address;
+            return line ? (
+              <Group gap={4} mt={2}><IconMapPin size={14} color="gray" /><Text size="sm" c="dimmed">{line}</Text></Group>
+            ) : null;
+          })()}
+          {(client.first_name || client.last_name || client.company_name) && (
+            <Text size="xs" c="dimmed" mt={2}>
+              {[client.company_name, [client.first_name, client.last_name].filter(Boolean).join(' ')].filter(Boolean).join(' · ')}
+            </Text>
           )}
           <Group gap="xs" mt={6}>
             <Badge size="sm" variant="light" color={((profile as any).client_status ?? 'active') === 'active' ? 'green' : 'gray'}>
@@ -219,6 +261,18 @@ export default function ClientProfile() {
                 Make Reseller
               </Button>
             )
+          )}
+          {can('clients.delete') && (
+            <Button size="xs" variant="light" color="orange" leftSection={<IconArrowsJoin size={14} />}
+              onClick={() => setMergeOpen(true)}>
+              Merge
+            </Button>
+          )}
+          {can('clients.delete') && (
+            <Button size="xs" variant="light" color="red" leftSection={<IconTrash size={14} />}
+              loading={deleteClientMut.isPending} onClick={confirmDeleteClient}>
+              Delete
+            </Button>
           )}
         </Group>
       </Group>
@@ -311,6 +365,37 @@ export default function ClientProfile() {
           </Table.ScrollContainer>
         )}
       </Paper>
+
+      {/* Addons */}
+      {(profile.addons ?? []).length > 0 && (
+        <Paper withBorder p="md" radius="md">
+          <Title order={4} mb="sm">Addons</Title>
+          <Table.ScrollContainer minWidth={500}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Name</Table.Th>
+                  <Table.Th>Cycle</Table.Th>
+                  {can('client_profile.subscription_price') && <Table.Th>Price</Table.Th>}
+                  <Table.Th>Start</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {profile.addons.map((a) => (
+                  <Table.Tr key={a.id}>
+                    <Table.Td fw={500}>{a.name}</Table.Td>
+                    <Table.Td><Badge variant="light" size="sm">{cycleLabels[a.billing_cycle] || a.billing_cycle}</Badge></Table.Td>
+                    {can('client_profile.subscription_price') && <Table.Td>{formatCurrency(a.price)}</Table.Td>}
+                    <Table.Td>{a.start_date ? formatDate(a.start_date) : '—'}</Table.Td>
+                    <Table.Td><Badge color={statusColors[a.status] || 'gray'} size="sm">{a.status}</Badge></Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
 
       {/* Domains */}
       {((profile as any).domains ?? []).length > 0 && (
@@ -405,6 +490,12 @@ export default function ClientProfile() {
       )}
 
       <CreditModal clientId={clientId!} opened={creditOpen} onClose={() => setCreditOpen(false)} />
+      <MergeClientModal
+        clientId={clientId!}
+        clientName={client.name}
+        opened={mergeOpen}
+        onClose={() => setMergeOpen(false)}
+      />
 
       {/* Invoices */}
       <Paper withBorder p="md" radius="md">
@@ -557,6 +648,39 @@ export default function ClientProfile() {
           );
         })()}
       </Paper>
+
+      {/* Quotations */}
+      {(profile.quotations ?? []).length > 0 && (
+        <Paper withBorder p="md" radius="md">
+          <Title order={4} mb="sm">Quotes</Title>
+          <Table.ScrollContainer minWidth={600}>
+            <Table striped highlightOnHover>
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>#</Table.Th>
+                  <Table.Th>Subject</Table.Th>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th>Valid Until</Table.Th>
+                  <Table.Th>Total</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {profile.quotations.map((q) => (
+                  <Table.Tr key={q.id} style={{ cursor: 'pointer' }} onClick={() => navigate('/quotations')}>
+                    <Table.Td fw={500}>{q.document_number}</Table.Td>
+                    <Table.Td><Text size="sm" c="dimmed">{q.subject || '—'}</Text></Table.Td>
+                    <Table.Td>{formatDate(q.date)}</Table.Td>
+                    <Table.Td>{q.valid_until ? formatDate(q.valid_until) : '—'}</Table.Td>
+                    <Table.Td>{formatCurrency(q.total)}</Table.Td>
+                    <Table.Td><Badge color={statusColors[q.status] || 'gray'} size="sm">{q.status}</Badge></Table.Td>
+                  </Table.Tr>
+                ))}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
+        </Paper>
+      )}
 
       {/* Payments */}
       <Paper withBorder p="md" radius="md">
@@ -761,6 +885,9 @@ export default function ClientProfile() {
         )}
       </Paper>
 
+      {/* Additional Contacts */}
+      <ContactsSection clientId={clientId!} />
+
       {/* Portal Users */}
       <PortalUsersSection clientId={clientId!} />
 
@@ -824,6 +951,160 @@ export default function ClientProfile() {
         )}
       </Modal>
     </Stack>
+  );
+}
+
+function ContactsSection({ clientId }: { clientId: string }) {
+  const queryClient = useQueryClient();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editing, setEditing] = useState<ClientContact | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['client-contacts', clientId],
+    queryFn: () => getClientContacts(clientId),
+  });
+
+  const contacts = data?.data?.data || [];
+
+  const form = useForm({
+    initialValues: { name: '', email: '', phone: '', role: '', notes: '' },
+    validate: {
+      name: (v) => (v.length > 0 ? null : 'Required'),
+      email: (v) => (!v || /^\S+@\S+$/.test(v) ? null : 'Invalid email'),
+    },
+  });
+
+  const createMut = useMutation({
+    mutationFn: (data: any) => createClientContact(clientId, data),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Contact added', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-contacts', clientId] });
+      closeModal();
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed', color: 'red' });
+    },
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: any }) => updateClientContact(clientId, id, data),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Contact updated', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-contacts', clientId] });
+      closeModal();
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => deleteClientContact(clientId, id),
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Contact removed', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['client-contacts', clientId] });
+    },
+  });
+
+  const openCreate = () => {
+    setEditing(null);
+    form.reset();
+    setModalOpen(true);
+  };
+
+  const openEdit = (c: ClientContact) => {
+    setEditing(c);
+    form.setValues({ name: c.name, email: c.email || '', phone: c.phone || '', role: c.role || '', notes: c.notes || '' });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditing(null);
+    form.reset();
+  };
+
+  const handleSubmit = (values: typeof form.values) => {
+    if (editing) {
+      updateMut.mutate({ id: editing.id, data: values });
+    } else {
+      createMut.mutate(values);
+    }
+  };
+
+  const confirmDelete = (c: ClientContact) => {
+    modals.openConfirmModal({
+      title: 'Remove Contact',
+      children: <Text size="sm">Remove {c.name}?</Text>,
+      labels: { confirm: 'Remove', cancel: 'Cancel' },
+      confirmProps: { color: 'red' },
+      onConfirm: () => deleteMut.mutate(c.id),
+    });
+  };
+
+  return (
+    <>
+      <Paper withBorder p="md" radius="md">
+        <Group justify="space-between" mb="sm">
+          <Group gap="sm">
+            <IconAddressBook size={20} />
+            <Title order={4}>Contacts</Title>
+            {contacts.length > 0 && <Badge variant="light" size="sm">{contacts.length}</Badge>}
+          </Group>
+          <Button leftSection={<IconUserPlus size={16} />} size="xs" onClick={openCreate}>
+            Add Contact
+          </Button>
+        </Group>
+        {isLoading ? (
+          <Center py="md"><Loader size="sm" /></Center>
+        ) : contacts.length === 0 ? (
+          <Text c="dimmed" size="sm">No additional contacts.</Text>
+        ) : (
+          <Table striped highlightOnHover>
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Role</Table.Th>
+                <Table.Th>Email</Table.Th>
+                <Table.Th>Phone</Table.Th>
+                <Table.Th>Actions</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {contacts.map((c) => (
+                <Table.Tr key={c.id}>
+                  <Table.Td fw={500}>{c.name}</Table.Td>
+                  <Table.Td>{c.role ? <Badge variant="light" size="sm">{c.role}</Badge> : '—'}</Table.Td>
+                  <Table.Td>{c.email || '—'}</Table.Td>
+                  <Table.Td>{c.phone || '—'}</Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      <ActionIcon variant="subtle" size="sm" onClick={() => openEdit(c)}><IconEdit size={14} /></ActionIcon>
+                      <ActionIcon variant="subtle" size="sm" color="red" onClick={() => confirmDelete(c)}><IconTrash size={14} /></ActionIcon>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        )}
+      </Paper>
+
+      <Modal opened={modalOpen} onClose={closeModal} title={editing ? 'Edit Contact' : 'Add Contact'}>
+        <form onSubmit={form.onSubmit(handleSubmit)}>
+          <Stack gap="sm">
+            <TextInput label="Name" required {...form.getInputProps('name')} />
+            <TextInput label="Role" placeholder="e.g. Billing, Technical" {...form.getInputProps('role')} />
+            <TextInput label="Email" {...form.getInputProps('email')} />
+            <TextInput label="Phone" {...form.getInputProps('phone')} />
+            <Textarea label="Notes" {...form.getInputProps('notes')} />
+            <Group justify="flex-end">
+              <Button variant="default" onClick={closeModal}>Cancel</Button>
+              <Button type="submit" loading={createMut.isPending || updateMut.isPending}>
+                {editing ? 'Save' : 'Add Contact'}
+              </Button>
+            </Group>
+          </Stack>
+        </form>
+      </Modal>
+    </>
   );
 }
 
@@ -1088,6 +1369,102 @@ function CreditModal({ clientId, opened, onClose }: { clientId: string; opened: 
             </Table.Tbody>
           </Table>
         )}
+      </Stack>
+    </Modal>
+  );
+}
+
+function MergeClientModal({ clientId, clientName, opened, onClose }: { clientId: string; clientName: string; opened: boolean; onClose: () => void }) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [secondClientId, setSecondClientId] = useState<string | null>(null);
+
+  const { data: clientsData } = useQuery({
+    queryKey: ['clients-simple'],
+    queryFn: () => getClients({ per_page: 200 }),
+    enabled: opened,
+  });
+
+  const clientOptions = (clientsData?.data?.data ?? [])
+    .filter((c: any) => c.id !== clientId)
+    .map((c: any) => ({
+      value: c.id,
+      label: `${c.name}${c.email ? ` (${c.email})` : c.phone ? ` (${c.phone})` : ''}`,
+    }));
+
+  const secondClientName = clientOptions.find((c: { value: string; label: string }) => c.value === secondClientId)?.label ?? '';
+
+  const mergeMut = useMutation({
+    mutationFn: (keep: 'first' | 'second') => mergeClients(clientId, secondClientId!, keep),
+    onSuccess: (res, keep) => {
+      notifications.show({ title: 'Clients merged', message: res.data.message, color: 'green' });
+      onClose();
+      setSecondClientId(null);
+      if (keep === 'first') {
+        queryClient.invalidateQueries({ queryKey: ['client-profile', clientId] });
+      } else {
+        navigate(`/clients/${res.data.data.survivor_id}`);
+      }
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err.response?.data?.message || 'Merge failed', color: 'red' });
+    },
+  });
+
+  const confirmMerge = (keep: 'first' | 'second') => {
+    const survivorName = keep === 'first' ? clientName : secondClientName;
+    const absorbedName = keep === 'first' ? secondClientName : clientName;
+    modals.openConfirmModal({
+      title: 'Merge Client',
+      children: <Text size="sm">
+        This will merge <b>{absorbedName}</b> into <b>{survivorName}</b>. All invoices, subscriptions, domains, tickets,
+        payments and wallet balance move to {survivorName}, and {absorbedName} is retired. This cannot be undone.
+      </Text>,
+      labels: { confirm: `Merge to ${survivorName}`, cancel: 'Cancel' },
+      confirmProps: { color: 'orange' },
+      onConfirm: () => mergeMut.mutate(keep),
+    });
+  };
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Merge Client" size="md">
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">This process allows you to merge two client accounts into one.</Text>
+
+        <Group gap="xs">
+          <Text size="sm" fw={600} w={110}>First Client</Text>
+          <Text size="sm">{clientName}</Text>
+        </Group>
+
+        <Select
+          label="Second Client"
+          placeholder="Enter Name, Company or Email to Search"
+          data={clientOptions}
+          searchable
+          value={secondClientId}
+          onChange={setSecondClientId}
+        />
+
+        <Group justify="flex-end" mt="sm">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button
+            variant="light"
+            disabled={!secondClientId}
+            loading={mergeMut.isPending}
+            onClick={() => confirmMerge('first')}
+          >
+            Merge to First Client
+          </Button>
+          <Button
+            variant="light"
+            color="orange"
+            disabled={!secondClientId}
+            loading={mergeMut.isPending}
+            onClick={() => confirmMerge('second')}
+          >
+            Merge to Second Client
+          </Button>
+        </Group>
       </Stack>
     </Modal>
   );

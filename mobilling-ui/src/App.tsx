@@ -11,6 +11,9 @@ import AppLayout from './components/Layout/AppShell';
 import AdminShell from './components/Layout/AdminShell';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import Install from './pages/Install';
+import LicenseAgreement from './pages/LicenseAgreement';
+import BuyLicense from './pages/BuyLicense';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
 import Dashboard from './pages/Dashboard';
@@ -43,6 +46,9 @@ import TenantUsers from './pages/admin/TenantUsers';
 import EmailSettings from './pages/admin/EmailSettings';
 import SmsSettingsAdmin from './pages/admin/SmsSettings';
 import SmsPackagesAdmin from './pages/admin/SmsPackages';
+import LicensesAdmin from './pages/admin/Licenses';
+import LicensePlansAdmin from './pages/admin/LicensePlans';
+import ReleasesAdmin from './pages/admin/Releases';
 import SmsPurchasesAdmin from './pages/admin/SmsPurchases';
 import SubscriptionPlansAdmin from './pages/admin/SubscriptionPlans';
 import TenantProfile from './pages/admin/TenantProfile';
@@ -81,6 +87,9 @@ import ServedCustomers from './pages/ServedCustomers';
 import StaffReports from './pages/StaffReports';
 import Attendance from './pages/Attendance';
 import StaffTargets from './pages/StaffTargets';
+import UserProfile from './pages/UserProfile';
+import Leave from './pages/Leave';
+import Payroll from './pages/Payroll';
 import Collection from './pages/Collection';
 import Followups from './pages/Followups';
 import SatisfactionCalls from './pages/SatisfactionCalls';
@@ -127,6 +136,7 @@ import CollectionEffectivenessReport from './pages/reports/CollectionEffectivene
 import CommunicationLogReport from './pages/reports/CommunicationLogReport';
 import SatisfactionReportPage from './pages/reports/SatisfactionReport';
 import SubscriptionExpired from './pages/SubscriptionExpired';
+import LicenseInactive from './pages/LicenseInactive';
 import PesapalCallback from './pages/PesapalCallback';
 import PayInvoice from './pages/PayInvoice';
 
@@ -153,6 +163,9 @@ export default function App() {
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/install" element={<Install />} />
+                <Route path="/license-agreement" element={<LicenseAgreement />} />
+                <Route path="/buy-license" element={<BuyLicense />} />
                 <Route path="/portal/login" element={<PortalLogin />} />
                 <Route path="/portal/forgot-password" element={<PortalForgotPassword />} />
                 <Route path="/portal/register" element={<PortalRegister />} />
@@ -167,6 +180,16 @@ export default function App() {
                   element={
                     <ProtectedRoute allowExpired>
                       <SubscriptionExpired />
+                    </ProtectedRoute>
+                  }
+                />
+
+                {/* Self-hosted install's license inactive (standalone, no sidebar) */}
+                <Route
+                  path="/license-inactive"
+                  element={
+                    <ProtectedRoute allowExpired>
+                      <LicenseInactive />
                     </ProtectedRoute>
                   }
                 />
@@ -187,6 +210,9 @@ export default function App() {
                   <Route path="/admin/email-templates" element={<TemplatesAdmin />} />
                   <Route path="/admin/sms-settings" element={<SmsSettingsAdmin />} />
                   <Route path="/admin/sms-packages" element={<SmsPackagesAdmin />} />
+                  <Route path="/admin/licenses" element={<LicensesAdmin />} />
+                  <Route path="/admin/license-plans" element={<LicensePlansAdmin />} />
+                  <Route path="/admin/releases" element={<ReleasesAdmin />} />
                   <Route path="/admin/sms-purchases" element={<SmsPurchasesAdmin />} />
                   <Route path="/admin/subscription-plans" element={<SubscriptionPlansAdmin />} />
                   <Route path="/admin/currencies" element={<CurrenciesAdmin />} />
@@ -230,6 +256,9 @@ export default function App() {
                   <Route path="/system-records" element={<SystemRecords />} />
                   <Route path="/my-verifications" element={<MyVerifications />} />
                   <Route path="/users" element={<Users />} />
+                  <Route path="/users/:userId/profile" element={<UserProfile />} />
+                  <Route path="/leave" element={<Leave />} />
+                  <Route path="/payroll" element={<Payroll />} />
                   <Route path="/sessions" element={<Sessions />} />
                   <Route path="/roles" element={<Roles />} />
                   <Route path="/sms" element={<Sms />} />

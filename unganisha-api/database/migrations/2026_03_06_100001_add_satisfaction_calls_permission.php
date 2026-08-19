@@ -8,24 +8,33 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // 1. Create the permission
-        $permId = Str::uuid()->toString();
+        // 1. Create the permission — idempotent because on a fresh install
+        // (self-hosted, or any new `migrate` from an empty database) the
+        // 2026_02_28_800005 seed migration's current content already
+        // includes this permission name (added there after this migration
+        // had already run in production, where each only ever executes
+        // once regardless of later file edits — but a fresh run replays
+        // both, back to back).
+        $existing = DB::table('permissions')->where('name', 'menu.satisfaction_calls')->first();
+        $permId = $existing->id ?? Str::uuid()->toString();
 
-        DB::table('permissions')->insert([
-            'id' => $permId,
-            'name' => 'menu.satisfaction_calls',
-            'label' => 'Satisfaction Calls',
-            'category' => 'menu',
-            'group_name' => 'satisfaction_calls',
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        if (!$existing) {
+            DB::table('permissions')->insert([
+                'id' => $permId,
+                'name' => 'menu.satisfaction_calls',
+                'label' => 'Satisfaction Calls',
+                'category' => 'menu',
+                'group_name' => 'satisfaction_calls',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
 
         // 2. Grant to all tenants
         $tenantIds = DB::table('tenants')->pluck('id');
 
         foreach ($tenantIds as $tenantId) {
-            DB::table('tenant_permissions')->insert([
+            DB::table('tenant_permissions')->insertOrIgnore([
                 'tenant_id' => $tenantId,
                 'permission_id' => $permId,
             ]);
@@ -37,7 +46,7 @@ return new class extends Migration
                 ->pluck('id');
 
             foreach ($adminRoleIds as $roleId) {
-                DB::table('role_permissions')->insert([
+                DB::table('role_permissions')->insertOrIgnore([
                     'role_id' => $roleId,
                     'permission_id' => $permId,
                 ]);

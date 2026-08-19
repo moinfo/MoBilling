@@ -3,12 +3,17 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Client;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
 use App\Models\User;
+use App\Notifications\NewTenantNotification;
+use App\Notifications\WelcomeNotification;
 use App\Services\SubscriptionService;
+use App\Services\TenantProvisioningService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Validation\Rules\Password;
 
 class TenantController extends Controller
@@ -78,6 +83,98 @@ class TenantController extends Controller
                 'email' => $request->admin_email,
                 'password' => $request->admin_password,
                 'role' => 'admin',
+            ]);
+
+            $tenant->loadCount('users');
+
+            return response()->json(['data' => $tenant], 201);
+        });
+    }
+
+    /**
+     * Turn an existing client into a brand-new, fully independent tenant —
+     * their own staff, product catalog, branding, and billing lifecycle. Used
+     * when a domain-reseller client wants a real white-label business rather
+     * than just wholesale pricing under the current tenant (see
+     * ClientController::makeReseller for that unrelated, same-tenant flow).
+     *
+     * Provisioning mirrors Auth\RegisterController::register() (roles +
+     * permissions + notifications) rather than store() above, which never
+     * assigns role_id/permissions to its admin user. Nothing about the
+     * originating client — invoices, subscriptions, domains, wallet — moves;
+     * this only reads its identity fields and leaves an audit note behind.
+     */
+    public function promoteFromClient(Request $request, TenantProvisioningService $provisioning)
+    {
+        $this->authorize();
+
+        $request->validate([
+            'client_id' => 'required|uuid|exists:clients,id',
+            'name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+            'phone' => 'nullable|string|max:20',
+            'address' => 'nullable|string|max:500',
+            'tax_id' => 'nullable|string|max:50',
+            'currency' => 'nullable|string|max:10',
+            'admin_name' => 'required|string|max:255',
+            'admin_email' => 'required|email|unique:users,email',
+            'admin_password' => ['required', Password::min(8)],
+            'tier' => 'nullable|in:general,reseller,lite',
+        ]);
+
+        $client = Client::withoutGlobalScopes()->with('tenant')->findOrFail($request->client_id);
+
+        return DB::transaction(function () use ($request, $client, $provisioning) {
+            // BelongsToTenant::creating() force-sets tenant_id from the
+            // *authenticated* caller's own tenant_id on every tenant-scoped
+            // model TenantProvisioningService::provision() touches (Role,
+            // CommunicationLog via the notification log listeners below,
+            // etc). That's a no-op for the public, unauthenticated
+            // RegisterController::register(), but here the caller is a
+            // logged-in super admin whose own tenant_id is null — which
+            // would silently null out (and constraint-violate) every one of
+            // those writes. Temporarily pointing the acting user's in-memory
+            // tenant_id at a placeholder isn't possible before the tenant
+            // exists, so provision() is called first with the acting user's
+            // tenant_id patched in immediately after Tenant::create() — see
+            // the callback passed below.
+            $actingUser = auth()->user();
+            $originalTenantId = $actingUser->tenant_id;
+
+            try {
+                [$tenant, $adminUser] = $provisioning->provision(
+                    [
+                        'name' => $request->name,
+                        'email' => $request->email,
+                        'phone' => $request->phone,
+                        'address' => $request->address,
+                        'tax_id' => $request->tax_id,
+                        'currency' => $request->currency ?? $client->tenant?->currency ?? 'KES',
+                        'trial_ends_at' => now()->addDays(7),
+                    ],
+                    [
+                        'name' => $request->admin_name,
+                        'email' => $request->admin_email,
+                        'password' => $request->admin_password,
+                    ],
+                    $request->tier ?? 'general',
+                    function ($tenant) use ($actingUser) {
+                        $actingUser->tenant_id = $tenant->id;
+                    },
+                );
+
+                $adminUser->notify(new WelcomeNotification($tenant));
+
+                $superAdmins = User::where('role', 'super_admin')->get();
+                Notification::send($superAdmins, new NewTenantNotification($tenant));
+            } finally {
+                $actingUser->tenant_id = $originalTenantId;
+            }
+
+            $client->update([
+                'notes' => trim(($client->notes ? $client->notes . "\n\n" : '')
+                    . "Promoted to independent tenant \"{$tenant->name}\" ({$tenant->id}) on "
+                    . now()->toDateString() . ' by ' . auth()->user()->name . '.'),
             ]);
 
             $tenant->loadCount('users');

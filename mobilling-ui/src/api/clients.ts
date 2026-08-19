@@ -7,6 +7,15 @@ export interface Client {
   phone: string | null;
   address: string | null;
   tax_id: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  company_name?: string | null;
+  address_1?: string | null;
+  address_2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postcode?: string | null;
+  country?: string | null;
   active_subscriptions_count?: number;
   subscription_total?: number;
   created_at: string;
@@ -18,6 +27,15 @@ export interface ClientFormData {
   phone: string;
   address: string;
   tax_id: string;
+  first_name?: string;
+  last_name?: string;
+  company_name?: string;
+  address_1?: string;
+  address_2?: string;
+  city?: string;
+  state?: string;
+  postcode?: string;
+  country?: string;
 }
 
 export const getClients = (params?: {
@@ -93,6 +111,14 @@ export interface ClientProfile {
     status: string;
     next_bill: string | null;
   }[];
+  addons: {
+    id: string;
+    name: string;
+    price: string;
+    billing_cycle: string;
+    start_date: string | null;
+    status: string;
+  }[];
   invoices: {
     id: string;
     document_number: string;
@@ -106,6 +132,15 @@ export interface ClientProfile {
     balance_due: number;
     status: string;
   }[];
+  quotations: {
+    id: string;
+    document_number: string;
+    subject?: string | null;
+    date: string;
+    valid_until: string | null;
+    total: string;
+    status: string;
+  }[];
   payments: {
     id: string;
     amount: string;
@@ -117,6 +152,7 @@ export interface ClientProfile {
   communication_logs: ClientCommunicationLog[];
   is_reseller?: boolean;
   reseller_membership?: { expire_date: string | null } | null;
+  contacts: ClientContact[];
 }
 
 export const getClientProfile = (id: string) =>
@@ -126,6 +162,36 @@ export const makeClientReseller = (clientId: string) =>
   api.post<{ data: { subscription_id: string; document_id: string; document_number: string }; message: string }>(
     `/clients/${clientId}/make-reseller`
   );
+
+// Client Contacts (additional contacts, WHMCS-style)
+export interface ClientContact {
+  id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+  notes: string | null;
+}
+
+export interface ClientContactFormData {
+  name: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  notes?: string;
+}
+
+export const getClientContacts = (clientId: string) =>
+  api.get<{ data: ClientContact[] }>(`/clients/${clientId}/contacts`);
+
+export const createClientContact = (clientId: string, data: ClientContactFormData) =>
+  api.post(`/clients/${clientId}/contacts`, data);
+
+export const updateClientContact = (clientId: string, contactId: string, data: Partial<ClientContactFormData>) =>
+  api.put(`/clients/${clientId}/contacts/${contactId}`, data);
+
+export const deleteClientContact = (clientId: string, contactId: string) =>
+  api.delete(`/clients/${clientId}/contacts/${contactId}`);
 
 // Client Portal Users (tenant admin)
 export interface ClientPortalUser {
@@ -179,3 +245,11 @@ export const adjustClientCredit = (clientId: string, amount: number, notes: stri
 
 export const updateClientNotes = (clientId: string, notes: string) =>
   api.put(`/clients/${clientId}/notes`, { notes });
+
+// ── Merge Clients (WHMCS-style) ──────────────────────────────────────────────
+
+export const mergeClients = (firstClientId: string, secondClientId: string, keep: 'first' | 'second') =>
+  api.post<{ data: { survivor_id: string; moved: Record<string, number> }; message: string }>(
+    `/clients/${firstClientId}/merge`,
+    { second_client_id: secondClientId, keep }
+  );

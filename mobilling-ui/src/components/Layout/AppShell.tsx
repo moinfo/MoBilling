@@ -13,6 +13,7 @@ import {
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
   IconDatabase, IconShoppingCart, IconDeviceLaptop,
+  IconCalendarTime, IconMoneybag, IconUserCog,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -31,16 +32,30 @@ export default function AppLayout() {
   const isActive = (path: string) => location.pathname === path;
 
   // Determine which section the current route belongs to
-  const billingPaths = ['/clients', '/product-services', '/product-addons', '/config-options', '/coupons', '/quotations', '/proformas', '/invoices', '/credit-notes', '/payments-in', '/client-subscriptions', '/next-bills'];
+  const billingPaths = ['/collection', '/followups', '/clients', '/product-services', '/product-addons', '/config-options', '/coupons', '/quotations', '/proformas', '/invoices', '/credit-notes', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
+  const hrPaths = ['/staff-reports', '/attendance', '/staff-targets', '/leave', '/payroll'];
+  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/domains'];
+  const supportPaths = ['/tickets', '/canned-replies', '/knowledgebase'];
+  const engagementPaths = ['/satisfaction-calls', '/appointments', '/whatsapp-contacts', '/field-marketing', '/social-media', '/served-customers'];
+  const recordsPaths = ['/system-records', '/my-verifications'];
+  const commsPaths = ['/sms', '/broadcast', '/announcements'];
+  const accountPaths = ['/subscription', '/users', '/roles', '/sessions', '/settings'];
 
   const getActiveSection = () => {
     if (billingPaths.some((p) => location.pathname === p)) return 'billing';
     if (statutoryPaths.some((p) => location.pathname === p)) return 'statutory';
     if (expensePaths.some((p) => location.pathname === p)) return 'expenses';
     if (reportPaths.some((p) => location.pathname === p)) return 'reports';
+    if (hrPaths.some((p) => location.pathname === p)) return 'hr';
+    if (webServicesPaths.some((p) => location.pathname === p) || location.pathname.startsWith('/hosting')) return 'webservices';
+    if (supportPaths.some((p) => location.pathname === p)) return 'support';
+    if (engagementPaths.some((p) => location.pathname === p)) return 'engagement';
+    if (recordsPaths.some((p) => location.pathname === p)) return 'records';
+    if (commsPaths.some((p) => location.pathname === p)) return 'comms';
+    if (accountPaths.some((p) => location.pathname === p)) return 'account';
     return null;
   };
 
@@ -69,7 +84,7 @@ export default function AppLayout() {
   const headerHeight = (isImpersonating ? 96 : 60) + (showSubscriptionBanner ? 36 : 0);
 
   // Check if any billing sub-items are visible
-  const showBilling = canAny(['menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills']);
+  const showBilling = canAny(['menu.collection', 'menu.followups', 'menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills']);
   const showStatutory = canAny(['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out']);
   const showExpenses = canAny(['menu.expense_categories', 'menu.expenses', 'menu.petty_cash']);
   // The three reference CRUDs (Systems / Bank Accounts / System Properties)
@@ -77,6 +92,15 @@ export default function AppLayout() {
   // top-level data-entry CRUD (System Records) appears here.
   const showSystemRecords = can('menu.system_records');
   const showReports = can('menu.reports');
+  const showHr = canAny(['menu.staff_reports', 'attendance.manage', 'menu.staff_targets', 'menu.leave', 'menu.payroll']);
+  // Grouped nav parents (Dec 2026 reorg) — each is purely a visual container;
+  // every leaf item below still gates on the exact same permission it always did.
+  const showWebServices = canAny(['menu.hosting', 'menu.domains']);
+  const showSupport = canAny(['menu.tickets', 'menu.announcements']);
+  const showEngagement = canAny(['menu.satisfaction_calls', 'menu.whatsapp', 'menu.field_marketing', 'menu.social_media', 'menu.served_customers']);
+  const showRecords = canAny(['menu.system_records', 'menu.my_verifications']);
+  const showComms = canAny(['menu.sms', 'menu.broadcast', 'menu.announcements']);
+  const showAccount = canAny(['menu.subscription', 'menu.users', 'menu.roles', 'settings.users', 'menu.settings']);
 
   return (
     <AppShell
@@ -165,71 +189,91 @@ export default function AppLayout() {
               active={isActive('/dashboard')} onClick={() => navigateAndClose('/dashboard')} />
           )}
 
-          {can('menu.collection') && (
-            <NavLink label="Collection" leftSection={<IconTargetArrow size={18} />}
-              active={isActive('/collection')} onClick={() => navigateAndClose('/collection')} />
-          )}
-
-          {can('menu.followups') && (
-            <NavLink label="Follow-ups" leftSection={<IconPhoneCall size={18} />}
-              active={isActive('/followups')} onClick={() => navigateAndClose('/followups')} />
-          )}
-
-          {can('menu.hosting') && (
-            <NavLink label="Hosting" leftSection={<IconWorld size={18} />}
-              defaultOpened={isActive('/hosting')}>
-              <NavLink label="Accounts" active={location.pathname === '/hosting'}
-                onClick={() => navigateAndClose('/hosting')} />
-              <NavLink label="Manage Services" active={location.pathname.startsWith('/hosting/services')}
-                onClick={() => navigateAndClose('/hosting/services')} />
-              <NavLink label="Discover Accounts" active={location.pathname === '/hosting/discover'}
-                onClick={() => navigateAndClose('/hosting/discover')} />
+          {showWebServices && (
+            <NavLink label="Web Services" leftSection={<IconWorld size={18} />}
+              opened={openSection === 'webservices'} onChange={() => toggleSection('webservices')}>
+              {can('menu.hosting') && (
+                <NavLink label="Hosting" leftSection={<IconWorld size={16} />}
+                  defaultOpened={isActive('/hosting')}>
+                  <NavLink label="Accounts" active={location.pathname === '/hosting'}
+                    onClick={() => navigateAndClose('/hosting')} />
+                  <NavLink label="Manage Services" active={location.pathname.startsWith('/hosting/services')}
+                    onClick={() => navigateAndClose('/hosting/services')} />
+                  <NavLink label="Discover Accounts" active={location.pathname === '/hosting/discover'}
+                    onClick={() => navigateAndClose('/hosting/discover')} />
+                </NavLink>
+              )}
+              {can('menu.domains') && (
+                <NavLink label="Domains" leftSection={<IconWorldWww size={16} />}
+                  active={isActive('/domains')} onClick={() => navigateAndClose('/domains')} />
+              )}
             </NavLink>
           )}
 
-          {can('menu.domains') && (
-            <NavLink label="Domains" leftSection={<IconWorldWww size={18} />}
-              active={isActive('/domains')} onClick={() => navigateAndClose('/domains')} />
+          {showSupport && (
+            <NavLink label="Support" leftSection={<IconMessageCircle size={18} />}
+              opened={openSection === 'support'} onChange={() => toggleSection('support')}>
+              {can('menu.tickets') && (
+                <NavLink label="Support Tickets" leftSection={<IconMessageCircle size={16} />}
+                  active={isActive('/tickets')} onClick={() => navigateAndClose('/tickets')} />
+              )}
+              {can('menu.tickets') && (
+                <NavLink label="Canned Replies" leftSection={<IconMessageDots size={16} />}
+                  active={isActive('/canned-replies')} onClick={() => navigateAndClose('/canned-replies')} />
+              )}
+              {can('menu.announcements') && (
+                <NavLink label="Knowledgebase" leftSection={<IconBook size={16} />}
+                  active={isActive('/knowledgebase')} onClick={() => navigateAndClose('/knowledgebase')} />
+              )}
+            </NavLink>
           )}
 
-          {can('menu.tickets') && (
-            <NavLink label="Support Tickets" leftSection={<IconMessageCircle size={18} />}
-              active={isActive('/tickets')} onClick={() => navigateAndClose('/tickets')} />
-          )}
-
-          {can('menu.tickets') && (
-            <NavLink label="Canned Replies" leftSection={<IconMessageDots size={18} />}
-              active={isActive('/canned-replies')} onClick={() => navigateAndClose('/canned-replies')} />
-          )}
-
-          {can('menu.announcements') && (
-            <NavLink label="Announcements" leftSection={<IconNews size={18} />}
-              active={isActive('/announcements')} onClick={() => navigateAndClose('/announcements')} />
-          )}
-
-          {can('menu.announcements') && (
-            <NavLink label="Knowledgebase" leftSection={<IconBook size={18} />}
-              active={isActive('/knowledgebase')} onClick={() => navigateAndClose('/knowledgebase')} />
-          )}
-
-          {can('menu.satisfaction_calls') && (
-            <NavLink label="Satisfaction Calls" leftSection={<IconHeartHandshake size={18} />}
-              active={isActive('/satisfaction-calls')} onClick={() => navigateAndClose('/satisfaction-calls')} />
-          )}
-
-          {can('menu.satisfaction_calls') && (
-            <NavLink label="Appointments" leftSection={<IconCalendarEvent size={18} />}
-              active={isActive('/appointments')} onClick={() => navigateAndClose('/appointments')} />
+          {showEngagement && (
+            <NavLink label="Engagement" leftSection={<IconHeartHandshake size={18} />}
+              opened={openSection === 'engagement'} onChange={() => toggleSection('engagement')}>
+              {can('menu.satisfaction_calls') && (
+                <NavLink label="Satisfaction Calls" leftSection={<IconHeartHandshake size={16} />}
+                  active={isActive('/satisfaction-calls')} onClick={() => navigateAndClose('/satisfaction-calls')} />
+              )}
+              {can('menu.satisfaction_calls') && (
+                <NavLink label="Appointments" leftSection={<IconCalendarEvent size={16} />}
+                  active={isActive('/appointments')} onClick={() => navigateAndClose('/appointments')} />
+              )}
+              {can('menu.whatsapp') && (
+                <NavLink label="WhatsApp" leftSection={<IconBrandWhatsapp size={16} color="#25D366" />}
+                  active={isActive('/whatsapp-contacts')} onClick={() => navigateAndClose('/whatsapp-contacts')} />
+              )}
+              {can('menu.field_marketing') && (
+                <NavLink label="Field Marketing" leftSection={<IconMapPin size={16} />}
+                  active={isActive('/field-marketing')} onClick={() => navigateAndClose('/field-marketing')} />
+              )}
+              {can('menu.social_media') && (
+                <NavLink label="Social Media" leftSection={<IconBrandInstagram size={16} />}
+                  active={isActive('/social-media')} onClick={() => navigateAndClose('/social-media')} />
+              )}
+              {can('menu.served_customers') && (
+                <NavLink label="Served Customers" leftSection={<IconUserCheck size={16} />}
+                  active={isActive('/served-customers')} onClick={() => navigateAndClose('/served-customers')} />
+              )}
+            </NavLink>
           )}
 
           {showBilling && (
             <NavLink label="Billing" leftSection={<IconFileText size={18} />}
               opened={openSection === 'billing'} onChange={() => toggleSection('billing')}>
+              {can('menu.collection') && (
+                <NavLink label="Collection" leftSection={<IconTargetArrow size={16} />}
+                  active={isActive('/collection')} onClick={() => navigateAndClose('/collection')} />
+              )}
+              {can('menu.followups') && (
+                <NavLink label="Follow-ups" leftSection={<IconPhoneCall size={16} />}
+                  active={isActive('/followups')} onClick={() => navigateAndClose('/followups')} />
+              )}
               {can('menu.clients') && (
                 <NavLink label="Clients" leftSection={<IconUsers size={16} />}
                   active={isActive('/clients')} onClick={() => navigateAndClose('/clients')} />
               )}
-              {can('clients.update') && (
+              {can('menu.portal_users') && (
                 <NavLink label="Portal Users" leftSection={<IconShieldLock size={16} />}
                   active={isActive('/portal-users')} onClick={() => navigateAndClose('/portal-users')} />
               )}
@@ -241,15 +285,15 @@ export default function AppLayout() {
                 <NavLink label="Products & Services" leftSection={<IconPackages size={16} />}
                   active={isActive('/product-services')} onClick={() => navigateAndClose('/product-services')} />
               )}
-              {can('menu.products') && (
+              {can('menu.product_addons') && (
                 <NavLink label="Product Add-ons" leftSection={<IconPackages size={16} />}
                   active={isActive('/product-addons')} onClick={() => navigateAndClose('/product-addons')} />
               )}
-              {can('menu.products') && (
+              {can('menu.config_options') && (
                 <NavLink label="Configurable Options" leftSection={<IconPackages size={16} />}
                   active={isActive('/config-options')} onClick={() => navigateAndClose('/config-options')} />
               )}
-              {can('menu.products') && (
+              {can('menu.coupons') && (
                 <NavLink label="Promotions / Coupons" leftSection={<IconPackages size={16} />}
                   active={isActive('/coupons')} onClick={() => navigateAndClose('/coupons')} />
               )}
@@ -332,18 +376,22 @@ export default function AppLayout() {
             </NavLink>
           )}
 
-          {showSystemRecords && (
-            <NavLink label="System Records" leftSection={<IconDatabase size={18} />}
-              active={isActive('/system-records')} onClick={() => navigateAndClose('/system-records')} />
+          {showRecords && (
+            <NavLink label="Records & Verification" leftSection={<IconDatabase size={18} />}
+              opened={openSection === 'records'} onChange={() => toggleSection('records')}>
+              {showSystemRecords && (
+                <NavLink label="System Records" leftSection={<IconDatabase size={16} />}
+                  active={isActive('/system-records')} onClick={() => navigateAndClose('/system-records')} />
+              )}
+              {can('menu.my_verifications') && (
+                <NavLink label="My Verifications" leftSection={<IconShieldCheck size={16} />}
+                  active={isActive('/my-verifications')} onClick={() => navigateAndClose('/my-verifications')} />
+              )}
+              {/* System Verifications (admin CRUD) lives inside Settings → tab.
+                  See pages/Settings.tsx — it's gated by menu.system_verifications
+                  which is admin-only after 2026_06_10_100003. */}
+            </NavLink>
           )}
-
-          {can('menu.my_verifications') && (
-            <NavLink label="My Verifications" leftSection={<IconShieldCheck size={18} />}
-              active={isActive('/my-verifications')} onClick={() => navigateAndClose('/my-verifications')} />
-          )}
-          {/* System Verifications (admin CRUD) lives inside Settings → tab.
-              See pages/Settings.tsx — it's gated by menu.system_verifications
-              which is admin-only after 2026_06_10_100003. */}
 
           {showReports && (
             <NavLink label="Reports" leftSection={<IconReportAnalytics size={18} />}
@@ -381,82 +429,48 @@ export default function AppLayout() {
             </NavLink>
           )}
 
-          {can('menu.sms') && (
-            <NavLink label="SMS" leftSection={<IconMessage size={18} />}
-              active={isActive('/sms')} onClick={() => navigateAndClose('/sms')} />
+          {showComms && (
+            <NavLink label="Communications" leftSection={<IconMessage size={18} />}
+              opened={openSection === 'comms'} onChange={() => toggleSection('comms')}>
+              {can('menu.sms') && (
+                <NavLink label="SMS" leftSection={<IconMessage size={16} />}
+                  active={isActive('/sms')} onClick={() => navigateAndClose('/sms')} />
+              )}
+              {can('menu.broadcast') && (
+                <NavLink label="Broadcast" leftSection={<IconSpeakerphone size={16} />}
+                  active={isActive('/broadcast')} onClick={() => navigateAndClose('/broadcast')} />
+              )}
+              {can('menu.announcements') && (
+                <NavLink label="Announcements" leftSection={<IconNews size={16} />}
+                  active={isActive('/announcements')} onClick={() => navigateAndClose('/announcements')} />
+              )}
+            </NavLink>
           )}
 
-          {can('menu.broadcast') && (
-            <NavLink label="Broadcast" leftSection={<IconSpeakerphone size={18} />}
-              active={isActive('/broadcast')} onClick={() => navigateAndClose('/broadcast')} />
-          )}
-
-          {can('menu.whatsapp') && (
-            <NavLink
-              label="WhatsApp"
-              leftSection={<IconBrandWhatsapp size={18} color="#25D366" />}
-              active={isActive('/whatsapp-contacts')}
-              onClick={() => navigateAndClose('/whatsapp-contacts')}
-            />
-          )}
-
-          {can('menu.field_marketing') && (
-            <NavLink
-              label="Field Marketing"
-              leftSection={<IconMapPin size={18} />}
-              active={isActive('/field-marketing')}
-              onClick={() => navigateAndClose('/field-marketing')}
-            />
-          )}
-
-          {can('menu.social_media') && (
-            <NavLink
-              label="Social Media"
-              leftSection={<IconBrandInstagram size={18} />}
-              active={isActive('/social-media')}
-              onClick={() => navigateAndClose('/social-media')}
-            />
-          )}
-
-          {can('menu.served_customers') && (
-            <NavLink
-              label="Served Customers"
-              leftSection={<IconUserCheck size={18} />}
-              active={isActive('/served-customers')}
-              onClick={() => navigateAndClose('/served-customers')}
-            />
-          )}
-
-          {can('menu.staff_reports') && (
-            <NavLink
-              label="Staff Reports"
-              leftSection={<IconClipboardList size={18} />}
-              active={isActive('/staff-reports')}
-              onClick={() => navigateAndClose('/staff-reports')}
-            />
-          )}
-
-          {can('attendance.manage') && (
-            <NavLink
-              label="Attendance"
-              leftSection={<IconClipboardCheck size={18} />}
-              active={isActive('/attendance')}
-              onClick={() => navigateAndClose('/attendance')}
-            />
-          )}
-
-          {can('menu.staff_targets') && (
-            <NavLink
-              label="Staff Targets"
-              leftSection={<IconTargetArrow size={18} />}
-              active={isActive('/staff-targets')}
-              onClick={() => navigateAndClose('/staff-targets')}
-            />
-          )}
-
-          {can('menu.subscription') && (
-            <NavLink label="Subscription" leftSection={<IconCreditCard size={18} />}
-              active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
+          {showHr && (
+            <NavLink label="HR" leftSection={<IconUserCog size={18} />}
+              opened={openSection === 'hr'} onChange={() => toggleSection('hr')}>
+              {can('menu.staff_reports') && (
+                <NavLink label="Staff Reports" leftSection={<IconClipboardList size={16} />}
+                  active={isActive('/staff-reports')} onClick={() => navigateAndClose('/staff-reports')} />
+              )}
+              {can('attendance.manage') && (
+                <NavLink label="Attendance" leftSection={<IconClipboardCheck size={16} />}
+                  active={isActive('/attendance')} onClick={() => navigateAndClose('/attendance')} />
+              )}
+              {can('menu.staff_targets') && (
+                <NavLink label="Staff Targets" leftSection={<IconTargetArrow size={16} />}
+                  active={isActive('/staff-targets')} onClick={() => navigateAndClose('/staff-targets')} />
+              )}
+              {can('menu.leave') && (
+                <NavLink label="Leave" leftSection={<IconCalendarTime size={16} />}
+                  active={isActive('/leave')} onClick={() => navigateAndClose('/leave')} />
+              )}
+              {can('menu.payroll') && (
+                <NavLink label="Payroll" leftSection={<IconMoneybag size={16} />}
+                  active={isActive('/payroll')} onClick={() => navigateAndClose('/payroll')} />
+              )}
+            </NavLink>
           )}
 
           {can('menu.automation') && (
@@ -464,26 +478,32 @@ export default function AppLayout() {
               active={isActive('/automation')} onClick={() => navigateAndClose('/automation')} />
           )}
 
-          {/* Team & Roles pages both require settings.users — only show the nav
-              when the user can actually use the page (was: menu.* only → 403). */}
-          {can('menu.users') && can('settings.users') && (
-            <NavLink label="Team" leftSection={<IconUsersGroup size={18} />}
-              active={isActive('/users')} onClick={() => navigateAndClose('/users')} />
-          )}
-
-          {can('menu.roles') && can('settings.users') && (
-            <NavLink label="Roles" leftSection={<IconShieldLock size={18} />}
-              active={isActive('/roles')} onClick={() => navigateAndClose('/roles')} />
-          )}
-
-          {can('settings.users') && (
-            <NavLink label="Active Sessions" leftSection={<IconDeviceLaptop size={18} />}
-              active={isActive('/sessions')} onClick={() => navigateAndClose('/sessions')} />
-          )}
-
-          {can('menu.settings') && (
-            <NavLink label="Settings" leftSection={<IconSettings size={18} />}
-              active={isActive('/settings')} onClick={() => navigateAndClose('/settings')} />
+          {showAccount && (
+            <NavLink label="Account" leftSection={<IconSettings size={18} />}
+              opened={openSection === 'account'} onChange={() => toggleSection('account')}>
+              {can('menu.subscription') && !user?.tenant?.is_self_hosted && (
+                <NavLink label="Subscription" leftSection={<IconCreditCard size={16} />}
+                  active={isActive('/subscription')} onClick={() => navigateAndClose('/subscription')} />
+              )}
+              {/* Team & Roles pages both require settings.users — only show the nav
+                  when the user can actually use the page (was: menu.* only → 403). */}
+              {can('menu.users') && can('settings.users') && (
+                <NavLink label="Team" leftSection={<IconUsersGroup size={16} />}
+                  active={isActive('/users')} onClick={() => navigateAndClose('/users')} />
+              )}
+              {can('menu.roles') && can('settings.users') && (
+                <NavLink label="Roles" leftSection={<IconShieldLock size={16} />}
+                  active={isActive('/roles')} onClick={() => navigateAndClose('/roles')} />
+              )}
+              {can('settings.users') && (
+                <NavLink label="Active Sessions" leftSection={<IconDeviceLaptop size={16} />}
+                  active={isActive('/sessions')} onClick={() => navigateAndClose('/sessions')} />
+              )}
+              {can('menu.settings') && (
+                <NavLink label="Settings" leftSection={<IconSettings size={16} />}
+                  active={isActive('/settings')} onClick={() => navigateAndClose('/settings')} />
+              )}
+            </NavLink>
           )}
         </AppShell.Section>
       </AppShell.Navbar>

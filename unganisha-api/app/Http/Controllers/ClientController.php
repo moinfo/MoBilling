@@ -108,6 +108,34 @@ class ClientController extends Controller
         return response()->json(['message' => 'Client deleted successfully']);
     }
 
+    /**
+     * WHMCS-style "Merge Clients": {client} is the "First Client" (the one
+     * being viewed); the request names the "Second Client" and which of the
+     * two survives. See ClientMergeService for exactly what moves.
+     */
+    public function merge(Request $request, Client $client, \App\Services\ClientMergeService $merger)
+    {
+        $data = $request->validate([
+            'second_client_id' => 'required|uuid',
+            'keep'              => 'required|in:first,second',
+        ]);
+
+        $second = Client::findOrFail($data['second_client_id']);
+
+        if ($second->id === $client->id) {
+            return response()->json(['message' => 'Choose two different clients to merge.'], 422);
+        }
+
+        [$survivor, $absorbed] = $data['keep'] === 'first' ? [$client, $second] : [$second, $client];
+
+        $moved = $merger->merge($survivor, $absorbed);
+
+        return response()->json([
+            'data'    => ['survivor_id' => $survivor->id, 'moved' => $moved],
+            'message' => "Merged {$absorbed->name} into {$survivor->name}.",
+        ]);
+    }
+
     /** Staff-only admin notes (never shown to the client). */
     public function updateNotes(\Illuminate\Http\Request $request, Client $client)
     {
@@ -317,6 +345,37 @@ class ClientController extends Controller
                 ];
             });
 
+        // Quotations (Document.type = 'quotation') — WHMCS "Current Quotes"
+        $quotations = Document::where('client_id', $client->id)
+            ->where('type', 'quotation')
+            ->with('items')
+            ->orderByDesc('date')
+            ->limit(50)
+            ->get()
+            ->map(fn ($q) => [
+                'id' => $q->id,
+                'document_number' => $q->document_number,
+                'subject' => $q->items->first()?->description ?? $q->notes,
+                'date' => $q->date?->format('Y-m-d'),
+                'valid_until' => $q->due_date?->format('Y-m-d'),
+                'total' => $q->total,
+                'status' => $q->status,
+            ]);
+
+        // Subscription addons — WHMCS "Addons" table
+        $addons = \App\Models\SubscriptionAddon::whereHas('subscription', fn ($q) => $q->where('client_id', $client->id))
+            ->with('subscription')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(fn ($a) => [
+                'id' => $a->id,
+                'name' => $a->name,
+                'price' => $a->price,
+                'billing_cycle' => $a->billing_cycle,
+                'start_date' => $a->subscription?->start_date?->format('Y-m-d'),
+                'status' => $a->status,
+            ]);
+
         // Payments
         $payments = PaymentIn::whereHas('document', fn ($q) => $q->where('client_id', $client->id))
             ->with('document')
@@ -359,6 +418,17 @@ class ClientController extends Controller
                 'count' => (int) ($breakdownRaw[$st]->n ?? 0),
                 'total' => (float) ($breakdownRaw[$st]->sum ?? 0),
             ]]);
+        $refundAgg = \App\Models\Refund::where('client_id', $client->id)
+            ->selectRaw('COUNT(*) as n, SUM(amount) as sum')->first();
+        $breakdown['refunded'] = [
+            'count' => (int) ($refundAgg->n ?? 0),
+            'total' => (float) ($refundAgg->sum ?? 0),
+        ];
+
+        // Additional contacts (WHMCS-style secondary people at the client's company)
+        $contacts = \App\Models\ClientContact::where('client_id', $client->id)
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'phone', 'role', 'notes']);
 
         // Domains
         $domains = \App\Models\Domain::where('client_id', $client->id)
@@ -435,8 +505,18 @@ class ClientController extends Controller
                     'address' => $client->address,
                     'tax_id' => $client->tax_id,
                     'created_at' => $client->created_at,
+                    'first_name' => $client->first_name,
+                    'last_name' => $client->last_name,
+                    'company_name' => $client->company_name,
+                    'address_1' => $client->address_1,
+                    'address_2' => $client->address_2,
+                    'city' => $client->city,
+                    'state' => $client->state,
+                    'postcode' => $client->postcode,
+                    'country' => $client->country,
                 ],
                 'billing_breakdown' => $breakdown,
+            'contacts' => $contacts,
             'domains' => $domains,
             'tickets' => $tickets,
             'hosting_accounts' => $hosting,
@@ -456,7 +536,9 @@ class ClientController extends Controller
                     'total_subscription_value' => round($totalSubscriptionValue, 2),
                 ],
                 'subscriptions' => $subscriptions->values(),
+                'addons' => $addons->values(),
                 'invoices' => $invoices->values(),
+                'quotations' => $quotations->values(),
                 'payments' => $payments->values(),
                 'communication_logs' => $communicationLogs->values(),
             ],

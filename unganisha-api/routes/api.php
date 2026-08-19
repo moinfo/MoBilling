@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminClientSearchController;
 use App\Http\Controllers\Admin\AdminUserController;
 use App\Http\Controllers\Admin\CurrencyController;
 use App\Http\Controllers\Admin\DashboardController as AdminDashboardController;
@@ -63,8 +64,27 @@ use App\Http\Controllers\SubscriptionController;
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
+// Self-hosted installer — no auth, and the first two steps work with no DB
+// connection configured yet (that's the point). Every action re-checks
+// isInstalled() itself; this whole surface permanently locks out once a
+// tenant exists, so it's inert (and safe) on an already-running instance.
+Route::prefix('install')->group(function () {
+    Route::get('/status', [\App\Http\Controllers\InstallController::class, 'status']);
+    Route::get('/requirements', [\App\Http\Controllers\InstallController::class, 'requirements']);
+    Route::post('/database', [\App\Http\Controllers\InstallController::class, 'testDatabase']);
+    Route::post('/migrate', [\App\Http\Controllers\InstallController::class, 'migrate']);
+    Route::post('/license', [\App\Http\Controllers\InstallController::class, 'checkLicense']);
+    Route::post('/tenant', [\App\Http\Controllers\InstallController::class, 'createTenant']);
+});
+
 // Public
 Route::get('/plans', [SubscriptionController::class, 'plans']);
+Route::get('/license-plans', [\App\Http\Controllers\LicensePlanController::class, 'index']);
+Route::get('/releases/latest', [\App\Http\Controllers\ReleaseController::class, 'latest']);
+Route::get('/license-agreement', [\App\Http\Controllers\LicenseAgreementController::class, 'show']);
+Route::post('/license-purchases', [\App\Http\Controllers\LicensePurchaseController::class, 'checkout'])
+    ->middleware('throttle:10,1');
+Route::get('/license-purchases/{licensePurchase}', [\App\Http\Controllers\LicensePurchaseController::class, 'status']);
 
 // Auth (Public)
 Route::post('/auth/register', [RegisterController::class, 'register']);
@@ -103,6 +123,10 @@ Route::post('/pay/{document}/checkout', [InvoicePaymentController::class, 'check
 Route::get('/pay/{document}/status/{payment}', [InvoicePaymentController::class, 'status']);
 Route::get('/pay/status/by-tracking', [InvoicePaymentController::class, 'statusByTracking']);
 
+// Self-hosted license check-in (no auth — called by an external install, not a logged-in browser)
+Route::post('/license/validate', [\App\Http\Controllers\LicenseValidationController::class, 'validate'])
+    ->middleware('throttle:30,1');
+
 // Auth (Authenticated, no tenant required)
 Route::middleware(['auth:sanctum', 'idle.timeout'])->group(function () {
     Route::post('/auth/logout', [LoginController::class, 'logout']);
@@ -127,6 +151,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout'])->group(function () {
     // Subscription (no tenant middleware — expired tenants must access)
     Route::get('/subscription/plans', [SubscriptionController::class, 'plans']);
     Route::get('/subscription/current', [SubscriptionController::class, 'current']);
+    Route::get('/license-status', [\App\Http\Controllers\LicenseStatusController::class, 'show']);
     Route::post('/subscription/checkout', [SubscriptionController::class, 'checkout']);
     Route::get('/subscription/history', [SubscriptionController::class, 'history']);
     Route::get('/subscription/{tenantSubscription}/status', [SubscriptionController::class, 'status']);
@@ -139,6 +164,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
     Route::get('/dashboard', [AdminDashboardController::class, 'summary']);
     Route::apiResource('tenants', TenantController::class)->except(['destroy']);
     Route::patch('/tenants/{tenant}/toggle-active', [TenantController::class, 'toggleActive']);
+    Route::post('/tenants/promote-from-client', [TenantController::class, 'promoteFromClient']);
+    Route::get('/clients/search', [AdminClientSearchController::class, 'index']);
 
     // Tenant user management
     Route::get('/tenants/{tenant}/users', [AdminUserController::class, 'index']);
@@ -167,6 +194,17 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
 
     // SMS packages (super admin)
     Route::apiResource('sms-packages', SmsPackageController::class)->except(['show']);
+
+    // Self-hosted licensing (super admin)
+    Route::apiResource('licenses', \App\Http\Controllers\Admin\LicenseController::class)->except(['show']);
+    Route::post('/licenses/{license}/unbind-domain', [\App\Http\Controllers\Admin\LicenseController::class, 'unbindDomain']);
+
+    // Releases (self-hosted "Check for Updates" catalog)
+    Route::apiResource('releases', \App\Http\Controllers\Admin\ReleaseController::class)->except(['show']);
+
+    // Self-hosted license pricing catalog (separate from subscription-plans, which prices MoBilling SaaS itself)
+    Route::get('/license-plans', [\App\Http\Controllers\Admin\LicensePlanController::class, 'index']);
+    Route::put('/license-plans/{licensePlan}', [\App\Http\Controllers\Admin\LicensePlanController::class, 'update']);
 
     // SMS purchases (super admin view)
     Route::get('/sms-purchases', [AdminSmsPurchaseController::class, 'index']);
@@ -215,6 +253,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:clients.update')->put('/clients/{client}/notes', [ClientController::class, 'updateNotes']);
     Route::middleware('permission:clients.update')->post('/clients/{client}/make-reseller', [ClientController::class, 'makeReseller']);
     Route::middleware('permission:clients.delete')->delete('/clients/{client}', [ClientController::class, 'destroy']);
+    Route::middleware('permission:clients.delete')->post('/clients/{client}/merge', [ClientController::class, 'merge']);
 
     // Client Subscriptions
     Route::middleware('permission:client_subscriptions.read')->get('/client-subscriptions', [ClientSubscriptionController::class, 'index']);
@@ -399,6 +438,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:petty_cash.reconcile')->post('/petty-cash/reconciliations', [PettyCashController::class, 'storeReconciliation']);
     Route::middleware('permission:petty_cash.read')->get('/petty-cash/transactions/{transaction}/voucher', [PettyCashController::class, 'downloadTransactionVoucher']);
     Route::middleware('permission:petty_cash.topup,petty_cash.reconcile')->post('/petty-cash/transactions/{transaction}/voucher', [PettyCashController::class, 'uploadTransactionVoucher']);
+    Route::middleware('permission:petty_cash.delete')->delete('/petty-cash/transactions/{transaction}', [PettyCashController::class, 'destroyTransaction']);
 
     // Dashboard
     Route::middleware('permission:menu.dashboard')->get('/dashboard/summary', [DashboardController::class, 'summary']);
@@ -493,6 +533,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/summary', [AutomationController::class, 'summary']);
         Route::get('/cron-logs', [AutomationController::class, 'cronLogs']);
         Route::get('/communication-logs', [AutomationController::class, 'communicationLogs']);
+        Route::get('/upcoming-reminders', [AutomationController::class, 'upcomingReminders']);
+        Route::get('/upcoming-reminders/export', [AutomationController::class, 'exportUpcomingReminders']);
     });
 
     // Reports
@@ -777,6 +819,83 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::post('/staff-targets/{staffTarget}/self-report',       [\App\Http\Controllers\StaffTargetsController::class, 'selfReport']);
     Route::post('/staff-targets/{staffTarget}/verify',            [\App\Http\Controllers\StaffTargetsController::class, 'verify']);
 
+    // ── HR Phase 1: Employee Profiles & Leave (permission checks in-controller, same as Attendance/Staff Reports above) ──
+    Route::get('/employees',            [\App\Http\Controllers\EmployeeProfileController::class, 'index']);
+    Route::get('/employees/mine',       [\App\Http\Controllers\EmployeeProfileController::class, 'mine']);
+    Route::get('/employees/paye-subscriptions',  [\App\Http\Controllers\EmployeeProfileController::class, 'payeSubscriptions']);
+    Route::post('/employees/paye-subscriptions', [\App\Http\Controllers\EmployeeProfileController::class, 'subscribePaye']);
+    Route::get('/employees/attendance-penalty-subscriptions',  [\App\Http\Controllers\EmployeeProfileController::class, 'attendancePenaltySubscriptions']);
+    Route::post('/employees/attendance-penalty-subscriptions', [\App\Http\Controllers\EmployeeProfileController::class, 'subscribeAttendancePenalty']);
+    Route::get('/employees/report-penalty-subscriptions',  [\App\Http\Controllers\EmployeeProfileController::class, 'reportPenaltySubscriptions']);
+    Route::post('/employees/report-penalty-subscriptions', [\App\Http\Controllers\EmployeeProfileController::class, 'subscribeReportPenalty']);
+    Route::get('/employees/{user}',     [\App\Http\Controllers\EmployeeProfileController::class, 'show']);
+    Route::put('/employees/{user}',     [\App\Http\Controllers\EmployeeProfileController::class, 'update']);
+
+    Route::get('/leave-types',                 [\App\Http\Controllers\LeaveTypeController::class, 'index']);
+    Route::post('/leave-types',                [\App\Http\Controllers\LeaveTypeController::class, 'store']);
+    Route::put('/leave-types/{leaveType}',      [\App\Http\Controllers\LeaveTypeController::class, 'update']);
+    Route::delete('/leave-types/{leaveType}',   [\App\Http\Controllers\LeaveTypeController::class, 'destroy']);
+    Route::post('/leave-balances',              [\App\Http\Controllers\LeaveTypeController::class, 'setBalance']);
+    Route::get('/leave-balances',               [\App\Http\Controllers\LeaveTypeController::class, 'balances']);
+
+    Route::get('/leave-requests',               [\App\Http\Controllers\LeaveRequestController::class, 'index']);
+    Route::post('/leave-requests',              [\App\Http\Controllers\LeaveRequestController::class, 'store']);
+    Route::get('/leave-requests/my-balance',    [\App\Http\Controllers\LeaveRequestController::class, 'myBalance']);
+    Route::post('/leave-requests/{leaveRequest}/cancel', [\App\Http\Controllers\LeaveRequestController::class, 'cancel']);
+    Route::post('/leave-requests/{leaveRequest}/review', [\App\Http\Controllers\LeaveRequestController::class, 'review']);
+
+    // ── HR Phase 2: Basic Payroll (permission checks in-controller, same convention as above) ──
+    Route::get('/payroll-settings',             [\App\Http\Controllers\PayrollSettingsController::class, 'show']);
+    Route::put('/payroll-settings',             [\App\Http\Controllers\PayrollSettingsController::class, 'update']);
+
+    Route::get('/staff-salaries',               [\App\Http\Controllers\StaffSalaryController::class, 'index']);
+    Route::post('/staff-salaries',              [\App\Http\Controllers\StaffSalaryController::class, 'store']);
+    Route::delete('/staff-salaries/{staffSalary}', [\App\Http\Controllers\StaffSalaryController::class, 'destroy']);
+
+    Route::get('/statutory-rates',                             [\App\Http\Controllers\StatutoryRateController::class, 'index']);
+    Route::post('/statutory-rates',                            [\App\Http\Controllers\StatutoryRateController::class, 'store']);
+    Route::put('/statutory-rates/{statutoryRate}',              [\App\Http\Controllers\StatutoryRateController::class, 'update']);
+    Route::delete('/statutory-rates/{statutoryRate}',           [\App\Http\Controllers\StatutoryRateController::class, 'destroy']);
+    Route::get('/statutory-rates/{statutoryRate}/subscriptions',  [\App\Http\Controllers\StatutoryRateController::class, 'subscriptions']);
+    Route::post('/statutory-rates/{statutoryRate}/subscriptions', [\App\Http\Controllers\StatutoryRateController::class, 'subscribe']);
+
+    Route::get('/allowances',                             [\App\Http\Controllers\AllowanceController::class, 'index']);
+    Route::post('/allowances',                            [\App\Http\Controllers\AllowanceController::class, 'store']);
+    Route::put('/allowances/{allowance}',                 [\App\Http\Controllers\AllowanceController::class, 'update']);
+    Route::delete('/allowances/{allowance}',              [\App\Http\Controllers\AllowanceController::class, 'destroy']);
+    Route::get('/allowances/{allowance}/subscriptions',   [\App\Http\Controllers\AllowanceController::class, 'subscriptions']);
+    Route::post('/allowances/{allowance}/subscriptions',  [\App\Http\Controllers\AllowanceController::class, 'subscribe']);
+
+    Route::get('/deductions',                             [\App\Http\Controllers\DeductionController::class, 'index']);
+    Route::post('/deductions',                            [\App\Http\Controllers\DeductionController::class, 'store']);
+    Route::put('/deductions/{deduction}',                 [\App\Http\Controllers\DeductionController::class, 'update']);
+    Route::delete('/deductions/{deduction}',              [\App\Http\Controllers\DeductionController::class, 'destroy']);
+    Route::get('/deductions/{deduction}/subscriptions',   [\App\Http\Controllers\DeductionController::class, 'subscriptions']);
+    Route::post('/deductions/{deduction}/subscriptions',  [\App\Http\Controllers\DeductionController::class, 'subscribe']);
+
+    Route::get('/payroll-runs',                    [\App\Http\Controllers\PayrollRunController::class, 'index']);
+    Route::post('/payroll-runs/generate',          [\App\Http\Controllers\PayrollRunController::class, 'generate']);
+    Route::get('/payroll-runs/{payrollRun}',       [\App\Http\Controllers\PayrollRunController::class, 'show']);
+    Route::post('/payroll-runs/{payrollRun}/finalize', [\App\Http\Controllers\PayrollRunController::class, 'finalize']);
+    Route::delete('/payroll-runs/{payrollRun}',    [\App\Http\Controllers\PayrollRunController::class, 'destroy']);
+
+    Route::get('/payslips/mine',                   [\App\Http\Controllers\PayslipController::class, 'mine']);
+    Route::get('/payslips/mine/{payslip}/pdf',     [\App\Http\Controllers\PayslipController::class, 'downloadMinePdf']);
+    Route::get('/payslips/{payslip}',              [\App\Http\Controllers\PayslipController::class, 'show']);
+    Route::get('/payslips/{payslip}/pdf',          [\App\Http\Controllers\PayslipController::class, 'downloadPdf']);
+
+    // ── HR Phase 3: Loans & Salary Advances ──
+    Route::get('/loans',                    [\App\Http\Controllers\LoanController::class, 'index']);
+    Route::post('/loans',                   [\App\Http\Controllers\LoanController::class, 'store']);
+    Route::get('/loans/{loan}',             [\App\Http\Controllers\LoanController::class, 'show']);
+    Route::get('/loans/{loan}/payments',    [\App\Http\Controllers\LoanController::class, 'payments']);
+    Route::post('/loans/{loan}/cancel',     [\App\Http\Controllers\LoanController::class, 'cancel']);
+
+    Route::get('/salary-advances',                 [\App\Http\Controllers\SalaryAdvanceController::class, 'index']);
+    Route::post('/salary-advances',                [\App\Http\Controllers\SalaryAdvanceController::class, 'store']);
+    Route::get('/salary-advances/{salaryAdvance}',  [\App\Http\Controllers\SalaryAdvanceController::class, 'show']);
+    Route::post('/salary-advances/{salaryAdvance}/cancel', [\App\Http\Controllers\SalaryAdvanceController::class, 'cancel']);
+
     // Client Portal Users (tenant admin manages portal access for clients)
     Route::middleware('permission:clients.update')->group(function () {
         Route::get('/portal-users', [ClientPortalUserController::class, 'indexAll']);
@@ -784,6 +903,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/clients/{client}/portal-users', [ClientPortalUserController::class, 'store']);
         Route::put('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'update']);
         Route::delete('/clients/{client}/portal-users/{portalUser}', [ClientPortalUserController::class, 'destroy']);
+        Route::get('/clients/{client}/contacts', [\App\Http\Controllers\ClientContactController::class, 'index']);
+        Route::post('/clients/{client}/contacts', [\App\Http\Controllers\ClientContactController::class, 'store']);
+        Route::put('/clients/{client}/contacts/{contact}', [\App\Http\Controllers\ClientContactController::class, 'update']);
+        Route::delete('/clients/{client}/contacts/{contact}', [\App\Http\Controllers\ClientContactController::class, 'destroy']);
     });
     Route::middleware('permission:clients.portal_login')
         ->post('/clients/{client}/portal-login', [ClientPortalUserController::class, 'impersonate']);

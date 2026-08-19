@@ -104,6 +104,38 @@ export const impersonateUserAsTenantAdmin = (userId: string) =>
     days_remaining?: number;
   }>(`/users/${userId}/impersonate`);
 
+// --- Promote Client to independent white-label Tenant ---
+
+export interface ClientSearchResult {
+  id: string;
+  tenant_id: string;
+  name: string;
+  email: string | null;
+  phone: string | null;
+  tax_id: string | null;
+  address: string | null;
+  tenant?: { id: string; name: string; currency: string };
+}
+
+export const searchAdminClients = (search: string) =>
+  api.get<{ data: ClientSearchResult[] }>('/admin/clients/search', { params: { search } });
+
+export interface PromoteClientData {
+  client_id: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  tax_id: string;
+  currency: string;
+  admin_name: string;
+  admin_email: string;
+  admin_password: string;
+}
+
+export const promoteClientToTenant = (data: PromoteClientData) =>
+  api.post<{ data: Tenant }>('/admin/tenants/promote-from-client', data);
+
 // --- Tenant User Management ---
 
 export { type TenantUser, type UserFormData } from './users';
@@ -238,6 +270,124 @@ export const updateSmsPackage = (id: string, data: SmsPackageFormData) =>
 
 export const deleteSmsPackage = (id: string) =>
   api.delete(`/admin/sms-packages/${id}`);
+
+// --- Licenses (Super Admin) — self-hosted WHMCS-style licensing ---
+
+export type LicenseBillingPeriod = 'perpetual' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+
+// Same three packages as signup's product_tier (TenantProvisioningService) —
+// 'general' = MoBilling Complete, 'reseller' = MoBilling Reseller, 'lite' = MoBilling Lite.
+export type LicensePackage = 'lite' | 'reseller' | 'general';
+
+export interface License {
+  id: string;
+  license_key: string;
+  customer_name: string;
+  customer_email: string;
+  product: LicensePackage | string;
+  domain: string | null;
+  billing_period: LicenseBillingPeriod;
+  starts_at: string | null;
+  amount_paid: string | null;
+  status: 'active' | 'suspended' | 'expired';
+  expires_at: string | null;
+  last_validated_at: string | null;
+  notes: string | null;
+  activations_count: number;
+  created_at: string;
+}
+
+export interface LicenseCreateFormData {
+  customer_name: string;
+  customer_email: string;
+  product: LicensePackage;
+  starts_at: string;
+  billing_period: LicenseBillingPeriod;
+  amount_paid?: number | null;
+  notes?: string;
+}
+
+export interface LicenseUpdateFormData {
+  customer_name: string;
+  customer_email: string;
+  status: 'active' | 'suspended' | 'expired';
+  starts_at?: string | null;
+  billing_period?: LicenseBillingPeriod | null;
+  amount_paid?: number | null;
+  notes?: string;
+}
+
+// --- License Plans (Super Admin) — pricing catalog for self-hosted licenses,
+// separate from SubscriptionPlan which prices MoBilling SaaS itself. ---
+
+export interface LicensePlan {
+  id: string;
+  product: LicensePackage;
+  name: string;
+  description: string | null;
+  monthly_price: string | null;
+  quarterly_price: string | null;
+  semi_annual_price: string | null;
+  annual_price: string | null;
+  perpetual_price: string | null;
+  is_active: boolean;
+}
+
+export interface LicensePlanFormData {
+  name: string;
+  description?: string;
+  monthly_price: number | string | null;
+  quarterly_price: number | string | null;
+  semi_annual_price: number | string | null;
+  annual_price: number | string | null;
+  perpetual_price: number | string | null;
+  is_active: boolean;
+}
+
+export const getLicensePlans = () =>
+  api.get<{ data: LicensePlan[] }>('/admin/license-plans');
+
+export const updateLicensePlan = (id: string, data: LicensePlanFormData) =>
+  api.put<{ data: LicensePlan }>(`/admin/license-plans/${id}`, data);
+
+export const getLicenses = (params?: { search?: string; page?: number; per_page?: number }) =>
+  api.get<{ data: License[]; meta: { current_page: number; last_page: number; total: number } }>('/admin/licenses', { params });
+
+export const createLicense = (data: LicenseCreateFormData) =>
+  api.post<{ data: License }>('/admin/licenses', data);
+
+export const updateLicense = (id: string, data: LicenseUpdateFormData) =>
+  api.put<{ data: License }>(`/admin/licenses/${id}`, data);
+
+export const unbindLicenseDomain = (id: string) =>
+  api.post<{ data: License }>(`/admin/licenses/${id}/unbind-domain`);
+
+export const deleteLicense = (id: string) =>
+  api.delete(`/admin/licenses/${id}`);
+
+// --- Releases (Super Admin) — "Check for Updates" catalog for self-hosted installs ---
+
+export interface Release {
+  id: string;
+  version: string;
+  changelog: string | null;
+  download_url: string | null;
+  is_active: boolean;
+  released_at: string;
+}
+
+export interface ReleaseFormData {
+  version: string;
+  changelog?: string;
+  download_url?: string;
+  released_at: string;
+  is_active: boolean;
+}
+
+export const getReleases = () => api.get<{ data: Release[] }>('/admin/releases');
+export const createRelease = (data: ReleaseFormData) => api.post<{ data: Release }>('/admin/releases', data);
+export const updateRelease = (id: string, data: ReleaseFormData) => api.put<{ data: Release }>(`/admin/releases/${id}`, data);
+export const deleteRelease = (id: string) => api.delete(`/admin/releases/${id}`);
 
 // --- Subscription Plans (Super Admin) ---
 

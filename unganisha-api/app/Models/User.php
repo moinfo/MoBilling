@@ -65,6 +65,11 @@ class User extends Authenticatable implements CanResetPasswordContract
         return $this->hasMany(User::class, 'supervisor_id');
     }
 
+    public function employeeProfile()
+    {
+        return $this->hasOne(EmployeeProfile::class);
+    }
+
     /**
      * Check if the user has a specific permission via their role.
      * Super admins bypass all permission checks.
@@ -99,7 +104,8 @@ class User extends Authenticatable implements CanResetPasswordContract
     }
 
     /**
-     * Get cached list of permission names for this user's role.
+     * Get cached list of permission names for this user's role, narrowed to
+     * their tenant's paid subscription plan ceiling (if any).
      */
     public function getPermissionNames(): array
     {
@@ -109,12 +115,39 @@ class User extends Authenticatable implements CanResetPasswordContract
 
         // Cache per request using a property
         if (!isset($this->cachedPermissionNames)) {
-            $this->cachedPermissionNames = $this->role_id
+            $roleNames = $this->role_id
                 ? $this->role()->with('permissions')->first()?->permissions->pluck('name')->toArray() ?? []
                 : [];
+
+            $planCeiling = $this->planPermissionCeiling();
+            $this->cachedPermissionNames = $planCeiling === null
+                ? $roleNames
+                : array_values(array_intersect($roleNames, $planCeiling));
         }
 
         return $this->cachedPermissionNames;
+    }
+
+    /**
+     * Permission names allowed by the tenant's current paid subscription
+     * plan, or null if no ceiling should apply. Trial tenants get full
+     * (unrestricted) access regardless of role permissions, so evaluators
+     * see the whole product before paying — the ceiling only kicks in once
+     * a plan is actually purchased and active. A plan with zero permissions
+     * configured (e.g. a brand-new plan an admin hasn't set up yet) fails
+     * OPEN, not closed — never silently locks a paying tenant out of
+     * everything just because nobody attached permissions to their plan.
+     */
+    private function planPermissionCeiling(): ?array
+    {
+        $tenant = $this->tenant;
+        if (!$tenant || !$tenant->hasActiveSubscription()) {
+            return null;
+        }
+
+        $planNames = $tenant->activeSubscription?->plan?->permissions->pluck('name')->toArray();
+
+        return empty($planNames) ? null : $planNames;
     }
 
     private $cachedPermissionNames;

@@ -1,14 +1,15 @@
 import {
   TextInput, PasswordInput, Button, Paper, Title, Text, Anchor, Stack,
   Image, Group, Box, ThemeIcon, List, rem, useMantineColorScheme, useComputedColorScheme,
-  ActionIcon,
+  ActionIcon, SimpleGrid, UnstyledButton,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useAuth } from '../context/AuthContext';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import {
   IconRocket, IconUsers, IconLock, IconSun, IconMoon, IconArrowLeft,
+  IconBriefcase, IconServer2, IconCheck, IconFeather,
 } from '@tabler/icons-react';
 
 const highlights = [
@@ -17,12 +18,40 @@ const highlights = [
   { icon: IconLock, text: 'Your data is encrypted and securely isolated' },
 ];
 
+const productTiers = [
+  {
+    value: 'lite' as const,
+    icon: IconFeather,
+    color: 'grape',
+    title: 'MoBilling Lite',
+    desc: 'Clients, invoices, payments, products — the billing/CRM basics. No domains, hosting, or statutory clutter.',
+  },
+  {
+    value: 'reseller' as const,
+    icon: IconServer2,
+    color: 'blue',
+    title: 'MoBilling Reseller',
+    desc: 'The WHMCS-style toolkit — clients, invoices, domains, hosting, tickets. No statutory/expense clutter.',
+  },
+  {
+    value: 'general' as const,
+    icon: IconBriefcase,
+    color: 'teal',
+    title: 'MoBilling Complete',
+    desc: 'Everything — invoicing, expenses, statutory compliance (NHIF/PAYE/VAT), collections, domains, hosting, HR and more.',
+  },
+];
+
 export default function Register() {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
   const isDark = computedColorScheme === 'dark';
+
+  const tierParam = searchParams.get('tier');
+  const initialTier = tierParam === 'reseller' || tierParam === 'lite' ? tierParam : 'general';
 
   const form = useForm({
     initialValues: {
@@ -32,6 +61,7 @@ export default function Register() {
       phone: '',
       password: '',
       password_confirmation: '',
+      product_tier: initialTier as 'general' | 'reseller' | 'lite',
     },
     validate: {
       company_name: (v) => (v.length > 0 ? null : 'Company name is required'),
@@ -181,6 +211,36 @@ export default function Register() {
           <Text c="dimmed" size="sm" ta="center" mb={rem(32)}>
             Set up your business in under 2 minutes
           </Text>
+
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm" mb="md">
+            {productTiers.map((tier) => {
+              const selected = form.values.product_tier === tier.value;
+              return (
+                <UnstyledButton key={tier.value} onClick={() => form.setFieldValue('product_tier', tier.value)}>
+                  <Paper
+                    withBorder
+                    p="sm"
+                    radius="md"
+                    style={{
+                      borderColor: selected ? `var(--mantine-color-${tier.color}-filled)` : undefined,
+                      borderWidth: selected ? 2 : 1,
+                      backgroundColor: selected ? `var(--mantine-color-${tier.color}-light)` : undefined,
+                      height: '100%',
+                    }}
+                  >
+                    <Group justify="space-between" wrap="nowrap" mb={4}>
+                      <ThemeIcon variant="light" color={tier.color} size="md" radius="md">
+                        <tier.icon size={16} />
+                      </ThemeIcon>
+                      {selected && <IconCheck size={16} color={`var(--mantine-color-${tier.color}-filled)`} />}
+                    </Group>
+                    <Text size="sm" fw={700}>{tier.title}</Text>
+                    <Text size="xs" c="dimmed">{tier.desc}</Text>
+                  </Paper>
+                </UnstyledButton>
+              );
+            })}
+          </SimpleGrid>
 
           <Paper withBorder shadow="sm" p="xl" radius="md">
             <form onSubmit={form.onSubmit(handleSubmit)}>

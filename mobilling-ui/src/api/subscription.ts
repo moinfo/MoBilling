@@ -68,6 +68,22 @@ export const getSubscriptionPlans = () =>
 export const getPublicPlans = () =>
   api.get<{ data: SubscriptionPlan[] }>('/plans');
 
+// Self-hosted license pricing (separate product line — see LicensePlan on the backend).
+export interface PublicLicensePlan {
+  id: string;
+  product: 'lite' | 'reseller' | 'general';
+  name: string;
+  description: string | null;
+  monthly_price: string | null;
+  quarterly_price: string | null;
+  semi_annual_price: string | null;
+  annual_price: string | null;
+  perpetual_price: string | null;
+}
+
+export const getPublicLicensePlans = () =>
+  api.get<{ data: PublicLicensePlan[] }>('/license-plans');
+
 export const getSubscriptionCurrent = () =>
   api.get<{ data: SubscriptionStatus }>('/subscription/current');
 
