@@ -473,6 +473,41 @@ class DomainController extends Controller
     }
 
     /**
+     * Re-attempt a failed register/transfer/renew — no new invoice, since the
+     * client already paid for the original order. BaseDomainJob::guard()
+     * only flips status to 'failed' on exception, before clearPending() runs,
+     * so meta.pending_action/pending_years survive a failure untouched; this
+     * just resets status back to 'pending' (satisfying each job's own
+     * idempotency guard) and re-dispatches the same job DocumentObserver
+     * would have on payment.
+     */
+    public function retry(Domain $domain)
+    {
+        if ($domain->status !== 'failed') {
+            return response()->json(['message' => 'Only a failed domain action can be retried.'], 422);
+        }
+
+        $pendingAction = $domain->meta['pending_action'] ?? null;
+        if (!$pendingAction) {
+            return response()->json(['message' => 'No pending action recorded for this domain — nothing to retry.'], 422);
+        }
+
+        $domain->update(['status' => 'pending']);
+
+        match ($pendingAction) {
+            'register' => \App\Jobs\Domains\RegisterDomainJob::dispatch($domain),
+            'transfer' => \App\Jobs\Domains\TransferDomainJob::dispatch($domain),
+            'renew'    => \App\Jobs\Domains\RenewDomainJob::dispatch($domain),
+            default    => null,
+        };
+
+        return response()->json([
+            'data'    => $domain->fresh()->load('client:id,name'),
+            'message' => "Retrying {$pendingAction} for {$domain->name}\u{2026}",
+        ]);
+    }
+
+    /**
      * Reveal the transfer auth-info code — audited. If none is stored (the
      * common case for .tz domains — the registry doesn't hand it back on a
      * plain info query), staff can generate a fresh one: EPP UPDATE lets the
