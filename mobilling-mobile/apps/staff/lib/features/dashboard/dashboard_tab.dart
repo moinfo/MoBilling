@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
+import '../staff_self/staff_self_providers.dart';
 
 /// Staff dashboard: this month's money, counts, recent invoices.
 ///
@@ -95,6 +97,10 @@ class DashboardTab extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(Spacing.md),
             children: [
+              const SectionHeader('My attendance'),
+              const SizedBox(height: Spacing.sm),
+              const _AttendanceCard(),
+              const SizedBox(height: Spacing.md),
               if (money.isNotEmpty) ...[
                 const SectionHeader('This month'),
                 const SizedBox(height: Spacing.sm),
@@ -779,6 +785,7 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
               width: 10,
@@ -827,6 +834,240 @@ class _NamedTotals extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Today's check-in state and the month at a glance.
+///
+/// Fed by /attendance/mine, which carries no permission gate — every staff
+/// member checks themselves in — so this is the one card on the dashboard
+/// that is always about the reader rather than the business.
+///
+/// It renders nothing while loading or on error: a supplementary card has no
+/// business putting a retry block above the figures people came for, and the
+/// full screen behind "Full report" can report its own failures.
+class _AttendanceCard extends ConsumerWidget {
+  const _AttendanceCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ref.watch(myAttendanceProvider).maybeWhen(
+          data: (a) => _card(context, ref, a),
+          orElse: () => const SizedBox.shrink(),
+        );
+  }
+
+  Widget _card(BuildContext context, WidgetRef ref, MyAttendance a) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+    final today = a.today;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'TODAY · ${Formatting.date(DateTime.now()).toUpperCase()}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: Type.eyebrowTracking,
+                    ),
+                  ),
+                ),
+                if (today == null)
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: Spacing.sm, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(Radii.sm),
+                    ),
+                    child: Text(
+                      'Not marked yet',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  )
+                else
+                  StatusChip(today.chipStatus, dense: true),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: _Clock(
+                    icon: Icons.login_rounded,
+                    time: today?.checkInAt,
+                    target: a.settings.checkInTime,
+                    label: 'in',
+                  ),
+                ),
+                Expanded(
+                  child: _Clock(
+                    icon: Icons.logout_rounded,
+                    time: today?.checkOutAt,
+                    target: a.settings.checkOutTime,
+                    label: 'out',
+                  ),
+                ),
+              ],
+            ),
+            if (a.monthRecords.isNotEmpty) ...[
+              const SizedBox(height: Spacing.md),
+              _MonthStrip(records: a.monthRecords),
+              const SizedBox(height: Spacing.sm),
+              Wrap(
+                spacing: Spacing.sm + 2,
+                runSpacing: Spacing.xs,
+                children: [
+                  _Legend(color: status.settled, label: 'On time'),
+                  _Legend(color: status.attention, label: 'Late'),
+                  _Legend(color: status.pending, label: 'Excused'),
+                  _Legend(color: status.overdue, label: 'Absent'),
+                ],
+              ),
+            ],
+            const Divider(height: Spacing.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${a.presentDays} '
+                    '${a.presentDays == 1 ? 'day' : 'days'} present'
+                    '${a.monthLabel.isEmpty ? '' : ' · ${a.monthLabel}'}',
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  ),
+                ),
+                // Only worth the space when the tenant actually docks pay.
+                if (a.settings.penaltiesEnabled && a.deductionTotal > 0) ...[
+                  Money(a.deductionTotal,
+                      scale: MoneyScale.dense, color: status.overdue),
+                  const SizedBox(width: Spacing.sm),
+                ],
+                TextButton(
+                  onPressed: () => context.push('/attendance'),
+                  child: const Text('Full report'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One half of the in/out pair. Shows the recorded time, or the target it is
+/// measured against while the day is still open.
+class _Clock extends StatelessWidget {
+  const _Clock({
+    required this.icon,
+    required this.label,
+    this.time,
+    this.target,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? time;
+  final String? target;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final marked = time != null && time!.isNotEmpty;
+
+    return Row(
+      children: [
+        Icon(icon,
+            size: 18,
+            color: marked
+                ? theme.colorScheme.onSurface
+                : theme.colorScheme.outline),
+        const SizedBox(width: Spacing.sm),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              marked ? time! : '—',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+                fontFeatures: Type.figures,
+                color: marked
+                    ? theme.colorScheme.onSurface
+                    : theme.colorScheme.outline,
+              ),
+            ),
+            Text(
+              target == null ? label : '$label · target $target',
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The month as one mark per day, so a pattern of lateness is visible without
+/// reading a table. Days with no record render as a faint tick rather than as
+/// absence — the server decides what counts as absent, not the strip.
+class _MonthStrip extends StatelessWidget {
+  const _MonthStrip({required this.records});
+
+  final List<AttendanceDay> records;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+
+    final now = DateTime.now();
+    final days = DateTime(now.year, now.month + 1, 0).day;
+    final byDay = <int, AttendanceDay>{
+      for (final r in records)
+        if (r.date != null) r.date!.day: r,
+    };
+
+    Color colorFor(AttendanceDay? r) {
+      if (r == null) return theme.colorScheme.outlineVariant;
+      if (r.isExcused) return status.pending;
+      if (r.absent) return status.overdue;
+      if (r.late || r.leftEarly || r.noCheckout) return status.attention;
+      return status.settled;
+    }
+
+    return Row(
+      children: [
+        for (var day = 1; day <= days; day++)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 1),
+              child: Tooltip(
+                message: '$day: ${byDay[day]?.summary ?? 'no record'}',
+                child: Container(
+                  height: 18,
+                  decoration: BoxDecoration(
+                    color: colorFor(byDay[day]),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
