@@ -364,11 +364,13 @@ class SatisfactionCallController extends Controller
     {
         $data = $request->validate([
             'appointment_status' => 'required|in:pending,confirmed,completed,cancelled',
+            'appointment_date' => 'nullable|date',
             'appointment_notes' => 'nullable|string|max:500',
         ]);
 
         $satisfactionCall->update([
             'appointment_status' => $data['appointment_status'],
+            'appointment_date' => $data['appointment_date'] ?? $satisfactionCall->appointment_date,
             'appointment_notes' => $data['appointment_notes'] ?? $satisfactionCall->appointment_notes,
         ]);
 

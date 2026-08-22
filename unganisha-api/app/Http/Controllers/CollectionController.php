@@ -51,7 +51,7 @@ class CollectionController extends Controller
                 'paid_amount' => (float) $d->paid_amount,
                 'balance_due' => (float) $d->balance_due,
                 'due_date' => $d->due_date?->toDateString(),
-                'days_overdue' => (int) $today->diffInDays($d->due_date),
+                'days_overdue' => (int) $d->due_date->diffInDays($today),
                 'status' => $d->status,
             ]);
 
@@ -73,7 +73,7 @@ class CollectionController extends Controller
                 'paid_amount' => (float) $d->paid_amount,
                 'balance_due' => (float) $d->balance_due,
                 'due_date' => $d->due_date?->toDateString(),
-                'days_until_due' => (int) $today->diffInDays($d->due_date),
+                'days_until_due' => (int) $today->diffInDays($d->due_date, true),
                 'status' => $d->status,
             ]);
 
@@ -157,7 +157,7 @@ class CollectionController extends Controller
             if (!$doc->due_date || $doc->due_date->gte($today)) {
                 $aging['current'] += $balance;
             } else {
-                $daysOverdue = (int) $today->diffInDays($doc->due_date);
+                $daysOverdue = (int) $doc->due_date->diffInDays($today);
                 if ($daysOverdue <= 30) {
                     $aging['1_30'] += $balance;
                 } elseif ($daysOverdue <= 60) {

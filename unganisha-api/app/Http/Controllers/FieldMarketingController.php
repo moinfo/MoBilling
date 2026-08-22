@@ -124,6 +124,7 @@ class FieldMarketingController extends Controller
             'services.*'    => 'string',
             'feedback'      => 'nullable|string',
             'status'        => 'required|in:interested,not_interested,follow_up,converted',
+            'next_followup_date' => 'nullable|date',
         ]);
 
         $data['session_id'] = $fieldSession->id;
