@@ -298,7 +298,7 @@ class DomainController extends Controller
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
-            'name'       => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')],
+            'name'       => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')->where(fn ($q) => $q->whereNotIn('status', ['cancelled', 'transferred_out']))],
             'client_id'  => ['required', 'uuid', Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
             'registrar'  => ['required', 'in:tznic,external'],
             'expires_at' => 'nullable|date',
@@ -347,7 +347,7 @@ class DomainController extends Controller
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
-            'name'      => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')],
+            'name'      => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')->where(fn ($q) => $q->whereNotIn('status', ['cancelled', 'transferred_out']))],
             'client_id' => ['required', 'uuid', Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
             'years'     => 'required|integer|min:1|max:10',
             'action'    => 'required|in:register,transfer',

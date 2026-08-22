@@ -7,6 +7,7 @@ use App\Http\Resources\DocumentResource;
 use App\Models\CommunicationLog;
 use App\Models\Document;
 use App\Models\DocumentItem;
+use App\Models\Domain;
 use App\Models\Tenant;
 use App\Notifications\RecurringInvoiceReminderNotification;
 use App\Services\DocumentConversionService;
@@ -482,6 +483,7 @@ class DocumentController extends Controller
         }
 
         $document->update(['status' => 'cancelled']);
+        $this->cancelLinkedDomainOrder($document);
 
         // Notify client about cancellation via email/SMS
         $document->load('client');
@@ -493,6 +495,38 @@ class DocumentController extends Controller
             'data' => new DocumentResource($document->fresh()->load('items', 'client')),
             'message' => "{$document->document_number} has been cancelled.",
         ]);
+    }
+
+    /**
+     * A cancelled invoice that was funding a domain register/transfer/renew
+     * (DocumentObserver's counterpart — that fires the order on payment,
+     * this undoes it on cancellation) must not leave an orphaned Domain row
+     * behind: a 'pending' register/transfer domain with nothing left to pay
+     * for it would otherwise sit there forever and permanently block any
+     * future order for that same name (the uniqueness check has no idea the
+     * invoice is dead). A cancelled renewal is different — the domain is
+     * already owned and stays active/expired either way, so only its stale
+     * pending_action is cleared, status is left untouched.
+     */
+    private function cancelLinkedDomainOrder(Document $document): void
+    {
+        $domains = Domain::withoutGlobalScopes()
+            ->where(fn ($q) => $q
+                ->where('meta->order_document_id', $document->id)
+                ->orWhere('meta->renewal_document_id', $document->id))
+            ->whereNotNull('meta->pending_action')
+            ->get();
+
+        foreach ($domains as $domain) {
+            $meta = $domain->meta ?? [];
+            $wasRegisterOrTransfer = in_array($meta['pending_action'] ?? null, ['register', 'transfer'], true);
+            unset($meta['pending_action'], $meta['pending_years']);
+
+            $domain->update([
+                'status' => ($wasRegisterOrTransfer && $domain->status === 'pending') ? 'cancelled' : $domain->status,
+                'meta' => $meta,
+            ]);
+        }
     }
 
     public function uncancel(Document $document)
