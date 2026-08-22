@@ -1,8 +1,8 @@
-import { TextInput, NumberInput, Select, Textarea, Button, Group, SegmentedControl, Switch, Stack, Divider, Text } from '@mantine/core';
+import { TextInput, NumberInput, Select, Textarea, Button, Group, SegmentedControl, Switch, Stack, Divider, Text, Loader } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery } from '@tanstack/react-query';
 import { ProductServiceFormData } from '../../api/productServices';
-import { getServers } from '../../api/hosting';
+import { getServers, getServerPackages } from '../../api/hosting';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface Props {
@@ -79,6 +79,15 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
     .filter((s) => s.is_active)
     .map((s) => ({ value: s.id, label: `${s.name} (${s.hostname})` }));
 
+  const { data: packagesData, isLoading: packagesLoading, isError: packagesError } = useQuery({
+    queryKey: ['server-packages', form.values.server_id],
+    queryFn: () => getServerPackages(form.values.server_id!),
+    enabled: showProvisioning && form.values.provisioning_type === 'whm_cpanel' && !!form.values.server_id,
+  });
+  const packages: string[] = packagesData?.data?.data ?? [];
+  const packageOptions = Array.from(new Set([...(form.values.cpanel_package ? [form.values.cpanel_package] : []), ...packages]))
+    .map((p) => ({ value: p, label: p }));
+
   return (
     <form onSubmit={form.onSubmit(onSubmit)}>
       <Stack>
@@ -129,13 +138,28 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
                     data={serverOptions}
                     required
                     {...form.getInputProps('server_id')}
+                    onChange={(v) => { form.setFieldValue('server_id', v); form.setFieldValue('cpanel_package', ''); }}
                   />
-                  <TextInput
-                    label="cPanel package"
-                    placeholder="WHM package/plan name"
-                    required
-                    {...form.getInputProps('cpanel_package')}
-                  />
+                  {packagesError ? (
+                    <TextInput
+                      label="cPanel package"
+                      description="Could not load packages from the server — type the exact WHM package name."
+                      placeholder="WHM package/plan name"
+                      required
+                      {...form.getInputProps('cpanel_package')}
+                    />
+                  ) : (
+                    <Select
+                      label="cPanel package"
+                      placeholder={!form.values.server_id ? 'Select a server first' : packagesLoading ? 'Loading packages…' : 'Select a package'}
+                      data={packageOptions}
+                      disabled={!form.values.server_id}
+                      searchable
+                      rightSection={packagesLoading ? <Loader size="xs" /> : undefined}
+                      required
+                      {...form.getInputProps('cpanel_package')}
+                    />
+                  )}
                 </Group>
                 <Switch
                   label="Auto-provision on activation"
