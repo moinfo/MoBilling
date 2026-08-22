@@ -23,11 +23,14 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
   String? _status;
 
   static const _filters = <(String?, String)>[
+    // `Followup.status` values; `promised` is an outcome, not a status.
     (null, 'All'),
     ('pending', 'Pending'),
-    ('promised', 'Promised'),
+    ('open', 'Open'),
+    ('broken', 'Broken promise'),
+    ('fulfilled', 'Fulfilled'),
     ('escalated', 'Escalated'),
-    ('completed', 'Completed'),
+    ('cancelled', 'Cancelled'),
   ];
 
   @override
@@ -196,7 +199,7 @@ class _FollowupCard extends ConsumerWidget {
                 if (followup.clientPhone != null)
                   ContactRow(phone: followup.clientPhone, compact: true),
                 const Spacer(),
-                if (canLog && followup.status != 'completed')
+                if (canLog && followup.isOpenWork)
                   FilledButton.tonal(
                     onPressed: () => _showLogSheet(context, ref),
                     child: const Text('Log call'),
@@ -233,15 +236,8 @@ class _LogCallSheetState extends ConsumerState<_LogCallSheet> {
   final _notes = TextEditingController();
   final _promiseAmount = TextEditingController();
 
-  /// Outcomes mirror the web's collection call vocabulary.
-  static const _outcomes = <(String, String)>[
-    ('promised', 'Promised to pay'),
-    ('paid', 'Already paid'),
-    ('no_answer', 'No answer'),
-    ('wrong_number', 'Wrong number'),
-    ('dispute', 'Disputes the invoice'),
-    ('refused', 'Refused to pay'),
-  ];
+  /// Exactly what `FollowupController::logCall` validates.
+  static const _outcomes = FollowupOutcomes.values;
 
   String _outcome = 'promised';
   DateTime? _promiseDate;
@@ -249,7 +245,8 @@ class _LogCallSheetState extends ConsumerState<_LogCallSheet> {
   bool _submitting = false;
   String? _error;
 
-  bool get _isPromise => _outcome == 'promised';
+  bool get _isPromise => FollowupOutcomes.needsPromiseDate(_outcome);
+  bool get _needsAmount => FollowupOutcomes.needsAmount(_outcome);
 
   @override
   void initState() {
@@ -266,10 +263,12 @@ class _LogCallSheetState extends ConsumerState<_LogCallSheet> {
 
   Future<void> _pick(bool promise) async {
     final now = DateTime.now();
+    // Both dates must be strictly after today server-side.
+    final tomorrow = DateTime(now.year, now.month, now.day + 1);
     final picked = await showDatePicker(
       context: context,
       initialDate: now.add(const Duration(days: 3)),
-      firstDate: now,
+      firstDate: tomorrow,
       lastDate: now.add(const Duration(days: 365)),
     );
     if (picked == null) return;
@@ -279,6 +278,10 @@ class _LogCallSheetState extends ConsumerState<_LogCallSheet> {
   Future<void> _submit() async {
     if (_isPromise && _promiseDate == null) {
       setState(() => _error = 'Pick the date they promised to pay.');
+      return;
+    }
+    if (_notes.text.trim().isEmpty) {
+      setState(() => _error = 'Add a note about the call — it is required.');
       return;
     }
 
@@ -291,9 +294,9 @@ class _LogCallSheetState extends ConsumerState<_LogCallSheet> {
       final result = await ref.read(crmServiceProvider).logFollowupCall(
             widget.followup.id,
             outcome: _outcome,
-            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            notes: _notes.text.trim(),
             promiseDate: _isPromise ? _promiseDate : null,
-            promiseAmount: _isPromise
+            promiseAmount: _needsAmount
                 ? double.tryParse(_promiseAmount.text.trim())
                 : null,
             nextFollowup: _nextFollowup,

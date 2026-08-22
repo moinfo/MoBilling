@@ -370,10 +370,8 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
               DropdownMenuItem(value: 'top_up', child: Text('Top up the tin')),
               DropdownMenuItem(
                   value: 'return', child: Text('Return cash to bank')),
-              DropdownMenuItem(
-                  value: 'adjustment_in', child: Text('Adjustment (gain)')),
-              DropdownMenuItem(
-                  value: 'adjustment_out', child: Text('Adjustment (loss)')),
+              // Adjustments are only written by a reconciliation — the API
+              // rejects them here.
             ],
             onChanged:
                 _submitting ? null : (v) => setState(() => _type = v!),
@@ -437,6 +435,9 @@ class _ReconcileSheet extends ConsumerStatefulWidget {
 class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
   final _counted = TextEditingController();
   final _notes = TextEditingController();
+  /// accepted = book the difference as an adjustment; investigating = flag
+  /// it and leave the ledger untouched.
+  String _resolution = 'accepted';
   bool _submitting = false;
   String? _error;
 
@@ -459,7 +460,8 @@ class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
     });
     try {
       await ref.read(financeServiceProvider).reconcilePettyCash(
-            countedAmount: counted,
+            countedBalance: counted,
+            resolution: _resolution,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
           );
       if (!mounted) return;
@@ -521,6 +523,33 @@ class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
                   ?.copyWith(color: context.statusColors.overdue),
             ),
           ],
+          const SizedBox(height: Spacing.md),
+          // What to do with a difference — the API requires a decision.
+          SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                  value: 'accepted',
+                  icon: Icon(Icons.check, size: 16),
+                  label: Text('Book difference')),
+              ButtonSegment(
+                  value: 'investigating',
+                  icon: Icon(Icons.search, size: 16),
+                  label: Text('Investigate')),
+            ],
+            selected: {_resolution},
+            onSelectionChanged: _submitting
+                ? null
+                : (s) => setState(() => _resolution = s.first),
+            showSelectedIcon: false,
+          ),
+          const SizedBox(height: Spacing.xs),
+          Text(
+            _resolution == 'accepted'
+                ? 'The ledger is adjusted to match the count.'
+                : 'The ledger is left as is and the difference is flagged.',
+            style: theme.textTheme.bodySmall
+                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
           const SizedBox(height: Spacing.md),
           TextField(
             controller: _notes,

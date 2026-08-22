@@ -75,9 +75,17 @@ class _ActionsMenu extends ConsumerWidget {
         if (canConvert && document.isConvertible)
           const PopupMenuItem(
               value: 'convert', child: Text('Convert to invoice')),
-        if (canExtend && document.isPayable)
+        if (canConvert && document.isConvertible && document.type == 'quotation')
+          const PopupMenuItem(
+              value: 'convert-proforma', child: Text('Convert to proforma')),
+        // `updateDueDate` only accepts sent | overdue | partial.
+        if (canExtend &&
+            const {'sent', 'overdue', 'partial'}.contains(document.status))
           const PopupMenuItem(
               value: 'due-date', child: Text('Extend due date')),
+        if (canUpdate && document.type == 'credit_note' && document.isDraft)
+          const PopupMenuItem(
+              value: 'issue', child: Text('Issue credit note')),
         if (canUpdate)
           document.isCancelled
               ? const PopupMenuItem(
@@ -101,6 +109,15 @@ class _ActionsMenu extends ConsumerWidget {
           final message = await service.convertDocument(document.id);
           messenger.showSnackBar(
               SnackBar(content: Text(message ?? 'Converted to an invoice.')));
+        case 'convert-proforma':
+          final message = await service.convertDocument(document.id,
+              targetType: 'proforma');
+          messenger.showSnackBar(
+              SnackBar(content: Text(message ?? 'Converted to a proforma.')));
+        case 'issue':
+          await service.issueCreditNote(document.id);
+          messenger.showSnackBar(
+              const SnackBar(content: Text('Credit note issued.')));
         case 'cancel':
           await service.cancelDocument(document.id);
           messenger.showSnackBar(

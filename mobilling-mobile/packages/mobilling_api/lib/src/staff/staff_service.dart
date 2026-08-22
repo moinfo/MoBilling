@@ -72,12 +72,19 @@ class StaffService {
   }
 
   /// GET /tickets — staff queue (all clients).
-  Future<List<StaffTicket>> tickets({String? status}) async {
+  ///
+  /// `TicketController::index` wraps the paginator one level deeper than
+  /// most lists (`{data: {data: [...], current_page, ...}}`), so unwrap
+  /// before parsing — handing the outer body to [Paginated] yields an empty
+  /// queue regardless of data.
+  Future<List<StaffTicket>> tickets({String? status, int perPage = 100}) async {
     final body = await _api.get<dynamic>(
       '/tickets',
-      query: {'status': status},
+      query: {'status': status, 'per_page': perPage},
     );
-    return Paginated.fromJson(body, StaffTicket.fromJson).items;
+    final inner = body is Map ? body['data'] : null;
+    return Paginated.fromJson(inner is Map ? inner : body, StaffTicket.fromJson)
+        .items;
   }
 
   /// GET /tickets/{id} — full thread.

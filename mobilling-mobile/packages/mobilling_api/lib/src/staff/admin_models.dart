@@ -27,7 +27,8 @@ class TenantSubscription {
     this.subscriptionId,
   });
 
-  /// active | trial | expired | none — computed by `Tenant::subscriptionStatus()`.
+  /// subscribed | trial | expired | none (and transitional values) — computed
+  /// by `Tenant::subscriptionStatus()`. `chipStatus` maps them for display.
   final String status;
 
   /// Negative once lapsed.
@@ -61,7 +62,11 @@ class TenantSubscription {
       daysRemaining: data.count('days_remaining'),
       planName: plan?.str('name'),
       planPrice: plan?['price'] == null ? null : plan!.money('price'),
-      billingCycle: plan?.str('billing_cycle'),
+      // Plans carry `billing_cycle_days` (30, 365 …), not a cycle name.
+      billingCycle: plan?.str('billing_cycle') ??
+          (plan?['billing_cycle_days'] == null
+              ? null
+              : 'every ${plan!.count('billing_cycle_days')} days'),
       startsAt: active?.date('starts_at'),
       endsAt: active?.date('ends_at'),
       trialEndsAt: data.date('trial_ends_at'),
@@ -252,7 +257,9 @@ class StaffUser {
       isActive: json.flag('is_active', fallback: true),
       email: json.str('email'),
       phone: json.str('phone'),
-      roleName: role?.str('name'),
+      // UserResource emits `role` as the slug string and the human label as
+      // `role_name`; a nested object only appears on older shapes.
+      roleName: json.str('role_name') ?? role?.str('label') ?? role?.str('name'),
       roleId: json.str('role_id') ?? role?.str('id'),
       lastLoginAt: json.date('last_login_at'),
     );

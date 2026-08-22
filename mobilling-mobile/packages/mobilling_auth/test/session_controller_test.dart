@@ -195,7 +195,8 @@ void main() {
       expect(storage.values, isEmpty);
     });
 
-    test('keeps the session when the device is merely offline', () async {
+    test('keeps the token but reports offline when the server is unreachable',
+        () async {
       await TokenStore(storage: storage).save('tok-1', userType: 'client');
       auth.meError = ApiException(
         kind: ApiErrorKind.network,
@@ -204,9 +205,46 @@ void main() {
 
       await controller.restore();
 
-      // Launching in a tunnel is not a reason to sign someone out.
-      expect(controller.status, SessionStatus.authenticated);
+      // Launching in a tunnel is not a reason to sign someone out — but with
+      // no /auth/me response there is no user, so it is not a session either.
+      expect(controller.status, SessionStatus.offline);
+      expect(controller.session, isNull);
+      expect(controller.restoreError, 'No internet connection.');
       expect(await controller.readToken(), 'tok-1');
+    });
+
+    test('retrying from offline succeeds once the server answers', () async {
+      await TokenStore(storage: storage).save('tok-1', userType: 'client');
+      auth.meError = ApiException(
+        kind: ApiErrorKind.network,
+        message: 'No internet connection.',
+      );
+      await controller.restore();
+      expect(controller.status, SessionStatus.offline);
+
+      auth.meError = null;
+      auth.meResult = _session();
+      await controller.restore();
+
+      expect(controller.status, SessionStatus.authenticated);
+      expect(controller.session, isNotNull);
+      expect(controller.restoreError, isNull);
+    });
+
+    test('forgetting a stored session from offline signs out locally',
+        () async {
+      await TokenStore(storage: storage).save('tok-1', userType: 'client');
+      auth.meError = ApiException(
+        kind: ApiErrorKind.network,
+        message: 'No internet connection.',
+      );
+      await controller.restore();
+
+      await controller.forgetStoredSession();
+
+      expect(controller.status, SessionStatus.signedOut);
+      expect(await controller.readToken(), isNull);
+      expect(auth.logoutCalls, 0);
     });
 
     test('goes straight to signed out with no stored token', () async {

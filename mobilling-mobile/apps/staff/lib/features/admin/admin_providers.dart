@@ -41,12 +41,6 @@ final AutoDisposeFutureProvider<List<StaffRole>> rolesProvider =
   (ref) => ref.watch(adminServiceProvider).roles(),
 );
 
-/// The full permission catalogue — long-lived, it never changes at runtime.
-final FutureProvider<List<PermissionInfo>> permissionsProvider =
-    FutureProvider<List<PermissionInfo>>(
-  (ref) => ref.watch(adminServiceProvider).permissions(),
-);
-
 final AutoDisposeFutureProvider<CompanySettings> companySettingsProvider =
     FutureProvider.autoDispose<CompanySettings>(
   (ref) => ref.watch(adminServiceProvider).companySettings(),

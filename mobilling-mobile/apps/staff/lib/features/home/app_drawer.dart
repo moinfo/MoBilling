@@ -27,8 +27,16 @@ class AppDrawer extends ConsumerWidget {
     final auth = session.session;
     final user = session.user;
 
+    final selfHosted = user?.tenant?.isSelfHosted ?? false;
+
+    bool can(String permission) =>
+        permission.isEmpty || (auth?.can(permission) ?? false);
+
     bool allowed(MenuEntry e) =>
-        e.ready && (e.permission.isEmpty || (auth?.can(e.permission) ?? false));
+        e.ready &&
+        can(e.permission) &&
+        (e.alsoRequires == null || can(e.alsoRequires!)) &&
+        !(e.hideWhenSelfHosted && selfHosted);
 
     final coverage = staffMenuCoverage();
 

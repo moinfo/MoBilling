@@ -27,6 +27,7 @@ class AuthTenant {
     this.logoUrl,
     this.website,
     this.currency,
+    this.isSelfHosted = false,
   });
 
   final String id;
@@ -38,12 +39,23 @@ class AuthTenant {
   /// Not a platform constant — one build serves tenants on either.
   final String? currency;
 
+  /// A licensed install running on the tenant's own server. Such a tenant
+  /// has no MoBilling subscription to manage — the web shell hides the
+  /// Subscription menu for them, and the staff drawer does the same.
+  final bool isSelfHosted;
+
   factory AuthTenant.fromJson(Map<String, dynamic> json) => AuthTenant(
         id: json['id'].toString(),
         name: json['name']?.toString() ?? 'MoBilling',
         logoUrl: json['logo_url']?.toString(),
         website: json['website']?.toString(),
         currency: json['currency']?.toString(),
+        isSelfHosted: switch (json['is_self_hosted']) {
+          bool v => v,
+          num v => v != 0,
+          '1' || 'true' => true,
+          _ => false,
+        },
       );
 }
 

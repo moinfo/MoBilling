@@ -36,11 +36,17 @@ class BillingCatalogService {
     return body['message']?.toString();
   }
 
-  /// POST /documents/{id}/convert — quotation/proforma → invoice. Needs
-  /// `documents.convert`.
-  Future<String?> convertDocument(String id) async {
-    final body =
-        await _api.post<Map<String, dynamic>>('/documents/$id/convert');
+  /// POST /documents/{id}/convert — quotation → proforma/invoice, or
+  /// proforma → invoice. Needs `documents.convert`. [targetType] is
+  /// `invoice` or `proforma`; the controller requires it.
+  Future<String?> convertDocument(
+    String id, {
+    String targetType = 'invoice',
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/documents/$id/convert',
+      body: {'target_type': targetType},
+    );
     return body['message']?.toString();
   }
 

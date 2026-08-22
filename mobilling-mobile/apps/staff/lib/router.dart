@@ -3,6 +3,8 @@ import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart' show CatalogProduct;
 import 'package:mobilling_auth/mobilling_auth.dart';
 
+import 'config/debug_hooks.dart';
+
 import 'features/auth/login_screen.dart';
 import 'features/auth/splash_screen.dart';
 import 'features/admin/admin_screens.dart';
@@ -27,7 +29,14 @@ import 'features/crm/field_marketing_screen.dart';
 import 'features/crm/followups_screen.dart';
 import 'features/crm/satisfaction_calls_screen.dart';
 import 'features/crm/served_customers_screen.dart';
+import 'features/documents/documents_tab.dart' show UnpaidInvoicesScreen;
 import 'features/home/home_screen.dart';
+import 'features/hr/leave_screen.dart';
+import 'features/hr/payroll_screen.dart';
+import 'features/ops/add_order_screen.dart';
+import 'features/ops/discover_hosting_screen.dart';
+import 'features/ops/portal_users_directory_screen.dart';
+import 'features/ops/sessions_screen.dart';
 import 'features/portal/account/credit_screen.dart';
 import 'features/portal/account/portal_users_screen.dart';
 import 'features/portal/account/profile_screen.dart';
@@ -41,6 +50,7 @@ import 'features/portal/services/domain_detail_screen.dart';
 import 'features/portal/services/hosting_detail_screen.dart';
 import 'features/portal/store/configure_order_screen.dart';
 import 'features/portal/store/domain_search_screen.dart';
+import 'features/portal/store/order_flow.dart';
 import 'features/portal/store/store_screen.dart';
 import 'features/portal/support/kb_article_screen.dart';
 import 'features/portal/support/new_ticket_screen.dart';
@@ -72,7 +82,14 @@ abstract final class Routes {
 }
 
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
-  final session = ref.watch(sessionControllerProvider);
+  // `.notifier`, not the provider itself: watching a ChangeNotifierProvider
+  // rebuilds this provider on every notifyListeners(), which replaced the
+  // whole GoRouter (and its navigation stack) on each status change. With a
+  // state that keeps the splash mounted (`offline`) that became a loop —
+  // remount → restore() → notify → new router → remount — hammering
+  // /auth/me 60 times a second. `refreshListenable` below is the one
+  // intended reaction to session changes.
+  final session = ref.watch(sessionControllerProvider.notifier);
 
   return GoRouter(
     initialLocation: Routes.splash,
@@ -89,8 +106,11 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       };
 
       return switch (status) {
+        // `offline` stays on the splash too: it shows the retry / sign-out
+        // choice, since we hold a token but don't know whose it is.
         SessionStatus.unknown ||
-        SessionStatus.restoring =>
+        SessionStatus.restoring ||
+        SessionStatus.offline =>
           location == Routes.splash ? null : Routes.splash,
 
         // Registration is reachable while signed out — it is how a client
@@ -106,7 +126,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
           (location == Routes.login ||
                   location == Routes.splash ||
                   location == PortalRoutes.register)
-              ? home
+              ? (_debugStartRoute() ?? home)
               // A client must not wander into a staff route and vice versa:
               // the API would 403, but bouncing to their own home is clearer
               // than a screen full of errors.
@@ -258,8 +278,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: PortalRoutes.configureOrder,
-        builder: (context, state) =>
-            ConfigureOrderScreen(product: state.extra! as CatalogProduct),
+        builder: (context, state) => ConfigureOrderScreen(
+          product: state.extra! as CatalogProduct,
+          flow: OrderFlow.portal(ref),
+        ),
       ),
       GoRoute(
         path: PortalRoutes.domainSearch,
@@ -330,6 +352,43 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: '/sessions',
+        builder: (context, state) => const SessionsScreen(),
+      ),
+      GoRoute(
+        path: '/portal-users',
+        builder: (context, state) => const PortalUsersDirectoryScreen(),
+      ),
+
+      // Orders on a client's behalf. '/orders/configure' carries its
+      // product + client via `extra`; the portal's configure screen is
+      // reused with a staff OrderFlow.
+      GoRoute(
+        path: '/orders',
+        builder: (context, state) => const AddOrderScreen(),
+      ),
+      GoRoute(
+        path: '/orders/configure',
+        builder: (context, state) =>
+            StaffConfigureOrderScreen(args: state.extra! as StaffOrderArgs),
+      ),
+
+      // HR
+      GoRoute(
+        path: '/leave',
+        builder: (context, state) => const LeaveScreen(),
+      ),
+      GoRoute(
+        path: '/payroll',
+        builder: (context, state) => const PayrollScreen(),
+      ),
+      GoRoute(
+        path: '/payroll/runs/:id',
+        builder: (context, state) => PayrollRunScreen(
+          runId: state.pathParameters['id']!,
+        ),
       ),
 
       // Reports — hub plus one screen driven by the slug.
@@ -413,6 +472,12 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             const DocumentsByTypeScreen(kind: DocumentKind.proforma),
       ),
+      // '/invoices' itself is a bottom tab (see home_screen.dart); this is
+      // the web's "Unpaid Invoices" shortcut as its own screen.
+      GoRoute(
+        path: '/invoices/unpaid',
+        builder: (context, state) => const UnpaidInvoicesScreen(),
+      ),
       GoRoute(
         path: '/credit-notes',
         builder: (context, state) =>
@@ -455,6 +520,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/hosting',
         builder: (context, state) => const HostingAccountsScreen(),
+      ),
+      GoRoute(
+        path: '/hosting/discover',
+        builder: (context, state) => const DiscoverHostingScreen(),
       ),
       GoRoute(
         path: '/domains',
@@ -511,6 +580,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
+/// Debug-only: open a specific screen on launch instead of home. See
+/// [DebugHooks] for the review workflow this serves.
+String? _debugStartRoute() => DebugHooks.startRoute;
+
 /// True when [location] belongs to a shell other than [shell].
 ///
 /// Only cross-shell leakage is blocked; within a shell every screen is already
@@ -518,8 +591,11 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
 /// prefixes are the whole contract: `/portal/*` is the client app, `/admin/*`
 /// is the platform area, everything else is staff.
 bool _isForeignShell(String location, AppShell shell) {
-  final isPortalRoute = location.startsWith('/portal');
-  final isAdminRoute = location.startsWith('/admin');
+  // Segment-exact: the staff route `/portal-users` is not a portal route.
+  bool under(String prefix) =>
+      location == prefix || location.startsWith('$prefix/');
+  final isPortalRoute = under('/portal');
+  final isAdminRoute = under('/admin');
 
   return switch (shell) {
     AppShell.portal => !isPortalRoute,

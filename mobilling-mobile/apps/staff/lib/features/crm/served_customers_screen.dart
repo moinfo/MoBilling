@@ -234,10 +234,6 @@ class _RecordServedSheetState extends ConsumerState<_RecordServedSheet> {
       setState(() => _error = 'Enter the customer name.');
       return;
     }
-    if (_serviceIds.isEmpty) {
-      setState(() => _error = 'Pick at least one service.');
-      return;
-    }
 
     setState(() {
       _submitting = true;
@@ -361,7 +357,7 @@ class _FeedbackSheetState extends ConsumerState<_FeedbackSheet> {
   final _feedback = TextEditingController();
   final _challenges = TextEditingController();
 
-  String _outcome = 'reached';
+  String _outcome = 'satisfied';
   int? _rating;
   bool _submitting = false;
   String? _error;
@@ -432,12 +428,10 @@ class _FeedbackSheetState extends ConsumerState<_FeedbackSheet> {
             DropdownButtonFormField<String>(
               initialValue: _outcome,
               decoration: const InputDecoration(labelText: 'Outcome'),
-              items: const [
-                DropdownMenuItem(
-                    value: 'reached', child: Text('Reached and spoke')),
-                DropdownMenuItem(value: 'no_answer', child: Text('No answer')),
-                DropdownMenuItem(
-                    value: 'wrong_number', child: Text('Wrong number')),
+              // What `storeFeedback` validates.
+              items: [
+                for (final (value, label) in ServedFeedbackOutcomes.values)
+                  DropdownMenuItem(value: value, child: Text(label)),
               ],
               onChanged:
                   _submitting ? null : (v) => setState(() => _outcome = v!),

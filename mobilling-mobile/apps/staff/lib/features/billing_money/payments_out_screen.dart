@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
+import '../../providers.dart';
 import '../common/paged_list.dart';
 import 'billing_money_providers.dart';
 
@@ -20,17 +22,23 @@ class _PaymentsOutScreenState extends ConsumerState<PaymentsOutScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final canPay = ref.watch(sessionControllerProvider).session?.can(
+            BillingMoneyPermissions.paymentsOutCreate) ??
+        false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Payment history')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          final recorded = await context.push<bool>('/payments-out/new');
-          if (recorded == true) _listKey.currentState?.reload();
-        },
-        icon: const Icon(Icons.add),
-        label: const Text('Pay a bill'),
-      ),
+      floatingActionButton: canPay
+          ? FloatingActionButton.extended(
+              onPressed: () async {
+                final recorded =
+                    await context.push<bool>('/payments-out/new');
+                if (recorded == true) _listKey.currentState?.reload();
+              },
+              icon: const Icon(Icons.add),
+              label: const Text('Pay a bill'),
+            )
+          : null,
       body: PagedListView(
         key: _listKey,
         fetch: (page) =>

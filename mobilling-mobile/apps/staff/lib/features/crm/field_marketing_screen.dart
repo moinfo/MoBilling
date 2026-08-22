@@ -131,7 +131,10 @@ class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen> {
                 onPressed: () async {
                   if (area.text.trim().isEmpty) return;
                   try {
+                    final me = ref.read(currentUserProvider);
+                    if (me == null) return;
                     await ref.read(crmServiceProvider).createFieldSession(
+                          officerId: me.id,
                           area: area.text.trim(),
                           visitDate: date,
                         );
@@ -490,6 +493,7 @@ class _FieldSessionScreenState extends ConsumerState<FieldSessionScreen> {
     final phone = TextEditingController();
     final feedback = TextEditingController();
     var status = 'interested';
+    final services = <String>{};
     var submitting = false;
     String? error;
 
@@ -545,8 +549,26 @@ class _FieldSessionScreenState extends ConsumerState<FieldSessionScreen> {
                 const SizedBox(height: Spacing.md),
                 TextField(
                   controller: location,
-                  decoration:
-                      const InputDecoration(labelText: 'Location (optional)'),
+                  decoration: const InputDecoration(labelText: 'Location'),
+                ),
+                const SizedBox(height: Spacing.md),
+                Text('Services discussed',
+                    style: Theme.of(sheetContext).textTheme.labelLarge),
+                const SizedBox(height: Spacing.xs),
+                Wrap(
+                  spacing: Spacing.xs,
+                  runSpacing: Spacing.xs,
+                  children: [
+                    for (final service in FieldServices.values)
+                      FilterChip(
+                        label: Text(service),
+                        selected: services.contains(service),
+                        showCheckmark: false,
+                        onSelected: (on) => setSheetState(() => on
+                            ? services.add(service)
+                            : services.remove(service)),
+                      ),
+                  ],
                 ),
                 const SizedBox(height: Spacing.md),
                 TextField(
@@ -573,6 +595,15 @@ class _FieldSessionScreenState extends ConsumerState<FieldSessionScreen> {
                                 () => error = 'Enter the business name.');
                             return;
                           }
+                          if (location.text.trim().isEmpty) {
+                            setSheetState(() => error = 'Enter the location.');
+                            return;
+                          }
+                          if (services.isEmpty) {
+                            setSheetState(() =>
+                                error = 'Pick at least one service discussed.');
+                            return;
+                          }
                           setSheetState(() {
                             submitting = true;
                             error = null;
@@ -584,9 +615,8 @@ class _FieldSessionScreenState extends ConsumerState<FieldSessionScreen> {
                                   widget.sessionId,
                                   businessName: name.text.trim(),
                                   status: status,
-                                  location: location.text.trim().isEmpty
-                                      ? null
-                                      : location.text.trim(),
+                                  location: location.text.trim(),
+                                  services: services.toList(),
                                   phone: phone.text.trim().isEmpty
                                       ? null
                                       : phone.text.trim(),

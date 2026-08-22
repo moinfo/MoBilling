@@ -139,9 +139,13 @@ class ReportResult {
             if (row['days_overdue'] != null)
               '${row.count('days_overdue')}d overdue',
           ].where((s) => s.isNotEmpty).join(' · '),
-          amount: row['balance_due'] == null
-              ? row.money('total')
-              : row.money('balance_due'),
+          // Aging rows carry `balance` (total − paid); `balance_due` is the
+          // document-detail spelling.
+          amount: row['balance'] != null
+              ? row.money('balance')
+              : row['balance_due'] != null
+                  ? row.money('balance_due')
+                  : row.money('total'),
           status: row.str('status'),
         ));
       }
@@ -194,8 +198,14 @@ class ReportResult {
         rows: json.list('entries', (row) {
           final debit = row.money('debit');
           final credit = row.money('credit');
+          // Statement entries are `{date, type, reference, debit, credit,
+          // balance}` — the type ("invoice" / "payment") is the title.
+          final type = row.strOr('type', '');
           return ReportRow(
-            title: row.strOr('description', '—'),
+            title: row.str('description') ??
+                (type.isEmpty
+                    ? '—'
+                    : '${type[0].toUpperCase()}${type.substring(1).replaceAll('_', ' ')}'),
             subtitle: [
               if (row.date('date') != null) _d(row.date('date')),
               row.strOr('reference', ''),
@@ -377,8 +387,9 @@ class ReportResult {
                 row.strOr('client_name', '—'),
             subtitle: [
               row.strOr('product', row.strOr('product_name', '')),
-              if (row.date('expire_date') != null)
-                'renews ${_d(row.date('expire_date'))}',
+              if ((row.date('next_bill_date') ?? row.date('expire_date')) !=
+                  null)
+                'renews ${_d(row.date('next_bill_date') ?? row.date('expire_date'))}',
             ].where((s) => s.isNotEmpty).join(' · '),
             amount: row.money('amount', fallback: row.money('price')),
           )),
@@ -463,7 +474,9 @@ class ReportResult {
             subtitle: [
               row.strOr('outcome', ''),
               if (row['rating'] != null) '${row.count('rating')}★',
-              if (row.date('called_at') != null) _d(row.date('called_at')),
+              if ((row.date('scheduled_date') ?? row.date('called_at')) !=
+                  null)
+                _d(row.date('scheduled_date') ?? row.date('called_at')),
             ].where((s) => s.isNotEmpty).join(' · '),
             status: row.str('status'),
           )),
@@ -490,7 +503,9 @@ class ReportResult {
                   type.count('total', fallback: type.count('count')).toDouble(),
             ),
         ],
-        rows: json.list('logs', (row) => ReportRow(
+        // `ReportController::communicationLog` names the rows `messages`.
+        rows: json.list(json['messages'] is List ? 'messages' : 'logs',
+            (row) => ReportRow(
               title: row.strOr('subject', row.strOr('type', 'Message')),
               subtitle: [
                 row.object('client')?.str('name') ?? row.strOr('recipient', ''),
@@ -504,59 +519,85 @@ class ReportResult {
   // -------------------------------------------------------------------------
   // 12 & 13. System records / verifications
   // -------------------------------------------------------------------------
-  factory ReportResult.systemRecords(Map<String, dynamic> json) =>
-      ReportResult(
-        rowsLabel: 'Records',
-        metrics: [
-          ReportMetric(
-              label: 'Total',
-              value: json.money('total_amount', fallback: json.money('total')),
-              isMoney: true),
-          ReportMetric(
-              label: 'Records',
-              value: json.count('total_records',
-                      fallback: json.list('records', (r) => r).length)
-                  .toDouble()),
-        ],
-        rows: json.list('records', (row) => ReportRow(
-              title: row.object('system')?.str('name') ??
-                  row.strOr('system_name', '—'),
-              subtitle: [
-                row.object('system_property')?.str('name') ??
-                    row.strOr('property_name', ''),
-                if (row.date('record_date') != null)
-                  _d(row.date('record_date')),
-              ].where((s) => s.isNotEmpty).join(' · '),
-              amount: row.money('amount'),
-            )),
-      );
+  /// `ReportController::systemRecords` returns `{period_start, period_end,
+  /// days: [{date, day_total, systems: [{name, subtotal, properties}]}],
+  /// system_totals: [{name, total}], grand_total}`. Rows are one per system
+  /// for the period, then one per day underneath.
+  factory ReportResult.systemRecords(Map<String, dynamic> json) {
+    final systems = json.list('system_totals', (r) => r);
+    final days = json.list('days', (r) => r);
+    return ReportResult(
+      rowsLabel: 'Totals',
+      metrics: [
+        ReportMetric(
+            label: 'Total', value: json.money('grand_total'), isMoney: true),
+        ReportMetric(label: 'Systems', value: systems.length.toDouble()),
+        ReportMetric(label: 'Days', value: days.length.toDouble()),
+      ],
+      rows: [
+        for (final system in systems)
+          ReportRow(
+            title: system.strOr('name', '—'),
+            subtitle: 'Period total',
+            amount: system.money('total'),
+          ),
+        for (final day in days)
+          ReportRow(
+            title: day.date('date') == null
+                ? day.strOr('date', '—')
+                : _d(day.date('date')),
+            subtitle: day
+                .list('systems', (s) => s)
+                .map((s) => '${s.strOr('name', '—')} ${s.money('subtotal')}')
+                .join(' · '),
+            amount: day.money('day_total'),
+          ),
+      ],
+    );
+  }
 
-  factory ReportResult.systemVerifications(Map<String, dynamic> json) =>
-      ReportResult(
-        rowsLabel: 'Checks',
-        metrics: [
-          ReportMetric(
-              label: 'Checks',
-              value: json.count('total_reports',
-                      fallback: json.list('reports', (r) => r).length)
-                  .toDouble()),
-          ReportMetric(
-              label: 'Issues',
-              value: json.count('total_issues').toDouble(),
-              tone: MetricTone.bad),
-        ],
-        rows: json.list('reports', (row) => ReportRow(
-              title: row.object('system')?.str('name') ??
-                  row.strOr('system_name', '—'),
-              subtitle: [
-                row.object('user')?.str('name') ?? '',
-                if (row.date('report_date') != null)
-                  _d(row.date('report_date')),
-                row.strOr('notes', ''),
-              ].where((s) => s.isNotEmpty).join(' · '),
-              status: row.strOr('status', 'ok') == 'issue' ? 'overdue' : 'active',
-            )),
-      );
+  /// `ReportController::systemVerifications` returns `{total_days,
+  /// systems: [{system_name, domain_name, assigned_user, total_days,
+  /// completed_days, ok_count, issue_count, missed_days, submission_rate}],
+  /// by_staff: [...]}`.
+  factory ReportResult.systemVerifications(Map<String, dynamic> json) {
+    final systems = json.list('systems', (r) => r);
+    int sum(String key) =>
+        systems.fold<int>(0, (total, s) => total + s.count(key));
+    return ReportResult(
+      rowsLabel: 'Systems',
+      metrics: [
+        ReportMetric(label: 'Days', value: json.count('total_days').toDouble()),
+        ReportMetric(
+            label: 'Checked', value: sum('completed_days').toDouble()),
+        ReportMetric(
+            label: 'Issues',
+            value: sum('issue_count').toDouble(),
+            tone: MetricTone.bad),
+        ReportMetric(
+            label: 'Missed',
+            value: sum('missed_days').toDouble(),
+            tone: MetricTone.bad),
+      ],
+      rows: [
+        for (final s in systems)
+          ReportRow(
+            title: s.strOr('system_name', '—'),
+            subtitle: [
+              s.object('assigned_user')?.str('name') ?? '',
+              '${s.count('completed_days')}/${s.count('total_days')} days',
+              '${s.money('submission_rate').toStringAsFixed(0)}%',
+              if (s.count('missed_days') > 0) '${s.count('missed_days')} missed',
+            ].where((t) => t.isNotEmpty).join(' · '),
+            status: s.count('issue_count') > 0
+                ? 'overdue'
+                : s.count('missed_days') > 0
+                    ? 'partial'
+                    : 'active',
+          ),
+      ],
+    );
+  }
 
   /// Compact date for row subtitles — the UI formats metrics itself, but rows
   /// are pre-joined strings so the date has to be baked in here.

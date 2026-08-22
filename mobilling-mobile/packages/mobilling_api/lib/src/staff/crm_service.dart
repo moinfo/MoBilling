@@ -29,7 +29,7 @@ class CrmService {
   Future<CollectionDashboard> collectionDashboard() async {
     final body =
         await _api.get<Map<String, dynamic>>('/collection/dashboard');
-    return CollectionDashboard.fromJson(body);
+    return CollectionDashboard.fromJson(_unwrap(body));
   }
 
   // ---------------------------------------------------------------------
@@ -39,14 +39,18 @@ class CrmService {
   /// GET /followups/dashboard — due today + overdue + counters.
   Future<FollowupDashboard> followupDashboard() async {
     final body = await _api.get<dynamic>('/followups/dashboard');
-    return FollowupDashboard.fromJson(body);
+    return FollowupDashboard.fromJson(_unwrap(body));
   }
 
-  /// GET /followups — the full list, optionally narrowed by status.
-  Future<List<FollowupEntry>> followups({String? status}) async {
+  /// GET /followups — optionally narrowed by status. Paginated server-side
+  /// (default 20); the screen shows one generous page.
+  Future<List<FollowupEntry>> followups({
+    String? status,
+    int perPage = 100,
+  }) async {
     final body = await _api.get<dynamic>(
       '/followups',
-      query: {'status': status},
+      query: {'status': status, 'per_page': perPage},
     );
     return Paginated.fromJson(body, FollowupEntry.fromJson).items;
   }
@@ -81,10 +85,14 @@ class CrmService {
       '/followups/$followupId/log-call',
       body: {
         'outcome': outcome,
-        'notes': ?notes,
+        // Required server-side — send an empty string rather than omit so
+        // the validator's message is about content, not absence.
+        'notes': notes ?? '',
         'promise_date': promiseDate == null ? null : _ymd(promiseDate),
         'promise_amount': ?promiseAmount,
-        'next_followup': nextFollowup == null ? null : _ymd(nextFollowup),
+        // `FollowupController::logCall` reads `next_followup_override`.
+        'next_followup_override':
+            nextFollowup == null ? null : _ymd(nextFollowup),
       },
     );
     return FollowupCallResult.fromJson(body);
@@ -110,14 +118,19 @@ class CrmService {
   Future<SatisfactionDashboard> satisfactionDashboard() async {
     final body =
         await _api.get<dynamic>('/satisfaction-calls/dashboard');
-    return SatisfactionDashboard.fromJson(body);
+    return SatisfactionDashboard.fromJson(_unwrap(body));
   }
 
-  /// GET /satisfaction-calls — the call queue.
-  Future<List<SatisfactionCall>> satisfactionCalls({String? status}) async {
+  /// GET /satisfaction-calls — the call queue. Statuses are
+  /// `scheduled | completed | missed | cancelled`. Paginated server-side;
+  /// the screen shows one generous page.
+  Future<List<SatisfactionCall>> satisfactionCalls({
+    String? status,
+    int perPage = 100,
+  }) async {
     final body = await _api.get<dynamic>(
       '/satisfaction-calls',
-      query: {'status': status},
+      query: {'status': status, 'per_page': perPage},
     );
     return Paginated.fromJson(body, SatisfactionCall.fromJson).items;
   }
@@ -228,9 +241,11 @@ class CrmService {
   }) =>
       _api.post<dynamic>('/served/customers', body: {
         'name': name,
-        'served_service_ids': serviceIds,
+        // `ServedCustomersController::storeCustomer` validates `service_ids`
+        // and requires `served_date` — default to today for a walk-in.
+        if (serviceIds.isNotEmpty) 'service_ids': serviceIds,
         'phone': ?phone,
-        'served_date': servedDate == null ? null : _ymd(servedDate),
+        'served_date': _ymd(servedDate ?? DateTime.now()),
         'notes': ?notes,
       });
 
@@ -283,7 +298,10 @@ class CrmService {
   }
 
   /// POST /field-sessions — start a session for an area and date.
+  /// [officerId] is required by the controller; the app passes the
+  /// signed-in user.
   Future<FieldSession> createFieldSession({
+    required String officerId,
     required String area,
     required DateTime visitDate,
     String? summary,
@@ -293,6 +311,7 @@ class CrmService {
     final body = await _api.post<Map<String, dynamic>>(
       '/field-sessions',
       body: {
+        'officer_id': officerId,
         'area': area,
         'visit_date': _ymd(visitDate),
         'summary': ?summary,
@@ -305,13 +324,14 @@ class CrmService {
         data is Map ? Map<String, dynamic>.from(data) : body);
   }
 
-  /// POST /field-sessions/{id}/visits — log a business visited.
+  /// POST /field-sessions/{id}/visits — log a business visited. `location`
+  /// and at least one service are required by the controller.
   Future<void> logFieldVisit(
     String sessionId, {
     required String businessName,
     required String status,
-    List<String> services = const [],
-    String? location,
+    required String location,
+    required List<String> services,
     String? phone,
     String? feedback,
     DateTime? nextFollowupDate,
@@ -319,8 +339,8 @@ class CrmService {
       _api.post<dynamic>('/field-sessions/$sessionId/visits', body: {
         'business_name': businessName,
         'status': status,
-        if (services.isNotEmpty) 'services': services,
-        'location': ?location,
+        'services': services,
+        'location': location,
         'phone': ?phone,
         'feedback': ?feedback,
         'next_followup_date':
@@ -347,6 +367,14 @@ class CrmService {
       query: {'month': month, 'year': year},
     );
     return Paginated.fromJson(body, FieldTarget.fromJson).items;
+  }
+
+  /// The three CRM dashboards wrap their payload in `{data: {...}}`; the
+  /// list endpoints in this service do not. Parsing the outer map produced
+  /// an all-zero screen with no error.
+  static Map<String, dynamic> _unwrap(Map<String, dynamic> body) {
+    final data = body['data'];
+    return data is Map ? Map<String, dynamic>.from(data) : body;
   }
 
   static String _ymd(DateTime date) =>

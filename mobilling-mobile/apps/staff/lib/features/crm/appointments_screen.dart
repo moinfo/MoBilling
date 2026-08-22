@@ -44,7 +44,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
           );
       ref.invalidate(appointmentsProvider(_status));
       messenger.showSnackBar(
-          SnackBar(content: Text(status == null ? 'Moved.' : 'Marked $status.')));
+          SnackBar(content: Text(date != null ? 'Moved.' : 'Marked $status.')));
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -58,7 +58,11 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
       firstDate: now,
       lastDate: now.add(const Duration(days: 365)),
     );
-    if (picked != null) await _update(appointment, date: picked);
+    // The API requires the status on every update; resend the current one.
+    if (picked != null) {
+      await _update(appointment,
+          status: appointment.appointmentStatus ?? 'pending', date: picked);
+    }
   }
 
   @override

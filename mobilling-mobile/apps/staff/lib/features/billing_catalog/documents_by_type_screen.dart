@@ -56,9 +56,11 @@ class _DocumentsByTypeScreenState
         _ => const [
             (null, 'All'),
             ('draft', 'Draft'),
+            ('pending_approval', 'Awaiting approval'),
             ('sent', 'Sent'),
             ('accepted', 'Accepted'),
             ('rejected', 'Rejected'),
+            ('cancelled', 'Cancelled'),
           ],
       };
 

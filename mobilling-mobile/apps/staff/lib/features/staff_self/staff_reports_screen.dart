@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
+import '../../providers.dart';
 import '../crm/crm_ui.dart' show CrmAsyncView, FilterStrip;
 import 'staff_self_providers.dart';
 
@@ -31,14 +32,19 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final reports = ref.watch(staffReportsProvider(_type));
+    final canSubmit = ref.watch(sessionControllerProvider).session?.can(
+            'staff_reports.submit') ??
+        false;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Staff reports')),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _submit(context),
-        icon: const Icon(Icons.edit_note_outlined),
-        label: const Text('Submit'),
-      ),
+      floatingActionButton: canSubmit
+          ? FloatingActionButton.extended(
+              onPressed: () => _submit(context),
+              icon: const Icon(Icons.edit_note_outlined),
+              label: const Text('Submit'),
+            )
+          : null,
       body: Column(
         children: [
           FilterStrip(

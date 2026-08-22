@@ -86,8 +86,9 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
                 if (ticket.value!.isClosed)
                   const PopupMenuItem(
                       value: 'open', child: Text('Reopen ticket')),
-                const PopupMenuItem(
-                    value: 'answered', child: Text('Mark answered')),
+                // No "Mark answered": `TicketController::updateStatus` only
+                // accepts open|closed — `answered` is set automatically when
+                // staff reply.
               ],
             ),
         ],

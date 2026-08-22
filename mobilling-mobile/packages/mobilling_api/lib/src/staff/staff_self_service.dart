@@ -111,11 +111,13 @@ class StaffSelfService {
   // System verifications & records
   // ---------------------------------------------------------------------
 
-  /// GET /system-verifications — systems to check, with today's report
-  /// attached when already submitted.
+  /// GET /my-verifications — the systems assigned to the signed-in user,
+  /// with today's report attached when already submitted. Gated on
+  /// `menu.my_verifications` (the drawer's permission); `/system-verifications`
+  /// is the admin CRUD index, which 403s for ordinary staff and lists other
+  /// people's systems for admins.
   Future<List<SystemVerification>> systemVerifications() async {
-    final body =
-        await _api.get<dynamic>('/system-verifications');
+    final body = await _api.get<dynamic>('/my-verifications');
     return Paginated.fromJson(body, SystemVerification.fromJson).items;
   }
 

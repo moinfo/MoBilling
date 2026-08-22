@@ -233,9 +233,16 @@ class PettyCashEntry {
         amount: json.money('amount'),
         description: json.strOr('description', '—'),
         date: json.date('date'),
+        // The unified history emits `created_by` as a plain name string.
         createdByName: json.str('created_by_name') ??
-            json.object('created_by')?.str('name'),
-        approvalStatus: json.str('approval_status'),
+            json.object('created_by')?.str('name') ??
+            (json['created_by'] is String ? json.str('created_by') : null),
+        // Expense rows carry `voucher_attached` rather than an approval
+        // status; a missing voucher is what still needs attention.
+        approvalStatus: json.str('approval_status') ??
+            (json['voucher_attached'] == null
+                ? null
+                : (json.flag('voucher_attached') ? null : 'voucher_pending')),
       );
 }
 
@@ -247,7 +254,7 @@ class PettyCashReconciliation {
     this.reconciledAt,
     this.notes,
     this.createdByName,
-  });
+  }) : _resolution = null;
 
   final String id;
   final double countedAmount;
@@ -259,17 +266,36 @@ class PettyCashReconciliation {
   /// Positive means more cash than expected, negative means a shortfall.
   double get variance => countedAmount - expectedAmount;
 
+  /// `accepted | investigating`, when the API sends it.
+  String? get resolution => _resolution;
+  final String? _resolution;
+
   factory PettyCashReconciliation.fromJson(Map<String, dynamic> json) =>
-      PettyCashReconciliation(
+      PettyCashReconciliation._(
         id: json.id(),
-        countedAmount:
-            json.money('counted_amount', fallback: json.money('counted')),
-        expectedAmount:
-            json.money('expected_amount', fallback: json.money('expected')),
-        reconciledAt: json.date('reconciled_at'),
+        // Columns are `counted_balance` / `ledger_balance` (model
+        // PettyCashReconciliation); older keys kept as fallbacks.
+        countedAmount: json.money('counted_balance',
+            fallback: json.money('counted_amount')),
+        expectedAmount: json.money('ledger_balance',
+            fallback: json.money('expected_amount')),
+        reconciledAt: json.date('reconciled_at') ?? json.date('created_at'),
         notes: json.str('notes'),
-        createdByName: json.object('created_by')?.str('name'),
+        createdByName: json.object('reconciled_by')?.str('name') ??
+            json.object('created_by')?.str('name') ??
+            json.str('reconciled_by_name'),
+        resolution: json.str('resolution'),
       );
+
+  const PettyCashReconciliation._({
+    required this.id,
+    required this.countedAmount,
+    required this.expectedAmount,
+    this.reconciledAt,
+    this.notes,
+    this.createdByName,
+    String? resolution,
+  }) : _resolution = resolution;
 }
 
 // ---------------------------------------------------------------------------

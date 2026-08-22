@@ -324,7 +324,10 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
                           if (bill.cycle != null)
                             bill.cycle!.replaceAll('_', ' '),
                           if (bill.dueDate != null)
-                            Formatting.dueDescription(bill.dueDate),
+                            // A settled bill is not overdue, however old.
+                            bill.isPaid
+                                ? 'Paid${bill.paidAt == null ? '' : ' ${Formatting.date(bill.paidAt)}'}'
+                                : Formatting.dueDescription(bill.dueDate),
                         ].join(' · '),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: bill.isOverdue

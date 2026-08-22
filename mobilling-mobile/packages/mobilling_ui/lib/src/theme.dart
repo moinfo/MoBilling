@@ -100,11 +100,26 @@ class StatusColors extends ThemeExtension<StatusColors> {
   /// `documents.status` enum has been extended by migration several times and
   /// will be again.
   Color forStatus(String? status) => switch (status?.toLowerCase().trim()) {
-        'paid' || 'accepted' || 'active' || 'completed' || 'resolved' =>
+        'paid' ||
+        'accepted' ||
+        'active' ||
+        'completed' ||
+        'resolved' ||
+        // HR + operations (Aug 2026): a decided/locked/linked state.
+        'approved' ||
+        'finalized' ||
+        'imported' ||
+        'recovered' ||
+        'paid_off' =>
           settled,
         'sent' || 'pending_approval' || 'pending' || 'open' || 'processing' =>
           pending,
-        'partial' || 'expiring' || 'grace' || 'awaiting_payment' => attention,
+        'partial' ||
+        'expiring' ||
+        'grace' ||
+        'awaiting_payment' ||
+        'not_imported' =>
+          attention,
         'overdue' || 'rejected' || 'suspended' || 'failed' || 'expired' =>
           overdue,
         _ => inactive,

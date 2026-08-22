@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -29,7 +30,11 @@ class ClientDetailScreen extends ConsumerWidget {
         fetch: (page) => ref
             .read(staffServiceProvider)
             .documents(clientId: clientId, page: page),
-        itemBuilder: (context, doc) => StaffInvoiceCard(document: doc),
+        itemBuilder: (context, doc) => InkWell(
+          borderRadius: Radii.card,
+          onTap: () => context.push('/documents/${doc.id}'),
+          child: StaffInvoiceCard(document: doc),
+        ),
         emptyIcon: Icons.receipt_long_outlined,
         emptyTitle: 'No invoices for this client',
       ),

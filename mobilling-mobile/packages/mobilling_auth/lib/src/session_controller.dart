@@ -19,6 +19,13 @@ enum SessionStatus {
   /// No valid session.
   signedOut,
 
+  /// We hold a stored token but could not reach the server to validate it
+  /// (no network, API down). Not signed out — the token is kept — but not
+  /// usable either: without `/auth/me` we don't know who the token belongs
+  /// to, so we cannot even pick the right shell. The splash offers retry or
+  /// sign-out; see [SessionController.restoreError].
+  offline,
+
   /// We hold a token the server has rejected, but we have not torn the session
   /// down yet. Whether this state is ever entered depends on the policy in
   /// [SessionController.handleUnauthenticated].
@@ -42,9 +49,13 @@ class SessionController extends ChangeNotifier {
 
   SessionStatus _status = SessionStatus.unknown;
   AuthSession? _session;
+  String? _restoreError;
 
   SessionStatus get status => _status;
   AuthSession? get session => _session;
+
+  /// Why the last [restore] ended in [SessionStatus.offline]; null otherwise.
+  String? get restoreError => _restoreError;
   AuthUser? get user => _session?.user;
   AuthTenant? get tenant => _session?.user.tenant;
   bool get isAuthenticated => _status == SessionStatus.authenticated;
@@ -62,6 +73,7 @@ class SessionController extends ChangeNotifier {
   /// it. A token that was revoked (by staff, or by signing out elsewhere)
   /// looks identical to a valid one until we actually use it.
   Future<void> restore() async {
+    _restoreError = null;
     _setStatus(SessionStatus.restoring);
 
     final token = await _tokens.read();
@@ -79,11 +91,24 @@ class SessionController extends ChangeNotifier {
         await _clear();
         return;
       }
-      // Offline on launch is not a reason to sign someone out — keep the token
-      // and let individual screens surface their own network errors.
-      _setStatus(SessionStatus.authenticated);
+      // Offline on launch is not a reason to sign someone out — keep the
+      // token. But it is not a session either: with no `/auth/me` response
+      // there is no user, and an earlier version that reported
+      // `authenticated` here dropped every launch into the client portal
+      // shell (the null-session default) regardless of whose token it was.
+      // In debug builds surface the underlying cause too — "could not reach"
+      // hides whether it was a refused connection, a timeout, or a parse
+      // failure, and on a dev box that is the whole question.
+      _restoreError = kDebugMode && e.cause != null
+          ? '${e.message}\n${e.cause}'
+          : e.message;
+      _setStatus(SessionStatus.offline);
     }
   }
+
+  /// Drop the stored token without a server call — for a user stuck on
+  /// [SessionStatus.offline] who would rather sign in afresh than wait.
+  Future<void> forgetStoredSession() => _clear();
 
   Future<LoginOutcome> login({
     required String identifier,

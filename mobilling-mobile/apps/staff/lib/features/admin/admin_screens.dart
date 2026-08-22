@@ -625,10 +625,15 @@ class SettingsScreen extends ConsumerWidget {
                           child: Text('Company',
                               style: theme.textTheme.titleSmall),
                         ),
-                        TextButton(
-                          onPressed: () => _editCompany(context, ref, settings),
-                          child: const Text('Edit'),
-                        ),
+                        // PUT /settings/company needs settings.company.
+                        if (ref.watch(sessionControllerProvider).session?.can(
+                                'settings.company') ??
+                            false)
+                          TextButton(
+                            onPressed: () =>
+                                _editCompany(context, ref, settings),
+                            child: const Text('Edit'),
+                          ),
                       ],
                     ),
                     CrmDetailRow('Name', settings.name),
@@ -756,10 +761,19 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (saved != true) return;
 
+    if (email.text.trim().isEmpty) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('A company email is required.')));
+      return;
+    }
+
     try {
       await ref.read(adminServiceProvider).updateCompany(
             name: name.text.trim(),
-            email: email.text.trim().isEmpty ? null : email.text.trim(),
+            email: email.text.trim(),
+            // Required by the API; not editable here — it is the billing
+            // currency and changing it is a web/super-admin decision.
+            currency: current.currency ?? Formatting.tenantCurrency,
             phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
             address: address.text.trim().isEmpty ? null : address.text.trim(),
             taxId: taxId.text.trim().isEmpty ? null : taxId.text.trim(),

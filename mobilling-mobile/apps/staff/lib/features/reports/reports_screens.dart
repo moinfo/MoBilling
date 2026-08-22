@@ -6,6 +6,7 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
+import '../common/pickers.dart';
 import '../crm/crm_ui.dart' show CrmAsyncView;
 
 final Provider<ReportsService> reportsServiceProvider =
@@ -130,12 +131,7 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
   }
 
   Future<void> _pickClient() async {
-    final chosen = await showModalBottomSheet<StaffClient>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-      builder: (_) => const _ClientPickerSheet(),
-    );
+    final chosen = await ClientPickerSheet.show(context);
     if (chosen != null) setState(() => _client = chosen);
   }
 
@@ -174,8 +170,10 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                       child: OutlinedButton.icon(
                         icon: const Icon(Icons.date_range_outlined, size: 18),
                         label: Text(
+                          // The server defaults to the current month when
+                          // no range is sent.
                           _range == null
-                              ? 'All time'
+                              ? 'This month'
                               : '${Formatting.date(_range!.start)} – ${Formatting.date(_range!.end)}',
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -337,103 +335,6 @@ class _RowTile extends StatelessWidget {
           else if (row.count != null)
             Text('${row.count}', style: theme.textTheme.labelLarge),
           if (row.status != null) StatusChip(row.status, dense: true),
-        ],
-      ),
-    );
-  }
-}
-
-/// Searchable client picker for the client statement.
-class _ClientPickerSheet extends ConsumerStatefulWidget {
-  const _ClientPickerSheet();
-
-  @override
-  ConsumerState<_ClientPickerSheet> createState() =>
-      _ClientPickerSheetState();
-}
-
-class _ClientPickerSheetState extends ConsumerState<_ClientPickerSheet> {
-  final _search = TextEditingController();
-  List<StaffClient> _results = const [];
-  bool _loading = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
-
-  Future<void> _load() async {
-    setState(() => _loading = true);
-    try {
-      final page = await ref.read(staffServiceProvider).clients(
-            search: _search.text.trim().isEmpty ? null : _search.text.trim(),
-            perPage: 50,
-          );
-      if (mounted) setState(() => _results = page.items);
-    } on ApiException {
-      if (mounted) setState(() => _results = const []);
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        left: Spacing.md,
-        right: Spacing.md,
-        top: Spacing.md,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.md,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _search,
-            autofocus: true,
-            textInputAction: TextInputAction.search,
-            onSubmitted: (_) => _load(),
-            decoration: InputDecoration(
-              hintText: 'Search clients',
-              prefixIcon: const Icon(Icons.search),
-              suffixIcon: IconButton(
-                icon: const Icon(Icons.arrow_forward),
-                onPressed: _load,
-              ),
-            ),
-          ),
-          const SizedBox(height: Spacing.sm),
-          if (_loading)
-            const Padding(
-              padding: EdgeInsets.all(Spacing.lg),
-              child: CircularProgressIndicator(),
-            )
-          else
-            Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: _results.length,
-                itemBuilder: (context, index) {
-                  final client = _results[index];
-                  return ListTile(
-                    dense: true,
-                    title: Text(client.name),
-                    subtitle: client.phone == null
-                        ? null
-                        : Text(client.phone!),
-                    onTap: () => Navigator.of(context).pop(client),
-                  );
-                },
-              ),
-            ),
         ],
       ),
     );

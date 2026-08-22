@@ -116,7 +116,8 @@ class FinanceService {
   }
 
   /// POST /petty-cash/transactions — needs `petty_cash.topup`.
-  /// [type] is top_up | return | adjustment_in | adjustment_out.
+  /// [type] is top_up | return (adjustments are only ever written by a
+  /// reconciliation).
   Future<void> pettyCashTransaction({
     required String type,
     required double amount,
@@ -131,13 +132,17 @@ class FinanceService {
       });
 
   /// POST /petty-cash/reconciliations — record a physical cash count. Needs
-  /// `petty_cash.reconcile`.
+  /// `petty_cash.reconcile`. [resolution] is `accepted` (book the
+  /// difference as an adjustment) or `investigating` (leave the ledger as
+  /// is and flag it).
   Future<void> reconcilePettyCash({
-    required double countedAmount,
+    required double countedBalance,
+    required String resolution,
     String? notes,
   }) =>
       _api.post<dynamic>('/petty-cash/reconciliations', body: {
-        'counted_amount': countedAmount,
+        'counted_balance': countedBalance,
+        'resolution': resolution,
         'notes': ?notes,
       });
 

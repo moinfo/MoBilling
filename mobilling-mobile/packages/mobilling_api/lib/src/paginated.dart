@@ -67,16 +67,23 @@ class Paginated<T> {
     final items = parseList(body['data']);
 
     // `current_page` is the marker that this is a real Laravel paginator;
-    // without it we only have a wrapped list.
-    final currentPage = _asInt(body['current_page']);
+    // without it we only have a wrapped list. A `JsonResource::collection`
+    // response (most staff list endpoints) puts that metadata under `meta`
+    // rather than at the top level — missing that silently capped every
+    // such list at its first page.
+    final rawMeta = body['meta'];
+    final meta = rawMeta is Map && rawMeta['current_page'] != null
+        ? Map<String, dynamic>.from(rawMeta)
+        : body;
+    final currentPage = _asInt(meta['current_page']);
     if (currentPage == null) return Paginated.single(items);
 
     return Paginated(
       items: items,
       currentPage: currentPage,
-      lastPage: _asInt(body['last_page']) ?? currentPage,
-      total: _asInt(body['total']) ?? items.length,
-      perPage: _asInt(body['per_page']),
+      lastPage: _asInt(meta['last_page']) ?? currentPage,
+      total: _asInt(meta['total']) ?? items.length,
+      perPage: _asInt(meta['per_page']),
     );
   }
 

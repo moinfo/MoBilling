@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
-import '../portal_routes.dart';
-import '../portal_providers.dart';
+import 'order_flow.dart';
 
 /// Configure and place an order for one product: domain (for hosting),
 /// add-ons, configurable options and a promo code.
@@ -14,10 +12,18 @@ import '../portal_providers.dart';
 /// backend recomputes the authoritative total from the database when the
 /// order is placed (it never trusts client-sent prices), so the invoice can
 /// legitimately differ if pricing changed mid-order.
+///
+/// Serves both the client portal and staff ordering on a client's behalf —
+/// [flow] supplies the endpoints and the post-order navigation.
 class ConfigureOrderScreen extends ConsumerStatefulWidget {
-  const ConfigureOrderScreen({super.key, required this.product});
+  const ConfigureOrderScreen({
+    super.key,
+    required this.product,
+    required this.flow,
+  });
 
   final CatalogProduct product;
+  final OrderFlow flow;
 
   @override
   ConsumerState<ConfigureOrderScreen> createState() =>
@@ -37,12 +43,43 @@ class _ConfigureOrderScreenState extends ConsumerState<ConfigureOrderScreen> {
   /// option id -> selection (choice / quantity / on).
   final Map<String, ConfigSelection> _selections = {};
 
+  // Loaded once per screen rather than through providers, because the
+  // endpoints depend on which flow we are in.
+  AsyncValue<List<ProductAddon>> _addons = const AsyncValue.loading();
+  AsyncValue<List<ConfigOptionGroup>> _configGroups =
+      const AsyncValue.loading();
+  AsyncValue<List<DomainAddon>> _domainAddonOptions =
+      const AsyncValue.loading();
+
   CouponResult? _couponResult;
   bool _validatingCoupon = false;
   bool _placing = false;
   String? _error;
 
   CatalogProduct get product => widget.product;
+  OrderFlow get flow => widget.flow;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadOptions();
+  }
+
+  Future<void> _loadOptions() async {
+    final addons = AsyncValue.guard(() => flow.productAddons(product.id));
+    final groups = AsyncValue.guard(() => flow.configOptions(product.id));
+    final domainAddons = product.needsDomain
+        ? AsyncValue.guard(flow.domainAddons)
+        : Future.value(const AsyncValue<List<DomainAddon>>.data([]));
+
+    final results = await Future.wait([addons, groups, domainAddons]);
+    if (!mounted) return;
+    setState(() {
+      _addons = results[0] as AsyncValue<List<ProductAddon>>;
+      _configGroups = results[1] as AsyncValue<List<ConfigOptionGroup>>;
+      _domainAddonOptions = results[2] as AsyncValue<List<DomainAddon>>;
+    });
+  }
 
   @override
   void dispose() {
@@ -57,9 +94,8 @@ class _ConfigureOrderScreenState extends ConsumerState<ConfigureOrderScreen> {
     if (code.isEmpty) return;
     setState(() => _validatingCoupon = true);
     try {
-      final result = await ref
-          .read(portalServiceProvider)
-          .validateCoupon(code: code, productId: product.id);
+      final result =
+          await flow.validateCoupon(code: code, productId: product.id);
       if (!mounted) return;
       setState(() => _couponResult = result);
     } on ApiException catch (e) {
@@ -83,7 +119,7 @@ class _ConfigureOrderScreenState extends ConsumerState<ConfigureOrderScreen> {
     });
 
     try {
-      final order = await ref.read(portalServiceProvider).placeOrder(
+      final order = await flow.placeOrder(
             productId: product.id,
             label: _label.text.trim().isEmpty ? null : _label.text.trim(),
             domainMode: product.needsDomain ? _domainMode : null,
@@ -101,15 +137,12 @@ class _ConfigureOrderScreenState extends ConsumerState<ConfigureOrderScreen> {
                 : null,
           );
 
-      ref.invalidate(portalSubscriptionsProvider);
-      ref.invalidate(portalDashboardProvider);
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(order.message ??
               'Order placed — pay ${order.documentNumber} to activate.')));
-      // Straight to the invoice: paying it is what activates the service.
-      context.pushReplacement(PortalRoutes.invoicePath(order.documentId));
+      flow.onPlaced(context, ref, order);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _error = e.message);
@@ -121,13 +154,24 @@ class _ConfigureOrderScreenState extends ConsumerState<ConfigureOrderScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final productAddons = ref.watch(portalProductAddonsProvider(product.id));
-    final configGroups = ref.watch(portalConfigOptionsProvider(product.id));
-    final domainAddons =
-        product.needsDomain ? ref.watch(portalDomainAddonsProvider) : null;
+    final productAddons = _addons;
+    final configGroups = _configGroups;
+    final domainAddons = product.needsDomain ? _domainAddonOptions : null;
 
     return Scaffold(
-      appBar: AppBar(title: Text(product.name)),
+      appBar: AppBar(
+        title: flow.subtitle == null
+            ? Text(product.name)
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(product.name, style: theme.textTheme.titleMedium),
+                  Text(flow.subtitle!,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant)),
+                ],
+              ),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(Spacing.md),
         children: [
@@ -331,8 +375,7 @@ class _ConfigureOrderScreenState extends ConsumerState<ConfigureOrderScreen> {
           ),
           const SizedBox(height: Spacing.xs),
           Text(
-            'An invoice is created for your order — the service activates '
-            'automatically once it is paid.',
+            flow.footnote,
             style: theme.textTheme.bodySmall
                 ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             textAlign: TextAlign.center,

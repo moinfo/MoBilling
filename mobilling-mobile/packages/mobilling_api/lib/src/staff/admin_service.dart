@@ -42,8 +42,12 @@ class AdminService {
       '/subscription/checkout',
       body: {'plan_id': planId},
     );
-    return body['redirect_url']?.toString() ??
-        body['url']?.toString();
+    // `SubscriptionController::checkout` wraps the service result:
+    // `{message, data: {redirect_url, ...}}`. Bank-transfer plans have no
+    // redirect by design — the message then carries the instructions.
+    final data = body['data'];
+    final inner = data is Map ? data : body;
+    return inner['redirect_url']?.toString() ?? inner['url']?.toString();
   }
 
   // ---------------------------------------------------------------------
@@ -123,23 +127,9 @@ class AdminService {
     return Paginated.fromJson(body, StaffRole.fromJson).items;
   }
 
-  /// GET /permissions — every permission the platform defines, for the
-  /// role editor's checklist.
-  Future<List<PermissionInfo>> permissions() async {
-    final body = await _api.get<dynamic>('/permissions');
-    return Paginated.fromJson(body, PermissionInfo.fromJson).items;
-  }
-
-  /// PUT /roles/{id} — replaces the role's permission set wholesale.
-  Future<void> updateRole(
-    String id, {
-    required String name,
-    required List<String> permissionNames,
-  }) =>
-      _api.put<dynamic>('/roles/$id', body: {
-        'name': name,
-        'permissions': permissionNames,
-      });
+  // Role *editing* is deliberately web-only: `PUT /roles/{id}` takes a
+  // `label` plus permission UUIDs (from `/available-permissions`), and a
+  // permission matrix is not a phone screen. The app shows grants read-only.
 
   // ---------------------------------------------------------------------
   // Settings
@@ -157,10 +147,14 @@ class AdminService {
     );
   }
 
-  /// PUT /settings/company — the details that print on invoices.
+  /// PUT /settings/company — the details that print on invoices. Needs
+  /// `settings.company`. `email` and `currency` are required server-side,
+  /// so pass the current currency through unchanged when only editing the
+  /// contact details.
   Future<void> updateCompany({
     required String name,
-    String? email,
+    required String email,
+    required String currency,
     String? phone,
     String? address,
     String? taxId,
@@ -168,7 +162,8 @@ class AdminService {
   }) =>
       _api.put<dynamic>('/settings/company', body: {
         'name': name,
-        'email': ?email,
+        'email': email,
+        'currency': currency,
         'phone': ?phone,
         'address': ?address,
         'tax_id': ?taxId,

@@ -37,10 +37,20 @@ class _PayBillScreenState extends ConsumerState<PayBillScreen> {
       _loadError = null;
     });
     try {
-      final page = await ref.read(billingMoneyServiceProvider).bills();
+      // /bills is paginated oldest-due first, and the oldest are mostly
+      // paid — walk every page (bounded) so the bill that still needs paying
+      // is actually offered.
+      final service = ref.read(billingMoneyServiceProvider);
+      final all = <StaffBill>[];
+      var page = await service.bills(perPage: 100);
+      all.addAll(page.items);
+      while (page.hasMore && page.currentPage < 20) {
+        page = await service.bills(page: page.nextPage!, perPage: 100);
+        all.addAll(page.items);
+      }
       if (!mounted) return;
       // Only bills that can still take a payment.
-      setState(() => _bills = page.items
+      setState(() => _bills = all
           .where((b) => b.isActive && !b.isPaid && b.remaining > 0)
           .toList(growable: false));
     } on ApiException catch (e) {

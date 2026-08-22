@@ -238,9 +238,10 @@ class ProvisioningLogEntry {
       ProvisioningLogEntry(
         id: json.id(),
         action: json.strOr('action', '—'),
-        // Controllers use both spellings depending on age of the code.
-        success: json.flag('success', fallback: json.flag('is_success')),
-        message: json.str('message') ?? json.str('response'),
+        // `ProvisioningLog` rows carry `status: success|failed` and the WHM
+        // error text under `error` (see WhmService::log).
+        success: json.str('status') == 'success',
+        message: json.str('error') ?? json.str('message'),
         createdAt: json.date('created_at'),
       );
 }

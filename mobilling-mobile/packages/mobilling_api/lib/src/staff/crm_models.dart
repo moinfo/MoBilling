@@ -1116,12 +1116,22 @@ class FieldSessionDetail {
   final FieldSession session;
   final List<FieldVisit> visits;
 
-  factory FieldSessionDetail.fromJson(Map<String, dynamic> json) =>
-      FieldSessionDetail(
-        session: FieldSession.fromJson(
-            json.object('session') ?? const <String, dynamic>{}),
-        visits: json.list('visits', FieldVisit.fromJson),
-      );
+  /// The detail endpoint returns the raw session model without the
+  /// `*_count` aggregates the list carries, so derive them from the visits.
+  factory FieldSessionDetail.fromJson(Map<String, dynamic> json) {
+    final visits = json.list('visits', FieldVisit.fromJson);
+    final session = Map<String, dynamic>.from(
+        json.object('session') ?? const <String, dynamic>{});
+    session['visits_count'] ??= visits.length;
+    session['interested_count'] ??=
+        visits.where((v) => v.status == 'interested').length;
+    session['converted_count'] ??=
+        visits.where((v) => v.status == 'converted').length;
+    return FieldSessionDetail(
+      session: FieldSession.fromJson(session),
+      visits: visits,
+    );
+  }
 }
 
 /// An officer's monthly new-client target and progress against it.

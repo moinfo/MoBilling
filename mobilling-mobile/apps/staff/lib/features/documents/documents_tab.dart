@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
@@ -10,7 +11,11 @@ import '../common/paged_list.dart';
 
 /// Tenant-wide invoice list with status filter + search.
 class DocumentsTab extends ConsumerStatefulWidget {
-  const DocumentsTab({super.key});
+  const DocumentsTab({super.key, this.initialStatus});
+
+  /// Pre-select a status chip — the "Unpaid Invoices" drawer entry opens
+  /// this tab on `sent` (which the API expands to sent + overdue + partial).
+  final String? initialStatus;
 
   @override
   ConsumerState<DocumentsTab> createState() => _DocumentsTabState();
@@ -20,7 +25,7 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
   final _listKey = GlobalKey<PagedListViewState>();
   final _search = TextEditingController();
   Timer? _debounce;
-  String? _status;
+  late String? _status = widget.initialStatus;
 
   // 'sent' expands server-side to sent+overdue+partial ("unpaid").
   static const _filters = <(String?, String)>[
@@ -94,7 +99,11 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
                       : _search.text.trim(),
                   page: page,
                 ),
-            itemBuilder: (context, doc) => StaffInvoiceCard(document: doc),
+            itemBuilder: (context, doc) => InkWell(
+              borderRadius: Radii.card,
+              onTap: () => context.push('/documents/${doc.id}'),
+              child: StaffInvoiceCard(document: doc),
+            ),
             emptyIcon: Icons.receipt_long_outlined,
             emptyTitle: 'No invoices found',
           ),
@@ -102,6 +111,20 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
       ],
     );
   }
+}
+
+/// The web's "Unpaid Invoices" shortcut: every unpaid invoice, all time.
+///
+/// The mobile list has never applied the web's default this-month window,
+/// so "all time" is simply the list; only the status preset is needed.
+class UnpaidInvoicesScreen extends StatelessWidget {
+  const UnpaidInvoicesScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Unpaid invoices')),
+        body: const DocumentsTab(initialStatus: 'sent'),
+      );
 }
 
 /// Invoice row shared by the invoices tab and the client detail screen.

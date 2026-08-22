@@ -397,6 +397,7 @@ class _StaffSubscriptionsScreenState
     ('pending', 'Pending'),
     ('suspended', 'Suspended'),
     ('cancelled', 'Cancelled'),
+    ('terminated', 'Terminated'),
   ];
 
   @override

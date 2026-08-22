@@ -32,6 +32,7 @@ class _StaffDomainsScreenState extends ConsumerState<StaffDomainsScreen> {
     ('active', 'Active'),
     ('pending', 'Pending'),
     ('expired', 'Expired'),
+    ('cancelled', 'Cancelled'),
   ];
 
   @override
@@ -277,9 +278,20 @@ class _DomainActionsSheetState extends ConsumerState<_DomainActionsSheet> {
       });
 
   Future<void> _editNameservers() async {
-    final current = await ref
-        .read(supportAdminServiceProvider)
-        .domainNameservers(domain.id);
+    // 422 for domains managed at an external registrar — show it rather
+    // than let the exception escape the sheet.
+    final StaffNameservers current;
+    try {
+      current = await ref
+          .read(supportAdminServiceProvider)
+          .domainNameservers(domain.id);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+      return;
+    }
     if (!mounted) return;
 
     if (!current.editable) {

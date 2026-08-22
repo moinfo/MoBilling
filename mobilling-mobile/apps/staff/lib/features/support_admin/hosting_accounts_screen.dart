@@ -35,6 +35,7 @@ class _HostingAccountsScreenState
     ('active', 'Active'),
     ('suspended', 'Suspended'),
     ('pending', 'Pending'),
+    ('failed', 'Failed'),
   ];
 
   @override
@@ -298,12 +299,15 @@ class _AccountActionsSheetState
                               TextStyle(color: theme.colorScheme.error)),
                       enabled: !_busy,
                       onTap: () async {
-                        final reason = await _askReason(context);
-                        if (reason == null) return;
+                        // The API records a fixed reason; confirm only.
+                        final confirmed = await _confirm(context,
+                            'Suspend ${account.domain}?',
+                            'The site goes offline until unsuspended.');
+                        if (!confirmed) return;
                         await _run(
                           () => ref
                               .read(supportAdminServiceProvider)
-                              .suspendHosting(account.id, reason: reason),
+                              .suspendHosting(account.id),
                           successMessage: 'Account suspended.',
                         );
                       },
@@ -364,27 +368,23 @@ class _AccountActionsSheetState
     );
   }
 
-  Future<String?> _askReason(BuildContext context) async {
-    final controller = TextEditingController();
-    return showDialog<String>(
+  Future<bool> _confirm(BuildContext context, String title, String body) async {
+    final result = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Suspend account'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Reason'),
-        ),
+        title: Text(title),
+        content: Text(body),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('Cancel')),
           FilledButton(
-            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('Suspend'),
           ),
         ],
       ),
     );
+    return result ?? false;
   }
 }

@@ -1,23 +1,45 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_auth/mobilling_auth.dart';
 
 import 'config/app_config.dart';
+import 'config/debug_hooks.dart';
 
-/// Wiring mirrors the client app; see its providers.dart for the notes on the
-/// deliberate ApiClient <-> SessionController cycle and why every provider in
-/// it carries an explicit type annotation.
-final Provider<TokenStore> tokenStoreProvider =
-    Provider<TokenStore>((ref) => TokenStore());
+/// Every provider here carries an explicit type annotation; see the client
+/// app's providers.dart for why.
+final Provider<TokenStore> tokenStoreProvider = Provider<TokenStore>(
+  (ref) => kDebugMode ? DebugTokenStore() : TokenStore(),
+);
+
+/// Where the API client reports a 401 and the session controller listens.
+///
+/// The two genuinely depend on each other — the client needs the session's
+/// 401 policy, the session needs the client to talk to the server — and an
+/// earlier version closed that loop with `ref.read(sessionControllerProvider)`
+/// inside the client's callback. Riverpod rejects that at the moment the
+/// callback fires (CircularDependencyError), so every 401 surfaced as
+/// "Could not reach the server" instead of running the expiry policy. This
+/// hub is the dependency both sides share instead: neither provider watches
+/// the other.
+class UnauthenticatedHub {
+  UnauthenticatedHandler? handler;
+
+  Future<void> call(RequestOptions request) =>
+      handler?.call(request) ?? Future<void>.value();
+}
+
+final Provider<UnauthenticatedHub> unauthenticatedHubProvider =
+    Provider<UnauthenticatedHub>((ref) => UnauthenticatedHub());
 
 final Provider<ApiClient> apiClientProvider = Provider<ApiClient>((ref) {
   final tokens = ref.watch(tokenStoreProvider);
+  final hub = ref.watch(unauthenticatedHubProvider);
 
   return ApiClient(
     baseUrl: AppConfig.apiBaseUrl,
     tokenReader: tokens.read,
-    onUnauthenticated: (request) =>
-        ref.read(sessionControllerProvider).handleUnauthenticated(request),
+    onUnauthenticated: hub.call,
   );
 });
 
@@ -26,12 +48,15 @@ final Provider<AuthService> authServiceProvider = Provider<AuthService>(
 );
 
 final ChangeNotifierProvider<SessionController> sessionControllerProvider =
-    ChangeNotifierProvider<SessionController>(
-  (ref) => SessionController(
+    ChangeNotifierProvider<SessionController>((ref) {
+  final controller = SessionController(
     authService: ref.watch(authServiceProvider),
     tokenStore: ref.watch(tokenStoreProvider),
-  ),
-);
+  );
+  ref.watch(unauthenticatedHubProvider).handler =
+      controller.handleUnauthenticated;
+  return controller;
+});
 
 /// Which bottom tab the staff shell is showing.
 ///

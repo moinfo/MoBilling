@@ -56,6 +56,31 @@ void main() {
       expect(page.hasMore, isFalse);
     });
 
+    test('reads page metadata from a JsonResource::collection `meta` block',
+        () {
+      // Shape returned by every `Resource::collection(paginate())` endpoint
+      // (/documents, /clients, /expenses, /users ...).
+      final page = Paginated.fromJson({
+        'data': [
+          {'id': 'a'},
+        ],
+        'links': {'first': '…', 'next': '…'},
+        'meta': {
+          'current_page': 1,
+          'last_page': 63,
+          'per_page': 20,
+          'total': 1246,
+        },
+      }, _Doc.fromJson);
+
+      expect(page.items.single.id, 'a');
+      expect(page.currentPage, 1);
+      expect(page.lastPage, 63);
+      expect(page.total, 1246);
+      expect(page.hasMore, isTrue);
+      expect(page.nextPage, 2);
+    });
+
     test('coerces numeric strings in page metadata', () {
       // per_page arrives as a string when it came straight from a query param.
       final page = Paginated.fromJson({

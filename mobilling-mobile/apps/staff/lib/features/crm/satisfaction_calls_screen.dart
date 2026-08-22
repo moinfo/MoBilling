@@ -25,8 +25,11 @@ class _SatisfactionCallsScreenState
   String? _status;
 
   static const _filters = <(String?, String)>[
+    // `SatisfactionCall.status` is scheduled | completed | missed | cancelled
+    // (ScheduleSatisfactionCalls sets `missed` when a scheduled date passes).
     (null, 'All'),
-    ('pending', 'Pending'),
+    ('scheduled', 'Scheduled'),
+    ('missed', 'Missed'),
     ('completed', 'Completed'),
     ('cancelled', 'Cancelled'),
   ];
@@ -209,7 +212,7 @@ class _CallCard extends ConsumerWidget {
                 if (call.clientPhone != null)
                   ContactRow(phone: call.clientPhone, compact: true),
                 const Spacer(),
-                if (canLog && call.status == 'pending')
+                if (canLog && (call.status == 'scheduled' || call.status == 'missed'))
                   FilledButton.tonal(
                     onPressed: () => _showLogSheet(context, ref),
                     child: const Text('Log call'),
@@ -249,14 +252,10 @@ class _LogSatisfactionSheetState
   final _internalNotes = TextEditingController();
   final _appointmentNotes = TextEditingController();
 
-  static const _outcomes = <(String, String)>[
-    ('reached', 'Reached and spoke'),
-    ('no_answer', 'No answer'),
-    ('wrong_number', 'Wrong number'),
-    ('call_back', 'Asked to call back'),
-  ];
+  // The vocabulary `logCall` validates — see SatisfactionOutcomes.
+  static const _outcomes = SatisfactionOutcomes.values;
 
-  String _outcome = 'reached';
+  String _outcome = 'satisfied';
   int? _rating;
   bool _wantsAppointment = false;
   DateTime? _appointmentDate;
@@ -324,7 +323,7 @@ class _LogSatisfactionSheetState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final reached = _outcome == 'reached';
+    final reached = SatisfactionOutcomes.reached(_outcome);
 
     return Padding(
       padding: EdgeInsets.only(
