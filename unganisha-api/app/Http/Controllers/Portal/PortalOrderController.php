@@ -551,7 +551,7 @@ class PortalOrderController extends Controller
                     }
                 }
 
-                \App\Models\Domain::create([
+                \App\Models\Domain::reviveOrCreate([
                     'tenant_id'            => $tenantId,
                     'client_id'            => $clientId,
                     'registrar_account_id' => app(\App\Services\Registrar\DomainRegistrarManager::class)->accountFor($tenantId)->id,

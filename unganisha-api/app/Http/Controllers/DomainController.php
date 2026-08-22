@@ -308,7 +308,7 @@ class DomainController extends Controller
         $name = strtolower($data['name']);
         $isTznic = $data['registrar'] === 'tznic';
 
-        $domain = Domain::create([
+        $domain = Domain::reviveOrCreate([
             'tenant_id'            => $tenantId,
             'client_id'            => $data['client_id'],
             'registrar_account_id' => $isTznic ? $this->registrar->accountFor($tenantId)->id : null,
@@ -405,7 +405,7 @@ class DomainController extends Controller
                 'total'       => $total,
             ]);
 
-            $domain = Domain::create([
+            $domain = Domain::reviveOrCreate([
                 'tenant_id'            => $tenantId,
                 'client_id'            => $data['client_id'],
                 'registrar_account_id' => $this->registrar->accountFor($tenantId)->id,
