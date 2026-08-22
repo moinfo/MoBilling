@@ -361,7 +361,7 @@ class PortalDomainController extends Controller
         $tenantId = $user->tenant_id;
 
         $data = $request->validate([
-            'name'      => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')],
+            'name'      => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')->where(fn ($q) => $q->whereNotIn('status', ['cancelled', 'transferred_out']))],
             'years'     => 'required|integer|min:1|max:10',
             'action'    => 'required|in:register,transfer',
             'auth_info' => 'required_if:action,transfer|nullable|string|max:255',
@@ -414,7 +414,7 @@ class PortalDomainController extends Controller
                 'total'       => $total,
             ]);
 
-            $domain = Domain::create([
+            $domain = Domain::reviveOrCreate([
                 'tenant_id'            => $tenantId,
                 'client_id'            => $user->client_id,
                 'registrar_account_id' => $registrar->accountFor($tenantId)->id,

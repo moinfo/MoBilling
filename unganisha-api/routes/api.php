@@ -596,6 +596,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::delete('/servers/{server}',        [\App\Http\Controllers\ServerController::class, 'destroy']);
         Route::post('/servers/{server}/test',     [\App\Http\Controllers\ServerController::class, 'test']);
         Route::get('/servers/{server}/packages',  [\App\Http\Controllers\ServerController::class, 'packages']);
+        Route::get('/servers/{server}/packages-detailed', [\App\Http\Controllers\ServerController::class, 'packagesDetailed']);
     });
     Route::middleware('permission:hosting.read')->get('/hosting-accounts', [\App\Http\Controllers\HostingAccountController::class, 'index']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/discover', [\App\Http\Controllers\HostingAccountController::class, 'discover']);
@@ -646,6 +647,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/orders', [\App\Http\Controllers\Portal\PortalOrderController::class, 'store']);
     });
     Route::middleware('permission:domains.renew')->post('/domains/{domain}/renew', [\App\Http\Controllers\DomainController::class, 'renew']);
+    Route::middleware('permission:domains.create')->post('/domains/{domain}/retry', [\App\Http\Controllers\DomainController::class, 'retry']);
     Route::middleware('permission:domains.renew')->put('/domains/{domain}/auto-renew', [\App\Http\Controllers\DomainController::class, 'setAutoRenew']);
     Route::middleware('permission:domains.read')->get('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'nameservers']);
     Route::middleware('permission:domains.manage_dns')->put('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'updateNameservers']);

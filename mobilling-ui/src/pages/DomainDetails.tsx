@@ -9,10 +9,10 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconWorld, IconRefresh, IconKey, IconCopy, IconLock, IconLockOpen,
-  IconShieldCheck, IconArrowLeft, IconHistory, IconServer,
+  IconShieldCheck, IconArrowLeft, IconHistory, IconServer, IconRotateClockwise,
 } from '@tabler/icons-react';
 import {
-  getDomain, getDomainLogs, renewDomain, getDomainAuthInfo, setDomainAutoRenew,
+  getDomain, getDomainLogs, renewDomain, retryDomain, getDomainAuthInfo, setDomainAutoRenew,
   getDomainNameservers, updateDomainNameservers, describeDomainAction,
   DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
@@ -66,6 +66,17 @@ export default function DomainDetails() {
     onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not change auto-renew.', color: 'red' }),
   });
 
+  const retryMutation = useMutation({
+    mutationFn: () => retryDomain(id!),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domain', id] });
+      qc.invalidateQueries({ queryKey: ['domains'] });
+      qc.invalidateQueries({ queryKey: ['domain-stats'] });
+      notifications.show({ message: res.data.message, color: 'teal' });
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not retry.', color: 'red' }),
+  });
+
   const revealAuth = async () => {
     setAuthLoading(true);
     try {
@@ -113,6 +124,12 @@ export default function DomainDetails() {
             <Button size="xs" variant="light" color="green" leftSection={<IconRefresh size={14} />}
               onClick={() => setRenewOpen(true)}>
               Renew (creates invoice)
+            </Button>
+          )}
+          {can('domains.create') && d.status === 'failed' && meta.pending_action && (
+            <Button size="xs" variant="light" color="red" leftSection={<IconRotateClockwise size={14} />}
+              loading={retryMutation.isPending} onClick={() => retryMutation.mutate()}>
+              Retry {meta.pending_action}
             </Button>
           )}
         </Group>

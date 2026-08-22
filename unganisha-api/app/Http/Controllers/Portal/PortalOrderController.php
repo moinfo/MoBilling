@@ -368,7 +368,8 @@ class PortalOrderController extends Controller
         // and the TLD catalog BEFORE creating anything.
         $domainPricing = null;
         if (in_array($mode, ['register', 'transfer']) && $domain !== '') {
-            if (\App\Models\Domain::withoutGlobalScopes()->where('name', $domain)->exists()) {
+            if (\App\Models\Domain::withoutGlobalScopes()->where('name', $domain)
+                ->whereNotIn('status', ['cancelled', 'transferred_out'])->exists()) {
                 return response()->json(['message' => "{$domain} already exists in our system — choose \"use my existing domain\" instead."], 422);
             }
             $tld = strtolower(explode('.', $domain, 2)[1] ?? '');
@@ -550,7 +551,7 @@ class PortalOrderController extends Controller
                     }
                 }
 
-                \App\Models\Domain::create([
+                \App\Models\Domain::reviveOrCreate([
                     'tenant_id'            => $tenantId,
                     'client_id'            => $clientId,
                     'registrar_account_id' => app(\App\Services\Registrar\DomainRegistrarManager::class)->accountFor($tenantId)->id,

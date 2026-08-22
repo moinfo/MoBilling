@@ -1,8 +1,8 @@
-import { TextInput, NumberInput, Select, Textarea, Button, Group, SegmentedControl, Switch, Stack, Divider, Text } from '@mantine/core';
+import { TextInput, NumberInput, Select, Textarea, Button, Group, SegmentedControl, Switch, Stack, Divider, Text, Loader } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery } from '@tanstack/react-query';
 import { ProductServiceFormData } from '../../api/productServices';
-import { getServers } from '../../api/hosting';
+import { getServers, getServerPackagesDetailed, ServerPackageDetails } from '../../api/hosting';
 import { usePermissions } from '../../hooks/usePermissions';
 
 interface Props {
@@ -38,6 +38,25 @@ const billingCycleOptions = [
   { value: 'half_yearly', label: 'Semi-Annual' },
   { value: 'yearly', label: 'Annually' },
 ];
+
+function formatQuota(mb: number | null): string {
+  if (mb === null) return 'Unlimited';
+  if (mb >= 1024) return `${Math.round((mb / 1024) * 10) / 10} GB`;
+  return `${mb} MB`;
+}
+const formatCount = (n: number | null) => (n === null ? 'Unlimited' : String(n));
+
+function packageSpecsText(p: ServerPackageDetails): string {
+  return [
+    `Disk Space: ${formatQuota(p.quota_mb)}`,
+    `Bandwidth: ${formatQuota(p.bandwidth_mb)}`,
+    `Databases: ${formatCount(p.databases)}`,
+    `Email Accounts: ${formatCount(p.email_accounts)}`,
+    `Subdomains: ${formatCount(p.subdomains)}`,
+    `FTP Accounts: ${formatCount(p.ftp_accounts)}`,
+    `Addon Domains: ${formatCount(p.addon_domains)}`,
+  ].join(' · ');
+}
 
 export default function ProductServiceForm({ initialValues, onSubmit, loading }: Props) {
   const { can } = usePermissions();
@@ -78,6 +97,29 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
   const serverOptions = (serversData?.data?.data ?? [])
     .filter((s) => s.is_active)
     .map((s) => ({ value: s.id, label: `${s.name} (${s.hostname})` }));
+
+  const { data: packagesData, isLoading: packagesLoading, isError: packagesError } = useQuery({
+    queryKey: ['server-packages-detailed', form.values.server_id],
+    queryFn: () => getServerPackagesDetailed(form.values.server_id!),
+    enabled: showProvisioning && form.values.provisioning_type === 'whm_cpanel' && !!form.values.server_id,
+  });
+  const packages: ServerPackageDetails[] = packagesData?.data?.data ?? [];
+  const packageOptions = Array.from(new Set([...(form.values.cpanel_package ? [form.values.cpanel_package] : []), ...packages.map((p) => p.name)]))
+    .map((p) => ({ value: p, label: p }));
+  const selectedPackageDetails = packages.find((p) => p.name === form.values.cpanel_package) ?? null;
+
+  const applyPackageSpecs = (pkg: ServerPackageDetails) => form.setFieldValue('description', packageSpecsText(pkg));
+
+  const selectPackage = (name: string | null) => {
+    form.setFieldValue('cpanel_package', name ?? '');
+    const pkg = packages.find((p) => p.name === name);
+    // Only auto-fill when the description is still empty — never
+    // silently overwrite text staff already typed. The "Use package
+    // specs" link next to Description covers refreshing it deliberately.
+    if (pkg && !form.values.description.trim()) {
+      applyPackageSpecs(pkg);
+    }
+  };
 
   return (
     <form onSubmit={form.onSubmit(onSubmit)}>
@@ -129,14 +171,41 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
                     data={serverOptions}
                     required
                     {...form.getInputProps('server_id')}
+                    onChange={(v) => { form.setFieldValue('server_id', v); form.setFieldValue('cpanel_package', ''); }}
                   />
-                  <TextInput
-                    label="cPanel package"
-                    placeholder="WHM package/plan name"
-                    required
-                    {...form.getInputProps('cpanel_package')}
-                  />
+                  {packagesError ? (
+                    <TextInput
+                      label="cPanel package"
+                      description="Could not load packages from the server — type the exact WHM package name."
+                      placeholder="WHM package/plan name"
+                      required
+                      {...form.getInputProps('cpanel_package')}
+                    />
+                  ) : (
+                    <Select
+                      label="cPanel package"
+                      placeholder={!form.values.server_id ? 'Select a server first' : packagesLoading ? 'Loading packages…' : 'Select a package'}
+                      data={packageOptions}
+                      disabled={!form.values.server_id}
+                      searchable
+                      rightSection={packagesLoading ? <Loader size="xs" /> : undefined}
+                      required
+                      value={form.values.cpanel_package || null}
+                      onChange={selectPackage}
+                      error={form.errors.cpanel_package}
+                    />
+                  )}
                 </Group>
+                {selectedPackageDetails && (
+                  <Text size="xs" c="dimmed" mt={-8}>
+                    {packageSpecsText(selectedPackageDetails)}
+                    {' · '}
+                    <Text component="span" size="xs" c="blue" style={{ cursor: 'pointer' }}
+                      onClick={() => applyPackageSpecs(selectedPackageDetails)}>
+                      Use as description
+                    </Text>
+                  </Text>
+                )}
                 <Switch
                   label="Auto-provision on activation"
                   description="Create the cPanel account automatically when the subscription becomes active (first payment)"

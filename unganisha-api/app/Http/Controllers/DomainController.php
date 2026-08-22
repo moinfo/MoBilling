@@ -298,7 +298,7 @@ class DomainController extends Controller
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
-            'name'       => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')],
+            'name'       => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')->where(fn ($q) => $q->whereNotIn('status', ['cancelled', 'transferred_out']))],
             'client_id'  => ['required', 'uuid', Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
             'registrar'  => ['required', 'in:tznic,external'],
             'expires_at' => 'nullable|date',
@@ -308,7 +308,7 @@ class DomainController extends Controller
         $name = strtolower($data['name']);
         $isTznic = $data['registrar'] === 'tznic';
 
-        $domain = Domain::create([
+        $domain = Domain::reviveOrCreate([
             'tenant_id'            => $tenantId,
             'client_id'            => $data['client_id'],
             'registrar_account_id' => $isTznic ? $this->registrar->accountFor($tenantId)->id : null,
@@ -347,7 +347,7 @@ class DomainController extends Controller
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
-            'name'      => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')],
+            'name'      => ['required', 'string', 'max:255', 'regex:/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/i', Rule::unique('domains', 'name')->where(fn ($q) => $q->whereNotIn('status', ['cancelled', 'transferred_out']))],
             'client_id' => ['required', 'uuid', Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
             'years'     => 'required|integer|min:1|max:10',
             'action'    => 'required|in:register,transfer',
@@ -405,7 +405,7 @@ class DomainController extends Controller
                 'total'       => $total,
             ]);
 
-            $domain = Domain::create([
+            $domain = Domain::reviveOrCreate([
                 'tenant_id'            => $tenantId,
                 'client_id'            => $data['client_id'],
                 'registrar_account_id' => $this->registrar->accountFor($tenantId)->id,
@@ -470,6 +470,41 @@ class DomainController extends Controller
             'document' => ['id' => $document->id, 'document_number' => $document->document_number, 'total' => $document->total],
             'message'  => "Renewal invoice {$document->document_number} created — the registry renewal runs once it is paid.",
         ], 201);
+    }
+
+    /**
+     * Re-attempt a failed register/transfer/renew — no new invoice, since the
+     * client already paid for the original order. BaseDomainJob::guard()
+     * only flips status to 'failed' on exception, before clearPending() runs,
+     * so meta.pending_action/pending_years survive a failure untouched; this
+     * just resets status back to 'pending' (satisfying each job's own
+     * idempotency guard) and re-dispatches the same job DocumentObserver
+     * would have on payment.
+     */
+    public function retry(Domain $domain)
+    {
+        if ($domain->status !== 'failed') {
+            return response()->json(['message' => 'Only a failed domain action can be retried.'], 422);
+        }
+
+        $pendingAction = $domain->meta['pending_action'] ?? null;
+        if (!$pendingAction) {
+            return response()->json(['message' => 'No pending action recorded for this domain — nothing to retry.'], 422);
+        }
+
+        $domain->update(['status' => 'pending']);
+
+        match ($pendingAction) {
+            'register' => \App\Jobs\Domains\RegisterDomainJob::dispatch($domain),
+            'transfer' => \App\Jobs\Domains\TransferDomainJob::dispatch($domain),
+            'renew'    => \App\Jobs\Domains\RenewDomainJob::dispatch($domain),
+            default    => null,
+        };
+
+        return response()->json([
+            'data'    => $domain->fresh()->load('client:id,name'),
+            'message' => "Retrying {$pendingAction} for {$domain->name}\u{2026}",
+        ]);
     }
 
     /**

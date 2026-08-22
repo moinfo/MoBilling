@@ -61,6 +61,20 @@ export const deleteServer = (id: string) => api.delete(`/servers/${id}`);
 export const testServer = (id: string) => api.post<{ ok: boolean; packages: string[] }>(`/servers/${id}/test`);
 export const getServerPackages = (id: string) => api.get<{ data: string[] }>(`/servers/${id}/packages`);
 
+export interface ServerPackageDetails {
+  name: string;
+  quota_mb: number | null;
+  bandwidth_mb: number | null;
+  databases: number | null;
+  email_accounts: number | null;
+  subdomains: number | null;
+  ftp_accounts: number | null;
+  addon_domains: number | null;
+  parked_domains: number | null;
+}
+export const getServerPackagesDetailed = (id: string) =>
+  api.get<{ data: ServerPackageDetails[] }>(`/servers/${id}/packages-detailed`);
+
 // Hosting accounts
 export const getHostingAccounts = (params?: Record<string, string>) =>
   api.get('/hosting-accounts', { params });

@@ -87,6 +87,33 @@ class WhmService
         return collect(data_get($res, 'data.pkg', []))->pluck('name')->all();
     }
 
+    /**
+     * Same WHM call as listPackages(), but keeps the resource limits instead
+     * of discarding them — lets the product form auto-fill a catalog
+     * description from the package's real specs instead of staff re-typing
+     * numbers that live in WHM. WHM reports "unlimited" as the literal
+     * string "unlimited" (or is sometimes just absent) — both become null.
+     *
+     * @return array<int, array{name: string, quota_mb: ?int, bandwidth_mb: ?int, databases: ?int, email_accounts: ?int, subdomains: ?int, ftp_accounts: ?int, addon_domains: ?int, parked_domains: ?int}>
+     */
+    public function listPackagesDetailed(): array
+    {
+        $res = $this->call('listpkgs');
+        $limit = fn ($v) => (!isset($v) || strtolower((string) $v) === 'unlimited') ? null : (int) $v;
+
+        return collect(data_get($res, 'data.pkg', []))->map(fn ($p) => [
+            'name' => $p['name'] ?? '',
+            'quota_mb' => $limit($p['QUOTA'] ?? null),
+            'bandwidth_mb' => $limit($p['BWLIMIT'] ?? null),
+            'databases' => $limit($p['MAXSQL'] ?? null),
+            'email_accounts' => $limit($p['MAXPOP'] ?? null),
+            'subdomains' => $limit($p['MAXSUB'] ?? null),
+            'ftp_accounts' => $limit($p['MAXFTP'] ?? null),
+            'addon_domains' => $limit($p['MAXADDON'] ?? null),
+            'parked_domains' => $limit($p['MAXPARK'] ?? null),
+        ])->values()->all();
+    }
+
     public function accountSummary(string $user): array
     {
         $res = $this->call('accountsummary', ['user' => $user]);

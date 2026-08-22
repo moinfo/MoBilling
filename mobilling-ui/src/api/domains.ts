@@ -193,6 +193,9 @@ export const setDomainAutoRenew = (id: string, enabled: boolean) =>
 export const renewDomain = (id: string, years: number) =>
   api.post(`/domains/${id}/renew`, { years });
 
+export const retryDomain = (id: string) =>
+  api.post<{ data: DomainRecord; message: string }>(`/domains/${id}/retry`);
+
 export interface DomainAuthInfoResult {
   auth_info?: string;
   generated?: boolean;

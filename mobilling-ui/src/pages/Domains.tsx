@@ -10,10 +10,10 @@ import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconWorldWww, IconPlus, IconHistory, IconRefresh, IconKey,
   IconCheck, IconX, IconCopy, IconWorld, IconWallet, IconArrowsLeftRight, IconClockExclamation, IconAlertTriangle,
-  IconHourglass, IconRepeat, IconShieldCheck, IconShieldOff,
+  IconHourglass, IconRepeat, IconShieldCheck, IconShieldOff, IconRotateClockwise,
 } from '@tabler/icons-react';
 import {
-  checkDomain, getDomains, getDomainStats, getRegistrarCredit, getDomainLogs, orderDomain, renewDomain,
+  checkDomain, getDomains, getDomainStats, getRegistrarCredit, getDomainLogs, orderDomain, renewDomain, retryDomain,
   getDomainAuthInfo, setDomainAutoRenew, describeDomainAction, addExistingDomain,
   createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
   DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
@@ -52,6 +52,7 @@ export default function Domains() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState('');
   const [expiringOnly, setExpiringOnly] = useState(false);
   const [oursFilter, setOursFilter] = useState<'' | '1' | '0'>('');
@@ -139,6 +140,20 @@ export default function Domains() {
       notifications.show({ message: e?.response?.data?.message ?? 'Could not change auto-renew.', color: 'red' });
     } finally {
       setTogglingId(null);
+    }
+  };
+
+  const retryDomainAction = async (d: DomainRecord) => {
+    setRetryingId(d.id);
+    try {
+      const res = await retryDomain(d.id);
+      qc.invalidateQueries({ queryKey: ['domains'] });
+      qc.invalidateQueries({ queryKey: ['domain-stats'] });
+      notifications.show({ message: res.data.message, color: 'teal' });
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Could not retry.', color: 'red' });
+    } finally {
+      setRetryingId(null);
     }
   };
   const domains: DomainRecord[] = data?.data?.data?.data ?? [];
@@ -363,6 +378,14 @@ export default function Domains() {
                             <Tooltip label="Renew (creates invoice)">
                               <ActionIcon variant="light" color="green" onClick={() => setRenewFor(d)}>
                                 <IconRefresh size={15} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                          {can('domains.create') && d.status === 'failed' && d.meta?.pending_action && (
+                            <Tooltip label={`Retry ${d.meta.pending_action} (already paid — no new invoice)`}>
+                              <ActionIcon variant="light" color="red" loading={retryingId === d.id}
+                                onClick={() => retryDomainAction(d)}>
+                                <IconRotateClockwise size={15} />
                               </ActionIcon>
                             </Tooltip>
                           )}
