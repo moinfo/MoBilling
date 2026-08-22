@@ -596,6 +596,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::delete('/servers/{server}',        [\App\Http\Controllers\ServerController::class, 'destroy']);
         Route::post('/servers/{server}/test',     [\App\Http\Controllers\ServerController::class, 'test']);
         Route::get('/servers/{server}/packages',  [\App\Http\Controllers\ServerController::class, 'packages']);
+        Route::get('/servers/{server}/packages-detailed', [\App\Http\Controllers\ServerController::class, 'packagesDetailed']);
     });
     Route::middleware('permission:hosting.read')->get('/hosting-accounts', [\App\Http\Controllers\HostingAccountController::class, 'index']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/discover', [\App\Http\Controllers\HostingAccountController::class, 'discover']);

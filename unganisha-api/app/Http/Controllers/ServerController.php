@@ -69,6 +69,16 @@ class ServerController extends Controller
         }
     }
 
+    /** GET the WHM package list with resource-limit specs, for auto-filling a catalog description. */
+    public function packagesDetailed(Server $server)
+    {
+        try {
+            return response()->json(['data' => (new WhmService($server))->listPackagesDetailed()]);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage(), 'data' => []], 422);
+        }
+    }
+
     private function validated(Request $request, bool $updating = false): array
     {
         $required = $updating ? 'sometimes' : 'required';
