@@ -58,8 +58,9 @@ class CollectionInvoice {
         clientName: json.str('client_name'),
         clientId: json.str('client_id'),
         dueDate: json.date('due_date'),
-        daysOverdue:
-            json['days_overdue'] == null ? null : json.count('days_overdue'),
+        daysOverdue: json['days_overdue'] == null
+            ? null
+            : json.count('days_overdue'),
         daysUntilDue: json['days_until_due'] == null
             ? null
             : json.count('days_until_due'),
@@ -171,12 +172,12 @@ class CollectionAging {
 
   /// Buckets in reading order, labelled for display.
   List<(String, double)> get buckets => [
-        ('Not yet due', current),
-        ('1–30 days', days1To30),
-        ('31–60 days', days31To60),
-        ('61–90 days', days61To90),
-        ('90+ days', over90),
-      ];
+    ('Not yet due', current),
+    ('1–30 days', days1To30),
+    ('31–60 days', days31To60),
+    ('61–90 days', days61To90),
+    ('90+ days', over90),
+  ];
 
   factory CollectionAging.fromJson(Map<String, dynamic> json) =>
       CollectionAging(
@@ -217,8 +218,7 @@ class CallPlanEntry {
   final String? clientPhone;
   final DateTime? dueDate;
 
-  bool get isUrgent =>
-      type == 'overdue_urgent' || type == 'overdue_followup';
+  bool get isUrgent => type == 'overdue_urgent' || type == 'overdue_followup';
 
   factory CallPlanEntry.fromJson(String date, Map<String, dynamic> json) =>
       CallPlanEntry(
@@ -279,8 +279,9 @@ class CollectionDashboard {
         if (entries is! List) continue;
         final parsed = entries
             .whereType<Map>()
-            .map((e) =>
-                CallPlanEntry.fromJson(day, Map<String, dynamic>.from(e)))
+            .map(
+              (e) => CallPlanEntry.fromJson(day, Map<String, dynamic>.from(e)),
+            )
             .toList();
         if (parsed.isEmpty) continue;
         plan[day] = parsed;
@@ -293,9 +294,11 @@ class CollectionDashboard {
 
     return CollectionDashboard(
       summary: CollectionSummary.fromJson(
-          json.object('summary') ?? const <String, dynamic>{}),
+        json.object('summary') ?? const <String, dynamic>{},
+      ),
       aging: CollectionAging.fromJson(
-          json.object('aging') ?? const <String, dynamic>{}),
+        json.object('aging') ?? const <String, dynamic>{},
+      ),
       todayDue: json.list('today_due', CollectionInvoice.fromJson),
       todayPayments: json.list('today_payments', CollectionPayment.fromJson),
       overdue: json.list('overdue', CollectionInvoice.fromJson),
@@ -364,28 +367,28 @@ class FollowupEntry {
   bool get isOpenWork => status == 'pending' || status == 'broken';
 
   factory FollowupEntry.fromJson(Map<String, dynamic> json) => FollowupEntry(
-        id: json.id(),
-        status: json.strOr('status', 'pending'),
-        invoiceTotal: json.money('invoice_total'),
-        invoiceBalance: json.money('invoice_balance'),
-        documentId: json.str('document_id'),
-        documentNumber: json.str('document_number'),
-        clientId: json.str('client_id'),
-        clientName: json.str('client_name'),
-        clientPhone: json.str('client_phone'),
-        assignedTo: json.str('assigned_to'),
-        userId: json.str('user_id'),
-        callDate: json.date('call_date'),
-        outcome: json.str('outcome'),
-        notes: json.str('notes'),
-        promiseDate: json.date('promise_date'),
-        promiseAmount: json['promise_amount'] == null
-            ? null
-            : json.money('promise_amount'),
-        nextFollowup: json.date('next_followup'),
-        callCount: json['call_count'] == null ? null : json.count('call_count'),
-        createdAt: json.date('created_at'),
-      );
+    id: json.id(),
+    status: json.strOr('status', 'pending'),
+    invoiceTotal: json.money('invoice_total'),
+    invoiceBalance: json.money('invoice_balance'),
+    documentId: json.str('document_id'),
+    documentNumber: json.str('document_number'),
+    clientId: json.str('client_id'),
+    clientName: json.str('client_name'),
+    clientPhone: json.str('client_phone'),
+    assignedTo: json.str('assigned_to'),
+    userId: json.str('user_id'),
+    callDate: json.date('call_date'),
+    outcome: json.str('outcome'),
+    notes: json.str('notes'),
+    promiseDate: json.date('promise_date'),
+    promiseAmount: json['promise_amount'] == null
+        ? null
+        : json.money('promise_amount'),
+    nextFollowup: json.date('next_followup'),
+    callCount: json['call_count'] == null ? null : json.count('call_count'),
+    createdAt: json.date('created_at'),
+  );
 }
 
 /// Counts behind the follow-up dashboard.
@@ -401,10 +404,10 @@ class FollowupStats {
   final int totalActive;
 
   factory FollowupStats.fromJson(Map<String, dynamic> json) => FollowupStats(
-        dueToday: json.count('due_today'),
-        overdue: json.count('overdue'),
-        totalActive: json.count('total_active'),
-      );
+    dueToday: json.count('due_today'),
+    overdue: json.count('overdue'),
+    totalActive: json.count('total_active'),
+  );
 }
 
 /// `GET /followups/dashboard` — today's calls plus the ones already missed.
@@ -424,7 +427,8 @@ class FollowupDashboard {
         dueToday: json.list('due_today', FollowupEntry.fromJson),
         overdue: json.list('overdue_followups', FollowupEntry.fromJson),
         stats: FollowupStats.fromJson(
-            json.object('stats') ?? const <String, dynamic>{}),
+          json.object('stats') ?? const <String, dynamic>{},
+        ),
       );
 }
 
@@ -623,9 +627,11 @@ class SatisfactionDashboard {
         dueToday: json.list('due_today', SatisfactionCall.fromJson),
         overdue: json.list('overdue', SatisfactionCall.fromJson),
         stats: SatisfactionStats.fromJson(
-            json.object('stats') ?? const <String, dynamic>{}),
+          json.object('stats') ?? const <String, dynamic>{},
+        ),
         myStats: SatisfactionMyStats.fromJson(
-            json.object('my_stats') ?? const <String, dynamic>{}),
+          json.object('my_stats') ?? const <String, dynamic>{},
+        ),
       );
 }
 
@@ -696,22 +702,22 @@ class Appointment {
       appointmentStatus == 'pending' || appointmentStatus == 'confirmed';
 
   factory Appointment.fromJson(Map<String, dynamic> json) => Appointment(
-        id: json.id(),
-        clientId: json.str('client_id'),
-        clientName: json.str('client_name'),
-        clientPhone: json.str('client_phone'),
-        clientAddress: json.str('client_address'),
-        assignedTo: json.str('assigned_to'),
-        userId: json.str('user_id'),
-        appointmentDate: json.date('appointment_date'),
-        appointmentNotes: json.str('appointment_notes'),
-        appointmentStatus: json.str('appointment_status'),
-        outcome: json.str('outcome'),
-        rating: json['rating'] == null ? null : json.count('rating'),
-        feedback: json.str('feedback'),
-        scheduledDate: json.date('scheduled_date'),
-        calledAt: json.date('called_at'),
-      );
+    id: json.id(),
+    clientId: json.str('client_id'),
+    clientName: json.str('client_name'),
+    clientPhone: json.str('client_phone'),
+    clientAddress: json.str('client_address'),
+    assignedTo: json.str('assigned_to'),
+    userId: json.str('user_id'),
+    appointmentDate: json.date('appointment_date'),
+    appointmentNotes: json.str('appointment_notes'),
+    appointmentStatus: json.str('appointment_status'),
+    outcome: json.str('outcome'),
+    rating: json['rating'] == null ? null : json.count('rating'),
+    feedback: json.str('feedback'),
+    scheduledDate: json.date('scheduled_date'),
+    calledAt: json.date('called_at'),
+  );
 }
 
 /// Visit-schedule counters returned alongside the appointment page.
@@ -767,7 +773,8 @@ class AppointmentPage {
         total: meta.count('total', fallback: items.length),
       ),
       stats: AppointmentStats.fromJson(
-          json.object('stats') ?? const <String, dynamic>{}),
+        json.object('stats') ?? const <String, dynamic>{},
+      ),
     );
   }
 }
@@ -803,14 +810,14 @@ class ServedService {
   final int sortOrder;
 
   factory ServedService.fromJson(Map<String, dynamic> json) => ServedService(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        // The pivot rows on a customer only carry id + name; treat those as
-        // active so a served customer's chips never render as disabled.
-        isActive: json['is_active'] == null ? true : json.flag('is_active'),
-        description: json.str('description'),
-        sortOrder: json.count('sort_order'),
-      );
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    // The pivot rows on a customer only carry id + name; treat those as
+    // active so a served customer's chips never render as disabled.
+    isActive: json['is_active'] == null ? true : json.flag('is_active'),
+    description: json.str('description'),
+    sortOrder: json.count('sort_order'),
+  );
 }
 
 /// Feedback captured on a call-back to a served customer.
@@ -838,15 +845,15 @@ class ServedFeedback {
   final String? createdByName;
 
   factory ServedFeedback.fromJson(Map<String, dynamic> json) => ServedFeedback(
-        id: json.id(),
-        calledAt: json.date('called_at'),
-        rating: json['rating'] == null ? null : json.count('rating'),
-        outcome: json.str('outcome'),
-        feedback: json.str('feedback'),
-        challenges: json.str('challenges'),
-        internalNotes: json.str('internal_notes'),
-        createdByName: json.object('created_by')?.str('name'),
-      );
+    id: json.id(),
+    calledAt: json.date('called_at'),
+    rating: json['rating'] == null ? null : json.count('rating'),
+    outcome: json.str('outcome'),
+    feedback: json.str('feedback'),
+    challenges: json.str('challenges'),
+    internalNotes: json.str('internal_notes'),
+    createdByName: json.object('created_by')?.str('name'),
+  );
 }
 
 /// A customer served at the counter, with any follow-up feedback.
@@ -876,16 +883,16 @@ class ServedCustomer {
   bool get hasFeedback => feedbacks.isNotEmpty;
 
   factory ServedCustomer.fromJson(Map<String, dynamic> json) => ServedCustomer(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        services: json.list('services', ServedService.fromJson),
-        feedbacks: json.list('feedbacks', ServedFeedback.fromJson),
-        phone: json.str('phone'),
-        servedDate: json.date('served_date'),
-        notes: json.str('notes'),
-        createdAt: json.date('created_at'),
-        createdByName: json.object('created_by')?.str('name'),
-      );
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    services: json.list('services', ServedService.fromJson),
+    feedbacks: json.list('feedbacks', ServedFeedback.fromJson),
+    phone: json.str('phone'),
+    servedDate: json.date('served_date'),
+    notes: json.str('notes'),
+    createdAt: json.date('created_at'),
+    createdByName: json.object('created_by')?.str('name'),
+  );
 }
 
 /// The daily counter target for the served-customers desk.
@@ -937,12 +944,12 @@ class ServedDay {
   final int callsMade;
 
   factory ServedDay.fromJson(Map<String, dynamic> json) => ServedDay(
-        date: json.strOr('date', ''),
-        dayName: json.strOr('day_name', ''),
-        isActive: json.flag('is_active', fallback: true),
-        newCustomers: json.count('new_customers'),
-        callsMade: json.count('calls_made'),
-      );
+    date: json.strOr('date', ''),
+    dayName: json.strOr('day_name', ''),
+    isActive: json.flag('is_active', fallback: true),
+    newCustomers: json.count('new_customers'),
+    callsMade: json.count('calls_made'),
+  );
 }
 
 /// `GET /served/weekly-summary` — progress against the weekly target.
@@ -982,8 +989,9 @@ class ServedWeeklySummary {
         newCustomersTarget: json['new_customers_target'] == null
             ? null
             : json.count('new_customers_target'),
-        callsTarget:
-            json['calls_target'] == null ? null : json.count('calls_target'),
+        callsTarget: json['calls_target'] == null
+            ? null
+            : json.count('calls_target'),
       );
 }
 
@@ -1121,12 +1129,15 @@ class FieldSessionDetail {
   factory FieldSessionDetail.fromJson(Map<String, dynamic> json) {
     final visits = json.list('visits', FieldVisit.fromJson);
     final session = Map<String, dynamic>.from(
-        json.object('session') ?? const <String, dynamic>{});
+      json.object('session') ?? const <String, dynamic>{},
+    );
     session['visits_count'] ??= visits.length;
-    session['interested_count'] ??=
-        visits.where((v) => v.status == 'interested').length;
-    session['converted_count'] ??=
-        visits.where((v) => v.status == 'converted').length;
+    session['interested_count'] ??= visits
+        .where((v) => v.status == 'interested')
+        .length;
+    session['converted_count'] ??= visits
+        .where((v) => v.status == 'converted')
+        .length;
     return FieldSessionDetail(
       session: FieldSession.fromJson(session),
       visits: visits,
@@ -1184,6 +1195,113 @@ abstract final class FieldVisitStatuses {
     ('converted', 'Converted'),
     ('not_interested', 'Not interested'),
   ];
+}
+
+/// One logged call against a field visit — `FieldFollowupController`.
+///
+/// The store route does more than record a call: a `next_followup_date` is
+/// copied onto the visit, and an `interested` / `not_interested` / `converted`
+/// outcome rewrites the visit's status. Callers should therefore refresh the
+/// visit after logging one.
+class FieldFollowup {
+  const FieldFollowup({
+    required this.id,
+    required this.outcome,
+    this.visitId,
+    this.callDate,
+    this.notes,
+    this.nextFollowupDate,
+    this.userName,
+  });
+
+  final String id;
+
+  /// `answered`, `no_answer`, `callback`, `interested`, `not_interested`,
+  /// `converted`.
+  final String outcome;
+  final String? visitId;
+  final DateTime? callDate;
+  final String? notes;
+  final DateTime? nextFollowupDate;
+  final String? userName;
+
+  factory FieldFollowup.fromJson(Map<String, dynamic> json) => FieldFollowup(
+    id: json.id(),
+    outcome: json.strOr('outcome', 'answered'),
+    visitId: json.str('visit_id'),
+    callDate: json.date('call_date'),
+    notes: json.str('notes'),
+    nextFollowupDate: json.date('next_followup_date'),
+    userName: json.object('user')?.str('name'),
+  );
+}
+
+/// Outcomes `POST /field-visits/{visit}/followups` accepts.
+abstract final class FieldFollowupOutcomes {
+  static const values = <(String, String)>[
+    ('answered', 'Answered'),
+    ('no_answer', 'No answer'),
+    ('callback', 'Call back'),
+    ('interested', 'Interested'),
+    ('not_interested', 'Not interested'),
+    ('converted', 'Converted'),
+  ];
+}
+
+/// One officer's row in `GET /field-stats`.
+class FieldOfficerStat {
+  const FieldOfficerStat({
+    required this.visits,
+    required this.won,
+    this.officerId,
+    this.officerName,
+  });
+
+  final int visits;
+  final int won;
+  final String? officerId;
+  final String? officerName;
+
+  factory FieldOfficerStat.fromJson(Map<String, dynamic> json) =>
+      FieldOfficerStat(
+        visits: json.count('visits'),
+        won: json.count('won'),
+        officerId: json.str('officer_id'),
+        officerName: json.object('officer')?.str('name'),
+      );
+}
+
+/// `GET /field-stats` — a month's canvassing at a glance.
+class FieldStats {
+  const FieldStats({
+    required this.totalVisits,
+    required this.totalConverted,
+    required this.byStatus,
+    required this.byOfficer,
+  });
+
+  final int totalVisits;
+  final int totalConverted;
+
+  /// Visit counts keyed by visit status; `pluck` gives an object, and a month
+  /// with no visits of a status simply omits the key.
+  final Map<String, int> byStatus;
+  final List<FieldOfficerStat> byOfficer;
+
+  factory FieldStats.fromJson(Map<String, dynamic> json) {
+    final statuses = json['by_status'];
+    return FieldStats(
+      totalVisits: json.count('total_visits'),
+      totalConverted: json.count('total_converted'),
+      byStatus: statuses is Map
+          ? {
+              for (final entry in statuses.entries)
+                entry.key.toString(): readInt(entry.value),
+            }
+          : const <String, int>{},
+      byOfficer: json.list('by_officer', FieldOfficerStat.fromJson),
+    );
+  }
 }
 
 /// The service list the web app offers on a field visit, kept in step with

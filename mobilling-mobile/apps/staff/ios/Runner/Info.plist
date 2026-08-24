@@ -6,6 +6,10 @@
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Unlock MoBilling with Face ID instead of typing your password.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Photograph a receipt or a fault so it can be attached to an expense, a payment or a support ticket.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Attach a receipt or photo you have already taken to an expense, a payment or a support ticket.</string>
 	<key>CFBundleDisplayName</key>
 	<string>MoBilling</string>
 	<key>CFBundleExecutable</key>

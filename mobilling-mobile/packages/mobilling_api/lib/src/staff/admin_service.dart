@@ -94,27 +94,40 @@ class AdminService {
     required String password,
     required String roleId,
     String? phone,
-  }) =>
-      _api.post<dynamic>('/users', body: {
-        'name': name,
-        'email': email,
-        'password': password,
-        'role_id': roleId,
-        'phone': ?phone,
-      });
+  }) => _api.post<dynamic>(
+    '/users',
+    body: {
+      'name': name,
+      'email': email,
+      'password': password,
+      'role_id': roleId,
+      'phone': ?phone,
+    },
+  );
 
   /// PUT /users/{id}.
+  ///
+  /// `UserController::update` re-validates the whole record: `name`, `email`
+  /// and `role_id` are all `required` there, so a partial body 422s. Send the
+  /// current values back for anything the form did not change. `password` is
+  /// the one genuinely optional field — omitted, the existing one stands.
   Future<void> updateUser(
     String id, {
     String? name,
+    String? email,
     String? phone,
     String? roleId,
-  }) =>
-      _api.put<dynamic>('/users/$id', body: {
-        'name': ?name,
-        'phone': ?phone,
-        'role_id': ?roleId,
-      });
+    String? password,
+  }) => _api.put<dynamic>(
+    '/users/$id',
+    body: {
+      'name': ?name,
+      'email': ?email,
+      'phone': ?phone,
+      'role_id': ?roleId,
+      'password': ?password,
+    },
+  );
 
   /// PATCH /users/{id}/toggle-active — deactivating blocks sign-in without
   /// deleting the account's history.
@@ -127,9 +140,97 @@ class AdminService {
     return Paginated.fromJson(body, StaffRole.fromJson).items;
   }
 
-  // Role *editing* is deliberately web-only: `PUT /roles/{id}` takes a
-  // `label` plus permission UUIDs (from `/available-permissions`), and a
-  // permission matrix is not a phone screen. The app shows grants read-only.
+  /// GET /available-permissions — the set this tenant may grant, which is
+  /// what a role can be built from. Nested `{category: {group: [...]}}`.
+  Future<PermissionCatalogue> availablePermissions() async {
+    final body = await _api.get<Map<String, dynamic>>('/available-permissions');
+    return PermissionCatalogue.fromJson(body);
+  }
+
+  /// POST /roles. [name] is the slug (`^[a-z0-9_]+$`, unique per tenant),
+  /// [label] the human name, [permissionIds] the UUIDs from
+  /// [availablePermissions] — the API rejects an empty list.
+  Future<void> createRole({
+    required String name,
+    required String label,
+    required List<String> permissionIds,
+  }) => _api.post<dynamic>(
+    '/roles',
+    body: {'name': name, 'label': label, 'permissions': permissionIds},
+  );
+
+  /// PUT /roles/{id}. The slug is immutable server-side — only the label and
+  /// the permission set can change, and the set is synced, not merged.
+  Future<void> updateRole(
+    String id, {
+    required String label,
+    required List<String> permissionIds,
+  }) => _api.put<dynamic>(
+    '/roles/$id',
+    body: {'label': label, 'permissions': permissionIds},
+  );
+
+  /// DELETE /roles/{id}. Refused (422) for system roles and for any role that
+  /// still has users, so the message is worth showing verbatim.
+  Future<String?> deleteRole(String id) async {
+    final body = await _api.delete<Map<String, dynamic>>('/roles/$id');
+    return body['message']?.toString();
+  }
+
+  // ---------------------------------------------------------------------
+  // Two-factor authentication (self-service, no permission)
+  // ---------------------------------------------------------------------
+
+  /// GET /auth/2fa/status.
+  Future<TwoFactorStatus> twoFactorStatus() async {
+    final body = await _api.get<Map<String, dynamic>>('/auth/2fa/status');
+    return TwoFactorStatus.fromJson(body);
+  }
+
+  /// POST /auth/2fa/enable — mints a new secret and returns it with the
+  /// otpauth URI. Nothing is active until [confirmTwoFactor] succeeds.
+  Future<TwoFactorSetup> enableTwoFactor() async {
+    final body = await _api.post<Map<String, dynamic>>('/auth/2fa/enable');
+    return TwoFactorSetup.fromJson(body);
+  }
+
+  /// POST /auth/2fa/confirm — verifies the first code and turns 2FA on.
+  ///
+  /// Returns the recovery codes, which the server only ever sends once: it
+  /// stores hashes, so a code not written down here is gone.
+  Future<List<String>> confirmTwoFactor(String code) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/auth/2fa/confirm',
+      body: {'code': code},
+    );
+    return _recoveryCodes(body);
+  }
+
+  /// POST /auth/2fa/disable. The controller demands the account password —
+  /// a stolen unlocked phone must not be able to strip the second factor.
+  Future<String?> disableTwoFactor(String password) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/auth/2fa/disable',
+      body: {'password': password},
+    );
+    return body['message']?.toString();
+  }
+
+  /// POST /auth/2fa/recovery-codes/regenerate — password-confirmed, and the
+  /// previous codes stop working the moment it returns.
+  Future<List<String>> regenerateRecoveryCodes(String password) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/auth/2fa/recovery-codes/regenerate',
+      body: {'password': password},
+    );
+    return _recoveryCodes(body);
+  }
+
+  static List<String> _recoveryCodes(Map<String, dynamic> body) {
+    final codes = body['recovery_codes'];
+    if (codes is! List) return const [];
+    return codes.map((c) => c.toString()).toList(growable: false);
+  }
 
   // ---------------------------------------------------------------------
   // Settings
@@ -159,21 +260,25 @@ class AdminService {
     String? address,
     String? taxId,
     String? website,
-  }) =>
-      _api.put<dynamic>('/settings/company', body: {
-        'name': name,
-        'email': email,
-        'currency': currency,
-        'phone': ?phone,
-        'address': ?address,
-        'tax_id': ?taxId,
-        'website': ?website,
-      });
+  }) => _api.put<dynamic>(
+    '/settings/company',
+    body: {
+      'name': name,
+      'email': email,
+      'currency': currency,
+      'phone': ?phone,
+      'address': ?address,
+      'tax_id': ?taxId,
+      'website': ?website,
+    },
+  );
 
   /// PUT /settings/profile — the signed-in user's own name/phone.
   Future<void> updateProfile({String? name, String? phone}) =>
-      _api.put<dynamic>('/settings/profile',
-          body: {'name': ?name, 'phone': ?phone});
+      _api.put<dynamic>(
+        '/settings/profile',
+        body: {'name': ?name, 'phone': ?phone},
+      );
 
   /// GET /bank-accounts — needs `bank_accounts.read`.
   Future<Paginated<BankAccount>> bankAccounts({
@@ -191,6 +296,13 @@ class AdminService {
 /// Permission names these screens gate on, verbatim from routes/api.php.
 abstract final class AdminPermissions {
   static const users = 'settings.users';
+
+  /// Creating, editing and deleting roles. Named separately because it reads
+  /// as its own capability, but it is deliberately the same string: the
+  /// `/roles` write routes sit inside `middleware('permission:settings.users')`
+  /// and `RoleController` re-checks `settings.users`, so gating the buttons on
+  /// anything else would show controls the API answers with 403.
+  static const roles = 'settings.users';
   static const settings = 'menu.settings';
   static const subscription = 'menu.subscription';
   static const automation = 'menu.automation';

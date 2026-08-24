@@ -1,4 +1,5 @@
 import '../api_client.dart';
+import '../json.dart';
 import '../paginated.dart';
 import 'comms_models.dart';
 
@@ -58,24 +59,27 @@ class CommsService {
   /// GET /sms/purchases/{id}/status — re-polls Pesapal for pending purchases
   /// before answering, so this is the way to confirm a payment landed.
   Future<SmsPurchaseStatus> smsPurchaseStatus(String purchaseId) async {
-    final body = await _api
-        .get<Map<String, dynamic>>('/sms/purchases/$purchaseId/status');
+    final body = await _api.get<Map<String, dynamic>>(
+      '/sms/purchases/$purchaseId/status',
+    );
     return SmsPurchaseStatus.fromJson(_data(body));
   }
 
   /// POST /sms/purchases/{id}/retry — needs menu.sms. Returns the payment URL
   /// to reopen, either the stored one or a freshly submitted order.
   Future<String?> retrySmsPurchase(String purchaseId) async {
-    final body = await _api
-        .post<Map<String, dynamic>>('/sms/purchases/$purchaseId/retry');
+    final body = await _api.post<Map<String, dynamic>>(
+      '/sms/purchases/$purchaseId/retry',
+    );
     return _data(body)['redirect_url']?.toString();
   }
 
   /// POST /sms/request-activation — needs menu.sms. Notifies the super admins;
   /// 422 when SMS is already configured. Returns the server's message.
   Future<String> requestSmsActivation() async {
-    final body =
-        await _api.post<Map<String, dynamic>>('/sms/request-activation');
+    final body = await _api.post<Map<String, dynamic>>(
+      '/sms/request-activation',
+    );
     return body['message']?.toString() ?? 'Request sent.';
   }
 
@@ -146,17 +150,155 @@ class CommsService {
 
   /// GET /whatsapp-contacts/stats — needs whatsapp_contacts.read.
   Future<WhatsappContactStats> whatsappContactStats() async {
-    final body =
-        await _api.get<Map<String, dynamic>>('/whatsapp-contacts/stats');
+    final body = await _api.get<Map<String, dynamic>>(
+      '/whatsapp-contacts/stats',
+    );
     return WhatsappContactStats.fromJson(body);
+  }
+
+  /// POST /whatsapp-contacts — needs whatsapp_contacts.create.
+  ///
+  /// [phone] is unique per tenant, so a repeat number is a 422 rather than a
+  /// second row. The response also reports any **client** already holding that
+  /// number — see [WhatsappContactCreated.matchesExistingClient].
+  Future<WhatsappContactCreated> createWhatsappContact({
+    required String name,
+    required String phone,
+    required WhatsappLabel label,
+    required WhatsappSource source,
+    bool isImportant = false,
+    String? campaignId,
+    String? notes,
+    List<String>? services,
+    DateTime? nextFollowupDate,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/whatsapp-contacts',
+      body: {
+        'name': name,
+        'phone': phone,
+        'label': label.value,
+        'source': source.value,
+        'is_important': isImportant,
+        'campaign_id': ?campaignId,
+        'notes': ?notes,
+        if (services != null && services.isNotEmpty) 'services': services,
+        if (nextFollowupDate != null)
+          'next_followup_date': _day(nextFollowupDate),
+      },
+    );
+    return WhatsappContactCreated.fromJson(body);
+  }
+
+  /// PUT /whatsapp-contacts/{id} — needs whatsapp_contacts.update.
+  ///
+  /// Every field is `sometimes`; pass only what changed. Without
+  /// whatsapp_contacts.view_all the server refuses contacts someone else
+  /// registered (403).
+  Future<WhatsappContact> updateWhatsappContact(
+    String contactId, {
+    String? name,
+    String? phone,
+    WhatsappLabel? label,
+    WhatsappSource? source,
+    bool? isImportant,
+    String? campaignId,
+    String? notes,
+    List<String>? services,
+    DateTime? nextFollowupDate,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/whatsapp-contacts/$contactId',
+      body: {
+        'name': ?name,
+        'phone': ?phone,
+        'label': ?label?.value,
+        'source': ?source?.value,
+        'is_important': ?isImportant,
+        'campaign_id': ?campaignId,
+        'notes': ?notes,
+        'services': ?services,
+        if (nextFollowupDate != null)
+          'next_followup_date': _day(nextFollowupDate),
+      },
+    );
+    return WhatsappContact.fromJson(body);
+  }
+
+  /// DELETE /whatsapp-contacts/{id} — needs whatsapp_contacts.delete. Takes
+  /// the contact's logged calls with it.
+  Future<void> deleteWhatsappContact(String contactId) =>
+      _api.delete<dynamic>('/whatsapp-contacts/$contactId');
+
+  /// POST /whatsapp-contacts/{id}/convert — needs whatsapp_contacts.convert.
+  ///
+  /// Either link an existing client with [clientId] or create one, in which
+  /// case [clientName] is required and the contact's own number is used when
+  /// [clientPhone] is omitted — unless a client already holds it, in which
+  /// case the server saves the new client without a phone rather than fail.
+  /// The contact comes back linked and moved to the `new_customer` stage.
+  Future<WhatsappContact> convertWhatsappContact(
+    String contactId, {
+    String? clientId,
+    String? clientName,
+    String? clientEmail,
+    String? clientPhone,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/whatsapp-contacts/$contactId/convert',
+      body: {
+        'client_id': ?clientId,
+        'client_name': ?clientName,
+        'client_email': ?clientEmail,
+        'client_phone': ?clientPhone,
+      },
+    );
+    return WhatsappContact.fromJson(body);
   }
 
   /// POST /whatsapp-contacts/{id}/claim — needs whatsapp_contacts.update.
   /// Takes ownership of an unowned contact; 403 if someone else owns it.
   Future<WhatsappContact> claimWhatsappContact(String contactId) async {
-    final body = await _api
-        .post<Map<String, dynamic>>('/whatsapp-contacts/$contactId/claim');
+    final body = await _api.post<Map<String, dynamic>>(
+      '/whatsapp-contacts/$contactId/claim',
+    );
     return WhatsappContact.fromJson(body);
+  }
+
+  /// POST /whatsapp-contacts/{id}/unclaim — needs whatsapp_contacts.update.
+  /// Releases the contact back to the shared pool. Own contacts only, unless
+  /// the caller holds whatsapp_contacts.view_all.
+  Future<WhatsappContact> unclaimWhatsappContact(String contactId) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/whatsapp-contacts/$contactId/unclaim',
+    );
+    return WhatsappContact.fromJson(body);
+  }
+
+  /// POST /whatsapp-contacts/{id}/assign — needs whatsapp_contacts.view_all.
+  /// Hands ownership to [userId], who then sees it as one of theirs.
+  Future<WhatsappContact> assignWhatsappContact(
+    String contactId, {
+    required String userId,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/whatsapp-contacts/$contactId/assign',
+      body: {'user_id': userId},
+    );
+    return WhatsappContact.fromJson(body);
+  }
+
+  /// POST /whatsapp-contacts/claim-bulk — needs whatsapp_contacts.view_all.
+  ///
+  /// Claims the unowned contacts among [ids]; omitting them claims every
+  /// unowned contact in the tenant. Contacts someone else owns are never
+  /// taken. Returns how many moved.
+  Future<int> claimWhatsappContactsBulk({List<String>? ids}) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/whatsapp-contacts/claim-bulk',
+      body: {if (ids != null && ids.isNotEmpty) 'ids': ids},
+    );
+    return readInt(body['claimed']);
   }
 
   /// GET /whatsapp-campaigns — needs whatsapp_campaigns.read. Unpaginated,
@@ -166,11 +308,60 @@ class CommsService {
     return Paginated.fromJson(body, WhatsappCampaign.fromJson).items;
   }
 
+  /// POST /whatsapp-campaigns — needs whatsapp_campaigns.create.
+  Future<WhatsappCampaign> createWhatsappCampaign({
+    required String name,
+    required DateTime startDate,
+    required double budget,
+    DateTime? endDate,
+    String? notes,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/whatsapp-campaigns',
+      body: {
+        'name': name,
+        'start_date': _day(startDate),
+        'budget': budget,
+        if (endDate != null) 'end_date': _day(endDate),
+        'notes': ?notes,
+      },
+    );
+    return WhatsappCampaign.fromJson(_data(body));
+  }
+
+  /// PUT /whatsapp-campaigns/{id} — needs whatsapp_campaigns.update.
+  Future<WhatsappCampaign> updateWhatsappCampaign(
+    String campaignId, {
+    String? name,
+    DateTime? startDate,
+    double? budget,
+    DateTime? endDate,
+    String? notes,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/whatsapp-campaigns/$campaignId',
+      body: {
+        'name': ?name,
+        if (startDate != null) 'start_date': _day(startDate),
+        'budget': ?budget,
+        if (endDate != null) 'end_date': _day(endDate),
+        'notes': ?notes,
+      },
+    );
+    return WhatsappCampaign.fromJson(_data(body));
+  }
+
+  /// DELETE /whatsapp-campaigns/{id} — needs whatsapp_campaigns.delete. The
+  /// leads it produced survive; only the campaign row goes.
+  Future<void> deleteWhatsappCampaign(String campaignId) =>
+      _api.delete<dynamic>('/whatsapp-campaigns/$campaignId');
+
   /// GET /whatsapp-contacts/{id}/followups — needs whatsapp_contacts.log.
   /// Newest call first (the relation orders by call_date desc).
   Future<List<WhatsappFollowup>> whatsappFollowups(String contactId) async {
-    final body = await _api
-        .get<List<dynamic>>('/whatsapp-contacts/$contactId/followups');
+    final body = await _api.get<List<dynamic>>(
+      '/whatsapp-contacts/$contactId/followups',
+    );
     return Paginated.fromJson(body, WhatsappFollowup.fromJson).items;
   }
 
@@ -197,6 +388,14 @@ class CommsService {
     );
     return WhatsappFollowup.fromJson(body);
   }
+
+  /// DELETE /whatsapp-contacts/{id}/followups/{followup} — needs
+  /// whatsapp_contacts.log. Removes a mis-logged call; the contact's own
+  /// `next_followup_date` is left as it stands.
+  Future<void> deleteWhatsappFollowup(String contactId, String followupId) =>
+      _api.delete<dynamic>(
+        '/whatsapp-contacts/$contactId/followups/$followupId',
+      );
 
   // ─── Social media planner ─────────────────────────────────────────────────
 
@@ -319,10 +518,20 @@ abstract final class CommsPermissions {
   static const broadcast = 'menu.broadcast';
 
   static const whatsappContactsRead = 'whatsapp_contacts.read';
+  static const whatsappContactsCreate = 'whatsapp_contacts.create';
   static const whatsappContactsUpdate = 'whatsapp_contacts.update';
+  static const whatsappContactsDelete = 'whatsapp_contacts.delete';
+  static const whatsappContactsConvert = 'whatsapp_contacts.convert';
   static const whatsappContactsLog = 'whatsapp_contacts.log';
   static const whatsappContactsViewAll = 'whatsapp_contacts.view_all';
   static const whatsappCampaignsRead = 'whatsapp_campaigns.read';
+  static const whatsappCampaignsCreate = 'whatsapp_campaigns.create';
+  static const whatsappCampaignsUpdate = 'whatsapp_campaigns.update';
+  static const whatsappCampaignsDelete = 'whatsapp_campaigns.delete';
+
+  /// Reassigning a contact means listing `/users`, which is gated separately
+  /// from the assign route itself.
+  static const settingsUsers = 'settings.users';
 
   static const socialRead = 'social.read';
   static const socialCreate = 'social.create';

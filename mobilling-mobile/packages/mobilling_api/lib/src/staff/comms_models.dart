@@ -75,10 +75,10 @@ class SmsBalance {
   bool get isConfigured => balance != null;
 
   factory SmsBalance.fromJson(Map<String, dynamic> json) => SmsBalance(
-        balance: json['sms_balance'] == null ? null : json.count('sms_balance'),
-        message: json.str('message'),
-        error: json.str('error'),
-      );
+    balance: json['sms_balance'] == null ? null : json.count('sms_balance'),
+    message: json.str('message'),
+    error: json.str('error'),
+  );
 }
 
 /// One row of purchase history (`SmsPurchase`).
@@ -123,20 +123,20 @@ class SmsPurchase {
   bool get isPayable => status != 'completed';
 
   factory SmsPurchase.fromJson(Map<String, dynamic> json) => SmsPurchase(
-        id: json.id(),
-        smsQuantity: json.count('sms_quantity'),
-        pricePerSms: json.money('price_per_sms'),
-        totalAmount: json.money('total_amount'),
-        status: json.strOr('status', 'pending'),
-        packageName: json.str('package_name'),
-        receiptNumber: json.str('receipt_number'),
-        orderTrackingId: json.str('order_tracking_id'),
-        redirectUrl: json.str('pesapal_redirect_url'),
-        confirmationCode: json.str('confirmation_code'),
-        paymentMethodUsed: json.str('payment_method_used'),
-        completedAt: json.date('completed_at'),
-        createdAt: json.date('created_at'),
-      );
+    id: json.id(),
+    smsQuantity: json.count('sms_quantity'),
+    pricePerSms: json.money('price_per_sms'),
+    totalAmount: json.money('total_amount'),
+    status: json.strOr('status', 'pending'),
+    packageName: json.str('package_name'),
+    receiptNumber: json.str('receipt_number'),
+    orderTrackingId: json.str('order_tracking_id'),
+    redirectUrl: json.str('pesapal_redirect_url'),
+    confirmationCode: json.str('confirmation_code'),
+    paymentMethodUsed: json.str('payment_method_used'),
+    completedAt: json.date('completed_at'),
+    createdAt: json.date('created_at'),
+  );
 }
 
 /// Result of POST /sms/checkout — the caller is expected to open
@@ -153,10 +153,10 @@ class SmsCheckout {
   final String? orderTrackingId;
 
   factory SmsCheckout.fromJson(Map<String, dynamic> json) => SmsCheckout(
-        purchaseId: json.id('purchase_id'),
-        redirectUrl: json.str('redirect_url'),
-        orderTrackingId: json.str('order_tracking_id'),
-      );
+    purchaseId: json.id('purchase_id'),
+    redirectUrl: json.str('redirect_url'),
+    orderTrackingId: json.str('order_tracking_id'),
+  );
 }
 
 /// Result of the status poll, which also nudges the server to re-check Pesapal.
@@ -255,18 +255,18 @@ class Broadcast {
   }
 
   factory Broadcast.fromJson(Map<String, dynamic> json) => Broadcast(
-        id: json.id(),
-        channel: BroadcastChannel.parse(json.str('channel')),
-        totalRecipients: json.count('total_recipients'),
-        sentCount: json.count('sent_count'),
-        failedCount: json.count('failed_count'),
-        subject: json.str('subject'),
-        body: json.str('body'),
-        smsBody: json.str('sms_body'),
-        senderName: json.object('sender')?.str('name'),
-        clientIds: json['client_ids'] == null ? null : json.strings('client_ids'),
-        createdAt: json.date('created_at'),
-      );
+    id: json.id(),
+    channel: BroadcastChannel.parse(json.str('channel')),
+    totalRecipients: json.count('total_recipients'),
+    sentCount: json.count('sent_count'),
+    failedCount: json.count('failed_count'),
+    subject: json.str('subject'),
+    body: json.str('body'),
+    smsBody: json.str('sms_body'),
+    senderName: json.object('sender')?.str('name'),
+    clientIds: json['client_ids'] == null ? null : json.strings('client_ids'),
+    createdAt: json.date('created_at'),
+  );
 }
 
 /// The tally returned straight after sending — the send is synchronous
@@ -427,8 +427,11 @@ class WhatsappContact {
     final due = nextFollowupDate;
     if (due == null) return false;
     final today = DateTime.now();
-    return !DateTime(due.year, due.month, due.day)
-        .isAfter(DateTime(today.year, today.month, today.day));
+    return !DateTime(
+      due.year,
+      due.month,
+      due.day,
+    ).isAfter(DateTime(today.year, today.month, today.day));
   }
 
   factory WhatsappContact.fromJson(Map<String, dynamic> json) =>
@@ -451,6 +454,37 @@ class WhatsappContact {
         nextFollowupDate: json.date('next_followup_date'),
         createdAt: json.date('created_at'),
       );
+}
+
+/// What `POST /whatsapp-contacts` answers with: the new contact, plus the
+/// client that already holds that phone number when there is one.
+///
+/// The lookup is the point — it tells the person who just typed the number
+/// that this lead is already on the books, before they convert a duplicate.
+class WhatsappContactCreated {
+  const WhatsappContactCreated({
+    required this.contact,
+    this.existingClientId,
+    this.existingClientName,
+  });
+
+  final WhatsappContact contact;
+
+  /// Null when no client shares the contact's phone number.
+  final String? existingClientId;
+  final String? existingClientName;
+
+  bool get matchesExistingClient => existingClientId != null;
+
+  factory WhatsappContactCreated.fromJson(Map<String, dynamic> json) {
+    final contact = json.object('contact');
+    final client = json.object('existing_client');
+    return WhatsappContactCreated(
+      contact: WhatsappContact.fromJson(contact ?? json),
+      existingClientId: client?.str('id'),
+      existingClientName: client?.str('name'),
+    );
+  }
 }
 
 /// Pipeline counts from `/whatsapp-contacts/stats`, already scoped server-side
@@ -750,12 +784,12 @@ class SocialTarget {
   final DateTime? effectiveFrom;
 
   factory SocialTarget.fromJson(Map<String, dynamic> json) => SocialTarget(
-        id: json.id(),
-        imageTarget: json.count('image_target'),
-        videoTarget: json.count('video_target'),
-        activeDays: _intList(json['active_days']),
-        effectiveFrom: json.date('effective_from'),
-      );
+    id: json.id(),
+    imageTarget: json.count('image_target'),
+    videoTarget: json.count('video_target'),
+    activeDays: _intList(json['active_days']),
+    effectiveFrom: json.date('effective_from'),
+  );
 }
 
 /// One day of the weekly summary.

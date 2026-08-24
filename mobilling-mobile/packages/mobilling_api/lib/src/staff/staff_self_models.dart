@@ -45,8 +45,9 @@ class MyAttendance {
       deductionTotal: data.money('deduction_total'),
       monthRecords: data.list('month_records', AttendanceDay.fromJson),
       deductions: data.list('deductions', AttendancePenalty.fromJson),
-      settings:
-          AttendanceSettings.fromJson(data.object('settings') ?? const {}),
+      settings: AttendanceSettings.fromJson(
+        data.object('settings') ?? const {},
+      ),
       today: today == null ? null : AttendanceDay.fromJson(today),
     );
   }
@@ -84,8 +85,7 @@ class AttendanceDay {
   final String? checkOutAt;
 
   bool get isExcused => status != null && status!.isNotEmpty;
-  bool get isClean =>
-      !absent && !late && !leftEarly && !noCheckout;
+  bool get isClean => !absent && !late && !leftEarly && !noCheckout;
 
   /// Status word for the shared chip.
   String get chipStatus {
@@ -109,17 +109,17 @@ class AttendanceDay {
   }
 
   factory AttendanceDay.fromJson(Map<String, dynamic> json) => AttendanceDay(
-        id: json.id(),
-        absent: json.flag('absent'),
-        late: json.flag('late'),
-        leftEarly: json.flag('left_early'),
-        noCheckout: json.flag('no_checkout'),
-        date: json.date('date'),
-        status: json.str('status'),
-        statusNote: json.str('status_note'),
-        checkInAt: json.str('check_in_at'),
-        checkOutAt: json.str('check_out_at'),
-      );
+    id: json.id(),
+    absent: json.flag('absent'),
+    late: json.flag('late'),
+    leftEarly: json.flag('left_early'),
+    noCheckout: json.flag('no_checkout'),
+    date: json.date('date'),
+    status: json.str('status'),
+    statusNote: json.str('status_note'),
+    checkInAt: json.str('check_in_at'),
+    checkOutAt: json.str('check_out_at'),
+  );
 }
 
 class AttendancePenalty {
@@ -129,6 +129,8 @@ class AttendancePenalty {
     required this.amount,
     this.date,
     this.notes,
+    this.waived = false,
+    this.waiveReason,
   });
 
   final String id;
@@ -139,13 +141,18 @@ class AttendancePenalty {
   final DateTime? date;
   final String? notes;
 
+  /// `/attendance/mine` only ever returns unwaived charges, so this is false
+  /// there; the manager ledger (`/attendance/penalties`) returns both.
+  final bool waived;
+  final String? waiveReason;
+
   String get label => switch (penaltyType) {
-        'absent' => 'Absent',
-        'late' => 'Late arrival',
-        'left_early' => 'Left early',
-        'no_checkout' => 'No check-out',
-        _ => penaltyType.replaceAll('_', ' '),
-      };
+    'absent' => 'Absent',
+    'late' => 'Late arrival',
+    'left_early' => 'Left early',
+    'no_checkout' => 'No check-out',
+    _ => penaltyType.replaceAll('_', ' '),
+  };
 
   factory AttendancePenalty.fromJson(Map<String, dynamic> json) =>
       AttendancePenalty(
@@ -154,6 +161,8 @@ class AttendancePenalty {
         amount: json.money('amount'),
         date: json.date('date'),
         notes: json.str('notes'),
+        waived: json.flag('waived'),
+        waiveReason: json.str('waive_reason'),
       );
 }
 
@@ -174,6 +183,418 @@ class AttendanceSettings {
         checkInTime: json.str('check_in_time'),
         checkOutTime: json.str('check_out_time'),
       );
+}
+
+// ---------------------------------------------------------------------------
+// Attendance — the clerk's views (all gated `attendance.manage`)
+// ---------------------------------------------------------------------------
+
+/// GET /attendance/day — every active staff member and their marks for one
+/// date, which is also the surface `POST /attendance/record` writes to.
+class AttendanceBoard {
+  const AttendanceBoard({
+    required this.date,
+    required this.staff,
+    this.checkInTime,
+    this.checkOutTime,
+  });
+
+  /// `Y-m-d`, echoed back by the controller.
+  final String date;
+  final List<AttendanceBoardRow> staff;
+  final String? checkInTime;
+  final String? checkOutTime;
+
+  factory AttendanceBoard.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return AttendanceBoard(
+      date: data.strOr('date', ''),
+      checkInTime: data.str('check_in_time'),
+      checkOutTime: data.str('check_out_time'),
+      staff: data.list('staff', AttendanceBoardRow.fromJson),
+    );
+  }
+}
+
+/// One staff member's day. The controller merges the user onto the formatted
+/// day, so the same map parses as an [AttendanceDay] too.
+class AttendanceBoardRow {
+  const AttendanceBoardRow({
+    required this.userId,
+    required this.userName,
+    required this.day,
+  });
+
+  final String userId;
+  final String userName;
+  final AttendanceDay day;
+
+  factory AttendanceBoardRow.fromJson(Map<String, dynamic> json) {
+    final user = json.object('user');
+    return AttendanceBoardRow(
+      userId: user?.id() ?? '',
+      userName: user?.strOr('name', '—') ?? '—',
+      day: AttendanceDay.fromJson(json),
+    );
+  }
+}
+
+/// GET /attendance/dashboard — today's snapshot plus this month's per-staff
+/// summary.
+class AttendanceOverview {
+  const AttendanceOverview({
+    required this.monthLabel,
+    required this.workingDaysSoFar,
+    required this.deductionTotal,
+    required this.today,
+    required this.byType,
+    required this.staff,
+  });
+
+  final String monthLabel;
+  final int workingDaysSoFar;
+  final double deductionTotal;
+  final AttendanceToday today;
+
+  /// absent | late | left_early | no_checkout → how many charges this month.
+  final Map<String, int> byType;
+  final List<AttendanceStaffMonth> staff;
+
+  factory AttendanceOverview.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    final byType = data.object('by_type') ?? const <String, dynamic>{};
+    return AttendanceOverview(
+      monthLabel: data.strOr('month_label', ''),
+      workingDaysSoFar: data.count('working_days_so_far'),
+      deductionTotal: data.money('deduction_total'),
+      today: AttendanceToday.fromJson(data.object('today') ?? const {}),
+      byType: {
+        for (final key in const ['absent', 'late', 'left_early', 'no_checkout'])
+          key: readInt(byType[key]),
+      },
+      staff: data.list('staff', AttendanceStaffMonth.fromJson),
+    );
+  }
+}
+
+class AttendanceToday {
+  const AttendanceToday({
+    required this.total,
+    required this.present,
+    required this.late,
+    required this.leftEarly,
+    required this.excused,
+    required this.notRecorded,
+  });
+
+  final int total;
+  final int present;
+  final int late;
+  final int leftEarly;
+  final int excused;
+  final int notRecorded;
+
+  factory AttendanceToday.fromJson(Map<String, dynamic> json) =>
+      AttendanceToday(
+        total: json.count('total'),
+        present: json.count('present'),
+        late: json.count('late'),
+        leftEarly: json.count('left_early'),
+        excused: json.count('excused'),
+        notRecorded: json.count('not_recorded'),
+      );
+}
+
+class AttendanceStaffMonth {
+  const AttendanceStaffMonth({
+    required this.userId,
+    required this.userName,
+    required this.presentDays,
+    required this.deductions,
+  });
+
+  final String userId;
+  final String userName;
+  final int presentDays;
+  final double deductions;
+
+  factory AttendanceStaffMonth.fromJson(Map<String, dynamic> json) {
+    final user = json.object('user');
+    return AttendanceStaffMonth(
+      userId: user?.id() ?? '',
+      userName: user?.strOr('name', '—') ?? '—',
+      presentDays: json.count('present_days'),
+      deductions: json.money('deductions'),
+    );
+  }
+}
+
+/// GET /attendance/my-report — one month, day by day, with the flags and the
+/// money actually docked.
+class AttendanceReport {
+  const AttendanceReport({
+    required this.userName,
+    required this.monthLabel,
+    required this.days,
+    required this.totals,
+    this.checkInTime,
+    this.checkOutTime,
+  });
+
+  final String userName;
+  final String monthLabel;
+  final List<AttendanceReportDay> days;
+  final AttendanceReportTotals totals;
+  final String? checkInTime;
+  final String? checkOutTime;
+
+  factory AttendanceReport.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return AttendanceReport(
+      userName: data.object('user')?.strOr('name', '—') ?? '—',
+      monthLabel: data.strOr('month_label', ''),
+      checkInTime: data.str('check_in_time'),
+      checkOutTime: data.str('check_out_time'),
+      days: data.list('days', AttendanceReportDay.fromJson),
+      totals: AttendanceReportTotals.fromJson(
+        data.object('totals') ?? const {},
+      ),
+    );
+  }
+}
+
+/// One row of [AttendanceReport]. Unlike [AttendanceDay] this exists for every
+/// calendar day so far, including the ones nobody was expected to work.
+class AttendanceReportDay {
+  const AttendanceReportDay({
+    required this.dateKey,
+    required this.weekday,
+    required this.working,
+    required this.holiday,
+    required this.absent,
+    required this.late,
+    required this.leftEarly,
+    required this.noCheckout,
+    required this.deduction,
+    this.date,
+    this.status,
+    this.checkInAt,
+    this.checkOutAt,
+  });
+
+  /// `Y-m-d` exactly as the API returned it — what `POST /attendance/record`
+  /// wants back.
+  final String dateKey;
+  final String weekday;
+  final bool working;
+  final bool holiday;
+  final bool absent;
+  final bool late;
+  final bool leftEarly;
+  final bool noCheckout;
+  final double deduction;
+  final DateTime? date;
+
+  /// null | leave | sick | field.
+  final String? status;
+  final String? checkInAt;
+  final String? checkOutAt;
+
+  bool get isExcused => status != null && status!.isNotEmpty;
+  bool get isPresent => checkInAt != null && checkInAt!.isNotEmpty;
+
+  /// Status word for the shared chip.
+  String get chipStatus {
+    if (isExcused) return 'pending';
+    if (absent) return 'overdue';
+    if (late || leftEarly || noCheckout) return 'partial';
+    if (isPresent) return 'active';
+    return 'draft';
+  }
+
+  String get summary {
+    if (holiday) return 'Holiday';
+    if (isExcused) return status!;
+    if (!working && !isPresent) return 'Off day';
+    if (absent) return 'Absent';
+    return [
+      if (checkInAt != null) 'in $checkInAt',
+      if (checkOutAt != null) 'out $checkOutAt',
+      if (late) 'late',
+      if (leftEarly) 'left early',
+      if (noCheckout) 'no check-out',
+    ].join(' · ');
+  }
+
+  factory AttendanceReportDay.fromJson(Map<String, dynamic> json) =>
+      AttendanceReportDay(
+        dateKey: json.strOr('date', ''),
+        weekday: json.strOr('weekday', ''),
+        working: json.flag('working'),
+        holiday: json.flag('holiday'),
+        absent: json.flag('absent'),
+        late: json.flag('late'),
+        leftEarly: json.flag('left_early'),
+        noCheckout: json.flag('no_checkout'),
+        deduction: json.money('deduction'),
+        date: json.date('date'),
+        status: json.str('status'),
+        checkInAt: json.str('check_in_at'),
+        checkOutAt: json.str('check_out_at'),
+      );
+}
+
+class AttendanceReportTotals {
+  const AttendanceReportTotals({
+    required this.present,
+    required this.late,
+    required this.leftEarly,
+    required this.noCheckout,
+    required this.absent,
+    required this.excused,
+    required this.deductionTotal,
+  });
+
+  final int present;
+  final int late;
+  final int leftEarly;
+  final int noCheckout;
+  final int absent;
+  final int excused;
+  final double deductionTotal;
+
+  factory AttendanceReportTotals.fromJson(Map<String, dynamic> json) =>
+      AttendanceReportTotals(
+        present: json.count('present'),
+        late: json.count('late'),
+        leftEarly: json.count('left_early'),
+        noCheckout: json.count('no_checkout'),
+        absent: json.count('absent'),
+        excused: json.count('excused'),
+        deductionTotal: json.money('deduction_total'),
+      );
+}
+
+// ---------------------------------------------------------------------------
+// Deduction ledgers — /attendance/penalties and /staff-reports/penalties
+// ---------------------------------------------------------------------------
+
+/// The two penalty endpoints return the same shape: a month, a grand total,
+/// and one group per staff member. Only the per-item date key differs
+/// (`date` for attendance, `period_date` for reports), so both parse here.
+class PenaltyLedger {
+  const PenaltyLedger({
+    required this.monthLabel,
+    required this.grandTotal,
+    required this.staff,
+  });
+
+  final String monthLabel;
+
+  /// Unwaived charges only — waiving a row drops it out of this figure.
+  final double grandTotal;
+  final List<PenaltyGroup> staff;
+
+  bool get isEmpty => staff.isEmpty;
+
+  factory PenaltyLedger.fromJson(
+    Map<String, dynamic> json, {
+    required String dateKey,
+  }) {
+    final data = json.object('data') ?? json;
+    return PenaltyLedger(
+      monthLabel: data.strOr('month_label', ''),
+      grandTotal: data.money('grand_total'),
+      staff: data.list(
+        'staff',
+        (row) => PenaltyGroup.fromJson(row, dateKey: dateKey),
+      ),
+    );
+  }
+}
+
+class PenaltyGroup {
+  const PenaltyGroup({
+    required this.userId,
+    required this.userName,
+    required this.total,
+    required this.items,
+  });
+
+  final String userId;
+  final String userName;
+
+  /// Unwaived only.
+  final double total;
+  final List<PenaltyEntry> items;
+
+  factory PenaltyGroup.fromJson(
+    Map<String, dynamic> json, {
+    required String dateKey,
+  }) {
+    final user = json.object('user');
+    return PenaltyGroup(
+      userId: user?.id() ?? '',
+      userName: user?.strOr('name', '—') ?? '—',
+      total: json.money('total'),
+      items: json.list(
+        'items',
+        (row) => PenaltyEntry.fromJson(row, dateKey: dateKey),
+      ),
+    );
+  }
+}
+
+class PenaltyEntry {
+  const PenaltyEntry({
+    required this.id,
+    required this.penaltyType,
+    required this.amount,
+    required this.waived,
+    this.reportType,
+    this.date,
+    this.notes,
+    this.waiveReason,
+  });
+
+  final String id;
+
+  /// absent | late | left_early | no_checkout for attendance; `late` for a
+  /// staff report, where [reportType] carries the rest of the story.
+  final String penaltyType;
+  final double amount;
+  final bool waived;
+
+  /// daily | weekly | monthly — staff-report ledger only.
+  final String? reportType;
+  final DateTime? date;
+  final String? notes;
+  final String? waiveReason;
+
+  String get label {
+    final base = switch (penaltyType) {
+      'absent' => 'Absent',
+      'late' => 'Late',
+      'left_early' => 'Left early',
+      'no_checkout' => 'No check-out',
+      _ => penaltyType.replaceAll('_', ' '),
+    };
+    return reportType == null ? base : '$base $reportType report';
+  }
+
+  factory PenaltyEntry.fromJson(
+    Map<String, dynamic> json, {
+    required String dateKey,
+  }) => PenaltyEntry(
+    id: json.id(),
+    penaltyType: json.strOr('penalty_type', 'late'),
+    amount: json.money('amount'),
+    waived: json.flag('waived'),
+    reportType: json.str('report_type'),
+    date: json.date(dateKey),
+    notes: json.str('notes'),
+    waiveReason: json.str('waive_reason'),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -279,6 +700,143 @@ class StaffReportReply {
       );
 }
 
+/// GET /staff-reports/dashboard — how you are doing this month against the
+/// tenant's cadence, plus the team block reviewers get.
+class StaffReportsDashboard {
+  const StaffReportsDashboard({
+    required this.thisMonth,
+    required this.recentReviews,
+    this.team,
+  });
+
+  /// Keyed daily | weekly | monthly.
+  final Map<String, StaffReportCadence> thisMonth;
+  final List<StaffReport> recentReviews;
+
+  /// Present only for `staff_reports.review` / `staff_reports.view_all`.
+  final StaffReportTeam? team;
+
+  static const List<String> types = ['daily', 'weekly', 'monthly'];
+
+  factory StaffReportsDashboard.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    final month = data.object('this_month') ?? const <String, dynamic>{};
+    final team = data.object('team');
+    return StaffReportsDashboard(
+      thisMonth: {
+        for (final type in types)
+          if (month[type] is Map)
+            type: StaffReportCadence.fromJson(
+              Map<String, dynamic>.from(month[type] as Map),
+            ),
+      },
+      recentReviews: data.list('recent_reviews', StaffReport.fromJson),
+      team: team == null ? null : StaffReportTeam.fromJson(team),
+    );
+  }
+}
+
+class StaffReportCadence {
+  const StaffReportCadence({
+    required this.submitted,
+    required this.reviewed,
+    required this.late,
+    required this.target,
+    required this.expected,
+    required this.missing,
+  });
+
+  final int submitted;
+  final int reviewed;
+  final int late;
+
+  /// How many this month asks for in total.
+  final int target;
+
+  /// How many are due by today.
+  final int expected;
+  final int missing;
+
+  double get progress => target <= 0 ? 0 : (submitted / target).clamp(0.0, 1.0);
+
+  factory StaffReportCadence.fromJson(Map<String, dynamic> json) =>
+      StaffReportCadence(
+        submitted: json.count('submitted'),
+        reviewed: json.count('reviewed'),
+        late: json.count('late'),
+        target: json.count('target'),
+        expected: json.count('expected'),
+        missing: json.count('missing'),
+      );
+}
+
+class StaffReportTeam {
+  const StaffReportTeam({required this.pendingReview, required this.staff});
+
+  final int pendingReview;
+  final List<StaffReportTeamRow> staff;
+
+  factory StaffReportTeam.fromJson(Map<String, dynamic> json) =>
+      StaffReportTeam(
+        pendingReview: json.count('pending_review'),
+        staff: json.list('staff', StaffReportTeamRow.fromJson),
+      );
+}
+
+class StaffReportTeamRow {
+  const StaffReportTeamRow({
+    required this.userId,
+    required this.userName,
+    required this.byType,
+  });
+
+  final String userId;
+  final String userName;
+
+  /// daily | weekly | monthly → that type's counts for this staff member.
+  final Map<String, StaffReportCadence> byType;
+
+  int get submitted => byType.values.fold(0, (sum, row) => sum + row.submitted);
+  int get late => byType.values.fold(0, (sum, row) => sum + row.late);
+  int get target => byType.values.fold(0, (sum, row) => sum + row.target);
+
+  factory StaffReportTeamRow.fromJson(Map<String, dynamic> json) {
+    final user = json.object('user');
+    return StaffReportTeamRow(
+      userId: user?.id() ?? '',
+      userName: user?.strOr('name', '—') ?? '—',
+      byType: {
+        for (final type in StaffReportsDashboard.types)
+          if (json[type] is Map)
+            type: StaffReportCadence.fromJson(
+              Map<String, dynamic>.from(json[type] as Map),
+            ),
+      },
+    );
+  }
+}
+
+/// GET /staff-reports/supervisors — the tenant's active staff, which is also
+/// the list the web's target form picks an assignee from. Needs
+/// `staff_reports.review`.
+class StaffColleague {
+  const StaffColleague({
+    required this.id,
+    required this.name,
+    this.supervisorName,
+  });
+
+  final String id;
+  final String name;
+  final String? supervisorName;
+
+  factory StaffColleague.fromJson(Map<String, dynamic> json) => StaffColleague(
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    supervisorName: json.object('supervisor')?.str('name'),
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Staff targets — StaffTargetsController
 // ---------------------------------------------------------------------------
@@ -307,6 +865,15 @@ class StaffTarget {
     this.verifiedAt,
     this.allGoalsMet,
     this.salaryDeduction,
+    this.userId,
+    this.managerId,
+    this.managerName,
+    this.managerCommissionType = 'none',
+    this.managerCommissionValue,
+    this.groupCommissionType = 'none',
+    this.groupCommissionValue,
+    this.staffSalary,
+    this.deductOnFailure = false,
   });
 
   final String id;
@@ -330,39 +897,203 @@ class StaffTarget {
   /// Docked when goals were missed and the target has deduct-on-failure set.
   final double? salaryDeduction;
 
+  /// Who the target belongs to — needed when re-opening it in the edit form.
+  final String? userId;
+
+  /// The team lead who earns an override on this target, if any.
+  final String? managerId;
+  final String? managerName;
+
+  /// none | fixed | percentage.
+  final String managerCommissionType;
+  final double? managerCommissionValue;
+
+  /// The all-goals-met bonus. none | fixed | percentage.
+  final String groupCommissionType;
+  final double? groupCommissionValue;
+
+  /// The salary the percentage commissions and the failure deduction are
+  /// computed from.
+  final double? staffSalary;
+  final bool deductOnFailure;
+
   bool get isVerified => status == 'verified';
+  bool get isCancelled => status == 'cancelled';
   bool get awaitingSelfReport => status == 'active';
   bool get awaitingVerification => status == 'self_reported';
 
+  /// The controller only lets an `active` target be edited, and refuses to
+  /// delete a verified one.
+  bool get isEditable => status == 'active';
+  bool get isDeletable => status != 'verified';
+
+  /// `verify` aborts on an already-verified target; anything else is fair
+  /// game, though in practice a supervisor waits for the self-report.
+  bool get isVerifiable => status != 'verified';
+
   /// Status word for the shared chip.
   String get chipStatus => switch (status) {
-        'verified' => 'active',
-        'self_reported' => 'pending',
-        'cancelled' => 'cancelled',
-        _ => 'sent',
-      };
+    'verified' => 'active',
+    'self_reported' => 'pending',
+    'cancelled' => 'cancelled',
+    _ => 'sent',
+  };
 
   factory StaffTarget.fromJson(Map<String, dynamic> json) => StaffTarget(
+    id: json.id(),
+    title: json.strOr('title', '—'),
+    status: json.strOr('status', 'active'),
+    criteria: json.list('criteria', TargetCriterion.fromJson),
+    grossCommission: json.money('gross_commission'),
+    totalCommission: json.money('total_commission'),
+    userName: json.object('user')?.str('name'),
+    assignedByName: json.object('assigned_by')?.str('name'),
+    description: json.str('description'),
+    periodStart: json.date('period_start'),
+    periodEnd: json.date('period_end'),
+    supervisorNotes: json.str('supervisor_notes'),
+    verifiedByName: json.object('verified_by')?.str('name'),
+    verifiedAt: json.date('verified_at'),
+    allGoalsMet: json['all_goals_met'] == null
+        ? null
+        : json.flag('all_goals_met'),
+    salaryDeduction: json['salary_deduction_earned'] == null
+        ? null
+        : json.money('salary_deduction_earned'),
+    userId: json.object('user')?.str('id'),
+    managerId: json.object('manager')?.str('id'),
+    managerName: json.object('manager')?.str('name'),
+    managerCommissionType: json.strOr('manager_commission_type', 'none'),
+    managerCommissionValue: json['manager_commission_value'] == null
+        ? null
+        : json.money('manager_commission_value'),
+    groupCommissionType: json.strOr('group_commission_type', 'none'),
+    groupCommissionValue: json['group_commission_value'] == null
+        ? null
+        : json.money('group_commission_value'),
+    staffSalary: json['staff_salary'] == null
+        ? null
+        : json.money('staff_salary'),
+    deductOnFailure: json.flag('deduct_on_failure'),
+  );
+}
+
+/// One criterion as the create/edit form builds it, before the server gives it
+/// an id. `commissionType` is none | fixed | percentage; a percentage is of the
+/// target's `staff_salary`.
+class TargetCriterionInput {
+  const TargetCriterionInput({
+    required this.type,
+    required this.label,
+    required this.goalValue,
+    this.unit,
+    this.commissionType = 'none',
+    this.commissionValue,
+  });
+
+  /// customer_count | revenue | item_sales | custom.
+  final String type;
+  final String label;
+  final double goalValue;
+  final String? unit;
+  final String commissionType;
+  final double? commissionValue;
+
+  Map<String, dynamic> toJson() => {
+    'type': type,
+    'label': label,
+    'unit': ?unit,
+    'goal_value': goalValue,
+    'commission_type': commissionType,
+    'commission_value': ?commissionValue,
+  };
+
+  /// Re-open an existing criterion in the edit form.
+  factory TargetCriterionInput.from(TargetCriterion c) => TargetCriterionInput(
+    type: c.type,
+    label: c.label,
+    goalValue: c.goalValue,
+    unit: c.unit,
+    commissionType: c.commissionType,
+    commissionValue: c.commissionValue,
+  );
+}
+
+/// GET /staff-targets/summary — verified commission per person, both the
+/// targets they own and the ones they manage.
+class TargetCommission {
+  const TargetCommission({
+    required this.userId,
+    required this.userName,
+    required this.grossCommission,
+    required this.salaryDeductions,
+    required this.totalCommission,
+    required this.managerCommission,
+    required this.targetsCount,
+    required this.targets,
+    required this.managedTargets,
+  });
+
+  final String userId;
+  final String userName;
+  final double grossCommission;
+  final double salaryDeductions;
+
+  /// Already includes [managerCommission] — the controller rolls it in.
+  final double totalCommission;
+  final double managerCommission;
+  final int targetsCount;
+  final List<TargetCommissionLine> targets;
+  final List<TargetCommissionLine> managedTargets;
+
+  factory TargetCommission.fromJson(Map<String, dynamic> json) {
+    final user = json.object('user');
+    return TargetCommission(
+      userId: user?.id() ?? '',
+      userName: user?.strOr('name', '—') ?? '—',
+      grossCommission: json.money('gross_commission'),
+      salaryDeductions: json.money('salary_deductions'),
+      totalCommission: json.money('total_commission'),
+      managerCommission: json.money('manager_commission'),
+      targetsCount: json.count('targets_count'),
+      targets: json.list('targets', TargetCommissionLine.fromJson),
+      managedTargets: json.list(
+        'managed_targets',
+        TargetCommissionLine.fromJson,
+      ),
+    );
+  }
+}
+
+class TargetCommissionLine {
+  const TargetCommissionLine({
+    required this.id,
+    required this.title,
+    required this.period,
+    required this.commissionEarned,
+    required this.salaryDeduction,
+    this.staffName,
+  });
+
+  final String id;
+  final String title;
+
+  /// Server-composed, e.g. `01 Aug – 31 Aug 2026`.
+  final String period;
+  final double commissionEarned;
+  final double salaryDeduction;
+
+  /// Whose target it is — set on the managed-targets list only.
+  final String? staffName;
+
+  factory TargetCommissionLine.fromJson(Map<String, dynamic> json) =>
+      TargetCommissionLine(
         id: json.id(),
         title: json.strOr('title', '—'),
-        status: json.strOr('status', 'active'),
-        criteria: json.list('criteria', TargetCriterion.fromJson),
-        grossCommission: json.money('gross_commission'),
-        totalCommission: json.money('total_commission'),
-        userName: json.object('user')?.str('name'),
-        assignedByName: json.object('assigned_by')?.str('name'),
-        description: json.str('description'),
-        periodStart: json.date('period_start'),
-        periodEnd: json.date('period_end'),
-        supervisorNotes: json.str('supervisor_notes'),
-        verifiedByName: json.object('verified_by')?.str('name'),
-        verifiedAt: json.date('verified_at'),
-        allGoalsMet: json['all_goals_met'] == null
-            ? null
-            : json.flag('all_goals_met'),
-        salaryDeduction: json['salary_deduction_earned'] == null
-            ? null
-            : json.money('salary_deduction_earned'),
+        period: json.strOr('period', ''),
+        commissionEarned: json.money('commission_earned'),
+        salaryDeduction: json.money('salary_deduction'),
+        staffName: json.object('staff')?.str('name'),
       );
 }
 
@@ -377,6 +1108,8 @@ class TargetCriterion {
     this.verifiedValue,
     this.goalMet,
     this.commissionEarned,
+    this.commissionType = 'none',
+    this.commissionValue,
   });
 
   final String id;
@@ -394,6 +1127,10 @@ class TargetCriterion {
   final double? verifiedValue;
   final bool? goalMet;
   final double? commissionEarned;
+
+  /// none | fixed | percentage — how this criterion pays when its goal is met.
+  final String commissionType;
+  final double? commissionValue;
 
   /// Verified beats self-reported when both exist.
   double? get effectiveValue => verifiedValue ?? achievedValue;
@@ -418,6 +1155,10 @@ class TargetCriterion {
         commissionEarned: json['commission_earned'] == null
             ? null
             : json.money('commission_earned'),
+        commissionType: json.strOr('commission_type', 'none'),
+        commissionValue: json['commission_value'] == null
+            ? null
+            : json.money('commission_value'),
       );
 }
 
@@ -506,38 +1247,73 @@ class SystemRecord {
   const SystemRecord({
     required this.id,
     required this.amount,
+    this.systemId,
     this.systemName,
+    this.systemPropertyId,
     this.propertyName,
+    this.bankAccountId,
     this.bankName,
     this.recordDate,
     this.notes,
     this.createdByName,
+    this.receiptUrl,
   });
 
   final String id;
   final double amount;
+  final String? systemId;
   final String? systemName;
+  final String? systemPropertyId;
   final String? propertyName;
+  final String? bankAccountId;
   final String? bankName;
   final DateTime? recordDate;
   final String? notes;
   final String? createdByName;
+
+  /// Absolute URL to the receipt every record is required to carry.
+  final String? receiptUrl;
 
   factory SystemRecord.fromJson(Map<String, dynamic> json) {
     final bank = json.object('bank_account');
     return SystemRecord(
       id: json.id(),
       amount: json.money('amount'),
+      systemId: json.str('system_id'),
       systemName: json.object('system')?.str('name'),
+      systemPropertyId: json.str('system_property_id'),
       propertyName: json.object('system_property')?.str('name'),
+      bankAccountId: json.str('bank_account_id'),
       bankName: bank == null
           ? null
-          : [bank.str('bank_name'), bank.str('account_number')]
-              .whereType<String>()
-              .join(' · '),
+          : [
+              bank.str('bank_name'),
+              bank.str('account_number'),
+            ].whereType<String>().join(' · '),
       recordDate: json.date('record_date'),
       notes: json.str('notes'),
       createdByName: json.object('created_by')?.str('name'),
+      receiptUrl: json.str('receipt_attachment_url'),
     );
   }
+}
+
+/// A named row a system record points at — a system or a system property.
+/// Both endpoints return the same three fields, so one model serves both.
+class SystemOption {
+  const SystemOption({
+    required this.id,
+    required this.name,
+    required this.isActive,
+  });
+
+  final String id;
+  final String name;
+  final bool isActive;
+
+  factory SystemOption.fromJson(Map<String, dynamic> json) => SystemOption(
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    isActive: json.flag('is_active', fallback: true),
+  );
 }

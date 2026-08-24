@@ -1,3 +1,7 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../api_client.dart';
 import '../api_exception.dart';
 import '../paginated.dart';
@@ -29,12 +33,14 @@ class BillingMoneyService {
   /// `Rule::in` accepts anyway.
   Future<List<TenantPaymentMethod>> paymentMethods() async {
     try {
-      final body =
-          await _api.get<dynamic>('/settings/payment-methods');
-      final methods =
-          Paginated.fromJson(body, TenantPaymentMethod.fromJson).items;
-      final usable =
-          methods.where((m) => m.value.isNotEmpty).toList(growable: false);
+      final body = await _api.get<dynamic>('/settings/payment-methods');
+      final methods = Paginated.fromJson(
+        body,
+        TenantPaymentMethod.fromJson,
+      ).items;
+      final usable = methods
+          .where((m) => m.value.isNotEmpty)
+          .toList(growable: false);
       return usable.isEmpty ? TenantPaymentMethod.defaults : usable;
     } on ApiException {
       return TenantPaymentMethod.defaults;
@@ -61,9 +67,33 @@ class BillingMoneyService {
     return Paginated.fromJson(body, UnpaidInvoice.fromJson);
   }
 
+  /// GET /payments-in — the tenant's payment history, newest first.
+  ///
+  /// `search` matches the reference, the invoice number or the client name.
+  Future<Paginated<StaffPaymentIn>> paymentsIn({
+    String? search,
+    String? documentId,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/payments-in',
+      query: {
+        'search': search,
+        'document_id': documentId,
+        'page': page,
+        'per_page': perPage,
+      },
+    );
+    return Paginated.fromJson(body, StaffPaymentIn.fromJson);
+  }
+
   /// POST /payments-in — record a payment received.
   ///
   /// [clientId] is required by the API even when [documentId] is given.
+  /// [sendEmail] mirrors the web's default (checked): the controller reads it
+  /// as `boolean('send_email', true)` and only mails when a `document_id` is
+  /// present, so a standalone payment never sends whatever this says.
   /// Returns the server's message so the caller can show it verbatim.
   Future<String?> recordPaymentIn({
     required String clientId,
@@ -73,6 +103,7 @@ class BillingMoneyService {
     String? documentId,
     String? reference,
     String? notes,
+    bool sendEmail = true,
   }) async {
     final body = await _api.post<Map<String, dynamic>>(
       '/payments-in',
@@ -84,10 +115,65 @@ class BillingMoneyService {
         'payment_method': paymentMethod,
         'reference': ?reference,
         'notes': ?notes,
+        'send_email': sendEmail,
       },
     );
     return body['message']?.toString();
   }
+
+  /// PUT /payments-in/{id} — correct a recorded payment. Needs
+  /// `payments_in.update`.
+  ///
+  /// The route re-validates with `StorePaymentInRequest`, so every required
+  /// field goes back up — `client_id` included, even when only the amount
+  /// changed. The controller recomputes the invoice's paid/partial/sent status
+  /// inside the same transaction.
+  Future<void> updatePaymentIn({
+    required String id,
+    required String clientId,
+    required double amount,
+    required DateTime paymentDate,
+    required String paymentMethod,
+    String? documentId,
+    String? reference,
+    String? notes,
+  }) => _api.put<dynamic>(
+    '/payments-in/$id',
+    body: {
+      'client_id': clientId,
+      'document_id': ?documentId,
+      'amount': amount,
+      'payment_date': _ymd(paymentDate),
+      'payment_method': paymentMethod,
+      'reference': ?reference,
+      'notes': ?notes,
+    },
+  );
+
+  /// DELETE /payments-in/{id} — needs `payments_in.delete`. The invoice's
+  /// status is recomputed, so deleting the only payment sends it back to
+  /// `sent`. Returns the server's message ("Payment deleted").
+  Future<String?> deletePaymentIn(String id) async {
+    final body = await _api.delete<Map<String, dynamic>>('/payments-in/$id');
+    return body['message']?.toString();
+  }
+
+  /// POST /payments-in/{id}/resend-receipt — needs
+  /// `payments_in.resend_receipt`.
+  ///
+  /// A 422 with "Client has no email address" is the API's own answer when
+  /// there is nobody to mail, so let it surface as an [ApiException] message.
+  Future<String?> resendReceipt(String id) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/payments-in/$id/resend-receipt',
+    );
+    return body['message']?.toString();
+  }
+
+  /// GET /payments-in/{id}/receipt-pdf — the receipt as PDF bytes. Needs
+  /// `payments_in.read`, the same permission as the list itself.
+  Future<Uint8List> receiptPdf(String id) =>
+      _download('/payments-in/$id/receipt-pdf');
 
   /// GET /payments-out — paginated, newest first. [billId] narrows to one bill.
   Future<Paginated<StaffPaymentOut>> paymentsOut({
@@ -120,8 +206,11 @@ class BillingMoneyService {
 
   /// POST /payments-out — pay a bill.
   ///
-  /// The `receipt` file upload the API also accepts is omitted: it needs
-  /// multipart plus a file picker, and the staff app has neither wired yet.
+  /// [receiptPath] attaches proof of payment (the bank slip or control-number
+  /// receipt). The API accepts `pdf,jpg,jpeg,png` up to 5 MB and stores it as
+  /// `receipt_path`; the request only becomes multipart when a file is given,
+  /// because Laravel reads the plain JSON body faster and the field is
+  /// optional.
   Future<void> recordPaymentOut({
     required String billId,
     required double amount,
@@ -130,16 +219,73 @@ class BillingMoneyService {
     String? controlNumber,
     String? reference,
     String? notes,
-  }) =>
-      _api.post<dynamic>('/payments-out', body: {
-        'bill_id': billId,
-        'amount': amount,
-        'payment_date': _ymd(paymentDate),
-        'payment_method': paymentMethod,
-        'control_number': ?controlNumber,
-        'reference': ?reference,
-        'notes': ?notes,
-      });
+    String? receiptPath,
+  }) async {
+    final fields = <String, dynamic>{
+      'bill_id': billId,
+      'amount': amount,
+      'payment_date': _ymd(paymentDate),
+      'payment_method': paymentMethod,
+      'control_number': ?controlNumber,
+      'reference': ?reference,
+      'notes': ?notes,
+    };
+
+    if (receiptPath == null || receiptPath.isEmpty) {
+      await _api.post<dynamic>('/payments-out', body: fields);
+      return;
+    }
+
+    // `amount` must go up as a string in multipart — Dio would otherwise send
+    // the double's `toString()`, which is the same text but via a code path
+    // that trips on `1.0E+3` for large values.
+    final form = FormData.fromMap({...fields, 'amount': amount.toString()});
+    form.files.add(
+      MapEntry('receipt', await MultipartFile.fromFile(receiptPath)),
+    );
+
+    try {
+      await _api.raw.post<dynamic>('/payments-out', data: form);
+    } on DioException catch (e) {
+      final error = e.error;
+      throw error is ApiException ? error : ApiException.fromDio(e);
+    }
+  }
+
+  /// PUT /payments-out/{id} — correct a payment made. Needs
+  /// `payments_out.update`.
+  ///
+  /// Unlike the store route this validates with `sometimes` rules and has no
+  /// remaining-balance check, so an edit may legitimately push the bill past
+  /// its amount; the controller recomputes `paid_at` either way. The receipt
+  /// file cannot be replaced here — the route ignores it.
+  Future<void> updatePaymentOut({
+    required String id,
+    required double amount,
+    required DateTime paymentDate,
+    required String paymentMethod,
+    String? controlNumber,
+    String? reference,
+    String? notes,
+  }) => _api.put<dynamic>(
+    '/payments-out/$id',
+    body: {
+      'amount': amount,
+      'payment_date': _ymd(paymentDate),
+      'payment_method': paymentMethod,
+      'control_number': ?controlNumber,
+      'reference': ?reference,
+      'notes': ?notes,
+    },
+  );
+
+  /// DELETE /payments-out/{id} — needs `payments_out.delete`. The bill's
+  /// `paid_at` is recomputed, so removing the payment that settled it reopens
+  /// it. Returns the server's message ("Payment deleted").
+  Future<String?> deletePaymentOut(String id) async {
+    final body = await _api.delete<Map<String, dynamic>>('/payments-out/$id');
+    return body['message']?.toString();
+  }
 
   /// GET /next-bills — projected upcoming recurring charges (not persisted
   /// rows; the controller walks each active subscription's cycle forward).
@@ -158,6 +304,22 @@ class BillingMoneyService {
     return GeneratedInvoice.fromJson(body);
   }
 
+  /// Fetch a PDF as raw bytes. Goes through [ApiClient.raw] because the typed
+  /// helpers decode JSON, and re-wraps the failure so callers still only ever
+  /// catch [ApiException].
+  Future<Uint8List> _download(String path) async {
+    try {
+      final response = await _api.raw.get<List<int>>(
+        path,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data ?? const []);
+    } on DioException catch (e) {
+      final error = e.error;
+      throw error is ApiException ? error : ApiException.fromDio(e);
+    }
+  }
+
   /// The API takes dates as Y-m-d; sending an ISO timestamp trips
   /// `before_or_equal:today` around midnight in a non-UTC zone.
   static String _ymd(DateTime date) =>
@@ -168,9 +330,16 @@ class BillingMoneyService {
 
 /// Permission names these screens gate on, verbatim from routes/api.php.
 abstract final class BillingMoneyPermissions {
+  /// Also gates the receipt PDF — `receipt-pdf` is a read route.
+  static const paymentsInRead = 'payments_in.read';
   static const paymentsInCreate = 'payments_in.create';
+  static const paymentsInUpdate = 'payments_in.update';
+  static const paymentsInDelete = 'payments_in.delete';
+  static const paymentsInResendReceipt = 'payments_in.resend_receipt';
   static const paymentsOutRead = 'payments_out.read';
   static const paymentsOutCreate = 'payments_out.create';
+  static const paymentsOutUpdate = 'payments_out.update';
+  static const paymentsOutDelete = 'payments_out.delete';
   static const billsRead = 'bills.read';
   static const subscriptionsRead = 'client_subscriptions.read';
   static const subscriptionsCreate = 'client_subscriptions.create';

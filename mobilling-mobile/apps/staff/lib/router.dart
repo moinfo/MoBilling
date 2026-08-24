@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart'
-    show CatalogProduct, UnpaidInvoice;
+    show CatalogProduct, DocumentType, StaffClient, UnpaidInvoice;
 import 'package:mobilling_auth/mobilling_auth.dart';
 
 import 'config/debug_hooks.dart';
@@ -9,14 +9,17 @@ import 'config/debug_hooks.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/splash_screen.dart';
 import 'features/admin/admin_screens.dart';
+import 'features/admin/security_screen.dart';
 import 'features/billing_catalog/catalog_screens.dart';
 import 'features/billing_catalog/document_detail_screen.dart';
+import 'features/billing_catalog/document_form_screen.dart';
 import 'features/billing_catalog/documents_by_type_screen.dart';
 import 'features/billing_money/next_bills_screen.dart';
 import 'features/billing_money/pay_bill_screen.dart';
 import 'features/billing_money/payments_out_screen.dart';
 import 'features/billing_money/record_payment_screen.dart';
 import 'features/clients/client_detail_screen.dart';
+import 'features/clients/client_form_screen.dart';
 import 'features/finance/expenses_screen.dart';
 import 'features/finance/petty_cash_screen.dart';
 import 'features/finance/statutory_screens.dart';
@@ -69,6 +72,7 @@ import 'features/support_admin/announcements_screen.dart';
 import 'features/support_admin/canned_replies_screen.dart';
 import 'features/support_admin/hosting_accounts_screen.dart';
 import 'features/support_admin/knowledgebase_screen.dart';
+import 'features/support_admin/manage_services_screen.dart';
 import 'features/support_admin/staff_domains_screen.dart';
 import 'features/tickets/ticket_detail_screen.dart';
 import 'providers.dart';
@@ -294,6 +298,19 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: PortalRoutes.credit,
         builder: (context, state) => const CreditScreen(),
       ),
+      // '/clients/new' precedes '/clients/:id', which would otherwise take
+      // 'new' for an id. The screens reach these by push (the edit form needs
+      // the whole record to round-trip every column, and `extra` does not
+      // survive a cold deep link); these exist so a link can still land.
+      GoRoute(
+        path: '/clients/new',
+        builder: (context, state) => const ClientFormScreen(),
+      ),
+      GoRoute(
+        path: '/clients/:id/edit',
+        builder: (context, state) =>
+            ClientFormScreen(existing: state.extra as StaffClient?),
+      ),
       GoRoute(
         path: '/clients/:id',
         builder: (context, state) => ClientDetailScreen(
@@ -343,6 +360,13 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
+      ),
+      // Self-service, so no permission gates it — reached from the account
+      // sheet rather than the menu, which mirrors the web (2FA lives inside
+      // the Settings page there, not in the sidebar).
+      GoRoute(
+        path: '/security',
+        builder: (context, state) => const SecurityScreen(),
       ),
       GoRoute(
         path: '/sessions',
@@ -438,7 +462,21 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const BillCategoriesScreen(),
       ),
 
-      // Documents + catalog
+      // Documents + catalog. '/documents/new' must precede '/documents/:id',
+      // which would otherwise swallow 'new' as an id.
+      //
+      // This is the blank-form entry — a deep link, or the debug route hook.
+      // The screens push `raiseDocument()` instead, because editing a
+      // document or seeding a credit note from an invoice carries objects
+      // that `extra` cannot survive a real deep link with.
+      GoRoute(
+        path: '/documents/new',
+        builder: (context, state) => DocumentFormScreen(
+          type: state.extra is DocumentType
+              ? state.extra! as DocumentType
+              : DocumentType.invoice,
+        ),
+      ),
       GoRoute(
         path: '/documents/:id',
         builder: (context, state) =>
@@ -506,6 +544,18 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/hosting/discover',
         builder: (context, state) => const DiscoverHostingScreen(),
+      ),
+      GoRoute(
+        path: '/hosting/services',
+        builder: (context, state) => const ManageServicesScreen(),
+      ),
+      // The path parameter is the client_subscription id, not a hosting
+      // account: services with nothing provisioned are managed here too.
+      GoRoute(
+        path: '/hosting/services/:id',
+        builder: (context, state) => ManageServiceDetailScreen(
+          subscriptionId: state.pathParameters['id']!,
+        ),
       ),
       GoRoute(
         path: '/domains',

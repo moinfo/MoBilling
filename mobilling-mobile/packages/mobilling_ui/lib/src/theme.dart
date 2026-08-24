@@ -441,6 +441,29 @@ abstract final class AppTheme {
         secondaryLabelStyle: text.labelSmall?.copyWith(color: scheme.primary),
       ),
 
+      // Same reasoning as `chipTheme`: a segmented control picks between
+      // options, and Material's default selected fill is `secondaryContainer`
+      // — the settled green, which in this app means "this money is paid".
+      // A choice takes signal blue.
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? scheme.primary.withValues(alpha: 0.12)
+                : Colors.transparent,
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? scheme.primary
+                : scheme.onSurfaceVariant,
+          ),
+          side: WidgetStatePropertyAll(
+            BorderSide(color: scheme.outlineVariant),
+          ),
+          textStyle: WidgetStatePropertyAll(text.labelLarge),
+        ),
+      ),
+
       listTileTheme: ListTileThemeData(
         titleTextStyle: text.bodyLarge,
         subtitleTextStyle: text.bodySmall?.copyWith(

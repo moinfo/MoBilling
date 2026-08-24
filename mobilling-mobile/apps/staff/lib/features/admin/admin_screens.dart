@@ -16,10 +16,12 @@ import '../crm/crm_ui.dart'
         CrmDetailRow,
         CrmField,
         CrmMetaLine,
+        CrmPickerField,
         CrmSheet,
         CrmStatusLine,
         showCrmSheet;
 import 'admin_providers.dart';
+import 'role_editor_sheet.dart';
 
 // ---------------------------------------------------------------------------
 // Subscription — the tenant's own MoBilling plan
@@ -489,12 +491,28 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final me = ref.watch(currentUserProvider);
+
+    // POST /users and PUT /users/{user} both sit behind settings.users.
+    final canManage =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(AdminPermissions.users) ??
+        false;
 
     return Scaffold(
       appBar: ShellTopBar(
         eyebrow: 'Account',
         title: 'Team',
+        trailing: !canManage
+            ? null
+            : InkActionButton(
+                icon: Icons.person_add_alt_outlined,
+                tooltip: 'Add a team member',
+                onPressed: () => _openForm(null),
+              ),
         bottom: InkSearchField(
           controller: _search,
           hint: 'Search name or email',
@@ -535,20 +553,14 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
                   ].where((s) => s.isNotEmpty).join(' · '),
                 ),
               ),
-              trailing: isSelf
-                  ? null
-                  : IconButton(
-                      icon: Icon(
-                        user.isActive
-                            ? Icons.toggle_on
-                            : Icons.toggle_off_outlined,
-                        color: user.isActive
-                            ? context.statusColors.settled
-                            : null,
-                      ),
-                      tooltip: user.isActive ? 'Deactivate' : 'Reactivate',
-                      onPressed: () => _toggle(user),
-                    ),
+              // The row's actions live in the sheet below rather than as
+              // icons out here — there is no room for three on a phone row.
+              trailing: Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: scheme.outline,
+              ),
+              onTap: () => _openActions(user, isSelf: isSelf),
             ),
           );
         },
@@ -557,6 +569,116 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
         emptyMessage: 'Nothing matches this search.',
       ),
     );
+  }
+
+  /// The row's action sheet: who this is, then what can be done to them.
+  Future<void> _openActions(StaffUser user, {required bool isSelf}) async {
+    final canManage =
+        ref
+            .read(sessionControllerProvider)
+            .session
+            ?.can(AdminPermissions.users) ??
+        false;
+
+    final action = await showCrmSheet<_TeamAction>(
+      context: context,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return CrmSheet(
+          eyebrow: 'Team',
+          title: user.name,
+          children: [
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Spacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    CrmDetailRow(
+                      'Status',
+                      user.isActive ? 'Active' : 'Deactivated',
+                    ),
+                    CrmDetailRow('Role', user.roleName ?? 'No role'),
+                    if (user.email != null) CrmDetailRow('Email', user.email!),
+                    if (user.phone != null) CrmDetailRow('Phone', user.phone!),
+                    if (user.lastLoginAt != null)
+                      CrmDetailRow(
+                        'Last sign-in',
+                        Formatting.dateTime(user.lastLoginAt),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            if (!canManage)
+              Text(
+                'You can view the team, but not change it.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              )
+            else
+              CrmCardList(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.edit_outlined),
+                    title: Text(
+                      'Edit details',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(_TeamAction.edit),
+                  ),
+                  // The API refuses self-deactivation, so it is not offered.
+                  if (!isSelf)
+                    ListTile(
+                      leading: Icon(
+                        user.isActive
+                            ? Icons.block_outlined
+                            : Icons.check_circle_outline,
+                      ),
+                      title: Text(
+                        user.isActive ? 'Deactivate' : 'Reactivate',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      subtitle: Text(
+                        user.isActive
+                            ? 'Blocks sign-in; keeps their history'
+                            : 'Lets them sign in again',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      onTap: () =>
+                          Navigator.of(sheetContext).pop(_TeamAction.toggle),
+                    ),
+                ],
+              ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted) return;
+    switch (action) {
+      case _TeamAction.edit:
+        await _openForm(user);
+      case _TeamAction.toggle:
+        await _toggle(user);
+      case null:
+        break;
+    }
+  }
+
+  /// Add (null) or edit a staff account. Both need `settings.users`.
+  Future<void> _openForm(StaffUser? user) async {
+    final saved = await showCrmSheet<bool>(
+      context: context,
+      builder: (_) => _UserFormSheet(user: user),
+    );
+    if (saved == true) _listKey.currentState?.reload();
   }
 
   Future<void> _toggle(StaffUser user) async {
@@ -579,6 +701,258 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
   }
 }
 
+enum _TeamAction { edit, toggle }
+
+/// Add or edit a staff account.
+///
+/// `UserController::update` re-validates the whole record — name, email and
+/// role are all required there — so the form carries every field on an edit
+/// too, and only the password is genuinely optional.
+class _UserFormSheet extends ConsumerStatefulWidget {
+  const _UserFormSheet({required this.user});
+
+  final StaffUser? user;
+
+  @override
+  ConsumerState<_UserFormSheet> createState() => _UserFormSheetState();
+}
+
+class _UserFormSheetState extends ConsumerState<_UserFormSheet> {
+  late final TextEditingController _name;
+  late final TextEditingController _email;
+  late final TextEditingController _phone;
+  final _password = TextEditingController();
+
+  String? _roleId;
+  String? _roleName;
+  String? _error;
+  bool _busy = false;
+
+  bool get _isNew => widget.user == null;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = widget.user;
+    _name = TextEditingController(text: user?.name ?? '');
+    _email = TextEditingController(text: user?.email ?? '');
+    _phone = TextEditingController(text: user?.phone ?? '');
+    _roleId = user?.roleId;
+    _roleName = user?.roleName;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _email.dispose();
+    _phone.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return CrmSheet(
+      eyebrow: 'Team',
+      title: _isNew ? 'Add a team member' : widget.user!.name,
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        CrmField(
+          label: 'Name',
+          child: TextField(
+            controller: _name,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(hintText: 'Full name'),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Email',
+          child: TextField(
+            controller: _email,
+            keyboardType: TextInputType.emailAddress,
+            autocorrect: false,
+            decoration: const InputDecoration(
+              hintText: 'What they sign in with',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Phone',
+          child: TextField(
+            controller: _phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(hintText: 'Optional'),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmPickerField(
+          label: 'Role',
+          icon: Icons.shield_outlined,
+          value: _roleName ?? 'Choose a role',
+          placeholder: _roleId == null,
+          onTap: _busy ? null : _pickRole,
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: _isNew ? 'Password' : 'New password',
+          child: TextField(
+            controller: _password,
+            obscureText: true,
+            autocorrect: false,
+            enableSuggestions: false,
+            decoration: InputDecoration(
+              hintText: _isNew
+                  ? 'At least 8 characters'
+                  : 'Leave blank to keep the current one',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _isNew ? 'Add member' : 'Save changes',
+          busy: _busy,
+          onPressed: _busy ? null : _submit,
+        ),
+        if (_isNew) ...[
+          const SizedBox(height: Spacing.sm),
+          Text(
+            'They sign in with this email and password. Tell them to change '
+            'the password once they are in.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _pickRole() async {
+    final roles = await ref.read(rolesProvider.future);
+    if (!mounted) return;
+
+    final chosen = await showCrmSheet<StaffRole>(
+      context: context,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return CrmSheet(
+          eyebrow: 'Team',
+          title: 'Choose a role',
+          children: [
+            CrmCardList(
+              children: [
+                for (final role in roles)
+                  ListTile(
+                    title: Text(
+                      role.displayName,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: CrmMetaLine(
+                        '${role.permissionNames.length} '
+                        'permission${role.permissionNames.length == 1 ? '' : 's'}',
+                      ),
+                    ),
+                    trailing: role.id == _roleId
+                        ? Icon(
+                            Icons.check,
+                            size: 18,
+                            color: Theme.of(sheetContext).colorScheme.primary,
+                          )
+                        : null,
+                    onTap: () => Navigator.of(sheetContext).pop(role),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+    if (chosen == null || !mounted) return;
+    setState(() {
+      _roleId = chosen.id;
+      _roleName = chosen.displayName;
+    });
+  }
+
+  Future<void> _submit() async {
+    final name = _name.text.trim();
+    final email = _email.text.trim();
+    final phone = _phone.text.trim();
+    final password = _password.text;
+    final roleId = _roleId;
+
+    // Mirrors UserController's rules, so an obvious slip costs no round trip.
+    String? complaint;
+    if (name.isEmpty) {
+      complaint = 'A name is required.';
+    } else if (email.isEmpty) {
+      complaint = 'An email is required — it is what they sign in with.';
+    } else if (roleId == null) {
+      complaint = 'Choose a role.';
+    } else if ((_isNew || password.isNotEmpty) && password.length < 8) {
+      complaint = 'The password must be at least 8 characters.';
+    }
+    if (complaint != null) {
+      setState(() => _error = complaint);
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      final service = ref.read(adminServiceProvider);
+      if (_isNew) {
+        await service.createUser(
+          name: name,
+          email: email,
+          password: password,
+          roleId: roleId!,
+          phone: phone.isEmpty ? null : phone,
+        );
+      } else {
+        await service.updateUser(
+          widget.user!.id,
+          name: name,
+          email: email,
+          // An emptied phone must clear the column, so '' goes up rather
+          // than being dropped as "unchanged".
+          phone: phone,
+          roleId: roleId,
+          password: password.isEmpty ? null : password,
+        );
+      }
+      navigator.pop(true);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(_isNew ? '$name added to the team.' : '$name updated.'),
+        ),
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Roles
 // ---------------------------------------------------------------------------
@@ -586,8 +960,8 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
 /// Roles and what each one grants.
 ///
 /// The web renders a wide permission matrix; on a phone that becomes a role
-/// list drilling into a grouped checklist, which is the same information in a
-/// shape a thumb can actually use.
+/// list drilling into a searchable grouped checklist, which is the same
+/// information in a shape a thumb can actually use.
 class RolesScreen extends ConsumerWidget {
   const RolesScreen({super.key});
 
@@ -597,17 +971,45 @@ class RolesScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
 
+    // POST/PUT/DELETE /roles all sit behind settings.users — same string the
+    // route middleware and RoleController enforce.
+    final canManage =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(AdminPermissions.roles) ??
+        false;
+
+    Future<void> open(StaffRole? role) async {
+      final changed = await showRoleEditor(context, role: role);
+      if (changed == true) ref.invalidate(rolesProvider);
+    }
+
     return Scaffold(
-      appBar: const ShellTopBar(eyebrow: 'Account', title: 'Roles'),
+      appBar: ShellTopBar(
+        eyebrow: 'Account',
+        title: 'Roles',
+        trailing: !canManage
+            ? null
+            : InkActionButton(
+                icon: Icons.add,
+                tooltip: 'Create a role',
+                onPressed: () => open(null),
+              ),
+      ),
       body: CrmAsyncView(
         value: roles,
         errorTitle: 'Could not load roles',
         onRetry: () => ref.invalidate(rolesProvider),
         builder: (items) => items.isEmpty
-            ? const StateMessage(
+            ? StateMessage(
                 icon: Icons.shield_outlined,
                 title: 'No roles yet',
-                message: 'Roles are created in the web app.',
+                message: canManage
+                    ? 'Create one to decide what a team member can reach.'
+                    : 'Roles are created by an administrator.',
+                actionLabel: canManage ? 'Create a role' : null,
+                onAction: canManage ? () => open(null) : null,
               )
             : ListView(
                 padding: const EdgeInsets.fromLTRB(
@@ -622,7 +1024,7 @@ class RolesScreen extends ConsumerWidget {
                       for (final role in items)
                         ListTile(
                           title: Text(
-                            role.name,
+                            role.displayName,
                             style: theme.textTheme.titleSmall,
                           ),
                           subtitle: Padding(
@@ -655,10 +1057,13 @@ class RolesScreen extends ConsumerWidget {
                               ),
                             ],
                           ),
-                          onTap: () => showCrmSheet<void>(
-                            context: context,
-                            builder: (_) => _RolePermissionsSheet(role: role),
-                          ),
+                          onTap: canManage
+                              ? () => open(role)
+                              : () => showCrmSheet<void>(
+                                  context: context,
+                                  builder: (_) =>
+                                      _RolePermissionsSheet(role: role),
+                                ),
                         ),
                     ],
                   ),
@@ -669,6 +1074,8 @@ class RolesScreen extends ConsumerWidget {
   }
 }
 
+/// What a role grants, read-only — for someone who can see the Roles screen
+/// but does not hold `settings.users`.
 class _RolePermissionsSheet extends ConsumerWidget {
   const _RolePermissionsSheet({required this.role});
 
@@ -690,7 +1097,7 @@ class _RolePermissionsSheet extends ConsumerWidget {
 
     return CrmSheet(
       eyebrow: 'Role',
-      title: role.name,
+      title: role.displayName,
       children: [
         Padding(
           padding: const EdgeInsets.only(bottom: Spacing.lg),
@@ -726,9 +1133,7 @@ class _RolePermissionsSheet extends ConsumerWidget {
         ],
         const SizedBox(height: Spacing.sm),
         Text(
-          // Editing a permission matrix on a phone is worse than not
-          // offering it — say so rather than shipping a bad editor.
-          'Edit role permissions from the web app.',
+          'Changing a role needs the “Manage users & roles” permission.',
           style: theme.textTheme.bodySmall?.copyWith(
             color: scheme.onSurfaceVariant,
           ),

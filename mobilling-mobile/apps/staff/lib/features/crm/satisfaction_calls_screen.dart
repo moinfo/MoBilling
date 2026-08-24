@@ -4,6 +4,7 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
+import '../common/pickers.dart';
 import 'crm_providers.dart';
 import 'crm_ui.dart';
 
@@ -39,12 +40,13 @@ class _SatisfactionCallsScreenState
     final dashboard = ref.watch(satisfactionDashboardProvider);
     final calls = ref.watch(satisfactionCallsProvider(_status));
     final status = context.statusColors;
-    final canLog =
-        ref
-            .watch(sessionControllerProvider)
-            .session
-            ?.can(CrmPermissions.satisfactionLog) ??
-        false;
+    final authSession = ref.watch(sessionControllerProvider).session;
+    final canLog = authSession?.can(CrmPermissions.satisfactionLog) ?? false;
+    // Handing a call to a colleague means listing `/users`, which carries its
+    // own permission on the API.
+    final canAssign =
+        (authSession?.can(CrmPermissions.satisfactionAssign) ?? false) &&
+        (authSession?.can(CrmPermissions.settingsUsers) ?? false);
 
     return Scaffold(
       appBar: const ShellTopBar(
@@ -127,6 +129,7 @@ class _SatisfactionCallsScreenState
                                 _CallRow(
                                   call: call,
                                   canLog: canLog,
+                                  canAssign: canAssign,
                                   onChanged: () {
                                     ref.invalidate(
                                       satisfactionDashboardProvider,
@@ -155,19 +158,24 @@ class _CallRow extends ConsumerWidget {
   const _CallRow({
     required this.call,
     required this.canLog,
+    required this.canAssign,
     required this.onChanged,
   });
 
   final SatisfactionCall call;
   final bool canLog;
+  final bool canAssign;
   final VoidCallback onChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final status = context.statusColors;
-    final canAct =
-        canLog && (call.status == 'scheduled' || call.status == 'missed');
+    // A completed or cancelled call is history; only an open one can be
+    // logged or handed on.
+    final isOpen = call.status == 'scheduled' || call.status == 'missed';
+    final canAct = canLog && isOpen;
+    final canHandOn = canAssign && isOpen;
     final hasPhone = call.clientPhone != null;
 
     final meta = [
@@ -245,12 +253,18 @@ class _CallRow extends ConsumerWidget {
               ],
             ),
           ],
-          if (hasPhone || canAct) ...[
+          if (hasPhone || canAct || canHandOn) ...[
             const SizedBox(height: Spacing.xs),
             Row(
               children: [
                 ContactRow(phone: call.clientPhone, compact: true),
                 const Spacer(),
+                if (canHandOn)
+                  TextButton.icon(
+                    icon: const Icon(Icons.person_add_alt_outlined, size: 18),
+                    label: const Text('Assign'),
+                    onPressed: () => _assign(context, ref),
+                  ),
                 if (canAct)
                   TextButton.icon(
                     icon: const Icon(Icons.phone_in_talk_outlined, size: 18),
@@ -271,6 +285,23 @@ class _CallRow extends ConsumerWidget {
       builder: (_) => _LogSatisfactionSheet(call: call),
     );
     if (logged == true) onChanged();
+  }
+
+  /// `PATCH /satisfaction-calls/{id}/assign` — hand the call to a colleague.
+  /// The server answers with the sentence to show, naming who now owns it.
+  Future<void> _assign(BuildContext context, WidgetRef ref) async {
+    final user = await StaffUserPickerSheet.show(context);
+    if (user == null || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final message = await ref
+          .read(crmServiceProvider)
+          .assignSatisfactionCall(call.id, userId: user.id);
+      onChanged();
+      messenger.showSnackBar(SnackBar(content: Text(message)));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 }
 

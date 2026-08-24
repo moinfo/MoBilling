@@ -4,6 +4,8 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../providers.dart';
+import '../common/pickers.dart';
 import 'comms_providers.dart';
 import 'comms_ui.dart';
 
@@ -48,8 +50,61 @@ class _WhatsappScreenState extends ConsumerState<WhatsappScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final onCampaigns = _section == _WaSection.campaigns;
+    final canAddContact = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappContactsCreate),
+    );
+    final canAddCampaign = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappCampaignsCreate),
+    );
+    final canViewAll = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappContactsViewAll),
+    );
+    // Bulk claim only means something while there is something unowned to
+    // claim, and the contacts list is already in memory.
+    final unowned =
+        ref
+            .watch(whatsappContactsProvider)
+            .valueOrNull
+            ?.where((c) => c.createdBy == null)
+            .length ??
+        0;
+    final canBulkClaim = canViewAll && !onCampaigns && unowned > 0;
+
     return Scaffold(
-      appBar: const ShellTopBar(eyebrow: 'Engagement', title: 'WhatsApp'),
+      appBar: ShellTopBar(
+        eyebrow: 'Engagement',
+        title: 'WhatsApp',
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (canBulkClaim)
+              InkActionButton(
+                icon: Icons.group_add_outlined,
+                tooltip: 'Claim $unowned unowned contacts',
+                onPressed: _claimAll,
+              ),
+            if (onCampaigns && canAddCampaign)
+              Padding(
+                padding: EdgeInsets.only(left: canBulkClaim ? Spacing.sm : 0),
+                child: InkActionButton(
+                  icon: Icons.campaign_outlined,
+                  tooltip: 'New campaign',
+                  onPressed: () => _editCampaign(null),
+                ),
+              ),
+            if (!onCampaigns && canAddContact)
+              Padding(
+                padding: EdgeInsets.only(left: canBulkClaim ? Spacing.sm : 0),
+                child: InkActionButton(
+                  icon: Icons.person_add_alt_1_outlined,
+                  tooltip: 'Add a contact',
+                  onPressed: _addContact,
+                ),
+              ),
+          ],
+        ),
+      ),
       body: Column(
         children: [
           SectionSelector<_WaSection>(
@@ -71,6 +126,71 @@ class _WhatsappScreenState extends ConsumerState<WhatsappScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _addContact() async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: commsSheetShape,
+      builder: (_) => const _ContactFormSheet(),
+    );
+    if (saved == true) {
+      ref.invalidate(whatsappContactsProvider);
+      ref.invalidate(whatsappStatsProvider);
+    }
+  }
+
+  Future<void> _editCampaign(WhatsappCampaign? campaign) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: commsSheetShape,
+      builder: (_) => _CampaignFormSheet(campaign: campaign),
+    );
+    if (saved == true) ref.invalidate(whatsappCampaignsProvider);
+  }
+
+  /// `POST /whatsapp-contacts/claim-bulk` scoped to the contacts on screen —
+  /// the server's `whereNull` guard means it can never take someone else's.
+  Future<void> _claimAll() async {
+    final rows = ref.read(whatsappContactsProvider).valueOrNull ?? const [];
+    final ids = [
+      for (final contact in rows)
+        if (contact.createdBy == null) contact.id,
+    ];
+    if (ids.isEmpty) return;
+
+    final sure = await _confirmWhatsapp(
+      context,
+      title:
+          'Claim ${ids.length} unowned '
+          '${ids.length == 1 ? 'contact' : 'contacts'}?',
+      message:
+          'They become yours to follow up. Contacts someone else already owns '
+          'are left alone.',
+      verb: 'Claim',
+      destructive: false,
+    );
+    if (!sure || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final claimed = await ref
+          .read(commsServiceProvider)
+          .claimWhatsappContactsBulk(ids: ids);
+      ref.invalidate(whatsappContactsProvider);
+      ref.invalidate(whatsappStatsProvider);
+      showCommsMessage(
+        messenger,
+        '${Formatting.integer(claimed)} '
+        '${claimed == 1 ? 'contact' : 'contacts'} claimed.',
+      );
+    } on ApiException catch (e) {
+      showCommsMessage(messenger, e.message, isError: true);
+    }
   }
 }
 
@@ -332,16 +452,133 @@ class _ContactSheet extends ConsumerStatefulWidget {
 class _ContactSheetState extends ConsumerState<_ContactSheet> {
   bool _logging = false;
 
+  /// The contact as the API last returned it, so a convert or a claim shows
+  /// in this sheet without waiting for the list behind it.
+  WhatsappContact? _updated;
+
+  WhatsappContact get _contact => _updated ?? widget.contact;
+
+  void _refreshLists() {
+    ref.invalidate(whatsappContactsProvider);
+    ref.invalidate(whatsappStatsProvider);
+  }
+
   Future<void> _claim() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final contact = await ref
+          .read(commsServiceProvider)
+          .claimWhatsappContact(_contact.id);
+      _refreshLists();
+      if (mounted) setState(() => _updated = contact);
+      showCommsMessage(messenger, 'Contact claimed.');
+    } on ApiException catch (e) {
+      showCommsMessage(messenger, e.message, isError: true);
+    }
+  }
+
+  /// Release the contact back to the shared pool — the undo for a claim made
+  /// by mistake.
+  Future<void> _unclaim() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final contact = await ref
+          .read(commsServiceProvider)
+          .unclaimWhatsappContact(_contact.id);
+      _refreshLists();
+      if (mounted) setState(() => _updated = contact);
+      showCommsMessage(messenger, 'Contact released to the shared pool.');
+    } on ApiException catch (e) {
+      showCommsMessage(messenger, e.message, isError: true);
+    }
+  }
+
+  Future<void> _assign() async {
+    final user = await StaffUserPickerSheet.show(context);
+    if (user == null || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final contact = await ref
+          .read(commsServiceProvider)
+          .assignWhatsappContact(_contact.id, userId: user.id);
+      _refreshLists();
+      if (mounted) setState(() => _updated = contact);
+      showCommsMessage(messenger, 'Contact assigned to ${user.name}.');
+    } on ApiException catch (e) {
+      showCommsMessage(messenger, e.message, isError: true);
+    }
+  }
+
+  /// The payoff: a lead that answered becomes a billing client without anyone
+  /// going back to a desk.
+  Future<void> _convert() async {
+    final converted = await showModalBottomSheet<WhatsappContact>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: commsSheetShape,
+      builder: (_) => _ConvertContactSheet(contact: _contact),
+    );
+    if (converted == null || !mounted) return;
+    _refreshLists();
+    setState(() => _updated = converted);
+    showCommsMessage(
+      ScaffoldMessenger.of(context),
+      converted.clientName == null
+          ? '${converted.name} is now a client.'
+          : '${converted.name} is now a client — ${converted.clientName}.',
+    );
+  }
+
+  Future<void> _edit() async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: commsSheetShape,
+      builder: (_) => _ContactFormSheet(contact: _contact),
+    );
+    if (saved != true || !mounted) return;
+    _refreshLists();
+    Navigator.of(context).pop();
+  }
+
+  Future<void> _delete() async {
+    final sure = await _confirmWhatsapp(
+      context,
+      title: 'Delete ${_contact.name}?',
+      message:
+          'The contact and every call logged against it are removed for good.',
+      verb: 'Delete',
+    );
+    if (!sure || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      await ref.read(commsServiceProvider).deleteWhatsappContact(_contact.id);
+      _refreshLists();
+      showCommsMessage(messenger, 'Contact deleted.');
+      navigator.pop();
+    } on ApiException catch (e) {
+      showCommsMessage(messenger, e.message, isError: true);
+    }
+  }
+
+  Future<void> _deleteFollowup(WhatsappFollowup followup) async {
+    final sure = await _confirmWhatsapp(
+      context,
+      title: 'Delete this logged call?',
+      message: 'The call comes off ${_contact.name}’s history.',
+      verb: 'Delete',
+    );
+    if (!sure || !mounted) return;
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref
           .read(commsServiceProvider)
-          .claimWhatsappContact(widget.contact.id);
-      ref.invalidate(whatsappContactsProvider);
-      ref.invalidate(whatsappStatsProvider);
-      showCommsMessage(messenger, 'Contact claimed.');
-      if (mounted) Navigator.of(context).pop();
+          .deleteWhatsappFollowup(_contact.id, followup.id);
+      ref.invalidate(whatsappFollowupsProvider(_contact.id));
+      showCommsMessage(messenger, 'Call removed.');
     } on ApiException catch (e) {
       showCommsMessage(messenger, e.message, isError: true);
     }
@@ -350,7 +587,7 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
   Future<void> _openWhatsapp() async {
     // wa.me wants digits only; stored numbers carry spaces, plus signs and
     // dashes depending on who typed them in.
-    final digits = widget.contact.phone.replaceAll(RegExp(r'\D'), '');
+    final digits = _contact.phone.replaceAll(RegExp(r'\D'), '');
     if (digits.isEmpty) return;
     await launchUrl(
       Uri.parse('https://wa.me/$digits'),
@@ -360,8 +597,9 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final contact = widget.contact;
+    final contact = _contact;
     final theme = Theme.of(context);
+    final status = context.statusColors;
     final followups = ref.watch(whatsappFollowupsProvider(contact.id));
     final canLog = ref.watch(
       commsPermissionProvider(CommsPermissions.whatsappContactsLog),
@@ -369,6 +607,26 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
     final canClaim = ref.watch(
       commsPermissionProvider(CommsPermissions.whatsappContactsUpdate),
     );
+    final canConvert = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappContactsConvert),
+    );
+    final canDelete = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappContactsDelete),
+    );
+    final canViewAll = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappContactsViewAll),
+    );
+    // Reassigning means listing `/users`, gated separately from the route.
+    final canAssign =
+        canViewAll &&
+        ref.watch(commsPermissionProvider(CommsPermissions.settingsUsers));
+    final myId = ref.watch(currentUserProvider)?.id;
+    // The server lets an owner release their own contact, and view_all
+    // holders release anyone's.
+    final canUnclaim =
+        canClaim &&
+        contact.createdBy != null &&
+        (contact.createdBy == myId || canViewAll);
 
     return ConstrainedBox(
       constraints: BoxConstraints(
@@ -416,6 +674,26 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
               ],
             ),
             const SizedBox(height: Spacing.lg),
+            // Convert leads everything else: a lead that is not yet a client
+            // is one tap from becoming one.
+            if (contact.isConverted)
+              _ConvertedBanner(clientName: contact.clientName)
+            else if (canConvert) ...[
+              PrimaryButton(
+                label: 'Convert to client',
+                icon: Icons.how_to_reg_outlined,
+                onPressed: _convert,
+              ),
+              const SizedBox(height: Spacing.sm),
+              Text(
+                'Creates the client and moves this contact to the new-customer '
+                'stage.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: Spacing.lg),
             const SectionHeading('Details'),
             DetailRow(label: 'Phone', value: contact.phone),
             DetailRow(
@@ -451,6 +729,36 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
                 icon: const Icon(Icons.how_to_reg_outlined, size: 18),
                 label: const Text('Claim this contact'),
                 onPressed: _claim,
+              ),
+            ],
+            if (canUnclaim || canAssign) ...[
+              const SizedBox(height: Spacing.md),
+              Row(
+                children: [
+                  if (canUnclaim)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.person_off_outlined, size: 18),
+                        label: Text(
+                          contact.createdBy == myId ? 'Release' : 'Unassign',
+                        ),
+                        onPressed: _unclaim,
+                      ),
+                    ),
+                  if (canUnclaim && canAssign)
+                    const SizedBox(width: Spacing.sm),
+                  if (canAssign)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(
+                          Icons.manage_accounts_outlined,
+                          size: 18,
+                        ),
+                        label: const Text('Reassign'),
+                        onPressed: _assign,
+                      ),
+                    ),
+                ],
               ),
             ],
             const SizedBox(height: Spacing.lg),
@@ -495,14 +803,83 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
                         children: [
                           for (final (i, f) in rows.indexed) ...[
                             if (i > 0) const Divider(height: 1),
-                            _FollowupTile(followup: f),
+                            _FollowupTile(
+                              followup: f,
+                              onDelete: canLog
+                                  ? () => _deleteFollowup(f)
+                                  : null,
+                            ),
                           ],
                         ],
                       ),
                     ),
             ),
+            if (canClaim || canDelete) ...[
+              const SizedBox(height: Spacing.lg),
+              Row(
+                children: [
+                  if (canClaim)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.edit_outlined, size: 18),
+                        label: const Text('Edit'),
+                        onPressed: _edit,
+                      ),
+                    ),
+                  if (canClaim && canDelete) const SizedBox(width: Spacing.sm),
+                  if (canDelete)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        label: const Text('Delete'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: status.overdue,
+                        ),
+                        onPressed: _delete,
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Says plainly that the lead is on the books now — the sheet's headline once
+/// convert has run.
+class _ConvertedBanner extends StatelessWidget {
+  const _ConvertedBanner({this.clientName});
+
+  final String? clientName;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final settled = context.statusColors.settled;
+
+    return Container(
+      padding: const EdgeInsets.all(Spacing.md),
+      decoration: BoxDecoration(
+        color: settled.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(Radii.md),
+        border: Border.all(color: settled.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.verified_outlined, size: 20, color: settled),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: Text(
+              clientName == null
+                  ? 'Converted — this lead is a client.'
+                  : 'Converted — now a client as $clientName.',
+              style: theme.textTheme.bodyMedium?.copyWith(color: settled),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -511,9 +888,10 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
 /// One logged call: outcome, who and when in mono, the notes as a sentence,
 /// and the next booked date as the aligned figure on the right.
 class _FollowupTile extends StatelessWidget {
-  const _FollowupTile({required this.followup});
+  const _FollowupTile({required this.followup, this.onDelete});
 
   final WhatsappFollowup followup;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -546,14 +924,26 @@ class _FollowupTile extends StatelessWidget {
           ],
         ],
       ),
-      trailing: f.nextFollowupDate == null
-          ? null
-          : Text(
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (f.nextFollowupDate != null)
+            Text(
               '→ ${Formatting.date(f.nextFollowupDate)}',
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
+          if (onDelete != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 18),
+              tooltip: 'Delete this call',
+              color: context.statusColors.overdue,
+              visualDensity: VisualDensity.compact,
+              onPressed: onDelete,
+            ),
+        ],
+      ),
     );
   }
 }
@@ -734,7 +1124,7 @@ class _CampaignsView extends ConsumerWidget {
           ? const StateMessage(
               icon: Icons.campaign_outlined,
               title: 'No campaigns',
-              message: 'Paid WhatsApp campaigns are created on the web app.',
+              message: 'Paid WhatsApp campaigns you run appear here.',
             )
           : RefreshIndicator(
               onRefresh: () => ref.refresh(whatsappCampaignsProvider.future),
@@ -753,98 +1143,195 @@ class _CampaignsView extends ConsumerWidget {
 }
 
 /// One campaign: name with its budget as the aligned figure, the run dates in
-/// mono, and the three figures it is judged on as a rail.
-class _CampaignCard extends StatelessWidget {
+/// mono, and the three figures it is judged on as a rail. Tapping it opens the
+/// edit-or-delete pair, when the signed-in user may do either.
+class _CampaignCard extends ConsumerWidget {
   const _CampaignCard({required this.campaign});
 
   final WhatsappCampaign campaign;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final status = context.statusColors;
     final c = campaign;
+    final canEdit = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappCampaignsUpdate),
+    );
+    final canDelete = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappCampaignsDelete),
+    );
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        c.name,
-                        style: theme.textTheme.titleSmall,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: Spacing.xs),
-                      CommsMeta(
-                        [
-                          Formatting.date(c.startDate),
-                          if (c.endDate != null)
-                            'to ${Formatting.date(c.endDate)}',
-                        ].join(' '),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: Spacing.md),
-                Money(c.budget),
-              ],
-            ),
-            const Divider(height: Spacing.lg),
-            Row(
-              children: [
-                Expanded(
-                  child: _Figure(
-                    label: 'Leads',
-                    child: _count(context, c.leadsCount),
-                  ),
-                ),
-                Expanded(
-                  child: _Figure(
-                    label: 'Converted',
-                    child: _count(
-                      context,
-                      c.convertedCount,
-                      color: c.convertedCount > 0 ? status.settled : null,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: (canEdit || canDelete)
+            ? () =>
+                  _actions(context, ref, canEdit: canEdit, canDelete: canDelete)
+            : null,
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          c.name,
+                          style: theme.textTheme.titleSmall,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: Spacing.xs),
+                        CommsMeta(
+                          [
+                            Formatting.date(c.startDate),
+                            if (c.endDate != null)
+                              'to ${Formatting.date(c.endDate)}',
+                          ].join(' '),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                Expanded(
-                  child: _Figure(
-                    label: 'Per conversion',
-                    child: c.costPerConversion == null
-                        ? _count(context, null)
-                        : Money(
-                            c.costPerConversion,
-                            scale: MoneyScale.row,
-                            showCode: false,
-                          ),
+                  const SizedBox(width: Spacing.md),
+                  Money(c.budget),
+                ],
+              ),
+              const Divider(height: Spacing.lg),
+              Row(
+                children: [
+                  Expanded(
+                    child: _Figure(
+                      label: 'Leads',
+                      child: _count(context, c.leadsCount),
+                    ),
+                  ),
+                  Expanded(
+                    child: _Figure(
+                      label: 'Converted',
+                      child: _count(
+                        context,
+                        c.convertedCount,
+                        color: c.convertedCount > 0 ? status.settled : null,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: _Figure(
+                      label: 'Per conversion',
+                      child: c.costPerConversion == null
+                          ? _count(context, null)
+                          : Money(
+                              c.costPerConversion,
+                              scale: MoneyScale.row,
+                              showCode: false,
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+              if (c.notes != null) ...[
+                const SizedBox(height: Spacing.md),
+                Text(
+                  c.notes!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
-            ),
-            if (c.notes != null) ...[
-              const SizedBox(height: Spacing.md),
-              Text(
-                c.notes!,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _actions(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool canEdit,
+    required bool canDelete,
+  }) async {
+    final scheme = Theme.of(context).colorScheme;
+
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      shape: commsSheetShape,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.lg,
+            0,
+            Spacing.lg,
+            Spacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              CommsSheetHeader(eyebrow: 'Campaign', title: campaign.name),
+              const SizedBox(height: Spacing.md),
+              if (canEdit)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Edit campaign'),
+                  onTap: () => Navigator.of(sheetContext).pop('edit'),
+                ),
+              if (canDelete)
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.delete_outline, color: scheme.error),
+                  title: Text(
+                    'Delete campaign',
+                    style: TextStyle(color: scheme.error),
+                  ),
+                  subtitle: const Text('The leads it produced stay'),
+                  onTap: () => Navigator.of(sheetContext).pop('delete'),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (!context.mounted) return;
+    if (action == 'edit') {
+      final saved = await showModalBottomSheet<bool>(
+        context: context,
+        isScrollControlled: true,
+        showDragHandle: true,
+        shape: commsSheetShape,
+        builder: (_) => _CampaignFormSheet(campaign: campaign),
+      );
+      if (saved == true) ref.invalidate(whatsappCampaignsProvider);
+    } else if (action == 'delete') {
+      final sure = await _confirmWhatsapp(
+        context,
+        title: 'Delete the ${campaign.name} campaign?',
+        message:
+            'The spend and its lead counts stop being tracked. The contacts '
+            'it brought in stay where they are.',
+        verb: 'Delete',
+      );
+      if (!sure || !context.mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      try {
+        await ref
+            .read(commsServiceProvider)
+            .deleteWhatsappCampaign(campaign.id);
+        ref.invalidate(whatsappCampaignsProvider);
+        showCommsMessage(messenger, 'Campaign deleted.');
+      } on ApiException catch (e) {
+        showCommsMessage(messenger, e.message, isError: true);
+      }
+    }
   }
 
   /// A count typeset like [Money]'s integer part so the three columns sit
@@ -890,4 +1377,702 @@ class _Figure extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Turn a lead into a billing client.
+///
+/// `convertToClient` takes either an existing `client_id` or a name to create
+/// one with, so this is two modes over one button. Creating prefills from the
+/// contact — the name and the number already on the card — because retyping
+/// them on a phone is exactly the friction this removes.
+class _ConvertContactSheet extends ConsumerStatefulWidget {
+  const _ConvertContactSheet({required this.contact});
+
+  final WhatsappContact contact;
+
+  @override
+  ConsumerState<_ConvertContactSheet> createState() =>
+      _ConvertContactSheetState();
+}
+
+class _ConvertContactSheetState extends ConsumerState<_ConvertContactSheet> {
+  late final _name = TextEditingController(text: widget.contact.name);
+  late final _phone = TextEditingController(text: widget.contact.phone);
+  final _email = TextEditingController();
+
+  bool _linkExisting = false;
+  String? _clientId;
+  String? _clientName;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    _email.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickClient() async {
+    final client = await ClientPickerSheet.show(context);
+    if (client == null) return;
+    setState(() {
+      _clientId = client.id;
+      _clientName = client.name;
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_linkExisting && _clientId == null) {
+      setState(() => _error = 'Choose the client to link this contact to.');
+      return;
+    }
+    if (!_linkExisting && _name.text.trim().isEmpty) {
+      setState(() => _error = 'Enter the client’s name.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final converted = await ref
+          .read(commsServiceProvider)
+          .convertWhatsappContact(
+            widget.contact.id,
+            clientId: _linkExisting ? _clientId : null,
+            clientName: _linkExisting ? null : _name.text.trim(),
+            clientEmail: _linkExisting || _email.text.trim().isEmpty
+                ? null
+                : _email.text.trim(),
+            clientPhone: _linkExisting || _phone.text.trim().isEmpty
+                ? null
+                : _phone.text.trim(),
+          );
+      if (!mounted) return;
+      Navigator.of(context).pop(converted);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(
+        () => _error =
+            e.errorFor('client_name') ?? e.errorFor('client_id') ?? e.message,
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return _CommsFormSheet(
+      eyebrow: widget.contact.name,
+      title: 'Convert to client',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        Text(
+          'The contact is linked to the new client and moves to the '
+          'new-customer stage.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        SizedBox(
+          width: double.infinity,
+          child: SegmentedButton<bool>(
+            showSelectedIcon: false,
+            style: SegmentedButton.styleFrom(
+              textStyle: theme.textTheme.labelMedium,
+            ),
+            segments: const [
+              ButtonSegment(value: false, label: Text('New client')),
+              ButtonSegment(value: true, label: Text('Existing client')),
+            ],
+            selected: {_linkExisting},
+            onSelectionChanged: _submitting
+                ? null
+                : (values) => setState(() => _linkExisting = values.first),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        if (_linkExisting) ...[
+          const CommsFieldLabel('Client'),
+          const SizedBox(height: Spacing.sm),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.person_search_outlined, size: 18),
+            label: Text(
+              _clientName ?? 'Search for a client',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            onPressed: _submitting ? null : _pickClient,
+          ),
+        ] else ...[
+          const CommsFieldLabel('Client name'),
+          const SizedBox(height: Spacing.sm),
+          TextField(
+            controller: _name,
+            enabled: !_submitting,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              hintText: 'The name to bill under',
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          const CommsFieldLabel('Phone'),
+          const SizedBox(height: Spacing.sm),
+          TextField(
+            controller: _phone,
+            enabled: !_submitting,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(hintText: '0712 345 678'),
+          ),
+          const SizedBox(height: Spacing.xs),
+          Text(
+            'If another client already holds this number the client is saved '
+            'without it, rather than the conversion failing.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          const CommsFieldLabel('Email (optional)'),
+          const SizedBox(height: Spacing.sm),
+          TextField(
+            controller: _email,
+            enabled: !_submitting,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(hintText: 'name@business.co.tz'),
+          ),
+        ],
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _submitting ? 'Converting…' : 'Convert to client',
+          busy: _submitting,
+          icon: Icons.how_to_reg_outlined,
+          onPressed: _submitting ? null : _submit,
+        ),
+      ],
+    );
+  }
+}
+
+/// Add a lead, or correct one already on the board.
+///
+/// `store` and `update` validate the same fields, so one form serves both.
+/// The create response also reports a **client** already holding the number,
+/// which is worth saying out loud before someone converts a duplicate.
+class _ContactFormSheet extends ConsumerStatefulWidget {
+  const _ContactFormSheet({this.contact});
+
+  final WhatsappContact? contact;
+
+  @override
+  ConsumerState<_ContactFormSheet> createState() => _ContactFormSheetState();
+}
+
+class _ContactFormSheetState extends ConsumerState<_ContactFormSheet> {
+  late final _name = TextEditingController(text: widget.contact?.name ?? '');
+  late final _phone = TextEditingController(text: widget.contact?.phone ?? '');
+  late final _notes = TextEditingController(text: widget.contact?.notes ?? '');
+
+  late WhatsappLabel _label =
+      WhatsappLabel.tryParse(widget.contact?.label) ?? WhatsappLabel.lead;
+  late WhatsappSource _source =
+      WhatsappSource.tryParse(widget.contact?.source) ?? WhatsappSource.direct;
+  late bool _important = widget.contact?.isImportant ?? false;
+  late String? _campaignId = widget.contact?.campaignId;
+  late DateTime? _nextFollowup = widget.contact?.nextFollowupDate;
+
+  bool _submitting = false;
+  String? _error;
+
+  bool get _isEdit => widget.contact != null;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _phone.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    if (_name.text.trim().isEmpty) {
+      setState(() => _error = 'Enter the contact’s name.');
+      return;
+    }
+    if (_phone.text.trim().isEmpty) {
+      setState(() => _error = 'Enter the WhatsApp number.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final service = ref.read(commsServiceProvider);
+      final notes = _notes.text.trim();
+      final contact = widget.contact;
+      String message;
+      if (contact == null) {
+        final created = await service.createWhatsappContact(
+          name: _name.text.trim(),
+          phone: _phone.text.trim(),
+          label: _label,
+          source: _source,
+          isImportant: _important,
+          campaignId: _campaignId,
+          notes: notes.isEmpty ? null : notes,
+          nextFollowupDate: _nextFollowup,
+        );
+        message = created.matchesExistingClient
+            ? 'Contact added — that number already belongs to '
+                  '${created.existingClientName ?? 'an existing client'}.'
+            : 'Contact added.';
+      } else {
+        await service.updateWhatsappContact(
+          contact.id,
+          name: _name.text.trim(),
+          phone: _phone.text.trim(),
+          label: _label,
+          source: _source,
+          isImportant: _important,
+          campaignId: _campaignId,
+          notes: notes,
+          nextFollowupDate: _nextFollowup,
+        );
+        message = 'Contact updated.';
+      }
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop(true);
+      showCommsMessage(messenger, message);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(
+        () => _error = e.errorFor('phone') ?? e.errorFor('name') ?? e.message,
+      );
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final campaigns = ref.watch(whatsappCampaignsProvider).valueOrNull;
+
+    return _CommsFormSheet(
+      eyebrow: 'WhatsApp',
+      title: _isEdit ? 'Edit contact' : 'Add a contact',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        const CommsFieldLabel('Name'),
+        const SizedBox(height: Spacing.sm),
+        TextField(
+          controller: _name,
+          enabled: !_submitting,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'Who you are talking to'),
+        ),
+        const SizedBox(height: Spacing.md),
+        const CommsFieldLabel('WhatsApp number'),
+        const SizedBox(height: Spacing.sm),
+        TextField(
+          controller: _phone,
+          enabled: !_submitting,
+          keyboardType: TextInputType.phone,
+          decoration: const InputDecoration(hintText: '0712 345 678'),
+        ),
+        const SizedBox(height: Spacing.md),
+        const CommsFieldLabel('Stage'),
+        const SizedBox(height: Spacing.sm),
+        DropdownButtonFormField<WhatsappLabel>(
+          initialValue: _label,
+          isExpanded: true,
+          items: [
+            for (final option in WhatsappLabel.values)
+              DropdownMenuItem(value: option, child: Text(option.label)),
+          ],
+          onChanged: _submitting
+              ? null
+              : (value) {
+                  if (value != null) setState(() => _label = value);
+                },
+        ),
+        const SizedBox(height: Spacing.md),
+        const CommsFieldLabel('Source'),
+        const SizedBox(height: Spacing.sm),
+        DropdownButtonFormField<WhatsappSource>(
+          initialValue: _source,
+          isExpanded: true,
+          items: [
+            for (final option in WhatsappSource.values)
+              DropdownMenuItem(value: option, child: Text(option.label)),
+          ],
+          onChanged: _submitting
+              ? null
+              : (value) {
+                  if (value != null) setState(() => _source = value);
+                },
+        ),
+        if (campaigns != null && campaigns.isNotEmpty) ...[
+          const SizedBox(height: Spacing.md),
+          const CommsFieldLabel('Campaign (optional)'),
+          const SizedBox(height: Spacing.sm),
+          DropdownButtonFormField<String?>(
+            initialValue: campaigns.any((c) => c.id == _campaignId)
+                ? _campaignId
+                : null,
+            isExpanded: true,
+            items: [
+              const DropdownMenuItem<String?>(
+                value: null,
+                child: Text('No campaign'),
+              ),
+              for (final campaign in campaigns)
+                DropdownMenuItem<String?>(
+                  value: campaign.id,
+                  child: Text(campaign.name),
+                ),
+            ],
+            onChanged: _submitting
+                ? null
+                : (value) => setState(() => _campaignId = value),
+          ),
+        ],
+        const SizedBox(height: Spacing.md),
+        const CommsFieldLabel('Next call (optional)'),
+        const SizedBox(height: Spacing.sm),
+        OutlinedButton(
+          onPressed: _submitting
+              ? null
+              : () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _nextFollowup ?? now,
+                    firstDate: DateTime(now.year - 1),
+                    lastDate: DateTime(now.year + 2),
+                  );
+                  if (picked != null) setState(() => _nextFollowup = picked);
+                },
+          child: Text(
+            _nextFollowup == null
+                ? 'Choose a date'
+                : Formatting.date(_nextFollowup),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(height: Spacing.sm),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const CommsFieldLabel('Flag as important'),
+          value: _important,
+          onChanged: _submitting
+              ? null
+              : (value) => setState(() => _important = value),
+        ),
+        const SizedBox(height: Spacing.sm),
+        const CommsFieldLabel('Notes'),
+        const SizedBox(height: Spacing.sm),
+        TextField(
+          controller: _notes,
+          enabled: !_submitting,
+          minLines: 2,
+          maxLines: 4,
+          keyboardType: TextInputType.multiline,
+          decoration: const InputDecoration(hintText: 'What they are after'),
+        ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _submitting
+              ? 'Saving…'
+              : (_isEdit ? 'Save changes' : 'Add contact'),
+          busy: _submitting,
+          onPressed: _submitting ? null : _submit,
+        ),
+      ],
+    );
+  }
+}
+
+/// Create or correct a paid campaign — the spend the lead counts are judged
+/// against.
+class _CampaignFormSheet extends ConsumerStatefulWidget {
+  const _CampaignFormSheet({this.campaign});
+
+  final WhatsappCampaign? campaign;
+
+  @override
+  ConsumerState<_CampaignFormSheet> createState() => _CampaignFormSheetState();
+}
+
+class _CampaignFormSheetState extends ConsumerState<_CampaignFormSheet> {
+  late final _name = TextEditingController(text: widget.campaign?.name ?? '');
+  late final _budget = TextEditingController(
+    text: widget.campaign == null
+        ? ''
+        : Formatting.amount(widget.campaign!.budget),
+  );
+  late final _notes = TextEditingController(text: widget.campaign?.notes ?? '');
+
+  late DateTime _startDate = widget.campaign?.startDate ?? DateTime.now();
+  late DateTime? _endDate = widget.campaign?.endDate;
+  bool _submitting = false;
+  String? _error;
+
+  bool get _isEdit => widget.campaign != null;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _budget.dispose();
+    _notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pick({required bool end}) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: end ? (_endDate ?? _startDate) : _startDate,
+      firstDate: DateTime(now.year - 3),
+      lastDate: DateTime(now.year + 3),
+    );
+    if (picked == null) return;
+    setState(() {
+      if (end) {
+        _endDate = picked;
+      } else {
+        _startDate = picked;
+      }
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_name.text.trim().isEmpty) {
+      setState(() => _error = 'Name the campaign.');
+      return;
+    }
+    // `budget` is required and numeric server-side; an empty box means zero
+    // spend so far, which is a legitimate answer on day one.
+    final budget = double.tryParse(
+      _budget.text.trim().replaceAll(',', '').isEmpty
+          ? '0'
+          : _budget.text.trim().replaceAll(',', ''),
+    );
+    if (budget == null || budget < 0) {
+      setState(() => _error = 'Enter the spend as a number.');
+      return;
+    }
+    if (_endDate != null && _endDate!.isBefore(_startDate)) {
+      setState(() => _error = 'The end date cannot fall before the start.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final service = ref.read(commsServiceProvider);
+      final notes = _notes.text.trim();
+      final campaign = widget.campaign;
+      if (campaign == null) {
+        await service.createWhatsappCampaign(
+          name: _name.text.trim(),
+          startDate: _startDate,
+          budget: budget,
+          endDate: _endDate,
+          notes: notes.isEmpty ? null : notes,
+        );
+      } else {
+        await service.updateWhatsappCampaign(
+          campaign.id,
+          name: _name.text.trim(),
+          startDate: _startDate,
+          budget: budget,
+          endDate: _endDate,
+          notes: notes,
+        );
+      }
+      if (!mounted) return;
+      final messenger = ScaffoldMessenger.of(context);
+      Navigator.of(context).pop(true);
+      showCommsMessage(
+        messenger,
+        _isEdit ? 'Campaign updated.' : 'Campaign created.',
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _CommsFormSheet(
+    eyebrow: 'WhatsApp',
+    title: _isEdit ? 'Edit campaign' : 'New campaign',
+    children: [
+      if (_error != null) ...[
+        ErrorBanner(message: _error!),
+        const SizedBox(height: Spacing.md),
+      ],
+      const CommsFieldLabel('Campaign name'),
+      const SizedBox(height: Spacing.sm),
+      TextField(
+        controller: _name,
+        enabled: !_submitting,
+        textCapitalization: TextCapitalization.words,
+        decoration: const InputDecoration(hintText: 'What you are running'),
+      ),
+      const SizedBox(height: Spacing.md),
+      const CommsFieldLabel('Dates'),
+      const SizedBox(height: Spacing.sm),
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _submitting ? null : () => _pick(end: false),
+              child: Text(
+                'From ${Formatting.date(_startDate)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: OutlinedButton(
+              onPressed: _submitting ? null : () => _pick(end: true),
+              child: Text(
+                _endDate == null
+                    ? 'Open-ended'
+                    : 'To ${Formatting.date(_endDate)}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: Spacing.md),
+      CommsFieldLabel('Spend (${Formatting.tenantCurrency})'),
+      const SizedBox(height: Spacing.sm),
+      TextField(
+        controller: _budget,
+        enabled: !_submitting,
+        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+        decoration: const InputDecoration(hintText: '0.00'),
+      ),
+      const SizedBox(height: Spacing.md),
+      const CommsFieldLabel('Notes'),
+      const SizedBox(height: Spacing.sm),
+      TextField(
+        controller: _notes,
+        enabled: !_submitting,
+        minLines: 2,
+        maxLines: 4,
+        keyboardType: TextInputType.multiline,
+        decoration: const InputDecoration(hintText: 'Audience, creative, aim'),
+      ),
+      const SizedBox(height: Spacing.lg),
+      PrimaryButton(
+        label: _submitting
+            ? 'Saving…'
+            : (_isEdit ? 'Save changes' : 'Create campaign'),
+        busy: _submitting,
+        onPressed: _submitting ? null : _submit,
+      ),
+    ],
+  );
+}
+
+/// The body every comms form sheet shares: the header, room for the keyboard,
+/// and a cap so a long form still shows the drag handle.
+class _CommsFormSheet extends StatelessWidget {
+  const _CommsFormSheet({
+    required this.title,
+    required this.children,
+    this.eyebrow,
+  });
+
+  final String title;
+  final String? eyebrow;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.of(context).size.height * 0.9,
+    ),
+    child: SingleChildScrollView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(
+        Spacing.lg,
+        0,
+        Spacing.lg,
+        Spacing.lg + MediaQuery.of(context).viewInsets.bottom,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          CommsSheetHeader(eyebrow: eyebrow, title: title),
+          const SizedBox(height: Spacing.lg),
+          ...children,
+        ],
+      ),
+    ),
+  );
+}
+
+/// A confirmation with the verb on the button rather than "OK". Destructive
+/// by default — the only unprompted action here is bulk claim.
+Future<bool> _confirmWhatsapp(
+  BuildContext context, {
+  required String title,
+  required String message,
+  required String verb,
+  bool destructive = true,
+}) async {
+  final scheme = Theme.of(context).colorScheme;
+  final sure = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(title),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          style: destructive
+              ? FilledButton.styleFrom(
+                  backgroundColor: scheme.error,
+                  foregroundColor: scheme.onError,
+                )
+              : null,
+          onPressed: () => Navigator.pop(context, true),
+          child: Text(verb),
+        ),
+      ],
+    ),
+  );
+  return sure ?? false;
 }

@@ -27,6 +27,10 @@ dependencies:
   path_provider: ^2.1.5
   share_plus: ^10.1.4
   file_picker: ^8.1.7
+  # Receipts and fault photos, straight from the camera. file_picker can only
+  # browse files, and the whole point of recording an expense on a phone is
+  # that the slip is in your hand.
+  image_picker: ^1.1.2
   # Biometric unlock of a stored session (Face ID / fingerprint).
   local_auth: ^2.3.0
 

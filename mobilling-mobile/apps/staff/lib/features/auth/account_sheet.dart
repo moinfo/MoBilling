@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobilling_auth/mobilling_auth.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../config/theme_mode.dart';
+import '../../navigation/shell.dart';
 import '../../providers.dart';
 
 /// Who is signed in, and the way out.
@@ -81,6 +83,21 @@ class AccountSheet extends ConsumerWidget {
             Text('Appearance', style: theme.textTheme.titleSmall),
             const SizedBox(height: Spacing.sm),
             const AppearanceControl(),
+            // Two-factor lives behind this: the phone is the device most
+            // likely to be lost, so checking and revoking the second factor
+            // has to be reachable from it. Staff only — `/security` is a
+            // staff route, and the portal shell would be bounced home.
+            if (session.session.shell == AppShell.staff) ...[
+              const SizedBox(height: Spacing.lg),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.lock_outline_rounded, size: 18),
+                label: const Text('Security'),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  context.push('/security');
+                },
+              ),
+            ],
             const SizedBox(height: Spacing.lg),
             OutlinedButton.icon(
               icon: Icon(Icons.logout_rounded, size: 18, color: scheme.error),

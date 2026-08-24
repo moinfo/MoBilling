@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
-import '../crm/crm_ui.dart' show CrmAsyncView;
-import 'expenses_screen.dart' show RecordExpenseSheet;
+import '../common/share_pdf.dart';
+import '../crm/crm_ui.dart' show CrmAsyncView, CrmSheet, showCrmSheet;
+import 'expenses_screen.dart' show RecordExpenseSheet, pickAndUploadVoucher;
 import 'finance_providers.dart';
 
 /// The petty cash float: what is in the tin, where it went, and cash counts.
@@ -26,6 +28,8 @@ class PettyCashScreen extends ConsumerWidget {
     final canReconcile =
         auth?.can(FinancePermissions.pettyCashReconcile) ?? false;
     final canSpend = auth?.can(FinancePermissions.expensesCreate) ?? false;
+    final canRead = auth?.can(FinancePermissions.pettyCashRead) ?? false;
+    final canDelete = auth?.can(FinancePermissions.pettyCashDelete) ?? false;
 
     return Scaffold(
       appBar: const ShellTopBar(eyebrow: 'Expenses', title: 'Petty cash'),
@@ -81,9 +85,7 @@ class PettyCashScreen extends ConsumerWidget {
                 const SizedBox(height: Spacing.lg),
                 const SectionHeader('Last count'),
                 const SizedBox(height: Spacing.sm),
-                _ReconciliationCard(
-                  reconciliation: data.reconciliations.first,
-                ),
+                _ReconciliationCard(reconciliation: data.reconciliations.first),
               ],
               const SizedBox(height: Spacing.lg),
               const SectionHeader('History'),
@@ -104,7 +106,12 @@ class PettyCashScreen extends ConsumerWidget {
                     children: [
                       for (final (i, entry) in data.history.indexed) ...[
                         if (i > 0) const Divider(height: 1),
-                        _HistoryTile(entry: entry),
+                        _HistoryTile(
+                          entry: entry,
+                          canRead: canRead,
+                          canUpload: canTopUp,
+                          canDelete: canDelete,
+                        ),
                       ],
                     ],
                   ),
@@ -266,13 +273,24 @@ class _Figure extends StatelessWidget {
 
 /// One ledger line. Direction is said by the mono kind label and, for money
 /// in, by the figure's green — no signs, no coloured icons.
-class _HistoryTile extends StatelessWidget {
-  const _HistoryTile({required this.entry});
+///
+/// Tapping opens what can be done to it: the voucher for that movement, and
+/// — for a hand-entered top-up or return — removing it.
+class _HistoryTile extends ConsumerWidget {
+  const _HistoryTile({
+    required this.entry,
+    required this.canRead,
+    required this.canUpload,
+    required this.canDelete,
+  });
 
   final PettyCashEntry entry;
+  final bool canRead;
+  final bool canUpload;
+  final bool canDelete;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final status = context.statusColors;
     final inflow = entry.isInflow;
@@ -280,6 +298,7 @@ class _HistoryTile extends StatelessWidget {
 
     return ListTile(
       dense: true,
+      onTap: () => _showActions(context, ref),
       title: Text(
         entry.description,
         style: theme.textTheme.titleSmall,
@@ -298,6 +317,7 @@ class _HistoryTile extends StatelessWidget {
                 entry.kind.replaceAll('_', ' '),
                 Formatting.date(entry.date),
                 if (entry.createdByName != null) entry.createdByName!,
+                if (entry.voucherAttached) 'signed',
               ].join(' · ').toUpperCase(),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -310,6 +330,149 @@ class _HistoryTile extends StatelessWidget {
       ),
       trailing: Money(entry.amount, color: inflow ? status.settled : null),
     );
+  }
+
+  Future<void> _showActions(BuildContext context, WidgetRef ref) async {
+    final scheme = Theme.of(context).colorScheme;
+    // An expense's voucher belongs to the expense, not to this ledger line —
+    // the API generates it from the Expenses side.
+    final vouchersHere = !entry.isExpense;
+
+    final choice = await showCrmSheet<String>(
+      context: context,
+      builder: (context) => CrmSheet(
+        eyebrow: entry.kind.replaceAll('_', ' '),
+        title: entry.description,
+        children: [
+          Card(
+            child: Column(
+              children: [
+                if (vouchersHere && canRead)
+                  ListTile(
+                    leading: const Icon(Icons.picture_as_pdf_outlined),
+                    title: const Text('Blank voucher'),
+                    subtitle: const Text(
+                      'Print it and have both parties sign.',
+                    ),
+                    onTap: () => Navigator.pop(context, 'voucher'),
+                  ),
+                if (entry.voucherAttachmentUrl != null)
+                  ListTile(
+                    leading: const Icon(Icons.verified_outlined),
+                    title: const Text('View signed voucher'),
+                    onTap: () => Navigator.pop(context, 'signed'),
+                  ),
+                if (vouchersHere && canUpload)
+                  ListTile(
+                    leading: const Icon(Icons.photo_camera_outlined),
+                    title: Text(
+                      entry.voucherAttached
+                          ? 'Replace signed voucher'
+                          : 'Upload signed voucher',
+                    ),
+                    subtitle: const Text('Photograph the signed slip.'),
+                    onTap: () => Navigator.pop(context, 'upload'),
+                  ),
+                if (entry.isExpense)
+                  const ListTile(
+                    leading: Icon(Icons.info_outline),
+                    title: Text('Handled on the Expenses screen'),
+                    subtitle: Text(
+                      'This line is an expense; its voucher lives with it.',
+                    ),
+                  ),
+                if (canDelete && entry.isDeletable)
+                  ListTile(
+                    leading: Icon(Icons.delete_outline, color: scheme.error),
+                    title: Text(
+                      'Delete this movement',
+                      style: TextStyle(color: scheme.error),
+                    ),
+                    onTap: () => Navigator.pop(context, 'delete'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+
+    switch (choice) {
+      case 'voucher':
+        await sharePdf(
+          context,
+          fetch: () =>
+              ref.read(financeServiceProvider).pettyCashVoucherPdf(entry.id),
+          filename: 'voucher-${entry.id.substring(0, 8)}.pdf',
+        );
+      case 'signed':
+        await launchUrl(
+          Uri.parse(entry.voucherAttachmentUrl!),
+          mode: LaunchMode.externalApplication,
+        );
+      case 'upload':
+        final done = await pickAndUploadVoucher(
+          context,
+          upload: (path, onProgress) => ref
+              .read(financeServiceProvider)
+              .uploadPettyCashVoucher(
+                entry.id,
+                filePath: path,
+                onProgress: onProgress,
+              ),
+        );
+        if (done) ref.invalidate(pettyCashProvider);
+      case 'delete':
+        await _delete(context, ref);
+    }
+  }
+
+  /// Removing a movement moves money in the books, so the amount is named on
+  /// the way out and the button says what it does.
+  Future<void> _delete(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+    final kind = entry.kind.replaceAll('_', ' ');
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Delete this $kind',
+          style: Type.display(22, color: scheme.onSurface),
+        ),
+        content: Text(
+          'Delete the $kind of ${Formatting.currency(entry.amount)} recorded '
+          '${Formatting.date(entry.date)}? The balance moves with it, the '
+          'signed voucher is destroyed, and this cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: scheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final message = await ref
+          .read(financeServiceProvider)
+          .deletePettyCashTransaction(entry.id);
+      ref.invalidate(pettyCashProvider);
+      messenger.showSnackBar(
+        SnackBar(content: Text(message ?? 'Transaction deleted.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 }
 
@@ -524,7 +687,10 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
             DropdownButtonFormField<String>(
               initialValue: _type,
               items: const [
-                DropdownMenuItem(value: 'top_up', child: Text('Top up the tin')),
+                DropdownMenuItem(
+                  value: 'top_up',
+                  child: Text('Top up the tin'),
+                ),
                 DropdownMenuItem(
                   value: 'return',
                   child: Text('Return cash to bank'),
@@ -532,9 +698,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
                 // Adjustments are only written by a reconciliation — the API
                 // rejects them here.
               ],
-              onChanged: _submitting
-                  ? null
-                  : (v) => setState(() => _type = v!),
+              onChanged: _submitting ? null : (v) => setState(() => _type = v!),
             ),
             const SizedBox(height: Spacing.md),
             const FieldLabel('Amount'),
@@ -784,7 +948,6 @@ class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
 // ---------------------------------------------------------------------------
 // Private building blocks (candidates for mobilling_ui)
 // ---------------------------------------------------------------------------
-
 
 /// A date shown in a field, tapping opens the picker.
 class _DateField extends StatelessWidget {

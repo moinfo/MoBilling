@@ -127,12 +127,98 @@ class UnpaidInvoice {
       paidAmount: paid,
       // Prefer the server's accessor; fall back to the arithmetic for the few
       // endpoints that omit it.
-      balanceDue:
-          json['balance_due'] == null ? total - paid : json.money('balance_due'),
+      balanceDue: json['balance_due'] == null
+          ? total - paid
+          : json.money('balance_due'),
       clientId: json.str('client_id') ?? client?.str('id'),
       clientName: client?.str('name') ?? json.str('client_name'),
       date: json.date('date'),
       dueDate: json.date('due_date'),
+    );
+  }
+}
+
+/// A payment received (`PaymentInResource`).
+///
+/// Carries [clientId] deliberately: `PUT /payments-in/{id}` re-validates with
+/// `StorePaymentInRequest`, which requires `client_id` — so an edit cannot be
+/// built from a row that only knows the client's *name*. The index resource
+/// includes it, which is why the staff payment list reads through this model
+/// rather than the leaner dashboard one.
+class StaffPaymentIn {
+  const StaffPaymentIn({
+    required this.id,
+    required this.amount,
+    this.clientId,
+    this.documentId,
+    this.paymentDate,
+    this.paymentMethod,
+    this.reference,
+    this.notes,
+    this.attachmentUrl,
+    this.clientName,
+    this.documentNumber,
+    this.documentTotal,
+    this.receivedByName,
+  });
+
+  final String id;
+  final double amount;
+  final String? clientId;
+  final String? documentId;
+  final DateTime? paymentDate;
+  final String? paymentMethod;
+  final String? reference;
+  final String? notes;
+
+  /// The proof-of-payment file attached when the payment was recorded on the
+  /// web (`attachment_path`); the app has no upload for it yet.
+  final String? attachmentUrl;
+  final String? clientName;
+  final String? documentNumber;
+  final double? documentTotal;
+
+  /// Who logged it — `received_by`, present when the index eager-loads it.
+  final String? receivedByName;
+
+  /// Only a payment against an invoice has a receipt to email: `resendReceipt`
+  /// 422s on a standalone payment because it reads the client off the document.
+  bool get hasInvoice => documentId != null && documentId!.isNotEmpty;
+
+  /// The name `PaymentInController::downloadReceipt` gives the PDF, rebuilt
+  /// here so the shared file carries the receipt number staff will quote.
+  String get receiptFileName {
+    final date = paymentDate;
+    final stamp = date == null
+        ? ''
+        : '${date.year.toString().padLeft(4, '0')}'
+              '${date.month.toString().padLeft(2, '0')}'
+              '${date.day.toString().padLeft(2, '0')}';
+    final suffix = (id.length >= 6 ? id.substring(0, 6) : id).toUpperCase();
+    return 'RCT-$stamp-$suffix.pdf';
+  }
+
+  factory StaffPaymentIn.fromJson(Map<String, dynamic> json) {
+    final client = json.object('client');
+    final document = json.object('document');
+    final receiver = json.object('received_by');
+    return StaffPaymentIn(
+      id: json.id(),
+      amount: json.money('amount'),
+      clientId: json.str('client_id'),
+      documentId: json.str('document_id'),
+      paymentDate: json.date('payment_date'),
+      paymentMethod: json.str('payment_method'),
+      reference: json.str('reference'),
+      notes: json.str('notes'),
+      attachmentUrl: json.str('attachment_url'),
+      clientName:
+          client?.str('name') ?? document?.object('client')?.str('name'),
+      documentNumber: document?.str('document_number'),
+      documentTotal: document == null || document['total'] == null
+          ? null
+          : document.money('total'),
+      receivedByName: receiver?.str('name'),
     );
   }
 }
@@ -205,9 +291,10 @@ class StaffBill {
       category: json.str('category'),
       categoryName: category == null
           ? null
-          : [category.str('parent_name'), category.str('name')]
-              .whereType<String>()
-              .join(' › '),
+          : [
+              category.str('parent_name'),
+              category.str('name'),
+            ].whereType<String>().join(' › '),
       cycle: json.str('cycle'),
       issueDate: json.date('issue_date'),
       dueDate: json.date('due_date'),
@@ -319,27 +406,27 @@ class NextBill {
 
   /// Cycle wording from the web's `NextBills.tsx`, so both clients read alike.
   String get cycleLabel => switch (billingCycle) {
-        'monthly' => 'Monthly',
-        'quarterly' => 'Quarterly',
-        'half_yearly' => 'Semi-Annual',
-        'yearly' => 'Annually',
-        _ => billingCycle,
-      };
+    'monthly' => 'Monthly',
+    'quarterly' => 'Quarterly',
+    'half_yearly' => 'Semi-Annual',
+    'yearly' => 'Annually',
+    _ => billingCycle,
+  };
 
   factory NextBill.fromJson(Map<String, dynamic> json) => NextBill(
-        subscriptionId: json.id('subscription_id'),
-        clientId: json.id('client_id'),
-        clientName: json.strOr('client_name', '—'),
-        productServiceName: json.strOr('product_service_name', '—'),
-        billingCycle: json.strOr('billing_cycle', 'monthly'),
-        price: json.money('price'),
-        quantity: json.count('quantity', fallback: 1),
-        isOverdue: json.flag('is_overdue'),
-        clientEmail: json.str('client_email'),
-        productServiceId: json.str('product_service_id'),
-        lastBilled: json.date('last_billed'),
-        nextBill: json.date('next_bill'),
-      );
+    subscriptionId: json.id('subscription_id'),
+    clientId: json.id('client_id'),
+    clientName: json.strOr('client_name', '—'),
+    productServiceName: json.strOr('product_service_name', '—'),
+    billingCycle: json.strOr('billing_cycle', 'monthly'),
+    price: json.money('price'),
+    quantity: json.count('quantity', fallback: 1),
+    isOverdue: json.flag('is_overdue'),
+    clientEmail: json.str('client_email'),
+    productServiceId: json.str('product_service_id'),
+    lastBilled: json.date('last_billed'),
+    nextBill: json.date('next_bill'),
+  );
 }
 
 /// Result of `ClientSubscriptionController::generateInvoice` — the only write

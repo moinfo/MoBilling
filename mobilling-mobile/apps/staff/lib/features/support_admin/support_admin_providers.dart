@@ -37,6 +37,27 @@ final AutoDisposeFutureProvider<StaffDomainStats> domainStatsProvider =
   (ref) => ref.watch(supportAdminServiceProvider).domainStats(),
 );
 
+/// One domain, freshly read — the actions sheet's source of truth, so a retry
+/// or a renew updates the sheet without closing it.
+final AutoDisposeFutureProviderFamily<StaffDomain, String> staffDomainProvider =
+    FutureProvider.autoDispose.family<StaffDomain, String>(
+  (ref, domainId) => ref.watch(supportAdminServiceProvider).domain(domainId),
+);
+
+final AutoDisposeFutureProviderFamily<List<StaffDomainLog>, String>
+    domainLogsProvider =
+    FutureProvider.autoDispose.family<List<StaffDomainLog>, String>(
+  (ref, domainId) =>
+      ref.watch(supportAdminServiceProvider).domainLogs(domainId),
+);
+
+/// The prepaid registrar balance. The API caches it for five minutes, so this
+/// is cheap to watch from the list header.
+final AutoDisposeFutureProvider<StaffRegistrarCredit> registrarCreditProvider =
+    FutureProvider.autoDispose<StaffRegistrarCredit>(
+  (ref) => ref.watch(supportAdminServiceProvider).registrarCredit(),
+);
+
 final AutoDisposeFutureProviderFamily<List<ProvisioningLogEntry>, String>
     hostingLogsProvider =
     FutureProvider.autoDispose.family<List<ProvisioningLogEntry>, String>(

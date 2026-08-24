@@ -37,6 +37,10 @@ class Expense {
     this.rejectionReason,
     this.pettyCashAccountId,
     this.hasVoucher = false,
+    this.attachmentUrl,
+    this.voucherAttachmentUrl,
+    this.givenByName,
+    this.receivedByName,
   });
 
   final String id;
@@ -66,13 +70,27 @@ class Expense {
   /// "committed" to fully settled.
   final bool hasVoucher;
 
+  /// The receipt, if one was attached. Both this and [voucherAttachmentUrl]
+  /// are absolute links to the server's **public** disk, so they open in a
+  /// browser without a token — unlike the generated voucher PDF, which is
+  /// streamed from an authenticated route.
+  final String? attachmentUrl;
+  final String? voucherAttachmentUrl;
+
+  /// The two names printed on a petty-cash voucher. Carried on the model
+  /// because `PUT /expenses/{id}` re-validates every field — an edit that
+  /// left these out would silently erase them.
+  final String? givenByName;
+  final String? receivedByName;
+
   bool get isPending => approvalStatus == 'pending';
+  bool get isApproved => approvalStatus == 'approved';
   bool get isPettyCash => pettyCashAccountId != null;
+  bool get hasReceipt => attachmentUrl != null;
 
   /// Full category path for display: 'Utilities › Electricity'.
-  String get categoryPath => [categoryName, subCategoryName]
-      .whereType<String>()
-      .join(' › ');
+  String get categoryPath =>
+      [categoryName, subCategoryName].whereType<String>().join(' › ');
 
   factory Expense.fromJson(Map<String, dynamic> json) {
     final sub = json.object('sub_category');
@@ -95,6 +113,10 @@ class Expense {
       rejectionReason: json.str('rejection_reason'),
       pettyCashAccountId: json.str('petty_cash_account_id'),
       hasVoucher: json.str('voucher_attachment_url') != null,
+      attachmentUrl: json.str('attachment_url'),
+      voucherAttachmentUrl: json.str('voucher_attachment_url'),
+      givenByName: json.str('given_by_name'),
+      receivedByName: json.str('received_by_name'),
     );
   }
 }
@@ -116,8 +138,7 @@ class ExpenseCategory {
       ExpenseCategory(
         id: json.id(),
         name: json.strOr('name', '—'),
-        subCategories:
-            json.list('sub_categories', ExpenseSubCategory.fromJson),
+        subCategories: json.list('sub_categories', ExpenseSubCategory.fromJson),
       );
 }
 
@@ -193,8 +214,10 @@ class PettyCash {
       pendingVoucherCount: pending?.count('count') ?? 0,
       pendingVoucherTotal: pending?.money('total') ?? 0,
       history: json.list('history', PettyCashEntry.fromJson),
-      reconciliations:
-          json.list('reconciliations', PettyCashReconciliation.fromJson),
+      reconciliations: json.list(
+        'reconciliations',
+        PettyCashReconciliation.fromJson,
+      ),
       openingBalance: account?.money('opening_balance') ?? 0,
     );
   }
@@ -209,6 +232,8 @@ class PettyCashEntry {
     this.date,
     this.createdByName,
     this.approvalStatus,
+    this.voucherAttached = false,
+    this.voucherAttachmentUrl,
   });
 
   final String id;
@@ -223,27 +248,45 @@ class PettyCashEntry {
   /// Present on expense rows only.
   final String? approvalStatus;
 
+  /// A signed voucher is on file for this movement.
+  final bool voucherAttached;
+
+  /// Absolute link to that signed voucher on the public disk, when there is
+  /// one. The *blank* voucher PDF is a separate, authenticated download.
+  final String? voucherAttachmentUrl;
+
   /// Money into the tin versus out of it.
   bool get isInflow => kind == 'top_up' || kind == 'adjustment_in';
 
-  factory PettyCashEntry.fromJson(Map<String, dynamic> json) =>
-      PettyCashEntry(
-        id: json.id(),
-        kind: json.strOr('kind', 'expense'),
-        amount: json.money('amount'),
-        description: json.strOr('description', '—'),
-        date: json.date('date'),
-        // The unified history emits `created_by` as a plain name string.
-        createdByName: json.str('created_by_name') ??
-            json.object('created_by')?.str('name') ??
-            (json['created_by'] is String ? json.str('created_by') : null),
-        // Expense rows carry `voucher_attached` rather than an approval
-        // status; a missing voucher is what still needs attention.
-        approvalStatus: json.str('approval_status') ??
-            (json['voucher_attached'] == null
-                ? null
-                : (json.flag('voucher_attached') ? null : 'voucher_pending')),
-      );
+  /// Expense rows are the petty-cash side of a row on the Expenses screen;
+  /// their voucher belongs to the expense, not to this ledger line.
+  bool get isExpense => kind == 'expense';
+
+  /// Only hand-entered movements can be removed. Adjustments are the ledger's
+  /// own record of a cash count, and the API refuses to delete them.
+  bool get isDeletable => kind == 'top_up' || kind == 'return';
+
+  factory PettyCashEntry.fromJson(Map<String, dynamic> json) => PettyCashEntry(
+    id: json.id(),
+    kind: json.strOr('kind', 'expense'),
+    amount: json.money('amount'),
+    description: json.strOr('description', '—'),
+    date: json.date('date'),
+    // The unified history emits `created_by` as a plain name string.
+    createdByName:
+        json.str('created_by_name') ??
+        json.object('created_by')?.str('name') ??
+        (json['created_by'] is String ? json.str('created_by') : null),
+    // Expense rows carry `voucher_attached` rather than an approval
+    // status; a missing voucher is what still needs attention.
+    approvalStatus:
+        json.str('approval_status') ??
+        (json['voucher_attached'] == null
+            ? null
+            : (json.flag('voucher_attached') ? null : 'voucher_pending')),
+    voucherAttached: json.flag('voucher_attached'),
+    voucherAttachmentUrl: json.str('voucher_attachment_url'),
+  );
 }
 
 class PettyCashReconciliation {
@@ -275,13 +318,18 @@ class PettyCashReconciliation {
         id: json.id(),
         // Columns are `counted_balance` / `ledger_balance` (model
         // PettyCashReconciliation); older keys kept as fallbacks.
-        countedAmount: json.money('counted_balance',
-            fallback: json.money('counted_amount')),
-        expectedAmount: json.money('ledger_balance',
-            fallback: json.money('expected_amount')),
+        countedAmount: json.money(
+          'counted_balance',
+          fallback: json.money('counted_amount'),
+        ),
+        expectedAmount: json.money(
+          'ledger_balance',
+          fallback: json.money('expected_amount'),
+        ),
         reconciledAt: json.date('reconciled_at') ?? json.date('created_at'),
         notes: json.str('notes'),
-        createdByName: json.object('reconciled_by')?.str('name') ??
+        createdByName:
+            json.object('reconciled_by')?.str('name') ??
             json.object('created_by')?.str('name') ??
             json.str('reconciled_by_name'),
         resolution: json.str('resolution'),
@@ -363,9 +411,10 @@ class Statutory {
       isActive: json.flag('is_active', fallback: true),
       categoryName: category == null
           ? null
-          : [category.str('parent_name'), category.str('name')]
-              .whereType<String>()
-              .join(' › '),
+          : [
+              category.str('parent_name'),
+              category.str('name'),
+            ].whereType<String>().join(' › '),
       cycle: json.str('cycle'),
       nextDueDate: json.date('next_due_date'),
       notes: json.str('notes'),
@@ -406,7 +455,8 @@ class StatutorySchedule {
       StatutorySchedule(
         items: json.list('data', Statutory.fromJson),
         stats: StatutoryScheduleStats.fromJson(
-            json.object('stats') ?? const {}),
+          json.object('stats') ?? const {},
+        ),
       );
 }
 
@@ -434,11 +484,11 @@ class BillCategory {
   final String? billingCycle;
 
   factory BillCategory.fromJson(Map<String, dynamic> json) => BillCategory(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        isActive: json.flag('is_active', fallback: true),
-        children: json.list('children', BillCategory.fromJson),
-        parentId: json.str('parent_id'),
-        billingCycle: json.str('billing_cycle'),
-      );
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    isActive: json.flag('is_active', fallback: true),
+    children: json.list('children', BillCategory.fromJson),
+    parentId: json.str('parent_id'),
+    billingCycle: json.str('billing_cycle'),
+  );
 }

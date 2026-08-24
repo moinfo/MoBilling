@@ -98,13 +98,17 @@ const List<MenuNode> staffMenu = [
         permission: 'menu.hosting',
         ready: true,
       ),
-      // Needs a client to act on, so it belongs on client detail rather than
-      // the drawer — kept here so the coverage counter stays honest.
+      // Opens on a client picker — the screen is the client's service list,
+      // the same way the web page starts with a client select.
       MenuEntry(
         label: 'Manage Services',
         icon: Icons.tune_outlined,
         path: '/hosting/services',
         permission: 'menu.hosting',
+        // The page itself reads `/hosting-services`, which the API gates
+        // separately from the hosting-account routes behind `menu.hosting`.
+        alsoRequires: 'client_subscriptions.read',
+        ready: true,
       ),
       MenuEntry(
         label: 'Discover Accounts',

@@ -4,11 +4,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
 import '../billing_money/payment_method_field.dart';
+import '../common/attach_file.dart';
 import '../common/paged_list.dart';
+import '../common/share_pdf.dart';
+import '../crm/crm_ui.dart' show CrmSheet, showCrmSheet;
 import 'finance_providers.dart';
+
+/// What the receipt and voucher endpoints accept: 10 MB each.
+const _maxUploadBytes = 10 * 1024 * 1024;
+const _receiptExtensions = <String>[
+  'pdf',
+  'jpg',
+  'jpeg',
+  'png',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+];
+const _voucherExtensions = <String>['pdf', 'jpg', 'jpeg', 'png'];
 
 /// Expenses, with the petty-cash approval flow.
 ///
@@ -61,6 +79,8 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     final auth = ref.watch(sessionControllerProvider).session;
     final canCreate = auth?.can(FinancePermissions.expensesCreate) ?? false;
     final canApprove = auth?.can(FinancePermissions.expensesApprove) ?? false;
+    final canUpdate = auth?.can(FinancePermissions.expensesUpdate) ?? false;
+    final canDelete = auth?.can(FinancePermissions.expensesDelete) ?? false;
 
     return Scaffold(
       appBar: ShellTopBar(
@@ -128,6 +148,8 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
               itemBuilder: (context, expense) => _ExpenseCard(
                 expense: expense,
                 canApprove: canApprove,
+                canUpdate: canUpdate,
+                canDelete: canDelete,
                 onChanged: _reload,
               ),
               emptyIcon: Icons.money_off_outlined,
@@ -161,11 +183,15 @@ class _ExpenseCard extends ConsumerWidget {
   const _ExpenseCard({
     required this.expense,
     required this.canApprove,
+    required this.canUpdate,
+    required this.canDelete,
     required this.onChanged,
   });
 
   final Expense expense;
   final bool canApprove;
+  final bool canUpdate;
+  final bool canDelete;
   final VoidCallback onChanged;
 
   @override
@@ -178,101 +204,330 @@ class _ExpenseCard extends ConsumerWidget {
     );
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    expense.description,
-                    style: theme.textTheme.titleSmall,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(width: Spacing.md),
-                Money(expense.amount),
-              ],
-            ),
-            const SizedBox(height: Spacing.sm),
-            Row(
-              children: [
-                StatusChip(
-                  expense.approvalStatus == 'approved'
-                      ? 'approved'
-                      : expense.approvalStatus == 'rejected'
-                      ? 'rejected'
-                      : 'pending',
-                  dense: true,
-                ),
-                if (expense.isPettyCash && !expense.hasVoucher) ...[
-                  const SizedBox(width: Spacing.sm),
-                  Text(
-                    'VOUCHER PENDING',
-                    style: meta?.copyWith(color: status.attention),
-                  ),
-                ],
-                const SizedBox(width: Spacing.sm),
-                Flexible(
-                  child: Text(
-                    [
-                      if (expense.categoryPath.isNotEmpty) expense.categoryPath,
-                      Formatting.date(expense.expenseDate),
-                      if (expense.paymentMethod != null) expense.paymentMethod!,
-                      if (expense.isPettyCash) 'petty cash',
-                    ].join(' · ').toUpperCase(),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: meta,
-                  ),
-                ),
-              ],
-            ),
-            if (expense.rejectionReason != null) ...[
-              const SizedBox(height: Spacing.sm),
-              Text(
-                'Rejected: ${expense.rejectionReason}',
-                style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
-              ),
-            ],
-            if (expense.approvedByName != null) ...[
-              const SizedBox(height: Spacing.xs),
-              Text(
-                'Approved by ${expense.approvedByName}'
-                '${expense.approvedAt == null ? '' : ' · ${Formatting.date(expense.approvedAt)}'}',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-            if (canApprove && expense.isPending) ...[
-              const SizedBox(height: Spacing.md),
+      child: InkWell(
+        borderRadius: Radii.card,
+        onTap: () => _showActions(context, ref),
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.md),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => _reject(context, ref),
-                      child: const Text('Reject'),
+                    child: Text(
+                      expense.description,
+                      style: theme.textTheme.titleSmall,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
+                  const SizedBox(width: Spacing.md),
+                  Money(expense.amount),
+                ],
+              ),
+              const SizedBox(height: Spacing.sm),
+              Row(
+                children: [
+                  StatusChip(
+                    expense.approvalStatus == 'approved'
+                        ? 'approved'
+                        : expense.approvalStatus == 'rejected'
+                        ? 'rejected'
+                        : 'pending',
+                    dense: true,
+                  ),
+                  if (expense.isPettyCash && !expense.hasVoucher) ...[
+                    const SizedBox(width: Spacing.sm),
+                    Text(
+                      'VOUCHER PENDING',
+                      style: meta?.copyWith(color: status.attention),
+                    ),
+                  ],
+                  // A receipt on file is worth one glyph — it is the difference
+                  // between a claim and a documented one.
+                  if (expense.hasReceipt) ...[
+                    const SizedBox(width: Spacing.sm),
+                    Icon(
+                      Icons.attach_file,
+                      size: 14,
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ],
                   const SizedBox(width: Spacing.sm),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: () => _approve(context, ref),
-                      child: const Text('Approve'),
+                  Flexible(
+                    child: Text(
+                      [
+                        if (expense.categoryPath.isNotEmpty)
+                          expense.categoryPath,
+                        Formatting.date(expense.expenseDate),
+                        if (expense.paymentMethod != null)
+                          expense.paymentMethod!,
+                        if (expense.isPettyCash) 'petty cash',
+                      ].join(' · ').toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: meta,
                     ),
                   ),
                 ],
               ),
+              if (expense.rejectionReason != null) ...[
+                const SizedBox(height: Spacing.sm),
+                Text(
+                  'Rejected: ${expense.rejectionReason}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.error,
+                  ),
+                ),
+              ],
+              if (expense.approvedByName != null) ...[
+                const SizedBox(height: Spacing.xs),
+                Text(
+                  'Approved by ${expense.approvedByName}'
+                  '${expense.approvedAt == null ? '' : ' · ${Formatting.date(expense.approvedAt)}'}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              if (canApprove && expense.isPending) ...[
+                const SizedBox(height: Spacing.md),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => _reject(context, ref),
+                        child: const Text('Reject'),
+                      ),
+                    ),
+                    const SizedBox(width: Spacing.sm),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: () => _approve(context, ref),
+                        child: const Text('Approve'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
+  }
+
+  /// Everything else this expense can have done to it. A phone row has no
+  /// space for seven icons, so they live one tap down — approve and reject
+  /// stay on the card because they are the decision the queue exists for.
+  Future<void> _showActions(BuildContext context, WidgetRef ref) async {
+    final scheme = Theme.of(context).colorScheme;
+    final canSeeVouchers =
+        ref
+            .read(sessionControllerProvider)
+            .session
+            ?.can(FinancePermissions.expensesRead) ??
+        false;
+
+    final choice = await showCrmSheet<String>(
+      context: context,
+      builder: (context) => CrmSheet(
+        eyebrow: Formatting.currency(expense.amount),
+        title: expense.description,
+        children: [
+          Card(
+            child: Column(
+              children: [
+                if (expense.hasReceipt)
+                  ListTile(
+                    leading: const Icon(Icons.receipt_long_outlined),
+                    title: const Text('View receipt'),
+                    onTap: () => Navigator.pop(context, 'receipt'),
+                  ),
+                if (canUpdate)
+                  ListTile(
+                    leading: const Icon(Icons.edit_outlined),
+                    title: const Text('Edit expense'),
+                    subtitle: const Text('Attach or replace the receipt too.'),
+                    onTap: () => Navigator.pop(context, 'edit'),
+                  ),
+                // Only a petty-cash expense has an approval to undo.
+                if (canApprove && expense.isPettyCash && expense.isApproved)
+                  ListTile(
+                    leading: const Icon(Icons.undo_rounded),
+                    title: const Text('Undo approval'),
+                    subtitle: const Text(
+                      'Back to pending; the float is restored until it is '
+                      're-approved.',
+                    ),
+                    onTap: () => Navigator.pop(context, 'unapprove'),
+                  ),
+                if (expense.isPettyCash) ...[
+                  if (canSeeVouchers)
+                    ListTile(
+                      leading: const Icon(Icons.picture_as_pdf_outlined),
+                      title: const Text('Blank voucher'),
+                      subtitle: const Text(
+                        'Print it and have both parties '
+                        'sign.',
+                      ),
+                      onTap: () => Navigator.pop(context, 'voucher'),
+                    ),
+                  if (expense.voucherAttachmentUrl != null)
+                    ListTile(
+                      leading: const Icon(Icons.verified_outlined),
+                      title: const Text('View signed voucher'),
+                      onTap: () => Navigator.pop(context, 'signed'),
+                    ),
+                  ListTile(
+                    leading: const Icon(Icons.photo_camera_outlined),
+                    title: Text(
+                      expense.hasVoucher
+                          ? 'Replace signed voucher'
+                          : 'Upload signed voucher',
+                    ),
+                    subtitle: const Text('Photograph the signed slip.'),
+                    onTap: () => Navigator.pop(context, 'upload'),
+                  ),
+                ],
+                if (canDelete)
+                  ListTile(
+                    leading: Icon(Icons.delete_outline, color: scheme.error),
+                    title: Text(
+                      'Delete expense',
+                      style: TextStyle(color: scheme.error),
+                    ),
+                    onTap: () => Navigator.pop(context, 'delete'),
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+
+    switch (choice) {
+      case 'receipt':
+        await _open(context, expense.attachmentUrl);
+      case 'signed':
+        await _open(context, expense.voucherAttachmentUrl);
+      case 'edit':
+        await _edit(context, ref);
+      case 'unapprove':
+        await _unapprove(context, ref);
+      case 'voucher':
+        await sharePdf(
+          context,
+          fetch: () =>
+              ref.read(financeServiceProvider).expenseVoucherPdf(expense.id),
+          filename: 'voucher-${expense.id.substring(0, 8)}.pdf',
+        );
+      case 'upload':
+        final done = await pickAndUploadVoucher(
+          context,
+          upload: (path, onProgress) => ref
+              .read(financeServiceProvider)
+              .uploadExpenseVoucher(
+                expense.id,
+                filePath: path,
+                onProgress: onProgress,
+              ),
+        );
+        if (done) onChanged();
+      case 'delete':
+        await _delete(context, ref);
+    }
+  }
+
+  /// Receipts and signed vouchers sit on the server's public disk, so they
+  /// open in the browser — no token to smuggle, no bytes to download first.
+  Future<void> _open(BuildContext context, String? url) async {
+    if (url == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final opened = await launchUrl(
+      Uri.parse(url),
+      mode: LaunchMode.externalApplication,
+    );
+    if (!opened) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not open that file.')),
+      );
+    }
+  }
+
+  Future<void> _edit(BuildContext context, WidgetRef ref) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
+      builder: (_) => RecordExpenseSheet(expense: expense),
+    );
+    if (saved == true) onChanged();
+  }
+
+  Future<void> _unapprove(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(financeServiceProvider).unapproveExpense(expense.id);
+      onChanged();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sent back to pending review — the petty-cash balance was '
+            'restored.',
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _delete(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Delete expense',
+          style: Type.display(22, color: scheme.onSurface),
+        ),
+        content: Text(
+          'Delete "${expense.description}" of '
+          '${Formatting.currency(expense.amount)}?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: scheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final message = await ref
+          .read(financeServiceProvider)
+          .deleteExpense(expense.id);
+      onChanged();
+      messenger.showSnackBar(
+        SnackBar(content: Text(message ?? 'Expense deleted.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> _approve(BuildContext context, WidgetRef ref) async {
@@ -346,14 +601,17 @@ class _ExpenseCard extends ConsumerWidget {
   }
 }
 
-/// Record an expense. Exposed so the petty-cash screen can reuse it with the
-/// account pre-selected.
+/// Record or edit an expense. Exposed so the petty-cash screen can reuse it
+/// with the account pre-selected.
 class RecordExpenseSheet extends ConsumerStatefulWidget {
-  const RecordExpenseSheet({super.key, this.pettyCashAccountId});
+  const RecordExpenseSheet({super.key, this.pettyCashAccountId, this.expense});
 
   /// When set, the expense is charged to the petty-cash float and the voucher
   /// signatory fields appear.
   final String? pettyCashAccountId;
+
+  /// The expense being edited, or null to record a new one.
+  final Expense? expense;
 
   @override
   ConsumerState<RecordExpenseSheet> createState() => _RecordExpenseSheetState();
@@ -362,6 +620,7 @@ class RecordExpenseSheet extends ConsumerStatefulWidget {
 class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
   final _description = TextEditingController();
   final _amount = TextEditingController();
+  final _controlNumber = TextEditingController();
   final _reference = TextEditingController();
   final _notes = TextEditingController();
   final _givenBy = TextEditingController();
@@ -373,13 +632,46 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
   bool _submitting = false;
   String? _error;
 
-  bool get _isPettyCash => widget.pettyCashAccountId != null;
+  /// The receipt about to be sent. Null while editing means "leave whatever
+  /// is already on file alone" — the API only replaces what it is given.
+  Attachment? _receipt;
+
+  /// 0–1 while the receipt is on the wire.
+  double? _uploadProgress;
+
+  Expense? get _editing => widget.expense;
+  bool get _isEdit => _editing != null;
+
+  String? get _pettyCashAccountId =>
+      _editing?.pettyCashAccountId ?? widget.pettyCashAccountId;
+  bool get _isPettyCash => _pettyCashAccountId != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final expense = _editing;
+    if (expense == null) return;
+
+    // Every field comes back populated: the API re-validates the whole
+    // expense on update, so anything left blank here would be erased.
+    _description.text = expense.description;
+    _amount.text = expense.amount.toStringAsFixed(2);
+    _controlNumber.text = expense.controlNumber ?? '';
+    _reference.text = expense.reference ?? '';
+    _notes.text = expense.notes ?? '';
+    _givenBy.text = expense.givenByName ?? '';
+    _receivedBy.text = expense.receivedByName ?? '';
+    _subCategoryId = expense.subCategoryId;
+    _method = expense.paymentMethod;
+    _date = expense.expenseDate ?? DateTime.now();
+  }
 
   @override
   void dispose() {
     for (final c in [
       _description,
       _amount,
+      _controlNumber,
       _reference,
       _notes,
       _givenBy,
@@ -388,6 +680,27 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
       c.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _pickReceipt() async {
+    final picked = await pickAttachment(
+      context,
+      allowedExtensions: _receiptExtensions,
+    );
+    if (picked == null || !mounted) return;
+
+    if (picked.bytes > _maxUploadBytes) {
+      setState(
+        () => _error =
+            '${picked.name} is ${picked.readableSize} — a receipt may be at '
+            'most 10 MB.',
+      );
+      return;
+    }
+    setState(() {
+      _receipt = picked;
+      _error = null;
+    });
   }
 
   Future<void> _submit() async {
@@ -404,39 +717,70 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
     setState(() {
       _submitting = true;
       _error = null;
+      _uploadProgress = _receipt == null ? null : 0;
     });
 
+    String? blank(TextEditingController c) =>
+        c.text.trim().isEmpty ? null : c.text.trim();
+    void onProgress(int sent, int total) {
+      if (mounted && total > 0) setState(() => _uploadProgress = sent / total);
+    }
+
     try {
-      await ref
-          .read(financeServiceProvider)
-          .createExpense(
-            description: _description.text.trim(),
-            amount: amount,
-            expenseDate: _date,
-            paymentMethod: _method!,
-            subCategoryId: _subCategoryId,
-            pettyCashAccountId: widget.pettyCashAccountId,
-            reference: _reference.text.trim().isEmpty
-                ? null
-                : _reference.text.trim(),
-            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-            givenByName: _givenBy.text.trim().isEmpty
-                ? null
-                : _givenBy.text.trim(),
-            receivedByName: _receivedBy.text.trim().isEmpty
-                ? null
-                : _receivedBy.text.trim(),
-          );
+      final service = ref.read(financeServiceProvider);
+      final expense = _editing;
+      if (expense == null) {
+        await service.createExpense(
+          description: _description.text.trim(),
+          amount: amount,
+          expenseDate: _date,
+          paymentMethod: _method!,
+          subCategoryId: _subCategoryId,
+          pettyCashAccountId: widget.pettyCashAccountId,
+          controlNumber: blank(_controlNumber),
+          reference: blank(_reference),
+          notes: blank(_notes),
+          givenByName: blank(_givenBy),
+          receivedByName: blank(_receivedBy),
+          attachmentPath: _receipt?.path,
+          onProgress: _receipt == null ? null : onProgress,
+        );
+      } else {
+        await service.updateExpense(
+          expense.id,
+          description: _description.text.trim(),
+          amount: amount,
+          expenseDate: _date,
+          paymentMethod: _method!,
+          subCategoryId: _subCategoryId,
+          pettyCashAccountId: expense.pettyCashAccountId,
+          controlNumber: blank(_controlNumber),
+          reference: blank(_reference),
+          notes: blank(_notes),
+          givenByName: blank(_givenBy),
+          receivedByName: blank(_receivedBy),
+          attachmentPath: _receipt?.path,
+          onProgress: _receipt == null ? null : onProgress,
+        );
+      }
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(
         () => _error =
-            e.errorFor('amount') ?? e.errorFor('description') ?? e.message,
+            e.errorFor('amount') ??
+            e.errorFor('description') ??
+            e.errorFor('attachment') ??
+            e.message,
       );
     } finally {
-      if (mounted) setState(() => _submitting = false);
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _uploadProgress = null;
+        });
+      }
     }
   }
 
@@ -477,7 +821,11 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
             ),
             const SizedBox(height: Spacing.xs),
             Text(
-              _isPettyCash ? 'Petty cash expense' : 'Record expense',
+              _isEdit
+                  ? 'Edit expense'
+                  : _isPettyCash
+                  ? 'Petty cash expense'
+                  : 'Record expense',
               style: Type.display(22, color: scheme.onSurface),
             ),
             if (_isPettyCash) ...[
@@ -583,6 +931,15 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
               ),
             ],
             const SizedBox(height: Spacing.md),
+            const FieldLabel('Control number (optional)'),
+            const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: _controlNumber,
+              enabled: !_submitting,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(hintText: 'e.g. 991234567890'),
+            ),
+            const SizedBox(height: Spacing.md),
             const FieldLabel('Reference (optional)'),
             const SizedBox(height: Spacing.sm),
             TextField(
@@ -604,23 +961,267 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
                 hintText: 'Anything an approver should know',
               ),
             ),
+            const SizedBox(height: Spacing.md),
+            // The reason this form is worth filling in on a phone: the slip
+            // is in your hand right now.
+            const FieldLabel('Receipt'),
+            const SizedBox(height: Spacing.sm),
+            _ReceiptField(
+              picked: _receipt,
+              existingUrl: _editing?.attachmentUrl,
+              enabled: !_submitting,
+              onPick: _pickReceipt,
+              onClear: () => setState(() => _receipt = null),
+            ),
+            if (_uploadProgress != null) ...[
+              const SizedBox(height: Spacing.sm),
+              LinearProgressIndicator(value: _uploadProgress),
+            ],
             const SizedBox(height: Spacing.lg),
             PrimaryButton(
-              label: _submitting ? 'Saving…' : 'Save expense',
+              label: _submitting
+                  ? (_uploadProgress == null
+                        ? 'Saving…'
+                        : 'Uploading ${(_uploadProgress! * 100).round()}%')
+                  : _isEdit
+                  ? 'Save changes'
+                  : 'Save expense',
               busy: _submitting,
               onPressed: _submitting ? null : _submit,
-            ),
-            const SizedBox(height: Spacing.sm),
-            Text(
-              'Receipt attachments can be added from the web app.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The receipt slot: what is attached, or the invitation to attach one.
+///
+/// While editing, a receipt already on file is shown as a link rather than
+/// re-downloaded — leaving it alone is the common case, and the API keeps
+/// whatever it is not given.
+class _ReceiptField extends StatelessWidget {
+  const _ReceiptField({
+    required this.picked,
+    required this.existingUrl,
+    required this.enabled,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  final Attachment? picked;
+  final String? existingUrl;
+  final bool enabled;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final file = picked;
+
+    if (file != null) {
+      return Card(
+        margin: EdgeInsets.zero,
+        child: ListTile(
+          leading: Icon(Icons.check_circle_outline, color: scheme.primary),
+          title: Text(
+            file.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.titleSmall,
+          ),
+          subtitle: Text(file.readableSize),
+          trailing: IconButton(
+            icon: const Icon(Icons.close_rounded),
+            tooltip: 'Remove',
+            onPressed: enabled ? onClear : null,
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        OutlinedButton.icon(
+          icon: const Icon(Icons.photo_camera_outlined, size: 18),
+          label: Text(
+            existingUrl == null ? 'Photograph the receipt' : 'Replace receipt',
+          ),
+          onPressed: enabled ? onPick : null,
+        ),
+        if (existingUrl != null) ...[
+          const SizedBox(height: Spacing.xs),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.open_in_new, size: 16),
+              label: const Text('View the receipt on file'),
+              onPressed: () => launchUrl(
+                Uri.parse(existingUrl!),
+                mode: LaunchMode.externalApplication,
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Vouchers — shared with the petty-cash screen
+// ---------------------------------------------------------------------------
+
+/// Photograph or pick a signed voucher and send it, showing the bytes move.
+///
+/// Shared with the petty-cash screen because only the endpoint differs: both
+/// post a `voucher` file of at most 10 MB. Returns true when the server took
+/// it, so the caller knows to refresh.
+Future<bool> pickAndUploadVoucher(
+  BuildContext context, {
+  required Future<String?> Function(String path, UploadProgress onProgress)
+  upload,
+}) async {
+  final picked = await pickAttachment(
+    context,
+    allowedExtensions: _voucherExtensions,
+  );
+  if (picked == null || !context.mounted) return false;
+
+  // Caught here rather than after a slow upload ends in a 422.
+  if (picked.bytes > _maxUploadBytes) {
+    await _showUploadFailure(
+      context,
+      '${picked.name} is ${picked.readableSize} — a voucher may be at most '
+      '10 MB.',
+    );
+    return false;
+  }
+
+  final message = await showDialog<String>(
+    context: context,
+    barrierDismissible: false,
+    builder: (_) => _UploadDialog(
+      title: 'Uploading voucher',
+      attachment: picked,
+      upload: upload,
+    ),
+  );
+  if (message == null || !context.mounted) return false;
+
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+  return true;
+}
+
+/// A failed upload gets a banner and an acknowledgement, never a silent drop.
+Future<void> _showUploadFailure(BuildContext context, String message) =>
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: ErrorBanner(message: message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+
+/// Runs one upload and draws it. Owning the work rather than just displaying
+/// it keeps the progress value's lifetime tied to the dialog that shows it.
+///
+/// Pops with the server's message on success; on failure it stays put and
+/// swaps the bar for an [ErrorBanner], because a receipt that did not arrive
+/// is something the person needs to know before walking away.
+class _UploadDialog extends StatefulWidget {
+  const _UploadDialog({
+    required this.title,
+    required this.attachment,
+    required this.upload,
+  });
+
+  final String title;
+  final Attachment attachment;
+  final Future<String?> Function(String path, UploadProgress onProgress) upload;
+
+  @override
+  State<_UploadDialog> createState() => _UploadDialogState();
+}
+
+class _UploadDialogState extends State<_UploadDialog> {
+  double _progress = 0;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_run());
+  }
+
+  Future<void> _run() async {
+    try {
+      final message = await widget.upload(widget.attachment.path, (
+        sent,
+        total,
+      ) {
+        if (mounted && total > 0) setState(() => _progress = sent / total);
+      });
+      if (mounted) {
+        Navigator.pop(context, message ?? 'Signed voucher attached.');
+      }
+    } on ApiException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return AlertDialog(
+      title: Text(
+        _error == null ? widget.title : 'Upload failed',
+        style: Type.display(22, color: theme.colorScheme.onSurface),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (_error != null)
+            ErrorBanner(message: _error!)
+          else ...[
+            Text(
+              '${widget.attachment.name} · ${widget.attachment.readableSize}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            // Determinate, because on a slow connection an indeterminate bar
+            // says nothing about whether it is worth waiting.
+            LinearProgressIndicator(value: _progress),
+            const SizedBox(height: Spacing.sm),
+            Text(
+              '${(_progress * 100).round()}%',
+              style: Type.mono(12, color: theme.colorScheme.onSurfaceVariant),
+            ),
+          ],
+        ],
+      ),
+      actions: _error == null
+          ? null
+          : [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
     );
   }
 }

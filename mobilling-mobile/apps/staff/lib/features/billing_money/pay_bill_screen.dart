@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
+import '../common/attach_file.dart';
 import 'billing_money_providers.dart';
 import 'payment_method_field.dart';
 
@@ -159,14 +160,16 @@ class _PayBillScreenState extends ConsumerState<PayBillScreen> {
                           StatusChip(bill.status, dense: true),
                           const SizedBox(width: Spacing.sm),
                           Flexible(
-                            child: _Meta([
-                              if (bill.categoryName != null)
-                                bill.categoryName!,
-                              if (bill.dueDate != null)
-                                Formatting.dueDescription(bill.dueDate),
-                              if (bill.paidTotal > 0)
-                                'paid ${Formatting.amount(bill.paidTotal)} of ${Formatting.amount(bill.amount)}',
-                            ].join(' · ')),
+                            child: _Meta(
+                              [
+                                if (bill.categoryName != null)
+                                  bill.categoryName!,
+                                if (bill.dueDate != null)
+                                  Formatting.dueDescription(bill.dueDate),
+                                if (bill.paidTotal > 0)
+                                  'paid ${Formatting.amount(bill.paidTotal)} of ${Formatting.amount(bill.amount)}',
+                              ].join(' · '),
+                            ),
                           ),
                         ],
                       ),
@@ -206,6 +209,12 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
   bool _submitting = false;
   String? _error;
 
+  /// Proof of payment — the bank slip or the stamped control-number receipt.
+  Attachment? _receipt;
+
+  /// `StorePaymentOutRequest` caps the upload at `max:5120` (KB).
+  static const _maxReceiptBytes = 5120 * 1024;
+
   StaffBill get bill => widget.bill;
 
   @override
@@ -235,6 +244,29 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
     if (picked != null) setState(() => _date = picked);
   }
 
+  /// Attach the receipt — camera first, since paying a bill from a phone
+  /// usually means the slip is in your hand.
+  Future<void> _pickReceipt() async {
+    final picked = await pickAttachment(
+      context,
+      // Exactly the API's `mimes:pdf,jpg,jpeg,png`.
+      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
+    );
+    if (picked == null || !mounted) return;
+
+    if (picked.bytes > _maxReceiptBytes) {
+      setState(
+        () => _error =
+            'That receipt is ${picked.readableSize} — the limit is 5 MB.',
+      );
+      return;
+    }
+    setState(() {
+      _receipt = picked;
+      _error = null;
+    });
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
     FocusScope.of(context).unfocus();
@@ -258,6 +290,7 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
                 ? null
                 : _reference.text.trim(),
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            receiptPath: _receipt?.path,
           );
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -268,7 +301,10 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
       if (!mounted) return;
       setState(
         () => _error =
-            e.errorFor('amount') ?? e.errorFor('bill_id') ?? e.message,
+            e.errorFor('amount') ??
+            e.errorFor('bill_id') ??
+            e.errorFor('receipt') ??
+            e.message,
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -330,16 +366,16 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
                           StatusChip(bill.status, dense: true),
                           const SizedBox(width: Spacing.sm),
                           Expanded(
-                            child: _Meta([
-                              'of ${Formatting.currency(bill.amount)}',
-                              if (bill.dueDate != null)
-                                Formatting.dueDescription(bill.dueDate),
-                            ].join(' · ')),
+                            child: _Meta(
+                              [
+                                'of ${Formatting.currency(bill.amount)}',
+                                if (bill.dueDate != null)
+                                  Formatting.dueDescription(bill.dueDate),
+                              ].join(' · '),
+                            ),
                           ),
                           TextButton(
-                            onPressed: _submitting
-                                ? null
-                                : widget.onChangeBill,
+                            onPressed: _submitting ? null : widget.onChangeBill,
                             child: const Text('Change bill'),
                           ),
                         ],
@@ -417,7 +453,8 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
               textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(
                 hintText: 'The TRA / NSSF control number',
-                helperText: 'For statutory payments made against a control number',
+                helperText:
+                    'For statutory payments made against a control number',
               ),
             ),
             const SizedBox(height: Spacing.md),
@@ -445,6 +482,16 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
                 hintText: 'Anything worth remembering about this payment',
               ),
             ),
+            const SizedBox(height: Spacing.md),
+
+            const FieldLabel('Receipt (optional)'),
+            const SizedBox(height: Spacing.sm),
+            _ReceiptField(
+              file: _receipt,
+              enabled: !_submitting,
+              onPick: _pickReceipt,
+              onClear: () => setState(() => _receipt = null),
+            ),
             const SizedBox(height: Spacing.lg),
 
             PrimaryButton(
@@ -459,6 +506,74 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
   }
 }
 
+/// The attach-a-receipt control: an empty field that opens the picker, or the
+/// chosen file named with its size and a way to drop it again.
+class _ReceiptField extends StatelessWidget {
+  const _ReceiptField({
+    required this.file,
+    required this.enabled,
+    required this.onPick,
+    required this.onClear,
+  });
+
+  final Attachment? file;
+  final bool enabled;
+  final VoidCallback onPick;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final chosen = file;
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(Radii.md),
+      onTap: enabled ? onPick : null,
+      child: InputDecorator(
+        decoration: InputDecoration(
+          prefixIcon: const Icon(Icons.attach_file_outlined, size: 20),
+          suffixIcon: chosen == null
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Remove receipt',
+                  onPressed: enabled ? onClear : null,
+                ),
+          helperText: chosen == null
+              ? 'A photo of the slip or the PDF receipt — up to 5 MB'
+              : null,
+        ),
+        child: chosen == null
+            ? Text(
+                'Attach a receipt',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+                ),
+              )
+            : Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      chosen.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyLarge,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Text(
+                    chosen.readableSize,
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
 
 /// The eyebrow that names a figure: Plex Mono, upper-case, quiet.
 class _Eyebrow extends StatelessWidget {

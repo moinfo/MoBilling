@@ -7,8 +7,18 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 import '../../providers.dart';
 import '../../router.dart';
 
+/// The queue counters behind the rail at the top of this tab.
+///
+/// Declared here rather than in a `*_providers.dart` because the tickets
+/// feature is these two files; the detail screen imports it so a reply, an
+/// assignment or a close refreshes the rail it came from.
+final AutoDisposeFutureProvider<TicketStats> ticketStatsProvider =
+    FutureProvider.autoDispose<TicketStats>(
+      (ref) => ref.watch(staffServiceProvider).ticketStats(),
+    );
+
 /// The staff ticket queue. A tab body inside the home shell — the shell owns
-/// the masthead, so this starts with the status filter.
+/// the masthead, so this starts with the counters and the status filter.
 class TicketsTab extends ConsumerStatefulWidget {
   const TicketsTab({super.key});
 
@@ -30,9 +40,41 @@ class _TicketsTabState extends ConsumerState<TicketsTab> {
   @override
   Widget build(BuildContext context) {
     final tickets = ref.watch(ticketsProvider(_status));
+    final stats = ref.watch(ticketStatsProvider).valueOrNull;
+    final statusColors = context.statusColors;
 
     return Column(
       children: [
+        // How the queue stands, before what is in it. Only "awaiting reply"
+        // is coloured — it is the only figure that asks for work.
+        if (stats != null)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.sm,
+              Spacing.md,
+              0,
+            ),
+            child: StatRail(
+              items: [
+                StatRailItem(
+                  label: 'Awaiting',
+                  value: Formatting.integer(stats.awaitingReply),
+                  emphasis: stats.awaitingReply > 0
+                      ? statusColors.attention
+                      : null,
+                ),
+                StatRailItem(
+                  label: 'Answered',
+                  value: Formatting.integer(stats.answered),
+                ),
+                StatRailItem(
+                  label: 'Closed',
+                  value: Formatting.integer(stats.closed),
+                ),
+              ],
+            ),
+          ),
         // One quiet row of choices under the masthead.
         SizedBox(
           height: 56,
@@ -79,8 +121,10 @@ class _TicketsTabState extends ConsumerState<TicketsTab> {
                         : () => setState(() => _status = null),
                   )
                 : RefreshIndicator(
-                    onRefresh: () =>
-                        ref.refresh(ticketsProvider(_status).future),
+                    onRefresh: () {
+                      ref.invalidate(ticketStatsProvider);
+                      return ref.refresh(ticketsProvider(_status).future);
+                    },
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.fromLTRB(
@@ -132,10 +176,12 @@ class _TicketTile extends StatelessWidget {
               StatusChip(t.status, dense: true),
               const SizedBox(width: Spacing.sm),
               Flexible(
-                child: _Meta([
-                  if (t.ticketNumber != null) t.ticketNumber!,
-                  if (t.lastReplyAt != null) Formatting.date(t.lastReplyAt),
-                ].join(' · ')),
+                child: _Meta(
+                  [
+                    if (t.ticketNumber != null) t.ticketNumber!,
+                    if (t.lastReplyAt != null) Formatting.date(t.lastReplyAt),
+                  ].join(' · '),
+                ),
               ),
             ],
           ),

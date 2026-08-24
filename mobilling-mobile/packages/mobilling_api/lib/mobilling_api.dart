@@ -30,6 +30,7 @@ export 'src/staff/finance_models.dart';
 export 'src/staff/platform_models.dart';
 export 'src/staff/platform_service.dart';
 export 'src/staff/finance_service.dart';
+export 'src/staff/hosting_service_models.dart';
 export 'src/staff/hr_models.dart';
 export 'src/staff/hr_service.dart';
 export 'src/staff/ops_models.dart';

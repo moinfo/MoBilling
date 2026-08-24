@@ -148,6 +148,11 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
   bool _submitting = false;
   String? _error;
 
+  /// The web's add-payment form ships this checked, and the API's own default
+  /// (`boolean('send_email', true)`) agrees — so the receipt goes out unless
+  /// the person collecting says otherwise.
+  bool _sendEmail = true;
+
   UnpaidInvoice get invoice => widget.invoice;
 
   @override
@@ -210,6 +215,7 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
                 ? null
                 : _reference.text.trim(),
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
+            sendEmail: _sendEmail,
           );
 
       // The dashboard's collected/outstanding figures just changed.
@@ -348,20 +354,34 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
                 hintText: 'Anything the receipt should not say',
               ),
             ),
-            const SizedBox(height: Spacing.lg),
+            const SizedBox(height: Spacing.md),
+
+            // The receipt is the client's proof, so it goes out by default —
+            // but a payment logged days late, or one the client already has a
+            // paper receipt for, should not mail a second one.
+            CheckboxListTile(
+              value: _sendEmail,
+              onChanged: _submitting
+                  ? null
+                  : (v) => setState(() => _sendEmail = v ?? true),
+              contentPadding: EdgeInsets.zero,
+              controlAffinity: ListTileControlAffinity.leading,
+              title: const Text('Email the receipt to the client'),
+              subtitle: Text(
+                invoice.clientName == null
+                    ? 'Sent to the address on the client record.'
+                    : 'Sent to ${invoice.clientName}’s address on file.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
 
             PrimaryButton(
               label: _submitting ? 'Recording…' : 'Record payment',
               busy: _submitting,
               onPressed: _submitting ? null : _submit,
-            ),
-            const SizedBox(height: Spacing.sm),
-            Text(
-              'A receipt is emailed to the client automatically.',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: scheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
             ),
           ],
         ),

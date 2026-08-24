@@ -27,8 +27,7 @@ class CrmService {
   /// GET /collection/dashboard — outstanding money, ageing buckets, today's
   /// dues and payments, plus a date-keyed call plan.
   Future<CollectionDashboard> collectionDashboard() async {
-    final body =
-        await _api.get<Map<String, dynamic>>('/collection/dashboard');
+    final body = await _api.get<Map<String, dynamic>>('/collection/dashboard');
     return CollectionDashboard.fromJson(_unwrap(body));
   }
 
@@ -60,12 +59,14 @@ class CrmService {
     required String documentId,
     required DateTime callDate,
     String? notes,
-  }) =>
-      _api.post<dynamic>('/followups', body: {
-        'document_id': documentId,
-        'call_date': _ymd(callDate),
-        'notes': ?notes,
-      });
+  }) => _api.post<dynamic>(
+    '/followups',
+    body: {
+      'document_id': documentId,
+      'call_date': _ymd(callDate),
+      'notes': ?notes,
+    },
+  );
 
   /// POST /followups/{id}/log-call — record the outcome of a call.
   ///
@@ -91,8 +92,9 @@ class CrmService {
         'promise_date': promiseDate == null ? null : _ymd(promiseDate),
         'promise_amount': ?promiseAmount,
         // `FollowupController::logCall` reads `next_followup_override`.
-        'next_followup_override':
-            nextFollowup == null ? null : _ymd(nextFollowup),
+        'next_followup_override': nextFollowup == null
+            ? null
+            : _ymd(nextFollowup),
       },
     );
     return FollowupCallResult.fromJson(body);
@@ -100,13 +102,14 @@ class CrmService {
 
   /// PATCH /followups/{id}/cancel.
   Future<void> cancelFollowup(String followupId, {String? reason}) =>
-      _api.patch<dynamic>('/followups/$followupId/cancel',
-          body: {'reason': ?reason});
+      _api.patch<dynamic>(
+        '/followups/$followupId/cancel',
+        body: {'reason': ?reason},
+      );
 
   /// GET /followups/client/{clientId} — every follow-up for one client.
   Future<List<FollowupEntry>> clientFollowupHistory(String clientId) async {
-    final body =
-        await _api.get<dynamic>('/followups/client/$clientId');
+    final body = await _api.get<dynamic>('/followups/client/$clientId');
     return Paginated.fromJson(body, FollowupEntry.fromJson).items;
   }
 
@@ -116,8 +119,7 @@ class CrmService {
 
   /// GET /satisfaction-calls/dashboard — queue + team and personal stats.
   Future<SatisfactionDashboard> satisfactionDashboard() async {
-    final body =
-        await _api.get<dynamic>('/satisfaction-calls/dashboard');
+    final body = await _api.get<dynamic>('/satisfaction-calls/dashboard');
     return SatisfactionDashboard.fromJson(_unwrap(body));
   }
 
@@ -148,33 +150,51 @@ class CrmService {
     bool? appointmentRequested,
     DateTime? appointmentDate,
     String? appointmentNotes,
-  }) =>
-      _api.post<dynamic>('/satisfaction-calls/$callId/log-call', body: {
-        'outcome': outcome,
-        'rating': ?rating,
-        'feedback': ?feedback,
-        'internal_notes': ?internalNotes,
-        'appointment_requested': ?appointmentRequested,
-        'appointment_date':
-            appointmentDate == null ? null : _ymd(appointmentDate),
-        'appointment_notes': ?appointmentNotes,
-      });
+  }) => _api.post<dynamic>(
+    '/satisfaction-calls/$callId/log-call',
+    body: {
+      'outcome': outcome,
+      'rating': ?rating,
+      'feedback': ?feedback,
+      'internal_notes': ?internalNotes,
+      'appointment_requested': ?appointmentRequested,
+      'appointment_date': appointmentDate == null
+          ? null
+          : _ymd(appointmentDate),
+      'appointment_notes': ?appointmentNotes,
+    },
+  );
 
   /// PATCH /satisfaction-calls/{id}/reschedule.
   Future<void> rescheduleSatisfactionCall(
     String callId, {
     required DateTime scheduledDate,
     String? reason,
-  }) =>
-      _api.patch<dynamic>('/satisfaction-calls/$callId/reschedule', body: {
-        'scheduled_date': _ymd(scheduledDate),
-        'reason': ?reason,
-      });
+  }) => _api.patch<dynamic>(
+    '/satisfaction-calls/$callId/reschedule',
+    body: {'scheduled_date': _ymd(scheduledDate), 'reason': ?reason},
+  );
 
   /// PATCH /satisfaction-calls/{id}/cancel.
   Future<void> cancelSatisfactionCall(String callId, {String? reason}) =>
-      _api.patch<dynamic>('/satisfaction-calls/$callId/cancel',
-          body: {'reason': ?reason});
+      _api.patch<dynamic>(
+        '/satisfaction-calls/$callId/cancel',
+        body: {'reason': ?reason},
+      );
+
+  /// PATCH /satisfaction-calls/{id}/assign — hand the call to a colleague.
+  /// The user must be active and in the same tenant. Returns the server's
+  /// confirmation ("Call assigned to …").
+  Future<String> assignSatisfactionCall(
+    String callId, {
+    required String userId,
+  }) async {
+    final body = await _api.patch<Map<String, dynamic>>(
+      '/satisfaction-calls/$callId/assign',
+      body: {'user_id': userId},
+    );
+    return body['message']?.toString() ?? 'Call assigned.';
+  }
 
   // ---------------------------------------------------------------------
   // Appointments (satisfaction calls with an appointment attached)
@@ -200,13 +220,16 @@ class CrmService {
     String? appointmentStatus,
     DateTime? appointmentDate,
     String? appointmentNotes,
-  }) =>
-      _api.patch<dynamic>('/satisfaction-calls/$callId/appointment', body: {
-        'appointment_status': ?appointmentStatus,
-        'appointment_date':
-            appointmentDate == null ? null : _ymd(appointmentDate),
-        'appointment_notes': ?appointmentNotes,
-      });
+  }) => _api.patch<dynamic>(
+    '/satisfaction-calls/$callId/appointment',
+    body: {
+      'appointment_status': ?appointmentStatus,
+      'appointment_date': appointmentDate == null
+          ? null
+          : _ymd(appointmentDate),
+      'appointment_notes': ?appointmentNotes,
+    },
+  );
 
   // ---------------------------------------------------------------------
   // Served customers (walk-ins)
@@ -238,16 +261,18 @@ class CrmService {
     String? phone,
     DateTime? servedDate,
     String? notes,
-  }) =>
-      _api.post<dynamic>('/served/customers', body: {
-        'name': name,
-        // `ServedCustomersController::storeCustomer` validates `service_ids`
-        // and requires `served_date` — default to today for a walk-in.
-        if (serviceIds.isNotEmpty) 'service_ids': serviceIds,
-        'phone': ?phone,
-        'served_date': _ymd(servedDate ?? DateTime.now()),
-        'notes': ?notes,
-      });
+  }) => _api.post<dynamic>(
+    '/served/customers',
+    body: {
+      'name': name,
+      // `ServedCustomersController::storeCustomer` validates `service_ids`
+      // and requires `served_date` — default to today for a walk-in.
+      if (serviceIds.isNotEmpty) 'service_ids': serviceIds,
+      'phone': ?phone,
+      'served_date': _ymd(servedDate ?? DateTime.now()),
+      'notes': ?notes,
+    },
+  );
 
   /// POST /served/customers/{id}/feedback — the satisfaction call-back on a
   /// walk-in.
@@ -258,19 +283,85 @@ class CrmService {
     String? feedback,
     String? challenges,
     String? internalNotes,
-  }) =>
-      _api.post<dynamic>('/served/customers/$customerId/feedback', body: {
-        'outcome': outcome,
-        'rating': ?rating,
-        'feedback': ?feedback,
-        'challenges': ?challenges,
-        'internal_notes': ?internalNotes,
-      });
+  }) => _api.post<dynamic>(
+    '/served/customers/$customerId/feedback',
+    body: {
+      'outcome': outcome,
+      'rating': ?rating,
+      'feedback': ?feedback,
+      'challenges': ?challenges,
+      'internal_notes': ?internalNotes,
+    },
+  );
+
+  /// PUT /served/customers/{id} — correct a logged walk-in. Every field is
+  /// `sometimes`; passing [serviceIds] re-syncs the whole pivot, so send the
+  /// complete list rather than the additions.
+  Future<ServedCustomer> updateServedCustomer(
+    String customerId, {
+    String? name,
+    String? phone,
+    DateTime? servedDate,
+    String? notes,
+    List<String>? serviceIds,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/served/customers/$customerId',
+      body: {
+        'name': ?name,
+        'phone': ?phone,
+        'served_date': servedDate == null ? null : _ymd(servedDate),
+        'notes': ?notes,
+        'service_ids': ?serviceIds,
+      },
+    );
+    return ServedCustomer.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /served/customers/{id} — removes the entry and its feedback.
+  Future<void> deleteServedCustomer(String customerId) =>
+      _api.delete<dynamic>('/served/customers/$customerId');
+
+  /// DELETE /served/customers/{id}/feedback/{feedback} — drop one call-back.
+  Future<void> deleteServedFeedback(String customerId, String feedbackId) =>
+      _api.delete<dynamic>(
+        '/served/customers/$customerId/feedback/$feedbackId',
+      );
+
+  /// GET /served/target — the counter's daily target, or null when the tenant
+  /// has never set one.
+  Future<ServedTarget?> servedTarget() async {
+    final body = await _api.get<Map<String, dynamic>>('/served/target');
+    final data = body['data'];
+    if (data is! Map || data.isEmpty) return null;
+    return ServedTarget.fromJson(Map<String, dynamic>.from(data));
+  }
+
+  /// POST /served/target — set or replace the daily target. Tenant-wide, not
+  /// per officer: the controller upserts the single [ServedTarget] row.
+  ///
+  /// [activeDays] are ISO weekdays (1 = Monday) and at least one is required.
+  Future<ServedTarget> setServedTarget({
+    required int newCustomersTarget,
+    required int calledCustomersTarget,
+    required List<int> activeDays,
+    required DateTime effectiveFrom,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/served/target',
+      body: {
+        'new_customers_target': newCustomersTarget,
+        'called_customers_target': calledCustomersTarget,
+        'active_days': activeDays,
+        'effective_from': _ymd(effectiveFrom),
+      },
+    );
+    return ServedTarget.fromJson(_unwrap(body));
+  }
 
   /// GET /served/weekly-summary — this week's achievement against target.
   Future<ServedWeeklySummary> servedWeeklySummary() async {
-    final body =
-        await _api.get<Map<String, dynamic>>('/served/weekly-summary');
+    final body = await _api.get<Map<String, dynamic>>('/served/weekly-summary');
     return ServedWeeklySummary.fromJson(body);
   }
 
@@ -292,8 +383,9 @@ class CrmService {
 
   /// GET /field-sessions/{id} — the session plus its visits.
   Future<FieldSessionDetail> fieldSession(String sessionId) async {
-    final body =
-        await _api.get<Map<String, dynamic>>('/field-sessions/$sessionId');
+    final body = await _api.get<Map<String, dynamic>>(
+      '/field-sessions/$sessionId',
+    );
     return FieldSessionDetail.fromJson(body);
   }
 
@@ -321,7 +413,8 @@ class CrmService {
     );
     final data = body['data'];
     return FieldSession.fromJson(
-        data is Map ? Map<String, dynamic>.from(data) : body);
+      data is Map ? Map<String, dynamic>.from(data) : body,
+    );
   }
 
   /// POST /field-sessions/{id}/visits — log a business visited. `location`
@@ -335,17 +428,20 @@ class CrmService {
     String? phone,
     String? feedback,
     DateTime? nextFollowupDate,
-  }) =>
-      _api.post<dynamic>('/field-sessions/$sessionId/visits', body: {
-        'business_name': businessName,
-        'status': status,
-        'services': services,
-        'location': location,
-        'phone': ?phone,
-        'feedback': ?feedback,
-        'next_followup_date':
-            nextFollowupDate == null ? null : _ymd(nextFollowupDate),
-      });
+  }) => _api.post<dynamic>(
+    '/field-sessions/$sessionId/visits',
+    body: {
+      'business_name': businessName,
+      'status': status,
+      'services': services,
+      'location': location,
+      'phone': ?phone,
+      'feedback': ?feedback,
+      'next_followup_date': nextFollowupDate == null
+          ? null
+          : _ymd(nextFollowupDate),
+    },
+  );
 
   /// GET /field-visits-report — every visit across sessions, for follow-up.
   Future<Paginated<FieldVisit>> allFieldVisits({
@@ -360,6 +456,133 @@ class CrmService {
     return Paginated.fromJson(body, FieldVisit.fromJson);
   }
 
+  /// PUT /field-sessions/{id} — correct a session, or close it off by writing
+  /// the summary, challenges and recommendations. Every field is `sometimes`,
+  /// so pass only what changed.
+  Future<FieldSession> updateFieldSession(
+    String sessionId, {
+    String? area,
+    DateTime? visitDate,
+    String? officerId,
+    String? summary,
+    String? challenges,
+    String? recommendations,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/field-sessions/$sessionId',
+      body: {
+        'area': ?area,
+        'visit_date': visitDate == null ? null : _ymd(visitDate),
+        'officer_id': ?officerId,
+        'summary': ?summary,
+        'challenges': ?challenges,
+        'recommendations': ?recommendations,
+      },
+    );
+    return FieldSession.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /field-sessions/{id} — takes the session's visits with it.
+  Future<void> deleteFieldSession(String sessionId) =>
+      _api.delete<dynamic>('/field-sessions/$sessionId');
+
+  /// PUT /field-sessions/{s}/visits/{v} — correct a logged visit.
+  ///
+  /// `services` is validated `sometimes|array|min:1`, so an empty list would be
+  /// rejected; pass null to leave it alone.
+  Future<FieldVisit> updateFieldVisit(
+    String sessionId,
+    String visitId, {
+    String? businessName,
+    String? location,
+    String? phone,
+    List<String>? services,
+    String? feedback,
+    String? status,
+    String? clientId,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/field-sessions/$sessionId/visits/$visitId',
+      body: {
+        'business_name': ?businessName,
+        'location': ?location,
+        'phone': ?phone,
+        if (services != null && services.isNotEmpty) 'services': services,
+        'feedback': ?feedback,
+        'status': ?status,
+        'client_id': ?clientId,
+      },
+    );
+    return FieldVisit.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /field-sessions/{s}/visits/{v}.
+  Future<void> deleteFieldVisit(String sessionId, String visitId) =>
+      _api.delete<dynamic>('/field-sessions/$sessionId/visits/$visitId');
+
+  /// POST /field-sessions/{s}/visits/{v}/convert — turn a prospect into a
+  /// billing client. This is the point of the whole module.
+  ///
+  /// Either link an existing client with [clientId], or create one — in which
+  /// case [clientName] is required and the visit's own phone is used when
+  /// [clientPhone] is omitted. Either way the visit comes back `converted`
+  /// with the client attached.
+  Future<FieldVisit> convertFieldVisit(
+    String sessionId,
+    String visitId, {
+    String? clientId,
+    String? clientName,
+    String? clientEmail,
+    String? clientPhone,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/field-sessions/$sessionId/visits/$visitId/convert',
+      body: {
+        'client_id': ?clientId,
+        'client_name': ?clientName,
+        'client_email': ?clientEmail,
+        'client_phone': ?clientPhone,
+      },
+    );
+    return FieldVisit.fromJson(_unwrap(body));
+  }
+
+  /// GET /field-visits/{visit}/followups — newest call first.
+  Future<List<FieldFollowup>> fieldVisitFollowups(String visitId) async {
+    final body = await _api.get<dynamic>('/field-visits/$visitId/followups');
+    return Paginated.fromJson(body, FieldFollowup.fromJson).items;
+  }
+
+  /// POST /field-visits/{visit}/followups — record a call on a prospect.
+  ///
+  /// The controller also writes [nextFollowupDate] onto the visit and maps an
+  /// `interested` / `not_interested` / `converted` outcome onto the visit's
+  /// status, so the visit is stale after this returns.
+  Future<FieldFollowup> logFieldVisitFollowup(
+    String visitId, {
+    required DateTime callDate,
+    required String outcome,
+    String? notes,
+    DateTime? nextFollowupDate,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/field-visits/$visitId/followups',
+      body: {
+        'call_date': _ymd(callDate),
+        'outcome': outcome,
+        'notes': ?notes,
+        'next_followup_date': nextFollowupDate == null
+            ? null
+            : _ymd(nextFollowupDate),
+      },
+    );
+    return FieldFollowup.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /field-visits/{visit}/followups/{followup}.
+  Future<void> deleteFieldVisitFollowup(String visitId, String followupId) =>
+      _api.delete<dynamic>('/field-visits/$visitId/followups/$followupId');
+
   /// GET /field-targets — monthly conversion targets per officer.
   Future<List<FieldTarget>> fieldTargets({int? month, int? year}) async {
     final body = await _api.get<dynamic>(
@@ -367,6 +590,35 @@ class CrmService {
       query: {'month': month, 'year': year},
     );
     return Paginated.fromJson(body, FieldTarget.fromJson).items;
+  }
+
+  /// POST /field-targets — set one officer's target for a month. Upserts on
+  /// (officer, month, year), so this is also how a target is corrected.
+  Future<FieldTarget> setFieldTarget({
+    required String officerId,
+    required int month,
+    required int year,
+    required int targetClients,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/field-targets',
+      body: {
+        'officer_id': officerId,
+        'month': month,
+        'year': year,
+        'target_clients': targetClients,
+      },
+    );
+    return FieldTarget.fromJson(_unwrap(body));
+  }
+
+  /// GET /field-stats — a month's visits by status and by officer.
+  Future<FieldStats> fieldStats({int? month, int? year}) async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/field-stats',
+      query: {'month': month, 'year': year},
+    );
+    return FieldStats.fromJson(_unwrap(body));
   }
 
   /// The three CRM dashboards wrap their payload in `{data: {...}}`; the
@@ -392,10 +644,28 @@ abstract final class CrmPermissions {
   static const satisfactionLog = 'satisfaction_calls.log';
   static const satisfactionReschedule = 'satisfaction_calls.reschedule';
   static const satisfactionCancel = 'satisfaction_calls.cancel';
+  static const satisfactionAssign = 'satisfaction_calls.assign';
   static const servedRead = 'served.read';
   static const servedCreate = 'served.create';
+  static const servedUpdate = 'served.update';
+  static const servedDelete = 'served.delete';
+  static const servedSettings = 'served.settings';
+
+  /// Only managers may back-date a walk-in; the web form falls back to a
+  /// read-only date without it.
+  static const servedChangeDate = 'served.change_date';
   static const fieldSessionsRead = 'field_sessions.read';
   static const fieldSessionsCreate = 'field_sessions.create';
+  static const fieldSessionsUpdate = 'field_sessions.update';
+  static const fieldSessionsDelete = 'field_sessions.delete';
   static const fieldVisitsCreate = 'field_visits.create';
+  static const fieldVisitsUpdate = 'field_visits.update';
+  static const fieldVisitsDelete = 'field_visits.delete';
+  static const fieldVisitsConvert = 'field_visits.convert';
   static const fieldTargetsRead = 'field_targets.read';
+  static const fieldTargetsUpdate = 'field_targets.update';
+
+  /// Choosing a colleague means listing `/users`, which is gated separately
+  /// from the action itself — assign and set-target need both.
+  static const settingsUsers = 'settings.users';
 }

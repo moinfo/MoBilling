@@ -7,8 +7,11 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
 import '../clients/client_detail_screen.dart' show ContactActions;
-import '../crm/crm_ui.dart' show CrmAsyncView, CrmMetaLine;
+import '../common/share_pdf.dart';
+import '../crm/crm_ui.dart'
+    show CrmAsyncView, CrmField, CrmMetaLine, CrmSheet, showCrmSheet;
 import 'billing_catalog_providers.dart';
+import 'document_form_screen.dart' show raiseDocument;
 
 /// Full document view for staff — works for invoices, quotations, proformas
 /// and credit notes, since they are all the same table.
@@ -53,7 +56,13 @@ class DocumentDetailScreen extends ConsumerWidget {
         value: document,
         errorTitle: 'Could not load this document',
         onRetry: () => ref.invalidate(staffDocumentProvider(documentId)),
-        builder: (doc) => _Body(doc: doc),
+        builder: (doc) => _Body(
+          doc: doc,
+          // The approval panel raises two of the sheet's actions to the
+          // surface; it runs them through the same path so a decision made
+          // there and one made in the sheet behave identically.
+          onAction: (action) => _run(context, ref, doc, action),
+        ),
       ),
     );
   }
@@ -67,6 +76,9 @@ class DocumentDetailScreen extends ConsumerWidget {
     final chosen = await showModalBottomSheet<_DocumentAction>(
       context: context,
       showDragHandle: true,
+      // A pending invoice with every permission can offer nine actions, which
+      // is taller than a default sheet is allowed to be.
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => _ActionsSheet(doc: doc, actions: actions),
     );
@@ -85,11 +97,122 @@ class DocumentDetailScreen extends ConsumerWidget {
 
     try {
       switch (action) {
+        case _DocumentAction.sharePdf:
+          // Nothing on the server changes, so this one neither confirms nor
+          // invalidates — it hands the bytes to the platform share sheet and
+          // returns. A credit note goes through its own endpoint, which is
+          // the same renderer behind a check that the row really is one.
+          await sharePdf(
+            context,
+            fetch: () => doc.type == 'credit_note'
+                ? service.creditNotePdf(doc.id)
+                : service.documentPdf(doc.id),
+            filename: '${doc.documentNumber}.pdf',
+          );
+          return;
+        case _DocumentAction.edit:
+          // The form pops with the id it saved; this screen simply refetches
+          // below, since the totals and the items have both moved.
+          await raiseDocument(context, document: doc);
+        case _DocumentAction.creditNote:
+          // Seeded from this invoice: same client, same lines, linked as the
+          // parent so the credit shows against it. It lands on the new note.
+          await raiseDocument(context, sourceInvoice: doc);
         case _DocumentAction.send:
           final message = await service.sendDocument(doc.id);
           messenger.showSnackBar(
             SnackBar(content: Text(message ?? 'Emailed to the client.')),
           );
+        case _DocumentAction.sendWhatsApp:
+          final confirmed = await _confirm(
+            context,
+            'Send over WhatsApp',
+            'Send ${doc.documentNumber} to '
+                '${doc.clientName ?? 'the client'} on '
+                '${doc.clientPhone ?? 'WhatsApp'}?',
+            confirmLabel: 'Send',
+          );
+          if (!confirmed) return;
+          final message = await service.sendDocumentWhatsApp(doc.id);
+          messenger.showSnackBar(
+            SnackBar(content: Text(message ?? 'Sent over WhatsApp.')),
+          );
+        case _DocumentAction.submitForApproval:
+          final message = await service.submitForApproval(doc.id);
+          messenger.showSnackBar(
+            SnackBar(content: Text(message ?? 'Submitted for approval.')),
+          );
+        case _DocumentAction.approve:
+          final confirmed = await _confirm(
+            context,
+            'Approve and send',
+            'Approve ${doc.documentNumber}? It is re-dated to today and '
+                'emailed to ${doc.clientName ?? 'the client'}.',
+            confirmLabel: 'Approve',
+          );
+          if (!confirmed) return;
+          final message = await service.approveDocument(doc.id);
+          messenger.showSnackBar(
+            SnackBar(content: Text(message ?? 'Approved.')),
+          );
+        case _DocumentAction.reject:
+          final confirmed = await _confirm(
+            context,
+            'Reject this document',
+            'Reject ${doc.documentNumber}? It goes back to draft for '
+                'whoever raised it to edit.',
+            confirmLabel: 'Reject',
+            destructive: true,
+          );
+          if (!confirmed) return;
+          final message = await service.rejectDocument(doc.id);
+          messenger.showSnackBar(
+            SnackBar(content: Text(message ?? 'Rejected.')),
+          );
+        case _DocumentAction.returnToDraft:
+          final confirmed = await _confirm(
+            context,
+            'Return to draft',
+            'Reopen ${doc.documentNumber} for editing? It stops being a '
+                'live document until it is sent again.',
+            confirmLabel: 'Return to draft',
+          );
+          if (!confirmed) return;
+          final message = await service.returnToDraft(doc.id);
+          messenger.showSnackBar(
+            SnackBar(content: Text(message ?? 'Returned to draft.')),
+          );
+        case _DocumentAction.refund:
+          // The sheet calls the API itself so a "more than was paid" refusal
+          // lands as an error banner on the form rather than as a snackbar
+          // over a form the user can no longer see.
+          final message = await showCrmSheet<String>(
+            context: context,
+            builder: (_) => _RefundSheet(doc: doc),
+          );
+          if (message == null) return;
+          messenger.showSnackBar(SnackBar(content: Text(message)));
+        case _DocumentAction.delete:
+          final confirmed = await _confirm(
+            context,
+            'Delete this document',
+            'Delete ${doc.documentNumber} for good? This cannot be undone.',
+            confirmLabel: 'Delete',
+            destructive: true,
+          );
+          if (!confirmed) return;
+          // A credit note has its own delete, which clears its items too —
+          // the generic one leaves them orphaned in the table.
+          final message = doc.type == 'credit_note'
+              ? await service.deleteCreditNote(doc.id)
+              : await service.deleteDocument(doc.id);
+          messenger.showSnackBar(
+            SnackBar(content: Text(message ?? 'Document deleted.')),
+          );
+          // The record this screen is about is gone — going back to the list
+          // is the only honest next state, and refetching it would 404.
+          if (context.mounted) context.pop();
+          return;
         case _DocumentAction.convert:
           final message = await service.convertDocument(doc.id);
           messenger.showSnackBar(
@@ -140,18 +263,65 @@ class DocumentDetailScreen extends ConsumerWidget {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
+
+  /// [confirmLabel] names the verb rather than saying "OK", so the button
+  /// itself states what is about to happen; [destructive] paints it in the
+  /// error colour.
+  Future<bool> _confirm(
+    BuildContext context,
+    String title,
+    String body, {
+    required String confirmLabel,
+    bool destructive = false,
+  }) async {
+    final scheme = Theme.of(context).colorScheme;
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(body),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: destructive
+                ? FilledButton.styleFrom(
+                    backgroundColor: scheme.error,
+                    foregroundColor: scheme.onError,
+                  )
+                : null,
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
 }
 
 /// Everything staff can do to a document from a phone, with the wording and
 /// the icon each one gets in the sheet.
 enum _DocumentAction {
+  approve('Approve and send', Icons.check_circle_outlined),
+  reject('Reject', Icons.do_not_disturb_on_outlined, destructive: true),
+  submitForApproval('Submit for approval', Icons.rule_outlined),
+  edit('Edit document', Icons.edit_outlined),
+  sharePdf('Share PDF', Icons.ios_share_outlined),
   send('Email to client', Icons.forward_to_inbox_outlined),
+  sendWhatsApp('Send over WhatsApp', Icons.chat_outlined),
   convert('Convert to invoice', Icons.receipt_long_outlined),
   convertProforma('Convert to proforma', Icons.description_outlined),
   dueDate('Extend due date', Icons.event_outlined),
   issue('Issue credit note', Icons.publish_outlined),
+  creditNote('Raise a credit note', Icons.receipt_outlined),
+  refund('Record a refund', Icons.currency_exchange_outlined),
+  returnToDraft('Return to draft', Icons.undo_outlined),
   cancel('Cancel document', Icons.block_outlined, destructive: true),
-  uncancel('Restore document', Icons.restore_outlined);
+  uncancel('Restore document', Icons.restore_outlined),
+  delete('Delete document', Icons.delete_outline, destructive: true);
 
   const _DocumentAction(this.label, this.icon, {this.destructive = false});
 
@@ -171,10 +341,32 @@ enum _DocumentAction {
     final canConvert =
         can(BillingCatalogPermissions.documentsConvert) && doc.isConvertible;
     final canUpdate = can(BillingCatalogPermissions.documentsUpdate);
+    final canSend = can(BillingCatalogPermissions.documentsSend);
 
     return [
-      if (can(BillingCatalogPermissions.documentsSend) && !doc.isCancelled)
-        send,
+      // The approval decision comes first because nothing else can happen to
+      // the document until it is made.
+      if (can(BillingCatalogPermissions.documentsApprove) &&
+          doc.isPendingApproval) ...[
+        approve,
+        reject,
+      ],
+      if (canSend && doc.isDraft) submitForApproval,
+      // `update` replaces the item list wholesale, and the controller refuses
+      // a cancelled document outright. A credit note has no editable form —
+      // `StoreDocumentRequest` will not accept its type — so it is amended by
+      // deleting the draft and raising another.
+      if (canUpdate && !doc.isCancelled && doc.type != 'credit_note') edit,
+      if (can(BillingCatalogPermissions.documentsDownload)) sharePdf,
+      if (canSend && !doc.isCancelled) send,
+      // WhatsApp needs a number to send to, and the controller refuses a
+      // document that has not been issued yet.
+      if (canSend &&
+          !doc.isCancelled &&
+          !doc.isDraft &&
+          !doc.isPendingApproval &&
+          (doc.clientPhone?.isNotEmpty ?? false))
+        sendWhatsApp,
       if (canConvert) convert,
       if (canConvert && doc.type == 'quotation') convertProforma,
       // `updateDueDate` only accepts sent | overdue | partial.
@@ -182,7 +374,20 @@ enum _DocumentAction {
           const {'sent', 'overdue', 'partial'}.contains(doc.status))
         dueDate,
       if (canUpdate && doc.type == 'credit_note' && doc.isDraft) issue,
+      // Crediting an invoice is raising a new document against it, so it is
+      // gated on documents.create, as `POST /credit-notes` is.
+      if (can(BillingCatalogPermissions.documentsCreate) &&
+          doc.isInvoice &&
+          !doc.isCancelled)
+        creditNote,
+      // Guarded by the payments-in permission, as the route is — a refund is
+      // money going back out of the takings.
+      if (can(BillingCatalogPermissions.paymentsInCreate) && doc.isRefundable)
+        refund,
+      if (canUpdate && doc.canReturnToDraft) returnToDraft,
       if (canUpdate) doc.isCancelled ? uncancel : cancel,
+      if (can(BillingCatalogPermissions.documentsDelete) && doc.isDeletable)
+        delete,
     ];
   }
 }
@@ -226,23 +431,36 @@ class _ActionsSheet extends StatelessWidget {
                 ],
               ),
             ),
-            for (final action in actions)
-              ListTile(
-                leading: Icon(
-                  action.icon,
-                  size: 20,
-                  color: action.destructive
-                      ? scheme.error
-                      : scheme.onSurfaceVariant,
+            // Scrolls rather than clips: the list is as long as the document's
+            // state and the user's permissions make it.
+            Flexible(
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final action in actions)
+                      ListTile(
+                        leading: Icon(
+                          action.icon,
+                          size: 20,
+                          color: action.destructive
+                              ? scheme.error
+                              : scheme.onSurfaceVariant,
+                        ),
+                        title: Text(
+                          action.label,
+                          style: theme.textTheme.bodyLarge?.copyWith(
+                            color: action.destructive
+                                ? scheme.error
+                                : scheme.onSurface,
+                          ),
+                        ),
+                        onTap: () => Navigator.of(context).pop(action),
+                      ),
+                  ],
                 ),
-                title: Text(
-                  action.label,
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    color: action.destructive ? scheme.error : scheme.onSurface,
-                  ),
-                ),
-                onTap: () => Navigator.of(context).pop(action),
               ),
+            ),
           ],
         ),
       ),
@@ -292,10 +510,234 @@ class _RecordPaymentAction extends ConsumerWidget {
   }
 }
 
-class _Body extends StatelessWidget {
-  const _Body({required this.doc});
+/// What "awaiting approval" means and, for an approver, the two buttons that
+/// end it. Someone without `documents.approve` is told who has to act instead
+/// of being shown a button that would only 403.
+class _ApprovalPanel extends ConsumerWidget {
+  const _ApprovalPanel({required this.doc, required this.onAction});
 
   final StaffDocument doc;
+  final Future<void> Function(_DocumentAction) onAction;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final tone = context.statusColors.attention;
+    final auth = ref.watch(sessionControllerProvider).session;
+    final canApprove =
+        auth?.can(BillingCatalogPermissions.documentsApprove) ?? false;
+
+    return Card(
+      color: Color.alphaBlend(
+        tone.withValues(alpha: 0.06),
+        theme.cardTheme.color ?? scheme.surface,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'AWAITING APPROVAL',
+              style: theme.textTheme.labelSmall?.copyWith(color: tone),
+            ),
+            const SizedBox(height: Spacing.sm),
+            Text(
+              canApprove
+                  ? 'Nobody has sent this to '
+                        '${doc.clientName ?? 'the client'} yet. Approving '
+                        're-dates it to today and emails it; rejecting sends '
+                        'it back to draft.'
+                  : 'Nobody has sent this to '
+                        '${doc.clientName ?? 'the client'} yet. An approver '
+                        'needs to review it before it goes out.',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            if (canApprove) ...[
+              const SizedBox(height: Spacing.md),
+              PrimaryButton(
+                label: 'Approve and send',
+                icon: Icons.check_circle_outlined,
+                onPressed: () => onAction(_DocumentAction.approve),
+              ),
+              const SizedBox(height: Spacing.sm),
+              OutlinedButton.icon(
+                onPressed: () => onAction(_DocumentAction.reject),
+                icon: const Icon(Icons.do_not_disturb_on_outlined, size: 18),
+                label: const Text('Reject'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: scheme.error,
+                  side: BorderSide(color: scheme.error.withValues(alpha: 0.4)),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The refund form. It submits itself rather than handing a draft back, so a
+/// server refusal ("more than was paid") lands on the form that caused it.
+///
+/// Pops with the API's message on success.
+class _RefundSheet extends ConsumerStatefulWidget {
+  const _RefundSheet({required this.doc});
+
+  final StaffDocument doc;
+
+  @override
+  ConsumerState<_RefundSheet> createState() => _RefundSheetState();
+}
+
+class _RefundSheetState extends ConsumerState<_RefundSheet> {
+  late final _amount = TextEditingController(
+    text: widget.doc.paidAmount.toStringAsFixed(2),
+  );
+  final _reference = TextEditingController();
+  final _reason = TextEditingController();
+
+  RefundMethod _method = RefundMethod.wallet;
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _amount.dispose();
+    _reference.dispose();
+    _reason.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final amount = double.tryParse(_amount.text.trim());
+    if (amount == null || amount <= 0) {
+      setState(() => _error = 'Enter the amount to give back.');
+      return;
+    }
+    if (amount > widget.doc.paidAmount) {
+      setState(
+        () => _error =
+            'That is more than has been paid on this invoice '
+            '(${Formatting.amount(widget.doc.paidAmount)}).',
+      );
+      return;
+    }
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final message = await ref
+          .read(billingCatalogServiceProvider)
+          .recordRefund(
+            widget.doc.id,
+            amount: amount,
+            method: _method.wire,
+            reference: _reference.text.trim(),
+            reason: _reason.text.trim(),
+          );
+      if (!mounted) return;
+      Navigator.of(context).pop(message ?? 'Refund recorded.');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return CrmSheet(
+      eyebrow: widget.doc.documentNumber,
+      title: 'Record a refund',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        Text(
+          'A wallet refund adds reusable account credit; every other method '
+          'just records money returned outside the system. Either way this '
+          "invoice's paid amount drops by the same figure.",
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Amount',
+          child: TextField(
+            controller: _amount,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              hintText: Formatting.amount(widget.doc.paidAmount),
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Method',
+          child: DropdownButtonFormField<RefundMethod>(
+            initialValue: _method,
+            items: [
+              for (final method in RefundMethod.values)
+                DropdownMenuItem(value: method, child: Text(method.label)),
+            ],
+            onChanged: _busy
+                ? null
+                : (value) => setState(() => _method = value ?? _method),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Reference',
+          child: TextField(
+            controller: _reference,
+            decoration: const InputDecoration(
+              hintText: 'Transaction reference, if there is one',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Reason',
+          child: TextField(
+            controller: _reason,
+            maxLines: 3,
+            decoration: const InputDecoration(
+              hintText: 'Why is this being refunded?',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: 'Record refund',
+          busy: _busy,
+          onPressed: _busy ? null : _submit,
+        ),
+      ],
+    );
+  }
+}
+
+class _Body extends StatelessWidget {
+  const _Body({required this.doc, required this.onAction});
+
+  final StaffDocument doc;
+
+  /// Runs an action through the screen's one handler, so the panel below the
+  /// hero and the actions sheet cannot drift apart.
+  final Future<void> Function(_DocumentAction) onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -306,6 +748,14 @@ class _Body extends StatelessWidget {
       padding: const EdgeInsets.all(Spacing.md),
       children: [
         Reveal(child: _HeroFigure(doc: doc)),
+
+        // A document stuck in the approval queue is invisible work: it is not
+        // a draft anyone is still writing and not something the client has
+        // seen. Say so, and put the decision under the words.
+        if (doc.isPendingApproval) ...[
+          const SizedBox(height: Spacing.md),
+          _ApprovalPanel(doc: doc, onAction: onAction),
+        ],
 
         // Taking the money is what this screen is for while anything is
         // owed, so it is a button under the figure rather than an entry in

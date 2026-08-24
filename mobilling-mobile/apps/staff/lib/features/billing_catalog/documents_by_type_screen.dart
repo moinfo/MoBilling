@@ -11,6 +11,7 @@ import '../common/paged_list.dart';
 import '../crm/crm_ui.dart' show FilterStrip;
 import '../documents/documents_tab.dart' show StaffInvoiceCard;
 import 'billing_catalog_providers.dart';
+import 'document_form_screen.dart';
 
 /// One screen for quotations, proforma invoices and credit notes.
 ///
@@ -43,6 +44,12 @@ enum DocumentKind {
   final String title;
   final String emptyTitle;
   final String emptyMessage;
+
+  /// What the form should raise from this list's `+`.
+  DocumentType get documentType => DocumentType.fromWire(type);
+
+  /// Singular, for the masthead's tooltip.
+  String get newLabel => 'New ${documentType.label.toLowerCase()}';
 }
 
 class DocumentsByTypeScreen extends ConsumerStatefulWidget {
@@ -115,10 +122,30 @@ class _DocumentsByTypeScreenState extends ConsumerState<DocumentsByTypeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Both `POST /documents` and `POST /credit-notes` are gated on
+    // documents.create, so one check covers all three lists.
+    final creatable =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(BillingCatalogPermissions.documentsCreate) ??
+        false;
+
     return Scaffold(
       appBar: ShellTopBar(
         eyebrow: 'Billing',
         title: widget.kind.title,
+        trailing: creatable
+            ? InkActionButton(
+                icon: Icons.add_rounded,
+                tooltip: widget.kind.newLabel,
+                onPressed: () => raiseDocument(
+                  context,
+                  type: widget.kind.documentType,
+                  onSaved: () => _listKey.currentState?.reload(),
+                ),
+              )
+            : null,
         bottom: InkSearchField(
           controller: _search,
           hint: 'Search number or client',
