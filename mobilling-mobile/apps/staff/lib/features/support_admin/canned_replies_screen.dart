@@ -329,7 +329,7 @@ class _CannedReplyFormState extends ConsumerState<_CannedReplyForm> {
         Spacing.lg,
         0,
         Spacing.lg,
-        MediaQuery.viewInsetsOf(context).bottom + Spacing.lg,
+        sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -493,4 +493,3 @@ class CannedReplyPickerSheet extends ConsumerWidget {
     );
   }
 }
-

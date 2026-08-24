@@ -147,9 +147,7 @@ class PortalUsersScreen extends ConsumerWidget {
                     email: email.text.trim(),
                     password: password.text,
                     role: role,
-                    phone: phone.text.trim().isEmpty
-                        ? null
-                        : phone.text.trim(),
+                    phone: phone.text.trim().isEmpty ? null : phone.text.trim(),
                   );
               ref.invalidate(portalUsersProvider);
               if (sheetContext.mounted) Navigator.pop(sheetContext);
@@ -157,9 +155,7 @@ class PortalUsersScreen extends ConsumerWidget {
               setSheetState(() {
                 submitting = false;
                 error =
-                    e.errorFor('email') ??
-                    e.errorFor('password') ??
-                    e.message;
+                    e.errorFor('email') ?? e.errorFor('password') ?? e.message;
               });
             }
           }
@@ -169,7 +165,7 @@ class PortalUsersScreen extends ConsumerWidget {
               left: Spacing.lg,
               right: Spacing.lg,
               top: Spacing.sm,
-              bottom: MediaQuery.of(sheetContext).viewInsets.bottom + Spacing.lg,
+              bottom: sheetBottomInset(sheetContext) + Spacing.lg,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

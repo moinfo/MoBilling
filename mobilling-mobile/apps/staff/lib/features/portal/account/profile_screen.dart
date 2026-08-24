@@ -132,7 +132,7 @@ class _BodyState extends ConsumerState<_Body> {
               left: Spacing.lg,
               right: Spacing.lg,
               top: Spacing.sm,
-              bottom: MediaQuery.of(sheetContext).viewInsets.bottom + Spacing.lg,
+              bottom: sheetBottomInset(sheetContext) + Spacing.lg,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

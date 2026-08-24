@@ -76,10 +76,7 @@ class _NextBillsScreenState extends ConsumerState<NextBillsScreen> {
 
           final overdue = items.where((b) => b.isOverdue).toList();
           final upcoming = items.where((b) => !b.isOverdue).toList();
-          final expected = items.fold<double>(
-            0,
-            (sum, b) => sum + b.lineTotal,
-          );
+          final expected = items.fold<double>(0, (sum, b) => sum + b.lineTotal);
           final pastDue = overdue.fold<double>(
             0,
             (sum, b) => sum + b.lineTotal,
@@ -256,16 +253,18 @@ class _BillTile extends StatelessWidget {
                   ),
                   const SizedBox(width: Spacing.sm),
                   Flexible(
-                    child: _Meta([
-                      if (bill.isOverdue) bill.cycleLabel,
-                      if (bill.nextBill != null)
-                        bill.isOverdue
-                            ? 'due ${Formatting.date(bill.nextBill)}'
-                            : Formatting.dueDescription(bill.nextBill),
-                      bill.hasNeverBeenBilled
-                          ? 'never billed'
-                          : 'last ${Formatting.date(bill.lastBilled)}',
-                    ].join(' · ')),
+                    child: _Meta(
+                      [
+                        if (bill.isOverdue) bill.cycleLabel,
+                        if (bill.nextBill != null)
+                          bill.isOverdue
+                              ? 'due ${Formatting.date(bill.nextBill)}'
+                              : Formatting.dueDescription(bill.nextBill),
+                        bill.hasNeverBeenBilled
+                            ? 'never billed'
+                            : 'last ${Formatting.date(bill.lastBilled)}',
+                      ].join(' · '),
+                    ),
                   ),
                 ],
               ),

@@ -31,7 +31,8 @@ class PortalHostingDetailScreen extends ConsumerWidget {
           title: 'Could not load this account',
           message: error is ApiException ? error.message : null,
           actionLabel: 'Retry',
-          onAction: () => ref.invalidate(portalHostingDetailProvider(accountId)),
+          onAction: () =>
+              ref.invalidate(portalHostingDetailProvider(accountId)),
         ),
         data: (a) => _Body(account: a),
       ),
@@ -116,9 +117,7 @@ class _BodyState extends ConsumerState<_Body> {
             label: 'Change password',
             onPressed: () {
               if (controller.text.length < 8) {
-                setSheetState(
-                  () => fieldError = 'Use at least 8 characters.',
-                );
+                setSheetState(() => fieldError = 'Use at least 8 characters.');
                 return;
               }
               Navigator.pop(context, controller.text);
@@ -234,10 +233,7 @@ class _BodyState extends ConsumerState<_Body> {
           children: [
             for (final (i, plan) in options.plans.indexed) ...[
               if (i > 0) const Divider(height: 1),
-              _PlanRow(
-                plan: plan,
-                onTap: () => Navigator.pop(context, plan),
-              ),
+              _PlanRow(plan: plan, onTap: () => Navigator.pop(context, plan)),
             ],
           ],
         ),
@@ -529,7 +525,6 @@ class _Cadence extends StatelessWidget {
   }
 }
 
-
 /// The brand sheet: drag handle, an eyebrow naming the context, a display
 /// title, then [builder]'s content. Rises with the keyboard so a field near
 /// the bottom is never hidden behind it.
@@ -554,7 +549,7 @@ Future<T?> _showSheet<T>(
               padded ? Spacing.lg : Spacing.md,
               0,
               padded ? Spacing.lg : Spacing.md,
-              Spacing.lg + MediaQuery.viewInsetsOf(context).bottom,
+              Spacing.lg + sheetBottomInset(context),
             ),
             child: SingleChildScrollView(
               child: Column(

@@ -621,7 +621,7 @@ class _RecipientPickerState extends ConsumerState<_RecipientPicker> {
               Spacing.lg,
               Spacing.md,
               Spacing.lg,
-              Spacing.lg + MediaQuery.of(context).viewInsets.bottom,
+              Spacing.lg + sheetBottomInset(context),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,

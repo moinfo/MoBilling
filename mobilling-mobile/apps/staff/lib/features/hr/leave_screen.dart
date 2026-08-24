@@ -412,7 +412,7 @@ class _RequestLeaveSheetState extends ConsumerState<_RequestLeaveSheet> {
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
+        bottom: sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -1250,7 +1250,7 @@ class _LeaveTypeSheetState extends ConsumerState<_LeaveTypeSheet> {
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
+        bottom: sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(

@@ -101,7 +101,7 @@ class _SessionExpiredSheetState extends ConsumerState<SessionExpiredSheet> {
         right: Spacing.lg,
         top: Spacing.lg,
         // Lift clear of the keyboard, otherwise the field hides behind it.
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
+        bottom: sheetBottomInset(context) + Spacing.lg,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

@@ -659,7 +659,7 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
+        bottom: sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -813,7 +813,7 @@ class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
+        bottom: sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(

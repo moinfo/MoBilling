@@ -338,10 +338,7 @@ class _InvoiceTile extends StatelessWidget {
         children: [
           Money(invoice.balanceDue),
           const SizedBox(width: Spacing.xs),
-          SizedBox(
-            width: 40,
-            child: ContactRow(phone: phone, compact: true),
-          ),
+          SizedBox(width: 40, child: ContactRow(phone: phone, compact: true)),
         ],
       ),
     );

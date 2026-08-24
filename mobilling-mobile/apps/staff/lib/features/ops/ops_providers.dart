@@ -28,30 +28,31 @@ class SessionsFilter {
 }
 
 final AutoDisposeFutureProviderFamily<SessionsPage, SessionsFilter>
-    sessionsProvider =
-    FutureProvider.autoDispose.family<SessionsPage, SessionsFilter>(
-  (ref, filter) => ref.watch(opsServiceProvider).sessions(
-        type: filter.type,
-        active: filter.active,
-        search: filter.search,
-      ),
-);
+sessionsProvider = FutureProvider.autoDispose
+    .family<SessionsPage, SessionsFilter>(
+      (ref, filter) => ref
+          .watch(opsServiceProvider)
+          .sessions(
+            type: filter.type,
+            active: filter.active,
+            search: filter.search,
+          ),
+    );
 
 /// The live WHM listing. Keyed by the "imported" filter only; search and
 /// server are narrowed client-side so a keystroke never re-polls WHM.
 final AutoDisposeFutureProviderFamily<DiscoveryResult, bool?>
-    discoveryProvider =
-    FutureProvider.autoDispose.family<DiscoveryResult, bool?>(
+discoveryProvider = FutureProvider.autoDispose.family<DiscoveryResult, bool?>(
   (ref, imported) =>
       ref.watch(opsServiceProvider).discoverAccounts(imported: imported),
 );
 
 final AutoDisposeFutureProvider<List<CatalogGroup>> orderCatalogProvider =
     FutureProvider.autoDispose<List<CatalogGroup>>(
-  (ref) => ref.watch(opsServiceProvider).orderCatalog(),
-);
+      (ref) => ref.watch(opsServiceProvider).orderCatalog(),
+    );
 
 final AutoDisposeFutureProvider<List<TldPricing>> orderTldsProvider =
     FutureProvider.autoDispose<List<TldPricing>>(
-  (ref) => ref.watch(opsServiceProvider).orderTlds(),
-);
+      (ref) => ref.watch(opsServiceProvider).orderTlds(),
+    );

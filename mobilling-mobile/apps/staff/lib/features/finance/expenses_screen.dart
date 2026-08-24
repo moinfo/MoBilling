@@ -806,7 +806,7 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
+        bottom: sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(

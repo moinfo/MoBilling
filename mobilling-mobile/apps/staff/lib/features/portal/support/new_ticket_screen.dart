@@ -249,4 +249,3 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
     );
   }
 }
-

@@ -327,7 +327,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
   Widget _buildComposer(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final keyboardUp = MediaQuery.viewInsetsOf(context).bottom > 0;
+    final keyboardUp = sheetBottomInset(context) > 0;
 
     return Material(
       color: theme.cardTheme.color ?? scheme.surface,

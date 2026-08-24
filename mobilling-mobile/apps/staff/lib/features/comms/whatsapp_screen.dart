@@ -638,7 +638,7 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
           Spacing.lg,
           0,
           Spacing.lg,
-          Spacing.lg + MediaQuery.of(context).viewInsets.bottom,
+          Spacing.lg + sheetBottomInset(context),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2027,7 +2027,7 @@ class _CommsFormSheet extends StatelessWidget {
         Spacing.lg,
         0,
         Spacing.lg,
-        Spacing.lg + MediaQuery.of(context).viewInsets.bottom,
+        Spacing.lg + sheetBottomInset(context),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

@@ -16,9 +16,10 @@ socialPostsProvider = FutureProvider.autoDispose
     );
 
 final AutoDisposeFutureProvider<List<SocialPlatformConfig>>
-socialPlatformsProvider = FutureProvider.autoDispose<List<SocialPlatformConfig>>(
-  (ref) => ref.watch(commsServiceProvider).socialPlatforms(),
-);
+socialPlatformsProvider =
+    FutureProvider.autoDispose<List<SocialPlatformConfig>>(
+      (ref) => ref.watch(commsServiceProvider).socialPlatforms(),
+    );
 
 /// Weekly summary, keyed by the `Y-m-d` of that week's Monday. A string key
 /// rather than a DateTime because two DateTimes for the same day are not equal
@@ -214,7 +215,9 @@ class _PostCardState extends ConsumerState<_PostCard> {
                 Padding(
                   padding: const EdgeInsets.only(top: 1),
                   child: Icon(
-                    post.isVideo ? Icons.videocam_outlined : Icons.image_outlined,
+                    post.isVideo
+                        ? Icons.videocam_outlined
+                        : Icons.image_outlined,
                     size: 18,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -824,7 +827,7 @@ class _NewPostSheetState extends ConsumerState<_NewPostSheet> {
           Spacing.lg,
           0,
           Spacing.lg,
-          Spacing.lg + MediaQuery.of(context).viewInsets.bottom,
+          Spacing.lg + sheetBottomInset(context),
         ),
         child: Form(
           key: _form,

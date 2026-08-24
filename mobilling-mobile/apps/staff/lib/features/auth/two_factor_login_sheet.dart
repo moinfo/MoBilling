@@ -110,7 +110,7 @@ class _TwoFactorLoginSheetState extends ConsumerState<TwoFactorLoginSheet> {
           Spacing.lg,
           Spacing.lg,
           Spacing.lg,
-          MediaQuery.viewInsetsOf(context).bottom + Spacing.lg,
+          sheetBottomInset(context) + Spacing.lg,
         ),
         child: SingleChildScrollView(
           child: Column(

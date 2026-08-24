@@ -259,12 +259,14 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
               ),
 
               // ── Below the card ──────────────────────────────────────────
+              // Outside the shell, so no bottom bar absorbs the home
+              // indicator — the footer pads for it itself.
               Padding(
-                padding: const EdgeInsets.fromLTRB(
+                padding: EdgeInsets.fromLTRB(
                   Spacing.lg,
                   0,
                   Spacing.lg,
-                  Spacing.lg,
+                  Spacing.lg + MediaQuery.paddingOf(context).bottom,
                 ),
                 child: Reveal(
                   delay: const Duration(milliseconds: 420),

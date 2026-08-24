@@ -78,7 +78,7 @@ class _RoleEditorSheetState extends ConsumerState<_RoleEditorSheet> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final catalogue = ref.watch(availablePermissionsProvider);
-    final insets = MediaQuery.viewInsetsOf(context).bottom;
+    final insets = sheetBottomInset(context);
     final height = math.max(
       280.0,
       MediaQuery.sizeOf(context).height * 0.92 - insets,

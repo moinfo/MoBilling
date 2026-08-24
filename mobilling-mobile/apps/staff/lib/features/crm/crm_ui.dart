@@ -407,7 +407,7 @@ class CrmSheet extends StatelessWidget {
         Spacing.lg,
         0,
         Spacing.lg,
-        MediaQuery.viewInsetsOf(context).bottom + Spacing.lg,
+        sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -425,7 +425,10 @@ class CrmSheet extends StatelessWidget {
               ),
               const SizedBox(height: Spacing.xs),
             ],
-            Text(title, style: Type.display(22, color: theme.colorScheme.onSurface)),
+            Text(
+              title,
+              style: Type.display(22, color: theme.colorScheme.onSurface),
+            ),
             const SizedBox(height: Spacing.lg),
             ...children,
           ],

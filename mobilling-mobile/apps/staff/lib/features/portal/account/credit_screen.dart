@@ -18,7 +18,10 @@ class CreditScreen extends ConsumerWidget {
     final status = context.statusColors;
 
     return Scaffold(
-      appBar: const ShellTopBar(eyebrow: 'Your account', title: 'Account credit'),
+      appBar: const ShellTopBar(
+        eyebrow: 'Your account',
+        title: 'Account credit',
+      ),
       body: wallet.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => StateMessage(
@@ -159,7 +162,7 @@ class CreditScreen extends ConsumerWidget {
               left: Spacing.lg,
               right: Spacing.lg,
               top: Spacing.sm,
-              bottom: MediaQuery.of(sheetContext).viewInsets.bottom + Spacing.lg,
+              bottom: sheetBottomInset(sheetContext) + Spacing.lg,
             ),
             child: Column(
               mainAxisSize: MainAxisSize.min,

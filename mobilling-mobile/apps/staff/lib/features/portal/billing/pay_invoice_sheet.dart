@@ -93,8 +93,8 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
         // Pesapal accepted nothing — the tracked payment exists but there is
         // no page to send the user to.
         setState(
-          () => _error =
-              'The payment gateway did not respond. Please try again.',
+          () =>
+              _error = 'The payment gateway did not respond. Please try again.',
         );
         return;
       }
@@ -180,7 +180,7 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
           left: Spacing.lg,
           right: Spacing.lg,
           top: Spacing.sm,
-          bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
+          bottom: sheetBottomInset(context) + Spacing.lg,
         ),
         child: switch (_phase) {
           _Phase.amount => _buildAmount(context),
@@ -206,7 +206,10 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
           ),
         ),
         const SizedBox(height: Spacing.xs),
-        Text(title, style: Type.display(22, color: theme.colorScheme.onSurface)),
+        Text(
+          title,
+          style: Type.display(22, color: theme.colorScheme.onSurface),
+        ),
       ],
     );
   }
@@ -363,8 +366,7 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
             const SizedBox(height: Spacing.sm),
             Text(
               [
-                if (status.paymentMethod != null)
-                  'via ${status.paymentMethod}',
+                if (status.paymentMethod != null) 'via ${status.paymentMethod}',
                 if (status.confirmationCode != null)
                   'ref ${status.confirmationCode}',
               ].join(' · ').toUpperCase(),

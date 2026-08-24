@@ -682,7 +682,7 @@ class _ArticleFormState extends ConsumerState<_ArticleForm> {
         Spacing.lg,
         0,
         Spacing.lg,
-        MediaQuery.viewInsetsOf(context).bottom + Spacing.lg,
+        sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -859,7 +859,7 @@ class _CategoryFormState extends ConsumerState<_CategoryForm> {
         Spacing.lg,
         0,
         Spacing.lg,
-        MediaQuery.viewInsetsOf(context).bottom + Spacing.lg,
+        sheetBottomInset(context) + Spacing.lg,
       ),
       child: SingleChildScrollView(
         child: Column(
@@ -925,4 +925,3 @@ class _CategoryFormState extends ConsumerState<_CategoryForm> {
     );
   }
 }
-

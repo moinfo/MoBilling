@@ -10,81 +10,81 @@ import '../../providers.dart';
 /// options" in the admin (tenant-settings) feature.
 final Provider<PlatformService> platformServiceProvider =
     Provider<PlatformService>(
-  (ref) => PlatformService(ref.watch(apiClientProvider)),
-);
+      (ref) => PlatformService(ref.watch(apiClientProvider)),
+    );
 
-final AutoDisposeFutureProvider<PlatformDashboard>
-    platformDashboardProvider = FutureProvider.autoDispose<PlatformDashboard>(
-  (ref) => ref.watch(platformServiceProvider).dashboard(),
-);
+final AutoDisposeFutureProvider<PlatformDashboard> platformDashboardProvider =
+    FutureProvider.autoDispose<PlatformDashboard>(
+      (ref) => ref.watch(platformServiceProvider).dashboard(),
+    );
 
 final AutoDisposeFutureProviderFamily<PlatformTenant, String>
-    platformTenantProvider =
-    FutureProvider.autoDispose.family<PlatformTenant, String>(
-  (ref, id) => ref.watch(platformServiceProvider).tenant(id),
-);
+platformTenantProvider = FutureProvider.autoDispose
+    .family<PlatformTenant, String>(
+      (ref, id) => ref.watch(platformServiceProvider).tenant(id),
+    );
 
 final AutoDisposeFutureProviderFamily<List<StaffUser>, String>
-    tenantUsersProvider =
-    FutureProvider.autoDispose.family<List<StaffUser>, String>(
-  (ref, tenantId) => ref.watch(platformServiceProvider).tenantUsers(tenantId),
-);
+tenantUsersProvider = FutureProvider.autoDispose
+    .family<List<StaffUser>, String>(
+      (ref, tenantId) =>
+          ref.watch(platformServiceProvider).tenantUsers(tenantId),
+    );
 
 final AutoDisposeFutureProviderFamily<List<TenantSubscriptionRecord>, String>
-    tenantSubscriptionsProvider =
-    FutureProvider.autoDispose.family<List<TenantSubscriptionRecord>, String>(
-  (ref, tenantId) =>
-      ref.watch(platformServiceProvider).tenantSubscriptions(tenantId),
-);
+tenantSubscriptionsProvider = FutureProvider.autoDispose
+    .family<List<TenantSubscriptionRecord>, String>(
+      (ref, tenantId) =>
+          ref.watch(platformServiceProvider).tenantSubscriptions(tenantId),
+    );
 
 final AutoDisposeFutureProviderFamily<TenantEmailSettings, String>
-    tenantEmailSettingsProvider =
-    FutureProvider.autoDispose.family<TenantEmailSettings, String>(
-  (ref, tenantId) =>
-      ref.watch(platformServiceProvider).tenantEmailSettings(tenantId),
-);
+tenantEmailSettingsProvider = FutureProvider.autoDispose
+    .family<TenantEmailSettings, String>(
+      (ref, tenantId) =>
+          ref.watch(platformServiceProvider).tenantEmailSettings(tenantId),
+    );
 
 final AutoDisposeFutureProviderFamily<TenantSmsSettings, String>
-    tenantSmsSettingsProvider =
-    FutureProvider.autoDispose.family<TenantSmsSettings, String>(
-  (ref, tenantId) =>
-      ref.watch(platformServiceProvider).tenantSmsSettings(tenantId),
-);
+tenantSmsSettingsProvider = FutureProvider.autoDispose
+    .family<TenantSmsSettings, String>(
+      (ref, tenantId) =>
+          ref.watch(platformServiceProvider).tenantSmsSettings(tenantId),
+    );
 
 final AutoDisposeFutureProviderFamily<List<TenantTemplate>, String>
-    tenantTemplatesProvider =
-    FutureProvider.autoDispose.family<List<TenantTemplate>, String>(
-  (ref, tenantId) =>
-      ref.watch(platformServiceProvider).tenantTemplates(tenantId),
-);
+tenantTemplatesProvider = FutureProvider.autoDispose
+    .family<List<TenantTemplate>, String>(
+      (ref, tenantId) =>
+          ref.watch(platformServiceProvider).tenantTemplates(tenantId),
+    );
 
 final AutoDisposeFutureProvider<List<PlatformPlan>> platformPlansProvider =
     FutureProvider.autoDispose<List<PlatformPlan>>(
-  (ref) => ref.watch(platformServiceProvider).plans(),
-);
+      (ref) => ref.watch(platformServiceProvider).plans(),
+    );
 
 final AutoDisposeFutureProvider<List<PlatformCurrency>> currenciesProvider =
     FutureProvider.autoDispose<List<PlatformCurrency>>(
-  (ref) => ref.watch(platformServiceProvider).currencies(),
-);
+      (ref) => ref.watch(platformServiceProvider).currencies(),
+    );
 
 final AutoDisposeFutureProvider<List<SmsPackage>> smsPackagesProvider =
     FutureProvider.autoDispose<List<SmsPackage>>(
-  (ref) => ref.watch(platformServiceProvider).smsPackages(),
-);
+      (ref) => ref.watch(platformServiceProvider).smsPackages(),
+    );
 
 final AutoDisposeFutureProvider<List<PermissionInfo>>
-    platformPermissionsProvider =
-    FutureProvider.autoDispose<List<PermissionInfo>>(
+platformPermissionsProvider = FutureProvider.autoDispose<List<PermissionInfo>>(
   (ref) => ref.watch(platformServiceProvider).permissions(),
 );
 
 final AutoDisposeFutureProvider<List<StaffRole>> roleTemplatesProvider =
     FutureProvider.autoDispose<List<StaffRole>>(
-  (ref) => ref.watch(platformServiceProvider).roleTemplates(),
-);
+      (ref) => ref.watch(platformServiceProvider).roleTemplates(),
+    );
 
 final AutoDisposeFutureProvider<PlatformSettings> platformSettingsProvider =
     FutureProvider.autoDispose<PlatformSettings>(
-  (ref) => ref.watch(platformServiceProvider).platformSettings(),
-);
+      (ref) => ref.watch(platformServiceProvider).platformSettings(),
+    );

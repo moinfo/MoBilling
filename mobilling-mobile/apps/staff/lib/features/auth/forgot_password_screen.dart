@@ -177,7 +177,14 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               Transform.translate(
                 offset: const Offset(0, -28),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+                  // No bottom bar here, so the card pads for the home
+                  // indicator itself.
+                  padding: EdgeInsets.fromLTRB(
+                    Spacing.md,
+                    0,
+                    Spacing.md,
+                    Spacing.lg + MediaQuery.paddingOf(context).bottom,
+                  ),
                   child: Container(
                     padding: const EdgeInsets.all(Spacing.lg),
                     decoration: BoxDecoration(

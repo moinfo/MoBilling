@@ -239,9 +239,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               InkPanel(
                 padding: EdgeInsets.fromLTRB(
                   Spacing.lg,
-                  topInset + Spacing.lg,
+                  topInset + Spacing.md,
                   Spacing.lg,
-                  Spacing.xl + _overlap,
+                  Spacing.lg + _overlap,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -256,7 +256,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ],
                       ),
                     ),
-                    const SizedBox(height: Spacing.xl),
+                    const SizedBox(height: Spacing.lg),
                     const Reveal(
                       delay: Duration(milliseconds: 80),
                       child: EyebrowPill('Built for East Africa'),
@@ -321,12 +321,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
 
               // ── Below the card ──────────────────────────────────────────
+              // This screen has no bottom bar to absorb the home indicator,
+              // so the last line pads for it itself — without this the
+              // footer sits under the indicator and reads as cut off.
               Padding(
-                padding: const EdgeInsets.fromLTRB(
+                padding: EdgeInsets.fromLTRB(
                   Spacing.lg,
                   0,
                   Spacing.lg,
-                  Spacing.lg,
+                  Spacing.lg + MediaQuery.paddingOf(context).bottom,
                 ),
                 child: Reveal(
                   delay: const Duration(milliseconds: 420),
@@ -351,7 +354,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: Spacing.xl),
+                      const SizedBox(height: Spacing.lg),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [

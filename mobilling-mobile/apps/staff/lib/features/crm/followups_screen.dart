@@ -163,7 +163,8 @@ class _FollowupRow extends ConsumerWidget {
 
     final meta = [
       if (followup.documentNumber != null) followup.documentNumber!,
-      if (followup.callDate != null) 'call ${Formatting.date(followup.callDate)}',
+      if (followup.callDate != null)
+        'call ${Formatting.date(followup.callDate)}',
       if (followup.callCount != null && followup.callCount! > 0)
         '${Formatting.integer(followup.callCount)} '
             '${followup.callCount == 1 ? 'call' : 'calls'}',

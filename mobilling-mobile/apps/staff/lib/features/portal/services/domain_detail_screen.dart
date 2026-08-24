@@ -333,10 +333,7 @@ class _BodyState extends ConsumerState<_Body> {
                         crossAxisAlignment: CrossAxisAlignment.baseline,
                         textBaseline: TextBaseline.alphabetic,
                         children: [
-                          Money(
-                            d.billing!.recurring,
-                            scale: MoneyScale.dense,
-                          ),
+                          Money(d.billing!.recurring, scale: MoneyScale.dense),
                           const SizedBox(width: Spacing.xs),
                           _Cadence('per year'),
                         ],
@@ -482,7 +479,6 @@ class _Cadence extends StatelessWidget {
   }
 }
 
-
 /// The brand sheet: drag handle, an eyebrow naming the context, a display
 /// title, then [builder]'s content. Rises with the keyboard so a field near
 /// the bottom is never hidden behind it.
@@ -506,7 +502,7 @@ Future<T?> _showSheet<T>(
               Spacing.lg,
               0,
               Spacing.lg,
-              Spacing.lg + MediaQuery.viewInsetsOf(context).bottom,
+              Spacing.lg + sheetBottomInset(context),
             ),
             child: SingleChildScrollView(
               child: Column(

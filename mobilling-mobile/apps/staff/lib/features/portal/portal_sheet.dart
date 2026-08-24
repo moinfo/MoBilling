@@ -28,7 +28,7 @@ Future<T?> showPortalSheet<T>(
               padded ? Spacing.lg : Spacing.md,
               0,
               padded ? Spacing.lg : Spacing.md,
-              Spacing.lg + MediaQuery.viewInsetsOf(context).bottom,
+              Spacing.lg + sheetBottomInset(context),
             ),
             child: SingleChildScrollView(
               child: Column(

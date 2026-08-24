@@ -15,8 +15,7 @@ class AppointmentsScreen extends ConsumerStatefulWidget {
   const AppointmentsScreen({super.key});
 
   @override
-  ConsumerState<AppointmentsScreen> createState() =>
-      _AppointmentsScreenState();
+  ConsumerState<AppointmentsScreen> createState() => _AppointmentsScreenState();
 }
 
 class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {

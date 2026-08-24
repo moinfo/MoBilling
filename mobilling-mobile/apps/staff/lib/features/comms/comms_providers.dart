@@ -16,6 +16,7 @@ final Provider<CommsService> commsServiceProvider = Provider<CommsService>(
 /// individual actions inside a screen the user may otherwise read.
 final ProviderFamily<bool, String> commsPermissionProvider =
     Provider.family<bool, String>(
-  (ref, permission) =>
-      ref.watch(sessionControllerProvider).session?.can(permission) ?? false,
-);
+      (ref, permission) =>
+          ref.watch(sessionControllerProvider).session?.can(permission) ??
+          false,
+    );

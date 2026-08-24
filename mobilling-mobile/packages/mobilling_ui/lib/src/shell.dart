@@ -209,6 +209,20 @@ class InkTabBar extends StatelessWidget implements PreferredSizeWidget {
   }
 }
 
+/// How much room a bottom sheet must leave below its content.
+///
+/// Two things can eat the bottom edge and only one of them at a time: the
+/// keyboard, or the home indicator. Padding for the keyboard alone leaves
+/// the last control under the indicator; padding for both stacks a gap
+/// nothing needs while typing. The larger of the two is the one that
+/// matters.
+double sheetBottomInset(BuildContext context) {
+  final media = MediaQuery.of(context);
+  return media.viewInsets.bottom > media.padding.bottom
+      ? media.viewInsets.bottom
+      : media.padding.bottom;
+}
+
 /// A search field on the ink, for [ShellTopBar.bottom].
 ///
 /// Translucent white on the masthead's ground, the same recipe as

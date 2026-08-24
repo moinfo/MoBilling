@@ -643,7 +643,6 @@ class _AddonTile extends StatelessWidget {
   }
 }
 
-
 /// The mono cadence beside a price — `PER MONTH`.
 class _Cadence extends StatelessWidget {
   const _Cadence(this.text);

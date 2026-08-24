@@ -260,9 +260,7 @@ class _Composer extends StatelessWidget {
           padding: EdgeInsets.only(
             left: Spacing.md,
             right: Spacing.md,
-            bottom: MediaQuery.viewInsetsOf(context).bottom > 0
-                ? Spacing.sm
-                : Spacing.md,
+            bottom: sheetBottomInset(context) > 0 ? Spacing.sm : Spacing.md,
             top: Spacing.sm,
           ),
           child: Column(

@@ -177,8 +177,7 @@ class ProductPickerSheet extends ConsumerStatefulWidget {
       );
 
   @override
-  ConsumerState<ProductPickerSheet> createState() =>
-      _ProductPickerSheetState();
+  ConsumerState<ProductPickerSheet> createState() => _ProductPickerSheetState();
 }
 
 class _ProductPickerSheetState extends ConsumerState<ProductPickerSheet> {
@@ -231,7 +230,10 @@ class _ProductPickerSheetState extends ConsumerState<ProductPickerSheet> {
         title: Text(product.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: product.billingCycle == null
             ? null
-            : _Meta(product.billingCycle!.replaceAll('_', ' '), upperCase: true),
+            : _Meta(
+                product.billingCycle!.replaceAll('_', ' '),
+                upperCase: true,
+              ),
         // The price was a string in the subtitle; as a trailing [Money] it
         // lines up into the one column every other list in the app has.
         trailing: Money(product.price),
@@ -274,7 +276,7 @@ class _PickerShell extends StatelessWidget {
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
+        bottom: sheetBottomInset(context) + Spacing.lg,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

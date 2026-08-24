@@ -114,19 +114,16 @@ class _BalanceCard extends ConsumerWidget {
                           children: [
                             Text(
                               Formatting.integer(b.balance),
-                              style:
-                                  Type.display(
-                                    MoneyScale.display.size,
-                                    height: 1,
-                                    // Empty is the one state that needs a
-                                    // colour: nothing sends until it is topped
-                                    // up.
-                                    color: b.balance == 0
-                                        ? status.overdue
-                                        : theme.colorScheme.onSurface,
-                                  ).copyWith(
-                                    fontFeatures: Type.figures,
-                                  ),
+                              style: Type.display(
+                                MoneyScale.display.size,
+                                height: 1,
+                                // Empty is the one state that needs a
+                                // colour: nothing sends until it is topped
+                                // up.
+                                color: b.balance == 0
+                                    ? status.overdue
+                                    : theme.colorScheme.onSurface,
+                              ).copyWith(fontFeatures: Type.figures),
                             ),
                             const SizedBox(width: Spacing.sm),
                             Text(
@@ -328,7 +325,10 @@ class _BuyCreditsViewState extends ConsumerState<_BuyCreditsView> {
                             selected: t.id == tier?.id,
                             selectedTileColor: theme.colorScheme.primary
                                 .withValues(alpha: 0.06),
-                            title: Text(t.name, style: theme.textTheme.titleSmall),
+                            title: Text(
+                              t.name,
+                              style: theme.textTheme.titleSmall,
+                            ),
                             subtitle: CommsMeta(
                               t.maxQuantity == null
                                   ? '${Formatting.integer(t.minQuantity)}+ SMS'
@@ -458,7 +458,9 @@ class _OrderLine extends StatelessWidget {
           ),
         ),
         const SizedBox(width: Spacing.md),
-        Expanded(child: Align(alignment: Alignment.centerRight, child: value)),
+        Expanded(
+          child: Align(alignment: Alignment.centerRight, child: value),
+        ),
       ],
     );
   }
