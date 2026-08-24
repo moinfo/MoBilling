@@ -6,6 +6,10 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 import '../portal_providers.dart';
 
 /// A knowledgebase article, rendered as readable plain text.
+///
+/// The one screen in the portal that is prose, so it is set like prose: the
+/// title as the headline, a mono line naming when it was written and how many
+/// people have read it, and the body at reading measure.
 class KbArticleScreen extends ConsumerWidget {
   const KbArticleScreen({super.key, required this.slug});
 
@@ -15,9 +19,13 @@ class KbArticleScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final article = ref.watch(portalKbArticleProvider(slug));
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: Text(article.valueOrNull?.categoryName ?? 'Help')),
+      appBar: ShellTopBar(
+        eyebrow: 'Support',
+        title: article.valueOrNull?.categoryName ?? 'Help',
+      ),
       body: article.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => StateMessage(
@@ -30,23 +38,37 @@ class KbArticleScreen extends ConsumerWidget {
         data: (a) => ListView(
           padding: const EdgeInsets.all(Spacing.md),
           children: [
-            Text(a.title, style: theme.textTheme.headlineSmall),
-            const SizedBox(height: Spacing.xs),
-            Text(
-              [
-                if (a.updatedAt != null)
-                  'Updated ${Formatting.date(a.updatedAt)}',
-                if (a.views != null) '${a.views} views',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            Reveal(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    a.title,
+                    style: Type.display(26, color: scheme.onSurface),
+                  ),
+                  if (a.updatedAt != null || a.views != null) ...[
+                    const SizedBox(height: Spacing.sm),
+                    Text(
+                      [
+                        if (a.updatedAt != null)
+                          'updated ${Formatting.date(a.updatedAt)}',
+                        if (a.views != null)
+                          '${Formatting.integer(a.views)} views',
+                      ].join(' · ').toUpperCase(),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const Divider(height: Spacing.xl),
+            Divider(height: Spacing.xl, color: scheme.outlineVariant),
             SelectableText(
               htmlToPlainText(a.body),
-              style: theme.textTheme.bodyMedium?.copyWith(height: 1.5),
+              style: theme.textTheme.bodyLarge?.copyWith(height: 1.6),
             ),
-            const SizedBox(height: Spacing.xl),
+            const SizedBox(height: Spacing.xxl),
           ],
         ),
       ),

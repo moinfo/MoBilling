@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
@@ -17,7 +18,6 @@ class DashboardTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final dashboard = ref.watch(dashboardProvider);
-    final theme = Theme.of(context);
     final status = context.statusColors;
 
     return dashboard.when(
@@ -58,8 +58,7 @@ class DashboardTab extends ConsumerWidget {
             StatRailItem(
               label: 'Overdue',
               value: Formatting.integer(d.overdueInvoices),
-              emphasis:
-                  (d.overdueInvoices ?? 0) > 0 ? status.attention : null,
+              emphasis: (d.overdueInvoices ?? 0) > 0 ? status.attention : null,
             ),
           if (d.overdueBills != null)
             StatRailItem(
@@ -68,16 +67,22 @@ class DashboardTab extends ConsumerWidget {
               emphasis: (d.overdueBills ?? 0) > 0 ? status.overdue : null,
             ),
           if (d.totalClients != null)
-            StatRailItem(label: 'Clients', value: Formatting.integer(d.totalClients)),
+            StatRailItem(
+              label: 'Clients',
+              value: Formatting.integer(d.totalClients),
+            ),
           if (d.smsBalance != null)
             StatRailItem(label: 'SMS', value: Formatting.integer(d.smsBalance)),
           if (d.whatsappContacts != null)
             StatRailItem(
-                label: 'WhatsApp',
-                value: Formatting.integer(d.whatsappContacts)),
+              label: 'WhatsApp',
+              value: Formatting.integer(d.whatsappContacts),
+            ),
           if (d.fieldVisits != null)
             StatRailItem(
-                label: 'Prospects', value: Formatting.integer(d.fieldVisits)),
+              label: 'Prospects',
+              value: Formatting.integer(d.fieldVisits),
+            ),
         ];
 
         if (money.isEmpty && counts.isEmpty) {
@@ -88,202 +93,242 @@ class DashboardTab extends ConsumerWidget {
           );
         }
 
+        // The money panel continues the masthead's ink, and the first paper
+        // card rides up over its bottom edge — the sign-in screen's device,
+        // reused so the app's front door and its first screen are one idea.
         final hero = money.isEmpty ? null : money.first;
-        final rest = money.skip(1).toList();
+        final overlap = hero != null;
 
         return RefreshIndicator(
           onRefresh: () => ref.refresh(dashboardProvider.future),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(Spacing.md),
+            padding: EdgeInsets.only(
+              bottom: Spacing.xl - (overlap ? _MoneyPanel.overlap : 0),
+            ),
             children: [
-              const SectionHeader('My attendance'),
-              const SizedBox(height: Spacing.sm),
-              const _AttendanceCard(),
-              const SizedBox(height: Spacing.md),
-              if (money.isNotEmpty) ...[
-                const SectionHeader('This month'),
-                const SizedBox(height: Spacing.sm),
-              ],
-              if (hero != null) ...[
-                _HeroFigure(
+              if (hero != null)
+                _MoneyPanel(
                   label: hero.label,
                   amount: hero.amount,
-                  tone: hero.tone ?? theme.colorScheme.onSurface,
-                ),
-                const SizedBox(height: Spacing.sm),
-              ],
-              if (rest.isNotEmpty) ...[
-                GridView.count(
-                  crossAxisCount: 2,
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  mainAxisSpacing: Spacing.sm,
-                  crossAxisSpacing: Spacing.sm,
-                  childAspectRatio: 1.9,
-                  children: [
-                    for (final m in rest)
-                      StatTile.money(
+                  strip: [
+                    for (final m in money.skip(1))
+                      (
                         label: m.label,
-                        amount: m.amount,
-                        emphasis: m.tone,
+                        value: Formatting.compact(m.amount),
+                        tone: m.tone == null
+                            ? null
+                            : StatusColors.dark.attention,
+                      ),
+                    if (d.totalReceivable != null &&
+                        d.totalReceived != null &&
+                        (d.totalReceivable ?? 0) > 0)
+                      (
+                        label: 'Collected',
+                        value:
+                            '${((d.totalReceived! / d.totalReceivable!) * 100).clamp(0, 999).round()}%',
+                        tone: null,
                       ),
                   ],
                 ),
-                const SizedBox(height: Spacing.sm),
-              ],
-              if (counts.isNotEmpty) ...[
-                const SizedBox(height: Spacing.md),
-                const SectionHeader('All time'),
-                const SizedBox(height: Spacing.sm),
-                StatRail(items: counts),
-              ],
-              // Personal, not company-wide: the one block about the reader.
-              if (d.penalties != null && d.penalties!.countThisMonth > 0) ...[
-                const SizedBox(height: Spacing.md),
-                const SectionHeader('My deductions'),
-                const SizedBox(height: Spacing.sm),
-                _DeductionsCard(penalties: d.penalties!),
-              ],
-              if (d.hosting != null) ...[
-                const SizedBox(height: Spacing.md),
-                const SectionHeader('Hosting & domains'),
-                const SizedBox(height: Spacing.sm),
-                _HostingRail(stats: d.hosting!),
-                if (d.hosting!.expiringDomains.isNotEmpty) ...[
-                  const SizedBox(height: Spacing.sm),
-                  _ExpiringDomains(domains: d.hosting!.expiringDomains),
-                ],
-              ],
-              if (d.statutory != null || d.subscriptions != null) ...[
-                const SizedBox(height: Spacing.md),
-                const SectionHeader('Obligations & subscriptions'),
-                const SizedBox(height: Spacing.sm),
-                if (d.statutory != null)
-                  StatRail(items: [
-                    StatRailItem(
-                      label: 'Overdue',
-                      value: Formatting.integer(d.statutory!.overdue),
-                      emphasis: d.statutory!.overdue > 0 ? status.overdue : null,
-                    ),
-                    StatRailItem(
-                      label: 'Due soon',
-                      value: Formatting.integer(d.statutory!.dueSoon),
-                      emphasis:
-                          d.statutory!.dueSoon > 0 ? status.attention : null,
-                    ),
-                    StatRailItem(
-                      label: 'Active',
-                      value: Formatting.integer(d.statutory!.totalActive),
-                    ),
-                  ]),
-                if (d.subscriptions != null) ...[
-                  const SizedBox(height: Spacing.sm),
-                  StatRail(items: [
-                    StatRailItem(
-                      label: 'Active',
-                      value: Formatting.integer(d.subscriptions!.active),
-                      emphasis: status.settled,
-                    ),
-                    StatRailItem(
-                      label: 'Pending',
-                      value: Formatting.integer(d.subscriptions!.pending),
-                      emphasis: d.subscriptions!.pending > 0
-                          ? status.attention
-                          : null,
-                    ),
-                    StatRailItem(
-                      label: 'Cancelled',
-                      value: Formatting.integer(d.subscriptions!.cancelled),
-                    ),
-                  ]),
-                ],
-              ],
-              if (d.monthlyRevenue.isNotEmpty) ...[
-                const SizedBox(height: Spacing.lg),
-                const SectionHeader('Last 6 months'),
-                const SizedBox(height: Spacing.sm),
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(Spacing.md),
-                    child: _RevenueBars(points: d.monthlyRevenue),
+              // Layout keeps the panel's extra bottom padding; the paint
+              // moves up by the overlap, and the list's bottom padding gives
+              // the same amount back.
+              Transform.translate(
+                offset: Offset(0, overlap ? -_MoneyPanel.overlap : 0),
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    Spacing.md,
+                    overlap ? 0 : Spacing.md,
+                    Spacing.md,
+                    0,
                   ),
-                ),
-              ],
-              if (d.recentInvoices.isNotEmpty) ...[
-                const SizedBox(height: Spacing.lg),
-                const SectionHeader('Recent invoices'),
-                const SizedBox(height: Spacing.sm),
-                Card(
                   child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      for (final (i, inv) in d.recentInvoices.indexed) ...[
-                        if (i > 0) const Divider(height: 1),
-                        ListTile(
-                          dense: true,
-                          title: Text(inv.clientName ?? inv.documentNumber),
-                          // Status moves down here beside the reference, so
-                          // the trailing column is amounts only and reads as
-                          // one aligned column of money.
-                          subtitle: Row(
-                            children: [
-                              StatusChip(inv.status, dense: true),
-                              const SizedBox(width: Spacing.sm),
-                              Flexible(
-                                child: Text(
-                                  [
-                                    inv.documentNumber,
-                                    if (inv.date != null)
-                                      Formatting.date(inv.date),
-                                  ].join(' · '),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
+                      // Riding over the ink, the card needs no eyebrow — it
+                      // carries its own TODAY label.
+                      if (overlap)
+                        const _RaisedFirst(child: _AttendanceCard())
+                      else ...[
+                        const SectionHeader('My attendance'),
+                        const SizedBox(height: Spacing.sm),
+                        const _AttendanceCard(),
+                      ],
+                      if (counts.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('All time'),
+                        const SizedBox(height: Spacing.sm),
+                        StatRail(items: counts),
+                      ],
+                      // Personal, not company-wide: the one block about the reader.
+                      if (d.penalties != null &&
+                          d.penalties!.countThisMonth > 0) ...[
+                        const SizedBox(height: Spacing.md),
+                        const SectionHeader('My deductions'),
+                        const SizedBox(height: Spacing.sm),
+                        _DeductionsCard(penalties: d.penalties!),
+                      ],
+                      if (d.hosting != null) ...[
+                        const SizedBox(height: Spacing.md),
+                        const SectionHeader('Hosting & domains'),
+                        const SizedBox(height: Spacing.sm),
+                        _HostingRail(stats: d.hosting!),
+                        if (d.hosting!.expiringDomains.isNotEmpty) ...[
+                          const SizedBox(height: Spacing.sm),
+                          _ExpiringDomains(domains: d.hosting!.expiringDomains),
+                        ],
+                      ],
+                      if (d.statutory != null || d.subscriptions != null) ...[
+                        const SizedBox(height: Spacing.md),
+                        const SectionHeader('Obligations & subscriptions'),
+                        const SizedBox(height: Spacing.sm),
+                        if (d.statutory != null)
+                          StatRail(
+                            items: [
+                              StatRailItem(
+                                label: 'Overdue',
+                                value: Formatting.integer(d.statutory!.overdue),
+                                emphasis: d.statutory!.overdue > 0
+                                    ? status.overdue
+                                    : null,
+                              ),
+                              StatRailItem(
+                                label: 'Due soon',
+                                value: Formatting.integer(d.statutory!.dueSoon),
+                                emphasis: d.statutory!.dueSoon > 0
+                                    ? status.attention
+                                    : null,
+                              ),
+                              StatRailItem(
+                                label: 'Active',
+                                value: Formatting.integer(
+                                  d.statutory!.totalActive,
                                 ),
                               ),
                             ],
                           ),
-                          trailing: Money(inv.total),
+                        if (d.subscriptions != null) ...[
+                          const SizedBox(height: Spacing.sm),
+                          StatRail(
+                            items: [
+                              StatRailItem(
+                                label: 'Active',
+                                value: Formatting.integer(
+                                  d.subscriptions!.active,
+                                ),
+                                emphasis: status.settled,
+                              ),
+                              StatRailItem(
+                                label: 'Pending',
+                                value: Formatting.integer(
+                                  d.subscriptions!.pending,
+                                ),
+                                emphasis: d.subscriptions!.pending > 0
+                                    ? status.attention
+                                    : null,
+                              ),
+                              StatRailItem(
+                                label: 'Cancelled',
+                                value: Formatting.integer(
+                                  d.subscriptions!.cancelled,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                      if (d.monthlyRevenue.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Last 6 months'),
+                        const SizedBox(height: Spacing.sm),
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(Spacing.md),
+                            child: _RevenueBars(points: d.monthlyRevenue),
+                          ),
+                        ),
+                      ],
+                      if (d.recentInvoices.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Recent invoices'),
+                        const SizedBox(height: Spacing.sm),
+                        Card(
+                          child: Column(
+                            children: [
+                              for (final (i, inv)
+                                  in d.recentInvoices.indexed) ...[
+                                if (i > 0) const Divider(height: 1),
+                                ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    inv.clientName ?? inv.documentNumber,
+                                  ),
+                                  // Status moves down here beside the reference, so
+                                  // the trailing column is amounts only and reads as
+                                  // one aligned column of money.
+                                  subtitle: Row(
+                                    children: [
+                                      StatusChip(inv.status, dense: true),
+                                      const SizedBox(width: Spacing.sm),
+                                      Flexible(
+                                        child: Text(
+                                          [
+                                            inv.documentNumber,
+                                            if (inv.date != null)
+                                              Formatting.date(inv.date),
+                                          ].join(' · '),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  trailing: Money(inv.total),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ],
+                      if (d.urgentObligations.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Urgent obligations'),
+                        const SizedBox(height: Spacing.sm),
+                        _ObligationList(items: d.urgentObligations),
+                      ],
+                      if (d.upcomingBills.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Upcoming bills'),
+                        const SizedBox(height: Spacing.sm),
+                        _BillList(items: d.upcomingBills),
+                      ],
+                      if (d.upcomingRenewals.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Upcoming renewals'),
+                        const SizedBox(height: Spacing.sm),
+                        _RenewalList(items: d.upcomingRenewals),
+                      ],
+                      if (d.topClients.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Top clients'),
+                        const SizedBox(height: Spacing.sm),
+                        _TopClients(items: d.topClients),
+                      ],
+                      if (d.systemRecords != null &&
+                          d.systemRecords!.systems.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('System records'),
+                        const SizedBox(height: Spacing.sm),
+                        _NamedTotals(
+                          items: d.systemRecords!.systems,
+                          total: d.systemRecords!.total,
                         ),
                       ],
                     ],
                   ),
                 ),
-              ],
-              if (d.urgentObligations.isNotEmpty) ...[
-                const SizedBox(height: Spacing.lg),
-                const SectionHeader('Urgent obligations'),
-                const SizedBox(height: Spacing.sm),
-                _ObligationList(items: d.urgentObligations),
-              ],
-              if (d.upcomingBills.isNotEmpty) ...[
-                const SizedBox(height: Spacing.lg),
-                const SectionHeader('Upcoming bills'),
-                const SizedBox(height: Spacing.sm),
-                _BillList(items: d.upcomingBills),
-              ],
-              if (d.upcomingRenewals.isNotEmpty) ...[
-                const SizedBox(height: Spacing.lg),
-                const SectionHeader('Upcoming renewals'),
-                const SizedBox(height: Spacing.sm),
-                _RenewalList(items: d.upcomingRenewals),
-              ],
-              if (d.topClients.isNotEmpty) ...[
-                const SizedBox(height: Spacing.lg),
-                const SectionHeader('Top clients'),
-                const SizedBox(height: Spacing.sm),
-                _TopClients(items: d.topClients),
-              ],
-              if (d.systemRecords != null &&
-                  d.systemRecords!.systems.isNotEmpty) ...[
-                const SizedBox(height: Spacing.lg),
-                const SectionHeader('System records'),
-                const SizedBox(height: Spacing.sm),
-                _NamedTotals(
-                  items: d.systemRecords!.systems,
-                  total: d.systemRecords!.total,
-                ),
-              ],
-              const SizedBox(height: Spacing.xl),
+              ),
             ],
           ),
         );
@@ -292,55 +337,174 @@ class DashboardTab extends ConsumerWidget {
   }
 }
 
-/// The single figure a dashboard leads with.
+/// One figure in the money panel's strip.
+typedef _StripFigure = ({String label, String value, Color? tone});
+
+/// This month's money, on ink.
 ///
-/// Same shape as the client portal's balance card on purpose: staff and
-/// clients are looking at two sides of the same money, and the app should not
-/// invent a second visual language for the second audience.
-class _HeroFigure extends StatelessWidget {
-  const _HeroFigure({
+/// The sign-in panel's composition, filled with the one figure this screen
+/// is about: eyebrow pill, a display-face figure in white, and the handoff's
+/// translucent stat strip beneath it for the figures that explain it. The
+/// blue glow is left to the masthead above and only the green one is drawn
+/// here, so the two panels read as a single surface with one light source.
+///
+/// Everything on it is scoped to the month — the strip must never carry an
+/// all-time count, which is how the old layout ended up reading
+/// "Outstanding 0.00" beside "572 overdue".
+class _MoneyPanel extends StatelessWidget {
+  const _MoneyPanel({
     required this.label,
     required this.amount,
-    required this.tone,
+    required this.strip,
   });
 
   final String label;
   final Object? amount;
-  final Color tone;
+  final List<_StripFigure> strip;
+
+  /// How far the first paper card rides up over the panel's bottom edge.
+  static const double overlap = 28;
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final month = DateFormat('MMMM yyyy').format(DateTime.now());
 
-    return Card(
-      color: Color.alphaBlend(
-        tone.withValues(alpha: 0.06),
-        theme.colorScheme.surface,
+    return InkPanel(
+      rule: false,
+      blueGlow: false,
+      padding: const EdgeInsets.fromLTRB(
+        Spacing.lg,
+        Spacing.sm,
+        Spacing.lg,
+        Spacing.lg + overlap,
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.lg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Reveal(child: EyebrowPill('This month · $month')),
+          const SizedBox(height: Spacing.md),
+          Reveal(
+            delay: const Duration(milliseconds: 80),
+            child: Text(
               label.toUpperCase(),
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-                fontWeight: FontWeight.w700,
-                letterSpacing: Type.eyebrowTracking,
-              ),
+              style: Type.mono(10.5, tracking: 0.08, color: InkPanel.mutedText),
             ),
-            const SizedBox(height: Spacing.sm),
-            FittedBox(
+          ),
+          const SizedBox(height: Spacing.xs),
+          Reveal(
+            delay: const Duration(milliseconds: 120),
+            child: FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: Money(amount, scale: MoneyScale.display, color: tone),
+              child: Money(
+                amount,
+                scale: MoneyScale.display,
+                display: true,
+                color: Colors.white,
+              ),
             ),
+          ),
+          if (strip.isNotEmpty) ...[
+            const SizedBox(height: Spacing.lg),
+            Reveal(
+              delay: const Duration(milliseconds: 200),
+              child: _StatStrip(figures: strip),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// The handoff's floating stat strip: translucent card, figures in the
+/// display face, Plex Mono labels, hairline dividers between columns.
+class _StatStrip extends StatelessWidget {
+  const _StatStrip({required this.figures});
+
+  final List<_StripFigure> figures;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: Spacing.md,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(Radii.cardRadius),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: IntrinsicHeight(
+        child: Row(
+          children: [
+            for (final (i, f) in figures.indexed) ...[
+              if (i > 0)
+                VerticalDivider(
+                  width: 1,
+                  indent: 2,
+                  endIndent: 2,
+                  color: Colors.white.withValues(alpha: 0.14),
+                ),
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        f.value,
+                        style: Type.display(
+                          22,
+                          color: f.tone ?? Colors.white,
+                        ).copyWith(fontFeatures: Type.figures),
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    Text(
+                      f.label.toUpperCase(),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Type.mono(
+                        9.5,
+                        tracking: 0.08,
+                        color: InkPanel.mutedText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+}
+
+/// The first paper card, raised over the ink with the sign-in card's soft
+/// ink shadow so the overlap reads as depth rather than as a misalignment.
+class _RaisedFirst extends StatelessWidget {
+  const _RaisedFirst({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => DecoratedBox(
+    decoration: BoxDecoration(
+      borderRadius: Radii.card,
+      boxShadow: [
+        BoxShadow(
+          color: Brand.ink.withValues(alpha: 0.28),
+          blurRadius: 44,
+          offset: const Offset(0, 24),
+          spreadRadius: -30,
+        ),
+      ],
+    ),
+    child: child,
+  );
 }
 
 /// Minimal paired-bar chart — invoiced vs collected per month. Avoids a
@@ -369,8 +533,7 @@ class _RevenueBars extends StatelessWidget {
               for (final p in points)
                 Expanded(
                   child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: Spacing.xs),
+                    padding: const EdgeInsets.symmetric(horizontal: Spacing.xs),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
@@ -384,9 +547,12 @@ class _RevenueBars extends StatelessWidget {
                           ],
                         ),
                         const SizedBox(height: Spacing.xs),
-                        Text(p.month,
-                            style: theme.textTheme.labelSmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant)),
+                        Text(
+                          p.month,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -408,25 +574,25 @@ class _RevenueBars extends StatelessWidget {
   }
 
   Widget _bar(double value, double max, Color color) => Container(
-        width: 10,
-        height: max <= 0 ? 2 : (value / max * 96).clamp(2, 96),
-        decoration: BoxDecoration(
-          color: color,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
-        ),
-      );
+    width: 10,
+    height: max <= 0 ? 2 : (value / max * 96).clamp(2, 96),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+    ),
+  );
 
   Widget _legend(BuildContext context, Color color, String label) => Row(
-        children: [
-          Container(
-              width: 10,
-              height: 10,
-              decoration:
-                  BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: Spacing.xs),
-          Text(label, style: Theme.of(context).textTheme.labelSmall),
-        ],
-      );
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: Spacing.xs),
+      Text(label, style: Theme.of(context).textTheme.labelSmall),
+    ],
+  );
 }
 
 /// This month's report deductions, broken down by report type.
@@ -446,15 +612,19 @@ class _DeductionsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Money(penalties.monthTotal,
-                scale: MoneyScale.headline, color: status.overdue),
+            Money(
+              penalties.monthTotal,
+              scale: MoneyScale.headline,
+              color: status.overdue,
+            ),
             const SizedBox(height: Spacing.xs),
             Text(
               '${penalties.countThisMonth} '
               '${penalties.countThisMonth == 1 ? 'deduction' : 'deductions'}'
               '${penalties.monthLabel.isEmpty ? '' : ' · ${penalties.monthLabel}'}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
             for (final t in penalties.byType.where((t) => t.count > 0)) ...[
               const Divider(height: Spacing.md),
@@ -490,37 +660,38 @@ class _HostingRail extends StatelessWidget {
 
     return Column(
       children: [
-        StatRail(items: [
-          if (stats.canHosting) ...[
-            StatRailItem(
-              label: 'Hosting',
-              value: Formatting.integer(stats.hostingActive),
-            ),
-            StatRailItem(
-              label: 'Suspended',
-              value: Formatting.integer(stats.hostingSuspended),
-              emphasis: stats.hostingSuspended > 0 ? status.attention : null,
-            ),
+        StatRail(
+          items: [
+            if (stats.canHosting) ...[
+              StatRailItem(
+                label: 'Hosting',
+                value: Formatting.integer(stats.hostingActive),
+              ),
+              StatRailItem(
+                label: 'Suspended',
+                value: Formatting.integer(stats.hostingSuspended),
+                emphasis: stats.hostingSuspended > 0 ? status.attention : null,
+              ),
+            ],
+            if (stats.canDomains) ...[
+              StatRailItem(
+                label: 'Domains',
+                value: Formatting.integer(stats.domainsActive),
+              ),
+              StatRailItem(
+                label: 'Expiring',
+                value: Formatting.integer(stats.domainsExpiringSoon),
+                emphasis: stats.domainsExpiringSoon > 0 ? status.overdue : null,
+              ),
+            ],
+            if (stats.canTickets)
+              StatRailItem(
+                label: 'Tickets',
+                value: Formatting.integer(stats.openTickets),
+                emphasis: stats.openTickets > 0 ? status.pending : null,
+              ),
           ],
-          if (stats.canDomains) ...[
-            StatRailItem(
-              label: 'Domains',
-              value: Formatting.integer(stats.domainsActive),
-            ),
-            StatRailItem(
-              label: 'Expiring',
-              value: Formatting.integer(stats.domainsExpiringSoon),
-              emphasis:
-                  stats.domainsExpiringSoon > 0 ? status.overdue : null,
-            ),
-          ],
-          if (stats.canTickets)
-            StatRailItem(
-              label: 'Tickets',
-              value: Formatting.integer(stats.openTickets),
-              emphasis: stats.openTickets > 0 ? status.pending : null,
-            ),
-        ]),
+        ),
         if (stats.registrarCredit != null) ...[
           const SizedBox(height: Spacing.sm),
           Card(
@@ -651,10 +822,12 @@ class _BillList extends StatelessWidget {
             if (i > 0) const Divider(height: 1),
             ListTile(
               dense: true,
-              title: Text(b.name,
-                  style: theme.textTheme.titleSmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+              title: Text(
+                b.name,
+                style: theme.textTheme.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               subtitle: Text(Formatting.dueDescription(b.dueDate)),
               trailing: Money(b.amount),
             ),
@@ -681,10 +854,12 @@ class _RenewalList extends StatelessWidget {
             if (i > 0) const Divider(height: 1),
             ListTile(
               dense: true,
-              title: Text(r.clientName ?? '—',
-                  style: theme.textTheme.titleSmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+              title: Text(
+                r.clientName ?? '—',
+                style: theme.textTheme.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               subtitle: Text(
                 [
                   if (r.productName != null) r.productName!,
@@ -724,23 +899,33 @@ class _TopClients extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             for (final c in items) ...[
-              Text(c.name,
-                  style: theme.textTheme.bodyMedium,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis),
+              Text(
+                c.name,
+                style: theme.textTheme.bodyMedium,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
               const SizedBox(height: Spacing.xs),
-              _Bar(fraction: max <= 0 ? 0 : c.total / max, color: theme.colorScheme.primary),
+              _Bar(
+                fraction: max <= 0 ? 0 : c.total / max,
+                color: theme.colorScheme.primary,
+              ),
               const SizedBox(height: 3),
-              _Bar(fraction: max <= 0 ? 0 : c.paid / max, color: status.settled),
+              _Bar(
+                fraction: max <= 0 ? 0 : c.paid / max,
+                color: status.settled,
+              ),
               const SizedBox(height: Spacing.xs),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Money(c.total, scale: MoneyScale.dense, showCode: false),
-                  Money(c.paid,
-                      scale: MoneyScale.dense,
-                      showCode: false,
-                      color: status.settled),
+                  Money(
+                    c.paid,
+                    scale: MoneyScale.dense,
+                    showCode: false,
+                    color: status.settled,
+                  ),
                 ],
               ),
               const SizedBox(height: Spacing.md),
@@ -767,14 +952,14 @@ class _Bar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ClipRRect(
-        borderRadius: BorderRadius.circular(2),
-        child: LinearProgressIndicator(
-          value: fraction.clamp(0, 1),
-          minHeight: 6,
-          backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
-          valueColor: AlwaysStoppedAnimation(color),
-        ),
-      );
+    borderRadius: BorderRadius.circular(2),
+    child: LinearProgressIndicator(
+      value: fraction.clamp(0, 1),
+      minHeight: 6,
+      backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+      valueColor: AlwaysStoppedAnimation(color),
+    ),
+  );
 }
 
 class _Legend extends StatelessWidget {
@@ -785,16 +970,17 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-              width: 10,
-              height: 10,
-              decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: Spacing.xs),
-          Text(label, style: Theme.of(context).textTheme.labelSmall),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: 10,
+        height: 10,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
+      const SizedBox(width: Spacing.xs),
+      Text(label, style: Theme.of(context).textTheme.labelSmall),
+    ],
+  );
 }
 
 class _NamedTotals extends StatelessWidget {
@@ -825,9 +1011,12 @@ class _NamedTotals extends StatelessWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('Total',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(fontWeight: FontWeight.w700)),
+                Text(
+                  'Total',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 Money(total),
               ],
             ),
@@ -852,7 +1041,9 @@ class _AttendanceCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ref.watch(myAttendanceProvider).maybeWhen(
+    return ref
+        .watch(myAttendanceProvider)
+        .maybeWhen(
           data: (a) => _card(context, ref, a),
           orElse: () => const SizedBox.shrink(),
         );
@@ -876,15 +1067,15 @@ class _AttendanceCard extends ConsumerWidget {
                     'TODAY · ${Formatting.date(DateTime.now()).toUpperCase()}',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: Type.eyebrowTracking,
                     ),
                   ),
                 ),
                 if (today == null)
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: Spacing.sm, vertical: 2),
+                      horizontal: Spacing.sm,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.surfaceContainerHighest,
                       borderRadius: BorderRadius.circular(Radii.sm),
@@ -945,14 +1136,18 @@ class _AttendanceCard extends ConsumerWidget {
                     '${a.presentDays} '
                     '${a.presentDays == 1 ? 'day' : 'days'} present'
                     '${a.monthLabel.isEmpty ? '' : ' · ${a.monthLabel}'}',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
                 // Only worth the space when the tenant actually docks pay.
                 if (a.settings.penaltiesEnabled && a.deductionTotal > 0) ...[
-                  Money(a.deductionTotal,
-                      scale: MoneyScale.dense, color: status.overdue),
+                  Money(
+                    a.deductionTotal,
+                    scale: MoneyScale.dense,
+                    color: status.overdue,
+                  ),
                   const SizedBox(width: Spacing.sm),
                 ],
                 TextButton(
@@ -990,11 +1185,13 @@ class _Clock extends StatelessWidget {
 
     return Row(
       children: [
-        Icon(icon,
-            size: 18,
-            color: marked
-                ? theme.colorScheme.onSurface
-                : theme.colorScheme.outline),
+        Icon(
+          icon,
+          size: 18,
+          color: marked
+              ? theme.colorScheme.onSurface
+              : theme.colorScheme.outline,
+        ),
         const SizedBox(width: Spacing.sm),
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1011,8 +1208,9 @@ class _Clock extends StatelessWidget {
             ),
             Text(
               target == null ? label : '$label · target $target',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

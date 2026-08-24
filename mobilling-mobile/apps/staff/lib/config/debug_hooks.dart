@@ -41,9 +41,24 @@ abstract final class DebugHooks {
 class DebugTokenStore extends TokenStore {
   DebugTokenStore();
 
+  /// `/tmp/mobilling_debug_signed_out` (any content) hides the stored
+  /// session so the sign-in and registration screens can be reviewed.
+  static bool get _forceSignedOut =>
+      DebugHooks.readFile('/tmp/mobilling_debug_signed_out') != null;
+
   @override
-  Future<String?> read() async =>
-      await super.read() ?? DebugHooks.readFile('/tmp/mobilling_debug_token');
+  Future<String?> read() async {
+    if (_forceSignedOut) return null;
+    return await super.read() ??
+        DebugHooks.readFile('/tmp/mobilling_debug_token');
+  }
+
+  /// `/tmp/mobilling_debug_locked` pretends the stored session was put
+  /// behind biometrics, to review the unlock screen.
+  @override
+  Future<bool> readBiometricLock() async =>
+      DebugHooks.readFile('/tmp/mobilling_debug_locked') != null ||
+      await super.readBiometricLock();
 
   @override
   Future<String?> readUserType() async =>

@@ -35,45 +35,37 @@ class _StatutoryScreenState extends ConsumerState<StatutoryScreen> {
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400),
-        () => _listKey.currentState?.reload());
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Obligations')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, Spacing.xs),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                hintText: 'Search obligation',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
+      appBar: ShellTopBar(
+        eyebrow: 'Statutory',
+        title: 'Obligations',
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search obligation',
+          onChanged: _onSearchChanged,
+        ),
+      ),
+      body: PagedListView(
+        key: _listKey,
+        fetch: (page) => ref
+            .read(financeServiceProvider)
+            .statutories(
+              search: _search.text.trim().isEmpty ? null : _search.text.trim(),
+              page: page,
             ),
-          ),
-          Expanded(
-            child: PagedListView(
-              key: _listKey,
-              fetch: (page) => ref.read(financeServiceProvider).statutories(
-                    search: _search.text.trim().isEmpty
-                        ? null
-                        : _search.text.trim(),
-                    page: page,
-                  ),
-              itemBuilder: (context, statutory) =>
-                  StatutoryCard(statutory: statutory),
-              emptyIcon: Icons.gavel_outlined,
-              emptyTitle: 'No obligations configured',
-            ),
-          ),
-        ],
+        itemBuilder: (context, statutory) =>
+            StatutoryCard(statutory: statutory),
+        emptyIcon: Icons.gavel_outlined,
+        emptyTitle: 'No obligations configured',
+        emptyMessage: 'Set up obligations from the web app to track them here.',
       ),
     );
   }
@@ -87,22 +79,24 @@ class StatutoryScheduleScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final schedule = ref.watch(statutoryScheduleProvider);
-    final theme = Theme.of(context);
     final status = context.statusColors;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Statutory schedule')),
+      appBar: const ShellTopBar(eyebrow: 'Statutory', title: 'Schedule'),
       body: CrmAsyncView(
         value: schedule,
         errorTitle: 'Could not load the schedule',
         onRetry: () => ref.invalidate(statutoryScheduleProvider),
         builder: (data) {
-          final overdue =
-              data.items.where((s) => s.status == 'overdue').toList();
-          final dueSoon =
-              data.items.where((s) => s.status == 'due_soon').toList();
-          final upcoming =
-              data.items.where((s) => s.status == 'upcoming').toList();
+          final overdue = data.items
+              .where((s) => s.status == 'overdue')
+              .toList();
+          final dueSoon = data.items
+              .where((s) => s.status == 'due_soon')
+              .toList();
+          final upcoming = data.items
+              .where((s) => s.status == 'upcoming')
+              .toList();
           final paid = data.items.where((s) => s.status == 'paid').toList();
 
           return RefreshIndicator(
@@ -111,34 +105,25 @@ class StatutoryScheduleScreen extends ConsumerWidget {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(Spacing.md),
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatTile(
-                        label: 'Overdue',
-                        value: '${data.stats.overdue}',
-                        emphasis: data.stats.overdue > 0
-                            ? status.overdue
-                            : null,
-                      ),
+                // Three small counts: one rail, not three cards.
+                StatRail(
+                  items: [
+                    StatRailItem(
+                      label: 'Overdue',
+                      value: Formatting.integer(data.stats.overdue),
+                      emphasis: data.stats.overdue > 0 ? status.overdue : null,
                     ),
-                    const SizedBox(width: Spacing.sm),
-                    Expanded(
-                      child: StatTile(
-                        label: 'Due soon',
-                        value: '${data.stats.dueSoon}',
-                        emphasis: data.stats.dueSoon > 0
-                            ? status.attention
-                            : null,
-                      ),
+                    StatRailItem(
+                      label: 'Due soon',
+                      value: Formatting.integer(data.stats.dueSoon),
+                      emphasis: data.stats.dueSoon > 0
+                          ? status.attention
+                          : null,
                     ),
-                    const SizedBox(width: Spacing.sm),
-                    Expanded(
-                      child: StatTile(
-                        label: 'Paid',
-                        value: '${data.stats.paid}',
-                        emphasis: status.settled,
-                      ),
+                    StatRailItem(
+                      label: 'Paid',
+                      value: Formatting.integer(data.stats.paid),
+                      emphasis: data.stats.paid > 0 ? status.settled : null,
                     ),
                   ],
                 ),
@@ -150,11 +135,27 @@ class StatutoryScheduleScreen extends ConsumerWidget {
                 ])
                   if (items.isNotEmpty) ...[
                     const SizedBox(height: Spacing.lg),
-                    Text(label, style: theme.textTheme.titleSmall),
+                    SectionHeader(label),
                     const SizedBox(height: Spacing.sm),
-                    for (final statutory in items)
-                      StatutoryCard(statutory: statutory),
+                    Card(
+                      child: Column(
+                        children: [
+                          for (final (i, statutory) in items.indexed) ...[
+                            if (i > 0) const Divider(height: 1),
+                            _StatutoryTile(statutory: statutory),
+                          ],
+                        ],
+                      ),
+                    ),
                   ],
+                if (data.items.isEmpty) ...[
+                  const SizedBox(height: Spacing.lg),
+                  const StateMessage(
+                    icon: Icons.event_available_outlined,
+                    title: 'Nothing scheduled',
+                    message: 'Obligations appear here once they are set up.',
+                  ),
+                ],
                 const SizedBox(height: Spacing.xl),
               ],
             ),
@@ -165,14 +166,28 @@ class StatutoryScheduleScreen extends ConsumerWidget {
   }
 }
 
+/// One obligation on its own card — the paged list's row.
 class StatutoryCard extends StatelessWidget {
   const StatutoryCard({super.key, required this.statutory});
 
   final Statutory statutory;
 
   @override
+  Widget build(BuildContext context) =>
+      Card(child: _StatutoryTile(statutory: statutory));
+}
+
+/// The obligation row: name and amount, then the chip and the mono metadata
+/// line, then — only while a bill is part-paid — the progress bar.
+class _StatutoryTile extends StatelessWidget {
+  const _StatutoryTile({required this.statutory});
+
+  final Statutory statutory;
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
 
     final chipStatus = switch (statutory.status) {
@@ -181,65 +196,84 @@ class StatutoryCard extends StatelessWidget {
       'due_soon' => 'partial',
       _ => 'pending',
     };
+    final due = statutory.nextDueDate == null
+        ? null
+        : statutory.isPaid
+        ? 'due ${Formatting.date(statutory.nextDueDate)}'
+        : statutory.daysRemaining < 0
+        ? '${-statutory.daysRemaining}d overdue'
+        : 'in ${statutory.daysRemaining}d';
+    final partPaid = statutory.paidAmount > 0 && !statutory.isPaid;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: Spacing.sm),
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(statutory.name,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+    return ListTile(
+      title: Text(
+        statutory.name,
+        style: theme.textTheme.titleSmall,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 2),
+          Row(
+            children: [
+              StatusChip(chipStatus, dense: true),
+              const SizedBox(width: Spacing.sm),
+              Flexible(
+                child: Text(
+                  [
+                    if (statutory.categoryName != null) statutory.categoryName!,
+                    if (statutory.cycle != null)
+                      statutory.cycle!.replaceAll('_', ' '),
+                    ?due,
+                  ].join(' · ').toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: statutory.isOverdue
+                        ? status.overdue
+                        : scheme.onSurfaceVariant,
+                  ),
                 ),
-                Money(statutory.amount),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text(
-              [
-                if (statutory.categoryName != null) statutory.categoryName!,
-                if (statutory.cycle != null)
-                  statutory.cycle!.replaceAll('_', ' '),
-                if (statutory.nextDueDate != null)
-                  statutory.isPaid
-                      ? 'due ${Formatting.date(statutory.nextDueDate)}'
-                      : statutory.daysRemaining < 0
-                          ? '${-statutory.daysRemaining}d overdue'
-                          : 'in ${statutory.daysRemaining}d',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: statutory.isOverdue
-                    ? status.overdue
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (statutory.paidAmount > 0 && !statutory.isPaid) ...[
-              const SizedBox(height: Spacing.xs),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(Radii.sm),
-                child: LinearProgressIndicator(
-                  value: (statutory.progressPercent / 100).clamp(0.0, 1.0),
-                  minHeight: 6,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                '${Formatting.amount(statutory.paidAmount)} paid · ${Formatting.amount(statutory.remainingAmount)} remaining',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
               ),
             ],
+          ),
+          if (partPaid) ...[
+            const SizedBox(height: Spacing.sm),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(Radii.sm),
+              child: LinearProgressIndicator(
+                value: (statutory.progressPercent / 100).clamp(0.0, 1.0),
+                minHeight: 6,
+                valueColor: AlwaysStoppedAnimation(status.settled),
+              ),
+            ),
             const SizedBox(height: Spacing.xs),
-            StatusChip(chipStatus, dense: true),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Money(
+                  statutory.paidAmount,
+                  scale: MoneyScale.dense,
+                  showCode: false,
+                  color: status.settled,
+                ),
+                Text(' paid', style: theme.textTheme.bodySmall),
+                const Spacer(),
+                Money(
+                  statutory.remainingAmount,
+                  scale: MoneyScale.dense,
+                  showCode: false,
+                ),
+                Text(' remaining', style: theme.textTheme.bodySmall),
+              ],
+            ),
           ],
-        ),
+        ],
       ),
+      trailing: Money(statutory.amount),
     );
   }
 }
@@ -266,59 +300,54 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400),
-        () => _listKey.currentState?.reload());
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final status = context.statusColors;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Bills')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, Spacing.xs),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                hintText: 'Search bill',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
+      appBar: ShellTopBar(
+        eyebrow: 'Statutory',
+        title: 'Bills',
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search bill',
+          onChanged: _onSearchChanged,
+        ),
+      ),
+      body: PagedListView(
+        key: _listKey,
+        fetch: (page) => ref
+            .read(financeServiceProvider)
+            .bills(
+              search: _search.text.trim().isEmpty ? null : _search.text.trim(),
+              page: page,
             ),
-          ),
-          Expanded(
-            child: PagedListView(
-              key: _listKey,
-              fetch: (page) => ref.read(financeServiceProvider).bills(
-                    search: _search.text.trim().isEmpty
-                        ? null
-                        : _search.text.trim(),
-                    page: page,
-                  ),
-              itemBuilder: (context, bill) => Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Spacing.md),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(bill.name,
-                                style: theme.textTheme.titleSmall,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis),
-                          ),
-                          Money(bill.amount),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
+        itemBuilder: (context, bill) => Card(
+          child: ListTile(
+            title: Text(
+              bill.name,
+              style: theme.textTheme.titleSmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 2),
+                Row(
+                  children: [
+                    StatusChip(bill.status, dense: true),
+                    const SizedBox(width: Spacing.sm),
+                    Flexible(
+                      child: Text(
                         [
                           if (bill.categoryName != null) bill.categoryName!,
                           if (bill.cycle != null)
@@ -328,34 +357,42 @@ class _BillsScreenState extends ConsumerState<BillsScreen> {
                             bill.isPaid
                                 ? 'Paid${bill.paidAt == null ? '' : ' ${Formatting.date(bill.paidAt)}'}'
                                 : Formatting.dueDescription(bill.dueDate),
-                        ].join(' · '),
-                        style: theme.textTheme.bodySmall?.copyWith(
+                        ].join(' · ').toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.labelSmall?.copyWith(
                           color: bill.isOverdue
-                              ? context.statusColors.overdue
-                              : theme.colorScheme.onSurfaceVariant,
+                              ? status.overdue
+                              : scheme.onSurfaceVariant,
                         ),
                       ),
-                      const SizedBox(height: Spacing.xs),
-                      Row(
-                        children: [
-                          StatusChip(bill.status, dense: true),
-                          const Spacer(),
-                          if (bill.remaining > 0)
-                            Text(
-                              '${Formatting.amount(bill.remaining)} remaining',
-                              style: theme.textTheme.bodySmall,
-                            ),
-                        ],
+                    ),
+                  ],
+                ),
+                if (bill.remaining > 0) ...[
+                  const SizedBox(height: Spacing.xs),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.baseline,
+                    textBaseline: TextBaseline.alphabetic,
+                    children: [
+                      Money(
+                        bill.remaining,
+                        scale: MoneyScale.dense,
+                        showCode: false,
+                        color: bill.isOverdue ? status.overdue : null,
                       ),
+                      Text(' remaining', style: theme.textTheme.bodySmall),
                     ],
                   ),
-                ),
-              ),
-              emptyIcon: Icons.request_page_outlined,
-              emptyTitle: 'No bills configured',
+                ],
+              ],
             ),
+            trailing: Money(bill.amount),
           ),
-        ],
+        ),
+        emptyIcon: Icons.request_page_outlined,
+        emptyTitle: 'No bills configured',
+        emptyMessage: 'Bills appear here once an obligation raises one.',
       ),
     );
   }
@@ -368,73 +405,83 @@ class BillCategoriesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(billCategoriesProvider);
-    final theme = Theme.of(context);
-    final canCreate = ref.watch(sessionControllerProvider).session?.can(
-              FinancePermissions.billsCreate,
-            ) ??
+    final canCreate =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(FinancePermissions.billsCreate) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Bill categories')),
-      floatingActionButton: !canCreate
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _add(context, ref),
-              icon: const Icon(Icons.add),
-              label: const Text('Category'),
-            ),
+      appBar: ShellTopBar(
+        eyebrow: 'Statutory',
+        title: 'Bill categories',
+        trailing: !canCreate
+            ? null
+            : InkActionButton(
+                icon: Icons.add_rounded,
+                tooltip: 'Add category',
+                onPressed: () => _add(context, ref),
+              ),
+      ),
       body: CrmAsyncView(
         value: categories,
         errorTitle: 'Could not load categories',
         onRetry: () => ref.invalidate(billCategoriesProvider),
         builder: (items) => items.isEmpty
-            ? const StateMessage(
+            ? StateMessage(
                 icon: Icons.category_outlined,
                 title: 'No bill categories',
+                message: 'Categories group bills so reports can total them.',
+                actionLabel: canCreate ? 'Add category' : null,
+                onAction: canCreate ? () => _add(context, ref) : null,
               )
-            : ListView.separated(
+            : ListView(
                 padding: const EdgeInsets.all(Spacing.md),
-                itemCount: items.length,
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: Spacing.sm),
-                itemBuilder: (context, index) {
-                  final category = items[index];
-                  return Card(
-                    child: category.children.isEmpty
-                        ? ListTile(
-                            title: Text(category.name),
-                            subtitle: category.billingCycle == null
-                                ? null
-                                : Text(
-                                    category.billingCycle!
-                                        .replaceAll('_', ' '),
-                                    style: theme.textTheme.bodySmall),
-                          )
-                        : ExpansionTile(
-                            shape: const Border(),
-                            collapsedShape: const Border(),
-                            title: Text(category.name),
-                            subtitle: Text(
-                                '${category.children.length} sub-categor${category.children.length == 1 ? 'y' : 'ies'}',
-                                style: theme.textTheme.bodySmall),
-                            children: [
-                              for (final child in category.children)
-                                ListTile(
-                                  dense: true,
-                                  contentPadding: const EdgeInsets.only(
-                                      left: Spacing.xl, right: Spacing.md),
-                                  title: Text(child.name),
-                                  subtitle: child.billingCycle == null
-                                      ? null
-                                      : Text(
-                                          child.billingCycle!
-                                              .replaceAll('_', ' '),
-                                          style: theme.textTheme.bodySmall),
-                                ),
-                            ],
-                          ),
-                  );
-                },
+                children: [
+                  Card(
+                    child: Column(
+                      children: [
+                        for (final (i, category) in items.indexed) ...[
+                          if (i > 0) const Divider(height: 1),
+                          if (category.children.isEmpty)
+                            _CategoryTile(
+                              name: category.name,
+                              detail: category.billingCycle?.replaceAll(
+                                '_',
+                                ' ',
+                              ),
+                            )
+                          else
+                            ExpansionTile(
+                              shape: const Border(),
+                              collapsedShape: const Border(),
+                              title: Text(
+                                category.name,
+                                style: Theme.of(context).textTheme.titleSmall,
+                              ),
+                              subtitle: _MetaLine(
+                                '${Formatting.integer(category.children.length)} '
+                                'sub-categor${category.children.length == 1 ? 'y' : 'ies'}',
+                              ),
+                              children: [
+                                for (final child in category.children)
+                                  _CategoryTile(
+                                    name: child.name,
+                                    detail: child.billingCycle?.replaceAll(
+                                      '_',
+                                      ' ',
+                                    ),
+                                    nested: true,
+                                  ),
+                              ],
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.xl),
+                ],
               ),
       ),
     );
@@ -443,60 +490,24 @@ class BillCategoriesScreen extends ConsumerWidget {
   Future<void> _add(BuildContext context, WidgetRef ref) async {
     final name = TextEditingController();
     final messenger = ScaffoldMessenger.of(context);
-    final parents = ref.read(billCategoriesProvider).valueOrNull ??
-        const <BillCategory>[];
+    final parents =
+        ref.read(billCategoriesProvider).valueOrNull ?? const <BillCategory>[];
     String? parentId;
 
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('New bill category'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                autofocus: true,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Name'),
-              ),
-              const SizedBox(height: Spacing.md),
-              DropdownButtonFormField<String?>(
-                initialValue: parentId,
-                isExpanded: true,
-                decoration:
-                    const InputDecoration(labelText: 'Parent (optional)'),
-                items: [
-                  const DropdownMenuItem(
-                      value: null, child: Text('Top level')),
-                  for (final parent in parents)
-                    DropdownMenuItem(
-                        value: parent.id, child: Text(parent.name)),
-                ],
-                onChanged: (v) => setDialogState(() => parentId = v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Create')),
-          ],
-        ),
-      ),
+    final saved = await _CategoryDialog.show(
+      context,
+      title: 'New bill category',
+      name: name,
+      parents: [for (final p in parents) (p.id, p.name)],
+      onParentChanged: (v) => parentId = v,
     );
 
     if (saved != true || name.text.trim().isEmpty) return;
 
     try {
-      await ref.read(financeServiceProvider).createBillCategory(
-            name: name.text.trim(),
-            parentId: parentId,
-          );
+      await ref
+          .read(financeServiceProvider)
+          .createBillCategory(name: name.text.trim(), parentId: parentId);
       ref.invalidate(billCategoriesProvider);
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
@@ -512,66 +523,83 @@ class ExpenseCategoriesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(expenseCategoriesProvider);
     final theme = Theme.of(context);
-    final canCreate = ref.watch(sessionControllerProvider).session?.can(
-              FinancePermissions.expenseCategoriesCreate,
-            ) ??
+    final canCreate =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(FinancePermissions.expenseCategoriesCreate) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Expense categories')),
-      floatingActionButton: !canCreate
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _add(context, ref),
-              icon: const Icon(Icons.add),
-              label: const Text('Category'),
-            ),
+      appBar: ShellTopBar(
+        eyebrow: 'Expenses',
+        title: 'Expense categories',
+        trailing: !canCreate
+            ? null
+            : InkActionButton(
+                icon: Icons.add_rounded,
+                tooltip: 'Add category',
+                onPressed: () => _add(context, ref),
+              ),
+      ),
       body: CrmAsyncView(
         value: categories,
         errorTitle: 'Could not load categories',
         onRetry: () => ref.invalidate(expenseCategoriesProvider),
         builder: (items) => items.isEmpty
-            ? const StateMessage(
+            ? StateMessage(
                 icon: Icons.category_outlined,
                 title: 'No expense categories',
+                message:
+                    'Expenses attach to sub-categories, so add a category and then its sub-categories.',
+                actionLabel: canCreate ? 'Add category' : null,
+                onAction: canCreate ? () => _add(context, ref) : null,
               )
-            : ListView.separated(
+            : ListView(
                 padding: const EdgeInsets.all(Spacing.md),
-                itemCount: items.length,
-                separatorBuilder: (context, index) =>
-                    const SizedBox(height: Spacing.sm),
-                itemBuilder: (context, index) {
-                  final category = items[index];
-                  return Card(
-                    child: ExpansionTile(
-                      shape: const Border(),
-                      collapsedShape: const Border(),
-                      title: Text(category.name),
-                      subtitle: Text(
-                        '${category.subCategories.length} sub-categor${category.subCategories.length == 1 ? 'y' : 'ies'}',
-                        style: theme.textTheme.bodySmall,
-                      ),
+                children: [
+                  Card(
+                    child: Column(
                       children: [
-                        for (final sub in category.subCategories)
-                          ListTile(
-                            dense: true,
-                            contentPadding: const EdgeInsets.only(
-                                left: Spacing.xl, right: Spacing.md),
-                            title: Text(sub.name),
-                          ),
-                        if (category.subCategories.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.all(Spacing.md),
-                            child: Text(
-                              'No sub-categories — expenses attach to sub-categories only.',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant),
+                        for (final (i, category) in items.indexed) ...[
+                          if (i > 0) const Divider(height: 1),
+                          ExpansionTile(
+                            shape: const Border(),
+                            collapsedShape: const Border(),
+                            title: Text(
+                              category.name,
+                              style: theme.textTheme.titleSmall,
                             ),
+                            subtitle: _MetaLine(
+                              '${Formatting.integer(category.subCategories.length)} '
+                              'sub-categor${category.subCategories.length == 1 ? 'y' : 'ies'}',
+                            ),
+                            children: [
+                              for (final sub in category.subCategories)
+                                _CategoryTile(name: sub.name, nested: true),
+                              if (category.subCategories.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    Spacing.md,
+                                    0,
+                                    Spacing.md,
+                                    Spacing.md,
+                                  ),
+                                  child: Text(
+                                    'No sub-categories yet — expenses attach to sub-categories only.',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
+                        ],
                       ],
                     ),
-                  );
-                },
+                  ),
+                  const SizedBox(height: Spacing.xl),
+                ],
               ),
       ),
     );
@@ -580,65 +608,145 @@ class ExpenseCategoriesScreen extends ConsumerWidget {
   Future<void> _add(BuildContext context, WidgetRef ref) async {
     final name = TextEditingController();
     final messenger = ScaffoldMessenger.of(context);
-    final parents = ref.read(expenseCategoriesProvider).valueOrNull ??
+    final parents =
+        ref.read(expenseCategoriesProvider).valueOrNull ??
         const <ExpenseCategory>[];
     String? parentId;
 
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('New expense category'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: name,
-                autofocus: true,
-                textCapitalization: TextCapitalization.words,
-                decoration: const InputDecoration(labelText: 'Name'),
-              ),
-              const SizedBox(height: Spacing.md),
-              DropdownButtonFormField<String?>(
-                initialValue: parentId,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Parent',
-                  helperText: 'Leave blank to create a top-level category',
-                ),
-                items: [
-                  const DropdownMenuItem(
-                      value: null, child: Text('Top level')),
-                  for (final parent in parents)
-                    DropdownMenuItem(
-                        value: parent.id, child: Text(parent.name)),
-                ],
-                onChanged: (v) => setDialogState(() => parentId = v),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(dialogContext, false),
-                child: const Text('Cancel')),
-            FilledButton(
-                onPressed: () => Navigator.pop(dialogContext, true),
-                child: const Text('Create')),
-          ],
-        ),
-      ),
+    final saved = await _CategoryDialog.show(
+      context,
+      title: 'New expense category',
+      name: name,
+      parents: [for (final p in parents) (p.id, p.name)],
+      onParentChanged: (v) => parentId = v,
     );
 
     if (saved != true || name.text.trim().isEmpty) return;
 
     try {
-      await ref.read(financeServiceProvider).createExpenseCategory(
-            name: name.text.trim(),
-            parentId: parentId,
-          );
+      await ref
+          .read(financeServiceProvider)
+          .createExpenseCategory(name: name.text.trim(), parentId: parentId);
       ref.invalidate(expenseCategoriesProvider);
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Private building blocks (candidates for mobilling_ui)
+// ---------------------------------------------------------------------------
+
+/// A mono metadata line under a list title.
+class _MetaLine extends StatelessWidget {
+  const _MetaLine(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text.toUpperCase(),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+/// A category row; [nested] indents it under its parent.
+class _CategoryTile extends StatelessWidget {
+  const _CategoryTile({required this.name, this.detail, this.nested = false});
+
+  final String name;
+  final String? detail;
+  final bool nested;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    dense: nested,
+    contentPadding: nested
+        ? const EdgeInsets.only(left: Spacing.xl, right: Spacing.md)
+        : null,
+    title: Text(
+      name,
+      style: nested
+          ? Theme.of(context).textTheme.bodyMedium
+          : Theme.of(context).textTheme.titleSmall,
+    ),
+    subtitle: detail == null ? null : _MetaLine(detail!),
+  );
+}
+
+/// The "new category" dialog shared by bills and expenses: a name and an
+/// optional parent. Returns true when the form was confirmed.
+class _CategoryDialog {
+  static Future<bool?> show(
+    BuildContext context, {
+    required String title,
+    required TextEditingController name,
+    required List<(String, String)> parents,
+    required ValueChanged<String?> onParentChanged,
+  }) {
+    final scheme = Theme.of(context).colorScheme;
+    String? parentId;
+
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: Text(title, style: Type.display(22, color: scheme.onSurface)),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const FieldLabel('Name'),
+              const SizedBox(height: Spacing.sm),
+              TextField(
+                controller: name,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  hintText: 'What the category is called',
+                ),
+              ),
+              const SizedBox(height: Spacing.md),
+              const FieldLabel('Parent (optional)'),
+              const SizedBox(height: Spacing.sm),
+              DropdownButtonFormField<String?>(
+                initialValue: parentId,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  helperText: 'Leave as top level for a new group',
+                ),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('Top level')),
+                  for (final (id, label) in parents)
+                    DropdownMenuItem(value: id, child: Text(label)),
+                ],
+                onChanged: (v) {
+                  setDialogState(() => parentId = v);
+                  onParentChanged(v);
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Create category'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

@@ -26,6 +26,11 @@ enum SessionStatus {
   /// sign-out; see [SessionController.restoreError].
   offline,
 
+  /// We hold a stored token whose owner asked for a biometric check before it
+  /// is used. Nothing has been sent to the server yet; [SessionController.unlock]
+  /// runs the normal restore once the device has verified the person.
+  locked,
+
   /// We hold a token the server has rejected, but we have not torn the session
   /// down yet. Whether this state is ever entered depends on the policy in
   /// [SessionController.handleUnauthenticated].
@@ -72,13 +77,20 @@ class SessionController extends ChangeNotifier {
   /// Cold start: restore a stored token and confirm the server still honours
   /// it. A token that was revoked (by staff, or by signing out elsewhere)
   /// looks identical to a valid one until we actually use it.
-  Future<void> restore() async {
+  Future<void> restore({bool unlocked = false}) async {
     _restoreError = null;
     _setStatus(SessionStatus.restoring);
 
     final token = await _tokens.read();
     if (token == null || token.isEmpty) {
       _setStatus(SessionStatus.signedOut);
+      return;
+    }
+
+    // A biometric-locked session waits for the device to vouch for the
+    // person before the token goes anywhere near the network.
+    if (!unlocked && await _tokens.readBiometricLock()) {
+      _setStatus(SessionStatus.locked);
       return;
     }
 
@@ -107,8 +119,20 @@ class SessionController extends ChangeNotifier {
   }
 
   /// Drop the stored token without a server call — for a user stuck on
-  /// [SessionStatus.offline] who would rather sign in afresh than wait.
+  /// [SessionStatus.offline] or [SessionStatus.locked] who would rather sign
+  /// in afresh.
   Future<void> forgetStoredSession() => _clear();
+
+  /// The device has verified the person: use the locked token now.
+  Future<void> unlock() => restore(unlocked: true);
+
+  /// Require (or stop requiring) a biometric check before the stored token
+  /// is used on the next launch. The caller is responsible for having
+  /// confirmed the device can actually do biometrics.
+  Future<void> setBiometricLock(bool enabled) =>
+      _tokens.setBiometricLock(enabled);
+
+  Future<bool> biometricLockEnabled() => _tokens.readBiometricLock();
 
   Future<LoginOutcome> login({
     required String identifier,

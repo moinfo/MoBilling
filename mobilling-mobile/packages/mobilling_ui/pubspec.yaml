@@ -23,3 +23,18 @@ flutter:
   # from one file.
   assets:
     - assets/moinfotech-logo.png
+
+  # The two brand faces from the web design handoff
+  # (design_handoff_mobilling/README.md): Archivo for display, IBM Plex Mono
+  # for eyebrows and data captions. Both SIL OFL — licences sit beside the
+  # files. Body text stays on the platform face on purpose (see `Type`).
+  fonts:
+    - family: Archivo
+      fonts:
+        - asset: assets/fonts/Archivo-Variable.ttf
+    - family: IBMPlexMono
+      fonts:
+        - asset: assets/fonts/IBMPlexMono-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/IBMPlexMono-Medium.ttf
+          weight: 500

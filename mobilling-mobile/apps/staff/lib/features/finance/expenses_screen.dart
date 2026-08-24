@@ -44,8 +44,10 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400),
-        () => _listKey.currentState?.reload());
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
   }
 
   void _reload() {
@@ -61,42 +63,40 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     final canApprove = auth?.can(FinancePermissions.expensesApprove) ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Expenses')),
-      floatingActionButton: !canCreate
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _record(context),
-              icon: const Icon(Icons.add),
-              label: const Text('Record'),
-            ),
+      appBar: ShellTopBar(
+        eyebrow: 'Expenses',
+        title: 'Expenses',
+        trailing: !canCreate
+            ? null
+            : InkActionButton(
+                icon: Icons.add_rounded,
+                tooltip: 'Record expense',
+                onPressed: () => _record(context),
+              ),
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search description',
+          onChanged: _onSearchChanged,
+        ),
+      ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, 0),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                hintText: 'Search description',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
-            ),
-          ),
+          // Approval state, as a quiet row of chips under the masthead.
           SizedBox(
             height: 48,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(
-                  horizontal: Spacing.md, vertical: Spacing.sm),
+                horizontal: Spacing.md,
+                vertical: Spacing.sm,
+              ),
               itemCount: _filters.length,
               separatorBuilder: (context, index) =>
                   const SizedBox(width: Spacing.sm),
               itemBuilder: (context, index) {
                 final (value, label) = _filters[index];
-                return FilterChip(
-                  label: Text(label),
+                return ChoiceChip(
+                  label: Text(label.toUpperCase()),
                   selected: _status == value,
                   showCheckmark: false,
                   onSelected: (_) {
@@ -110,7 +110,15 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
           Expanded(
             child: PagedListView(
               key: _listKey,
-              fetch: (page) => ref.read(financeServiceProvider).expenses(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.sm,
+                Spacing.md,
+                Spacing.xl,
+              ),
+              fetch: (page) => ref
+                  .read(financeServiceProvider)
+                  .expenses(
                     approvalStatus: _status,
                     search: _search.text.trim().isEmpty
                         ? null
@@ -124,6 +132,9 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
               ),
               emptyIcon: Icons.money_off_outlined,
               emptyTitle: 'No expenses found',
+              emptyMessage: canCreate
+                  ? 'Record one with the + button above.'
+                  : 'Nothing matches this search or filter.',
             ),
           ),
         ],
@@ -135,6 +146,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => const RecordExpenseSheet(),
     );
@@ -142,6 +154,9 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
   }
 }
 
+/// One expense: description and amount on the first line, the chip and the
+/// mono metadata line under it, and the approval decision — when there is
+/// one to make — as a full row of its own at the bottom.
 class _ExpenseCard extends ConsumerWidget {
   const _ExpenseCard({
     required this.expense,
@@ -156,7 +171,11 @@ class _ExpenseCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
+    final meta = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
 
     return Card(
       child: Padding(
@@ -165,71 +184,89 @@ class _ExpenseCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(expense.description,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    expense.description,
+                    style: theme.textTheme.titleSmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-                const SizedBox(width: Spacing.sm),
+                const SizedBox(width: Spacing.md),
                 Money(expense.amount),
               ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              [
-                if (expense.categoryPath.isNotEmpty) expense.categoryPath,
-                Formatting.date(expense.expenseDate),
-                if (expense.paymentMethod != null) expense.paymentMethod!,
-                if (expense.isPettyCash) 'petty cash',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: Spacing.xs),
+            const SizedBox(height: Spacing.sm),
             Row(
               children: [
                 StatusChip(
-                    expense.approvalStatus == 'approved'
-                        ? 'active'
-                        : expense.approvalStatus == 'rejected'
-                            ? 'rejected'
-                            : 'pending',
-                    dense: true),
+                  expense.approvalStatus == 'approved'
+                      ? 'approved'
+                      : expense.approvalStatus == 'rejected'
+                      ? 'rejected'
+                      : 'pending',
+                  dense: true,
+                ),
                 if (expense.isPettyCash && !expense.hasVoucher) ...[
-                  const SizedBox(width: Spacing.xs),
-                  Text('voucher pending',
-                      style: theme.textTheme.labelSmall
-                          ?.copyWith(color: status.attention)),
-                ],
-                const Spacer(),
-                if (canApprove && expense.isPending) ...[
-                  TextButton(
-                    onPressed: () => _reject(context, ref),
-                    child: Text('Reject',
-                        style: TextStyle(color: theme.colorScheme.error)),
-                  ),
-                  FilledButton.tonal(
-                    onPressed: () => _approve(context, ref),
-                    child: const Text('Approve'),
+                  const SizedBox(width: Spacing.sm),
+                  Text(
+                    'VOUCHER PENDING',
+                    style: meta?.copyWith(color: status.attention),
                   ),
                 ],
+                const SizedBox(width: Spacing.sm),
+                Flexible(
+                  child: Text(
+                    [
+                      if (expense.categoryPath.isNotEmpty) expense.categoryPath,
+                      Formatting.date(expense.expenseDate),
+                      if (expense.paymentMethod != null) expense.paymentMethod!,
+                      if (expense.isPettyCash) 'petty cash',
+                    ].join(' · ').toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: meta,
+                  ),
+                ),
               ],
             ),
             if (expense.rejectionReason != null) ...[
-              const SizedBox(height: Spacing.xs),
-              Text('Rejected: ${expense.rejectionReason}',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.error)),
+              const SizedBox(height: Spacing.sm),
+              Text(
+                'Rejected: ${expense.rejectionReason}',
+                style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+              ),
             ],
             if (expense.approvedByName != null) ...[
-              const SizedBox(height: 2),
+              const SizedBox(height: Spacing.xs),
               Text(
                 'Approved by ${expense.approvedByName}'
                 '${expense.approvedAt == null ? '' : ' · ${Formatting.date(expense.approvedAt)}'}',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            if (canApprove && expense.isPending) ...[
+              const SizedBox(height: Spacing.md),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: () => _reject(context, ref),
+                      child: const Text('Reject'),
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: () => _approve(context, ref),
+                      child: const Text('Approve'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ],
@@ -243,8 +280,9 @@ class _ExpenseCard extends ConsumerWidget {
     try {
       await ref.read(financeServiceProvider).approveExpense(expense.id);
       onChanged();
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Expense approved.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Expense approved.')),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -253,27 +291,41 @@ class _ExpenseCard extends ConsumerWidget {
   Future<void> _reject(BuildContext context, WidgetRef ref) async {
     final controller = TextEditingController();
     final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
 
     final reason = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Reject expense'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          maxLines: 2,
-          decoration: const InputDecoration(
-            labelText: 'Reason',
-            helperText: 'Shown to whoever submitted it',
-          ),
+        title: Text(
+          'Reject expense',
+          style: Type.display(22, color: scheme.onSurface),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const FieldLabel('Reason'),
+            const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: controller,
+              autofocus: true,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: 'Why it is being rejected',
+                helperText: 'Shown to whoever submitted it',
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text.trim()),
-            child: const Text('Reject'),
+            child: const Text('Reject expense'),
           ),
         ],
       ),
@@ -285,8 +337,9 @@ class _ExpenseCard extends ConsumerWidget {
           .read(financeServiceProvider)
           .rejectExpense(expense.id, reason: reason);
       onChanged();
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Expense rejected.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Expense rejected.')),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -303,8 +356,7 @@ class RecordExpenseSheet extends ConsumerStatefulWidget {
   final String? pettyCashAccountId;
 
   @override
-  ConsumerState<RecordExpenseSheet> createState() =>
-      _RecordExpenseSheetState();
+  ConsumerState<RecordExpenseSheet> createState() => _RecordExpenseSheetState();
 }
 
 class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
@@ -331,7 +383,7 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
       _reference,
       _notes,
       _givenBy,
-      _receivedBy
+      _receivedBy,
     ]) {
       c.dispose();
     }
@@ -355,7 +407,9 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
     });
 
     try {
-      await ref.read(financeServiceProvider).createExpense(
+      await ref
+          .read(financeServiceProvider)
+          .createExpense(
             description: _description.text.trim(),
             amount: amount,
             expenseDate: _date,
@@ -366,8 +420,9 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
                 ? null
                 : _reference.text.trim(),
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
-            givenByName:
-                _givenBy.text.trim().isEmpty ? null : _givenBy.text.trim(),
+            givenByName: _givenBy.text.trim().isEmpty
+                ? null
+                : _givenBy.text.trim(),
             receivedByName: _receivedBy.text.trim().isEmpty
                 ? null
                 : _receivedBy.text.trim(),
@@ -376,26 +431,37 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.errorFor('amount') ??
-          e.errorFor('description') ??
-          e.message);
+      setState(
+        () => _error =
+            e.errorFor('amount') ?? e.errorFor('description') ?? e.message,
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
   }
 
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(DateTime.now().year - 2),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _date = picked);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final categories =
         ref.watch(expenseCategoriesProvider).valueOrNull ??
-            const <ExpenseCategory>[];
+        const <ExpenseCategory>[];
 
     return Padding(
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        top: Spacing.lg,
         bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
       ),
       child: SingleChildScrollView(
@@ -403,50 +469,77 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(_isPettyCash ? 'Petty cash expense' : 'Record expense',
-                style: theme.textTheme.titleLarge,
-                textAlign: TextAlign.center),
-            if (_isPettyCash)
-              Text('Needs administrator approval',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                  textAlign: TextAlign.center),
-            const SizedBox(height: Spacing.md),
+            Text(
+              _isPettyCash ? 'PETTY CASH' : 'EXPENSES',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.xs),
+            Text(
+              _isPettyCash ? 'Petty cash expense' : 'Record expense',
+              style: Type.display(22, color: scheme.onSurface),
+            ),
+            if (_isPettyCash) ...[
+              const SizedBox(height: Spacing.xs),
+              Text(
+                'Needs administrator approval before it leaves the float.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: Spacing.lg),
             if (_error != null) ...[
               ErrorBanner(message: _error!),
-              const SizedBox(height: Spacing.sm),
+              const SizedBox(height: Spacing.md),
             ],
+            const FieldLabel('Description'),
+            const SizedBox(height: Spacing.sm),
             TextField(
               controller: _description,
+              enabled: !_submitting,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Description'),
+              decoration: const InputDecoration(
+                hintText: 'What the money was spent on',
+              ),
             ),
             const SizedBox(height: Spacing.md),
+            const FieldLabel('Amount'),
+            const SizedBox(height: Spacing.sm),
             TextField(
               controller: _amount,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              enabled: !_submitting,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
-                labelText: 'Amount',
+                hintText: '0.00',
                 prefixText: '${Formatting.tenantCurrency} ',
               ),
             ),
             const SizedBox(height: Spacing.md),
             // Expenses attach to a SUB-category, so the picker is flattened
             // with the parent shown as a prefix.
+            const FieldLabel('Category'),
+            const SizedBox(height: Spacing.sm),
             DropdownButtonFormField<String?>(
               initialValue: _subCategoryId,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Category'),
+              decoration: const InputDecoration(hintText: 'Choose a category'),
               items: [
                 const DropdownMenuItem(
-                    value: null, child: Text('Uncategorised')),
+                  value: null,
+                  child: Text('Uncategorised'),
+                ),
                 for (final category in categories)
                   for (final sub in category.subCategories)
                     DropdownMenuItem(
                       value: sub.id,
-                      child: Text('${category.name} › ${sub.name}',
-                          overflow: TextOverflow.ellipsis),
+                      child: Text(
+                        '${category.name} › ${sub.name}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
               ],
               onChanged: _submitting
@@ -454,72 +547,75 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
                   : (v) => setState(() => _subCategoryId = v),
             ),
             const SizedBox(height: Spacing.md),
+            const FieldLabel('Payment method'),
+            const SizedBox(height: Spacing.sm),
             PaymentMethodField(
               value: _method,
               enabled: !_submitting,
               onChanged: (v) => setState(() => _method = v),
             ),
             const SizedBox(height: Spacing.md),
-            InkWell(
-              onTap: _submitting
-                  ? null
-                  : () async {
-                      final picked = await showDatePicker(
-                        context: context,
-                        initialDate: _date,
-                        firstDate: DateTime(DateTime.now().year - 2),
-                        lastDate: DateTime.now(),
-                      );
-                      if (picked != null) setState(() => _date = picked);
-                    },
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Date',
-                  suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
-                ),
-                child: Text(Formatting.date(_date)),
-              ),
-            ),
+            const FieldLabel('Date'),
+            const SizedBox(height: Spacing.sm),
+            _DateField(date: _date, onTap: _submitting ? null : _pickDate),
             if (_isPettyCash) ...[
               const SizedBox(height: Spacing.md),
+              const FieldLabel('Cash given by'),
+              const SizedBox(height: Spacing.sm),
               TextField(
                 controller: _givenBy,
+                enabled: !_submitting,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
-                  labelText: 'Cash given by',
-                  helperText: 'For the voucher',
+                  hintText: 'Name on the voucher',
                 ),
               ),
               const SizedBox(height: Spacing.md),
+              const FieldLabel('Cash received by'),
+              const SizedBox(height: Spacing.sm),
               TextField(
                 controller: _receivedBy,
+                enabled: !_submitting,
                 textCapitalization: TextCapitalization.words,
-                decoration:
-                    const InputDecoration(labelText: 'Cash received by'),
+                decoration: const InputDecoration(
+                  hintText: 'Name on the voucher',
+                ),
               ),
             ],
             const SizedBox(height: Spacing.md),
+            const FieldLabel('Reference (optional)'),
+            const SizedBox(height: Spacing.sm),
             TextField(
               controller: _reference,
-              decoration:
-                  const InputDecoration(labelText: 'Reference (optional)'),
+              enabled: !_submitting,
+              decoration: const InputDecoration(
+                hintText: 'Receipt or invoice number',
+              ),
             ),
             const SizedBox(height: Spacing.md),
+            const FieldLabel('Notes (optional)'),
+            const SizedBox(height: Spacing.sm),
             TextField(
               controller: _notes,
+              enabled: !_submitting,
               maxLines: 2,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: 'Anything an approver should know',
+              ),
             ),
             const SizedBox(height: Spacing.lg),
-            FilledButton(
+            PrimaryButton(
+              label: _submitting ? 'Saving…' : 'Save expense',
+              busy: _submitting,
               onPressed: _submitting ? null : _submit,
-              child: Text(_submitting ? 'Saving…' : 'Save expense'),
             ),
-            const SizedBox(height: Spacing.xs),
+            const SizedBox(height: Spacing.sm),
             Text(
               'Receipt attachments can be added from the web app.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -527,4 +623,31 @@ class _RecordExpenseSheetState extends ConsumerState<RecordExpenseSheet> {
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Private building blocks (candidates for mobilling_ui)
+// ---------------------------------------------------------------------------
+
+/// A date shown in a field, tapping opens the picker.
+class _DateField extends StatelessWidget {
+  const _DateField({required this.date, required this.onTap});
+
+  final DateTime date;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    borderRadius: BorderRadius.circular(Radii.md),
+    onTap: onTap,
+    child: InputDecorator(
+      decoration: const InputDecoration(
+        prefixIcon: Icon(Icons.calendar_today_outlined, size: 20),
+      ),
+      child: Text(
+        Formatting.date(date),
+        style: Theme.of(context).textTheme.bodyLarge,
+      ),
+    ),
+  );
 }

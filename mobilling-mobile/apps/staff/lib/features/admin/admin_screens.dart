@@ -6,9 +6,19 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../config/theme_mode.dart';
 import '../../providers.dart';
 import '../common/paged_list.dart';
-import '../crm/crm_ui.dart' show CrmAsyncView, CrmDetailRow;
+import '../crm/crm_ui.dart'
+    show
+        CrmAsyncView,
+        CrmCardList,
+        CrmDetailRow,
+        CrmField,
+        CrmMetaLine,
+        CrmSheet,
+        CrmStatusLine,
+        showCrmSheet;
 import 'admin_providers.dart';
 
 // ---------------------------------------------------------------------------
@@ -28,10 +38,10 @@ class SubscriptionScreen extends ConsumerWidget {
     final subscription = ref.watch(currentSubscriptionProvider);
     final history = ref.watch(subscriptionHistoryProvider);
     final theme = Theme.of(context);
-    final status = context.statusColors;
+    final scheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Subscription')),
+      appBar: const ShellTopBar(eyebrow: 'Account', title: 'Subscription'),
       body: CrmAsyncView(
         value: subscription,
         errorTitle: 'Could not load your subscription',
@@ -40,100 +50,61 @@ class SubscriptionScreen extends ConsumerWidget {
           onRefresh: () => ref.refresh(currentSubscriptionProvider.future),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(Spacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.md,
+              Spacing.md,
+              Spacing.xl,
+            ),
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(Spacing.md),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(sub.planName ?? 'No active plan',
-                                style: theme.textTheme.titleMedium),
-                          ),
-                          StatusChip(sub.chipStatus, dense: true),
-                        ],
-                      ),
-                      const SizedBox(height: Spacing.xs),
-                      Text(
-                        sub.isExpired
-                            ? 'Expired ${-sub.daysRemaining} days ago'
-                            : '${sub.daysRemaining} days remaining',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                          color: sub.isExpired
-                              ? status.overdue
-                              : sub.expiringSoon
-                                  ? status.attention
-                                  : null,
-                        ),
-                      ),
-                      if (sub.planPrice != null)
-                        Text(
-                          '${Formatting.currency(sub.planPrice)}'
-                          '${sub.billingCycle == null ? '' : ' / ${sub.billingCycle!.replaceAll('_', ' ')}'}',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                      const SizedBox(height: Spacing.sm),
-                      if (sub.isTrial && sub.trialEndsAt != null)
-                        CrmDetailRow(
-                            'Trial ends', Formatting.date(sub.trialEndsAt)),
-                      if (sub.endsAt != null)
-                        CrmDetailRow('Renews', Formatting.date(sub.endsAt)),
-                    ],
-                  ),
-                ),
-              ),
+              // The days left are what this screen is about — an expiring
+              // plan locks a whole company out — so they are the hero.
+              Reveal(child: _PlanCard(sub: sub)),
               const SizedBox(height: Spacing.md),
-              FilledButton.icon(
-                icon: const Icon(Icons.upgrade_outlined, size: 18),
-                label: Text(sub.isExpired ? 'Renew now' : 'Change plan'),
+              PrimaryButton(
+                label: sub.isExpired ? 'Renew now' : 'Change plan',
                 onPressed: () => _choosePlan(context, ref),
               ),
               const SizedBox(height: Spacing.lg),
-              Text('Payment history', style: theme.textTheme.titleSmall),
+              const SectionHeader('Payment history'),
               const SizedBox(height: Spacing.sm),
               history.maybeWhen(
                 data: (entries) => entries.isEmpty
-                    ? Text('No payments yet.',
-                        style: theme.textTheme.bodySmall)
-                    : Card(
-                        child: Column(
-                          children: [
-                            for (final (i, entry) in entries.indexed) ...[
-                              if (i > 0) const Divider(height: 1),
-                              ListTile(
-                                dense: true,
-                                title: Text(entry.planName ?? 'Subscription'),
-                                subtitle: Text(
-                                  [
+                    ? Text(
+                        'No payments yet.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      )
+                    : CrmCardList(
+                        children: [
+                          for (final entry in entries)
+                            ListTile(
+                              dense: true,
+                              title: Text(
+                                entry.planName ?? 'Subscription',
+                                style: theme.textTheme.titleSmall,
+                              ),
+                              subtitle: Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: CrmStatusLine(
+                                  status: entry.status,
+                                  meta: [
                                     if (entry.paidAt != null)
                                       Formatting.date(entry.paidAt),
                                     if (entry.startsAt != null &&
                                         entry.endsAt != null)
-                                      '${Formatting.date(entry.startsAt)} – ${Formatting.date(entry.endsAt)}',
+                                      '${Formatting.date(entry.startsAt)} – '
+                                          '${Formatting.date(entry.endsAt)}',
                                   ].join(' · '),
-                                  style: theme.textTheme.bodySmall,
-                                ),
-                                trailing: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    Money(entry.amount),
-                                    StatusChip(entry.status, dense: true),
-                                  ],
                                 ),
                               ),
-                            ],
-                          ],
-                        ),
+                              trailing: Money(entry.amount),
+                            ),
+                        ],
                       ),
                 orElse: () => const SizedBox.shrink(),
               ),
-              const SizedBox(height: Spacing.xl),
             ],
           ),
         ),
@@ -146,42 +117,46 @@ class SubscriptionScreen extends ConsumerWidget {
     final plans = await ref.read(plansProvider.future);
     if (!context.mounted) return;
 
-    final chosen = await showModalBottomSheet<SubscriptionPlan>(
+    final chosen = await showCrmSheet<SubscriptionPlan>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return CrmSheet(
+          eyebrow: 'Subscription',
+          title: 'Choose a plan',
           children: [
-            Padding(
-              padding: const EdgeInsets.all(Spacing.md),
-              child: Text('Choose a plan',
-                  style: Theme.of(context).textTheme.titleMedium),
+            CrmCardList(
+              children: [
+                for (final plan in plans)
+                  ListTile(
+                    title: Text(plan.name, style: theme.textTheme.titleSmall),
+                    subtitle: plan.billingCycle == null
+                        ? null
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: CrmMetaLine(
+                              plan.billingCycle!.replaceAll('_', ' '),
+                            ),
+                          ),
+                    trailing: Money(plan.price),
+                    onTap: () => Navigator.of(sheetContext).pop(plan),
+                  ),
+              ],
             ),
-            for (final plan in plans)
-              ListTile(
-                title: Text(plan.name),
-                subtitle: Text([
-                  Formatting.currency(plan.price),
-                  if (plan.billingCycle != null)
-                    plan.billingCycle!.replaceAll('_', ' '),
-                ].join(' / ')),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => Navigator.of(context).pop(plan),
-              ),
           ],
-        ),
-      ),
+        );
+      },
     );
     if (chosen == null) return;
 
     try {
-      final url =
-          await ref.read(adminServiceProvider).checkoutSubscription(chosen.id);
+      final url = await ref
+          .read(adminServiceProvider)
+          .checkoutSubscription(chosen.id);
       if (url == null || url.isEmpty) {
         messenger.showSnackBar(
-            const SnackBar(content: Text('Could not start checkout.')));
+          const SnackBar(content: Text('Could not start checkout.')),
+        );
         return;
       }
       // Hosted gateway page; the webhook settles it server-side.
@@ -190,6 +165,111 @@ class SubscriptionScreen extends ConsumerWidget {
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+}
+
+/// The plan, with the days left as the one figure on the screen. The card
+/// takes a 6% wash of the status colour only when the answer is bad — a
+/// healthy subscription is not news and should not be coloured like it is.
+class _PlanCard extends StatelessWidget {
+  const _PlanCard({required this.sub});
+
+  final TenantSubscription sub;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final status = context.statusColors;
+
+    final tone = sub.isExpired
+        ? status.overdue
+        : sub.expiringSoon
+        ? status.attention
+        : null;
+    final days = sub.isExpired ? -sub.daysRemaining : sub.daysRemaining;
+
+    return Card(
+      color: tone == null
+          ? null
+          : Color.alphaBlend(tone.withValues(alpha: 0.06), scheme.surface),
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    sub.planName ?? 'No active plan',
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
+                StatusChip(sub.chipStatus, dense: true),
+              ],
+            ),
+            const SizedBox(height: Spacing.md),
+            Text(
+              sub.isExpired ? 'EXPIRED' : 'DAYS REMAINING',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.xs),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  Formatting.integer(days),
+                  style: Type.display(
+                    34,
+                    color: tone ?? scheme.onSurface,
+                  ).copyWith(fontFeatures: Type.figures),
+                ),
+                const SizedBox(width: Spacing.sm),
+                Text(
+                  sub.isExpired
+                      ? '${days == 1 ? 'day' : 'days'} ago'
+                      : days == 1
+                      ? 'day'
+                      : 'days',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            if (sub.planPrice != null) ...[
+              const SizedBox(height: Spacing.md),
+              Row(
+                children: [
+                  Money(sub.planPrice),
+                  if (sub.billingCycle != null) ...[
+                    const SizedBox(width: Spacing.sm),
+                    Flexible(
+                      child: CrmMetaLine(
+                        sub.billingCycle!.replaceAll('_', ' '),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+            if ((sub.isTrial && sub.trialEndsAt != null) ||
+                sub.endsAt != null) ...[
+              const Divider(height: Spacing.lg),
+              if (sub.isTrial && sub.trialEndsAt != null)
+                CrmDetailRow('Trial ends', Formatting.date(sub.trialEndsAt)),
+              if (sub.endsAt != null)
+                CrmDetailRow('Renews', Formatting.date(sub.endsAt)),
+            ],
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -206,10 +286,11 @@ class AutomationScreen extends ConsumerWidget {
     final summary = ref.watch(automationSummaryProvider(null));
     final logs = ref.watch(cronLogsProvider);
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Automation')),
+      appBar: const ShellTopBar(eyebrow: 'Automation', title: 'Automation'),
       body: CrmAsyncView(
         value: summary,
         errorTitle: 'Could not load automation',
@@ -222,106 +303,154 @@ class AutomationScreen extends ConsumerWidget {
           },
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(Spacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.md,
+              Spacing.md,
+              Spacing.xl,
+            ),
             children: [
-              if (data.failedCommunications > 0)
-                Container(
-                  padding: const EdgeInsets.all(Spacing.md),
-                  margin: const EdgeInsets.only(bottom: Spacing.md),
-                  decoration: BoxDecoration(
-                    color: status.overdue.withValues(alpha: 0.12),
-                    borderRadius: Radii.card,
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.error_outline,
-                          size: 18, color: status.overdue),
-                      const SizedBox(width: Spacing.sm),
-                      Expanded(
-                        child: Text(
-                          '${data.failedCommunications} message${data.failedCommunications == 1 ? '' : 's'} failed to send',
-                          style: theme.textTheme.bodySmall,
-                        ),
-                      ),
-                    ],
-                  ),
+              // The one number worth interrupting someone for.
+              if (data.failedCommunications > 0) ...[
+                ErrorBanner(
+                  message:
+                      '${Formatting.integer(data.failedCommunications)} '
+                      'message${data.failedCommunications == 1 ? '' : 's'} '
+                      'failed to send',
                 ),
-              GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: Spacing.sm,
-                crossAxisSpacing: Spacing.sm,
-                childAspectRatio: 1.9,
-                children: [
-                  StatTile(
-                      label: 'Invoices created',
-                      value: '${data.invoicesCreated}'),
-                  StatTile(
-                      label: 'Reminders sent',
-                      value: '${data.remindersSent}'),
-                  StatTile(
-                      label: 'Bills generated',
-                      value: '${data.billsGenerated}'),
-                  StatTile(
-                      label: 'Subs expired',
-                      value: '${data.subscriptionsExpired}',
-                      emphasis: data.subscriptionsExpired > 0
-                          ? status.attention
-                          : null),
-                  StatTile(label: 'Emails', value: '${data.emailsSent}'),
-                  StatTile(label: 'SMS', value: '${data.smsSent}'),
+                const SizedBox(height: Spacing.md),
+              ],
+              SectionHeader(
+                'Billing',
+                trailing: data.date.isEmpty
+                    ? null
+                    : CrmMetaLine(Formatting.date(data.date)),
+              ),
+              const SizedBox(height: Spacing.sm),
+              StatRail(
+                items: [
+                  StatRailItem(
+                    label: 'Invoices',
+                    value: Formatting.integer(data.invoicesCreated),
+                  ),
+                  StatRailItem(
+                    label: 'Reminders',
+                    value: Formatting.integer(data.remindersSent),
+                  ),
+                  StatRailItem(
+                    label: 'Bills',
+                    value: Formatting.integer(data.billsGenerated),
+                  ),
+                  StatRailItem(
+                    label: 'Expired',
+                    value: Formatting.integer(data.subscriptionsExpired),
+                    emphasis: data.subscriptionsExpired > 0
+                        ? status.attention
+                        : null,
+                  ),
                 ],
               ),
               const SizedBox(height: Spacing.lg),
-              Text('Recent job runs', style: theme.textTheme.titleSmall),
+              const SectionHeader('Messages'),
+              const SizedBox(height: Spacing.sm),
+              StatRail(
+                items: [
+                  StatRailItem(
+                    label: 'Emails',
+                    value: Formatting.integer(data.emailsSent),
+                  ),
+                  StatRailItem(
+                    label: 'SMS',
+                    value: Formatting.integer(data.smsSent),
+                  ),
+                  StatRailItem(
+                    label: 'Failed',
+                    value: Formatting.integer(data.failedCommunications),
+                    emphasis: data.failedCommunications > 0
+                        ? status.overdue
+                        : null,
+                  ),
+                ],
+              ),
+              const SizedBox(height: Spacing.lg),
+              const SectionHeader('Recent job runs'),
               const SizedBox(height: Spacing.sm),
               logs.maybeWhen(
                 data: (entries) => entries.isEmpty
-                    ? Text('No runs recorded.',
-                        style: theme.textTheme.bodySmall)
-                    : Card(
-                        child: Column(
-                          children: [
-                            for (final (i, entry)
-                                in entries.take(30).indexed) ...[
-                              if (i > 0) const Divider(height: 1),
-                              ListTile(
-                                dense: true,
-                                leading: Icon(
-                                  entry.failed
-                                      ? Icons.error_outline
-                                      : Icons.check_circle_outline,
-                                  size: 20,
-                                  color: entry.failed
-                                      ? status.overdue
-                                      : status.settled,
-                                ),
-                                title: Text(entry.job),
-                                subtitle: Text(
-                                  [
-                                    if (entry.ranAt != null)
-                                      Formatting.dateTime(entry.ranAt),
-                                    if (entry.durationMs != null)
-                                      '${entry.durationMs}ms',
-                                    if (entry.message != null) entry.message!,
-                                  ].join(' · '),
-                                  style: theme.textTheme.bodySmall,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ],
+                    ? Text(
+                        'No runs recorded.',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
                         ),
+                      )
+                    : CrmCardList(
+                        children: [
+                          for (final entry in entries.take(30))
+                            _JobRow(entry: entry),
+                        ],
                       ),
                 orElse: () => const SizedBox.shrink(),
               ),
-              const SizedBox(height: Spacing.xl),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// One scheduled run: the job it was, a chip for how it ended, and the
+/// duration as the row's trailing figure so the column reads down.
+class _JobRow extends StatelessWidget {
+  const _JobRow({required this.entry});
+
+  final CronLogEntry entry;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return ListTile(
+      dense: true,
+      title: Text(
+        entry.job,
+        style: theme.textTheme.titleSmall,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CrmStatusLine(
+              status: entry.failed ? 'failed' : 'completed',
+              meta: entry.ranAt == null ? '' : Formatting.dateTime(entry.ranAt),
+            ),
+            if (entry.message != null && entry.message!.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  entry.message!,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+          ],
+        ),
+      ),
+      trailing: entry.durationMs == null
+          ? null
+          : Text(
+              '${Formatting.integer(entry.durationMs)}ms',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
     );
   }
 }
@@ -351,8 +480,10 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400),
-        () => _listKey.currentState?.reload());
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
   }
 
   @override
@@ -361,73 +492,69 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
     final me = ref.watch(currentUserProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Team')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, Spacing.xs),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                hintText: 'Search name or email',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
+      appBar: ShellTopBar(
+        eyebrow: 'Account',
+        title: 'Team',
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search name or email',
+          onChanged: _onSearchChanged,
+        ),
+      ),
+      body: PagedListView(
+        key: _listKey,
+        padding: const EdgeInsets.fromLTRB(
+          Spacing.md,
+          Spacing.md,
+          Spacing.md,
+          Spacing.xl,
+        ),
+        fetch: (page) => ref
+            .read(adminServiceProvider)
+            .users(
+              search: _search.text.trim().isEmpty ? null : _search.text.trim(),
+              page: page,
+            ),
+        itemBuilder: (context, user) {
+          final isSelf = user.id == me?.id;
+          return Card(
+            child: ListTile(
+              title: Text(
+                user.name + (isSelf ? ' (you)' : ''),
+                style: theme.textTheme.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-            ),
-          ),
-          Expanded(
-            child: PagedListView(
-              key: _listKey,
-              fetch: (page) => ref.read(adminServiceProvider).users(
-                    search: _search.text.trim().isEmpty
-                        ? null
-                        : _search.text.trim(),
-                    page: page,
-                  ),
-              itemBuilder: (context, user) {
-                final isSelf = user.id == me?.id;
-                return Card(
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      child: Text(user.name.isEmpty
-                          ? '?'
-                          : user.name[0].toUpperCase()),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: CrmStatusLine(
+                  status: user.isActive ? 'active' : 'deactivated',
+                  meta: [
+                    user.email ?? '',
+                    user.roleName ?? 'no role',
+                  ].where((s) => s.isNotEmpty).join(' · '),
+                ),
+              ),
+              trailing: isSelf
+                  ? null
+                  : IconButton(
+                      icon: Icon(
+                        user.isActive
+                            ? Icons.toggle_on
+                            : Icons.toggle_off_outlined,
+                        color: user.isActive
+                            ? context.statusColors.settled
+                            : null,
+                      ),
+                      tooltip: user.isActive ? 'Deactivate' : 'Reactivate',
+                      onPressed: () => _toggle(user),
                     ),
-                    title: Text(user.name + (isSelf ? ' (you)' : '')),
-                    subtitle: Text(
-                      [
-                        user.email ?? '',
-                        user.roleName ?? 'no role',
-                        if (!user.isActive) 'deactivated',
-                      ].where((s) => s.isNotEmpty).join(' · '),
-                      style: theme.textTheme.bodySmall,
-                    ),
-                    trailing: isSelf
-                        ? null
-                        : IconButton(
-                            icon: Icon(
-                              user.isActive
-                                  ? Icons.toggle_on
-                                  : Icons.toggle_off_outlined,
-                              color: user.isActive
-                                  ? context.statusColors.settled
-                                  : null,
-                            ),
-                            tooltip: user.isActive
-                                ? 'Deactivate'
-                                : 'Reactivate',
-                            onPressed: () => _toggle(user),
-                          ),
-                  ),
-                );
-              },
-              emptyIcon: Icons.groups_outlined,
-              emptyTitle: 'No staff accounts',
             ),
-          ),
-        ],
+          );
+        },
+        emptyIcon: Icons.groups_outlined,
+        emptyTitle: 'No staff accounts',
+        emptyMessage: 'Nothing matches this search.',
       ),
     );
   }
@@ -437,10 +564,15 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
     try {
       await ref.read(adminServiceProvider).toggleUserActive(user.id);
       _listKey.currentState?.reload();
-      messenger.showSnackBar(SnackBar(
-          content: Text(user.isActive
-              ? '${user.name} deactivated.'
-              : '${user.name} reactivated.')));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            user.isActive
+                ? '${user.name} deactivated.'
+                : '${user.name} reactivated.',
+          ),
+        ),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -463,43 +595,75 @@ class RolesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final roles = ref.watch(rolesProvider);
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Roles')),
+      appBar: const ShellTopBar(eyebrow: 'Account', title: 'Roles'),
       body: CrmAsyncView(
         value: roles,
         errorTitle: 'Could not load roles',
         onRetry: () => ref.invalidate(rolesProvider),
-        builder: (items) => ListView.separated(
-          padding: const EdgeInsets.all(Spacing.md),
-          itemCount: items.length,
-          separatorBuilder: (context, index) =>
-              const SizedBox(height: Spacing.sm),
-          itemBuilder: (context, index) {
-            final role = items[index];
-            return Card(
-              child: ListTile(
-                title: Text(role.name),
-                subtitle: Text(
-                  [
-                    '${role.usersCount} user${role.usersCount == 1 ? '' : 's'}',
-                    '${role.permissionNames.length} permission${role.permissionNames.length == 1 ? '' : 's'}',
-                    if (role.isSystem) 'system role',
-                  ].join(' · '),
-                  style: theme.textTheme.bodySmall,
+        builder: (items) => items.isEmpty
+            ? const StateMessage(
+                icon: Icons.shield_outlined,
+                title: 'No roles yet',
+                message: 'Roles are created in the web app.',
+              )
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.md,
+                  Spacing.md,
+                  Spacing.md,
+                  Spacing.xl,
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => showModalBottomSheet<void>(
-                  context: context,
-                  isScrollControlled: true,
-                  shape:
-                      const RoundedRectangleBorder(borderRadius: Radii.sheet),
-                  builder: (_) => _RolePermissionsSheet(role: role),
-                ),
+                children: [
+                  CrmCardList(
+                    children: [
+                      for (final role in items)
+                        ListTile(
+                          title: Text(
+                            role.name,
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: CrmMetaLine(
+                              [
+                                '${role.usersCount} '
+                                    'user${role.usersCount == 1 ? '' : 's'}',
+                                if (role.isSystem) 'system role',
+                              ].join(' · '),
+                            ),
+                          ),
+                          // The permission count is the figure that separates
+                          // one role from the next, so it holds the right
+                          // edge like an amount would.
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                Formatting.integer(role.permissionNames.length),
+                                style: theme.textTheme.labelMedium?.copyWith(
+                                  color: scheme.onSurface,
+                                ),
+                              ),
+                              const SizedBox(width: Spacing.xs),
+                              Icon(
+                                Icons.chevron_right,
+                                size: 18,
+                                color: scheme.outline,
+                              ),
+                            ],
+                          ),
+                          onTap: () => showCrmSheet<void>(
+                            context: context,
+                            builder: (_) => _RolePermissionsSheet(role: role),
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
               ),
-            );
-          },
-        ),
       ),
     );
   }
@@ -513,6 +677,7 @@ class _RolePermissionsSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final granted = role.permissionNames.toSet();
 
     // Group by the permission name's prefix so the list is scannable.
@@ -523,69 +688,53 @@ class _RolePermissionsSheet extends ConsumerWidget {
     }
     final groups = grouped.keys.toList()..sort();
 
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(Spacing.md),
-            child: Column(
-              children: [
-                Text(role.name, style: theme.textTheme.titleLarge),
-                Text(
-                  '${granted.length} permission${granted.length == 1 ? '' : 's'}'
-                  '${role.isSystem ? ' · system role' : ''}',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+    return CrmSheet(
+      eyebrow: 'Role',
+      title: role.name,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: Spacing.lg),
+          child: Text(
+            '${granted.length} permission${granted.length == 1 ? '' : 's'}'
+            '${role.isSystem ? ' · system role' : ''}',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        for (final group in groups) ...[
+          Text(
+            group.replaceAll('_', ' ').toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          Wrap(
+            spacing: Spacing.xs,
+            runSpacing: Spacing.xs,
+            children: [
+              for (final name in grouped[group]!)
+                Chip(
+                  label: Text(name.split('.').last.replaceAll('_', ' ')),
+                  visualDensity: VisualDensity.compact,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                 ),
-              ],
-            ),
+            ],
           ),
-          const Divider(height: 1),
-          Flexible(
-            child: ListView(
-              shrinkWrap: true,
-              padding: const EdgeInsets.all(Spacing.md),
-              children: [
-                for (final group in groups) ...[
-                  Text(group.replaceAll('_', ' '),
-                      style: theme.textTheme.labelMedium
-                          ?.copyWith(color: theme.colorScheme.primary)),
-                  const SizedBox(height: Spacing.xs),
-                  Wrap(
-                    spacing: Spacing.xs,
-                    runSpacing: Spacing.xs,
-                    children: [
-                      for (final name in grouped[group]!)
-                        Chip(
-                          label: Text(
-                            name.split('.').last.replaceAll('_', ' '),
-                            style: theme.textTheme.labelSmall,
-                          ),
-                          visualDensity: VisualDensity.compact,
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: Spacing.md),
-                ],
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(Spacing.md),
-            child: Text(
-              // Editing a permission matrix on a phone is worse than not
-              // offering it — say so rather than shipping a bad editor.
-              'Edit role permissions from the web app.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              textAlign: TextAlign.center,
-            ),
-          ),
+          const SizedBox(height: Spacing.md),
         ],
-      ),
+        const SizedBox(height: Spacing.sm),
+        Text(
+          // Editing a permission matrix on a phone is worse than not
+          // offering it — say so rather than shipping a bad editor.
+          'Edit role permissions from the web app.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
     );
   }
 }
@@ -603,39 +752,55 @@ class SettingsScreen extends ConsumerWidget {
     final company = ref.watch(companySettingsProvider);
     final banks = ref.watch(bankAccountsProvider);
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    // PUT /settings/company needs settings.company.
+    final canEdit =
+        ref.watch(sessionControllerProvider).session?.can('settings.company') ??
+        false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: const ShellTopBar(eyebrow: 'Account', title: 'Settings'),
       body: CrmAsyncView(
         value: company,
         errorTitle: 'Could not load settings',
         onRetry: () => ref.invalidate(companySettingsProvider),
         builder: (settings) => ListView(
-          padding: const EdgeInsets.all(Spacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.md,
+            Spacing.md,
+            Spacing.xl,
+          ),
           children: [
+            // Device-level preference — the same control as the profile
+            // sheet and the sign-in toggle, so the choice is reachable
+            // wherever someone looks for it.
+            const SectionHeader('Appearance'),
+            const SizedBox(height: Spacing.sm),
+            const Card(
+              child: Padding(
+                padding: EdgeInsets.all(Spacing.md),
+                child: AppearanceControl(),
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            SectionHeader(
+              'Company',
+              trailing: !canEdit
+                  ? null
+                  : TextButton(
+                      onPressed: () => _editCompany(context, ref, settings),
+                      child: const Text('Edit'),
+                    ),
+            ),
+            const SizedBox(height: Spacing.sm),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(Spacing.md),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text('Company',
-                              style: theme.textTheme.titleSmall),
-                        ),
-                        // PUT /settings/company needs settings.company.
-                        if (ref.watch(sessionControllerProvider).session?.can(
-                                'settings.company') ??
-                            false)
-                          TextButton(
-                            onPressed: () =>
-                                _editCompany(context, ref, settings),
-                            child: const Text('Edit'),
-                          ),
-                      ],
-                    ),
                     CrmDetailRow('Name', settings.name),
                     if (settings.email != null)
                       CrmDetailRow('Email', settings.email!),
@@ -651,35 +816,41 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: Spacing.md),
-            Text('Bank accounts', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Bank accounts'),
             const SizedBox(height: Spacing.sm),
             banks.maybeWhen(
               data: (accounts) => accounts.isEmpty
-                  ? Text('None configured.', style: theme.textTheme.bodySmall)
-                  : Card(
-                      child: Column(
-                        children: [
-                          for (final (i, account) in accounts.indexed) ...[
-                            if (i > 0) const Divider(height: 1),
-                            ListTile(
-                              dense: true,
-                              title: Text(account.bankName),
-                              subtitle: Text(
+                  ? Text(
+                      'None configured.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    )
+                  : CrmCardList(
+                      children: [
+                        for (final account in accounts)
+                          ListTile(
+                            dense: true,
+                            title: Text(
+                              account.bankName,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: CrmMetaLine(
                                 [
                                   account.accountName ?? '',
                                   account.accountNumber ?? '',
                                   account.branch ?? '',
                                 ].where((s) => s.isNotEmpty).join(' · '),
-                                style: theme.textTheme.bodySmall,
                               ),
-                              trailing: account.isActive
-                                  ? null
-                                  : const StatusChip('draft', dense: true),
                             ),
-                          ],
-                        ],
-                      ),
+                            trailing: account.isActive
+                                ? null
+                                : const StatusChip('draft', dense: true),
+                          ),
+                      ],
                     ),
               orElse: () => const SizedBox.shrink(),
             ),
@@ -687,11 +858,11 @@ class SettingsScreen extends ConsumerWidget {
             Text(
               'Email, SMS, templates, reminders and branding are configured '
               'in the web app.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: Spacing.xl),
           ],
         ),
       ),
@@ -699,7 +870,10 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _editCompany(
-      BuildContext context, WidgetRef ref, CompanySettings current) async {
+    BuildContext context,
+    WidgetRef ref,
+    CompanySettings current,
+  ) async {
     final name = TextEditingController(text: current.name);
     final email = TextEditingController(text: current.email ?? '');
     final phone = TextEditingController(text: current.phone ?? '');
@@ -707,68 +881,81 @@ class SettingsScreen extends ConsumerWidget {
     final taxId = TextEditingController(text: current.taxId ?? '');
     final messenger = ScaffoldMessenger.of(context);
 
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showCrmSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.only(
-          left: Spacing.lg,
-          right: Spacing.lg,
-          top: Spacing.lg,
-          bottom: MediaQuery.of(sheetContext).viewInsets.bottom + Spacing.lg,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Company details',
-                  style: Theme.of(sheetContext).textTheme.titleLarge,
-                  textAlign: TextAlign.center),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                  controller: name,
-                  decoration: const InputDecoration(labelText: 'Name')),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                  controller: email,
-                  keyboardType: TextInputType.emailAddress,
-                  decoration: const InputDecoration(labelText: 'Email')),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                  controller: phone,
-                  keyboardType: TextInputType.phone,
-                  decoration: const InputDecoration(labelText: 'Phone')),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                  controller: address,
-                  maxLines: 2,
-                  decoration: const InputDecoration(labelText: 'Address')),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                  controller: taxId,
-                  decoration: const InputDecoration(labelText: 'TIN')),
-              const SizedBox(height: Spacing.lg),
-              FilledButton(
-                onPressed: () => Navigator.of(sheetContext).pop(true),
-                child: const Text('Save'),
+      builder: (sheetContext) => CrmSheet(
+        eyebrow: 'Settings',
+        title: 'Company details',
+        children: [
+          CrmField(
+            label: 'Name',
+            child: TextField(
+              controller: name,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                hintText: 'The name that prints on invoices',
               ),
-            ],
+            ),
           ),
-        ),
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'Email',
+            child: TextField(
+              controller: email,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                hintText: 'billing@company.co.tz',
+              ),
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'Phone',
+            child: TextField(
+              controller: phone,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(hintText: 'Reachable number'),
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'Address',
+            child: TextField(
+              controller: address,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(hintText: 'Street, city'),
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'TIN',
+            child: TextField(
+              controller: taxId,
+              decoration: const InputDecoration(hintText: 'Tax number'),
+            ),
+          ),
+          const SizedBox(height: Spacing.lg),
+          PrimaryButton(
+            label: 'Save company',
+            onPressed: () => Navigator.of(sheetContext).pop(true),
+          ),
+        ],
       ),
     );
     if (saved != true) return;
 
     if (email.text.trim().isEmpty) {
       messenger.showSnackBar(
-          const SnackBar(content: Text('A company email is required.')));
+        const SnackBar(content: Text('A company email is required.')),
+      );
       return;
     }
 
     try {
-      await ref.read(adminServiceProvider).updateCompany(
+      await ref
+          .read(adminServiceProvider)
+          .updateCompany(
             name: name.text.trim(),
             email: email.text.trim(),
             // Required by the API; not editable here — it is the billing
@@ -779,10 +966,13 @@ class SettingsScreen extends ConsumerWidget {
             taxId: taxId.text.trim().isEmpty ? null : taxId.text.trim(),
           );
       ref.invalidate(companySettingsProvider);
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Company updated.')));
+      messenger.showSnackBar(const SnackBar(content: Text('Company updated.')));
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Private building blocks (candidates for mobilling_ui)
+// ---------------------------------------------------------------------------

@@ -8,6 +8,9 @@ import 'billing_money_providers.dart';
 ///
 /// Posts [TenantPaymentMethod.value] and only ever displays the label — the
 /// API validates with `Rule::in($values)`, so submitting a label is a 422.
+///
+/// Carries no label of its own: the forms that use it set "Payment method"
+/// above the field, as every field in the app is labelled.
 class PaymentMethodField extends ConsumerWidget {
   const PaymentMethodField({
     super.key,
@@ -29,9 +32,11 @@ class PaymentMethodField extends ConsumerWidget {
     final options = methods.valueOrNull ?? TenantPaymentMethod.defaults;
 
     return DropdownButtonFormField<String>(
-      initialValue:
-          options.any((m) => m.value == value) ? value : null,
-      decoration: const InputDecoration(labelText: 'Payment method'),
+      initialValue: options.any((m) => m.value == value) ? value : null,
+      decoration: const InputDecoration(
+        hintText: 'Choose how it was paid',
+        prefixIcon: Icon(Icons.account_balance_wallet_outlined, size: 20),
+      ),
       items: [
         for (final method in options)
           DropdownMenuItem(value: method.value, child: Text(method.label)),

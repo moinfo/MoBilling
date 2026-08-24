@@ -26,66 +26,84 @@ class _AddOrderScreenState extends ConsumerState<AddOrderScreen> {
   StaffClient? _client;
   String _kind = 'product';
 
+  Future<void> _pickClient() async {
+    final picked = await ClientPickerSheet.show(context);
+    if (picked != null) setState(() => _client = picked);
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canDomains = ref.watch(sessionControllerProvider).session?.can(
-            OpsPermissions.domainsCreate) ??
+    final canDomains =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(OpsPermissions.domainsCreate) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Add order')),
+      appBar: const ShellTopBar(eyebrow: 'Billing', title: 'Add order'),
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(Spacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.md,
+              Spacing.md,
+              0,
+            ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Text('Client', style: theme.textTheme.titleSmall),
+                const SizedBox(height: Spacing.sm),
                 OutlinedButton.icon(
                   icon: const Icon(Icons.person_outline, size: 18),
-                  label: Text(_client?.name ?? 'Choose client'),
-                  onPressed: () async {
-                    final picked = await ClientPickerSheet.show(context);
-                    if (picked != null) setState(() => _client = picked);
-                  },
+                  label: Text(
+                    _client?.name ?? 'Choose client',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onPressed: _pickClient,
                 ),
                 if (canDomains) ...[
-                  const SizedBox(height: Spacing.sm),
+                  const SizedBox(height: Spacing.md),
                   SegmentedButton<String>(
                     segments: const [
                       ButtonSegment(
-                          value: 'product',
-                          icon: Icon(Icons.inventory_2_outlined),
-                          label: Text('Product')),
+                        value: 'product',
+                        icon: Icon(Icons.inventory_2_outlined),
+                        label: Text('Product'),
+                      ),
                       ButtonSegment(
-                          value: 'domain',
-                          icon: Icon(Icons.public_outlined),
-                          label: Text('Domain only')),
+                        value: 'domain',
+                        icon: Icon(Icons.public_outlined),
+                        label: Text('Domain only'),
+                      ),
                     ],
                     selected: {_kind},
                     onSelectionChanged: (s) => setState(() => _kind = s.first),
                     showSelectedIcon: false,
                   ),
                 ],
+                const SizedBox(height: Spacing.md),
               ],
             ),
           ),
           Expanded(
             child: _client == null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(Spacing.lg),
-                      child: Text(
-                        'Pick the client this order is for.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant),
-                      ),
-                    ),
+                ? StateMessage(
+                    icon: Icons.person_search_outlined,
+                    title: 'Choose a client to start',
+                    message:
+                        'The order is invoiced to them, and the service '
+                        'activates when the invoice is paid.',
+                    actionLabel: 'Choose client',
+                    onAction: _pickClient,
                   )
                 : _kind == 'domain'
-                    ? _DomainOrderForm(client: _client!)
-                    : _ProductCatalog(client: _client!),
+                ? _DomainOrderForm(client: _client!)
+                : _ProductCatalog(client: _client!),
           ),
         ],
       ),
@@ -116,40 +134,82 @@ class _ProductCatalog extends ConsumerWidget {
             )
           : ListView(
               padding: const EdgeInsets.fromLTRB(
-                  Spacing.md, 0, Spacing.md, Spacing.xl),
+                Spacing.md,
+                0,
+                Spacing.md,
+                Spacing.xl,
+              ),
               children: [
-                for (final group in groups) ...[
-                  Text(group.name, style: theme.textTheme.titleSmall),
+                for (final (i, group) in groups.indexed) ...[
+                  if (i > 0) const SizedBox(height: Spacing.lg),
+                  SectionHeader(group.name),
                   const SizedBox(height: Spacing.sm),
-                  for (final product in group.products) ...[
-                    Card(
-                      child: ListTile(
-                        title: Text(product.name),
-                        subtitle: product.features.isEmpty
-                            ? null
-                            : Text(product.features.take(2).join(' · '),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: theme.textTheme.bodySmall),
-                        trailing: Text(
-                          '${Formatting.currency(product.price)}'
-                          '${product.billingCycle == null || product.billingCycle == 'once' ? '' : '\n/ ${product.billingCycle!.replaceAll('_', ' ')}'}',
-                          textAlign: TextAlign.end,
-                          style: theme.textTheme.labelLarge
-                              ?.copyWith(color: theme.colorScheme.primary),
-                        ),
-                        onTap: () => context.push(
-                          '/orders/configure',
-                          extra: StaffOrderArgs(product: product, client: client),
-                        ),
-                      ),
+                  Card(
+                    child: Column(
+                      children: [
+                        for (final (j, product) in group.products.indexed) ...[
+                          if (j > 0) const Divider(height: 1),
+                          ListTile(
+                            title: Text(
+                              product.name,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            subtitle: product.features.isEmpty
+                                ? null
+                                : Text(
+                                    product.features.take(2).join(' · '),
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                            trailing: _PriceColumn(product: product),
+                            onTap: () => context.push(
+                              '/orders/configure',
+                              extra: StaffOrderArgs(
+                                product: product,
+                                client: client,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    const SizedBox(height: Spacing.sm),
-                  ],
-                  const SizedBox(height: Spacing.sm),
+                  ),
                 ],
               ],
             ),
+    );
+  }
+}
+
+/// The row's price, with the billing cycle as a mono caption beneath so the
+/// right edge of the list stays one column of money.
+class _PriceColumn extends StatelessWidget {
+  const _PriceColumn({required this.product});
+
+  final CatalogProduct product;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final cycle = product.billingCycle;
+    final recurring = cycle != null && cycle != 'once';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Money(product.price),
+        if (recurring) ...[
+          const SizedBox(height: 2),
+          Text(
+            '/ ${cycle.replaceAll('_', ' ')}'.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
@@ -170,13 +230,13 @@ class StaffConfigureOrderScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => ConfigureOrderScreen(
-        product: args.product,
-        flow: OrderFlow.staff(
-          ref.read(opsServiceProvider),
-          clientId: args.client.id,
-          clientName: args.client.name,
-        ),
-      );
+    product: args.product,
+    flow: OrderFlow.staff(
+      ref.read(opsServiceProvider),
+      clientId: args.client.id,
+      clientName: args.client.name,
+    ),
+  );
 }
 
 /// Standalone domain register/transfer for the client. No live availability
@@ -232,7 +292,9 @@ class _DomainOrderFormState extends ConsumerState<_DomainOrderForm> {
       _error = null;
     });
     try {
-      final order = await ref.read(opsServiceProvider).orderDomain(
+      final order = await ref
+          .read(opsServiceProvider)
+          .orderDomain(
             clientId: widget.client.id,
             name: _domain,
             years: _years,
@@ -240,9 +302,13 @@ class _DomainOrderFormState extends ConsumerState<_DomainOrderForm> {
             authInfo: _action == 'transfer' ? _authInfo.text.trim() : null,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(order.message ??
-              'Order placed — invoice ${order.documentNumber}.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            order.message ?? 'Order placed — invoice ${order.documentNumber}.',
+          ),
+        ),
+      );
       if (order.documentId.isNotEmpty) {
         context.pushReplacement('/documents/${order.documentId}');
       } else {
@@ -258,32 +324,36 @@ class _DomainOrderFormState extends ConsumerState<_DomainOrderForm> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final tlds = ref.watch(orderTldsProvider);
     final pricing = _pricingFor(tlds.valueOrNull ?? const []);
     final unit = pricing == null
         ? 0.0
         : (_action == 'register'
-            ? pricing.registerPrice
-            : pricing.transferPrice);
+              ? pricing.registerPrice
+              : pricing.transferPrice);
 
     return ListView(
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       padding: const EdgeInsets.fromLTRB(Spacing.md, 0, Spacing.md, Spacing.xl),
       children: [
         if (_error != null) ...[
           ErrorBanner(message: _error!),
           const SizedBox(height: Spacing.md),
         ],
+        Text('Domain name', style: theme.textTheme.titleSmall),
+        const SizedBox(height: Spacing.sm),
         TextField(
           controller: _name,
           autocorrect: false,
           keyboardType: TextInputType.url,
           onChanged: (_) => setState(() {}),
           decoration: const InputDecoration(
-            labelText: 'Domain name',
             hintText: 'example.co.tz',
+            prefixIcon: Icon(Icons.public_outlined, size: 20),
           ),
         ),
-        const SizedBox(height: Spacing.sm),
+        const SizedBox(height: Spacing.md),
         SegmentedButton<String>(
           segments: const [
             ButtonSegment(value: 'register', label: Text('Register')),
@@ -294,75 +364,111 @@ class _DomainOrderFormState extends ConsumerState<_DomainOrderForm> {
           showSelectedIcon: false,
         ),
         if (_action == 'transfer') ...[
+          const SizedBox(height: Spacing.md),
+          Text('Transfer (EPP) code', style: theme.textTheme.titleSmall),
           const SizedBox(height: Spacing.sm),
           TextField(
             controller: _authInfo,
             autocorrect: false,
             decoration: const InputDecoration(
-              labelText: 'EPP / auth code',
-              helperText: 'From the current registrar',
+              hintText: 'From the current registrar',
+              prefixIcon: Icon(Icons.key_outlined, size: 20),
             ),
           ),
         ],
+        const SizedBox(height: Spacing.md),
+        Text('Years', style: theme.textTheme.titleSmall),
         const SizedBox(height: Spacing.sm),
         DropdownButtonFormField<int>(
           initialValue: _years,
-          decoration: const InputDecoration(labelText: 'Years'),
+          isExpanded: true,
           items: [
-            for (var y = pricing?.yearsMin ?? 1;
-                y <= (pricing?.yearsMax ?? 10);
-                y++)
+            for (
+              var y = pricing?.yearsMin ?? 1;
+              y <= (pricing?.yearsMax ?? 10);
+              y++
+            )
               DropdownMenuItem(
-                  value: y, child: Text('$y year${y > 1 ? 's' : ''}')),
+                value: y,
+                child: Text('$y year${y > 1 ? 's' : ''}'),
+              ),
           ],
           onChanged: (v) => setState(() => _years = v!),
         ),
-        const SizedBox(height: Spacing.md),
+        const SizedBox(height: Spacing.lg),
+        // The one figure this form is about.
         Card(
           child: Padding(
             padding: const EdgeInsets.all(Spacing.md),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Summary', style: theme.textTheme.titleSmall),
-                const SizedBox(height: Spacing.xs),
-                if (pricing != null)
+                Text(
+                  'ORDER TOTAL',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: Spacing.sm),
+                if (pricing != null) ...[
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Money(unit * _years, scale: MoneyScale.display),
+                  ),
+                  const SizedBox(height: Spacing.sm),
                   Row(
                     children: [
-                      Expanded(
+                      Flexible(
                         child: Text(
-                          '$_domain × $_years yr @ ${Formatting.currency(unit)}/yr',
-                          style: theme.textTheme.bodySmall,
+                          '$_domain · $_years ${_years == 1 ? 'year' : 'years'} · ',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                      Money(unit * _years, scale: MoneyScale.headline),
+                      Money(unit, scale: MoneyScale.dense, showCode: false),
+                      Text(
+                        ' / year',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                     ],
-                  )
-                else if (_domain.contains('.') && tlds.hasValue)
+                  ),
+                ] else if (_domain.contains('.') && tlds.hasValue)
                   Text(
                     'This TLD is not offered — add pricing under Settings → Domains on the web.',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: theme.colorScheme.error),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.error,
+                    ),
                   )
                 else
-                  Text('Enter a domain to see pricing.',
-                      style: theme.textTheme.bodySmall),
+                  Text(
+                    'Enter a domain to see pricing.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: Spacing.md),
-        FilledButton.icon(
-          icon: const Icon(Icons.shopping_cart_outlined, size: 18),
-          label: Text(_placing ? 'Placing…' : 'Place order'),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _placing ? 'Placing order…' : 'Place order',
+          busy: _placing,
           onPressed: _placing || pricing == null ? null : _place,
         ),
-        const SizedBox(height: Spacing.xs),
+        const SizedBox(height: Spacing.sm),
         Text(
           'Creates a pending domain and an invoice for ${widget.client.name}; '
           'payment triggers the ${_action == 'register' ? 'registration' : 'transfer'} at the registry.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
           textAlign: TextAlign.center,
         ),
       ],

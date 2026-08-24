@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import 'config/app_config.dart';
+import 'config/theme_mode.dart';
 import 'navigation/app_chrome.dart';
 import 'providers.dart';
 import 'router.dart';
@@ -27,7 +28,7 @@ class StaffApp extends ConsumerWidget {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
       darkTheme: AppTheme.dark(),
-      themeMode: ThemeMode.system,
+      themeMode: ref.watch(themeModeProvider),
       routerConfig: router,
       // Outside the navigator, so the bottom bar persists across pushes.
       builder: (context, child) => AppChrome(child: child ?? const SizedBox()),

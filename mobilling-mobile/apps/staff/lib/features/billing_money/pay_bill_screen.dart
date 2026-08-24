@@ -50,9 +50,11 @@ class _PayBillScreenState extends ConsumerState<PayBillScreen> {
       }
       if (!mounted) return;
       // Only bills that can still take a payment.
-      setState(() => _bills = all
-          .where((b) => b.isActive && !b.isPaid && b.remaining > 0)
-          .toList(growable: false));
+      setState(
+        () => _bills = all
+            .where((b) => b.isActive && !b.isPaid && b.remaining > 0)
+            .toList(growable: false),
+      );
     } on ApiException catch (e) {
       if (!mounted) return;
       setState(() => _loadError = e.message);
@@ -66,8 +68,9 @@ class _PayBillScreenState extends ConsumerState<PayBillScreen> {
     final selected = _selected;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(selected == null ? 'Choose bill' : 'Pay bill'),
+      appBar: ShellTopBar(
+        eyebrow: 'Statutory',
+        title: selected == null ? 'Choose bill' : 'Pay bill',
       ),
       body: selected != null
           ? _PayBillForm(
@@ -86,7 +89,7 @@ class _PayBillScreenState extends ConsumerState<PayBillScreen> {
         icon: Icons.cloud_off_outlined,
         title: 'Could not load bills',
         message: _loadError,
-        actionLabel: 'Retry',
+        actionLabel: 'Try again',
         onAction: _loadBills,
       );
     }
@@ -100,33 +103,83 @@ class _PayBillScreenState extends ConsumerState<PayBillScreen> {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.all(Spacing.md),
-      itemCount: bills.length,
-      separatorBuilder: (context, index) => const SizedBox(height: Spacing.sm),
-      itemBuilder: (context, index) {
-        final bill = bills[index];
-        return Card(
-          child: ListTile(
-            title: Text(bill.name),
-            subtitle: Text([
-              if (bill.categoryName != null) bill.categoryName!,
-              if (bill.dueDate != null) Formatting.dueDescription(bill.dueDate),
-              if (bill.paidTotal > 0)
-                'paid ${Formatting.amount(bill.paidTotal)} of ${Formatting.amount(bill.amount)}',
-            ].join(' · ')),
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
+    final owed = bills.fold<double>(0, (sum, b) => sum + b.remaining);
+
+    return RefreshIndicator(
+      onRefresh: _loadBills,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(
+          Spacing.md,
+          Spacing.md,
+          Spacing.md,
+          Spacing.xl,
+        ),
+        children: [
+          // What the whole list adds up to — the figure the picker is about.
+          Reveal(
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Spacing.md),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _Eyebrow(
+                      '${bills.length} ${bills.length == 1 ? 'bill' : 'bills'} still owed',
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Money(owed, scale: MoneyScale.display),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Choose a bill to pay'),
+          const SizedBox(height: Spacing.sm),
+          Card(
+            child: Column(
               children: [
-                Money(bill.remaining),
-                StatusChip(bill.status, dense: true),
+                for (final (i, bill) in bills.indexed) ...[
+                  if (i > 0) const Divider(height: 1),
+                  ListTile(
+                    title: Text(
+                      bill.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: Spacing.xs),
+                      child: Row(
+                        children: [
+                          StatusChip(bill.status, dense: true),
+                          const SizedBox(width: Spacing.sm),
+                          Flexible(
+                            child: _Meta([
+                              if (bill.categoryName != null)
+                                bill.categoryName!,
+                              if (bill.dueDate != null)
+                                Formatting.dueDescription(bill.dueDate),
+                              if (bill.paidTotal > 0)
+                                'paid ${Formatting.amount(bill.paidTotal)} of ${Formatting.amount(bill.amount)}',
+                            ].join(' · ')),
+                          ),
+                        ],
+                      ),
+                    ),
+                    trailing: Money(bill.remaining),
+                    onTap: () => setState(() => _selected = bill),
+                  ),
+                ],
               ],
             ),
-            onTap: () => setState(() => _selected = bill),
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }
@@ -191,7 +244,9 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
     });
 
     try {
-      await ref.read(billingMoneyServiceProvider).recordPaymentOut(
+      await ref
+          .read(billingMoneyServiceProvider)
+          .recordPaymentOut(
             billId: bill.id,
             amount: double.parse(_amount.text.trim()),
             paymentDate: _date,
@@ -199,18 +254,22 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
             controlNumber: _controlNumber.text.trim().isEmpty
                 ? null
                 : _controlNumber.text.trim(),
-            reference:
-                _reference.text.trim().isEmpty ? null : _reference.text.trim(),
+            reference: _reference.text.trim().isEmpty
+                ? null
+                : _reference.text.trim(),
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Payment recorded.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Payment recorded.')));
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error =
-          e.errorFor('amount') ?? e.errorFor('bill_id') ?? e.message);
+      setState(
+        () => _error =
+            e.errorFor('amount') ?? e.errorFor('bill_id') ?? e.message,
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -218,8 +277,16 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(Spacing.md),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: const EdgeInsets.fromLTRB(
+        Spacing.md,
+        Spacing.md,
+        Spacing.md,
+        Spacing.xl,
+      ),
       child: Form(
         key: _formKey,
         child: Column(
@@ -229,33 +296,81 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
               ErrorBanner(message: _error!),
               const SizedBox(height: Spacing.md),
             ],
-            Card(
-              child: ListTile(
-                title: Text(bill.name),
-                subtitle: Text(
-                    'Remaining ${Formatting.currency(bill.remaining)} of ${Formatting.currency(bill.amount)}'),
-                trailing: TextButton(
-                  onPressed: _submitting ? null : widget.onChangeBill,
-                  child: const Text('Change'),
+
+            // The one figure this screen is about: what is left to pay.
+            Reveal(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    Spacing.md,
+                    Spacing.md,
+                    Spacing.sm,
+                    Spacing.sm,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const _Eyebrow('Remaining on this bill'),
+                      const SizedBox(height: Spacing.sm),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Money(bill.remaining, scale: MoneyScale.display),
+                      ),
+                      const SizedBox(height: Spacing.md),
+                      Text(
+                        bill.name,
+                        style: theme.textTheme.titleSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: Spacing.xs),
+                      Row(
+                        children: [
+                          StatusChip(bill.status, dense: true),
+                          const SizedBox(width: Spacing.sm),
+                          Expanded(
+                            child: _Meta([
+                              'of ${Formatting.currency(bill.amount)}',
+                              if (bill.dueDate != null)
+                                Formatting.dueDescription(bill.dueDate),
+                            ].join(' · ')),
+                          ),
+                          TextButton(
+                            onPressed: _submitting
+                                ? null
+                                : widget.onChangeBill,
+                            child: const Text('Change bill'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.lg),
+
+            const FieldLabel('Amount paid'),
+            const SizedBox(height: Spacing.sm),
             TextFormField(
               controller: _amount,
               enabled: !_submitting,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              style: theme.textTheme.bodyLarge?.copyWith(
+                fontFeatures: Type.figures,
+              ),
               decoration: InputDecoration(
-                labelText: 'Amount',
+                hintText: '0.00',
                 prefixText: '${Formatting.tenantCurrency} ',
-                helperText:
-                    'At most ${Formatting.amount(bill.remaining)}',
+                helperText: 'At most ${Formatting.amount(bill.remaining)}',
               ),
               validator: (v) {
                 final parsed = double.tryParse(v?.trim() ?? '');
                 if (parsed == null || parsed < 0.01) {
-                  return 'Enter a valid amount';
+                  return 'Enter the amount paid';
                 }
                 // Mirrors the server's withValidator rule.
                 if (parsed > bill.remaining + 0.005) {
@@ -265,57 +380,119 @@ class _PayBillFormState extends ConsumerState<_PayBillForm> {
               },
             ),
             const SizedBox(height: Spacing.md),
+
+            const FieldLabel('Payment method'),
+            const SizedBox(height: Spacing.sm),
             PaymentMethodField(
               value: _method,
               enabled: !_submitting,
               onChanged: (v) => setState(() => _method = v),
             ),
             const SizedBox(height: Spacing.md),
+
+            const FieldLabel('Payment date'),
+            const SizedBox(height: Spacing.sm),
             InkWell(
+              borderRadius: BorderRadius.circular(Radii.md),
               onTap: _submitting ? null : _pickDate,
               child: InputDecorator(
                 decoration: const InputDecoration(
-                  labelText: 'Payment date',
-                  suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+                  prefixIcon: Icon(Icons.calendar_today_outlined, size: 20),
                 ),
-                child: Text(Formatting.date(_date)),
+                child: Text(
+                  Formatting.date(_date),
+                  style: theme.textTheme.bodyLarge?.copyWith(
+                    fontFeatures: Type.figures,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: Spacing.md),
+
+            const FieldLabel('Control number (optional)'),
+            const SizedBox(height: Spacing.sm),
             TextFormField(
               controller: _controlNumber,
               enabled: !_submitting,
+              textCapitalization: TextCapitalization.characters,
               decoration: const InputDecoration(
-                labelText: 'Control number (optional)',
-                helperText: 'For TRA / NSSF style statutory payments',
+                hintText: 'The TRA / NSSF control number',
+                helperText: 'For statutory payments made against a control number',
               ),
             ),
             const SizedBox(height: Spacing.md),
+
+            const FieldLabel('Reference (optional)'),
+            const SizedBox(height: Spacing.sm),
             TextFormField(
               controller: _reference,
               enabled: !_submitting,
-              decoration:
-                  const InputDecoration(labelText: 'Reference (optional)'),
+              textCapitalization: TextCapitalization.characters,
+              decoration: const InputDecoration(
+                hintText: 'Bank slip, cheque or transaction number',
+              ),
             ),
             const SizedBox(height: Spacing.md),
+
+            const FieldLabel('Notes (optional)'),
+            const SizedBox(height: Spacing.sm),
             TextFormField(
               controller: _notes,
               enabled: !_submitting,
               maxLines: 3,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: 'Anything worth remembering about this payment',
+              ),
             ),
             const SizedBox(height: Spacing.lg),
-            FilledButton(
+
+            PrimaryButton(
+              label: _submitting ? 'Recording…' : 'Record payment',
+              busy: _submitting,
               onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Record payment'),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+
+/// The eyebrow that names a figure: Plex Mono, upper-case, quiet.
+class _Eyebrow extends StatelessWidget {
+  const _Eyebrow(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text.toUpperCase(),
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+/// A mono metadata line — category · due date — in the eyebrow register.
+class _Meta extends StatelessWidget {
+  const _Meta(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text.toUpperCase(),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }

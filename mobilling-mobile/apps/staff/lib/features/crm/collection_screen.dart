@@ -28,7 +28,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     final dashboard = ref.watch(collectionDashboardProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Collection')),
+      appBar: const ShellTopBar(eyebrow: 'Billing', title: 'Collection'),
       body: CrmAsyncView(
         value: dashboard,
         errorTitle: 'Could not load collection',
@@ -39,28 +39,47 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(Spacing.md),
             children: [
-              _SummaryGrid(summary: data.summary),
-              const SizedBox(height: Spacing.md),
+              // The hero: the one figure this screen is about.
+              Reveal(child: _OutstandingCard(summary: data.summary)),
+              const SizedBox(height: Spacing.sm),
+              Reveal(
+                delay: const Duration(milliseconds: 80),
+                child: _CollectedTiles(summary: data.summary),
+              ),
+              const SizedBox(height: Spacing.lg),
+              const SectionHeader('Ageing'),
+              const SizedBox(height: Spacing.sm),
               _AgeingBar(aging: data.aging),
               const SizedBox(height: Spacing.lg),
+              const SectionHeader('Who to ring'),
+              const SizedBox(height: Spacing.sm),
               SegmentedButton<_View>(
                 segments: [
                   ButtonSegment(
-                      value: _View.today,
-                      label: Text('Today (${data.todayDue.length})')),
+                    value: _View.today,
+                    label: Text(
+                      'Today (${Formatting.integer(data.todayDue.length)})',
+                    ),
+                  ),
                   ButtonSegment(
-                      value: _View.overdue,
-                      label: Text('Overdue (${data.overdue.length})')),
+                    value: _View.overdue,
+                    label: Text(
+                      'Overdue (${Formatting.integer(data.overdue.length)})',
+                    ),
+                  ),
                   ButtonSegment(
-                      value: _View.upcoming,
-                      label: Text('Soon (${data.upcoming.length})')),
+                    value: _View.upcoming,
+                    label: Text(
+                      'Soon (${Formatting.integer(data.upcoming.length)})',
+                    ),
+                  ),
                 ],
                 selected: {_view},
                 onSelectionChanged: (s) => setState(() => _view = s.first),
                 showSelectedIcon: false,
               ),
-              const SizedBox(height: Spacing.md),
-              ..._buildList(context, data),
+              const SizedBox(height: Spacing.sm),
+              _buildList(context, data),
               const SizedBox(height: Spacing.xl),
             ],
           ),
@@ -69,7 +88,7 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     );
   }
 
-  List<Widget> _buildList(BuildContext context, CollectionDashboard data) {
+  Widget _buildList(BuildContext context, CollectionDashboard data) {
     final invoices = switch (_view) {
       _View.today => data.todayDue,
       _View.overdue => data.overdue,
@@ -77,37 +96,97 @@ class _CollectionScreenState extends ConsumerState<CollectionScreen> {
     };
 
     if (invoices.isEmpty) {
-      return [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: Spacing.xl),
-          child: Center(
-            child: Text(
-              switch (_view) {
-                _View.today => 'Nothing due today.',
-                _View.overdue => 'Nothing overdue — well collected.',
-                _View.upcoming => 'Nothing due soon.',
-              },
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant),
-            ),
-          ),
-        ),
-      ];
+      return StateMessage(
+        icon: Icons.check_circle_outline,
+        title: switch (_view) {
+          _View.today => 'Nothing due today',
+          _View.overdue => 'Nothing overdue',
+          _View.upcoming => 'Nothing due soon',
+        },
+        message: switch (_view) {
+          _View.today => 'Invoices falling due today will be listed here.',
+          _View.overdue => 'Well collected — every invoice is within terms.',
+          _View.upcoming => 'Invoices due in the next few days appear here.',
+        },
+      );
     }
 
-    return [
-      for (final invoice in invoices)
-        _InvoiceCard(
-          invoice: invoice,
-          // The dashboard carries phones separately, keyed by document.
-          phone: data.phoneByDocument[invoice.id],
-        ),
-    ];
+    return CrmCardList(
+      children: [
+        for (final invoice in invoices)
+          _InvoiceTile(
+            invoice: invoice,
+            // The dashboard carries phones separately, keyed by document.
+            phone: data.phoneByDocument[invoice.id],
+          ),
+      ],
+    );
   }
 }
 
-class _SummaryGrid extends StatelessWidget {
-  const _SummaryGrid({required this.summary});
+/// Total outstanding in the display scale, with the overdue share under it
+/// — the two figures a collector reads before deciding who to chase.
+class _OutstandingCard extends StatelessWidget {
+  const _OutstandingCard({required this.summary});
+
+  final CollectionSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final status = context.statusColors;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Outstanding'.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.sm),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Money(
+                summary.totalOutstanding,
+                scale: MoneyScale.display,
+                color: summary.totalOutstanding > 0 ? status.overdue : null,
+              ),
+            ),
+            const Divider(height: Spacing.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Overdue balance',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                Money(
+                  summary.overdueBalance,
+                  scale: MoneyScale.dense,
+                  color: summary.overdueBalance > 0 ? status.attention : null,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// What has come in: today and this month.
+class _CollectedTiles extends StatelessWidget {
+  const _CollectedTiles({required this.summary});
 
   final CollectionSummary summary;
 
@@ -115,36 +194,22 @@ class _SummaryGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = context.statusColors;
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: Spacing.sm,
-      crossAxisSpacing: Spacing.sm,
-      childAspectRatio: 1.9,
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        StatTile.money(
-          label: 'Outstanding',
-          amount: summary.totalOutstanding,
-          emphasis: summary.totalOutstanding > 0 ? status.overdue : null,
-          icon: Icons.account_balance_wallet_outlined,
+        Expanded(
+          child: StatTile.money(
+            label: 'Collected today',
+            amount: summary.todayCollected,
+            emphasis: status.settled,
+          ),
         ),
-        StatTile.money(
-          label: 'Collected today',
-          amount: summary.todayCollected,
-          emphasis: status.settled,
-          icon: Icons.today_outlined,
-        ),
-        StatTile.money(
-          label: 'Overdue balance',
-          amount: summary.overdueBalance,
-          emphasis: summary.overdueBalance > 0 ? status.attention : null,
-          icon: Icons.warning_amber_rounded,
-        ),
-        StatTile.money(
-          label: 'Month collected',
-          amount: summary.monthCollected,
-          icon: Icons.calendar_month_outlined,
+        const SizedBox(width: Spacing.sm),
+        Expanded(
+          child: StatTile.money(
+            label: 'Collected this month',
+            amount: summary.monthCollected,
+          ),
         ),
       ],
     );
@@ -161,14 +226,15 @@ class _AgeingBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final status = context.statusColors;
+    final scheme = theme.colorScheme;
+    final ramp = context.statusColors.agingRamp;
 
     final buckets = <(String, double, Color)>[
-      ('Current', aging.current, status.settled),
-      ('1–30', aging.days1To30, status.pending),
-      ('31–60', aging.days31To60, status.attention),
-      ('61–90', aging.days61To90, status.overdue),
-      ('90+', aging.over90, theme.colorScheme.error),
+      ('Current', aging.current, ramp[0]),
+      ('1–30 days', aging.days1To30, ramp[1]),
+      ('31–60 days', aging.days31To60, ramp[2]),
+      ('61–90 days', aging.days61To90, ramp[3]),
+      ('Over 90 days', aging.over90, ramp[4]),
     ];
     final total = buckets.fold<double>(0, (sum, b) => sum + b.$2);
 
@@ -178,12 +244,13 @@ class _AgeingBar extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Ageing', style: theme.textTheme.titleSmall),
-            const SizedBox(height: Spacing.sm),
             if (total <= 0)
-              Text('Nothing outstanding.',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant))
+              Text(
+                'Nothing outstanding.',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              )
             else ...[
               ClipRRect(
                 borderRadius: BorderRadius.circular(Radii.sm),
@@ -193,32 +260,33 @@ class _AgeingBar extends StatelessWidget {
                       if (amount > 0)
                         Expanded(
                           flex: (amount / total * 1000).round().clamp(1, 1000),
-                          child: Container(height: 10, color: color),
+                          child: Container(height: 8, color: color),
                         ),
                   ],
                 ),
               ),
-              const SizedBox(height: Spacing.sm),
-              for (final (label, amount, color) in buckets)
-                if (amount > 0)
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Row(
-                      children: [
-                        Container(
-                            width: 10,
-                            height: 10,
-                            decoration: BoxDecoration(
-                                color: color, shape: BoxShape.circle)),
-                        const SizedBox(width: Spacing.sm),
-                        Expanded(
-                            child: Text(label,
-                                style: theme.textTheme.bodySmall)),
-                        Text(Formatting.amount(amount),
-                            style: theme.textTheme.bodySmall),
-                      ],
-                    ),
+              const SizedBox(height: Spacing.md),
+              for (final (i, (label, amount, color)) in buckets.indexed)
+                if (amount > 0) ...[
+                  if (i > 0) const SizedBox(height: Spacing.sm),
+                  Row(
+                    children: [
+                      Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                          color: color,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                      const SizedBox(width: Spacing.sm),
+                      Expanded(
+                        child: Text(label, style: theme.textTheme.bodyMedium),
+                      ),
+                      Money(amount, scale: MoneyScale.dense, showCode: false),
+                    ],
                   ),
+                ],
             ],
           ],
         ),
@@ -227,8 +295,11 @@ class _AgeingBar extends StatelessWidget {
   }
 }
 
-class _InvoiceCard extends StatelessWidget {
-  const _InvoiceCard({required this.invoice, this.phone});
+/// One invoice to chase: who, the reference and how late, the balance, and
+/// the number one tap away. The call button keeps a fixed slot so the money
+/// column stays aligned whether or not a phone is on file.
+class _InvoiceTile extends StatelessWidget {
+  const _InvoiceTile({required this.invoice, this.phone});
 
   final CollectionInvoice invoice;
   final String? phone;
@@ -239,48 +310,39 @@ class _InvoiceCard extends StatelessWidget {
     final status = context.statusColors;
     final overdue = (invoice.daysOverdue ?? 0) > 0;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: Spacing.sm),
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(invoice.clientName ?? invoice.documentNumber,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 2),
-                  Text(
-                    [
-                      invoice.documentNumber,
-                      if (overdue)
-                        '${invoice.daysOverdue}d overdue'
-                      else if (invoice.daysUntilDue != null)
-                        'due in ${invoice.daysUntilDue}d',
-                    ].join(' · '),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: overdue
-                            ? status.overdue
-                            : theme.colorScheme.onSurfaceVariant),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: Spacing.sm),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Money(invoice.balanceDue),
-                StatusChip(invoice.status, dense: true),
-              ],
-            ),
-            ContactRow(phone: phone, compact: true),
-          ],
+    final meta = [
+      invoice.documentNumber,
+      if (overdue)
+        '${invoice.daysOverdue}d overdue'
+      else if (invoice.daysUntilDue != null)
+        'due in ${invoice.daysUntilDue}d',
+    ].join(' · ');
+
+    return ListTile(
+      title: Text(
+        invoice.clientName ?? invoice.documentNumber,
+        style: theme.textTheme.titleSmall,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: Spacing.xs),
+        child: CrmStatusLine(
+          status: invoice.status,
+          meta: meta,
+          tone: overdue ? status.overdue : null,
         ),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Money(invoice.balanceDue),
+          const SizedBox(width: Spacing.xs),
+          SizedBox(
+            width: 40,
+            child: ContactRow(phone: phone, compact: true),
+          ),
+        ],
       ),
     );
   }

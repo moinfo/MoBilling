@@ -52,10 +52,22 @@ class TokenStore {
 
   Future<String?> readUserType() => _storage.read(key: _userTypeKey);
 
+  static const _biometricKey = 'mobilling.auth.biometric_lock';
+
+  /// Whether the stored token may only be used after a biometric check.
+  /// Survives sign-out? No — [clear] removes it with the token, because the
+  /// preference is about *this* session's credential, not the device.
+  Future<bool> readBiometricLock() async =>
+      await _storage.read(key: _biometricKey) == '1';
+
+  Future<void> setBiometricLock(bool enabled) =>
+      _storage.write(key: _biometricKey, value: enabled ? '1' : '0');
+
   Future<void> clear() async {
     _cachedToken = null;
     _loaded = true;
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userTypeKey);
+    await _storage.delete(key: _biometricKey);
   }
 }

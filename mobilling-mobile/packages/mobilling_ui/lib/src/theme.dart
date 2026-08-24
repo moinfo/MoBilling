@@ -100,30 +100,30 @@ class StatusColors extends ThemeExtension<StatusColors> {
   /// `documents.status` enum has been extended by migration several times and
   /// will be again.
   Color forStatus(String? status) => switch (status?.toLowerCase().trim()) {
-        'paid' ||
-        'accepted' ||
-        'active' ||
-        'completed' ||
-        'resolved' ||
-        // HR + operations (Aug 2026): a decided/locked/linked state.
-        'approved' ||
-        'finalized' ||
-        'imported' ||
-        'recovered' ||
-        'paid_off' =>
-          settled,
-        'sent' || 'pending_approval' || 'pending' || 'open' || 'processing' =>
-          pending,
-        'partial' ||
-        'expiring' ||
-        'grace' ||
-        'awaiting_payment' ||
-        'not_imported' =>
-          attention,
-        'overdue' || 'rejected' || 'suspended' || 'failed' || 'expired' =>
-          overdue,
-        _ => inactive,
-      };
+    'paid' ||
+    'accepted' ||
+    'active' ||
+    'completed' ||
+    'resolved' ||
+    // HR + operations (Aug 2026): a decided/locked/linked state.
+    'approved' ||
+    'finalized' ||
+    'imported' ||
+    'recovered' ||
+    'paid_off' => settled,
+    'sent' ||
+    'pending_approval' ||
+    'pending' ||
+    'open' ||
+    'processing' => pending,
+    'partial' ||
+    'expiring' ||
+    'grace' ||
+    'awaiting_payment' ||
+    'not_imported' => attention,
+    'overdue' || 'rejected' || 'suspended' || 'failed' || 'expired' => overdue,
+    _ => inactive,
+  };
 
   /// Human label for a raw status: `pending_approval` -> `Pending approval`.
   static String label(String? status) {
@@ -140,15 +140,14 @@ class StatusColors extends ThemeExtension<StatusColors> {
     Color? overdue,
     Color? inactive,
     Color? onStatus,
-  }) =>
-      StatusColors(
-        settled: settled ?? this.settled,
-        pending: pending ?? this.pending,
-        attention: attention ?? this.attention,
-        overdue: overdue ?? this.overdue,
-        inactive: inactive ?? this.inactive,
-        onStatus: onStatus ?? this.onStatus,
-      );
+  }) => StatusColors(
+    settled: settled ?? this.settled,
+    pending: pending ?? this.pending,
+    attention: attention ?? this.attention,
+    overdue: overdue ?? this.overdue,
+    inactive: inactive ?? this.inactive,
+    onStatus: onStatus ?? this.onStatus,
+  );
 
   @override
   StatusColors lerp(ThemeExtension<StatusColors>? other, double t) {
@@ -178,8 +177,13 @@ abstract final class Spacing {
 abstract final class Radii {
   static const double sm = 8;
   static const double md = 12;
+
+  /// Cards, as on the web (16). Fields and buttons stay at [md].
+  static const double cardRadius = 16;
   static const double lg = 20;
-  static const BorderRadius card = BorderRadius.all(Radius.circular(md));
+  static const BorderRadius card = BorderRadius.all(
+    Radius.circular(cardRadius),
+  );
   static const BorderRadius sheet = BorderRadius.vertical(
     top: Radius.circular(lg),
   );
@@ -187,17 +191,66 @@ abstract final class Radii {
 
 /// Type tokens.
 ///
-/// The app carries no bundled display face, so personality has to come from
-/// scale, weight and tracking rather than a novelty typeface — and from
-/// **tabular figures**, which is the one typographic decision that is also a
-/// functional one here. Proportional digits make a column of money jitter as
-/// values change and refuse to align; `tnum` fixes both, and this is an app
-/// whose entire content is columns of money.
+/// Three roles, as on the web: **Archivo** carries the display voice (the
+/// wordmark, screen headlines, hero figures) — heavy and tightly tracked, used
+/// sparingly; **IBM Plex Mono** is the utility face for eyebrows, captions
+/// and anything that names a figure; body text stays on the platform face,
+/// which is the most legible thing on a phone in equatorial daylight and
+/// costs nothing to ship.
 ///
-/// [family] is the single override point: drop a licensed face into the
-/// package, set it here, and every surface picks it up.
+/// The other typographic decision here is functional: **tabular figures**.
+/// Proportional digits make a column of money jitter as values change and
+/// refuse to align; `tnum` fixes both, and this is an app whose entire
+/// content is columns of money.
 abstract final class Type {
+  /// Body face. Null = the platform default (SF on iOS, Roboto on Android).
   static const String? family = null;
+
+  /// Display face, bundled from `assets/fonts` (see pubspec). A variable
+  /// font, so weight is set through [display] rather than `fontWeight`
+  /// alone — the `wght` axis is what the renderer actually honours.
+  static const String displayFamily = 'Archivo';
+
+  /// Utility face for eyebrows and captions.
+  static const String monoFamily = 'IBMPlexMono';
+
+  /// A display style: Archivo at [size], heavy, tightly tracked. Tracking is
+  /// proportional (−0.035em), matching the handoff's `letter-spacing`.
+  static TextStyle display(
+    double size, {
+    double weight = 800,
+    double height = 1.05,
+    Color? color,
+  }) => TextStyle(
+    fontFamily: displayFamily,
+    fontSize: size,
+    fontWeight: _closestWeight(weight),
+    fontVariations: [FontVariation('wght', weight)],
+    height: height,
+    letterSpacing: size * -0.035,
+    color: color,
+  );
+
+  /// An eyebrow / caption: Plex Mono, small, wide-tracked, meant to be set in
+  /// upper case by the caller.
+  static TextStyle mono(
+    double size, {
+    FontWeight weight = FontWeight.w500,
+    double tracking = 0.12,
+    Color? color,
+  }) => TextStyle(
+    fontFamily: monoFamily,
+    fontSize: size,
+    fontWeight: weight,
+    letterSpacing: size * tracking,
+    height: 1.3,
+    color: color,
+    fontFeatures: figures,
+  );
+
+  static FontWeight _closestWeight(double weight) => FontWeight.values.reduce(
+    (a, b) => ((a.value - weight).abs() <= (b.value - weight).abs()) ? a : b,
+  );
 
   /// Lining, fixed-width digits. Every monetary or countable figure uses this.
   static const figures = <FontFeature>[
@@ -306,18 +359,28 @@ abstract final class AppTheme {
         ),
       ),
 
+      // The handoff's field: 52px tall, radius 12, a real outline and a
+      // blue focus ring. Filled white on paper so a form reads as a stack of
+      // controls rather than a stack of grey slabs.
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        border: _inputBorder(scheme.outlineVariant),
-        enabledBorder: _inputBorder(scheme.outlineVariant),
+        fillColor: scheme.brightness == Brightness.light
+            ? Colors.white
+            : scheme.surfaceContainerHighest,
+        border: _inputBorder(scheme.outline),
+        enabledBorder: _inputBorder(scheme.outline),
         focusedBorder: _inputBorder(scheme.primary, width: 2),
         errorBorder: _inputBorder(scheme.error),
         focusedErrorBorder: _inputBorder(scheme.error, width: 2),
         contentPadding: const EdgeInsets.symmetric(
-          horizontal: Spacing.md,
-          vertical: Spacing.md,
+          horizontal: 15,
+          vertical: 15,
         ),
+        hintStyle: TextStyle(
+          color: scheme.onSurfaceVariant.withValues(alpha: 0.7),
+        ),
+        prefixIconColor: scheme.onSurfaceVariant,
+        suffixIconColor: scheme.onSurfaceVariant,
         labelStyle: TextStyle(color: scheme.onSurfaceVariant),
         helperStyle: text.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
       ),
@@ -330,7 +393,7 @@ abstract final class AppTheme {
           // want a full-width button stretch it themselves.
           minimumSize: const Size(64, 52),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Radii.sm),
+            borderRadius: BorderRadius.circular(Radii.md),
           ),
           textStyle: text.labelLarge,
         ),
@@ -344,7 +407,7 @@ abstract final class AppTheme {
           minimumSize: const Size(64, 52),
           side: BorderSide(color: scheme.outline),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(Radii.sm),
+            borderRadius: BorderRadius.circular(Radii.md),
           ),
           textStyle: text.labelLarge,
         ),
@@ -353,12 +416,29 @@ abstract final class AppTheme {
         style: TextButton.styleFrom(textStyle: text.labelLarge),
       ),
 
+      // A selected filter chip is a *choice*, so it borrows signal blue.
+      // Material's default is `secondaryContainer`, which in this palette is
+      // the settled green — a filter would then claim the colour that means
+      // "this money is paid". Set centrally so every ChoiceChip in the app
+      // says the same thing without each screen restating it.
       chipTheme: ChipThemeData(
-        side: BorderSide(color: scheme.outlineVariant),
+        side: WidgetStateBorderSide.resolveWith(
+          (states) => BorderSide(
+            color: states.contains(WidgetState.selected)
+                ? scheme.primary.withValues(alpha: 0.45)
+                : scheme.outlineVariant,
+          ),
+        ),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(Radii.sm),
         ),
         labelStyle: text.labelSmall,
+        backgroundColor: cardColor,
+        selectedColor: scheme.primary.withValues(alpha: 0.12),
+        checkmarkColor: scheme.primary,
+        showCheckmark: false,
+        labelPadding: const EdgeInsets.symmetric(horizontal: Spacing.xs),
+        secondaryLabelStyle: text.labelSmall?.copyWith(color: scheme.primary),
       ),
 
       listTileTheme: ListTileThemeData(
@@ -401,7 +481,7 @@ abstract final class AppTheme {
 
   static OutlineInputBorder _inputBorder(Color color, {double width = 1}) =>
       OutlineInputBorder(
-        borderRadius: BorderRadius.circular(Radii.sm),
+        borderRadius: BorderRadius.circular(Radii.md),
         borderSide: BorderSide(color: color, width: width),
       );
 
@@ -469,12 +549,10 @@ abstract final class AppTheme {
         fontWeight: FontWeight.w600,
         fontFeatures: Type.figures,
       ),
-      // The eyebrow: names a figure without competing with it.
-      labelSmall: base.labelSmall?.copyWith(
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        letterSpacing: Type.eyebrowTracking,
-      ),
+      // The eyebrow: Plex Mono, as on the web — names a figure without
+      // competing with it. Callers upper-case; the face and tracking come
+      // from here so every eyebrow in the app is the same eyebrow.
+      labelSmall: Type.mono(10.5, tracking: 0.08, color: scheme.onSurface),
     );
   }
 }

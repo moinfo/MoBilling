@@ -47,29 +47,26 @@ class _PortalUsersDirectoryScreenState
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400),
-        () => _listKey.currentState?.reload());
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Portal users')),
+      appBar: ShellTopBar(
+        eyebrow: 'Billing',
+        title: 'Portal users',
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search name, email or client',
+          onChanged: _onSearchChanged,
+        ),
+      ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, 0),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                hintText: 'Search name, email or client',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
-            ),
-          ),
           FilterStrip(
             options: _roleFilters,
             selected: _role,
@@ -92,28 +89,46 @@ class _PortalUsersDirectoryScreenState
                 _listKey.currentState?.reload();
               },
               showSelectedIcon: false,
-              style:
-                  const ButtonStyle(visualDensity: VisualDensity.compact),
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
             ),
           ),
-          const SizedBox(height: Spacing.sm),
+          const SizedBox(height: Spacing.md),
           Expanded(
-            child: PagedListView<PortalUserRow>(
-              key: _listKey,
-              fetch: (page) => ref.read(opsServiceProvider).portalUsers(
-                    search: _search.text.trim().isEmpty
-                        ? null
-                        : _search.text.trim(),
-                    role: _role,
-                    active: _active,
-                    page: page,
-                  ),
-              itemBuilder: (context, user) => _PortalUserCard(
-                user: user,
-                onTap: () => _openActions(context, user),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                0,
+                Spacing.md,
+                Spacing.md,
               ),
-              emptyIcon: Icons.admin_panel_settings_outlined,
-              emptyTitle: 'No portal users found',
+              // One card, rows divided by hairlines — the paged list scrolls
+              // inside it.
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: PagedListView<PortalUserRow>(
+                  key: _listKey,
+                  padding: EdgeInsets.zero,
+                  separated: false,
+                  fetch: (page) => ref
+                      .read(opsServiceProvider)
+                      .portalUsers(
+                        search: _search.text.trim().isEmpty
+                            ? null
+                            : _search.text.trim(),
+                        role: _role,
+                        active: _active,
+                        page: page,
+                      ),
+                  itemBuilder: (context, user) => _PortalUserRow(
+                    user: user,
+                    onTap: () => _openActions(context, user),
+                  ),
+                  emptyIcon: Icons.admin_panel_settings_outlined,
+                  emptyTitle: 'No portal users found',
+                  emptyMessage:
+                      'Try another name, or clear the role and status filters.',
+                ),
+              ),
             ),
           ),
         ],
@@ -130,29 +145,46 @@ class _PortalUsersDirectoryScreenState
 
     final action = await showModalBottomSheet<String>(
       context: context,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (context) {
         final theme = Theme.of(context);
+        final scheme = theme.colorScheme;
         return SafeArea(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Padding(
-                padding: const EdgeInsets.all(Spacing.md),
+                padding: const EdgeInsets.fromLTRB(
+                  Spacing.lg,
+                  0,
+                  Spacing.lg,
+                  Spacing.md,
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.name, style: theme.textTheme.titleMedium),
+                    Text(
+                      user.clientName.toUpperCase(),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
                     const SizedBox(height: Spacing.xs),
-                    CrmDetailRow('Client', user.clientName),
+                    Text(
+                      user.name,
+                      style: Type.display(22, color: scheme.onSurface),
+                    ),
+                    const SizedBox(height: Spacing.md),
                     CrmDetailRow('Email', user.email),
                     if (user.phone != null) CrmDetailRow('Phone', user.phone!),
-                    CrmDetailRow('Role', user.role),
+                    CrmDetailRow('Role', StatusColors.label(user.role)),
                     CrmDetailRow(
-                        'Last login',
-                        user.lastLoginAt == null
-                            ? 'Never'
-                            : Formatting.dateTime(user.lastLoginAt)),
+                      'Last login',
+                      user.lastLoginAt == null
+                          ? 'Never'
+                          : Formatting.dateTime(user.lastLoginAt),
+                    ),
                   ],
                 ),
               ),
@@ -165,9 +197,11 @@ class _PortalUsersDirectoryScreenState
                 ),
               if (canEdit)
                 ListTile(
-                  leading: Icon(user.isActive
-                      ? Icons.block_outlined
-                      : Icons.check_circle_outline),
+                  leading: Icon(
+                    user.isActive
+                        ? Icons.block_outlined
+                        : Icons.check_circle_outline,
+                  ),
                   title: Text(user.isActive ? 'Disable login' : 'Enable login'),
                   onTap: () => Navigator.pop(context, 'toggle'),
                 ),
@@ -179,10 +213,11 @@ class _PortalUsersDirectoryScreenState
                 ),
               if (canEdit)
                 ListTile(
-                  leading: Icon(Icons.delete_outline,
-                      color: theme.colorScheme.error),
-                  title: Text('Delete portal user',
-                      style: TextStyle(color: theme.colorScheme.error)),
+                  leading: Icon(Icons.delete_outline, color: scheme.error),
+                  title: Text(
+                    'Delete portal user',
+                    style: TextStyle(color: scheme.error),
+                  ),
                   onTap: () => Navigator.pop(context, 'delete'),
                 ),
             ],
@@ -198,43 +233,60 @@ class _PortalUsersDirectoryScreenState
           final saved = await showModalBottomSheet<bool>(
             context: context,
             isScrollControlled: true,
+            showDragHandle: true,
             shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
             builder: (_) => _EditPortalUserSheet(user: user),
           );
           if (!(saved ?? false)) return;
         case 'toggle':
-          await service.updatePortalUser(user.clientId, user.id,
-              isActive: !user.isActive);
-          messenger.showSnackBar(SnackBar(
-              content: Text(user.isActive ? 'Login disabled.' : 'Login enabled.')));
+          await service.updatePortalUser(
+            user.clientId,
+            user.id,
+            isActive: !user.isActive,
+          );
+          messenger.showSnackBar(
+            SnackBar(
+              content: Text(
+                user.isActive ? 'Login disabled.' : 'Login enabled.',
+              ),
+            ),
+          );
         case 'password':
           final password = await _askPassword(context, user);
           if (password == null) return;
-          final message = await service.resetPortalPassword(user.clientId,
-              portalUserId: user.id, password: password);
+          final message = await service.resetPortalPassword(
+            user.clientId,
+            portalUserId: user.id,
+            password: password,
+          );
           messenger.showSnackBar(
-              SnackBar(content: Text(message ?? 'Password updated.')));
+            SnackBar(content: Text(message ?? 'Password updated.')),
+          );
         case 'delete':
           final confirmed = await showDialog<bool>(
             context: context,
             builder: (context) => AlertDialog(
               title: Text('Delete ${user.name}?'),
               content: Text(
-                  'They lose portal access to ${user.clientName}. The client record itself is untouched.'),
+                'They lose portal access to ${user.clientName}. The client record itself is untouched.',
+              ),
               actions: [
                 TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Keep')),
+                  onPressed: () => Navigator.pop(context, false),
+                  child: const Text('Keep'),
+                ),
                 FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Delete')),
+                  onPressed: () => Navigator.pop(context, true),
+                  child: const Text('Delete'),
+                ),
               ],
             ),
           );
           if (!(confirmed ?? false)) return;
           await service.deletePortalUser(user.clientId, user.id);
-          messenger
-              .showSnackBar(const SnackBar(content: Text('Portal user deleted.')));
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Portal user deleted.')),
+          );
       }
       _listKey.currentState?.reload();
     } on ApiException catch (e) {
@@ -253,13 +305,15 @@ class _PortalUsersDirectoryScreenState
           autofocus: true,
           autocorrect: false,
           decoration: const InputDecoration(
-            labelText: 'Password (min 8 characters)',
+            hintText: 'At least 8 characters',
+            prefixIcon: Icon(Icons.lock_outline, size: 20),
           ),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () {
               final value = controller.text;
@@ -274,8 +328,10 @@ class _PortalUsersDirectoryScreenState
   }
 }
 
-class _PortalUserCard extends StatelessWidget {
-  const _PortalUserCard({required this.user, required this.onTap});
+/// One login in the directory: role and state as chips, client and email
+/// as the mono metadata line, last sign-in as the aligned trailing figure.
+class _PortalUserRow extends StatelessWidget {
+  const _PortalUserRow({required this.user, required this.onTap});
 
   final PortalUserRow user;
   final VoidCallback onTap;
@@ -283,32 +339,60 @@ class _PortalUserCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Card(
-      child: ListTile(
-        onTap: onTap,
-        leading: CircleAvatar(
-          child: Text(user.name.isEmpty ? '?' : user.name[0].toUpperCase()),
-        ),
-        title: Text(user.name,
-            maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          '${user.clientName} · ${user.email}',
-          style: theme.textTheme.bodySmall,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            StatusChip(user.role, dense: true),
-            if (!user.isActive) ...[
+    final scheme = theme.colorScheme;
+    final meta = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          onTap: onTap,
+          title: Text(
+            user.name,
+            style: theme.textTheme.titleSmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(
+              children: [
+                StatusChip(user.role, dense: true),
+                if (!user.isActive) ...[
+                  const SizedBox(width: Spacing.xs),
+                  const StatusChip('inactive', dense: true),
+                ],
+                const SizedBox(width: Spacing.sm),
+                Flexible(
+                  child: Text(
+                    '${user.clientName} · ${user.email}',
+                    style: meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                user.lastLoginAt == null
+                    ? 'Never'
+                    : Formatting.date(user.lastLoginAt),
+                style: theme.textTheme.labelMedium,
+              ),
               const SizedBox(height: 2),
-              StatusChip('inactive', dense: true),
+              Text('LAST LOGIN', style: meta),
             ],
-          ],
+          ),
         ),
-      ),
+        const Divider(height: 1),
+      ],
     );
   }
 }
@@ -339,7 +423,7 @@ class _EditPortalUserSheetState extends ConsumerState<_EditPortalUserSheet> {
 
   Future<void> _save() async {
     if (_name.text.trim().isEmpty) {
-      setState(() => _error = 'Name is required.');
+      setState(() => _error = 'Enter a name for this login.');
       return;
     }
     setState(() {
@@ -347,7 +431,9 @@ class _EditPortalUserSheetState extends ConsumerState<_EditPortalUserSheet> {
       _error = null;
     });
     try {
-      await ref.read(opsServiceProvider).updatePortalUser(
+      await ref
+          .read(opsServiceProvider)
+          .updatePortalUser(
             widget.user.clientId,
             widget.user.id,
             name: _name.text.trim(),
@@ -365,58 +451,82 @@ class _EditPortalUserSheetState extends ConsumerState<_EditPortalUserSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Padding(
-      padding: EdgeInsets.only(
-        left: Spacing.md,
-        right: Spacing.md,
-        top: Spacing.md,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.md,
+      padding: EdgeInsets.fromLTRB(
+        Spacing.lg,
+        0,
+        Spacing.lg,
+        MediaQuery.viewInsetsOf(context).bottom + Spacing.lg,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Edit — ${widget.user.name}',
-              style: theme.textTheme.titleMedium),
-          Text(widget.user.clientName, style: theme.textTheme.bodySmall),
-          const SizedBox(height: Spacing.md),
-          if (_error != null) ...[
-            ErrorBanner(message: _error!),
-            const SizedBox(height: Spacing.sm),
-          ],
-          TextField(
-            controller: _name,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(labelText: 'Name'),
-          ),
-          const SizedBox(height: Spacing.sm),
-          TextField(
-            controller: _phone,
-            keyboardType: TextInputType.phone,
-            decoration: const InputDecoration(labelText: 'Phone'),
-          ),
-          const SizedBox(height: Spacing.sm),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'admin', label: Text('Admin')),
-              ButtonSegment(value: 'viewer', label: Text('Viewer')),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              widget.user.clientName.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.xs),
+            Text(
+              'Edit portal user',
+              style: Type.display(22, color: scheme.onSurface),
+            ),
+            const SizedBox(height: Spacing.lg),
+            if (_error != null) ...[
+              ErrorBanner(message: _error!),
+              const SizedBox(height: Spacing.md),
             ],
-            selected: {_role},
-            onSelectionChanged: (s) => setState(() => _role = s.first),
-            showSelectedIcon: false,
-          ),
-          const SizedBox(height: Spacing.xs),
-          Text(
-            'Admins can add and remove other portal users for their company.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: Spacing.md),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Save'),
-          ),
-        ],
+            Text('Name', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: _name,
+              enabled: !_saving,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(hintText: 'Full name'),
+            ),
+            const SizedBox(height: Spacing.md),
+            Text('Phone', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: _phone,
+              enabled: !_saving,
+              keyboardType: TextInputType.phone,
+              decoration: const InputDecoration(hintText: '0712 345 678'),
+            ),
+            const SizedBox(height: Spacing.md),
+            Text('Role', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(value: 'admin', label: Text('Admin')),
+                ButtonSegment(value: 'viewer', label: Text('Viewer')),
+              ],
+              selected: {_role},
+              onSelectionChanged: _saving
+                  ? null
+                  : (s) => setState(() => _role = s.first),
+              showSelectedIcon: false,
+            ),
+            const SizedBox(height: Spacing.sm),
+            Text(
+              'Admins can add and remove other portal users for their company.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            PrimaryButton(
+              label: _saving ? 'Saving…' : 'Save changes',
+              busy: _saving,
+              onPressed: _saving ? null : _save,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -28,12 +28,13 @@ class OrderFlow {
 
   final Future<List<ProductAddon>> Function(String productId) productAddons;
   final Future<List<ConfigOptionGroup>> Function(String productId)
-      configOptions;
+  configOptions;
   final Future<List<DomainAddon>> Function() domainAddons;
   final Future<CouponResult> Function({
     required String code,
     required String productId,
-  }) validateCoupon;
+  })
+  validateCoupon;
   final Future<PlacedOrder> Function({
     required String productId,
     String? label,
@@ -44,17 +45,19 @@ class OrderFlow {
     List<String> productAddonIds,
     List<ConfigSelection> configOptions,
     String? couponCode,
-  }) placeOrder;
+  })
+  placeOrder;
 
   /// Invalidate what changed and navigate to the invoice.
   final void Function(BuildContext context, WidgetRef ref, PlacedOrder order)
-      onPlaced;
+  onPlaced;
 
   /// The line under the Place order button.
   final String footnote;
 
-  /// Shown under the app-bar title — for staff, the client's name, so the
-  /// order is never placed for the wrong company.
+  /// The masthead eyebrow above the product name — for staff, the client's
+  /// name, so the order is never placed for the wrong company. Null in the
+  /// portal, where the client is ordering for themselves.
   final String? subtitle;
 
   /// The client portal: the signed-in client orders for themselves.
@@ -72,7 +75,8 @@ class OrderFlow {
         // Straight to the invoice: paying it is what activates the service.
         context.pushReplacement(PortalRoutes.invoicePath(order.documentId));
       },
-      footnote: 'An invoice is created for your order — the service '
+      footnote:
+          'An invoice is created for your order — the service '
           'activates automatically once it is paid.',
     );
   }
@@ -89,36 +93,37 @@ class OrderFlow {
       domainAddons: service.orderDomainAddons,
       validateCoupon: ({required code, required productId}) =>
           service.validateOrderCoupon(
-        clientId: clientId,
-        code: code,
-        productId: productId,
-      ),
-      placeOrder: ({
-        required productId,
-        label,
-        domainMode,
-        authInfo,
-        years,
-        domainAddonIds = const [],
-        productAddonIds = const [],
-        configOptions = const [],
-        couponCode,
-      }) =>
-          service.placeOrder(
-        clientId: clientId,
-        productId: productId,
-        label: label,
-        domainMode: domainMode,
-        authInfo: authInfo,
-        years: years,
-        domainAddonIds: domainAddonIds,
-        productAddonIds: productAddonIds,
-        configOptions: configOptions,
-        couponCode: couponCode,
-      ),
+            clientId: clientId,
+            code: code,
+            productId: productId,
+          ),
+      placeOrder:
+          ({
+            required productId,
+            label,
+            domainMode,
+            authInfo,
+            years,
+            domainAddonIds = const [],
+            productAddonIds = const [],
+            configOptions = const [],
+            couponCode,
+          }) => service.placeOrder(
+            clientId: clientId,
+            productId: productId,
+            label: label,
+            domainMode: domainMode,
+            authInfo: authInfo,
+            years: years,
+            domainAddonIds: domainAddonIds,
+            productAddonIds: productAddonIds,
+            configOptions: configOptions,
+            couponCode: couponCode,
+          ),
       onPlaced: (context, ref, order) =>
           context.pushReplacement('/documents/${order.documentId}'),
-      footnote: 'An invoice is created for $clientName — the service '
+      footnote:
+          'An invoice is created for $clientName — the service '
           'activates once they pay it.',
       subtitle: clientName,
     );

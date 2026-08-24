@@ -40,69 +40,85 @@ class AppDrawer extends ConsumerWidget {
 
     final coverage = staffMenuCoverage();
 
+    final topInset = MediaQuery.paddingOf(context).top;
+
     return Drawer(
       child: SafeArea(
+        top: false,
         child: Column(
           children: [
-            // Who's signed in, and for which tenant.
-            Padding(
-              padding: const EdgeInsets.all(Spacing.md),
+            // Who's signed in, and for which tenant — on the same ink as the
+            // masthead, so opening the menu extends it rather than replacing
+            // it with a stock header.
+            InkPanel(
+              padding: EdgeInsets.fromLTRB(
+                Spacing.md,
+                topInset + Spacing.md,
+                Spacing.md,
+                Spacing.md,
+              ),
               child: Row(
                 children: [
-                  CircleAvatar(
-                    child: Text((user?.name.isNotEmpty ?? false)
-                        ? user!.name[0].toUpperCase()
-                        : '?'),
-                  ),
-                  const SizedBox(width: Spacing.md),
+                  InkAvatar(name: user?.name ?? '', onTap: null),
+                  const SizedBox(width: Spacing.md - 2),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(user?.tenant?.name ?? AppConfig.appName,
-                            style: theme.textTheme.titleSmall,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
-                        Text(user?.name ?? '',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis),
+                        Text(
+                          user?.tenant?.name ?? AppConfig.appName,
+                          style: Type.display(17, color: Colors.white),
+                          // Tenant names run long ("… Company Limited");
+                          // wrapping beats an ellipsis in the one place the
+                          // name is allowed to take room.
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          user?.name ?? '',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: InkPanel.bodyText,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ],
                     ),
                   ),
                 ],
               ),
             ),
-            const Divider(height: 1),
 
             Expanded(
               child: ListView(
-                padding: EdgeInsets.zero,
+                padding: const EdgeInsets.only(top: Spacing.sm),
                 children: [
                   for (final node in staffMenu)
                     switch (node) {
-                      MenuLeaf(:final entry) => allowed(entry)
-                          ? _tile(context, entry)
-                          : const SizedBox.shrink(),
+                      MenuLeaf(:final entry) =>
+                        allowed(entry)
+                            ? _tile(context, entry)
+                            : const SizedBox.shrink(),
                       // Section shows when at least one child is visible —
                       // matching the web's canAny([...]) gating, without a
                       // separate permission to keep in sync.
                       MenuGroup(:final section) => () {
-                          final visible =
-                              section.children.where(allowed).toList();
-                          if (visible.isEmpty) return const SizedBox.shrink();
-                          return ExpansionTile(
-                            leading: Icon(section.icon, size: 22),
-                            title: Text(section.label),
-                            shape: const Border(),
-                            collapsedShape: const Border(),
-                            children: [
-                              for (final entry in visible)
-                                _tile(context, entry, inset: true),
-                            ],
-                          );
-                        }(),
+                        final visible = section.children
+                            .where(allowed)
+                            .toList();
+                        if (visible.isEmpty) return const SizedBox.shrink();
+                        return ExpansionTile(
+                          leading: Icon(section.icon, size: 22),
+                          title: Text(section.label),
+                          shape: const Border(),
+                          collapsedShape: const Border(),
+                          children: [
+                            for (final entry in visible)
+                              _tile(context, entry, inset: true),
+                          ],
+                        );
+                      }(),
                     },
                 ],
               ),
@@ -114,17 +130,22 @@ class AppDrawer extends ConsumerWidget {
             // showing it.
             Padding(
               padding: const EdgeInsets.symmetric(
-                  horizontal: Spacing.md, vertical: Spacing.xs),
+                horizontal: Spacing.md,
+                vertical: Spacing.xs,
+              ),
               child: Text(
                 '${coverage.ready} of ${coverage.total} modules available on mobile',
-                style: theme.textTheme.labelSmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             ListTile(
               leading: Icon(Icons.logout, color: theme.colorScheme.error),
-              title: Text('Sign out',
-                  style: TextStyle(color: theme.colorScheme.error)),
+              title: Text(
+                'Sign out',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
               onTap: () {
                 Navigator.of(context).pop();
                 ref.read(sessionControllerProvider).logout();

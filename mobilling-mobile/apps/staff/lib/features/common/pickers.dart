@@ -21,6 +21,7 @@ class ClientPickerSheet extends ConsumerStatefulWidget {
       showModalBottomSheet<StaffClient>(
         context: context,
         isScrollControlled: true,
+        showDragHandle: true,
         shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
         builder: (_) => const ClientPickerSheet(),
       );
@@ -49,7 +50,9 @@ class _ClientPickerSheetState extends ConsumerState<ClientPickerSheet> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final page = await ref.read(staffServiceProvider).clients(
+      final page = await ref
+          .read(staffServiceProvider)
+          .clients(
             search: _search.text.trim().isEmpty ? null : _search.text.trim(),
             perPage: 50,
           );
@@ -63,23 +66,23 @@ class _ClientPickerSheetState extends ConsumerState<ClientPickerSheet> {
 
   @override
   Widget build(BuildContext context) => _PickerShell(
-        hint: 'Search clients',
-        controller: _search,
-        loading: _loading,
-        onSearch: _load,
-        itemCount: _results.length,
-        itemBuilder: (context, index) {
-          final client = _results[index];
-          return ListTile(
-            dense: true,
-            title: Text(client.name),
-            subtitle: client.phone == null && client.email == null
-                ? null
-                : Text(client.phone ?? client.email!),
-            onTap: () => Navigator.of(context).pop(client),
-          );
-        },
+    eyebrow: 'Clients',
+    title: 'Choose a client',
+    hint: 'Search by name, phone or email',
+    controller: _search,
+    loading: _loading,
+    onSearch: _load,
+    itemCount: _results.length,
+    itemBuilder: (context, index) {
+      final client = _results[index];
+      final contact = client.phone ?? client.email;
+      return ListTile(
+        title: Text(client.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: contact == null ? null : _Meta(contact),
+        onTap: () => Navigator.of(context).pop(client),
       );
+    },
+  );
 }
 
 /// A colleague — for salaries, loans, leave allocations. Needs
@@ -91,6 +94,7 @@ class StaffUserPickerSheet extends ConsumerStatefulWidget {
       showModalBottomSheet<StaffUser>(
         context: context,
         isScrollControlled: true,
+        showDragHandle: true,
         shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
         builder: (_) => const StaffUserPickerSheet(),
       );
@@ -120,7 +124,9 @@ class _StaffUserPickerSheetState extends ConsumerState<StaffUserPickerSheet> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final page = await ref.read(adminServiceProvider).users(
+      final page = await ref
+          .read(adminServiceProvider)
+          .users(
             search: _search.text.trim().isEmpty ? null : _search.text.trim(),
             perPage: 100,
           );
@@ -136,21 +142,24 @@ class _StaffUserPickerSheetState extends ConsumerState<StaffUserPickerSheet> {
 
   @override
   Widget build(BuildContext context) => _PickerShell(
-        hint: 'Search staff',
-        controller: _search,
-        loading: _loading,
-        onSearch: _load,
-        itemCount: _results.length,
-        itemBuilder: (context, index) {
-          final user = _results[index];
-          return ListTile(
-            dense: true,
-            title: Text(user.name),
-            subtitle: user.roleName == null ? null : Text(user.roleName!),
-            onTap: () => Navigator.of(context).pop(user),
-          );
-        },
+    eyebrow: 'Team',
+    title: 'Choose a colleague',
+    hint: 'Search by name',
+    controller: _search,
+    loading: _loading,
+    onSearch: _load,
+    itemCount: _results.length,
+    itemBuilder: (context, index) {
+      final user = _results[index];
+      return ListTile(
+        title: Text(user.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: user.roleName == null
+            ? null
+            : _Meta(user.roleName!, upperCase: true),
+        onTap: () => Navigator.of(context).pop(user),
       );
+    },
+  );
 }
 
 /// A catalog product — for importing a discovered hosting account onto the
@@ -162,6 +171,7 @@ class ProductPickerSheet extends ConsumerStatefulWidget {
       showModalBottomSheet<ProductService>(
         context: context,
         isScrollControlled: true,
+        showDragHandle: true,
         shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
         builder: (_) => const ProductPickerSheet(),
       );
@@ -191,7 +201,9 @@ class _ProductPickerSheetState extends ConsumerState<ProductPickerSheet> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final page = await ref.read(billingCatalogServiceProvider).products(
+      final page = await ref
+          .read(billingCatalogServiceProvider)
+          .products(
             search: _search.text.trim().isEmpty ? null : _search.text.trim(),
             activeOnly: true,
             perPage: 50,
@@ -206,30 +218,36 @@ class _ProductPickerSheetState extends ConsumerState<ProductPickerSheet> {
 
   @override
   Widget build(BuildContext context) => _PickerShell(
-        hint: 'Search products',
-        controller: _search,
-        loading: _loading,
-        onSearch: _load,
-        itemCount: _results.length,
-        itemBuilder: (context, index) {
-          final product = _results[index];
-          return ListTile(
-            dense: true,
-            title: Text(product.name),
-            subtitle: Text([
-              Formatting.currency(product.price),
-              if (product.billingCycle != null)
-                product.billingCycle!.replaceAll('_', ' '),
-            ].join(' / ')),
-            onTap: () => Navigator.of(context).pop(product),
-          );
-        },
+    eyebrow: 'Catalog',
+    title: 'Choose a product',
+    hint: 'Search by name or code',
+    controller: _search,
+    loading: _loading,
+    onSearch: _load,
+    itemCount: _results.length,
+    itemBuilder: (context, index) {
+      final product = _results[index];
+      return ListTile(
+        title: Text(product.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: product.billingCycle == null
+            ? null
+            : _Meta(product.billingCycle!.replaceAll('_', ' '), upperCase: true),
+        // The price was a string in the subtitle; as a trailing [Money] it
+        // lines up into the one column every other list in the app has.
+        trailing: Money(product.price),
+        onTap: () => Navigator.of(context).pop(product),
       );
+    },
+  );
 }
 
-/// The search-box-over-list layout the three pickers share.
+/// The search-box-over-list layout the three pickers share: an eyebrow and
+/// display-face title naming what is being chosen, the themed field, and
+/// the results as one card of hairline-divided rows.
 class _PickerShell extends StatelessWidget {
   const _PickerShell({
+    required this.eyebrow,
+    required this.title,
     required this.hint,
     required this.controller,
     required this.loading,
@@ -238,6 +256,8 @@ class _PickerShell extends StatelessWidget {
     required this.itemBuilder,
   });
 
+  final String eyebrow;
+  final String title;
   final String hint;
   final TextEditingController controller;
   final bool loading;
@@ -247,16 +267,28 @@ class _PickerShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Padding(
       padding: EdgeInsets.only(
-        left: Spacing.md,
-        right: Spacing.md,
-        top: Spacing.md,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.md,
+        left: Spacing.lg,
+        right: Spacing.lg,
+        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          Text(
+            eyebrow.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: Spacing.xs),
+          Text(title, style: Type.display(22, color: scheme.onSurface)),
+          const SizedBox(height: Spacing.md),
           TextField(
             controller: controller,
             autofocus: true,
@@ -264,34 +296,63 @@ class _PickerShell extends StatelessWidget {
             onSubmitted: (_) => onSearch(),
             decoration: InputDecoration(
               hintText: hint,
-              prefixIcon: const Icon(Icons.search),
+              prefixIcon: const Icon(Icons.search, size: 20),
               suffixIcon: IconButton(
-                icon: const Icon(Icons.arrow_forward),
+                tooltip: 'Search',
+                icon: const Icon(Icons.arrow_forward, size: 20),
                 onPressed: onSearch,
               ),
             ),
           ),
-          const SizedBox(height: Spacing.sm),
+          const SizedBox(height: Spacing.md),
           if (loading)
             const Padding(
               padding: EdgeInsets.all(Spacing.lg),
-              child: CircularProgressIndicator(),
+              child: Center(child: CircularProgressIndicator()),
             )
           else if (itemCount == 0)
-            Padding(
-              padding: const EdgeInsets.all(Spacing.lg),
-              child: Text('No matches.',
-                  style: Theme.of(context).textTheme.bodySmall),
+            const StateMessage(
+              icon: Icons.search_off_outlined,
+              title: 'No matches',
+              message: 'Try a different spelling, or fewer words.',
             )
           else
             Flexible(
-              child: ListView.builder(
-                shrinkWrap: true,
-                itemCount: itemCount,
-                itemBuilder: itemBuilder,
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: itemCount,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
+                  itemBuilder: itemBuilder,
+                ),
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// A picker row's metadata line — a phone, an email, a role, a billing
+/// cycle — in the mono face. Identifiers keep their case; labels that name
+/// something are upper-cased like every other eyebrow.
+class _Meta extends StatelessWidget {
+  const _Meta(this.text, {this.upperCase = false});
+
+  final String text;
+  final bool upperCase;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      upperCase ? text.toUpperCase() : text,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }

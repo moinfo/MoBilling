@@ -25,132 +25,141 @@ class FieldMarketingScreen extends ConsumerStatefulWidget {
 
 enum _Section { sessions, visits, targets }
 
-class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen> {
+class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
+    with SingleTickerProviderStateMixin {
+  late final TabController _tabs = TabController(length: 3, vsync: this)
+    ..addListener(_onTab);
   _Section _section = _Section.sessions;
+
+  void _onTab() {
+    final next = _Section.values[_tabs.index];
+    if (next != _section) setState(() => _section = next);
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final canCreateSession = ref.watch(sessionControllerProvider).session?.can(
-              CrmPermissions.fieldSessionsCreate,
-            ) ??
+    final canCreateSession =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(CrmPermissions.fieldSessionsCreate) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Field marketing')),
-      floatingActionButton:
-          _section == _Section.sessions && canCreateSession
-              ? FloatingActionButton.extended(
-                  onPressed: () => _startSession(context),
-                  icon: const Icon(Icons.add_location_alt_outlined),
-                  label: const Text('New session'),
-                )
-              : null,
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, Spacing.xs),
-            child: SegmentedButton<_Section>(
-              segments: const [
-                ButtonSegment(
-                    value: _Section.sessions, label: Text('Sessions')),
-                ButtonSegment(value: _Section.visits, label: Text('Visits')),
-                ButtonSegment(value: _Section.targets, label: Text('Targets')),
-              ],
-              selected: {_section},
-              onSelectionChanged: (s) => setState(() => _section = s.first),
-              showSelectedIcon: false,
-            ),
-          ),
-          Expanded(
-            child: switch (_section) {
-              _Section.sessions => const _SessionsList(),
-              _Section.visits => const _VisitsList(),
-              _Section.targets => const _TargetsList(),
-            },
-          ),
-        ],
+      appBar: ShellTopBar(
+        eyebrow: 'Engagement',
+        title: 'Field marketing',
+        trailing: _section == _Section.sessions && canCreateSession
+            ? InkActionButton(
+                icon: Icons.add_location_alt_outlined,
+                tooltip: 'Start a session',
+                onPressed: () => _startSession(context),
+              )
+            : null,
+        bottom: InkTabBar(
+          tabs: const ['Sessions', 'Visits', 'Targets'],
+          controller: _tabs,
+        ),
       ),
+      body: switch (_section) {
+        _Section.sessions => const _SessionsList(),
+        _Section.visits => const _VisitsList(),
+        _Section.targets => const _TargetsList(),
+      },
     );
   }
 
   Future<void> _startSession(BuildContext context) async {
     final area = TextEditingController();
     var date = DateTime.now();
+    var submitting = false;
+    String? error;
 
-    final created = await showModalBottomSheet<bool>(
+    final created = await showCrmSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => Padding(
-          padding: EdgeInsets.only(
-            left: Spacing.lg,
-            right: Spacing.lg,
-            top: Spacing.lg,
-            bottom:
-                MediaQuery.of(sheetContext).viewInsets.bottom + Spacing.lg,
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('Start a session',
-                  style: Theme.of(sheetContext).textTheme.titleLarge,
-                  textAlign: TextAlign.center),
+        builder: (sheetContext, setSheetState) => CrmSheet(
+          eyebrow: 'Field marketing',
+          title: 'Start a session',
+          children: [
+            if (error != null) ...[
+              ErrorBanner(message: error!),
               const SizedBox(height: Spacing.md),
-              TextField(
+            ],
+            CrmField(
+              label: 'Area',
+              child: TextField(
                 controller: area,
+                enabled: !submitting,
                 textCapitalization: TextCapitalization.words,
                 decoration: const InputDecoration(
-                  labelText: 'Area',
-                  helperText: 'Where are you canvassing today?',
+                  hintText: 'Where are you canvassing today?',
                 ),
               ),
-              const SizedBox(height: Spacing.md),
-              InkWell(
-                onTap: () async {
-                  final picked = await showDatePicker(
-                    context: sheetContext,
-                    initialDate: date,
-                    firstDate: DateTime(DateTime.now().year - 1),
-                    lastDate: DateTime.now(),
-                  );
-                  if (picked != null) setSheetState(() => date = picked);
-                },
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Date',
-                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
-                  ),
-                  child: Text(Formatting.date(date)),
-                ),
-              ),
-              const SizedBox(height: Spacing.lg),
-              FilledButton(
-                onPressed: () async {
-                  if (area.text.trim().isEmpty) return;
-                  try {
-                    final me = ref.read(currentUserProvider);
-                    if (me == null) return;
-                    await ref.read(crmServiceProvider).createFieldSession(
-                          officerId: me.id,
-                          area: area.text.trim(),
-                          visitDate: date,
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmPickerField(
+              label: 'Date',
+              value: Formatting.date(date),
+              onTap: submitting
+                  ? null
+                  : () async {
+                      final picked = await showDatePicker(
+                        context: sheetContext,
+                        initialDate: date,
+                        firstDate: DateTime(DateTime.now().year - 1),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) setSheetState(() => date = picked);
+                    },
+            ),
+            const SizedBox(height: Spacing.lg),
+            PrimaryButton(
+              label: submitting ? 'Starting…' : 'Start session',
+              busy: submitting,
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      if (area.text.trim().isEmpty) {
+                        setSheetState(
+                          () => error = 'Enter the area you are canvassing.',
                         );
-                    if (sheetContext.mounted) {
-                      Navigator.of(sheetContext).pop(true);
-                    }
-                  } on ApiException catch (e) {
-                    if (sheetContext.mounted) {
-                      showCrmMessage(sheetContext, e.message);
-                    }
-                  }
-                },
-                child: const Text('Start'),
-              ),
-            ],
-          ),
+                        return;
+                      }
+                      setSheetState(() {
+                        submitting = true;
+                        error = null;
+                      });
+                      try {
+                        final me = ref.read(currentUserProvider);
+                        if (me == null) return;
+                        await ref
+                            .read(crmServiceProvider)
+                            .createFieldSession(
+                              officerId: me.id,
+                              area: area.text.trim(),
+                              visitDate: date,
+                            );
+                        if (sheetContext.mounted) {
+                          Navigator.of(sheetContext).pop(true);
+                        }
+                      } on ApiException catch (e) {
+                        if (sheetContext.mounted) {
+                          setSheetState(() {
+                            submitting = false;
+                            error = e.message;
+                          });
+                        }
+                      }
+                    },
+            ),
+          ],
         ),
       ),
     );
@@ -175,23 +184,40 @@ class _SessionsListState extends ConsumerState<_SessionsList> {
 
     return PagedListView(
       key: _listKey,
-      fetch: (page) =>
-          ref.read(crmServiceProvider).fieldSessions(page: page),
+      fetch: (page) => ref.read(crmServiceProvider).fieldSessions(page: page),
       itemBuilder: (context, session) => Card(
+        clipBehavior: Clip.antiAlias,
         child: ListTile(
-          title: Text(session.area),
-          subtitle: Text(
-            [
-              if (session.visitDate != null)
-                Formatting.date(session.visitDate),
-              if (session.officerName != null) session.officerName!,
-              '${session.visitsCount} visit${session.visitsCount == 1 ? '' : 's'}',
-              if (session.convertedCount > 0)
-                '${session.convertedCount} converted',
-            ].join(' · '),
-            style: theme.textTheme.bodySmall,
+          title: Text(
+            session.area,
+            style: theme.textTheme.titleSmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
-          trailing: const Icon(Icons.chevron_right),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: Spacing.xs),
+              CrmMetaLine(
+                [
+                  if (session.visitDate != null)
+                    Formatting.date(session.visitDate),
+                  '${Formatting.integer(session.visitsCount)} '
+                      '${session.visitsCount == 1 ? 'visit' : 'visits'}',
+                  if (session.convertedCount > 0)
+                    '${Formatting.integer(session.convertedCount)} converted',
+                ].join(' · '),
+              ),
+              if (session.officerName != null) ...[
+                const SizedBox(height: Spacing.xs),
+                Text(session.officerName!, style: theme.textTheme.bodySmall),
+              ],
+            ],
+          ),
+          trailing: Icon(
+            Icons.chevron_right,
+            color: theme.colorScheme.outline,
+          ),
           onTap: () => context.push('/field-marketing/${session.id}'),
         ),
       ),
@@ -224,6 +250,7 @@ class _VisitsListState extends ConsumerState<_VisitsList> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final status = context.statusColors;
 
     return Column(
       children: [
@@ -238,56 +265,60 @@ class _VisitsListState extends ConsumerState<_VisitsList> {
         Expanded(
           child: PagedListView(
             key: _listKey,
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.sm,
+              Spacing.md,
+              Spacing.xl,
+            ),
             fetch: (page) => ref
                 .read(crmServiceProvider)
                 .allFieldVisits(status: _status, page: page),
             itemBuilder: (context, visit) => Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Spacing.md),
-                child: Column(
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                title: Text(
+                  visit.businessName,
+                  style: theme.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(visit.businessName,
-                              style: theme.textTheme.titleSmall,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
-                        ),
-                        StatusChip(visit.status, dense: true),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      [
+                    const SizedBox(height: Spacing.xs),
+                    CrmStatusLine(
+                      status: visit.status,
+                      meta: [
                         if (visit.area != null) visit.area!,
                         if (visit.visitDate != null)
                           Formatting.date(visit.visitDate),
-                        if (visit.officerName != null) visit.officerName!,
                       ].join(' · '),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
                     ),
+                    if (visit.officerName != null) ...[
+                      const SizedBox(height: Spacing.xs),
+                      Text(
+                        visit.officerName!,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
                     if (visit.nextFollowupDate != null) ...[
                       const SizedBox(height: Spacing.xs),
                       Text(
                         'Follow up ${Formatting.date(visit.nextFollowupDate)}',
-                        style: theme.textTheme.bodySmall
-                            ?.copyWith(color: context.statusColors.attention),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: status.attention,
+                        ),
                       ),
                     ],
-                    if (visit.phone != null)
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: ContactRow(phone: visit.phone, compact: true),
-                      ),
                   ],
                 ),
+                trailing: ContactRow(phone: visit.phone, compact: true),
               ),
             ),
             emptyIcon: Icons.storefront_outlined,
             emptyTitle: 'No visits logged',
+            emptyMessage: 'Open a session and log the businesses you visit.',
           ),
         ),
       ],
@@ -301,7 +332,6 @@ class _TargetsList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final targets = ref.watch(fieldTargetsProvider);
-    final theme = Theme.of(context);
 
     return CrmAsyncView(
       value: targets,
@@ -313,55 +343,78 @@ class _TargetsList extends ConsumerWidget {
               title: 'No targets set',
               message: 'Monthly conversion targets appear here once set.',
             )
-          : ListView.separated(
+          : ListView(
               padding: const EdgeInsets.all(Spacing.md),
-              itemCount: items.length,
-              separatorBuilder: (context, index) =>
-                  const SizedBox(height: Spacing.sm),
-              itemBuilder: (context, index) {
-                final target = items[index];
-                final ratio = target.targetClients <= 0
-                    ? 0.0
-                    : (target.wonClients / target.targetClients).clamp(0.0, 1.0);
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(Spacing.md),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(target.officerName ?? 'Team',
-                                  style: theme.textTheme.titleSmall),
-                            ),
-                            Text('${target.wonClients}/${target.targetClients}',
-                                style: theme.textTheme.labelLarge),
-                          ],
-                        ),
-                        const SizedBox(height: Spacing.xs),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(Radii.sm),
-                          child: LinearProgressIndicator(
-                            value: ratio,
-                            minHeight: 8,
-                            color: ratio >= 1
-                                ? context.statusColors.settled
-                                : null,
-                          ),
-                        ),
-                        const SizedBox(height: Spacing.xs),
-                        Text(
-                          '${target.totalVisits} visit${target.totalVisits == 1 ? '' : 's'} · ${target.progress}% of target',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
+              children: [
+                CrmCardList(
+                  children: [
+                    for (final target in items) _TargetRow(target: target),
+                  ],
+                ),
+              ],
             ),
+    );
+  }
+}
+
+/// One officer's month against target: won over target as the figure, the
+/// bar for the glance, visits and percentage in the metadata line.
+class _TargetRow extends StatelessWidget {
+  const _TargetRow({required this.target});
+
+  final FieldTarget target;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+    final ratio = target.targetClients <= 0
+        ? 0.0
+        : (target.wonClients / target.targetClients).clamp(0.0, 1.0);
+
+    return Padding(
+      padding: const EdgeInsets.all(Spacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  target.officerName ?? 'Team',
+                  style: theme.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: Spacing.sm),
+              Text(
+                '${Formatting.integer(target.wonClients)}'
+                '/${Formatting.integer(target.targetClients)}',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontFeatures: Type.figures,
+                  color: ratio >= 1 ? status.settled : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: Spacing.sm),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(Radii.sm),
+            child: LinearProgressIndicator(
+              value: ratio,
+              minHeight: 6,
+              color: ratio >= 1 ? status.settled : theme.colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+          CrmMetaLine(
+            '${Formatting.integer(target.totalVisits)} '
+            '${target.totalVisits == 1 ? 'visit' : 'visits'}'
+            ' · ${target.progress}% of target',
+          ),
+        ],
+      ),
     );
   }
 }
@@ -381,21 +434,26 @@ class _FieldSessionScreenState extends ConsumerState<FieldSessionScreen> {
   Widget build(BuildContext context) {
     final detail = ref.watch(fieldSessionProvider(widget.sessionId));
     final theme = Theme.of(context);
-    final canLogVisit = ref.watch(sessionControllerProvider).session?.can(
-              CrmPermissions.fieldVisitsCreate,
-            ) ??
+    final status = context.statusColors;
+    final canLogVisit =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(CrmPermissions.fieldVisitsCreate) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(
-          title: Text(detail.valueOrNull?.session.area ?? 'Session')),
-      floatingActionButton: !canLogVisit
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () => _logVisit(context),
-              icon: const Icon(Icons.add_business_outlined),
-              label: const Text('Log visit'),
-            ),
+      appBar: ShellTopBar(
+        eyebrow: 'Field marketing',
+        title: detail.valueOrNull?.session.area ?? 'Session',
+        trailing: canLogVisit
+            ? InkActionButton(
+                icon: Icons.add_business_outlined,
+                tooltip: 'Log a visit',
+                onPressed: () => _logVisit(context),
+              )
+            : null,
+      ),
       body: CrmAsyncView(
         value: detail,
         errorTitle: 'Could not load this session',
@@ -403,83 +461,78 @@ class _FieldSessionScreenState extends ConsumerState<FieldSessionScreen> {
         builder: (data) => ListView(
           padding: const EdgeInsets.all(Spacing.md),
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: StatTile(
-                      label: 'Visits', value: '${data.session.visitsCount}'),
-                ),
-                const SizedBox(width: Spacing.sm),
-                Expanded(
-                  child: StatTile(
-                      label: 'Interested',
-                      value: '${data.session.interestedCount}'),
-                ),
-                const SizedBox(width: Spacing.sm),
-                Expanded(
-                  child: StatTile(
+            Reveal(
+              child: StatRail(
+                items: [
+                  StatRailItem(
+                    label: 'Visits',
+                    value: Formatting.integer(data.session.visitsCount),
+                  ),
+                  StatRailItem(
+                    label: 'Interested',
+                    value: Formatting.integer(data.session.interestedCount),
+                  ),
+                  StatRailItem(
                     label: 'Converted',
-                    value: '${data.session.convertedCount}',
+                    value: Formatting.integer(data.session.convertedCount),
                     emphasis: data.session.convertedCount > 0
-                        ? context.statusColors.settled
+                        ? status.settled
                         : null,
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             if (data.session.summary != null) ...[
-              const SizedBox(height: Spacing.md),
+              const SizedBox(height: Spacing.lg),
+              const SectionHeader('Summary'),
+              const SizedBox(height: Spacing.sm),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(Spacing.md),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Summary', style: theme.textTheme.titleSmall),
-                      const SizedBox(height: Spacing.xs),
-                      Text(data.session.summary!,
-                          style: theme.textTheme.bodySmall),
-                    ],
+                  child: Text(
+                    data.session.summary!,
+                    style: theme.textTheme.bodyMedium,
                   ),
                 ),
               ),
             ],
             const SizedBox(height: Spacing.lg),
-            Text('Businesses visited', style: theme.textTheme.titleSmall),
+            const SectionHeader('Businesses visited'),
             const SizedBox(height: Spacing.sm),
             if (data.visits.isEmpty)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
-                child: Center(
-                  child: Text('Nothing logged yet.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant)),
-                ),
+              StateMessage(
+                icon: Icons.storefront_outlined,
+                title: 'Nothing logged yet',
+                message: 'Each business you call on in this session is listed here.',
+                actionLabel: canLogVisit ? 'Log a visit' : null,
+                onAction: canLogVisit ? () => _logVisit(context) : null,
               )
             else
-              for (final visit in data.visits)
-                Card(
-                  margin: const EdgeInsets.only(bottom: Spacing.sm),
-                  child: ListTile(
-                    title: Text(visit.businessName),
-                    subtitle: Text(
-                      [
-                        if (visit.location != null) visit.location!,
-                        if (visit.services.isNotEmpty)
-                          visit.services.join(', '),
-                      ].join(' · '),
-                      style: theme.textTheme.bodySmall,
+              CrmCardList(
+                children: [
+                  for (final visit in data.visits)
+                    ListTile(
+                      title: Text(
+                        visit.businessName,
+                        style: theme.textTheme.titleSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: Spacing.xs),
+                        child: CrmStatusLine(
+                          status: visit.status,
+                          meta: [
+                            if (visit.location != null) visit.location!,
+                            if (visit.services.isNotEmpty)
+                              visit.services.join(', '),
+                          ].join(' · '),
+                        ),
+                      ),
+                      trailing: ContactRow(phone: visit.phone, compact: true),
                     ),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        StatusChip(visit.status, dense: true),
-                        if (visit.phone != null)
-                          ContactRow(phone: visit.phone, compact: true),
-                      ],
-                    ),
-                  ),
-                ),
+                ],
+              ),
             const SizedBox(height: Spacing.xl),
           ],
         ),
@@ -497,148 +550,167 @@ class _FieldSessionScreenState extends ConsumerState<FieldSessionScreen> {
     var submitting = false;
     String? error;
 
-    final saved = await showModalBottomSheet<bool>(
+    final saved = await showCrmSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (sheetContext) => StatefulBuilder(
-        builder: (sheetContext, setSheetState) => Padding(
-          padding: EdgeInsets.only(
-            left: Spacing.lg,
-            right: Spacing.lg,
-            top: Spacing.lg,
-            bottom:
-                MediaQuery.of(sheetContext).viewInsets.bottom + Spacing.lg,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text('Log a visit',
-                    style: Theme.of(sheetContext).textTheme.titleLarge,
-                    textAlign: TextAlign.center),
-                const SizedBox(height: Spacing.md),
-                if (error != null) ...[
-                  ErrorBanner(message: error!),
-                  const SizedBox(height: Spacing.sm),
-                ],
-                TextField(
-                  controller: name,
-                  textCapitalization: TextCapitalization.words,
-                  decoration:
-                      const InputDecoration(labelText: 'Business name'),
+        builder: (sheetContext, setSheetState) => CrmSheet(
+          eyebrow: 'Field marketing',
+          title: 'Log a visit',
+          children: [
+            if (error != null) ...[
+              ErrorBanner(message: error!),
+              const SizedBox(height: Spacing.md),
+            ],
+            CrmField(
+              label: 'Business name',
+              child: TextField(
+                controller: name,
+                enabled: !submitting,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  hintText: 'The business you called on',
                 ),
-                const SizedBox(height: Spacing.md),
-                DropdownButtonFormField<String>(
-                  initialValue: status,
-                  decoration: const InputDecoration(labelText: 'Outcome'),
-                  items: const [
-                    DropdownMenuItem(
-                        value: 'interested', child: Text('Interested')),
-                    DropdownMenuItem(
-                        value: 'not_interested',
-                        child: Text('Not interested')),
-                    DropdownMenuItem(
-                        value: 'follow_up', child: Text('Needs follow-up')),
-                    DropdownMenuItem(
-                        value: 'converted', child: Text('Converted')),
-                  ],
-                  onChanged: (v) => setSheetState(() => status = v!),
-                ),
-                const SizedBox(height: Spacing.md),
-                TextField(
-                  controller: location,
-                  decoration: const InputDecoration(labelText: 'Location'),
-                ),
-                const SizedBox(height: Spacing.md),
-                Text('Services discussed',
-                    style: Theme.of(sheetContext).textTheme.labelLarge),
-                const SizedBox(height: Spacing.xs),
-                Wrap(
-                  spacing: Spacing.xs,
-                  runSpacing: Spacing.xs,
-                  children: [
-                    for (final service in FieldServices.values)
-                      FilterChip(
-                        label: Text(service),
-                        selected: services.contains(service),
-                        showCheckmark: false,
-                        onSelected: (on) => setSheetState(() => on
-                            ? services.add(service)
-                            : services.remove(service)),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: Spacing.md),
-                TextField(
-                  controller: phone,
-                  keyboardType: TextInputType.phone,
-                  decoration:
-                      const InputDecoration(labelText: 'Phone (optional)'),
-                ),
-                const SizedBox(height: Spacing.md),
-                TextField(
-                  controller: feedback,
-                  maxLines: 3,
-                  textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(
-                      labelText: 'What did they say?'),
-                ),
-                const SizedBox(height: Spacing.lg),
-                FilledButton(
-                  onPressed: submitting
-                      ? null
-                      : () async {
-                          if (name.text.trim().isEmpty) {
-                            setSheetState(
-                                () => error = 'Enter the business name.');
-                            return;
-                          }
-                          if (location.text.trim().isEmpty) {
-                            setSheetState(() => error = 'Enter the location.');
-                            return;
-                          }
-                          if (services.isEmpty) {
-                            setSheetState(() =>
-                                error = 'Pick at least one service discussed.');
-                            return;
-                          }
-                          setSheetState(() {
-                            submitting = true;
-                            error = null;
-                          });
-                          try {
-                            await ref
-                                .read(crmServiceProvider)
-                                .logFieldVisit(
-                                  widget.sessionId,
-                                  businessName: name.text.trim(),
-                                  status: status,
-                                  location: location.text.trim(),
-                                  services: services.toList(),
-                                  phone: phone.text.trim().isEmpty
-                                      ? null
-                                      : phone.text.trim(),
-                                  feedback: feedback.text.trim().isEmpty
-                                      ? null
-                                      : feedback.text.trim(),
-                                );
-                            if (sheetContext.mounted) {
-                              Navigator.of(sheetContext).pop(true);
-                            }
-                          } on ApiException catch (e) {
-                            setSheetState(() {
-                              submitting = false;
-                              error = e.message;
-                            });
-                          }
-                        },
-                  child: Text(submitting ? 'Saving…' : 'Save visit'),
-                ),
-              ],
+              ),
             ),
-          ),
+            const SizedBox(height: Spacing.md),
+            CrmField(
+              label: 'Outcome',
+              child: DropdownButtonFormField<String>(
+                initialValue: status,
+                items: const [
+                  DropdownMenuItem(
+                    value: 'interested',
+                    child: Text('Interested'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'not_interested',
+                    child: Text('Not interested'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'follow_up',
+                    child: Text('Needs follow-up'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'converted',
+                    child: Text('Converted'),
+                  ),
+                ],
+                onChanged: submitting
+                    ? null
+                    : (v) => setSheetState(() => status = v!),
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmField(
+              label: 'Location',
+              child: TextField(
+                controller: location,
+                enabled: !submitting,
+                decoration: const InputDecoration(
+                  hintText: 'Street, building or landmark',
+                ),
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmField(
+              label: 'Services discussed',
+              child: Wrap(
+                spacing: Spacing.sm,
+                runSpacing: Spacing.sm,
+                children: [
+                  for (final service in FieldServices.values)
+                    FilterChip(
+                      label: Text(service.toUpperCase()),
+                      selected: services.contains(service),
+                      showCheckmark: false,
+                      onSelected: submitting
+                          ? null
+                          : (on) => setSheetState(
+                              () => on
+                                  ? services.add(service)
+                                  : services.remove(service),
+                            ),
+                    ),
+                ],
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmField(
+              label: 'Phone (optional)',
+              child: TextField(
+                controller: phone,
+                enabled: !submitting,
+                keyboardType: TextInputType.phone,
+                decoration: const InputDecoration(hintText: '0712 345 678'),
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmField(
+              label: 'What did they say?',
+              child: TextField(
+                controller: feedback,
+                enabled: !submitting,
+                maxLines: 3,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Their words, as close as you can',
+                ),
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            PrimaryButton(
+              label: submitting ? 'Saving…' : 'Save visit',
+              busy: submitting,
+              onPressed: submitting
+                  ? null
+                  : () async {
+                      if (name.text.trim().isEmpty) {
+                        setSheetState(() => error = 'Enter the business name.');
+                        return;
+                      }
+                      if (location.text.trim().isEmpty) {
+                        setSheetState(() => error = 'Enter the location.');
+                        return;
+                      }
+                      if (services.isEmpty) {
+                        setSheetState(
+                          () =>
+                              error = 'Pick at least one service discussed.',
+                        );
+                        return;
+                      }
+                      setSheetState(() {
+                        submitting = true;
+                        error = null;
+                      });
+                      try {
+                        await ref
+                            .read(crmServiceProvider)
+                            .logFieldVisit(
+                              widget.sessionId,
+                              businessName: name.text.trim(),
+                              status: status,
+                              location: location.text.trim(),
+                              services: services.toList(),
+                              phone: phone.text.trim().isEmpty
+                                  ? null
+                                  : phone.text.trim(),
+                              feedback: feedback.text.trim().isEmpty
+                                  ? null
+                                  : feedback.text.trim(),
+                            );
+                        if (sheetContext.mounted) {
+                          Navigator.of(sheetContext).pop(true);
+                        }
+                      } on ApiException catch (e) {
+                        setSheetState(() {
+                          submitting = false;
+                          error = e.message;
+                        });
+                      }
+                    },
+            ),
+          ],
         ),
       ),
     );

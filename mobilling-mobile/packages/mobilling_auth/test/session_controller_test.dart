@@ -247,6 +247,21 @@ void main() {
       expect(auth.logoutCalls, 0);
     });
 
+    test('a biometric-locked token waits for unlock before any network call',
+        () async {
+      final store = TokenStore(storage: storage);
+      await store.save('tok-1', userType: 'tenant');
+      await store.setBiometricLock(true);
+      auth.meResult = _session();
+
+      await controller.restore();
+      expect(controller.status, SessionStatus.locked);
+      expect(controller.session, isNull);
+
+      await controller.unlock();
+      expect(controller.status, SessionStatus.authenticated);
+    });
+
     test('goes straight to signed out with no stored token', () async {
       await controller.restore();
       expect(controller.status, SessionStatus.signedOut);

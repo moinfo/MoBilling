@@ -9,8 +9,9 @@ import 'comms_providers.dart';
 import 'comms_ui.dart';
 
 /// Bumped after a successful send so the history tab reloads.
-final StateProvider<int> broadcastsRefreshProvider =
-    StateProvider<int>((ref) => 0);
+final StateProvider<int> broadcastsRefreshProvider = StateProvider<int>(
+  (ref) => 0,
+);
 
 /// Mass email/SMS to clients.
 ///
@@ -27,14 +28,10 @@ class BroadcastScreen extends StatelessWidget {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Broadcast'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'Compose'),
-              Tab(text: 'Sent'),
-            ],
-          ),
+        appBar: const ShellTopBar(
+          eyebrow: 'Communications',
+          title: 'Broadcast',
+          bottom: InkTabBar(tabs: ['Compose', 'Sent']),
         ),
         body: const TabBarView(
           children: [_ComposeView(), _BroadcastHistoryView()],
@@ -46,62 +43,71 @@ class BroadcastScreen extends StatelessWidget {
 
 /// The same starting points the web compose screen offers, so a notice sent
 /// from a phone reads like one sent from a desk.
-const _templates = <String, ({String label, String subject, String body, String sms})>{
-  'maintenance': (
-    label: 'Scheduled maintenance',
-    subject: 'Scheduled Maintenance Notice',
-    body: 'Dear Client,\n\n'
-        'We will be performing scheduled maintenance on [date] from '
-        '[start time] to [end time].\n\n'
-        'During this period, our services may be temporarily unavailable. '
-        'We apologise for any inconvenience.\n\n'
-        'Thank you for your patience.',
-    sms: 'Maintenance on [date] [start]-[end]. Services may be briefly '
-        'unavailable. We apologise for any inconvenience.',
-  ),
-  'service_update': (
-    label: 'Service update',
-    subject: 'Service Update',
-    body: 'Dear Client,\n\n'
-        'We are pleased to inform you about an important update to our '
-        'services.\n\n[Describe the update here]\n\n'
-        'If you have any questions, please do not hesitate to contact us.\n\n'
-        'Best regards.',
-    sms: 'Service update: [brief description]. Contact us for details.',
-  ),
-  'unavailability': (
-    label: 'Service unavailability',
-    subject: 'Service Unavailability Notice',
-    body: 'Dear Client,\n\n'
-        'We regret to inform you that our services will be unavailable on '
-        '[date] due to [reason].\n\n'
-        'We expect to resume normal operations by [time/date]. We apologise '
-        'for any inconvenience caused.\n\nThank you for your understanding.',
-    sms: 'Our services will be unavailable on [date] due to [reason]. '
-        'Normal operations resume by [time].',
-  ),
-  'holiday': (
-    label: 'Holiday notice',
-    subject: 'Holiday Notice',
-    body: 'Dear Client,\n\n'
-        'Please note that our offices will be closed on [date(s)] for '
-        '[holiday name].\n\n'
-        'We will resume normal business hours on [return date].\n\n'
-        'Wishing you a wonderful holiday!',
-    sms: 'Our offices will be closed [date(s)] for [holiday]. We resume on '
-        '[return date].',
-  ),
-  'general': (
-    label: 'General announcement',
-    subject: 'Important Announcement',
-    body: 'Dear Client,\n\n'
-        'We would like to bring the following to your attention:\n\n'
-        '[Your announcement here]\n\n'
-        'Please feel free to reach out if you have any questions.\n\n'
-        'Best regards.',
-    sms: '[Your announcement here]. Contact us for more info.',
-  ),
-};
+const _templates =
+    <String, ({String label, String subject, String body, String sms})>{
+      'maintenance': (
+        label: 'Scheduled maintenance',
+        subject: 'Scheduled Maintenance Notice',
+        body:
+            'Dear Client,\n\n'
+            'We will be performing scheduled maintenance on [date] from '
+            '[start time] to [end time].\n\n'
+            'During this period, our services may be temporarily unavailable. '
+            'We apologise for any inconvenience.\n\n'
+            'Thank you for your patience.',
+        sms:
+            'Maintenance on [date] [start]-[end]. Services may be briefly '
+            'unavailable. We apologise for any inconvenience.',
+      ),
+      'service_update': (
+        label: 'Service update',
+        subject: 'Service Update',
+        body:
+            'Dear Client,\n\n'
+            'We are pleased to inform you about an important update to our '
+            'services.\n\n[Describe the update here]\n\n'
+            'If you have any questions, please do not hesitate to contact us.\n\n'
+            'Best regards.',
+        sms: 'Service update: [brief description]. Contact us for details.',
+      ),
+      'unavailability': (
+        label: 'Service unavailability',
+        subject: 'Service Unavailability Notice',
+        body:
+            'Dear Client,\n\n'
+            'We regret to inform you that our services will be unavailable on '
+            '[date] due to [reason].\n\n'
+            'We expect to resume normal operations by [time/date]. We apologise '
+            'for any inconvenience caused.\n\nThank you for your understanding.',
+        sms:
+            'Our services will be unavailable on [date] due to [reason]. '
+            'Normal operations resume by [time].',
+      ),
+      'holiday': (
+        label: 'Holiday notice',
+        subject: 'Holiday Notice',
+        body:
+            'Dear Client,\n\n'
+            'Please note that our offices will be closed on [date(s)] for '
+            '[holiday name].\n\n'
+            'We will resume normal business hours on [return date].\n\n'
+            'Wishing you a wonderful holiday!',
+        sms:
+            'Our offices will be closed [date(s)] for [holiday]. We resume on '
+            '[return date].',
+      ),
+      'general': (
+        label: 'General announcement',
+        subject: 'Important Announcement',
+        body:
+            'Dear Client,\n\n'
+            'We would like to bring the following to your attention:\n\n'
+            '[Your announcement here]\n\n'
+            'Please feel free to reach out if you have any questions.\n\n'
+            'Best regards.',
+        sms: '[Your announcement here]. Contact us for more info.',
+      ),
+    };
 
 class _ComposeView extends ConsumerStatefulWidget {
   const _ComposeView();
@@ -124,6 +130,10 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
   final Map<String, String> _recipients = {};
 
   bool _sending = false;
+
+  /// A rejected send, shown above the form rather than in a snackbar so it is
+  /// still there when the reader looks up from the field they were editing.
+  String? _formError;
 
   @override
   void dispose() {
@@ -148,6 +158,7 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
+      shape: commsSheetShape,
       builder: (context) => _RecipientPicker(selected: _recipients),
     );
     if (picked != null) {
@@ -170,16 +181,18 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(targeted
-            ? 'Send to ${_recipients.length} '
-                'client${_recipients.length == 1 ? '' : 's'}?'
-            : 'Send to every client?'),
+        title: Text(
+          targeted
+              ? 'Send to ${_recipients.length} '
+                    'client${_recipients.length == 1 ? '' : 's'}?'
+              : 'Send to every client?',
+        ),
         content: Text(
           targeted
               ? 'Only the clients you selected will receive this, and only '
-                  'those with a $channelWording. It cannot be recalled.'
+                    'those with a $channelWording. It cannot be recalled.'
               : 'This goes to all clients with a $channelWording. '
-                  'It cannot be recalled.',
+                    'It cannot be recalled.',
         ),
         actions: [
           TextButton(
@@ -188,7 +201,7 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Send'),
+            child: const Text('Send broadcast'),
           ),
         ],
       ),
@@ -201,10 +214,16 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
     if (!await _confirm()) return;
     if (!mounted) return;
 
+    FocusScope.of(context).unfocus();
     final messenger = ScaffoldMessenger.of(context);
-    setState(() => _sending = true);
+    setState(() {
+      _sending = true;
+      _formError = null;
+    });
     try {
-      final result = await ref.read(commsServiceProvider).sendBroadcast(
+      final result = await ref
+          .read(commsServiceProvider)
+          .sendBroadcast(
             channel: _channel,
             subject: _subject.text.trim(),
             body: _body.text.trim(),
@@ -223,7 +242,7 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
       _recipients.clear();
       ref.read(broadcastsRefreshProvider.notifier).state++;
     } on ApiException catch (e) {
-      showCommsMessage(messenger, e.message, isError: true);
+      if (mounted) setState(() => _formError = e.message);
     } finally {
       if (mounted) setState(() => _sending = false);
     }
@@ -232,8 +251,9 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final canSend =
-        ref.watch(commsPermissionProvider(CommsPermissions.broadcast));
+    final canSend = ref.watch(
+      commsPermissionProvider(CommsPermissions.broadcast),
+    );
 
     if (!canSend) {
       return const StateMessage(
@@ -243,40 +263,58 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
       );
     }
 
+    final recipientSummary = _recipients.isEmpty
+        ? 'Everyone with a usable address on this channel'
+        : _recipients.values.take(3).join(', ') +
+              (_recipients.length > 3
+                  ? ' +${_recipients.length - 3} more'
+                  : '');
+
     return Form(
       key: _form,
       child: ListView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: const EdgeInsets.all(Spacing.md),
         children: [
+          if (_formError != null) ...[
+            ErrorBanner(message: _formError!),
+            const SizedBox(height: Spacing.md),
+          ],
+          const CommsFieldLabel('Channel'),
+          const SizedBox(height: Spacing.sm),
           SizedBox(
             width: double.infinity,
             child: SegmentedButton<BroadcastChannel>(
               showSelectedIcon: false,
+              style: SegmentedButton.styleFrom(
+                textStyle: theme.textTheme.labelMedium,
+              ),
               segments: [
                 for (final c in BroadcastChannel.values)
                   ButtonSegment<BroadcastChannel>(
-                      value: c, label: Text(c.label)),
+                    value: c,
+                    label: Text(c.label),
+                  ),
               ],
               selected: {_channel},
               onSelectionChanged: (values) =>
                   setState(() => _channel = values.first),
             ),
           ),
+          const SizedBox(height: Spacing.md),
+          const CommsFieldLabel('Recipients'),
           const SizedBox(height: Spacing.sm),
           Card(
             child: ListTile(
-              leading: const Icon(Icons.group_outlined),
-              title: Text(_recipients.isEmpty
-                  ? 'All clients'
-                  : '${_recipients.length} client'
-                      '${_recipients.length == 1 ? '' : 's'} selected'),
-              subtitle: Text(
+              title: Text(
                 _recipients.isEmpty
-                    ? 'Everyone with a usable address on this channel'
-                    : _recipients.values.take(3).join(', ') +
-                        (_recipients.length > 3
-                            ? ' +${_recipients.length - 3} more'
-                            : ''),
+                    ? 'All clients'
+                    : '${_recipients.length} client'
+                          '${_recipients.length == 1 ? '' : 's'} selected',
+                style: theme.textTheme.titleSmall,
+              ),
+              subtitle: Text(
+                recipientSummary,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -285,13 +323,12 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
             ),
           ),
           const SizedBox(height: Spacing.md),
+          const CommsFieldLabel('Start from a template'),
+          const SizedBox(height: Spacing.sm),
           DropdownButtonFormField<String>(
             initialValue: null,
             isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'Start from a template',
-              border: OutlineInputBorder(),
-            ),
+            decoration: const InputDecoration(hintText: 'Choose a template'),
             items: [
               for (final entry in _templates.entries)
                 DropdownMenuItem<String>(
@@ -305,72 +342,75 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
           ),
           if (_channel.includesEmail) ...[
             const SizedBox(height: Spacing.md),
+            const CommsFieldLabel('Email subject'),
+            const SizedBox(height: Spacing.sm),
             TextFormField(
               controller: _subject,
               maxLength: 255,
+              enabled: !_sending,
+              textInputAction: TextInputAction.next,
               decoration: const InputDecoration(
-                labelText: 'Email subject',
-                border: OutlineInputBorder(),
+                hintText: 'What the email is about',
               ),
               validator: (value) => (value == null || value.trim().isEmpty)
-                  ? 'A subject is required for email.'
+                  ? 'Enter a subject for the email.'
                   : null,
             ),
+            const SizedBox(height: Spacing.md),
+            const CommsFieldLabel('Email message'),
             const SizedBox(height: Spacing.sm),
             TextFormField(
               controller: _body,
               minLines: 6,
               maxLines: 12,
+              enabled: !_sending,
               keyboardType: TextInputType.multiline,
               decoration: const InputDecoration(
-                labelText: 'Email message',
+                hintText: 'Dear Client, …',
                 alignLabelWithHint: true,
-                border: OutlineInputBorder(),
               ),
               validator: (value) => (value == null || value.trim().isEmpty)
-                  ? 'An email message is required.'
+                  ? 'Enter the email message.'
                   : null,
             ),
           ],
           if (_channel.includesSms) ...[
             const SizedBox(height: Spacing.md),
+            const CommsFieldLabel('SMS message'),
+            const SizedBox(height: Spacing.sm),
             TextFormField(
               controller: _smsBody,
               minLines: 3,
               maxLines: 5,
+              enabled: !_sending,
               // 160 is the server's cap, not a soft suggestion — the counter
               // has to be visible while typing.
               maxLength: 160,
               keyboardType: TextInputType.multiline,
               decoration: const InputDecoration(
-                labelText: 'SMS message',
+                hintText: 'Up to 160 characters',
                 alignLabelWithHint: true,
-                border: OutlineInputBorder(),
               ),
               validator: (value) => (value == null || value.trim().isEmpty)
-                  ? 'An SMS message is required.'
+                  ? 'Enter the SMS message.'
                   : null,
             ),
           ],
-          const SizedBox(height: Spacing.md),
-          FilledButton.icon(
+          const SizedBox(height: Spacing.lg),
+          PrimaryButton(
+            label: _sending ? 'Sending…' : 'Send broadcast',
+            icon: Icons.send_rounded,
+            busy: _sending,
             onPressed: _sending ? null : _send,
-            icon: _sending
-                ? const SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.send, size: 18),
-            label: const Text('Send broadcast'),
           ),
-          const SizedBox(height: Spacing.sm),
+          const SizedBox(height: Spacing.md),
           Text(
             'Clients without an address for the chosen channel are skipped '
             'server-side. Sending is not queued — keep the app open until the '
             'tally comes back.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: Spacing.xl),
@@ -432,7 +472,9 @@ class _RecipientPickerState extends ConsumerState<_RecipientPicker> {
       if (reset) _error = null;
     });
     try {
-      final page = await ref.read(staffServiceProvider).clients(
+      final page = await ref
+          .read(staffServiceProvider)
+          .clients(
             search: _search.text.trim().isEmpty ? null : _search.text.trim(),
             page: next,
             perPage: 50,
@@ -463,34 +505,34 @@ class _RecipientPickerState extends ConsumerState<_RecipientPicker> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text('Recipients',
-                      style: theme.textTheme.titleMedium),
-                ),
-                if (_chosen.isNotEmpty)
-                  TextButton(
-                    onPressed: () => setState(_chosen.clear),
-                    child: const Text('All clients'),
-                  ),
-              ],
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.lg,
+              0,
+              Spacing.lg,
+              Spacing.md,
+            ),
+            child: CommsSheetHeader(
+              eyebrow: 'Broadcast',
+              title: 'Recipients',
+              trailing: _chosen.isEmpty
+                  ? null
+                  : TextButton(
+                      onPressed: () => setState(_chosen.clear),
+                      child: const Text('Clear selection'),
+                    ),
             ),
           ),
           Padding(
-            padding: const EdgeInsets.all(Spacing.md),
+            padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
             child: TextField(
               controller: _search,
               textInputAction: TextInputAction.search,
               onSubmitted: (_) => _load(reset: true),
               decoration: InputDecoration(
                 hintText: 'Search clients',
-                prefixIcon: const Icon(Icons.search),
-                isDense: true,
-                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: IconButton(
-                  icon: const Icon(Icons.arrow_forward),
+                  icon: const Icon(Icons.arrow_forward, size: 20),
                   tooltip: 'Search',
                   onPressed: () => _load(reset: true),
                 ),
@@ -499,12 +541,18 @@ class _RecipientPickerState extends ConsumerState<_RecipientPicker> {
           ),
           if (_error != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.lg,
+                Spacing.md,
+                Spacing.lg,
+                0,
+              ),
               child: ErrorBanner(
                 message: _error!.message,
                 onRetry: () => _load(reset: true),
               ),
             ),
+          const SizedBox(height: Spacing.sm),
           Flexible(
             child: (_loaded.isEmpty && _loading)
                 ? const Padding(
@@ -514,6 +562,7 @@ class _RecipientPickerState extends ConsumerState<_RecipientPicker> {
                 : ListView.builder(
                     controller: _scroll,
                     shrinkWrap: true,
+                    padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
                     itemCount: _loaded.length + (_loading ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index >= _loaded.length) {
@@ -523,29 +572,38 @@ class _RecipientPickerState extends ConsumerState<_RecipientPicker> {
                             child: SizedBox(
                               height: 20,
                               width: 20,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             ),
                           ),
                         );
                       }
                       final client = _loaded[index];
+                      final unreachable =
+                          client.email == null && client.phone == null;
                       return CheckboxListTile(
                         dense: true,
                         value: _chosen.containsKey(client.id),
-                        title: Text(client.name,
-                            maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Text(
-                          [
-                            if (client.email != null) client.email!,
-                            if (client.phone != null) client.phone!,
-                            if (client.email == null && client.phone == null)
-                              'No email or phone — will be skipped',
-                          ].join(' · '),
-                          style: theme.textTheme.bodySmall,
+                        title: Text(
+                          client.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodyLarge,
                         ),
+                        subtitle: unreachable
+                            ? Text(
+                                'No email or phone — will be skipped',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  color: theme.colorScheme.onSurfaceVariant,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )
+                            : CommsMeta(
+                                [
+                                  if (client.email != null) client.email!,
+                                  if (client.phone != null) client.phone!,
+                                ].join(' · '),
+                              ),
                         onChanged: (checked) => setState(() {
                           if (checked ?? false) {
                             _chosen[client.id] = client.name;
@@ -560,25 +618,30 @@ class _RecipientPickerState extends ConsumerState<_RecipientPicker> {
           const Divider(height: 1),
           Padding(
             padding: EdgeInsets.fromLTRB(
+              Spacing.lg,
               Spacing.md,
-              Spacing.sm,
-              Spacing.md,
-              Spacing.md + MediaQuery.of(context).viewInsets.bottom,
+              Spacing.lg,
+              Spacing.lg + MediaQuery.of(context).viewInsets.bottom,
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Expanded(
-                  child: Text(
-                    _chosen.isEmpty
-                        ? 'All clients'
-                        : '${_chosen.length} selected',
-                    style: theme.textTheme.bodyMedium,
+                Text(
+                  (_chosen.isEmpty
+                          ? 'All clients'
+                          : '${_chosen.length} selected')
+                      .toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                FilledButton(
+                const SizedBox(height: Spacing.sm),
+                PrimaryButton(
+                  label: _chosen.isEmpty
+                      ? 'Use all clients'
+                      : 'Use these recipients',
                   onPressed: () =>
                       Navigator.of(context).pop<Map<String, String>>(_chosen),
-                  child: const Text('Done'),
                 ),
               ],
             ),
@@ -602,63 +665,141 @@ class _BroadcastHistoryViewState extends ConsumerState<_BroadcastHistoryView> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    ref.listen<int>(broadcastsRefreshProvider,
-        (previous, next) => _list.currentState?.reload());
+    ref.listen<int>(
+      broadcastsRefreshProvider,
+      (previous, next) => _list.currentState?.reload(),
+    );
 
     return PagedListView<Broadcast>(
       key: _list,
       fetch: (page) => ref.read(commsServiceProvider).broadcasts(page: page),
       emptyIcon: Icons.campaign_outlined,
       emptyTitle: 'Nothing sent yet',
-      itemBuilder: (context, broadcast) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(Spacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      broadcast.subject ?? broadcast.smsBody ?? 'Broadcast',
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
+      emptyMessage: 'Broadcasts you send will be listed here.',
+      itemBuilder: (context, broadcast) => _BroadcastCard(broadcast: broadcast),
+    );
+  }
+}
+
+/// One sent broadcast: subject, status beside its metadata, the delivery
+/// tally as the aligned figure on the right, and a preview of the body.
+class _BroadcastCard extends StatelessWidget {
+  const _BroadcastCard({required this.broadcast});
+
+  final Broadcast broadcast;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+    final preview = broadcast.body ?? broadcast.smsBody;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        broadcast.subject ?? broadcast.smsBody ?? 'Broadcast',
+                        style: theme.textTheme.titleSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: Spacing.xs),
+                      Row(
+                        children: [
+                          StatusChip(broadcast.deliveryStatus, dense: true),
+                          const SizedBox(width: Spacing.sm),
+                          Flexible(
+                            child: CommsMeta(
+                              [
+                                broadcast.channel.label,
+                                if (broadcast.failedCount > 0)
+                                  '${broadcast.failedCount} failed',
+                                if (broadcast.wasTargeted) 'selected clients',
+                                if (broadcast.senderName != null)
+                                  broadcast.senderName!,
+                                Formatting.dateTime(broadcast.createdAt),
+                              ].join(' · '),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: Spacing.sm),
-                  StatusChip(broadcast.deliveryStatus, dense: true),
-                ],
-              ),
-              const SizedBox(height: Spacing.xs),
-              Text(
-                [
-                  broadcast.channel.label,
-                  '${broadcast.sentCount}/${broadcast.totalRecipients} sent',
-                  if (broadcast.failedCount > 0)
-                    '${broadcast.failedCount} failed',
-                  if (broadcast.wasTargeted) 'selected clients',
-                  if (broadcast.senderName != null) broadcast.senderName!,
-                  Formatting.dateTime(broadcast.createdAt),
-                ].join(' · '),
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              ),
-              if (broadcast.body != null || broadcast.smsBody != null) ...[
-                const SizedBox(height: Spacing.sm),
-                Text(
-                  htmlToPlainText(broadcast.body ?? broadcast.smsBody!),
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(width: Spacing.md),
+                _Tally(
+                  sent: broadcast.sentCount,
+                  total: broadcast.totalRecipients,
+                  color: switch (broadcast.deliveryStatus) {
+                    'failed' => status.overdue,
+                    'partial' => status.attention,
+                    _ => null,
+                  },
                 ),
               ],
+            ),
+            if (preview != null) ...[
+              const SizedBox(height: Spacing.sm),
+              Text(
+                htmlToPlainText(preview),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
-          ),
+          ],
         ),
       ),
+    );
+  }
+}
+
+/// `12/40` over a SENT eyebrow — the list's right-hand column.
+class _Tally extends StatelessWidget {
+  const _Tally({required this.sent, required this.total, this.color});
+
+  final int sent;
+  final int total;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        Text(
+          '${Formatting.integer(sent)}/${Formatting.integer(total)}',
+          style: TextStyle(
+            fontFamily: Type.family,
+            fontSize: MoneyScale.row.size,
+            fontWeight: FontWeight.w700,
+            height: 1,
+            fontFeatures: Type.figures,
+            color: color ?? theme.colorScheme.onSurface,
+          ),
+        ),
+        const SizedBox(height: Spacing.xs),
+        Text(
+          'SENT',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

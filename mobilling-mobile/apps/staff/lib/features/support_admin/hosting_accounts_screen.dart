@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
 import '../common/paged_list.dart';
+import '../crm/crm_ui.dart' show FilterStrip;
 import 'support_admin_providers.dart';
 
 /// Hosting accounts across every client.
@@ -23,8 +24,7 @@ class HostingAccountsScreen extends ConsumerStatefulWidget {
       _HostingAccountsScreenState();
 }
 
-class _HostingAccountsScreenState
-    extends ConsumerState<HostingAccountsScreen> {
+class _HostingAccountsScreenState extends ConsumerState<HostingAccountsScreen> {
   final _listKey = GlobalKey<PagedListViewState>();
   final _search = TextEditingController();
   Timer? _debounce;
@@ -47,69 +47,70 @@ class _HostingAccountsScreenState
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400),
-        () => _listKey.currentState?.reload());
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Hosting accounts')),
+      appBar: ShellTopBar(
+        eyebrow: 'Web Services',
+        title: 'Hosting accounts',
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search domain or cPanel user',
+          onChanged: _onSearchChanged,
+        ),
+      ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, 0),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                hintText: 'Search domain or cPanel user',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
-            ),
+          FilterStrip(
+            options: _filters,
+            selected: _status,
+            onSelect: (value) {
+              setState(() => _status = value);
+              _listKey.currentState?.reload();
+            },
           ),
-          SizedBox(
-            height: 48,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: Spacing.md, vertical: Spacing.sm),
-              itemCount: _filters.length,
-              separatorBuilder: (context, index) =>
-                  const SizedBox(width: Spacing.sm),
-              itemBuilder: (context, index) {
-                final (value, label) = _filters[index];
-                return FilterChip(
-                  label: Text(label),
-                  selected: _status == value,
-                  showCheckmark: false,
-                  onSelected: (_) {
-                    setState(() => _status = value);
-                    _listKey.currentState?.reload();
-                  },
-                );
-              },
-            ),
-          ),
+          const SizedBox(height: Spacing.sm),
           Expanded(
-            child: PagedListView(
-              key: _listKey,
-              fetch: (page) =>
-                  ref.read(supportAdminServiceProvider).hostingAccounts(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                0,
+                Spacing.md,
+                Spacing.md,
+              ),
+              // One card, rows divided by hairlines — the paged list scrolls
+              // inside it.
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: PagedListView(
+                  key: _listKey,
+                  padding: EdgeInsets.zero,
+                  separated: false,
+                  fetch: (page) => ref
+                      .read(supportAdminServiceProvider)
+                      .hostingAccounts(
                         status: _status,
                         search: _search.text.trim().isEmpty
                             ? null
                             : _search.text.trim(),
                         page: page,
                       ),
-              itemBuilder: (context, account) => _AccountCard(
-                account: account,
-                onChanged: () => _listKey.currentState?.reload(),
+                  itemBuilder: (context, account) => _AccountRow(
+                    account: account,
+                    onChanged: () => _listKey.currentState?.reload(),
+                  ),
+                  emptyIcon: Icons.storage_outlined,
+                  emptyTitle: 'No hosting accounts',
+                  emptyMessage:
+                      'Try another domain, or clear the status filter.',
+                ),
               ),
-              emptyIcon: Icons.storage_outlined,
-              emptyTitle: 'No hosting accounts',
             ),
           ),
         ],
@@ -118,8 +119,10 @@ class _HostingAccountsScreenState
   }
 }
 
-class _AccountCard extends ConsumerWidget {
-  const _AccountCard({required this.account, required this.onChanged});
+/// One account: domain, status chip beside the client / package / server
+/// line, and disk usage as the aligned trailing figure.
+class _AccountRow extends ConsumerWidget {
+  const _AccountRow({required this.account, required this.onChanged});
 
   final StaffHostingAccount account;
   final VoidCallback onChanged;
@@ -127,29 +130,60 @@ class _AccountCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final meta = theme.textTheme.labelSmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+    final hasDisk = account.diskUsed != null && account.diskLimit != null;
 
-    return Card(
-      child: ListTile(
-        title: Text(account.domain ?? account.cpanelUsername ?? '—'),
-        subtitle: Text(
-          [
-            if (account.clientName != null) account.clientName!,
-            if (account.package != null) account.package!,
-            if (account.diskUsed != null && account.diskLimit != null)
-              '${account.diskUsed} / ${account.diskLimit}',
-            if (account.serverName != null) account.serverName!,
-          ].join(' · '),
-          style: theme.textTheme.bodySmall,
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          onTap: () => _showActions(context, ref),
+          title: Text(
+            account.domain ?? account.cpanelUsername ?? '—',
+            style: theme.textTheme.titleSmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Row(
+              children: [
+                StatusChip(account.status, dense: true),
+                const SizedBox(width: Spacing.sm),
+                Flexible(
+                  child: Text(
+                    [
+                      if (account.clientName != null) account.clientName!,
+                      if (account.package != null) account.package!,
+                      if (account.serverName != null) account.serverName!,
+                    ].join(' · '),
+                    style: meta,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          trailing: hasDisk
+              ? Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      '${account.diskUsed} / ${account.diskLimit}',
+                      style: theme.textTheme.labelMedium,
+                    ),
+                    const SizedBox(height: 2),
+                    Text('DISK', style: meta),
+                  ],
+                )
+              : const Icon(Icons.chevron_right),
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            StatusChip(account.status, dense: true),
-            const Icon(Icons.chevron_right),
-          ],
-        ),
-        onTap: () => _showActions(context, ref),
-      ),
+        const Divider(height: 1),
+      ],
     );
   }
 
@@ -157,6 +191,7 @@ class _AccountCard extends ConsumerWidget {
     final changed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => _AccountActionsSheet(account: account),
     );
@@ -174,15 +209,16 @@ class _AccountActionsSheet extends ConsumerStatefulWidget {
       _AccountActionsSheetState();
 }
 
-class _AccountActionsSheetState
-    extends ConsumerState<_AccountActionsSheet> {
+class _AccountActionsSheetState extends ConsumerState<_AccountActionsSheet> {
   bool _busy = false;
   bool _changed = false;
 
   StaffHostingAccount get account => widget.account;
 
-  Future<void> _run(Future<void> Function() action,
-      {String? successMessage}) async {
+  Future<void> _run(
+    Future<void> Function() action, {
+    String? successMessage,
+  }) async {
     if (_busy) return;
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
@@ -202,48 +238,56 @@ class _AccountActionsSheetState
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final status = context.statusColors;
     final auth = ref.watch(sessionControllerProvider).session;
     final canSuspend =
         auth?.can(SupportAdminPermissions.hostingSuspend) ?? false;
     final canSso = auth?.can(SupportAdminPermissions.hostingSso) ?? false;
     final logs = ref.watch(hostingLogsProvider(account.id));
+    final meta = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
 
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.only(top: Spacing.md, bottom: Spacing.md),
+        padding: const EdgeInsets.only(bottom: Spacing.md),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: Spacing.lg),
+              padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (account.clientName != null) ...[
+                    Text(account.clientName!.toUpperCase(), style: meta),
+                    const SizedBox(height: Spacing.xs),
+                  ],
+                  Text(
+                    account.domain ?? account.cpanelUsername ?? '—',
+                    style: Type.display(22, color: scheme.onSurface),
+                  ),
+                  const SizedBox(height: Spacing.sm),
                   Row(
                     children: [
-                      Expanded(
-                        child: Text(account.domain ?? '—',
-                            style: theme.textTheme.titleMedium),
-                      ),
                       StatusChip(account.status, dense: true),
+                      const SizedBox(width: Spacing.sm),
+                      Flexible(
+                        child: Text(
+                          [
+                            if (account.cpanelUsername != null)
+                              account.cpanelUsername!,
+                            if (account.lastSyncedAt != null)
+                              'synced ${Formatting.dateTime(account.lastSyncedAt)}',
+                          ].join(' · '),
+                          style: meta,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
-                  Text(
-                    [
-                      if (account.clientName != null) account.clientName!,
-                      if (account.cpanelUsername != null)
-                        account.cpanelUsername!,
-                    ].join(' · '),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                  if (account.lastSyncedAt != null)
-                    Text(
-                      'Usage synced ${Formatting.dateTime(account.lastSyncedAt)}',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
-                    ),
                 ],
               ),
             ),
@@ -258,8 +302,10 @@ class _AccountActionsSheetState
                       .read(supportAdminServiceProvider)
                       .hostingSsoUrl(account.id);
                   if (url.isNotEmpty) {
-                    await launchUrl(Uri.parse(url),
-                        mode: LaunchMode.externalApplication);
+                    await launchUrl(
+                      Uri.parse(url),
+                      mode: LaunchMode.externalApplication,
+                    );
                   }
                 }),
               ),
@@ -267,21 +313,20 @@ class _AccountActionsSheetState
               leading: const Icon(Icons.sync),
               title: const Text('Refresh disk usage'),
               enabled: !_busy,
-              onTap: () => _run(
-                () async {
-                  await ref
-                      .read(supportAdminServiceProvider)
-                      .refreshHostingUsage(account.id);
-                  ref.invalidate(hostingLogsProvider(account.id));
-                },
-                successMessage: 'Usage refreshed.',
-              ),
+              onTap: () => _run(() async {
+                await ref
+                    .read(supportAdminServiceProvider)
+                    .refreshHostingUsage(account.id);
+                ref.invalidate(hostingLogsProvider(account.id));
+              }, successMessage: 'Usage refreshed.'),
             ),
             if (canSuspend)
               account.isSuspended
                   ? ListTile(
-                      leading: Icon(Icons.play_circle_outline,
-                          color: context.statusColors.settled),
+                      leading: Icon(
+                        Icons.play_circle_outline,
+                        color: status.settled,
+                      ),
                       title: const Text('Unsuspend'),
                       enabled: !_busy,
                       onTap: () => _run(
@@ -292,17 +337,22 @@ class _AccountActionsSheetState
                       ),
                     )
                   : ListTile(
-                      leading: Icon(Icons.pause_circle_outline,
-                          color: theme.colorScheme.error),
-                      title: Text('Suspend',
-                          style:
-                              TextStyle(color: theme.colorScheme.error)),
+                      leading: Icon(
+                        Icons.pause_circle_outline,
+                        color: scheme.error,
+                      ),
+                      title: Text(
+                        'Suspend',
+                        style: TextStyle(color: scheme.error),
+                      ),
                       enabled: !_busy,
                       onTap: () async {
                         // The API records a fixed reason; confirm only.
-                        final confirmed = await _confirm(context,
-                            'Suspend ${account.domain}?',
-                            'The site goes offline until unsuspended.');
+                        final confirmed = await _confirm(
+                          context,
+                          'Suspend ${account.domain}?',
+                          'The site goes offline until unsuspended.',
+                        );
                         if (!confirmed) return;
                         await _run(
                           () => ref
@@ -319,16 +369,21 @@ class _AccountActionsSheetState
                   ? const SizedBox.shrink()
                   : Padding(
                       padding: const EdgeInsets.fromLTRB(
-                          Spacing.lg, Spacing.sm, Spacing.lg, 0),
+                        Spacing.lg,
+                        Spacing.md,
+                        Spacing.lg,
+                        0,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Recent provisioning',
-                              style: theme.textTheme.titleSmall),
-                          const SizedBox(height: Spacing.xs),
+                          const SectionHeader('Recent provisioning'),
+                          const SizedBox(height: Spacing.sm),
                           for (final entry in entries.take(4))
                             Padding(
-                              padding: const EdgeInsets.only(bottom: 2),
+                              padding: const EdgeInsets.only(
+                                bottom: Spacing.xs,
+                              ),
                               child: Row(
                                 children: [
                                   Icon(
@@ -337,17 +392,22 @@ class _AccountActionsSheetState
                                         : Icons.error_outline,
                                     size: 14,
                                     color: entry.success
-                                        ? context.statusColors.settled
-                                        : context.statusColors.overdue,
+                                        ? status.settled
+                                        : status.overdue,
                                   ),
-                                  const SizedBox(width: Spacing.xs),
+                                  const SizedBox(width: Spacing.sm),
                                   Expanded(
                                     child: Text(
-                                      '${entry.action} · ${Formatting.date(entry.createdAt)}',
+                                      entry.action,
                                       style: theme.textTheme.bodySmall,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
+                                  ),
+                                  const SizedBox(width: Spacing.sm),
+                                  Text(
+                                    Formatting.date(entry.createdAt),
+                                    style: meta,
                                   ),
                                 ],
                               ),
@@ -376,8 +436,9 @@ class _AccountActionsSheetState
         content: Text(body),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
             child: const Text('Suspend'),

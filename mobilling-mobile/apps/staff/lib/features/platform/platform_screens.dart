@@ -4,7 +4,14 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../common/paged_list.dart';
-import '../crm/crm_ui.dart' show CrmAsyncView, CrmDetailRow;
+import '../crm/crm_ui.dart'
+    show
+        CrmAsyncView,
+        CrmCardList,
+        CrmDetailRow,
+        CrmMetaLine,
+        CrmStatusLine,
+        FilterStrip;
 import 'platform_providers.dart';
 import 'platform_shell.dart';
 
@@ -25,22 +32,29 @@ class PlatformPlansScreen extends ConsumerWidget {
       onRetry: () => ref.invalidate(platformPlansProvider),
       emptyIcon: Icons.card_membership_outlined,
       emptyTitle: 'No plans configured',
-      itemBuilder: (context, plan) => Card(
-        child: ListTile(
-          title: Text(plan.name),
-          subtitle: Text(
-            [
-              Formatting.currency(plan.price),
-              if (plan.billingCycle != null)
-                plan.billingCycle!.replaceAll('_', ' '),
-              if (plan.durationDays != null) '${plan.durationDays} days',
-            ].join(' · '),
-            style: theme.textTheme.bodySmall,
+      itemBuilder: (context, plan) => ListTile(
+        title: Text(plan.name, style: theme.textTheme.titleSmall),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Row(
+            children: [
+              if (!plan.isActive) ...[
+                const StatusChip('draft', dense: true),
+                const SizedBox(width: Spacing.sm),
+              ],
+              Flexible(
+                child: CrmMetaLine(
+                  [
+                    if (plan.billingCycle != null)
+                      plan.billingCycle!.replaceAll('_', ' '),
+                    if (plan.durationDays != null) '${plan.durationDays} days',
+                  ].join(' · '),
+                ),
+              ),
+            ],
           ),
-          trailing: plan.isActive
-              ? null
-              : const StatusChip('draft', dense: true),
         ),
+        trailing: Money(plan.price),
       ),
       footnote: 'Plan pricing is edited in the web admin.',
     );
@@ -64,20 +78,42 @@ class CurrenciesScreen extends ConsumerWidget {
       onRetry: () => ref.invalidate(currenciesProvider),
       emptyIcon: Icons.currency_exchange_outlined,
       emptyTitle: 'No currencies configured',
-      itemBuilder: (context, currency) => Card(
-        child: ListTile(
-          leading: CircleAvatar(
-            child: Text(currency.symbol ?? currency.code.substring(0, 1),
-                style: theme.textTheme.labelLarge),
+      itemBuilder: (context, currency) => ListTile(
+        dense: true,
+        // The code is the name here — set as a label, not as a sentence.
+        title: Text(
+          currency.code.toUpperCase(),
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurface,
           ),
-          title: Text(currency.code),
-          subtitle: currency.name == null
-              ? null
-              : Text(currency.name!, style: theme.textTheme.bodySmall),
-          trailing: currency.isActive
-              ? null
-              : const StatusChip('draft', dense: true),
         ),
+        subtitle: currency.name == null && currency.isActive
+            ? null
+            : Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  children: [
+                    if (!currency.isActive) ...[
+                      const StatusChip('draft', dense: true),
+                      const SizedBox(width: Spacing.sm),
+                    ],
+                    if (currency.name != null)
+                      Flexible(
+                        child: Text(
+                          currency.name!,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+        trailing: currency.symbol == null
+            ? null
+            : Text(currency.symbol!, style: theme.textTheme.titleMedium),
       ),
     );
   }
@@ -100,24 +136,46 @@ class SmsPackagesScreen extends ConsumerWidget {
       onRetry: () => ref.invalidate(smsPackagesProvider),
       emptyIcon: Icons.sell_outlined,
       emptyTitle: 'No packages configured',
-      itemBuilder: (context, package) => Card(
-        child: ListTile(
-          title: Text(package.name),
-          subtitle: Text(
-            // Unit price is the number that actually decides value, and the
-            // API doesn't send it — so it's derived here.
-            '${package.smsCount} messages · '
-            '${Formatting.currency(package.unitPrice)} each',
-            style: theme.textTheme.bodySmall,
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
+      itemBuilder: (context, package) => ListTile(
+        title: Text(package.name, style: theme.textTheme.titleSmall),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Row(
             children: [
-              Money(package.price),
-              if (!package.isActive) const StatusChip('draft', dense: true),
+              if (!package.isActive) ...[
+                const StatusChip('draft', dense: true),
+                const SizedBox(width: Spacing.sm),
+              ],
+              Flexible(
+                child: CrmMetaLine(
+                  '${Formatting.integer(package.smsCount)} messages',
+                ),
+              ),
             ],
           ),
+        ),
+        // Unit price is the number that actually decides value, and the API
+        // doesn't send it — so it's derived here, under the pack price.
+        trailing: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Money(package.price),
+            const SizedBox(height: 3),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Money(
+                  package.unitPrice,
+                  scale: MoneyScale.dense,
+                  showCode: false,
+                ),
+                const SizedBox(width: Spacing.xs),
+                const CrmMetaLine('each'),
+              ],
+            ),
+          ],
         ),
       ),
     );
@@ -132,8 +190,7 @@ class SmsPurchasesScreen extends ConsumerStatefulWidget {
   const SmsPurchasesScreen({super.key});
 
   @override
-  ConsumerState<SmsPurchasesScreen> createState() =>
-      _SmsPurchasesScreenState();
+  ConsumerState<SmsPurchasesScreen> createState() => _SmsPurchasesScreenState();
 }
 
 class _SmsPurchasesScreenState extends ConsumerState<SmsPurchasesScreen> {
@@ -152,66 +209,59 @@ class _SmsPurchasesScreenState extends ConsumerState<SmsPurchasesScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('SMS purchases')),
+      appBar: const ShellTopBar(eyebrow: 'Platform', title: 'SMS purchases'),
       body: Column(
         children: [
-          SizedBox(
-            height: 48,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(
-                  horizontal: Spacing.md, vertical: Spacing.sm),
-              itemCount: _filters.length,
-              separatorBuilder: (context, index) =>
-                  const SizedBox(width: Spacing.sm),
-              itemBuilder: (context, index) {
-                final (value, label) = _filters[index];
-                return FilterChip(
-                  label: Text(label),
-                  selected: _status == value,
-                  showCheckmark: false,
-                  onSelected: (_) {
-                    setState(() => _status = value);
-                    _listKey.currentState?.reload();
-                  },
-                );
-              },
-            ),
+          FilterStrip(
+            options: _filters,
+            selected: _status,
+            onSelect: (value) {
+              setState(() => _status = value);
+              _listKey.currentState?.reload();
+            },
           ),
           Expanded(
             child: PagedListView(
               key: _listKey,
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.sm,
+                Spacing.md,
+                Spacing.xl,
+              ),
               fetch: (page) => ref
                   .read(platformServiceProvider)
                   .smsPurchases(status: _status, page: page),
               itemBuilder: (context, purchase) => Card(
                 child: ListTile(
-                  title: Text(purchase.tenantName ?? 'Purchase'),
-                  subtitle: Text(
-                    [
-                      '${purchase.smsQuantity} messages',
-                      if (purchase.userName != null) purchase.userName!,
-                      if (purchase.createdAt != null)
-                        Formatting.dateTime(purchase.createdAt),
-                    ].join(' · '),
-                    style: theme.textTheme.bodySmall,
+                  title: Text(
+                    purchase.tenantName ?? 'Purchase',
+                    style: theme.textTheme.titleSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  trailing: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Money(purchase.totalAmount),
-                      StatusChip(
-                          purchase.status == 'completed'
-                              ? 'paid'
-                              : purchase.status,
-                          dense: true),
-                    ],
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: CrmStatusLine(
+                      // 'completed' is a settled payment; the shared chip
+                      // reads 'paid' for that.
+                      status: purchase.status == 'completed'
+                          ? 'paid'
+                          : purchase.status,
+                      meta: [
+                        '${Formatting.integer(purchase.smsQuantity)} messages',
+                        if (purchase.userName != null) purchase.userName!,
+                        if (purchase.createdAt != null)
+                          Formatting.dateTime(purchase.createdAt),
+                      ].join(' · '),
+                    ),
                   ),
+                  trailing: Money(purchase.totalAmount),
                 ),
               ),
               emptyIcon: Icons.receipt_long_outlined,
               emptyTitle: 'No purchases',
+              emptyMessage: 'Nothing matches this filter.',
             ),
           ),
         ],
@@ -235,7 +285,7 @@ class PlatformPermissionsScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Permissions')),
+      appBar: const ShellTopBar(eyebrow: 'Platform', title: 'Permissions'),
       body: CrmAsyncView(
         value: permissions,
         errorTitle: 'Could not load permissions',
@@ -248,42 +298,63 @@ class PlatformPermissionsScreen extends ConsumerWidget {
           final groups = grouped.keys.toList()..sort();
 
           return ListView(
-            padding: const EdgeInsets.all(Spacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.md,
+              Spacing.md,
+              Spacing.xl,
+            ),
             children: [
-              Text('${items.length} permissions across ${groups.length} areas',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant)),
-              const SizedBox(height: Spacing.md),
-              for (final group in groups)
-                Card(
-                  margin: const EdgeInsets.only(bottom: Spacing.sm),
-                  child: ExpansionTile(
-                    shape: const Border(),
-                    collapsedShape: const Border(),
-                    title: Text(group.replaceAll('_', ' ')),
-                    subtitle: Text('${grouped[group]!.length} permissions',
-                        style: theme.textTheme.bodySmall),
-                    childrenPadding: const EdgeInsets.fromLTRB(
-                        Spacing.md, 0, Spacing.md, Spacing.sm),
-                    expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Wrap(
-                        spacing: Spacing.xs,
-                        runSpacing: Spacing.xs,
-                        children: [
-                          for (final p in grouped[group]!)
-                            Chip(
-                              label: Text(p.displayLabel,
-                                  style: theme.textTheme.labelSmall),
-                              visualDensity: VisualDensity.compact,
-                              materialTapTargetSize:
-                                  MaterialTapTargetSize.shrinkWrap,
-                            ),
-                        ],
-                      ),
-                    ],
-                  ),
+              SectionHeader(
+                'The catalogue',
+                trailing: CrmMetaLine(
+                  '${Formatting.integer(items.length)} across '
+                  '${Formatting.integer(groups.length)} areas',
                 ),
+              ),
+              const SizedBox(height: Spacing.sm),
+              CrmCardList(
+                children: [
+                  for (final group in groups)
+                    ExpansionTile(
+                      shape: const Border(),
+                      collapsedShape: const Border(),
+                      title: Text(
+                        group.replaceAll('_', ' '),
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      subtitle: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: CrmMetaLine(
+                          '${Formatting.integer(grouped[group]!.length)} '
+                          'permissions',
+                        ),
+                      ),
+                      childrenPadding: const EdgeInsets.fromLTRB(
+                        Spacing.md,
+                        0,
+                        Spacing.md,
+                        Spacing.md,
+                      ),
+                      expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: Spacing.xs,
+                          runSpacing: Spacing.xs,
+                          children: [
+                            for (final p in grouped[group]!)
+                              Chip(
+                                label: Text(p.displayLabel),
+                                visualDensity: VisualDensity.compact,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ],
           );
         },
@@ -305,12 +376,19 @@ class RoleTemplatesScreen extends ConsumerWidget {
       onRetry: () => ref.invalidate(roleTemplatesProvider),
       emptyIcon: Icons.shield_outlined,
       emptyTitle: 'No role templates',
-      itemBuilder: (context, role) => Card(
-        child: ListTile(
-          title: Text(role.name),
-          subtitle: Text(
-            '${role.permissionNames.length} permission${role.permissionNames.length == 1 ? '' : 's'}',
-            style: theme.textTheme.bodySmall,
+      itemBuilder: (context, role) => ListTile(
+        title: Text(role.name, style: theme.textTheme.titleSmall),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: CrmMetaLine(
+            '${role.permissionNames.length} '
+            'permission${role.permissionNames.length == 1 ? '' : 's'}',
+          ),
+        ),
+        trailing: Text(
+          Formatting.integer(role.permissionNames.length),
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: theme.colorScheme.onSurface,
           ),
         ),
       ),
@@ -332,7 +410,10 @@ class PlatformSettingsScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Platform settings')),
+      appBar: const ShellTopBar(
+        eyebrow: 'Platform',
+        title: 'Platform settings',
+      ),
       body: CrmAsyncView(
         value: settings,
         errorTitle: 'Could not load platform settings',
@@ -340,8 +421,15 @@ class PlatformSettingsScreen extends ConsumerWidget {
         builder: (s) {
           final keys = s.values.keys.toList()..sort();
           return ListView(
-            padding: const EdgeInsets.all(Spacing.md),
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.md,
+              Spacing.md,
+              Spacing.xl,
+            ),
             children: [
+              const SectionHeader('Configuration'),
+              const SizedBox(height: Spacing.sm),
               Card(
                 child: Padding(
                   padding: const EdgeInsets.all(Spacing.md),
@@ -359,11 +447,12 @@ class PlatformSettingsScreen extends ConsumerWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: Spacing.md),
+              const SizedBox(height: Spacing.lg),
               Text(
                 'Platform settings are edited in the web admin.',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -397,31 +486,33 @@ class TenantEmailSettingsScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Email settings')),
+      appBar: const ShellTopBar(eyebrow: 'Tenant', title: 'Email settings'),
       body: CrmAsyncView(
         value: settings,
         errorTitle: 'Could not load email settings',
         onRetry: () => ref.invalidate(tenantEmailSettingsProvider(tenantId)),
         builder: (s) => ListView(
-          padding: const EdgeInsets.all(Spacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.md,
+            Spacing.md,
+            Spacing.xl,
+          ),
           children: [
+            SectionHeader(
+              'SMTP',
+              trailing: StatusChip(
+                s.emailEnabled ? 'active' : 'draft',
+                dense: true,
+              ),
+            ),
+            const SizedBox(height: Spacing.sm),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(Spacing.md),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text('SMTP',
-                              style: theme.textTheme.titleSmall),
-                        ),
-                        StatusChip(s.emailEnabled ? 'active' : 'draft',
-                            dense: true),
-                      ],
-                    ),
-                    const SizedBox(height: Spacing.sm),
                     if (s.fromName != null)
                       CrmDetailRow('From name', s.fromName!),
                     if (s.fromAddress != null)
@@ -436,18 +527,19 @@ class TenantEmailSettingsScreen extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.lg),
             // Sends a real message — the only honest verification.
-            FilledButton.icon(
-              icon: const Icon(Icons.send_outlined, size: 18),
-              label: const Text('Send test email'),
+            PrimaryButton(
+              label: 'Send test email',
+              icon: Icons.send_outlined,
               onPressed: () => _test(context, ref),
             ),
             const SizedBox(height: Spacing.sm),
             Text(
               'SMTP credentials are edited in the web admin.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -460,10 +552,12 @@ class TenantEmailSettingsScreen extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(const SnackBar(content: Text('Sending…')));
     try {
-      final message =
-          await ref.read(platformServiceProvider).testTenantEmail(tenantId);
+      final message = await ref
+          .read(platformServiceProvider)
+          .testTenantEmail(tenantId);
       messenger.showSnackBar(
-          SnackBar(content: Text(message ?? 'Test email sent.')));
+        SnackBar(content: Text(message ?? 'Test email sent.')),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -479,47 +573,98 @@ class TenantSmsSettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final settings = ref.watch(tenantSmsSettingsProvider(tenantId));
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('SMS settings')),
+      appBar: const ShellTopBar(eyebrow: 'Tenant', title: 'SMS settings'),
       body: CrmAsyncView(
         value: settings,
         errorTitle: 'Could not load SMS settings',
         onRetry: () => ref.invalidate(tenantSmsSettingsProvider(tenantId)),
         builder: (s) => ListView(
-          padding: const EdgeInsets.all(Spacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.md,
+            Spacing.md,
+            Spacing.xl,
+          ),
           children: [
+            // What everything else on this screen is about: how many messages
+            // this tenant can still send.
+            Reveal(
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Spacing.lg),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'SMS BALANCE',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                          StatusChip(
+                            s.smsEnabled ? 'active' : 'draft',
+                            dense: true,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: Spacing.sm),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          Text(
+                            Formatting.integer(s.smsBalance),
+                            style: Type.display(
+                              MoneyScale.display.size,
+                              color: scheme.onSurface,
+                            ).copyWith(fontFeatures: Type.figures),
+                          ),
+                          const SizedBox(width: Spacing.sm),
+                          Text(
+                            'messages',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Sending'),
+            const SizedBox(height: Spacing.sm),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(Spacing.md),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child:
-                              Text('SMS', style: theme.textTheme.titleSmall),
-                        ),
-                        StatusChip(s.smsEnabled ? 'active' : 'draft',
-                            dense: true),
-                      ],
-                    ),
-                    const SizedBox(height: Spacing.sm),
-                    CrmDetailRow('Balance', '${s.smsBalance} messages'),
                     if (s.senderId != null)
                       CrmDetailRow('Sender ID', s.senderId!),
                     CrmDetailRow(
-                        'Reminders', s.reminderSmsEnabled ? 'On' : 'Off'),
+                      'Reminders',
+                      s.reminderSmsEnabled ? 'On' : 'Off',
+                    ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.lg),
             Text(
               'Recharge and deduct from the tenant screen.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -539,27 +684,45 @@ class TenantTemplatesScreen extends ConsumerWidget {
     final theme = Theme.of(context);
 
     return PlatformListScaffold<TenantTemplate>(
+      eyebrow: 'Tenant',
       title: 'Email templates',
       value: ref.watch(tenantTemplatesProvider(tenantId)),
       onRetry: () => ref.invalidate(tenantTemplatesProvider(tenantId)),
       emptyIcon: Icons.description_outlined,
       emptyTitle: 'No template overrides',
-      itemBuilder: (context, template) => Card(
-        child: ExpansionTile(
-          shape: const Border(),
-          collapsedShape: const Border(),
-          title: Text(template.label ?? template.key.replaceAll('_', ' ')),
-          subtitle: template.subject == null
-              ? null
-              : Text(template.subject!, style: theme.textTheme.bodySmall),
-          childrenPadding:
-              const EdgeInsets.fromLTRB(Spacing.md, 0, Spacing.md, Spacing.md),
-          expandedCrossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(htmlToPlainText(template.body),
-                style: theme.textTheme.bodySmall),
-          ],
+      itemBuilder: (context, template) => ExpansionTile(
+        shape: const Border(),
+        collapsedShape: const Border(),
+        title: Text(
+          template.label ?? template.key.replaceAll('_', ' '),
+          style: theme.textTheme.titleSmall,
         ),
+        subtitle: template.subject == null
+            ? null
+            : Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Text(
+                  template.subject!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+        childrenPadding: const EdgeInsets.fromLTRB(
+          Spacing.md,
+          0,
+          Spacing.md,
+          Spacing.md,
+        ),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            htmlToPlainText(template.body),
+            style: theme.textTheme.bodySmall,
+          ),
+        ],
       ),
       footnote: 'Templates are edited in the web admin.',
     );

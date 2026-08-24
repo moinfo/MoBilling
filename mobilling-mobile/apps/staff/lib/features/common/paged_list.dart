@@ -7,6 +7,12 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 /// Owns the whole lifecycle — first load, pull-to-refresh, tail loading,
 /// error and empty states — so the invoices and payments screens only supply
 /// a fetcher and a row builder. [fetch] receives the 1-based page to load.
+///
+/// Rows are whatever [itemBuilder] returns — in practice a [Card] each — and
+/// the list keeps a [Spacing.sm] gap between them so a column of cards reads
+/// as a column rather than as one tall slab. The states around the rows
+/// (loading, error, empty) are the app's shared ones, so every paged list
+/// fails and empties the same way.
 class PagedListView<T> extends StatefulWidget {
   const PagedListView({
     super.key,
@@ -107,7 +113,7 @@ class PagedListViewState<T> extends State<PagedListView<T>> {
     if (_error != null && data == null) {
       return StateMessage(
         icon: Icons.cloud_off_outlined,
-        title: 'Could not load',
+        title: 'Could not load this list',
         message: _error!.message,
         actionLabel: 'Retry',
         onAction: _load,
@@ -142,27 +148,36 @@ class PagedListViewState<T> extends State<PagedListView<T>> {
       child: ListView.separated(
         controller: _scroll,
         physics: const AlwaysScrollableScrollPhysics(),
+        // Most paged lists sit under a search field; dragging the list is
+        // how a thumb gets the keyboard out of the way.
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: widget.padding,
         itemCount: items.length + tailRows,
         separatorBuilder: (context, index) => widget.separated
             ? const SizedBox(height: Spacing.sm)
             : const SizedBox.shrink(),
         itemBuilder: (context, index) {
-          if (index >= items.length) {
-            return const Padding(
-              padding: EdgeInsets.all(Spacing.md),
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-              ),
-            );
-          }
+          if (index >= items.length) return const _TailLoader();
           return widget.itemBuilder(context, items[index]);
         },
       ),
     );
   }
+}
+
+/// The quiet spinner at the foot of a list that is fetching its next page.
+class _TailLoader extends StatelessWidget {
+  const _TailLoader();
+
+  @override
+  Widget build(BuildContext context) => const Padding(
+    padding: EdgeInsets.all(Spacing.md),
+    child: Center(
+      child: SizedBox(
+        width: 20,
+        height: 20,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      ),
+    ),
+  );
 }

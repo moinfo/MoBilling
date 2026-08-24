@@ -8,28 +8,26 @@ import 'comms_providers.dart';
 import 'comms_ui.dart';
 
 final AutoDisposeFutureProvider<List<WhatsappContact>>
-    whatsappContactsProvider =
-    FutureProvider.autoDispose<List<WhatsappContact>>(
+whatsappContactsProvider = FutureProvider.autoDispose<List<WhatsappContact>>(
   (ref) => ref.watch(commsServiceProvider).whatsappContacts(),
 );
 
 final AutoDisposeFutureProvider<WhatsappContactStats> whatsappStatsProvider =
     FutureProvider.autoDispose<WhatsappContactStats>(
-  (ref) => ref.watch(commsServiceProvider).whatsappContactStats(),
-);
+      (ref) => ref.watch(commsServiceProvider).whatsappContactStats(),
+    );
 
 final AutoDisposeFutureProvider<List<WhatsappCampaign>>
-    whatsappCampaignsProvider =
-    FutureProvider.autoDispose<List<WhatsappCampaign>>(
+whatsappCampaignsProvider = FutureProvider.autoDispose<List<WhatsappCampaign>>(
   (ref) => ref.watch(commsServiceProvider).whatsappCampaigns(),
 );
 
 final AutoDisposeFutureProviderFamily<List<WhatsappFollowup>, String>
-    whatsappFollowupsProvider =
-    FutureProvider.autoDispose.family<List<WhatsappFollowup>, String>(
-  (ref, contactId) =>
-      ref.watch(commsServiceProvider).whatsappFollowups(contactId),
-);
+whatsappFollowupsProvider = FutureProvider.autoDispose
+    .family<List<WhatsappFollowup>, String>(
+      (ref, contactId) =>
+          ref.watch(commsServiceProvider).whatsappFollowups(contactId),
+    );
 
 enum _WaSection { contacts, due, campaigns }
 
@@ -51,7 +49,7 @@ class _WhatsappScreenState extends ConsumerState<WhatsappScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('WhatsApp')),
+      appBar: const ShellTopBar(eyebrow: 'Engagement', title: 'WhatsApp'),
       body: Column(
         children: [
           SectionSelector<_WaSection>(
@@ -102,15 +100,19 @@ class _ContactsViewState extends ConsumerState<_ContactsView> {
     var rows = widget.dueOnly ? all.where((c) => c.isFollowupDue) : all;
 
     if (query.isNotEmpty) {
-      rows = rows.where((c) =>
-          c.name.toLowerCase().contains(query) || c.phone.contains(query));
+      rows = rows.where(
+        (c) => c.name.toLowerCase().contains(query) || c.phone.contains(query),
+      );
     }
 
     final list = rows.toList();
     if (widget.dueOnly) {
       // Oldest overdue first — that is the order the calls should be made in.
-      list.sort((a, b) => (a.nextFollowupDate ?? DateTime(2100))
-          .compareTo(b.nextFollowupDate ?? DateTime(2100)));
+      list.sort(
+        (a, b) => (a.nextFollowupDate ?? DateTime(2100)).compareTo(
+          b.nextFollowupDate ?? DateTime(2100),
+        ),
+      );
     }
     return list;
   }
@@ -125,19 +127,23 @@ class _ContactsViewState extends ConsumerState<_ContactsView> {
           const _StatsStrip(),
           Padding(
             padding: const EdgeInsets.fromLTRB(
-                Spacing.md, 0, Spacing.md, Spacing.sm),
+              Spacing.md,
+              0,
+              Spacing.md,
+              Spacing.sm,
+            ),
             child: TextField(
               controller: _search,
               onChanged: (_) => setState(() {}),
+              textInputAction: TextInputAction.search,
               decoration: InputDecoration(
                 hintText: 'Search name or phone',
-                prefixIcon: const Icon(Icons.search),
-                isDense: true,
-                border: const OutlineInputBorder(),
+                prefixIcon: const Icon(Icons.search, size: 20),
                 suffixIcon: _search.text.isEmpty
                     ? null
                     : IconButton(
-                        icon: const Icon(Icons.clear),
+                        icon: const Icon(Icons.clear, size: 20),
+                        tooltip: 'Clear search',
                         onPressed: () => setState(() => _search.clear()),
                       ),
               ),
@@ -185,6 +191,8 @@ class _ContactsViewState extends ConsumerState<_ContactsView> {
   }
 }
 
+/// Pipeline counts as one rail. Converted is the only figure that is itself
+/// the news, so it is the only one coloured.
 class _StatsStrip extends ConsumerWidget {
   const _StatsStrip();
 
@@ -193,32 +201,31 @@ class _StatsStrip extends ConsumerWidget {
     final stats = ref.watch(whatsappStatsProvider).valueOrNull;
     if (stats == null) return const SizedBox.shrink();
 
-    final theme = Theme.of(context);
+    final status = context.statusColors;
     final leads = stats.byLabel['lead'] ?? 0;
 
     return Padding(
-      padding:
-          const EdgeInsets.fromLTRB(Spacing.md, 0, Spacing.md, Spacing.sm),
-      child: Row(
-        children: [
-          for (final (label, value) in [
-            ('Contacts', '${stats.total}'),
-            ('Open leads', '$leads'),
-            ('Converted', '${stats.converted}'),
-          ])
-            Expanded(
-              child: Column(
-                children: [
-                  Text(value,
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w700)),
-                  Text(label,
-                      style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant)),
-                ],
-              ),
+      padding: const EdgeInsets.fromLTRB(
+        Spacing.md,
+        Spacing.sm,
+        Spacing.md,
+        Spacing.md,
+      ),
+      child: Reveal(
+        child: StatRail(
+          items: [
+            StatRailItem(
+              label: 'Contacts',
+              value: Formatting.integer(stats.total),
             ),
-        ],
+            StatRailItem(label: 'Open leads', value: Formatting.integer(leads)),
+            StatRailItem(
+              label: 'Converted',
+              value: Formatting.integer(stats.converted),
+              emphasis: stats.converted > 0 ? status.settled : null,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -234,41 +241,58 @@ class _ContactCard extends StatelessWidget {
     final theme = Theme.of(context);
     final status = context.statusColors;
 
+    final Widget? marker = contact.isConverted
+        ? Icon(Icons.verified_outlined, size: 18, color: status.settled)
+        : contact.isFollowupDue
+        ? Icon(
+            Icons.notifications_active_outlined,
+            size: 18,
+            color: status.attention,
+          )
+        : null;
+
     return Card(
       child: ListTile(
         onTap: () => _showContactSheet(context, contact),
-        leading: contact.isImportant
-            ? Icon(Icons.star, color: status.attention)
-            : const Icon(Icons.person_outline),
-        title: Text(contact.name,
-            maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          [
-            contact.phone,
-            WhatsappSource.labelFor(contact.source),
-            if (contact.nextFollowupDate != null)
-              'follow up ${Formatting.date(contact.nextFollowupDate)}',
-          ].join(' · '),
-          style: theme.textTheme.bodySmall,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        title: Row(
           children: [
-            Text(
-              WhatsappLabel.labelFor(contact.label),
-              style: theme.textTheme.labelSmall
-                  ?.copyWith(color: _labelColor(context, contact.label)),
+            Flexible(
+              child: Text(
+                contact.name,
+                style: theme.textTheme.titleSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-            if (contact.isConverted)
-              Icon(Icons.verified_outlined, size: 16, color: status.settled)
-            else if (contact.isFollowupDue)
-              Icon(Icons.notifications_active_outlined,
-                  size: 16, color: status.attention),
+            if (contact.isImportant) ...[
+              const SizedBox(width: Spacing.xs),
+              Icon(Icons.star_rounded, size: 16, color: status.attention),
+            ],
           ],
         ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: Spacing.xs),
+          child: Row(
+            children: [
+              CommsChip(
+                label: WhatsappLabel.labelFor(contact.label),
+                color: _labelColor(context, contact.label),
+              ),
+              const SizedBox(width: Spacing.sm),
+              Flexible(
+                child: CommsMeta(
+                  [
+                    contact.phone,
+                    WhatsappSource.labelFor(contact.source),
+                    if (contact.nextFollowupDate != null)
+                      'follow up ${Formatting.date(contact.nextFollowupDate)}',
+                  ].join(' · '),
+                ),
+              ),
+            ],
+          ),
+        ),
+        trailing: marker,
       ),
     );
   }
@@ -291,6 +315,7 @@ void _showContactSheet(BuildContext context, WhatsappContact contact) {
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
+    shape: commsSheetShape,
     builder: (context) => _ContactSheet(contact: contact),
   );
 }
@@ -338,37 +363,38 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
     final contact = widget.contact;
     final theme = Theme.of(context);
     final followups = ref.watch(whatsappFollowupsProvider(contact.id));
-    final canLog =
-        ref.watch(commsPermissionProvider(CommsPermissions.whatsappContactsLog));
+    final canLog = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappContactsLog),
+    );
     final canClaim = ref.watch(
-        commsPermissionProvider(CommsPermissions.whatsappContactsUpdate));
+      commsPermissionProvider(CommsPermissions.whatsappContactsUpdate),
+    );
 
     return ConstrainedBox(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.9,
       ),
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: EdgeInsets.fromLTRB(
-          Spacing.md,
+          Spacing.lg,
           0,
-          Spacing.md,
-          Spacing.md + MediaQuery.of(context).viewInsets.bottom,
+          Spacing.lg,
+          Spacing.lg + MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(contact.name, style: theme.textTheme.titleMedium),
-                ),
-                CommsChip(
-                  label: WhatsappLabel.labelFor(contact.label),
-                  color: _labelColor(context, contact.label),
-                ),
-              ],
+            CommsSheetHeader(
+              eyebrow: 'WhatsApp contact',
+              title: contact.name,
+              trailing: CommsChip(
+                label: WhatsappLabel.labelFor(contact.label),
+                color: _labelColor(context, contact.label),
+                dense: false,
+              ),
             ),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.lg),
             Row(
               children: [
                 Expanded(
@@ -389,16 +415,19 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: Spacing.md),
+            const SizedBox(height: Spacing.lg),
+            const SectionHeading('Details'),
             DetailRow(label: 'Phone', value: contact.phone),
             DetailRow(
-                label: 'Stage', value: WhatsappLabel.labelFor(contact.label)),
+              label: 'Stage',
+              value: WhatsappLabel.labelFor(contact.label),
+            ),
             DetailRow(
-                label: 'Source',
-                value: WhatsappSource.labelFor(contact.source)),
+              label: 'Source',
+              value: WhatsappSource.labelFor(contact.source),
+            ),
             if (contact.services.isNotEmpty)
-              DetailRow(
-                  label: 'Services', value: contact.services.join(', ')),
+              DetailRow(label: 'Services', value: contact.services.join(', ')),
             if (contact.campaignName != null)
               DetailRow(label: 'Campaign', value: contact.campaignName!),
             if (contact.clientName != null)
@@ -417,14 +446,14 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
             if (contact.notes != null)
               DetailRow(label: 'Notes', value: contact.notes!),
             if (contact.createdBy == null && canClaim) ...[
-              const SizedBox(height: Spacing.sm),
+              const SizedBox(height: Spacing.md),
               OutlinedButton.icon(
                 icon: const Icon(Icons.how_to_reg_outlined, size: 18),
                 label: const Text('Claim this contact'),
                 onPressed: _claim,
               ),
             ],
-            const Divider(height: Spacing.xl),
+            const SizedBox(height: Spacing.lg),
             SectionHeading(
               'Follow-ups',
               trailing: canLog
@@ -437,13 +466,15 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
                     )
                   : null,
             ),
-            if (_logging)
+            if (_logging) ...[
               _LogFollowupForm(
                 contactId: contact.id,
                 onDone: () {
                   if (mounted) setState(() => _logging = false);
                 },
               ),
+              const SizedBox(height: Spacing.sm),
+            ],
             CommsAsyncView<List<WhatsappFollowup>>(
               value: followups,
               errorTitle: 'Could not load follow-ups',
@@ -452,35 +483,77 @@ class _ContactSheetState extends ConsumerState<_ContactSheet> {
               builder: (context, rows) => rows.isEmpty
                   ? Padding(
                       padding: const EdgeInsets.symmetric(vertical: Spacing.sm),
-                      child: Text('No calls logged yet.',
-                          style: theme.textTheme.bodySmall),
+                      child: Text(
+                        'No calls logged yet.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                     )
-                  : Column(
-                      children: [
-                        for (final f in rows)
-                          ListTile(
-                            dense: true,
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(FollowupOutcome.labelFor(f.outcome)),
-                            subtitle: Text(
-                              [
-                                Formatting.date(f.callDate),
-                                if (f.userName != null) f.userName!,
-                                if (f.notes != null) f.notes!,
-                              ].join(' · '),
-                              style: theme.textTheme.bodySmall,
-                            ),
-                            trailing: f.nextFollowupDate == null
-                                ? null
-                                : Text('→ ${Formatting.date(f.nextFollowupDate)}',
-                                    style: theme.textTheme.labelSmall),
-                          ),
-                      ],
+                  : Card(
+                      child: Column(
+                        children: [
+                          for (final (i, f) in rows.indexed) ...[
+                            if (i > 0) const Divider(height: 1),
+                            _FollowupTile(followup: f),
+                          ],
+                        ],
+                      ),
                     ),
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// One logged call: outcome, who and when in mono, the notes as a sentence,
+/// and the next booked date as the aligned figure on the right.
+class _FollowupTile extends StatelessWidget {
+  const _FollowupTile({required this.followup});
+
+  final WhatsappFollowup followup;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final f = followup;
+
+    return ListTile(
+      dense: true,
+      title: Text(
+        FollowupOutcome.labelFor(f.outcome),
+        style: theme.textTheme.titleSmall,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CommsMeta(
+            [
+              Formatting.date(f.callDate),
+              if (f.userName != null) f.userName!,
+            ].join(' · '),
+          ),
+          if (f.notes != null) ...[
+            const SizedBox(height: 2),
+            Text(
+              f.notes!,
+              style: theme.textTheme.bodySmall,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ],
+      ),
+      trailing: f.nextFollowupDate == null
+          ? null
+          : Text(
+              '→ ${Formatting.date(f.nextFollowupDate)}',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
     );
   }
 }
@@ -502,6 +575,7 @@ class _LogFollowupFormState extends ConsumerState<_LogFollowupForm> {
   DateTime _callDate = DateTime.now();
   DateTime? _nextDate;
   bool _saving = false;
+  String? _formError;
 
   @override
   void dispose() {
@@ -529,9 +603,14 @@ class _LogFollowupFormState extends ConsumerState<_LogFollowupForm> {
 
   Future<void> _save() async {
     final messenger = ScaffoldMessenger.of(context);
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _formError = null;
+    });
     try {
-      await ref.read(commsServiceProvider).logWhatsappFollowup(
+      await ref
+          .read(commsServiceProvider)
+          .logWhatsappFollowup(
             widget.contactId,
             callDate: _callDate,
             outcome: _outcome,
@@ -544,7 +623,7 @@ class _LogFollowupFormState extends ConsumerState<_LogFollowupForm> {
       showCommsMessage(messenger, 'Call logged.');
       widget.onDone();
     } on ApiException catch (e) {
-      showCommsMessage(messenger, e.message, isError: true);
+      if (mounted) setState(() => _formError = e.message);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -558,73 +637,80 @@ class _LogFollowupFormState extends ConsumerState<_LogFollowupForm> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            if (_formError != null) ...[
+              ErrorBanner(message: _formError!),
+              const SizedBox(height: Spacing.md),
+            ],
+            const CommsFieldLabel('Outcome'),
+            const SizedBox(height: Spacing.sm),
             DropdownButtonFormField<FollowupOutcome>(
               initialValue: _outcome,
               isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Outcome',
-                border: OutlineInputBorder(),
-                isDense: true,
-              ),
               items: [
                 for (final o in FollowupOutcome.values)
                   DropdownMenuItem<FollowupOutcome>(
-                      value: o, child: Text(o.label)),
+                    value: o,
+                    child: Text(o.label),
+                  ),
               ],
               onChanged: (value) {
                 if (value != null) setState(() => _outcome = value);
               },
             ),
+            const SizedBox(height: Spacing.md),
+            const CommsFieldLabel('Dates'),
             const SizedBox(height: Spacing.sm),
             Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _pickDate(forNext: false),
-                    child: Text('Called ${Formatting.date(_callDate)}'),
+                    onPressed: _saving ? null : () => _pickDate(forNext: false),
+                    child: Text(
+                      'Called ${Formatting.date(_callDate)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
                 const SizedBox(width: Spacing.sm),
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: () => _pickDate(forNext: true),
-                    child: Text(_nextDate == null
-                        ? 'Next call…'
-                        : 'Next ${Formatting.date(_nextDate)}'),
+                    onPressed: _saving ? null : () => _pickDate(forNext: true),
+                    child: Text(
+                      _nextDate == null
+                          ? 'Next call…'
+                          : 'Next ${Formatting.date(_nextDate)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ],
             ),
+            const SizedBox(height: Spacing.md),
+            const CommsFieldLabel('Notes'),
             const SizedBox(height: Spacing.sm),
             TextField(
               controller: _notes,
               minLines: 2,
               maxLines: 4,
+              enabled: !_saving,
               keyboardType: TextInputType.multiline,
               decoration: const InputDecoration(
-                labelText: 'Notes',
+                hintText: 'What was said',
                 alignLabelWithHint: true,
-                border: OutlineInputBorder(),
-                isDense: true,
               ),
             ),
+            const SizedBox(height: Spacing.lg),
+            PrimaryButton(
+              label: _saving ? 'Saving…' : 'Save call',
+              busy: _saving,
+              onPressed: _saving ? null : _save,
+            ),
             const SizedBox(height: Spacing.sm),
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: _saving ? null : widget.onDone,
-                    child: const Text('Cancel'),
-                  ),
-                ),
-                const SizedBox(width: Spacing.sm),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _saving ? null : _save,
-                    child: const Text('Save'),
-                  ),
-                ),
-              ],
+            TextButton(
+              onPressed: _saving ? null : widget.onDone,
+              child: const Text('Cancel'),
             ),
           ],
         ),
@@ -638,7 +724,6 @@ class _CampaignsView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final campaigns = ref.watch(whatsappCampaignsProvider);
 
     return CommsAsyncView<List<WhatsappCampaign>>(
@@ -659,74 +744,150 @@ class _CampaignsView extends ConsumerWidget {
                 itemCount: rows.length,
                 separatorBuilder: (context, index) =>
                     const SizedBox(height: Spacing.sm),
-                itemBuilder: (context, index) {
-                  final c = rows[index];
-                  return Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(Spacing.md),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: Text(c.name,
-                                    style: theme.textTheme.titleSmall),
-                              ),
-                              Money(c.budget),
-                            ],
-                          ),
-                          const SizedBox(height: Spacing.xs),
-                          Text(
-                            [
-                              Formatting.date(c.startDate),
-                              if (c.endDate != null)
-                                'to ${Formatting.date(c.endDate)}',
-                            ].join(' '),
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant),
-                          ),
-                          const SizedBox(height: Spacing.sm),
-                          Row(
-                            children: [
-                              for (final (label, value) in [
-                                ('Leads', '${c.leadsCount}'),
-                                ('Converted', '${c.convertedCount}'),
-                                (
-                                  'Cost / conversion',
-                                  c.costPerConversion == null
-                                      ? '—'
-                                      : Formatting.amount(c.costPerConversion)
-                                ),
-                              ])
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(value,
-                                          style: theme.textTheme.titleSmall),
-                                      Text(label,
-                                          style: theme.textTheme.labelSmall
-                                              ?.copyWith(
-                                                  color: theme.colorScheme
-                                                      .onSurfaceVariant)),
-                                    ],
-                                  ),
-                                ),
-                            ],
-                          ),
-                          if (c.notes != null) ...[
-                            const SizedBox(height: Spacing.sm),
-                            Text(c.notes!, style: theme.textTheme.bodySmall),
-                          ],
-                        ],
-                      ),
-                    ),
-                  );
-                },
+                itemBuilder: (context, index) =>
+                    _CampaignCard(campaign: rows[index]),
               ),
             ),
+    );
+  }
+}
+
+/// One campaign: name with its budget as the aligned figure, the run dates in
+/// mono, and the three figures it is judged on as a rail.
+class _CampaignCard extends StatelessWidget {
+  const _CampaignCard({required this.campaign});
+
+  final WhatsappCampaign campaign;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+    final c = campaign;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        c.name,
+                        style: theme.textTheme.titleSmall,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: Spacing.xs),
+                      CommsMeta(
+                        [
+                          Formatting.date(c.startDate),
+                          if (c.endDate != null)
+                            'to ${Formatting.date(c.endDate)}',
+                        ].join(' '),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: Spacing.md),
+                Money(c.budget),
+              ],
+            ),
+            const Divider(height: Spacing.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: _Figure(
+                    label: 'Leads',
+                    child: _count(context, c.leadsCount),
+                  ),
+                ),
+                Expanded(
+                  child: _Figure(
+                    label: 'Converted',
+                    child: _count(
+                      context,
+                      c.convertedCount,
+                      color: c.convertedCount > 0 ? status.settled : null,
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: _Figure(
+                    label: 'Per conversion',
+                    child: c.costPerConversion == null
+                        ? _count(context, null)
+                        : Money(
+                            c.costPerConversion,
+                            scale: MoneyScale.row,
+                            showCode: false,
+                          ),
+                  ),
+                ),
+              ],
+            ),
+            if (c.notes != null) ...[
+              const SizedBox(height: Spacing.md),
+              Text(
+                c.notes!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// A count typeset like [Money]'s integer part so the three columns sit
+  /// at one weight; null renders as a dash.
+  static Widget _count(BuildContext context, int? value, {Color? color}) =>
+      Text(
+        value == null ? '—' : Formatting.integer(value),
+        style: TextStyle(
+          fontFamily: Type.family,
+          fontSize: MoneyScale.row.size,
+          fontWeight: FontWeight.w700,
+          height: 1,
+          fontFeatures: Type.figures,
+          color: color ?? Theme.of(context).colorScheme.onSurface,
+        ),
+      );
+}
+
+/// A figure over its eyebrow — one column of an in-card rail.
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.child});
+
+  final String label;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        child,
+        const SizedBox(height: Spacing.xs + 2),
+        Text(
+          label.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     );
   }
 }

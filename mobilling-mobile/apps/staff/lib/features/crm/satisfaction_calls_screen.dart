@@ -38,50 +38,51 @@ class _SatisfactionCallsScreenState
   Widget build(BuildContext context) {
     final dashboard = ref.watch(satisfactionDashboardProvider);
     final calls = ref.watch(satisfactionCallsProvider(_status));
-    final canLog = ref.watch(sessionControllerProvider).session?.can(
-              CrmPermissions.satisfactionLog,
-            ) ??
+    final status = context.statusColors;
+    final canLog =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(CrmPermissions.satisfactionLog) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Satisfaction calls')),
+      appBar: const ShellTopBar(
+        eyebrow: 'Engagement',
+        title: 'Satisfaction calls',
+      ),
       body: Column(
         children: [
           dashboard.maybeWhen(
             data: (d) => Padding(
               padding: const EdgeInsets.fromLTRB(
-                  Spacing.md, Spacing.sm, Spacing.md, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: StatTile(
-                      label: 'My today',
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+                0,
+              ),
+              child: Reveal(
+                child: StatRail(
+                  items: [
+                    StatRailItem(
+                      label: 'Mine today',
                       value:
-                          '${d.myStats.todayCompleted}/${d.myStats.todayTotal}',
-                      icon: Icons.today_outlined,
+                          '${Formatting.integer(d.myStats.todayCompleted)}'
+                          '/${Formatting.integer(d.myStats.todayTotal)}',
                     ),
-                  ),
-                  const SizedBox(width: Spacing.sm),
-                  Expanded(
-                    child: StatTile(
+                    StatRailItem(
                       label: 'Overdue',
-                      value: '${d.stats.overdue}',
-                      emphasis: d.stats.overdue > 0
-                          ? context.statusColors.overdue
-                          : null,
+                      value: Formatting.integer(d.stats.overdue),
+                      emphasis: d.stats.overdue > 0 ? status.overdue : null,
                     ),
-                  ),
-                  const SizedBox(width: Spacing.sm),
-                  Expanded(
-                    child: StatTile(
+                    StatRailItem(
                       label: 'Avg rating',
                       value: d.stats.avgRating == null
                           ? '—'
                           : d.stats.avgRating!.toStringAsFixed(1),
-                      icon: Icons.star_outline_rounded,
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             orElse: () => const SizedBox.shrink(),
@@ -95,35 +96,49 @@ class _SatisfactionCallsScreenState
             child: CrmAsyncView(
               value: calls,
               errorTitle: 'Could not load calls',
-              onRetry: () =>
-                  ref.invalidate(satisfactionCallsProvider(_status)),
+              onRetry: () => ref.invalidate(satisfactionCallsProvider(_status)),
               builder: (items) => items.isEmpty
                   ? const StateMessage(
                       icon: Icons.favorite_outline,
                       title: 'No calls in this view',
+                      message:
+                          'Scheduled satisfaction calls appear here as they fall due.',
                     )
                   : RefreshIndicator(
                       onRefresh: () async {
                         ref.invalidate(satisfactionDashboardProvider);
                         ref.invalidate(satisfactionCallsProvider(_status));
-                        await ref
-                            .read(satisfactionCallsProvider(_status).future);
+                        await ref.read(
+                          satisfactionCallsProvider(_status).future,
+                        );
                       },
-                      child: ListView.separated(
+                      child: ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(Spacing.md),
-                        itemCount: items.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(height: Spacing.sm),
-                        itemBuilder: (context, index) => _CallCard(
-                          call: items[index],
-                          canLog: canLog,
-                          onChanged: () {
-                            ref.invalidate(satisfactionDashboardProvider);
-                            ref.invalidate(
-                                satisfactionCallsProvider(_status));
-                          },
+                        padding: const EdgeInsets.fromLTRB(
+                          Spacing.md,
+                          Spacing.sm,
+                          Spacing.md,
+                          Spacing.xl,
                         ),
+                        children: [
+                          CrmCardList(
+                            children: [
+                              for (final call in items)
+                                _CallRow(
+                                  call: call,
+                                  canLog: canLog,
+                                  onChanged: () {
+                                    ref.invalidate(
+                                      satisfactionDashboardProvider,
+                                    );
+                                    ref.invalidate(
+                                      satisfactionCallsProvider(_status),
+                                    );
+                                  },
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
             ),
@@ -134,8 +149,10 @@ class _SatisfactionCallsScreenState
   }
 }
 
-class _CallCard extends ConsumerWidget {
-  const _CallCard({
+/// One call: the client, the rating as the trailing figure once given, the
+/// dates in the metadata line, what they said, and the call-and-log row.
+class _CallRow extends ConsumerWidget {
+  const _CallRow({
     required this.call,
     required this.canLog,
     required this.onChanged,
@@ -148,88 +165,109 @@ class _CallCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final status = context.statusColors;
+    final canAct =
+        canLog && (call.status == 'scheduled' || call.status == 'missed');
+    final hasPhone = call.clientPhone != null;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    final meta = [
+      if (call.scheduledDate != null)
+        'scheduled ${Formatting.date(call.scheduledDate)}',
+      if (call.calledAt != null) 'called ${Formatting.date(call.calledAt)}',
+      if (call.isFollowUp) 'follow-up',
+    ].join(' · ');
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        Spacing.md,
+        Spacing.md,
+        Spacing.md,
+        hasPhone || canAct ? Spacing.xs : Spacing.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  call.clientName ?? 'Client',
+                  style: theme.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              if (call.rating != null) ...[
+                const SizedBox(width: Spacing.sm),
+                RatingStars(rating: call.rating, compact: true),
+              ],
+            ],
+          ),
+          const SizedBox(height: Spacing.xs),
+          CrmStatusLine(status: call.status, meta: meta),
+          if (call.assignedTo != null) ...[
+            const SizedBox(height: Spacing.xs),
+            Text(
+              'Assigned to ${call.assignedTo}',
+              style: theme.textTheme.bodySmall,
+            ),
+          ],
+          if (call.feedback != null) ...[
+            const SizedBox(height: Spacing.xs),
+            Text(
+              '“${call.feedback}”',
+              style: theme.textTheme.bodySmall,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+          if (call.appointmentRequested) ...[
+            const SizedBox(height: Spacing.xs),
             Row(
               children: [
-                Expanded(
-                  child: Text(call.clientName ?? 'Client',
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                Icon(
+                  Icons.event_available_outlined,
+                  size: 14,
+                  color: status.pending,
                 ),
-                StatusChip(call.status, dense: true),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text(
-              [
-                if (call.scheduledDate != null)
-                  'scheduled ${Formatting.date(call.scheduledDate)}',
-                if (call.calledAt != null)
-                  'called ${Formatting.date(call.calledAt)}',
-                if (call.isFollowUp) 'follow-up',
-                if (call.assignedTo != null) '→ ${call.assignedTo}',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            if (call.rating != null) ...[
-              const SizedBox(height: Spacing.xs),
-              RatingStars(rating: call.rating),
-            ],
-            if (call.feedback != null) ...[
-              const SizedBox(height: Spacing.xs),
-              Text('“${call.feedback}”',
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis),
-            ],
-            if (call.appointmentRequested) ...[
-              const SizedBox(height: Spacing.xs),
-              Row(
-                children: [
-                  Icon(Icons.event_available_outlined,
-                      size: 14, color: context.statusColors.pending),
-                  const SizedBox(width: Spacing.xs),
-                  Text(
+                const SizedBox(width: Spacing.xs),
+                Expanded(
+                  child: Text(
                     'Appointment ${call.appointmentStatus ?? 'requested'}'
                     '${call.appointmentDate == null ? '' : ' · ${Formatting.date(call.appointmentDate)}'}',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: context.statusColors.pending),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: status.pending,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                ],
-              ),
-            ],
-            const SizedBox(height: Spacing.sm),
+                ),
+              ],
+            ),
+          ],
+          if (hasPhone || canAct) ...[
+            const SizedBox(height: Spacing.xs),
             Row(
               children: [
-                if (call.clientPhone != null)
-                  ContactRow(phone: call.clientPhone, compact: true),
+                ContactRow(phone: call.clientPhone, compact: true),
                 const Spacer(),
-                if (canLog && (call.status == 'scheduled' || call.status == 'missed'))
-                  FilledButton.tonal(
+                if (canAct)
+                  TextButton.icon(
+                    icon: const Icon(Icons.phone_in_talk_outlined, size: 18),
+                    label: const Text('Log call'),
                     onPressed: () => _showLogSheet(context, ref),
-                    child: const Text('Log call'),
                   ),
               ],
             ),
           ],
-        ),
+        ],
       ),
     );
   }
 
   Future<void> _showLogSheet(BuildContext context, WidgetRef ref) async {
-    final logged = await showModalBottomSheet<bool>(
+    final logged = await showCrmSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => _LogSatisfactionSheet(call: call),
     );
     if (logged == true) onChanged();
@@ -246,8 +284,7 @@ class _LogSatisfactionSheet extends ConsumerStatefulWidget {
       _LogSatisfactionSheetState();
 }
 
-class _LogSatisfactionSheetState
-    extends ConsumerState<_LogSatisfactionSheet> {
+class _LogSatisfactionSheetState extends ConsumerState<_LogSatisfactionSheet> {
   final _feedback = TextEditingController();
   final _internalNotes = TextEditingController();
   final _appointmentNotes = TextEditingController();
@@ -293,19 +330,22 @@ class _LogSatisfactionSheetState
     });
 
     try {
-      await ref.read(crmServiceProvider).logSatisfactionCall(
+      await ref
+          .read(crmServiceProvider)
+          .logSatisfactionCall(
             widget.call.id,
             outcome: _outcome,
             rating: _rating,
-            feedback:
-                _feedback.text.trim().isEmpty ? null : _feedback.text.trim(),
+            feedback: _feedback.text.trim().isEmpty
+                ? null
+                : _feedback.text.trim(),
             internalNotes: _internalNotes.text.trim().isEmpty
                 ? null
                 : _internalNotes.text.trim(),
             appointmentRequested: _wantsAppointment ? true : null,
             appointmentDate: _wantsAppointment ? _appointmentDate : null,
-            appointmentNotes: _wantsAppointment &&
-                    _appointmentNotes.text.trim().isNotEmpty
+            appointmentNotes:
+                _wantsAppointment && _appointmentNotes.text.trim().isNotEmpty
                 ? _appointmentNotes.text.trim()
                 : null,
           );
@@ -322,115 +362,109 @@ class _LogSatisfactionSheetState
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final reached = SatisfactionOutcomes.reached(_outcome);
 
-    return Padding(
-      padding: EdgeInsets.only(
-        left: Spacing.lg,
-        right: Spacing.lg,
-        top: Spacing.lg,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Log call',
-                style: theme.textTheme.titleLarge,
-                textAlign: TextAlign.center),
-            Text(widget.call.clientName ?? '',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                textAlign: TextAlign.center),
-            const SizedBox(height: Spacing.md),
-            if (_error != null) ...[
-              ErrorBanner(message: _error!),
-              const SizedBox(height: Spacing.sm),
+    return CrmSheet(
+      eyebrow: widget.call.clientName,
+      title: 'Log call',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        CrmField(
+          label: 'Outcome',
+          child: DropdownButtonFormField<String>(
+            initialValue: _outcome,
+            items: [
+              for (final (value, label) in _outcomes)
+                DropdownMenuItem(value: value, child: Text(label)),
             ],
-            DropdownButtonFormField<String>(
-              initialValue: _outcome,
-              decoration: const InputDecoration(labelText: 'Outcome'),
-              items: [
-                for (final (value, label) in _outcomes)
-                  DropdownMenuItem(value: value, child: Text(label)),
-              ],
-              onChanged:
-                  _submitting ? null : (v) => setState(() => _outcome = v!),
+            onChanged: _submitting
+                ? null
+                : (v) => setState(() => _outcome = v!),
+          ),
+        ),
+        // Rating and feedback only make sense if someone actually spoke.
+        if (reached) ...[
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'Rating',
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: RatingStars(
+                rating: _rating,
+                onChanged: (v) => setState(() => _rating = v),
+              ),
             ),
-            // Rating and feedback only make sense if someone actually spoke.
-            if (reached) ...[
-              const SizedBox(height: Spacing.md),
-              Text('Rating', style: theme.textTheme.labelMedium),
-              Center(
-                child: RatingStars(
-                  rating: _rating,
-                  onChanged: (v) => setState(() => _rating = v),
-                ),
-              ),
-              const SizedBox(height: Spacing.sm),
-              TextField(
-                controller: _feedback,
-                maxLines: 3,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: const InputDecoration(
-                  labelText: 'What did they say?',
-                  alignLabelWithHint: true,
-                ),
-              ),
-              const SizedBox(height: Spacing.md),
-              SwitchListTile(
-                contentPadding: EdgeInsets.zero,
-                title: const Text('They want an appointment'),
-                value: _wantsAppointment,
-                onChanged: _submitting
-                    ? null
-                    : (v) => setState(() => _wantsAppointment = v),
-              ),
-              if (_wantsAppointment) ...[
-                InkWell(
-                  onTap: _submitting ? null : _pickAppointment,
-                  child: InputDecorator(
-                    decoration: const InputDecoration(
-                      labelText: 'Appointment date',
-                      suffixIcon:
-                          Icon(Icons.calendar_today_outlined, size: 18),
-                    ),
-                    child: Text(_appointmentDate == null
-                        ? 'Choose a date'
-                        : Formatting.date(_appointmentDate)),
-                  ),
-                ),
-                const SizedBox(height: Spacing.sm),
-                TextField(
-                  controller: _appointmentNotes,
-                  decoration: const InputDecoration(
-                      labelText: 'Appointment notes (optional)'),
-                ),
-              ],
-            ],
-            const SizedBox(height: Spacing.md),
-            TextField(
-              controller: _internalNotes,
-              maxLines: 2,
+          ),
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'What did they say?',
+            child: TextField(
+              controller: _feedback,
+              enabled: !_submitting,
+              maxLines: 3,
+              textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
-                labelText: 'Internal notes (not shared)',
+                hintText: 'Their words, as close as you can',
               ),
             ),
-            const SizedBox(height: Spacing.lg),
-            FilledButton(
-              onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Save call'),
+          ),
+          const SizedBox(height: Spacing.sm),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              'They want an appointment',
+              style: Theme.of(context).textTheme.titleSmall,
+            ),
+            value: _wantsAppointment,
+            onChanged: _submitting
+                ? null
+                : (v) => setState(() => _wantsAppointment = v),
+          ),
+          if (_wantsAppointment) ...[
+            const SizedBox(height: Spacing.sm),
+            CrmPickerField(
+              label: 'Appointment date',
+              value: _appointmentDate == null
+                  ? 'Choose a date'
+                  : Formatting.date(_appointmentDate),
+              placeholder: _appointmentDate == null,
+              onTap: _submitting ? null : _pickAppointment,
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmField(
+              label: 'Appointment notes (optional)',
+              child: TextField(
+                controller: _appointmentNotes,
+                enabled: !_submitting,
+                decoration: const InputDecoration(
+                  hintText: 'Where, when, and what for',
+                ),
+              ),
             ),
           ],
+        ],
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Internal notes (not shared)',
+          child: TextField(
+            controller: _internalNotes,
+            enabled: !_submitting,
+            maxLines: 2,
+            decoration: const InputDecoration(
+              hintText: 'Only your team sees this',
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _submitting ? 'Saving…' : 'Save call',
+          busy: _submitting,
+          onPressed: _submitting ? null : _submit,
+        ),
+      ],
     );
   }
 }

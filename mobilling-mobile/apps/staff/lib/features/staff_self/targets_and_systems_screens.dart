@@ -4,7 +4,7 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../common/paged_list.dart';
-import '../crm/crm_ui.dart' show CrmAsyncView, FilterStrip;
+import '../crm/crm_ui.dart' show CrmAsyncView;
 import 'staff_self_providers.dart';
 
 // ---------------------------------------------------------------------------
@@ -39,10 +39,10 @@ class _StaffTargetsScreenState extends ConsumerState<StaffTargetsScreen> {
     final targets = ref.watch(staffTargetsProvider(_status));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My targets')),
+      appBar: const ShellTopBar(eyebrow: 'HR', title: 'My targets'),
       body: Column(
         children: [
-          FilterStrip(
+          _ChoiceRow(
             options: _filters,
             selected: _status,
             onSelect: (v) => setState(() => _status = v),
@@ -77,6 +77,42 @@ class _StaffTargetsScreenState extends ConsumerState<StaffTargetsScreen> {
   }
 }
 
+/// A quiet single row of choice chips under the masthead. `null` is "all".
+class _ChoiceRow extends StatelessWidget {
+  const _ChoiceRow({
+    required this.options,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<(String?, String)> options;
+  final String? selected;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 48,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.md,
+        vertical: Spacing.sm,
+      ),
+      itemCount: options.length,
+      separatorBuilder: (context, index) => const SizedBox(width: Spacing.sm),
+      itemBuilder: (context, index) {
+        final (value, label) = options[index];
+        return ChoiceChip(
+          label: Text(label.toUpperCase()),
+          selected: selected == value,
+          showCheckmark: false,
+          onSelected: (_) => onSelect(value),
+        );
+      },
+    ),
+  );
+}
+
 class _TargetCard extends ConsumerWidget {
   const _TargetCard({required this.target, required this.onChanged});
 
@@ -86,7 +122,11 @@ class _TargetCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
+    final eyebrow = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
 
     return Card(
       child: Padding(
@@ -95,54 +135,68 @@ class _TargetCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(target.title,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    target.title,
+                    style: theme.textTheme.titleSmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
+                const SizedBox(width: Spacing.sm),
                 StatusChip(target.chipStatus, dense: true),
               ],
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: Spacing.xs),
             Text(
               [
                 if (target.periodStart != null && target.periodEnd != null)
                   '${Formatting.date(target.periodStart)} – ${Formatting.date(target.periodEnd)}',
                 if (target.assignedByName != null)
                   'by ${target.assignedByName}',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ].join(' · ').toUpperCase(),
+              style: eyebrow,
             ),
-            const SizedBox(height: Spacing.sm),
+            const SizedBox(height: Spacing.md),
             for (final criterion in target.criteria) ...[
               Row(
                 children: [
                   Expanded(
-                    child: Text(criterion.label,
-                        style: theme.textTheme.bodySmall),
+                    child: Text(
+                      criterion.label,
+                      style: theme.textTheme.bodyMedium,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
+                  const SizedBox(width: Spacing.sm),
                   Text(
                     '${Formatting.amount(criterion.effectiveValue ?? 0)} / ${Formatting.amount(criterion.goalValue)}'
-                    '${criterion.unit == null ? '' : ' ${criterion.unit}'}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: criterion.goalMet == true ? status.settled : null,
+                            '${criterion.unit == null ? '' : ' ${criterion.unit}'}'
+                        .toUpperCase(),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: criterion.goalMet == true
+                          ? status.settled
+                          : scheme.onSurface,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 2),
+              const SizedBox(height: Spacing.xs),
               ClipRRect(
-                borderRadius: BorderRadius.circular(Radii.sm),
+                borderRadius: BorderRadius.circular(2),
                 child: LinearProgressIndicator(
                   value: criterion.progress,
                   minHeight: 6,
-                  color: criterion.goalMet == true ? status.settled : null,
+                  backgroundColor: scheme.surfaceContainerHighest,
+                  valueColor: AlwaysStoppedAnimation(
+                    criterion.goalMet == true ? status.settled : scheme.primary,
+                  ),
                 ),
               ),
-              const SizedBox(height: Spacing.xs),
+              const SizedBox(height: Spacing.sm),
             ],
             if (target.totalCommission > 0) ...[
               const Divider(height: Spacing.md),
@@ -151,46 +205,59 @@ class _TargetCard extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       // Honest about what the number means before sign-off.
-                      target.isVerified
-                          ? 'Commission earned'
-                          : 'Estimated commission',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
+                      (target.isVerified
+                              ? 'Commission earned'
+                              : 'Estimated commission')
+                          .toUpperCase(),
+                      style: eyebrow,
                     ),
                   ),
-                  Money(target.totalCommission,
-                      color: target.isVerified ? status.settled : null),
+                  Money(
+                    target.totalCommission,
+                    color: target.isVerified ? status.settled : null,
+                  ),
                 ],
               ),
             ],
             if ((target.salaryDeduction ?? 0) > 0) ...[
-              const SizedBox(height: 2),
-              Text(
-                'Salary deduction ${Formatting.currency(target.salaryDeduction)}',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: status.overdue),
+              const SizedBox(height: Spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text('SALARY DEDUCTION', style: eyebrow),
+                  ),
+                  Money(
+                    target.salaryDeduction,
+                    scale: MoneyScale.dense,
+                    color: status.overdue,
+                  ),
+                ],
               ),
             ],
             if (target.supervisorNotes != null) ...[
-              const SizedBox(height: Spacing.xs),
-              Text(target.supervisorNotes!,
-                  style: theme.textTheme.bodySmall),
-            ],
-            if (target.awaitingSelfReport && target.criteria.isNotEmpty) ...[
-              const SizedBox(height: Spacing.xs),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: FilledButton.tonal(
-                  onPressed: () => _selfReport(context, ref),
-                  child: const Text('Report my numbers'),
+              const SizedBox(height: Spacing.sm),
+              Text(
+                target.supervisorNotes!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
                 ),
               ),
             ],
+            if (target.awaitingSelfReport && target.criteria.isNotEmpty) ...[
+              const SizedBox(height: Spacing.md),
+              OutlinedButton(
+                onPressed: () => _selfReport(context, ref),
+                child: const Text('Report my numbers'),
+              ),
+            ],
             if (target.awaitingVerification) ...[
-              const SizedBox(height: Spacing.xs),
-              Text('Waiting for your supervisor to verify.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: status.pending)),
+              const SizedBox(height: Spacing.sm),
+              Text(
+                'Waiting for your supervisor to verify.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: status.pending,
+                ),
+              ),
             ],
           ],
         ),
@@ -202,6 +269,7 @@ class _TargetCard extends ConsumerWidget {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => _SelfReportSheet(target: target),
     );
@@ -260,7 +328,9 @@ class _SelfReportSheetState extends ConsumerState<_SelfReportSheet> {
       _error = null;
     });
     try {
-      await ref.read(staffSelfServiceProvider).selfReportTarget(
+      await ref
+          .read(staffSelfServiceProvider)
+          .selfReportTarget(
             widget.target.id,
             values: values,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
@@ -278,12 +348,12 @@ class _SelfReportSheetState extends ConsumerState<_SelfReportSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Padding(
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        top: Spacing.lg,
         bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
       ),
       child: SingleChildScrollView(
@@ -291,25 +361,36 @@ class _SelfReportSheetState extends ConsumerState<_SelfReportSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Report my numbers',
-                style: theme.textTheme.titleLarge,
-                textAlign: TextAlign.center),
-            Text(widget.target.title,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-                textAlign: TextAlign.center),
-            const SizedBox(height: Spacing.md),
+            Text(
+              'TARGET',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.xs),
+            Text('Report my numbers', style: Type.display(22)),
+            const SizedBox(height: Spacing.xs),
+            Text(
+              widget.target.title,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
             if (_error != null) ...[
               ErrorBanner(message: _error!),
-              const SizedBox(height: Spacing.sm),
+              const SizedBox(height: Spacing.md),
             ],
             for (final criterion in widget.target.criteria) ...[
+              Text(criterion.label, style: theme.textTheme.titleSmall),
+              const SizedBox(height: Spacing.sm),
               TextField(
                 controller: _controllers[criterion.id],
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: InputDecoration(
-                  labelText: criterion.label,
+                  hintText: 'Achieved',
                   helperText:
                       'Goal ${Formatting.amount(criterion.goalValue)}${criterion.unit == null ? '' : ' ${criterion.unit}'}',
                   suffixText: criterion.unit,
@@ -317,22 +398,28 @@ class _SelfReportSheetState extends ConsumerState<_SelfReportSheet> {
               ),
               const SizedBox(height: Spacing.md),
             ],
+            Text('Notes', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
             TextField(
               controller: _notes,
               maxLines: 2,
               textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Notes (optional)'),
+              decoration: const InputDecoration(
+                hintText: 'Optional — anything your supervisor should know',
+              ),
             ),
             const SizedBox(height: Spacing.lg),
-            FilledButton(
+            PrimaryButton(
+              label: _submitting ? 'Submitting…' : 'Submit for review',
+              busy: _submitting,
               onPressed: _submitting ? null : _submit,
-              child: Text(_submitting ? 'Submitting…' : 'Submit for review'),
             ),
-            const SizedBox(height: Spacing.xs),
+            const SizedBox(height: Spacing.sm),
             Text(
               'Your supervisor confirms these before commission is paid.',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -354,11 +441,13 @@ class MyVerificationsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final verifications = ref.watch(systemVerificationsProvider);
-    final theme = Theme.of(context);
     final status = context.statusColors;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My verifications')),
+      appBar: const ShellTopBar(
+        eyebrow: 'Records & Verification',
+        title: 'My verifications',
+      ),
       body: CrmAsyncView(
         value: verifications,
         errorTitle: 'Could not load verifications',
@@ -369,10 +458,13 @@ class MyVerificationsScreen extends ConsumerWidget {
             return const StateMessage(
               icon: Icons.verified_user_outlined,
               title: 'Nothing to verify',
+              message: 'Systems assigned to you for daily checks appear here.',
             );
           }
 
           final pending = active.where((v) => !v.checkedToday).length;
+          final issues = active.where((v) => v.hasIssueToday).length;
+          final clear = active.length - pending - issues;
 
           return RefreshIndicator(
             onRefresh: () => ref.refresh(systemVerificationsProvider.future),
@@ -380,30 +472,36 @@ class MyVerificationsScreen extends ConsumerWidget {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.all(Spacing.md),
               children: [
-                if (pending > 0)
-                  Container(
-                    padding: const EdgeInsets.all(Spacing.md),
-                    decoration: BoxDecoration(
-                      color: status.attention.withValues(alpha: 0.12),
-                      borderRadius: Radii.card,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.pending_actions_outlined,
-                            size: 18, color: status.attention),
-                        const SizedBox(width: Spacing.sm),
-                        Expanded(
-                          child: Text(
-                            '$pending system${pending == 1 ? '' : 's'} still to check today',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        ),
-                      ],
-                    ),
+                Reveal(
+                  child: StatRail(
+                    items: [
+                      StatRailItem(
+                        label: 'To check',
+                        value: Formatting.integer(pending),
+                        emphasis: pending > 0 ? status.attention : null,
+                      ),
+                      StatRailItem(
+                        label: 'All good',
+                        value: Formatting.integer(clear),
+                        emphasis: clear > 0 ? status.settled : null,
+                      ),
+                      StatRailItem(
+                        label: 'Issues',
+                        value: Formatting.integer(issues),
+                        emphasis: issues > 0 ? status.overdue : null,
+                      ),
+                    ],
                   ),
-                const SizedBox(height: Spacing.md),
-                for (final verification in active)
+                ),
+                const SizedBox(height: Spacing.lg),
+                SectionHeader(
+                  'Today · ${Formatting.date(DateTime.now())}',
+                ),
+                const SizedBox(height: Spacing.sm),
+                for (final (i, verification) in active.indexed) ...[
+                  if (i > 0) const SizedBox(height: Spacing.sm),
                   _VerificationCard(verification: verification),
+                ],
                 const SizedBox(height: Spacing.xl),
               ],
             ),
@@ -422,10 +520,10 @@ class _VerificationCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: Spacing.sm),
       child: Padding(
         padding: const EdgeInsets.all(Spacing.md),
         child: Column(
@@ -434,36 +532,45 @@ class _VerificationCard extends ConsumerWidget {
             Row(
               children: [
                 Expanded(
-                  child: Text(verification.name,
-                      style: theme.textTheme.titleSmall),
+                  child: Text(
+                    verification.name,
+                    style: theme.textTheme.titleSmall,
+                  ),
                 ),
                 if (verification.checkedToday)
                   StatusChip(
-                      verification.hasIssueToday ? 'overdue' : 'active',
-                      dense: true),
+                    verification.hasIssueToday ? 'overdue' : 'active',
+                    dense: true,
+                  ),
               ],
             ),
-            if (verification.domainName != null)
-              Text(verification.domainName!,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            if (verification.domainName != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                verification.domainName!.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             if (verification.checkedToday) ...[
-              const SizedBox(height: Spacing.xs),
+              const SizedBox(height: Spacing.sm),
               Text(
                 verification.hasIssueToday
                     ? 'Issue reported${verification.todayNotes == null ? '' : ': ${verification.todayNotes}'}'
                     : 'Checked — all good',
-                style: theme.textTheme.bodySmall?.copyWith(
-                    color: verification.hasIssueToday
-                        ? status.overdue
-                        : status.settled),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: verification.hasIssueToday
+                      ? status.overdue
+                      : status.settled,
+                ),
               ),
             ] else ...[
-              const SizedBox(height: Spacing.sm),
+              const SizedBox(height: Spacing.md),
               Row(
                 children: [
                   Expanded(
-                    child: FilledButton.tonalIcon(
+                    child: FilledButton.icon(
                       icon: const Icon(Icons.check, size: 18),
                       label: const Text('All good'),
                       onPressed: () => _submit(context, ref, 'ok'),
@@ -473,7 +580,7 @@ class _VerificationCard extends ConsumerWidget {
                   Expanded(
                     child: OutlinedButton.icon(
                       icon: const Icon(Icons.report_problem_outlined, size: 18),
-                      label: const Text('Issue'),
+                      label: const Text('Report issue'),
                       onPressed: () => _reportIssue(context, ref),
                     ),
                   ),
@@ -486,15 +593,17 @@ class _VerificationCard extends ConsumerWidget {
     );
   }
 
-  Future<void> _submit(BuildContext context, WidgetRef ref, String status,
-      {String? notes}) async {
+  Future<void> _submit(
+    BuildContext context,
+    WidgetRef ref,
+    String status, {
+    String? notes,
+  }) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      await ref.read(staffSelfServiceProvider).submitVerification(
-            verification.id,
-            status: status,
-            notes: notes,
-          );
+      await ref
+          .read(staffSelfServiceProvider)
+          .submitVerification(verification.id, status: status, notes: notes);
       ref.invalidate(systemVerificationsProvider);
       messenger.showSnackBar(const SnackBar(content: Text('Check recorded.')));
     } on ApiException catch (e) {
@@ -513,15 +622,17 @@ class _VerificationCard extends ConsumerWidget {
           autofocus: true,
           maxLines: 3,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(labelText: 'What is wrong?'),
+          decoration: const InputDecoration(hintText: 'What is wrong?'),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('Report')),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Report issue'),
+          ),
         ],
       ),
     );
@@ -551,28 +662,42 @@ class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('System records')),
+      appBar: const ShellTopBar(
+        eyebrow: 'Records & Verification',
+        title: 'System records',
+      ),
       body: PagedListView(
         key: _listKey,
         fetch: (page) =>
             ref.read(staffSelfServiceProvider).systemRecords(page: page),
         itemBuilder: (context, record) => Card(
           child: ListTile(
-            title: Text(record.systemName ?? '—'),
-            subtitle: Text(
-              [
-                if (record.propertyName != null) record.propertyName!,
-                Formatting.date(record.recordDate),
-                if (record.bankName != null) record.bankName!,
-                if (record.createdByName != null) record.createdByName!,
-              ].join(' · '),
-              style: theme.textTheme.bodySmall,
+            title: Text(
+              record.systemName ?? '—',
+              style: theme.textTheme.titleSmall,
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                [
+                  if (record.propertyName != null) record.propertyName!,
+                  Formatting.date(record.recordDate),
+                  if (record.bankName != null) record.bankName!,
+                  if (record.createdByName != null) record.createdByName!,
+                ].join(' · ').toUpperCase(),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
             trailing: Money(record.amount),
           ),
         ),
         emptyIcon: Icons.dns_outlined,
         emptyTitle: 'No system records',
+        emptyMessage: 'Records appear here as they are entered.',
       ),
     );
   }

@@ -9,7 +9,16 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 import '../../providers.dart';
 import '../common/pickers.dart';
 import '../common/share_pdf.dart';
-import '../crm/crm_ui.dart' show CrmAsyncView, CrmDetailRow;
+import '../crm/crm_ui.dart'
+    show
+        CrmAsyncView,
+        CrmCardList,
+        CrmField,
+        CrmMetaLine,
+        CrmPickerField,
+        CrmSheet,
+        CrmStatusLine,
+        showCrmSheet;
 import 'hr_providers.dart';
 
 /// Payroll on a phone: the monthly runs, who earns what, loans and
@@ -30,7 +39,7 @@ class PayrollScreen extends ConsumerWidget {
         canManage || (auth?.can(HrPermissions.payrollView) ?? false);
 
     final tabs = <(String, Widget)>[
-      if (canView) ('Runs', _RunsTab(canManage: canManage)),
+      if (canView) ('Runs', const _RunsTab()),
       if (canManage) ('Salaries', const _SalariesTab()),
       if (canManage) ('Loans', const _LoansTab()),
       ('My payslips', const _MyPayslipsTab()),
@@ -39,11 +48,23 @@ class PayrollScreen extends ConsumerWidget {
     return DefaultTabController(
       length: tabs.length,
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Payroll'),
-          bottom: TabBar(
+        appBar: ShellTopBar(
+          eyebrow: 'HR',
+          title: 'Payroll',
+          // Payroll has four things you can add and they belong to different
+          // tabs. One "+" that names all four keeps the masthead honest
+          // whichever tab is being read, instead of a button that changes
+          // meaning as you swipe.
+          trailing: canManage
+              ? InkActionButton(
+                  icon: Icons.add_rounded,
+                  tooltip: 'Add to payroll',
+                  onPressed: () => _addRecord(context, ref),
+                )
+              : null,
+          bottom: InkTabBar(
             isScrollable: tabs.length > 3,
-            tabs: [for (final (label, _) in tabs) Tab(text: label)],
+            tabs: [for (final (label, _) in tabs) label],
           ),
         ),
         body: TabBarView(children: [for (final (_, body) in tabs) body]),
@@ -53,103 +74,212 @@ class PayrollScreen extends ConsumerWidget {
 }
 
 // ---------------------------------------------------------------------------
+// The masthead's one create action
+// ---------------------------------------------------------------------------
+
+/// The four records payroll can gain, each with the sentence that says what
+/// it does — the same words the tabs' empty states use.
+Future<void> _addRecord(BuildContext context, WidgetRef ref) async {
+  final choice = await showModalBottomSheet<String>(
+    context: context,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
+    builder: (context) {
+      final theme = Theme.of(context);
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.lg,
+            0,
+            Spacing.lg,
+            Spacing.lg,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'PAYROLL',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: Spacing.xs),
+              Text(
+                'Add to payroll',
+                style: Type.display(22, color: theme.colorScheme.onSurface),
+              ),
+              const SizedBox(height: Spacing.md),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.play_arrow_outlined),
+                title: const Text('Generate a month'),
+                subtitle: const Text(
+                  'A draft payslip for every employee with a salary on file.',
+                ),
+                onTap: () => Navigator.pop(context, 'generate'),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.account_balance_wallet_outlined),
+                title: const Text('Set a basic salary'),
+                subtitle: const Text(
+                  'Employees without one are skipped when payroll runs.',
+                ),
+                onTap: () => Navigator.pop(context, 'salary'),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.request_quote_outlined),
+                title: const Text('New loan'),
+                subtitle: const Text(
+                  'Repaid in monthly instalments via payroll.',
+                ),
+                onTap: () => Navigator.pop(context, 'loan'),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.fast_forward_outlined),
+                title: const Text('New salary advance'),
+                subtitle: const Text('Recovered in full from one month.'),
+                onTap: () => Navigator.pop(context, 'advance'),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+  // A dismissed sheet returns null; only a named choice goes on.
+  if (choice == null || !context.mounted) return;
+  if (choice == 'generate') {
+    await _generate(context, ref);
+    return;
+  }
+
+  final kind = switch (choice) {
+    'salary' => _MoneyFormKind.salary,
+    'loan' => _MoneyFormKind.loan,
+    _ => _MoneyFormKind.advance,
+  };
+  final saved = await showCrmSheet<bool>(
+    context: context,
+    builder: (_) => _MoneyFormSheet(kind: kind),
+  );
+  if (!(saved ?? false)) return;
+  if (kind == _MoneyFormKind.salary) {
+    ref.invalidate(salariesProvider);
+  } else {
+    ref.invalidate(loansProvider);
+    ref.invalidate(salaryAdvancesProvider);
+  }
+}
+
+Future<void> _generate(BuildContext context, WidgetRef ref) async {
+  final monthKey = await _pickMonth(context, title: 'Generate payroll for');
+  if (monthKey == null || !context.mounted) return;
+
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    final message = await ref
+        .read(hrServiceProvider)
+        .generatePayrollRun(monthKey);
+    ref.invalidate(payrollRunsProvider);
+    messenger.showSnackBar(
+      SnackBar(content: Text(message ?? 'Payroll generated.')),
+    );
+  } on ApiException catch (e) {
+    messenger.showSnackBar(SnackBar(content: Text(e.message)));
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Runs
 // ---------------------------------------------------------------------------
 
+/// Every payroll month as one card of rows: the month as the title, the
+/// draft/finalized chip beside the payslip count, and the way in on the right.
 class _RunsTab extends ConsumerWidget {
-  const _RunsTab({required this.canManage});
-
-  final bool canManage;
+  const _RunsTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final runs = ref.watch(payrollRunsProvider);
     final theme = Theme.of(context);
+    final status = context.statusColors;
 
-    return Scaffold(
-      floatingActionButton: canManage
-          ? FloatingActionButton.extended(
-              icon: const Icon(Icons.play_arrow_outlined),
-              label: const Text('Generate'),
-              onPressed: () => _generate(context, ref),
-            )
-          : null,
-      body: CrmAsyncView(
-        value: runs,
-        errorTitle: 'Could not load payroll runs',
-        onRetry: () => ref.invalidate(payrollRunsProvider),
-        builder: (list) => RefreshIndicator(
-          onRefresh: () => ref.refresh(payrollRunsProvider.future),
-          child: list.isEmpty
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(
-                      height: 320,
-                      child: StateMessage(
-                        icon: Icons.account_balance_outlined,
-                        title: 'No payroll runs yet',
-                        message:
-                            'Generate a month to create a payslip for every employee with a salary on file.',
-                      ),
-                    ),
-                  ],
-                )
-              : ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(
-                      Spacing.md, Spacing.md, Spacing.md, 96),
-                  itemCount: list.length,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(height: Spacing.sm),
-                  itemBuilder: (context, index) {
-                    final run = list[index];
-                    return Card(
-                      child: ListTile(
+    return CrmAsyncView(
+      value: runs,
+      errorTitle: 'Could not load payroll runs',
+      onRetry: () => ref.invalidate(payrollRunsProvider),
+      builder: (list) => RefreshIndicator(
+        onRefresh: () => ref.refresh(payrollRunsProvider.future),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(Spacing.md),
+          children: [
+            if (list.isEmpty)
+              const SizedBox(
+                height: 320,
+                child: StateMessage(
+                  icon: Icons.account_balance_outlined,
+                  title: 'No payroll runs yet',
+                  message:
+                      'Generate a month to create a payslip for every employee '
+                      'with a salary on file.',
+                ),
+              )
+            else
+              Reveal(
+                child: CrmCardList(
+                  children: [
+                    for (final run in list)
+                      ListTile(
                         leading: Icon(
                           run.isFinalized
                               ? Icons.lock_outline
                               : Icons.edit_note_outlined,
                           color: run.isFinalized
-                              ? context.statusColors.settled
-                              : context.statusColors.pending,
+                              ? status.settled
+                              : status.pending,
                         ),
-                        title: Text(_monthLabel(run.monthKey),
-                            style: theme.textTheme.titleSmall),
-                        subtitle: Text(
-                          '${run.payslipsCount} payslip${run.payslipsCount == 1 ? '' : 's'}'
-                          '${run.finalizedAt != null ? ' · finalized ${Formatting.date(run.finalizedAt)}' : run.generatedAt != null ? ' · generated ${Formatting.date(run.generatedAt)}' : ''}',
-                          style: theme.textTheme.bodySmall,
+                        title: Text(
+                          _monthLabel(run.monthKey),
+                          style: theme.textTheme.titleSmall,
                         ),
-                        trailing: StatusChip(
-                            run.isFinalized ? 'finalized' : 'draft',
-                            dense: true),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: CrmStatusLine(
+                            status: run.isFinalized ? 'finalized' : 'draft',
+                            meta: _runMeta(run),
+                          ),
+                        ),
+                        trailing: Icon(
+                          Icons.chevron_right,
+                          color: theme.colorScheme.outline,
+                        ),
                         onTap: () => context.push('/payroll/runs/${run.id}'),
                       ),
-                    );
-                  },
+                  ],
                 ),
+              ),
+            const SizedBox(height: Spacing.xl),
+          ],
         ),
       ),
     );
   }
-
-  Future<void> _generate(BuildContext context, WidgetRef ref) async {
-    final monthKey = await _pickMonth(context, title: 'Generate payroll for');
-    if (monthKey == null || !context.mounted) return;
-
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final message =
-          await ref.read(hrServiceProvider).generatePayrollRun(monthKey);
-      ref.invalidate(payrollRunsProvider);
-      messenger.showSnackBar(
-          SnackBar(content: Text(message ?? 'Payroll generated.')));
-    } on ApiException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.message)));
-    }
-  }
 }
+
+/// `12 payslips · finalized 31 Aug 2026` — the run's own history, as the
+/// mono metadata line every list here carries.
+String _runMeta(PayrollRun run) => [
+  '${run.payslipsCount} payslip${run.payslipsCount == 1 ? '' : 's'}',
+  if (run.finalizedAt != null)
+    'finalized ${Formatting.date(run.finalizedAt)}'
+  else if (run.generatedAt != null)
+    'generated ${Formatting.date(run.generatedAt)}',
+].join(' · ');
 
 /// One payroll run: totals, the payslips, and the draft → finalized step.
 class PayrollRunScreen extends ConsumerWidget {
@@ -160,28 +290,26 @@ class PayrollRunScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final run = ref.watch(payrollRunProvider(runId));
-    final canManage = ref.watch(sessionControllerProvider).session?.can(
-            HrPermissions.payrollManage) ??
+    final canManage =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(HrPermissions.payrollManage) ??
         false;
     final theme = Theme.of(context);
+    final loaded = run.valueOrNull;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(run.valueOrNull == null
-            ? 'Payroll run'
-            : _monthLabel(run.value!.monthKey)),
-        actions: [
-          if (canManage && (run.valueOrNull?.isDraft ?? false))
-            PopupMenuButton<String>(
-              onSelected: (action) => _act(context, ref, run.value!, action),
-              itemBuilder: (context) => const [
-                PopupMenuItem(
-                    value: 'regenerate', child: Text('Regenerate payslips')),
-                PopupMenuItem(
-                    value: 'delete', child: Text('Delete draft run')),
-              ],
-            ),
-        ],
+      appBar: ShellTopBar(
+        eyebrow: 'Payroll',
+        title: loaded == null ? 'Payroll run' : _monthLabel(loaded.monthKey),
+        trailing: canManage && (loaded?.isDraft ?? false)
+            ? InkActionButton(
+                icon: Icons.more_horiz_rounded,
+                tooltip: 'Run actions',
+                onPressed: () => _showActions(context, ref, loaded!),
+              )
+            : null,
       ),
       body: CrmAsyncView(
         value: run,
@@ -193,92 +321,78 @@ class PayrollRunScreen extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(Spacing.md),
             children: [
-              Row(
-                children: [
-                  StatusChip(data.isFinalized ? 'finalized' : 'draft'),
-                  const SizedBox(width: Spacing.sm),
-                  Expanded(
-                    child: Text(
-                      data.isFinalized
-                          ? 'Finalized by ${data.finalizedBy?.name ?? '—'} · ${Formatting.date(data.finalizedAt)}'
-                          : 'Generated by ${data.generatedBy?.name ?? '—'} · ${Formatting.date(data.generatedAt)}',
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: Spacing.md),
-              Row(
-                children: [
-                  Expanded(
-                    child: StatTile.money(
-                      label: 'Net pay',
-                      amount: data.netPayTotal,
-                      icon: Icons.payments_outlined,
-                    ),
-                  ),
-                  const SizedBox(width: Spacing.sm),
-                  Expanded(
-                    child: StatTile.money(
-                      label: 'Employer cost',
-                      amount: data.employerCostTotal,
-                      icon: Icons.business_outlined,
-                    ),
-                  ),
-                ],
-              ),
+              // The one figure this screen is about: what the month costs in
+              // pay. Employer cost and the head count explain it beneath a
+              // rule, as figures rather than as a sentence.
+              Reveal(child: _RunTotalsCard(run: data)),
               if (canManage && data.isDraft) ...[
                 const SizedBox(height: Spacing.md),
-                FilledButton.icon(
-                  icon: const Icon(Icons.lock_outline, size: 18),
-                  label: const Text('Finalize run'),
-                  onPressed: data.payslips.isEmpty
-                      ? null
-                      : () => _act(context, ref, data, 'finalize'),
+                Reveal(
+                  delay: const Duration(milliseconds: 80),
+                  child: PrimaryButton(
+                    label: 'Finalize run',
+                    icon: Icons.lock_outline,
+                    onPressed: data.payslips.isEmpty
+                        ? null
+                        : () => _act(context, ref, data, 'finalize'),
+                  ),
                 ),
-                const SizedBox(height: Spacing.xs),
+                const SizedBox(height: Spacing.sm),
                 Text(
                   'Finalizing locks the payslips and collects loan '
                   'instalments and salary advances. It cannot be undone.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                   textAlign: TextAlign.center,
                 ),
               ],
               const SizedBox(height: Spacing.lg),
-              Text('Payslips (${data.payslips.length})',
-                  style: theme.textTheme.titleSmall),
+              SectionHeader(
+                'Payslips',
+                trailing: Text(
+                  Formatting.integer(data.payslips.length),
+                  style: theme.textTheme.labelSmall,
+                ),
+              ),
               const SizedBox(height: Spacing.sm),
               if (data.payslips.isEmpty)
-                Text(
-                  'No payslips — no active employee has a salary on file.',
-                  style: theme.textTheme.bodySmall,
+                const Card(
+                  child: StateMessage(
+                    icon: Icons.receipt_long_outlined,
+                    title: 'No payslips',
+                    message:
+                        'No active employee has a salary on file, so there was '
+                        'nothing to pay.',
+                  ),
                 )
               else
-                Card(
-                  child: Column(
-                    children: [
-                      for (final (i, slip) in data.payslips.indexed) ...[
-                        if (i > 0) const Divider(height: 1),
-                        ListTile(
-                          dense: true,
-                          title: Text(slip.userName),
-                          subtitle: Text(
-                              'Gross ${Formatting.currency(slip.grossPay)}',
-                              style: theme.textTheme.bodySmall),
-                          trailing: Money(slip.netPay),
-                          onTap: () => showPayslipSheet(
-                            context,
-                            slip,
-                            monthKey: data.monthKey,
-                            finalized: data.isFinalized,
-                            fetchPdf: () =>
-                                ref.read(hrServiceProvider).payslipPdf(slip.id),
+                CrmCardList(
+                  children: [
+                    for (final slip in data.payslips)
+                      ListTile(
+                        dense: true,
+                        title: Text(
+                          slip.userName,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: CrmMetaLine(
+                            'Gross ${Formatting.currency(slip.grossPay)}',
                           ),
                         ),
-                      ],
-                    ],
-                  ),
+                        trailing: Money(slip.netPay, showCode: false),
+                        onTap: () => showPayslipSheet(
+                          context,
+                          slip,
+                          monthKey: data.monthKey,
+                          finalized: data.isFinalized,
+                          fetchPdf: () =>
+                              ref.read(hrServiceProvider).payslipPdf(slip.id),
+                        ),
+                      ),
+                  ],
                 ),
               const SizedBox(height: Spacing.xl),
             ],
@@ -286,6 +400,73 @@ class PayrollRunScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  /// The draft-only actions, as a sheet rather than an overflow menu — the
+  /// masthead is ink, and a popup menu on it reads as a foreign control.
+  Future<void> _showActions(
+    BuildContext context,
+    WidgetRef ref,
+    PayrollRun run,
+  ) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
+      builder: (context) {
+        final theme = Theme.of(context);
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.lg,
+              0,
+              Spacing.lg,
+              Spacing.lg,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _monthLabel(run.monthKey).toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: Spacing.xs),
+                Text(
+                  'Run actions',
+                  style: Type.display(22, color: theme.colorScheme.onSurface),
+                ),
+                const SizedBox(height: Spacing.md),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.refresh_rounded),
+                  title: const Text('Regenerate payslips'),
+                  subtitle: const Text(
+                    'Rebuilt from the current salaries, allowances and '
+                    'deductions.',
+                  ),
+                  onTap: () => Navigator.pop(context, 'regenerate'),
+                ),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    Icons.delete_outline,
+                    color: theme.colorScheme.error,
+                  ),
+                  title: const Text('Delete draft run'),
+                  subtitle: const Text('The month can be generated again.'),
+                  onTap: () => Navigator.pop(context, 'delete'),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (action == null || !context.mounted) return;
+    await _act(context, ref, run, action);
   }
 
   Future<void> _act(
@@ -299,20 +480,20 @@ class PayrollRunScreen extends ConsumerWidget {
 
     final (title, body, verb) = switch (action) {
       'finalize' => (
-          'Finalize ${_monthLabel(run.monthKey)}?',
-          'Payslips become payroll history and loan/advance recoveries are collected. This cannot be undone.',
-          'Finalize'
-        ),
+        'Finalize ${_monthLabel(run.monthKey)}?',
+        'Payslips become payroll history and loan/advance recoveries are collected. This cannot be undone.',
+        'Finalize',
+      ),
       'delete' => (
-          'Delete this draft run?',
-          'All ${run.payslips.length} payslips in it are discarded. You can generate the month again later.',
-          'Delete'
-        ),
+        'Delete this draft run?',
+        'All ${run.payslips.length} payslips in it are discarded. You can generate the month again later.',
+        'Delete',
+      ),
       _ => (
-          'Regenerate payslips?',
-          'Existing draft payslips are replaced using the current salaries, allowances and deductions.',
-          'Regenerate'
-        ),
+        'Regenerate payslips?',
+        'Existing draft payslips are replaced using the current salaries, allowances and deductions.',
+        'Regenerate',
+      ),
     };
 
     final confirmed = await showDialog<bool>(
@@ -322,11 +503,13 @@ class PayrollRunScreen extends ConsumerWidget {
         content: Text(body),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(verb)),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(verb),
+          ),
         ],
       ),
     );
@@ -337,16 +520,19 @@ class PayrollRunScreen extends ConsumerWidget {
         case 'finalize':
           await service.finalizePayrollRun(run.id);
           messenger.showSnackBar(
-              const SnackBar(content: Text('Payroll finalized.')));
+            const SnackBar(content: Text('Payroll finalized.')),
+          );
         case 'delete':
           await service.deletePayrollRun(run.id);
-          messenger
-              .showSnackBar(const SnackBar(content: Text('Draft deleted.')));
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Draft deleted.')),
+          );
           if (context.mounted) context.pop();
         default:
           final message = await service.generatePayrollRun(run.monthKey);
           messenger.showSnackBar(
-              SnackBar(content: Text(message ?? 'Payslips regenerated.')));
+            SnackBar(content: Text(message ?? 'Payslips regenerated.')),
+          );
       }
       ref.invalidate(payrollRunsProvider);
       ref.invalidate(payrollRunProvider(run.id));
@@ -356,7 +542,155 @@ class PayrollRunScreen extends ConsumerWidget {
   }
 }
 
+/// The run's hero: net pay at display scale, with the state of the run and
+/// who put it there set as the eyebrow above it.
+class _RunTotalsCard extends StatelessWidget {
+  const _RunTotalsCard({required this.run});
+
+  final PayrollRun run;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final eyebrow = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(child: Text('NET PAY', style: eyebrow)),
+                StatusChip(run.isFinalized ? 'finalized' : 'draft'),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Money(run.netPayTotal, scale: MoneyScale.display),
+            ),
+            const Divider(height: Spacing.lg + Spacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: _Figure(
+                    label: 'Employer cost',
+                    amount: run.employerCostTotal,
+                  ),
+                ),
+                const SizedBox(width: Spacing.md),
+                Expanded(
+                  child: _Count(
+                    label: 'Payslips',
+                    value: Formatting.integer(run.payslipsCount),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            Text(
+              (run.isFinalized
+                      ? 'Finalized by ${run.finalizedBy?.name ?? '—'} · ${Formatting.date(run.finalizedAt)}'
+                      : 'Generated by ${run.generatedBy?.name ?? '—'} · ${Formatting.date(run.generatedAt)}')
+                  .toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: eyebrow,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A labelled row-scale figure inside a card.
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.amount});
+
+  final String label;
+  final Object? amount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.xs),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Money(amount, showCode: false),
+        ),
+      ],
+    );
+  }
+}
+
+/// A [_Figure] whose value is a count — matched to the money readout by
+/// construction so the two sit at the same weight side by side.
+class _Count extends StatelessWidget {
+  const _Count({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.xs),
+        Text(
+          value,
+          style: TextStyle(
+            fontFamily: Type.family,
+            fontSize: MoneyScale.row.size,
+            fontWeight: FontWeight.w700,
+            letterSpacing: MoneyScale.row.size * -0.02,
+            height: 1,
+            color: theme.colorScheme.onSurface,
+            fontFeatures: Type.figures,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// The payslip
+// ---------------------------------------------------------------------------
+
 /// A payslip's full breakdown, with the PDF one tap away.
+///
+/// Net pay is the hero; everything below it is the arithmetic that produced
+/// it, grouped under the same section rules the rest of the app uses so a
+/// long column of figures still has a shape.
 Future<void> showPayslipSheet(
   BuildContext context,
   Payslip slip, {
@@ -367,25 +701,42 @@ Future<void> showPayslipSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
+    showDragHandle: true,
     shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
     builder: (context) {
       final theme = Theme.of(context);
+      final scheme = theme.colorScheme;
 
-      Widget section(String title, List<BreakdownLine> lines, double total) {
-        if (lines.isEmpty && total == 0) return const SizedBox.shrink();
-        return Padding(
-          padding: const EdgeInsets.only(top: Spacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: theme.textTheme.labelLarge),
-              for (final line in lines)
-                CrmDetailRow(line.name, Formatting.currency(line.amount)),
-              if (lines.length != 1)
-                CrmDetailRow('Total', Formatting.currency(total)),
-            ],
+      /// One group of breakdown lines on its own card, under its own rule.
+      /// Hidden entirely when the section is empty and worth nothing, as
+      /// before — a payslip should not list what it did not charge.
+      List<Widget> section(
+        String title,
+        List<BreakdownLine> lines,
+        double total,
+      ) {
+        if (lines.isEmpty && total == 0) return const [];
+        return [
+          const SizedBox(height: Spacing.lg),
+          SectionHeader(title),
+          const SizedBox(height: Spacing.sm),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Spacing.md,
+                vertical: Spacing.sm,
+              ),
+              child: Column(
+                children: [
+                  for (final line in lines) _SlipLine(line.name, line.amount),
+                  // A single line is already its own total.
+                  if (lines.length != 1)
+                    _SlipLine('Total', total, strong: true),
+                ],
+              ),
+            ),
           ),
-        );
+        ];
       }
 
       return DraggableScrollableSheet(
@@ -394,51 +745,144 @@ Future<void> showPayslipSheet(
         maxChildSize: 0.95,
         builder: (context, scroll) => ListView(
           controller: scroll,
-          padding: const EdgeInsets.all(Spacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.lg,
+            0,
+            Spacing.lg,
+            Spacing.lg,
+          ),
           children: [
-            Text(slip.userName, style: theme.textTheme.titleMedium),
-            Text(_monthLabel(monthKey), style: theme.textTheme.bodySmall),
-            const SizedBox(height: Spacing.md),
-            Center(child: Money(slip.netPay, scale: MoneyScale.display)),
-            Center(
-              child: Text('Net pay',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            Text(
+              _monthLabel(monthKey).toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
-            const SizedBox(height: Spacing.sm),
-            CrmDetailRow('Basic salary', Formatting.currency(slip.basicSalary)),
-            section('Allowances', slip.allowancesBreakdown,
-                slip.allowancesTotal),
-            CrmDetailRow('Gross pay', Formatting.currency(slip.grossPay)),
-            section('Statutory (employee)', slip.statutoryEmployeeBreakdown,
-                slip.statutoryEmployeeTotal),
+            const SizedBox(height: Spacing.xs),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    slip.userName,
+                    style: Type.display(22, color: scheme.onSurface),
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
+                StatusChip(finalized ? 'finalized' : 'draft'),
+              ],
+            ),
             const SizedBox(height: Spacing.md),
-            Text('Tax', style: theme.textTheme.labelLarge),
-            CrmDetailRow(
-                'Taxable income', Formatting.currency(slip.taxableIncome)),
-            CrmDetailRow('PAYE', Formatting.currency(slip.payeAmount)),
-            section('Other deductions', slip.deductionsBreakdown,
-                slip.otherDeductionsTotal),
-            section('Statutory (employer)', slip.statutoryEmployerBreakdown,
-                slip.statutoryEmployerTotal),
+            // The figure the whole sheet exists to state.
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(Spacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'NET PAY',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Money(slip.netPay, scale: MoneyScale.display),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Earnings'),
             const SizedBox(height: Spacing.sm),
-            CrmDetailRow(
-                'Employer cost', Formatting.currency(slip.employerCostTotal)),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Spacing.md,
+                  vertical: Spacing.sm,
+                ),
+                child: Column(
+                  children: [
+                    _SlipLine('Basic salary', slip.basicSalary),
+                    if (slip.allowancesBreakdown.isNotEmpty ||
+                        slip.allowancesTotal != 0) ...[
+                      for (final line in slip.allowancesBreakdown)
+                        _SlipLine(line.name, line.amount),
+                      if (slip.allowancesBreakdown.length != 1)
+                        _SlipLine('Allowances', slip.allowancesTotal),
+                    ],
+                    _SlipLine('Gross pay', slip.grossPay, strong: true),
+                  ],
+                ),
+              ),
+            ),
+            ...section(
+              'Statutory (employee)',
+              slip.statutoryEmployeeBreakdown,
+              slip.statutoryEmployeeTotal,
+            ),
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Tax'),
+            const SizedBox(height: Spacing.sm),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Spacing.md,
+                  vertical: Spacing.sm,
+                ),
+                child: Column(
+                  children: [
+                    _SlipLine('Taxable income', slip.taxableIncome),
+                    _SlipLine('PAYE', slip.payeAmount, strong: true),
+                  ],
+                ),
+              ),
+            ),
+            ...section(
+              'Other deductions',
+              slip.deductionsBreakdown,
+              slip.otherDeductionsTotal,
+            ),
+            ...section(
+              'Statutory (employer)',
+              slip.statutoryEmployerBreakdown,
+              slip.statutoryEmployerTotal,
+            ),
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Employer'),
+            const SizedBox(height: Spacing.sm),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Spacing.md,
+                  vertical: Spacing.sm,
+                ),
+                child: _SlipLine(
+                  'Employer cost',
+                  slip.employerCostTotal,
+                  strong: true,
+                ),
+              ),
+            ),
             const SizedBox(height: Spacing.lg),
             // The PDF endpoints 422 until the run is finalized.
-            FilledButton.icon(
-              icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
-              label: Text(finalized
+            PrimaryButton(
+              icon: Icons.picture_as_pdf_outlined,
+              label: finalized
                   ? 'Share payslip PDF'
-                  : 'PDF available once finalized'),
+                  : 'PDF available once finalized',
               onPressed: !finalized
                   ? null
                   : () => sharePdf(
-                        context,
-                        fetch: fetchPdf,
-                        filename:
-                            'payslip-${slip.userName.replaceAll(' ', '-')}-$monthKey.pdf',
-                      ),
+                      context,
+                      fetch: fetchPdf,
+                      filename:
+                          'payslip-${slip.userName.replaceAll(' ', '-')}-$monthKey.pdf',
+                    ),
             ),
             const SizedBox(height: Spacing.lg),
           ],
@@ -446,6 +890,48 @@ Future<void> showPayslipSheet(
       );
     },
   );
+}
+
+/// One line of a payslip: the mono eyebrow names the item, the figure sits on
+/// the right so a column of them reads as arithmetic. [strong] is for a
+/// subtotal — the same size, in full-strength ink.
+class _SlipLine extends StatelessWidget {
+  const _SlipLine(this.label, this.amount, {this.strong = false});
+
+  final String label;
+  final Object? amount;
+  final bool strong;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: Spacing.xs + 1),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
+        children: [
+          Expanded(
+            child: Text(
+              label.toUpperCase(),
+              maxLines: 2,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: strong ? scheme.onSurface : scheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: Spacing.sm),
+          Money(
+            amount,
+            scale: strong ? MoneyScale.row : MoneyScale.dense,
+            showCode: false,
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -460,88 +946,89 @@ class _SalariesTab extends ConsumerWidget {
     final salaries = ref.watch(salariesProvider);
     final theme = Theme.of(context);
 
-    return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('Set salary'),
-        onPressed: () => _add(context, ref),
-      ),
-      body: CrmAsyncView(
-        value: salaries,
-        errorTitle: 'Could not load salaries',
-        onRetry: () => ref.invalidate(salariesProvider),
-        builder: (list) => RefreshIndicator(
-          onRefresh: () => ref.refresh(salariesProvider.future),
-          child: list.isEmpty
-              ? ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(
-                      height: 320,
-                      child: StateMessage(
-                        icon: Icons.account_balance_wallet_outlined,
-                        title: 'No salaries on file',
-                        message:
-                            'Employees without a salary are skipped when payroll is generated.',
-                      ),
-                    ),
-                  ],
-                )
-              : ListView.separated(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(
-                      Spacing.md, Spacing.md, Spacing.md, 96),
-                  itemCount: list.length,
-                  separatorBuilder: (_, _) =>
-                      const SizedBox(height: Spacing.sm),
-                  itemBuilder: (context, index) {
-                    final s = list[index];
-                    return Card(
-                      child: ListTile(
-                        title: Text(s.userName),
-                        subtitle: Text(
-                          'From ${Formatting.date(s.effectiveFrom)}'
-                          '${s.notes == null ? '' : ' · ${s.notes}'}',
-                          style: theme.textTheme.bodySmall,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+    return CrmAsyncView(
+      value: salaries,
+      errorTitle: 'Could not load salaries',
+      onRetry: () => ref.invalidate(salariesProvider),
+      builder: (list) => RefreshIndicator(
+        onRefresh: () => ref.refresh(salariesProvider.future),
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(Spacing.md),
+          children: [
+            if (list.isEmpty)
+              const SizedBox(
+                height: 320,
+                child: StateMessage(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'No salaries on file',
+                  message:
+                      'Employees without a salary are skipped when payroll is '
+                      'generated.',
+                ),
+              )
+            else ...[
+              Reveal(
+                child: CrmCardList(
+                  children: [
+                    for (final s in list)
+                      ListTile(
+                        dense: true,
+                        title: Text(
+                          s.userName,
+                          style: theme.textTheme.titleSmall,
                         ),
-                        trailing: Money(s.basicSalary),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: CrmMetaLine(
+                            [
+                              'From ${Formatting.date(s.effectiveFrom)}',
+                              if (s.notes != null) s.notes!,
+                            ].join(' · '),
+                          ),
+                        ),
+                        trailing: Money(s.basicSalary, showCode: false),
                         onLongPress: () => _delete(context, ref, s),
                       ),
-                    );
-                  },
+                  ],
                 ),
+              ),
+              const SizedBox(height: Spacing.sm),
+              Text(
+                'Press and hold an entry to remove it.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: Spacing.xl),
+          ],
         ),
       ),
     );
   }
 
-  Future<void> _add(BuildContext context, WidgetRef ref) async {
-    final saved = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-      builder: (_) => const _MoneyFormSheet(kind: _MoneyFormKind.salary),
-    );
-    if (saved ?? false) ref.invalidate(salariesProvider);
-  }
-
   Future<void> _delete(
-      BuildContext context, WidgetRef ref, StaffSalary s) async {
+    BuildContext context,
+    WidgetRef ref,
+    StaffSalary s,
+  ) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Remove this salary entry?'),
         content: Text(
-            '${s.userName} · ${Formatting.currency(s.basicSalary)} from ${Formatting.date(s.effectiveFrom)}'),
+          '${s.userName} · ${Formatting.currency(s.basicSalary)} from ${Formatting.date(s.effectiveFrom)}',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Keep')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Remove')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Remove'),
+          ),
         ],
       ),
     );
@@ -570,141 +1057,121 @@ class _LoansTab extends ConsumerWidget {
     final theme = Theme.of(context);
     final status = context.statusColors;
 
-    return Scaffold(
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.add),
-        label: const Text('New'),
-        onPressed: () async {
-          final kind = await showModalBottomSheet<_MoneyFormKind>(
-            context: context,
-            shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-            builder: (context) => SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.request_quote_outlined),
-                    title: const Text('Loan'),
-                    subtitle:
-                        const Text('Repaid in monthly instalments via payroll'),
-                    onTap: () => Navigator.pop(context, _MoneyFormKind.loan),
+    return RefreshIndicator(
+      onRefresh: () async {
+        ref.invalidate(loansProvider);
+        ref.invalidate(salaryAdvancesProvider);
+        await ref.read(loansProvider.future);
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(Spacing.md),
+        children: [
+          const SectionHeader('Loans'),
+          const SizedBox(height: Spacing.sm),
+          loans.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (e, _) => ErrorBanner(
+              message: e is ApiException ? e.message : 'Could not load loans',
+              onRetry: () => ref.invalidate(loansProvider),
+            ),
+            data: (list) => list.isEmpty
+                ? const Card(
+                    child: StateMessage(
+                      icon: Icons.request_quote_outlined,
+                      title: 'No loans',
+                      message: 'Loans are repaid in instalments via payroll.',
+                    ),
+                  )
+                : Reveal(
+                    child: CrmCardList(
+                      children: [
+                        for (final loan in list)
+                          ListTile(
+                            dense: true,
+                            title: Text(
+                              loan.userName,
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 2),
+                              child: CrmStatusLine(
+                                status: loan.status,
+                                meta:
+                                    '${Formatting.currency(loan.monthlyInstallment)}/month · '
+                                    'issued ${Formatting.date(loan.issuedDate)}',
+                              ),
+                            ),
+                            trailing: Money(
+                              loan.balance,
+                              showCode: false,
+                              color: loan.isActive ? status.attention : null,
+                            ),
+                            onTap: () => _showLoan(context, ref, loan),
+                          ),
+                      ],
+                    ),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.fast_forward_outlined),
-                    title: const Text('Salary advance'),
-                    subtitle: const Text('Recovered in full from one month'),
-                    onTap: () =>
-                        Navigator.pop(context, _MoneyFormKind.advance),
+          ),
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Salary advances'),
+          const SizedBox(height: Spacing.sm),
+          advances.when(
+            loading: () => const LinearProgressIndicator(),
+            error: (e, _) => ErrorBanner(
+              message: e is ApiException
+                  ? e.message
+                  : 'Could not load advances',
+              onRetry: () => ref.invalidate(salaryAdvancesProvider),
+            ),
+            data: (list) => list.isEmpty
+                ? const Card(
+                    child: StateMessage(
+                      icon: Icons.fast_forward_outlined,
+                      title: 'No advances',
+                      message:
+                          'An advance is recovered in full from one month.',
+                    ),
+                  )
+                : CrmCardList(
+                    children: [
+                      for (final adv in list)
+                        ListTile(
+                          dense: true,
+                          title: Text(
+                            adv.userName,
+                            style: theme.textTheme.titleSmall,
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: CrmStatusLine(
+                              status: adv.status,
+                              meta:
+                                  'Recover in ${_monthLabel(adv.recoveryMonthKey)} · '
+                                  'issued ${Formatting.date(adv.issuedDate)}',
+                            ),
+                          ),
+                          trailing: Money(adv.amount, showCode: false),
+                          onLongPress: adv.isPending
+                              ? () => _cancelAdvance(context, ref, adv)
+                              : null,
+                        ),
+                    ],
                   ),
-                ],
+          ),
+          // Cancelling is destructive and rare, so it hides behind a long
+          // press rather than sitting on every row — which needs saying.
+          if (advances.valueOrNull?.any((a) => a.isPending) ?? false) ...[
+            const SizedBox(height: Spacing.sm),
+            Text(
+              'Press and hold a pending advance to cancel it.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-          );
-          if (kind == null || !context.mounted) return;
-          final saved = await showModalBottomSheet<bool>(
-            context: context,
-            isScrollControlled: true,
-            shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-            builder: (_) => _MoneyFormSheet(kind: kind),
-          );
-          if (saved ?? false) {
-            ref.invalidate(loansProvider);
-            ref.invalidate(salaryAdvancesProvider);
-          }
-        },
-      ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          ref.invalidate(loansProvider);
-          ref.invalidate(salaryAdvancesProvider);
-          await ref.read(loansProvider.future);
-        },
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          padding:
-              const EdgeInsets.fromLTRB(Spacing.md, Spacing.md, Spacing.md, 96),
-          children: [
-            Text('Loans', style: theme.textTheme.titleSmall),
-            const SizedBox(height: Spacing.sm),
-            loans.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text(
-                  e is ApiException ? e.message : 'Could not load loans',
-                  style: TextStyle(color: theme.colorScheme.error)),
-              data: (list) => list.isEmpty
-                  ? Text('No loans.', style: theme.textTheme.bodySmall)
-                  : Card(
-                      child: Column(
-                        children: [
-                          for (final (i, loan) in list.indexed) ...[
-                            if (i > 0) const Divider(height: 1),
-                            ListTile(
-                              dense: true,
-                              title: Text(loan.userName),
-                              subtitle: Text(
-                                '${Formatting.currency(loan.monthlyInstallment)}/month · issued ${Formatting.date(loan.issuedDate)}',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Money(loan.balance,
-                                      color: loan.isActive
-                                          ? status.attention
-                                          : null),
-                                  StatusChip(loan.status, dense: true),
-                                ],
-                              ),
-                              onTap: () => _showLoan(context, ref, loan),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-            ),
-            const SizedBox(height: Spacing.lg),
-            Text('Salary advances', style: theme.textTheme.titleSmall),
-            const SizedBox(height: Spacing.sm),
-            advances.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (e, _) => Text(
-                  e is ApiException ? e.message : 'Could not load advances',
-                  style: TextStyle(color: theme.colorScheme.error)),
-              data: (list) => list.isEmpty
-                  ? Text('No advances.', style: theme.textTheme.bodySmall)
-                  : Card(
-                      child: Column(
-                        children: [
-                          for (final (i, adv) in list.indexed) ...[
-                            if (i > 0) const Divider(height: 1),
-                            ListTile(
-                              dense: true,
-                              title: Text(adv.userName),
-                              subtitle: Text(
-                                'Recover in ${_monthLabel(adv.recoveryMonthKey)} · issued ${Formatting.date(adv.issuedDate)}',
-                                style: theme.textTheme.bodySmall,
-                              ),
-                              trailing: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Money(adv.amount),
-                                  StatusChip(adv.status, dense: true),
-                                ],
-                              ),
-                              onLongPress: adv.isPending
-                                  ? () => _cancelAdvance(context, ref, adv)
-                                  : null,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-            ),
-            const SizedBox(height: Spacing.xl),
           ],
-        ),
+          const SizedBox(height: Spacing.xl),
+        ],
       ),
     );
   }
@@ -714,62 +1181,153 @@ class _LoansTab extends ConsumerWidget {
     final cancel = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (context) => Consumer(
         builder: (context, ref, _) {
           final theme = Theme.of(context);
+          final scheme = theme.colorScheme;
           final payments = ref.watch(loanPaymentsProvider(loan.id));
+
           return DraggableScrollableSheet(
             expand: false,
             initialChildSize: 0.6,
+            maxChildSize: 0.95,
             builder: (context, scroll) => ListView(
               controller: scroll,
-              padding: const EdgeInsets.all(Spacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.lg,
+                0,
+                Spacing.lg,
+                Spacing.lg,
+              ),
               children: [
+                Text(
+                  'LOAN',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: Spacing.xs),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                        child: Text(loan.userName,
-                            style: theme.textTheme.titleMedium)),
-                    StatusChip(loan.status, dense: true),
+                      child: Text(
+                        loan.userName,
+                        style: Type.display(22, color: scheme.onSurface),
+                      ),
+                    ),
+                    const SizedBox(width: Spacing.sm),
+                    StatusChip(loan.status),
                   ],
                 ),
-                const SizedBox(height: Spacing.sm),
-                CrmDetailRow('Principal', Formatting.currency(loan.principal)),
-                CrmDetailRow('Balance', Formatting.currency(loan.balance)),
-                CrmDetailRow('Instalment',
-                    '${Formatting.currency(loan.monthlyInstallment)}/month'),
-                CrmDetailRow('Issued', Formatting.date(loan.issuedDate)),
-                if (loan.notes != null) CrmDetailRow('Notes', loan.notes!),
                 const SizedBox(height: Spacing.md),
-                Text('Repayments', style: theme.textTheme.labelLarge),
-                const SizedBox(height: Spacing.xs),
+                // What is still owed is the figure that decides anything here.
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Spacing.lg),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'BALANCE',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: Spacing.sm),
+                        FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Money(
+                            loan.balance,
+                            scale: MoneyScale.display,
+                            color: loan.isActive
+                                ? context.statusColors.attention
+                                : null,
+                          ),
+                        ),
+                        const Divider(height: Spacing.lg + Spacing.sm),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _Figure(
+                                label: 'Principal',
+                                amount: loan.principal,
+                              ),
+                            ),
+                            const SizedBox(width: Spacing.md),
+                            Expanded(
+                              child: _Figure(
+                                label: 'Instalment / month',
+                                amount: loan.monthlyInstallment,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: Spacing.sm),
+                        Text(
+                          [
+                            'Issued ${Formatting.date(loan.issuedDate)}',
+                            if (loan.notes != null) loan.notes!,
+                          ].join(' · ').toUpperCase(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: Spacing.lg),
+                const SectionHeader('Repayments'),
+                const SizedBox(height: Spacing.sm),
                 payments.when(
                   loading: () => const LinearProgressIndicator(),
-                  error: (e, _) => Text(
-                      e is ApiException ? e.message : 'Could not load',
-                      style: TextStyle(color: theme.colorScheme.error)),
+                  error: (e, _) => ErrorBanner(
+                    message: e is ApiException
+                        ? e.message
+                        : 'Could not load repayments',
+                    onRetry: () =>
+                        ref.invalidate(loanPaymentsProvider(loan.id)),
+                  ),
                   data: (rows) => rows.isEmpty
-                      ? Text('None yet.', style: theme.textTheme.bodySmall)
-                      : Column(
+                      ? const Card(
+                          child: StateMessage(
+                            icon: Icons.history_outlined,
+                            title: 'Nothing collected yet',
+                            message:
+                                'Instalments appear here as payroll months are '
+                                'finalized.',
+                          ),
+                        )
+                      : CrmCardList(
                           children: [
                             for (final p in rows)
                               ListTile(
                                 dense: true,
-                                contentPadding: EdgeInsets.zero,
-                                title: Text(p.runMonthKey == null
-                                    ? 'Manual'
-                                    : 'Payroll ${_monthLabel(p.runMonthKey!)}'),
-                                subtitle: Text(
+                                title: Text(
+                                  p.runMonthKey == null
+                                      ? 'Manual'
+                                      : 'Payroll ${_monthLabel(p.runMonthKey!)}',
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                                subtitle: Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: CrmMetaLine(
                                     'Balance after ${Formatting.currency(p.balanceAfter)}',
-                                    style: theme.textTheme.bodySmall),
-                                trailing: Money(p.amount),
+                                  ),
+                                ),
+                                trailing: Money(p.amount, showCode: false),
                               ),
                           ],
                         ),
                 ),
                 if (loan.isActive) ...[
-                  const SizedBox(height: Spacing.md),
+                  const SizedBox(height: Spacing.lg),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.cancel_outlined, size: 18),
                     label: const Text('Cancel loan'),
@@ -785,10 +1343,12 @@ class _LoansTab extends ConsumerWidget {
     );
     if (!(cancel ?? false) || !context.mounted) return;
 
-    final confirmed = await _confirm(context,
-        title: 'Cancel this loan?',
-        body:
-            'No further instalments will be collected. The repayment history is kept.');
+    final confirmed = await _confirm(
+      context,
+      title: 'Cancel this loan?',
+      body:
+          'No further instalments will be collected. The repayment history is kept.',
+    );
     if (!confirmed) return;
     try {
       await ref.read(hrServiceProvider).cancelLoan(loan.id);
@@ -799,12 +1359,17 @@ class _LoansTab extends ConsumerWidget {
   }
 
   Future<void> _cancelAdvance(
-      BuildContext context, WidgetRef ref, SalaryAdvance adv) async {
+    BuildContext context,
+    WidgetRef ref,
+    SalaryAdvance adv,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
-    final confirmed = await _confirm(context,
-        title: 'Cancel this advance?',
-        body:
-            '${adv.userName} · ${Formatting.currency(adv.amount)} will not be recovered from payroll.');
+    final confirmed = await _confirm(
+      context,
+      title: 'Cancel this advance?',
+      body:
+          '${adv.userName} · ${Formatting.currency(adv.amount)} will not be recovered from payroll.',
+    );
     if (!confirmed || !context.mounted) return;
     try {
       await ref.read(hrServiceProvider).cancelSalaryAdvance(adv.id);
@@ -846,10 +1411,16 @@ class _MoneyFormSheetState extends ConsumerState<_MoneyFormSheet> {
   }
 
   String get _title => switch (widget.kind) {
-        _MoneyFormKind.salary => 'Set basic salary',
-        _MoneyFormKind.loan => 'New loan',
-        _MoneyFormKind.advance => 'New salary advance',
-      };
+    _MoneyFormKind.salary => 'Set basic salary',
+    _MoneyFormKind.loan => 'New loan',
+    _MoneyFormKind.advance => 'New salary advance',
+  };
+
+  String get _amountLabel => switch (widget.kind) {
+    _MoneyFormKind.salary => 'Basic salary (monthly)',
+    _MoneyFormKind.loan => 'Principal',
+    _MoneyFormKind.advance => 'Amount',
+  };
 
   Future<void> _save() async {
     final amount = double.tryParse(_amount.text.replaceAll(',', '').trim());
@@ -857,8 +1428,9 @@ class _MoneyFormSheetState extends ConsumerState<_MoneyFormSheet> {
       setState(() => _error = 'Choose an employee and enter an amount.');
       return;
     }
-    final installment =
-        double.tryParse(_installment.text.replaceAll(',', '').trim());
+    final installment = double.tryParse(
+      _installment.text.replaceAll(',', '').trim(),
+    );
     if (widget.kind == _MoneyFormKind.loan &&
         (installment == null || installment <= 0)) {
       setState(() => _error = 'Enter the monthly instalment.');
@@ -911,99 +1483,115 @@ class _MoneyFormSheetState extends ConsumerState<_MoneyFormSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: EdgeInsets.only(
-        left: Spacing.md,
-        right: Spacing.md,
-        top: Spacing.md,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.md,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(_title, style: theme.textTheme.titleMedium),
+    final dateLabel = widget.kind == _MoneyFormKind.salary
+        ? 'Effective from'
+        : 'Issued';
+
+    return CrmSheet(
+      eyebrow: 'Payroll',
+      title: _title,
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
           const SizedBox(height: Spacing.md),
-          if (_error != null) ...[
-            ErrorBanner(message: _error!),
-            const SizedBox(height: Spacing.sm),
-          ],
-          OutlinedButton.icon(
-            icon: const Icon(Icons.person_outline, size: 18),
-            label: Text(_user?.name ?? 'Choose employee'),
-            onPressed: () async {
-              final picked = await StaffUserPickerSheet.show(context);
-              if (picked != null) setState(() => _user = picked);
-            },
-          ),
-          const SizedBox(height: Spacing.sm),
-          TextField(
+        ],
+        CrmPickerField(
+          label: 'Employee',
+          value: _user?.name ?? 'Choose an employee',
+          placeholder: _user == null,
+          icon: Icons.person_outline,
+          onTap: _saving
+              ? null
+              : () async {
+                  final picked = await StaffUserPickerSheet.show(context);
+                  if (picked != null) setState(() => _user = picked);
+                },
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: _amountLabel,
+          child: TextField(
             controller: _amount,
-            keyboardType:
-                const TextInputType.numberWithOptions(decimal: true),
+            enabled: !_saving,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              labelText: switch (widget.kind) {
-                _MoneyFormKind.salary => 'Basic salary (monthly)',
-                _MoneyFormKind.loan => 'Principal',
-                _MoneyFormKind.advance => 'Amount',
-              },
+              hintText: '0.00',
               prefixText: '${Formatting.tenantCurrency} ',
             ),
           ),
-          if (widget.kind == _MoneyFormKind.loan) ...[
-            const SizedBox(height: Spacing.sm),
-            TextField(
+        ),
+        if (widget.kind == _MoneyFormKind.loan) ...[
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'Monthly instalment',
+            child: TextField(
               controller: _installment,
-              keyboardType:
-                  const TextInputType.numberWithOptions(decimal: true),
+              enabled: !_saving,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
               decoration: InputDecoration(
-                labelText: 'Monthly instalment',
+                hintText: '0.00',
                 prefixText: '${Formatting.tenantCurrency} ',
               ),
             ),
-          ],
-          const SizedBox(height: Spacing.sm),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.calendar_today_outlined, size: 16),
-            label: Text(
-                '${widget.kind == _MoneyFormKind.salary ? 'Effective from' : 'Issued'}: ${Formatting.date(_date)}'),
-            onPressed: () async {
-              final picked = await showDatePicker(
-                context: context,
-                initialDate: _date,
-                firstDate: DateTime(2020),
-                lastDate: DateTime.now().add(const Duration(days: 365)),
-              );
-              if (picked != null) setState(() => _date = picked);
-            },
-          ),
-          if (widget.kind == _MoneyFormKind.advance) ...[
-            const SizedBox(height: Spacing.sm),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.event_repeat_outlined, size: 16),
-              label: Text(_recoveryMonth == null
-                  ? 'Recover from payroll month…'
-                  : 'Recover in ${_monthLabel(_recoveryMonth!)}'),
-              onPressed: () async {
-                final key =
-                    await _pickMonth(context, title: 'Recover from');
-                if (key != null) setState(() => _recoveryMonth = key);
-              },
-            ),
-          ],
-          const SizedBox(height: Spacing.sm),
-          TextField(
-            controller: _notes,
-            decoration: const InputDecoration(labelText: 'Notes (optional)'),
-          ),
-          const SizedBox(height: Spacing.md),
-          FilledButton(
-            onPressed: _saving ? null : _save,
-            child: Text(_saving ? 'Saving…' : 'Save'),
           ),
         ],
-      ),
+        const SizedBox(height: Spacing.md),
+        CrmPickerField(
+          label: dateLabel,
+          value: Formatting.date(_date),
+          onTap: _saving
+              ? null
+              : () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _date,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now().add(const Duration(days: 365)),
+                  );
+                  if (picked != null) setState(() => _date = picked);
+                },
+        ),
+        if (widget.kind == _MoneyFormKind.advance) ...[
+          const SizedBox(height: Spacing.md),
+          CrmPickerField(
+            label: 'Recovered from',
+            value: _recoveryMonth == null
+                ? 'Choose a payroll month'
+                : _monthLabel(_recoveryMonth!),
+            placeholder: _recoveryMonth == null,
+            icon: Icons.event_repeat_outlined,
+            onTap: _saving
+                ? null
+                : () async {
+                    final key = await _pickMonth(
+                      context,
+                      title: 'Recover from',
+                    );
+                    if (key != null) setState(() => _recoveryMonth = key);
+                  },
+          ),
+        ],
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Notes (optional)',
+          child: TextField(
+            controller: _notes,
+            enabled: !_saving,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'What this record is for',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _saving ? 'Saving…' : 'Save',
+          busy: _saving,
+          onPressed: _saving ? null : _save,
+        ),
+      ],
     );
   }
 }
@@ -1026,55 +1614,52 @@ class _MyPayslipsTab extends ConsumerWidget {
       onRetry: () => ref.invalidate(myPayslipsProvider),
       builder: (list) => RefreshIndicator(
         onRefresh: () => ref.refresh(myPayslipsProvider.future),
-        child: list.isEmpty
-            ? ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                children: const [
-                  SizedBox(
-                    height: 320,
-                    child: StateMessage(
-                      icon: Icons.receipt_long_outlined,
-                      title: 'No payslips yet',
-                      message: 'Payslips appear here once payroll is generated.',
-                    ),
-                  ),
-                ],
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(Spacing.md),
+          children: [
+            if (list.isEmpty)
+              const SizedBox(
+                height: 320,
+                child: StateMessage(
+                  icon: Icons.receipt_long_outlined,
+                  title: 'No payslips yet',
+                  message: 'Payslips appear here once payroll is generated.',
+                ),
               )
-            : ListView.separated(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(Spacing.md),
-                itemCount: list.length,
-                separatorBuilder: (_, _) => const SizedBox(height: Spacing.sm),
-                itemBuilder: (context, index) {
-                  final slip = list[index];
-                  final month = slip.runMonthKey ?? '—';
-                  return Card(
-                    child: ListTile(
-                      title: Text(_monthLabel(month),
-                          style: theme.textTheme.titleSmall),
-                      subtitle: Text(
-                          'Gross ${Formatting.currency(slip.grossPay)}',
-                          style: theme.textTheme.bodySmall),
-                      trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Money(slip.netPay),
-                          StatusChip(slip.runStatus ?? 'draft', dense: true),
-                        ],
+            else
+              Reveal(
+                child: CrmCardList(
+                  children: [
+                    for (final slip in list)
+                      ListTile(
+                        title: Text(
+                          _monthLabel(slip.runMonthKey ?? '—'),
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: CrmStatusLine(
+                            status: slip.runStatus ?? 'draft',
+                            meta: 'Gross ${Formatting.currency(slip.grossPay)}',
+                          ),
+                        ),
+                        trailing: Money(slip.netPay, showCode: false),
+                        onTap: () => showPayslipSheet(
+                          context,
+                          slip,
+                          monthKey: slip.runMonthKey ?? '—',
+                          finalized: slip.runStatus == 'finalized',
+                          fetchPdf: () =>
+                              ref.read(hrServiceProvider).myPayslipPdf(slip.id),
+                        ),
                       ),
-                      onTap: () => showPayslipSheet(
-                        context,
-                        slip,
-                        monthKey: month,
-                        finalized: slip.runStatus == 'finalized',
-                        fetchPdf: () =>
-                            ref.read(hrServiceProvider).myPayslipPdf(slip.id),
-                      ),
-                    ),
-                  );
-                },
+                  ],
+                ),
               ),
+            const SizedBox(height: Spacing.xl),
+          ],
+        ),
       ),
     );
   }
@@ -1085,7 +1670,7 @@ class _MyPayslipsTab extends ConsumerWidget {
 // ---------------------------------------------------------------------------
 
 const _months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', //
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
 ];
 
@@ -1137,11 +1722,14 @@ Future<String?> _pickMonth(BuildContext context, {required String title}) {
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(
-                context, HrService.monthKey(DateTime(year, month))),
+              context,
+              HrService.monthKey(DateTime(year, month)),
+            ),
             child: const Text('Continue'),
           ),
         ],
@@ -1150,8 +1738,11 @@ Future<String?> _pickMonth(BuildContext context, {required String title}) {
   );
 }
 
-Future<bool> _confirm(BuildContext context,
-    {required String title, required String body}) async {
+Future<bool> _confirm(
+  BuildContext context, {
+  required String title,
+  required String body,
+}) async {
   final result = await showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
@@ -1159,11 +1750,13 @@ Future<bool> _confirm(BuildContext context,
       content: Text(body),
       actions: [
         TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Back')),
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Back'),
+        ),
         FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Confirm')),
+          onPressed: () => Navigator.pop(context, true),
+          child: const Text('Confirm'),
+        ),
       ],
     ),
   );

@@ -8,8 +8,10 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
 import '../common/paged_list.dart';
+import '../crm/crm_ui.dart' show CrmStatusLine, FilterStrip;
 
-/// Tenant-wide invoice list with status filter + search.
+/// Tenant-wide invoice list with status filter + search. A tab body inside the
+/// home shell — the shell owns the masthead, so this starts with the search.
 class DocumentsTab extends ConsumerStatefulWidget {
   const DocumentsTab({super.key, this.initialStatus});
 
@@ -45,8 +47,10 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400),
-        () => _listKey.currentState?.reload());
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
   }
 
   @override
@@ -55,57 +59,54 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(
-              Spacing.md, Spacing.sm, Spacing.md, 0),
+            Spacing.md,
+            Spacing.md,
+            Spacing.md,
+            0,
+          ),
           child: TextField(
             controller: _search,
             onChanged: _onSearchChanged,
+            textInputAction: TextInputAction.search,
             decoration: const InputDecoration(
               hintText: 'Search number or client',
-              prefixIcon: Icon(Icons.search),
-              isDense: true,
+              prefixIcon: Icon(Icons.search, size: 20),
             ),
           ),
         ),
-        SizedBox(
-          height: 48,
-          child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(
-                horizontal: Spacing.md, vertical: Spacing.sm),
-            itemCount: _filters.length,
-            separatorBuilder: (context, index) =>
-                const SizedBox(width: Spacing.sm),
-            itemBuilder: (context, index) {
-              final (value, label) = _filters[index];
-              return FilterChip(
-                label: Text(label),
-                selected: _status == value,
-                showCheckmark: false,
-                onSelected: (_) {
-                  setState(() => _status = value);
-                  _listKey.currentState?.reload();
-                },
-              );
-            },
-          ),
+        FilterStrip(
+          options: _filters,
+          selected: _status,
+          onSelect: (value) {
+            setState(() => _status = value);
+            _listKey.currentState?.reload();
+          },
         ),
         Expanded(
           child: PagedListView(
             key: _listKey,
-            fetch: (page) => ref.read(staffServiceProvider).documents(
+            fetch: (page) => ref
+                .read(staffServiceProvider)
+                .documents(
                   status: _status,
                   search: _search.text.trim().isEmpty
                       ? null
                       : _search.text.trim(),
                   page: page,
                 ),
-            itemBuilder: (context, doc) => InkWell(
-              borderRadius: Radii.card,
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.xs,
+              Spacing.md,
+              Spacing.xl,
+            ),
+            itemBuilder: (context, doc) => StaffInvoiceCard(
+              document: doc,
               onTap: () => context.push('/documents/${doc.id}'),
-              child: StaffInvoiceCard(document: doc),
             ),
             emptyIcon: Icons.receipt_long_outlined,
             emptyTitle: 'No invoices found',
+            emptyMessage: 'Try another number, client or filter.',
           ),
         ),
       ],
@@ -121,66 +122,83 @@ class UnpaidInvoicesScreen extends StatelessWidget {
   const UnpaidInvoicesScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Unpaid invoices')),
-        body: const DocumentsTab(initialStatus: 'sent'),
-      );
+  Widget build(BuildContext context) => const Scaffold(
+    appBar: ShellTopBar(eyebrow: 'Billing', title: 'Unpaid invoices'),
+    body: DocumentsTab(initialStatus: 'sent'),
+  );
 }
 
-/// Invoice row shared by the invoices tab and the client detail screen.
+/// Invoice row shared by the invoices tab, the by-type lists and the client
+/// detail screen.
+///
+/// The status moves down beside the reference so the trailing column carries
+/// amounts only — which is what lets a screenful of these read as one column
+/// of money rather than as a grid of unrelated pairs.
 class StaffInvoiceCard extends StatelessWidget {
-  const StaffInvoiceCard({super.key, required this.document});
+  const StaffInvoiceCard({
+    super.key,
+    required this.document,
+    this.onTap,
+    this.showClient = true,
+  });
 
   final StaffInvoiceRow document;
+
+  /// Off on a client's own screen, where every row would otherwise repeat
+  /// the name in the masthead. The reference then leads instead.
+  final bool showClient;
+
+  /// Optional so the older call sites that wrap this in their own [InkWell]
+  /// keep working; pass it and the row gets the ripple itself.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    // Date and description are both values rather than labels, so they share
+    // the second line in the body face instead of joining the mono eyebrow.
+    final detail = [
+      if (document.date != null) Formatting.date(document.date),
+      if (document.description != null) document.description!,
+    ].join(' · ');
 
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Row(
+      child: ListTile(
+        onTap: onTap,
+        title: Text(
+          showClient
+              ? (document.clientName ?? document.documentNumber)
+              : document.documentNumber,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(document.clientName ?? document.documentNumber,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 2),
-                  Text(
-                    [
-                      document.documentNumber,
-                      if (document.date != null)
-                        Formatting.date(document.date),
-                    ].join(' · '),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurfaceVariant),
-                  ),
-                  if (document.description != null) ...[
-                    const SizedBox(height: 2),
-                    Text(document.description!,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall),
-                  ],
-                ],
+            const SizedBox(height: Spacing.xs),
+            // The reference alone on the chip's line: a phone is 390pt wide,
+            // and a chip plus a reference plus a date is one thing too many
+            // — the date would be the part that got ellipsed away. With the
+            // client hidden the reference has moved up to the title, so the
+            // chip keeps the line to itself.
+            CrmStatusLine(
+              status: document.status,
+              meta: showClient ? document.documentNumber : '',
+            ),
+            if (detail.isNotEmpty) ...[
+              const SizedBox(height: 2),
+              Text(
+                detail,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
-            ),
-            const SizedBox(width: Spacing.sm),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Money(document.total),
-                const SizedBox(height: Spacing.xs),
-                StatusChip(document.status, dense: true),
-              ],
-            ),
+            ],
           ],
         ),
+        trailing: Money(document.total),
       ),
     );
   }

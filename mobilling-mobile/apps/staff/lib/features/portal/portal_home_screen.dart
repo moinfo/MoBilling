@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_auth/mobilling_auth.dart';
+import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
+import '../auth/account_sheet.dart';
 import '../auth/session_expired_sheet.dart';
 import 'billing/dashboard_tab.dart';
 import 'billing/invoices_tab.dart';
@@ -41,7 +43,6 @@ class _PortalHomeScreenState extends ConsumerState<PortalHomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final user = ref.watch(currentUserProvider);
     final tenant = ref.watch(sessionControllerProvider).tenant;
     final tab = ref.watch(portalTabProvider);
@@ -51,22 +52,20 @@ class _PortalHomeScreenState extends ConsumerState<PortalHomeScreen> {
     });
 
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              tab == 0 ? (tenant?.name ?? 'Client area') : _titles[tab],
-              style: theme.textTheme.titleMedium,
-            ),
-            if (tab == 0 && user?.clientName != null)
-              Text(
-                user!.clientName!,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      // Same masthead as the staff shell. On Home the title is the client's
+      // own name — the screen is about their account, not about the tenant,
+      // who already has the eyebrow.
+      appBar: ShellTopBar(
+        eyebrow: tenant?.name ?? 'Client area',
+        title: tab == 0 ? (user?.clientName ?? _titles[0]) : _titles[tab],
+        // Home continues the ink below the masthead with the balance panel.
+        edge: tab != 0,
+        trailing: user == null
+            ? null
+            : InkAvatar(
+                name: user.name,
+                onTap: () => AccountSheet.show(context),
               ),
-          ],
-        ),
       ),
       // IndexedStack keeps each tab's scroll position and loaded pages alive
       // across switches — losing a half-scrolled invoice list on every tab

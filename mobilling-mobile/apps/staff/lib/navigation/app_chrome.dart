@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_auth/mobilling_auth.dart';
+import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../features/portal/portal_providers.dart';
 import '../features/portal/portal_routes.dart';
@@ -37,15 +38,15 @@ class AppChrome extends ConsumerWidget {
 
     final (tabs, index, onSelect) = switch (shell) {
       AppShell.staff => (
-          staffTabs(session.session),
-          ref.watch(staffTabProvider),
-          (int i) => ref.read(staffTabProvider.notifier).state = i,
-        ),
+        staffTabs(session.session),
+        ref.watch(staffTabProvider),
+        (int i) => ref.read(staffTabProvider.notifier).state = i,
+      ),
       AppShell.portal => (
-          portalTabs(),
-          ref.watch(portalTabProvider),
-          (int i) => ref.read(portalTabProvider.notifier).state = i,
-        ),
+        portalTabs(),
+        ref.watch(portalTabProvider),
+        (int i) => ref.read(portalTabProvider.notifier).state = i,
+      ),
       // The admin console has no tabs to switch between.
       AppShell.admin => (const <TabSpec>[], 0, null),
     };
@@ -56,10 +57,18 @@ class AppChrome extends ConsumerWidget {
 
     return Column(
       children: [
-        Expanded(child: child),
-        NavigationBar(
+        Expanded(
+          // The bar already covers the home-indicator inset, so the screens
+          // above it must not pad for it a second time.
+          child: MediaQuery.removePadding(
+            context: context,
+            removeBottom: true,
+            child: child,
+          ),
+        ),
+        ShellNavBar(
           selectedIndex: index.clamp(0, tabs.length - 1),
-          onDestinationSelected: (i) {
+          onSelected: (i) {
             onSelect(i);
             // From a pushed screen this is also the way back: switching
             // section should land on that section, not stack it on top of
@@ -69,7 +78,14 @@ class AppChrome extends ConsumerWidget {
               router.go(home);
             }
           },
-          destinations: [for (final t in tabs) t.destination],
+          items: [
+            for (final t in tabs)
+              ShellNavItem(
+                icon: t.destination.icon,
+                selectedIcon: t.destination.selectedIcon ?? t.destination.icon,
+                label: t.destination.label,
+              ),
+          ],
         ),
       ],
     );

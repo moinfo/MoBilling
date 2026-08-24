@@ -8,7 +8,14 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../navigation/admin_menu.dart';
 import '../common/paged_list.dart';
-import '../crm/crm_ui.dart' show CrmAsyncView, CrmDetailRow;
+import '../crm/crm_ui.dart'
+    show
+        CrmAsyncView,
+        CrmCardList,
+        CrmDetailRow,
+        CrmField,
+        CrmMetaLine,
+        CrmStatusLine;
 import 'platform_providers.dart';
 
 /// Every tenant on the platform.
@@ -33,69 +40,74 @@ class _TenantsScreenState extends ConsumerState<TenantsScreen> {
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce = Timer(const Duration(milliseconds: 400),
-        () => _listKey.currentState?.reload());
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Tenants')),
-      body: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, Spacing.xs),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                hintText: 'Search tenant name or email',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
+      appBar: ShellTopBar(
+        eyebrow: 'Platform',
+        title: 'Tenants',
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search tenant name or email',
+          onChanged: _onSearchChanged,
+        ),
+      ),
+      body: PagedListView(
+        key: _listKey,
+        padding: const EdgeInsets.fromLTRB(
+          Spacing.md,
+          Spacing.md,
+          Spacing.md,
+          Spacing.xl,
+        ),
+        fetch: (page) => ref
+            .read(platformServiceProvider)
+            .tenants(
+              search: _search.text.trim().isEmpty ? null : _search.text.trim(),
+              page: page,
+            ),
+        itemBuilder: (context, tenant) => Card(
+          child: ListTile(
+            title: Text(
+              tenant.name,
+              style: theme.textTheme.titleSmall,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+            subtitle: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: CrmStatusLine(
+                status: tenant.chipStatus,
+                meta: [
+                  tenant.email ?? '',
+                  if (tenant.customDomain != null) tenant.customDomain!,
+                  if (tenant.daysRemaining != null)
+                    '${tenant.daysRemaining}d left',
+                  if (tenant.smsBalance != null)
+                    '${Formatting.integer(tenant.smsBalance)} sms',
+                ].where((s) => s.isNotEmpty).join(' · '),
               ),
             ),
-          ),
-          Expanded(
-            child: PagedListView(
-              key: _listKey,
-              fetch: (page) => ref.read(platformServiceProvider).tenants(
-                    search: _search.text.trim().isEmpty
-                        ? null
-                        : _search.text.trim(),
-                    page: page,
-                  ),
-              itemBuilder: (context, tenant) => Card(
-                child: ListTile(
-                  title: Text(tenant.name),
-                  subtitle: Text(
-                    [
-                      tenant.email ?? '',
-                      if (tenant.customDomain != null) tenant.customDomain!,
-                      if (tenant.daysRemaining != null)
-                        '${tenant.daysRemaining}d left',
-                      if (tenant.smsBalance != null)
-                        '${tenant.smsBalance} SMS',
-                    ].where((s) => s.isNotEmpty).join(' · '),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      StatusChip(tenant.chipStatus, dense: true),
-                      const Icon(Icons.chevron_right),
-                    ],
-                  ),
-                  onTap: () => context.push(AdminRoutes.tenantPath(tenant.id)),
-                ),
-              ),
-              emptyIcon: Icons.apartment_outlined,
-              emptyTitle: 'No tenants found',
+            trailing: Icon(
+              Icons.chevron_right,
+              size: 20,
+              color: scheme.outline,
             ),
+            onTap: () => context.push(AdminRoutes.tenantPath(tenant.id)),
           ),
-        ],
+        ),
+        emptyIcon: Icons.apartment_outlined,
+        emptyTitle: 'No tenants found',
+        emptyMessage: 'Nothing matches this search.',
       ),
     );
   }
@@ -114,32 +126,61 @@ class TenantDetailScreen extends ConsumerWidget {
     final users = ref.watch(tenantUsersProvider(tenantId));
     final subscriptions = ref.watch(tenantSubscriptionsProvider(tenantId));
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final status = context.statusColors;
 
     return Scaffold(
-      appBar: AppBar(title: Text(tenant.valueOrNull?.name ?? 'Tenant')),
+      appBar: ShellTopBar(
+        eyebrow: 'Tenant',
+        title: tenant.valueOrNull?.name ?? 'Tenant',
+      ),
       body: CrmAsyncView(
         value: tenant,
         errorTitle: 'Could not load this tenant',
         onRetry: () => ref.invalidate(platformTenantProvider(tenantId)),
         builder: (t) => ListView(
-          padding: const EdgeInsets.all(Spacing.md),
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.md,
+            Spacing.md,
+            Spacing.xl,
+          ),
           children: [
+            // Standing first: how long they have left, and how much they can
+            // still send. Everything else on the screen explains those two.
+            StatRail(
+              items: [
+                StatRailItem(
+                  label: 'Days left',
+                  value: t.daysRemaining == null
+                      ? '—'
+                      : Formatting.integer(t.daysRemaining),
+                  emphasis: switch (t.daysRemaining) {
+                    null => null,
+                    final int d when d < 0 => status.overdue,
+                    final int d when d <= 7 => status.attention,
+                    _ => null,
+                  },
+                ),
+                StatRailItem(
+                  label: 'SMS',
+                  value: Formatting.integer(t.smsBalance ?? 0),
+                  emphasis: (t.smsBalance ?? 0) <= 0 ? status.overdue : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.lg),
+            SectionHeader(
+              'Profile',
+              trailing: StatusChip(t.chipStatus, dense: true),
+            ),
+            const SizedBox(height: Spacing.sm),
             Card(
               child: Padding(
                 padding: const EdgeInsets.all(Spacing.md),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(t.name,
-                              style: theme.textTheme.titleMedium),
-                        ),
-                        StatusChip(t.chipStatus, dense: true),
-                      ],
-                    ),
-                    const SizedBox(height: Spacing.sm),
                     if (t.email != null) CrmDetailRow('Email', t.email!),
                     if (t.phone != null) CrmDetailRow('Phone', t.phone!),
                     if (t.customDomain != null)
@@ -148,83 +189,112 @@ class TenantDetailScreen extends ConsumerWidget {
                       CrmDetailRow('Currency', t.currency!),
                     if (t.subscriptionStatus != null)
                       CrmDetailRow(
-                          'Subscription',
-                          '${t.subscriptionStatus}'
-                          '${t.daysRemaining == null ? '' : ' · ${t.daysRemaining}d left'}'),
-                    CrmDetailRow('SMS balance', '${t.smsBalance ?? 0}'),
+                        'Subscription',
+                        '${t.subscriptionStatus}'
+                            '${t.daysRemaining == null ? '' : ' · ${t.daysRemaining}d left'}',
+                      ),
                     if (t.createdAt != null)
                       CrmDetailRow('Joined', Formatting.date(t.createdAt)),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: Spacing.md),
 
             // Actions that change a tenant's standing.
-            Card(
-              child: Column(
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.add_card_outlined),
-                    title: const Text('Recharge SMS'),
-                    onTap: () => _smsAdjust(context, ref, recharge: true),
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Actions'),
+            const SizedBox(height: Spacing.sm),
+            CrmCardList(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.add_card_outlined, size: 20),
+                  title: Text(
+                    'Recharge SMS',
+                    style: theme.textTheme.titleSmall,
                   ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.remove_circle_outline),
-                    title: const Text('Deduct SMS'),
-                    onTap: () => _smsAdjust(context, ref, recharge: false),
+                  onTap: () => _smsAdjust(context, ref, recharge: true),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.remove_circle_outline, size: 20),
+                  title: Text('Deduct SMS', style: theme.textTheme.titleSmall),
+                  onTap: () => _smsAdjust(context, ref, recharge: false),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.more_time_outlined, size: 20),
+                  title: Text(
+                    'Extend subscription',
+                    style: theme.textTheme.titleSmall,
                   ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.more_time_outlined),
-                    title: const Text('Extend subscription'),
-                    onTap: () => _extend(context, ref),
+                  onTap: () => _extend(context, ref),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.mail_outline, size: 20),
+                  title: Text(
+                    'Email settings',
+                    style: theme.textTheme.titleSmall,
                   ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.mail_outline),
-                    title: const Text('Email settings'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () =>
-                        context.push(AdminRoutes.tenantEmailPath(tenantId)),
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: scheme.outline,
                   ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.sms_outlined),
-                    title: const Text('SMS settings'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () =>
-                        context.push(AdminRoutes.tenantSmsPath(tenantId)),
+                  onTap: () =>
+                      context.push(AdminRoutes.tenantEmailPath(tenantId)),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.sms_outlined, size: 20),
+                  title: Text(
+                    'SMS settings',
+                    style: theme.textTheme.titleSmall,
                   ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.description_outlined),
-                    title: const Text('Email templates'),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => context
-                        .push(AdminRoutes.tenantTemplatesPath(tenantId)),
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: scheme.outline,
                   ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: Icon(
-                      t.isActive ? Icons.block : Icons.play_circle_outline,
-                      color: t.isActive
-                          ? theme.colorScheme.error
-                          : context.statusColors.settled,
+                  onTap: () =>
+                      context.push(AdminRoutes.tenantSmsPath(tenantId)),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.description_outlined, size: 20),
+                  title: Text(
+                    'Email templates',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  trailing: Icon(
+                    Icons.chevron_right,
+                    size: 20,
+                    color: scheme.outline,
+                  ),
+                  onTap: () =>
+                      context.push(AdminRoutes.tenantTemplatesPath(tenantId)),
+                ),
+                ListTile(
+                  leading: Icon(
+                    t.isActive ? Icons.block : Icons.play_circle_outline,
+                    size: 20,
+                    color: t.isActive ? scheme.error : status.settled,
+                  ),
+                  title: Text(
+                    t.isActive ? 'Deactivate tenant' : 'Reactivate tenant',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: t.isActive ? scheme.error : null,
                     ),
-                    title: Text(
-                      t.isActive ? 'Deactivate tenant' : 'Reactivate tenant',
-                      style: TextStyle(
-                          color: t.isActive ? theme.colorScheme.error : null),
-                    ),
-                    subtitle: t.isActive
-                        ? const Text('Locks out every user of this tenant')
-                        : null,
-                    onTap: () => _toggleActive(context, ref, t),
                   ),
-                ],
-              ),
+                  subtitle: t.isActive
+                      ? Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            'Locks out every user of this tenant',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        )
+                      : null,
+                  onTap: () => _toggleActive(context, ref, t),
+                ),
+              ],
             ),
 
             // Subscriptions, with confirm-payment on anything pending.
@@ -234,41 +304,56 @@ class TenantDetailScreen extends ConsumerWidget {
                   : Padding(
                       padding: const EdgeInsets.only(top: Spacing.lg),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text('Subscriptions',
-                              style: theme.textTheme.titleSmall),
+                          const SectionHeader('Subscriptions'),
                           const SizedBox(height: Spacing.sm),
-                          Card(
-                            child: Column(
-                              children: [
-                                for (final (i, record) in records.indexed) ...[
-                                  if (i > 0) const Divider(height: 1),
-                                  ListTile(
-                                    dense: true,
-                                    title:
-                                        Text(record.planName ?? 'Subscription'),
-                                    subtitle: Text(
-                                      [
+                          CrmCardList(
+                            children: [
+                              for (final record in records)
+                                ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    record.planName ?? 'Subscription',
+                                    style: theme.textTheme.titleSmall,
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: Row(
+                                      children: [
+                                        StatusChip(record.status, dense: true),
+                                        const SizedBox(width: Spacing.sm),
+                                        // A row waiting on a decision gives
+                                        // its trailing column to the button,
+                                        // so the amount moves up here.
+                                        if (record.awaitingConfirmation) ...[
+                                          Money(
+                                            record.amount,
+                                            scale: MoneyScale.dense,
+                                            showCode: false,
+                                          ),
+                                          const SizedBox(width: Spacing.sm),
+                                        ],
                                         if (record.startsAt != null &&
                                             record.endsAt != null)
-                                          '${Formatting.date(record.startsAt)} – ${Formatting.date(record.endsAt)}',
-                                        Formatting.currency(record.amount),
-                                      ].join(' · '),
-                                      style: theme.textTheme.bodySmall,
+                                          Flexible(
+                                            child: CrmMetaLine(
+                                              '${Formatting.date(record.startsAt)} – '
+                                              '${Formatting.date(record.endsAt)}',
+                                            ),
+                                          ),
+                                      ],
                                     ),
-                                    trailing: record.awaitingConfirmation
-                                        ? FilledButton.tonal(
-                                            onPressed: () => _confirm(
-                                                context, ref, record.id),
-                                            child: const Text('Confirm'),
-                                          )
-                                        : StatusChip(record.status,
-                                            dense: true),
                                   ),
-                                ],
-                              ],
-                            ),
+                                  trailing: record.awaitingConfirmation
+                                      ? FilledButton.tonal(
+                                          onPressed: () =>
+                                              _confirm(context, ref, record.id),
+                                          child: const Text('Confirm'),
+                                        )
+                                      : Money(record.amount),
+                                ),
+                            ],
                           ),
                         ],
                       ),
@@ -283,52 +368,64 @@ class TenantDetailScreen extends ConsumerWidget {
                   : Padding(
                       padding: const EdgeInsets.only(top: Spacing.lg),
                       child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Text('Users (${items.length})',
-                              style: theme.textTheme.titleSmall),
+                          SectionHeader(
+                            'Users',
+                            trailing: Text(
+                              Formatting.integer(items.length),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: Spacing.sm),
-                          Card(
-                            child: Column(
-                              children: [
-                                for (final (i, user) in items.indexed) ...[
-                                  if (i > 0) const Divider(height: 1),
-                                  ListTile(
-                                    dense: true,
-                                    title: Text(user.name),
-                                    subtitle: Text(
-                                      [
+                          CrmCardList(
+                            children: [
+                              for (final user in items)
+                                ListTile(
+                                  dense: true,
+                                  title: Text(
+                                    user.name,
+                                    style: theme.textTheme.titleSmall,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  subtitle: Padding(
+                                    padding: const EdgeInsets.only(top: 2),
+                                    child: CrmStatusLine(
+                                      status: user.isActive
+                                          ? 'active'
+                                          : 'deactivated',
+                                      meta: [
                                         user.email ?? '',
                                         user.roleName ?? '',
-                                        if (!user.isActive) 'deactivated',
-                                      ]
-                                          .where((s) => s.isNotEmpty)
-                                          .join(' · '),
-                                      style: theme.textTheme.bodySmall,
-                                    ),
-                                    trailing: IconButton(
-                                      icon: Icon(
-                                        user.isActive
-                                            ? Icons.toggle_on
-                                            : Icons.toggle_off_outlined,
-                                        color: user.isActive
-                                            ? context.statusColors.settled
-                                            : null,
-                                      ),
-                                      onPressed: () =>
-                                          _toggleUser(context, ref, user.id),
+                                      ].where((s) => s.isNotEmpty).join(' · '),
                                     ),
                                   ),
-                                ],
-                              ],
-                            ),
+                                  trailing: IconButton(
+                                    icon: Icon(
+                                      user.isActive
+                                          ? Icons.toggle_on
+                                          : Icons.toggle_off_outlined,
+                                      color: user.isActive
+                                          ? status.settled
+                                          : null,
+                                    ),
+                                    tooltip: user.isActive
+                                        ? 'Deactivate'
+                                        : 'Reactivate',
+                                    onPressed: () =>
+                                        _toggleUser(context, ref, user.id),
+                                  ),
+                                ),
+                            ],
                           ),
                         ],
                       ),
                     ),
               orElse: () => const SizedBox.shrink(),
             ),
-            const SizedBox(height: Spacing.xl),
           ],
         ),
       ),
@@ -336,22 +433,34 @@ class TenantDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _toggleActive(
-      BuildContext context, WidgetRef ref, PlatformTenant t) async {
+    BuildContext context,
+    WidgetRef ref,
+    PlatformTenant t,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
     final sure = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(t.isActive ? 'Deactivate ${t.name}?' : 'Reactivate ${t.name}?'),
-        content: Text(t.isActive
-            ? 'Every user of this tenant will be blocked at sign-in until it is reactivated.'
-            : 'Users of this tenant will be able to sign in again.'),
+        title: Text(
+          t.isActive ? 'Deactivate ${t.name}?' : 'Reactivate ${t.name}?',
+          style: Type.display(22, color: scheme.onSurface),
+        ),
+        content: Text(
+          t.isActive
+              ? 'Every user of this tenant will be blocked at sign-in until it is reactivated.'
+              : 'Users of this tenant will be able to sign in again.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(t.isActive ? 'Deactivate' : 'Reactivate')),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(t.isActive ? 'Deactivate tenant' : 'Reactivate tenant'),
+          ),
         ],
       ),
     );
@@ -366,7 +475,10 @@ class TenantDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _toggleUser(
-      BuildContext context, WidgetRef ref, String userId) async {
+    BuildContext context,
+    WidgetRef ref,
+    String userId,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref
@@ -379,7 +491,10 @@ class TenantDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _confirm(
-      BuildContext context, WidgetRef ref, String subscriptionId) async {
+    BuildContext context,
+    WidgetRef ref,
+    String subscriptionId,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
       await ref
@@ -388,45 +503,65 @@ class TenantDetailScreen extends ConsumerWidget {
       ref.invalidate(tenantSubscriptionsProvider(tenantId));
       ref.invalidate(platformTenantProvider(tenantId));
       messenger.showSnackBar(
-          const SnackBar(content: Text('Payment confirmed.')));
+        const SnackBar(content: Text('Payment confirmed.')),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
-  Future<void> _smsAdjust(BuildContext context, WidgetRef ref,
-      {required bool recharge}) async {
+  Future<void> _smsAdjust(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool recharge,
+  }) async {
     final quantity = TextEditingController();
     final notes = TextEditingController();
     final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(recharge ? 'Recharge SMS' : 'Deduct SMS'),
+        title: Text(
+          recharge ? 'Recharge SMS' : 'Deduct SMS',
+          style: Type.display(22, color: scheme.onSurface),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
-              controller: quantity,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Messages'),
+            CrmField(
+              label: 'Messages',
+              child: TextField(
+                controller: quantity,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(hintText: 'How many'),
+              ),
             ),
-            const SizedBox(height: Spacing.sm),
-            TextField(
-              controller: notes,
-              decoration: const InputDecoration(labelText: 'Reason'),
+            const SizedBox(height: Spacing.md),
+            CrmField(
+              label: 'Reason',
+              child: TextField(
+                controller: notes,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Why the balance is changing',
+                ),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: Text(recharge ? 'Recharge' : 'Deduct')),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(recharge ? 'Recharge' : 'Deduct'),
+          ),
         ],
       ),
     );
@@ -435,7 +570,8 @@ class TenantDetailScreen extends ConsumerWidget {
     final amount = int.tryParse(quantity.text.trim());
     if (amount == null || amount <= 0) {
       messenger.showSnackBar(
-          const SnackBar(content: Text('Enter a valid quantity.')));
+        const SnackBar(content: Text('Enter a valid quantity.')),
+      );
       return;
     }
 
@@ -448,10 +584,13 @@ class TenantDetailScreen extends ConsumerWidget {
           ? await service.rechargeSms(tenantId, amount, notes: reason)
           : await service.deductSms(tenantId, amount, notes: reason);
       ref.invalidate(platformTenantProvider(tenantId));
-      messenger.showSnackBar(SnackBar(
-          content: Text(recharge
-              ? 'Added $amount messages.'
-              : 'Deducted $amount messages.')));
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            recharge ? 'Added $amount messages.' : 'Deducted $amount messages.',
+          ),
+        ),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -461,34 +600,50 @@ class TenantDetailScreen extends ConsumerWidget {
     final days = TextEditingController(text: '30');
     final notes = TextEditingController();
     final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
 
     final ok = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Extend subscription'),
+        title: Text(
+          'Extend subscription',
+          style: Type.display(22, color: scheme.onSurface),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            TextField(
-              controller: days,
-              autofocus: true,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(labelText: 'Days'),
+            CrmField(
+              label: 'Days',
+              child: TextField(
+                controller: days,
+                autofocus: true,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(hintText: 'How many days'),
+              ),
             ),
-            const SizedBox(height: Spacing.sm),
-            TextField(
-              controller: notes,
-              decoration: const InputDecoration(labelText: 'Reason'),
+            const SizedBox(height: Spacing.md),
+            CrmField(
+              label: 'Reason',
+              child: TextField(
+                controller: notes,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'Why it is being extended',
+                ),
+              ),
             ),
           ],
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Extend')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Extend'),
+          ),
         ],
       ),
     );
@@ -496,13 +651,16 @@ class TenantDetailScreen extends ConsumerWidget {
 
     final amount = int.tryParse(days.text.trim());
     if (amount == null || amount <= 0) {
-      messenger
-          .showSnackBar(const SnackBar(content: Text('Enter valid days.')));
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Enter valid days.')),
+      );
       return;
     }
 
     try {
-      await ref.read(platformServiceProvider).extendSubscription(
+      await ref
+          .read(platformServiceProvider)
+          .extendSubscription(
             tenantId,
             days: amount,
             notes: notes.text.trim().isEmpty ? null : notes.text.trim(),
@@ -510,9 +668,14 @@ class TenantDetailScreen extends ConsumerWidget {
       ref.invalidate(platformTenantProvider(tenantId));
       ref.invalidate(tenantSubscriptionsProvider(tenantId));
       messenger.showSnackBar(
-          SnackBar(content: Text('Extended by $amount days.')));
+        SnackBar(content: Text('Extended by $amount days.')),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Private building blocks (candidates for mobilling_ui)
+// ---------------------------------------------------------------------------

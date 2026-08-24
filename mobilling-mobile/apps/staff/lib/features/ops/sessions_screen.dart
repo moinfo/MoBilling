@@ -34,14 +34,14 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
   ];
 
   SessionsFilter get _filter => SessionsFilter(
-        type: _type,
-        active: switch (_activeFilter) {
-          'active' => true,
-          'inactive' => false,
-          _ => null,
-        },
-        search: _search.text.trim().isEmpty ? null : _search.text.trim(),
-      );
+    type: _type,
+    active: switch (_activeFilter) {
+      'active' => true,
+      'inactive' => false,
+      _ => null,
+    },
+    search: _search.text.trim().isEmpty ? null : _search.text.trim(),
+  );
 
   @override
   void dispose() {
@@ -52,42 +52,31 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
 
   void _onSearchChanged(String _) {
     _debounce?.cancel();
-    _debounce =
-        Timer(const Duration(milliseconds: 400), () => setState(() {}));
+    _debounce = Timer(const Duration(milliseconds: 400), () => setState(() {}));
   }
 
   @override
   Widget build(BuildContext context) {
     final page = ref.watch(sessionsProvider(_filter));
-    final theme = Theme.of(context);
     final status = context.statusColors;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Active sessions'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.cleaning_services_outlined),
-            tooltip: 'Revoke sessions on deactivated accounts',
-            onPressed: () => _bulkRevoke(context, page.valueOrNull?.summary),
-          ),
-        ],
+      appBar: ShellTopBar(
+        eyebrow: 'Account',
+        title: 'Active sessions',
+        trailing: InkActionButton(
+          icon: Icons.cleaning_services_outlined,
+          tooltip: 'Revoke sessions on deactivated accounts',
+          onPressed: () => _bulkRevoke(context, page.valueOrNull?.summary),
+        ),
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search name, email or client',
+          onChanged: _onSearchChanged,
+        ),
       ),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, 0),
-            child: TextField(
-              controller: _search,
-              onChanged: _onSearchChanged,
-              decoration: const InputDecoration(
-                hintText: 'Search name, email or client',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
-            ),
-          ),
           FilterStrip(
             options: _typeFilters,
             selected: _type,
@@ -99,15 +88,13 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
               segments: const [
                 ButtonSegment(value: null, label: Text('All')),
                 ButtonSegment(value: 'active', label: Text('Active')),
-                ButtonSegment(
-                    value: 'inactive', label: Text('Deactivated')),
+                ButtonSegment(value: 'inactive', label: Text('Deactivated')),
               ],
               selected: {_activeFilter},
               onSelectionChanged: (s) =>
                   setState(() => _activeFilter = s.first),
               showSelectedIcon: false,
-              style: const ButtonStyle(
-                  visualDensity: VisualDensity.compact),
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
             ),
           ),
           const SizedBox(height: Spacing.sm),
@@ -117,33 +104,45 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
               errorTitle: 'Could not load sessions',
               onRetry: () => ref.invalidate(sessionsProvider(_filter)),
               builder: (data) => RefreshIndicator(
-                onRefresh: () =>
-                    ref.refresh(sessionsProvider(_filter).future),
+                onRefresh: () => ref.refresh(sessionsProvider(_filter).future),
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.all(Spacing.md),
+                  padding: const EdgeInsets.fromLTRB(
+                    Spacing.md,
+                    Spacing.sm,
+                    Spacing.md,
+                    Spacing.xl,
+                  ),
                   children: [
-                    StatRail(items: [
-                      StatRailItem(
-                          label: 'Sessions', value: '${data.summary.total}'),
-                      StatRailItem(
-                        label: 'On deactivated',
-                        value: '${data.summary.onInactive}',
-                        emphasis: data.summary.onInactive > 0
-                            ? status.overdue
-                            : null,
-                      ),
-                      StatRailItem(
+                    StatRail(
+                      items: [
+                        StatRailItem(
+                          label: 'Sessions',
+                          value: Formatting.integer(data.summary.total),
+                        ),
+                        StatRailItem(
+                          label: 'On deactivated',
+                          value: Formatting.integer(data.summary.onInactive),
+                          emphasis: data.summary.onInactive > 0
+                              ? status.overdue
+                              : null,
+                        ),
+                        StatRailItem(
                           label: 'Never used',
-                          value: '${data.summary.neverUsed}'),
-                    ]),
-                    const SizedBox(height: Spacing.md),
+                          value: Formatting.integer(data.summary.neverUsed),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: Spacing.lg),
+                    const SectionHeader('Signed in'),
+                    const SizedBox(height: Spacing.sm),
                     if (data.sessions.isEmpty)
                       const SizedBox(
                         height: 240,
                         child: StateMessage(
                           icon: Icons.devices_other_outlined,
                           title: 'No sessions match',
+                          message: 'Try another name, or widen the filters.',
                         ),
                       )
                     else
@@ -152,45 +151,14 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
                           children: [
                             for (final (i, s) in data.sessions.indexed) ...[
                               if (i > 0) const Divider(height: 1),
-                              ListTile(
-                                dense: true,
-                                leading: Icon(
-                                  s.isStaff
-                                      ? Icons.badge_outlined
-                                      : Icons.person_outline,
-                                  color: s.effectivelyActive
-                                      ? null
-                                      : status.overdue,
-                                ),
-                                title: Text(s.ownerName),
-                                subtitle: Text(
-                                  [
-                                    s.isStaff
-                                        ? 'Staff'
-                                        : 'Client · ${s.clientName ?? '—'}',
-                                    s.neverUsed
-                                        ? 'never used'
-                                        : 'used ${Formatting.dateTime(s.lastUsedAt)}',
-                                    if (!s.effectivelyActive)
-                                      'account deactivated',
-                                  ].join(' · '),
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: s.effectivelyActive
-                                        ? null
-                                        : status.overdue,
-                                  ),
-                                ),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.logout, size: 20),
-                                  tooltip: 'Revoke',
-                                  onPressed: () => _revoke(context, s),
-                                ),
+                              _SessionRow(
+                                session: s,
+                                onRevoke: () => _revoke(context, s),
                               ),
                             ],
                           ],
                         ),
                       ),
-                    const SizedBox(height: Spacing.xl),
                   ],
                 ),
               ),
@@ -208,14 +176,17 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
       builder: (context) => AlertDialog(
         title: Text('Sign out ${s.ownerName}?'),
         content: const Text(
-            'Their current session ends immediately. They can sign in again if their account is active.'),
+          'Their current session ends immediately. They can sign in again if their account is active.',
+        ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Revoke')),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Revoke session'),
+          ),
         ],
       ),
     );
@@ -230,7 +201,9 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
   }
 
   Future<void> _bulkRevoke(
-      BuildContext context, SessionsSummary? summary) async {
+    BuildContext context,
+    SessionsSummary? summary,
+  ) async {
     final messenger = ScaffoldMessenger.of(context);
     var includeNeverUsed = false;
     final confirmed = await showDialog<bool>(
@@ -244,13 +217,15 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
             children: [
               Text(
                 'Every session on a deactivated account is revoked — '
-                '${summary?.onInactive ?? 0} right now. Sessions on active '
-                'accounts are never touched.',
+                '${Formatting.integer(summary?.onInactive ?? 0)} right now. '
+                'Sessions on active accounts are never touched.',
               ),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Also revoke never-used tokens'),
-                subtitle: Text('${summary?.neverUsed ?? 0} of them'),
+                subtitle: Text(
+                  '${Formatting.integer(summary?.neverUsed ?? 0)} of them',
+                ),
                 value: includeNeverUsed,
                 onChanged: (v) => setState(() => includeNeverUsed = v!),
               ),
@@ -258,11 +233,13 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
           ),
           actions: [
             TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Cancel')),
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Revoke')),
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Revoke sessions'),
+            ),
           ],
         ),
       ),
@@ -273,10 +250,72 @@ class _SessionsScreenState extends ConsumerState<SessionsScreen> {
           .read(opsServiceProvider)
           .revokeInactiveSessions(includeNeverUsed: includeNeverUsed);
       ref.invalidate(sessionsProvider);
-      messenger
-          .showSnackBar(SnackBar(content: Text(message ?? 'Sessions revoked.')));
+      messenger.showSnackBar(
+        SnackBar(content: Text(message ?? 'Sessions revoked.')),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+}
+
+/// One token: owner, an account-state chip, and a mono line saying whose it
+/// is and when it last spoke to the API. A deactivated owner turns the line
+/// orange — that row is the reason this screen exists.
+class _SessionRow extends StatelessWidget {
+  const _SessionRow({required this.session, required this.onRevoke});
+
+  final ActiveSession session;
+  final VoidCallback onRevoke;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+    final s = session;
+
+    return ListTile(
+      dense: true,
+      title: Text(
+        s.ownerName,
+        style: theme.textTheme.titleSmall,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Row(
+          children: [
+            StatusChip(
+              s.effectivelyActive ? 'active' : 'deactivated',
+              dense: true,
+            ),
+            const SizedBox(width: Spacing.sm),
+            Flexible(
+              child: Text(
+                [
+                  s.isStaff ? 'Staff' : 'Client · ${s.clientName ?? '—'}',
+                  s.neverUsed
+                      ? 'never used'
+                      : 'used ${Formatting.dateTime(s.lastUsedAt)}',
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: s.effectivelyActive
+                      ? theme.colorScheme.onSurfaceVariant
+                      : status.overdue,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.logout_rounded, size: 20),
+        tooltip: 'Revoke session',
+        onPressed: onRevoke,
+      ),
+    );
   }
 }

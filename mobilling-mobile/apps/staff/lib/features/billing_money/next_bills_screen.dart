@@ -46,22 +46,23 @@ class _NextBillsScreenState extends ConsumerState<NextBillsScreen> {
   @override
   Widget build(BuildContext context) {
     final bills = ref.watch(nextBillsProvider);
-    final theme = Theme.of(context);
     final status = context.statusColors;
-    final canGenerate = ref.watch(sessionControllerProvider).session?.can(
-              BillingMoneyPermissions.subscriptionsCreate,
-            ) ??
+    final canGenerate =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(BillingMoneyPermissions.subscriptionsCreate) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Next bills')),
+      appBar: const ShellTopBar(eyebrow: 'Billing', title: 'Next bills'),
       body: bills.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => StateMessage(
           icon: Icons.cloud_off_outlined,
           title: 'Could not load the schedule',
           message: error is ApiException ? error.message : null,
-          actionLabel: 'Retry',
+          actionLabel: 'Try again',
           onAction: () => ref.invalidate(nextBillsProvider),
         ),
         data: (items) {
@@ -75,71 +76,95 @@ class _NextBillsScreenState extends ConsumerState<NextBillsScreen> {
 
           final overdue = items.where((b) => b.isOverdue).toList();
           final upcoming = items.where((b) => !b.isOverdue).toList();
-          final expected =
-              items.fold<double>(0, (sum, b) => sum + b.lineTotal);
+          final expected = items.fold<double>(
+            0,
+            (sum, b) => sum + b.lineTotal,
+          );
+          final pastDue = overdue.fold<double>(
+            0,
+            (sum, b) => sum + b.lineTotal,
+          );
 
           return RefreshIndicator(
             onRefresh: () => ref.refresh(nextBillsProvider.future),
             child: ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.all(Spacing.md),
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+                Spacing.xl,
+              ),
               children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: StatTile(
-                        label: 'Scheduled',
-                        value: '${items.length}',
-                        icon: Icons.event_repeat_outlined,
+                // The one figure this screen is about: what the schedule is
+                // worth when every charge lands.
+                Reveal(
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(Spacing.md),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const _Eyebrow('Expected value'),
+                          const SizedBox(height: Spacing.sm),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Money(expected, scale: MoneyScale.display),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: Spacing.sm),
-                    Expanded(
-                      child: StatTile.money(
-                        label: 'Expected value',
-                        amount: expected,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-                if (overdue.isNotEmpty) ...[
-                  const SizedBox(height: Spacing.lg),
-                  Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded,
-                          size: 18, color: status.overdue),
-                      const SizedBox(width: Spacing.xs),
-                      Text(
-                        overdue.length == 1
-                            ? '1 charge is past due'
-                            : '${overdue.length} charges are past due',
-                        style: theme.textTheme.titleSmall
-                            ?.copyWith(color: status.overdue),
+                const SizedBox(height: Spacing.sm),
+                Reveal(
+                  delay: const Duration(milliseconds: 80),
+                  child: StatRail(
+                    items: [
+                      StatRailItem(
+                        label: 'Scheduled',
+                        value: Formatting.integer(items.length),
+                      ),
+                      StatRailItem(
+                        label: 'Past due',
+                        value: Formatting.integer(overdue.length),
+                        emphasis: overdue.isNotEmpty ? status.overdue : null,
+                      ),
+                      StatRailItem(
+                        label: 'Owed',
+                        value: Formatting.compact(pastDue),
+                        emphasis: pastDue > 0 ? status.overdue : null,
                       ),
                     ],
                   ),
+                ),
+                if (overdue.isNotEmpty) ...[
+                  const SizedBox(height: Spacing.lg),
+                  SectionHeader(
+                    overdue.length == 1
+                        ? '1 charge past due'
+                        : '${overdue.length} charges past due',
+                  ),
                   const SizedBox(height: Spacing.sm),
-                  for (final bill in overdue)
-                    _BillCard(
-                      bill: bill,
-                      canGenerate: canGenerate,
-                      busy: _generating.contains(bill.subscriptionId),
-                      onGenerate: () => _generate(bill),
-                    ),
+                  _BillList(
+                    bills: overdue,
+                    canGenerate: canGenerate,
+                    generating: _generating,
+                    onGenerate: _generate,
+                  ),
                 ],
                 if (upcoming.isNotEmpty) ...[
                   const SizedBox(height: Spacing.lg),
-                  Text('Upcoming', style: theme.textTheme.titleSmall),
+                  const SectionHeader('Upcoming'),
                   const SizedBox(height: Spacing.sm),
-                  for (final bill in upcoming)
-                    _BillCard(
-                      bill: bill,
-                      canGenerate: canGenerate,
-                      busy: _generating.contains(bill.subscriptionId),
-                      onGenerate: () => _generate(bill),
-                    ),
+                  _BillList(
+                    bills: upcoming,
+                    canGenerate: canGenerate,
+                    generating: _generating,
+                    onGenerate: _generate,
+                  ),
                 ],
-                const SizedBox(height: Spacing.xl),
               ],
             ),
           );
@@ -149,8 +174,40 @@ class _NextBillsScreenState extends ConsumerState<NextBillsScreen> {
   }
 }
 
-class _BillCard extends StatelessWidget {
-  const _BillCard({
+/// One card of bills, a hairline between each.
+class _BillList extends StatelessWidget {
+  const _BillList({
+    required this.bills,
+    required this.canGenerate,
+    required this.generating,
+    required this.onGenerate,
+  });
+
+  final List<NextBill> bills;
+  final bool canGenerate;
+  final Set<String> generating;
+  final ValueChanged<NextBill> onGenerate;
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: Column(
+      children: [
+        for (final (i, bill) in bills.indexed) ...[
+          if (i > 0) const Divider(height: 1),
+          _BillTile(
+            bill: bill,
+            canGenerate: canGenerate,
+            busy: generating.contains(bill.subscriptionId),
+            onGenerate: () => onGenerate(bill),
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+class _BillTile extends StatelessWidget {
+  const _BillTile({
     required this.bill,
     required this.canGenerate,
     required this.busy,
@@ -165,69 +222,118 @@ class _BillCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final status = context.statusColors;
+    final scheme = theme.colorScheme;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: Spacing.sm),
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(bill.clientName,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ListTile(
+          title: Text(
+            bill.clientName,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: 2),
+              Text(
+                bill.productServiceName +
+                    (bill.quantity > 1 ? ' ×${bill.quantity}' : ''),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
                 ),
-                Money(bill.lineTotal),
-              ],
-            ),
-            const SizedBox(height: 2),
-            Text(
-              bill.productServiceName +
-                  (bill.quantity > 1 ? ' ×${bill.quantity}' : ''),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            const SizedBox(height: Spacing.xs),
-            Text(
-              [
-                bill.cycleLabel,
-                if (bill.nextBill != null)
-                  bill.isOverdue
-                      ? 'due ${Formatting.date(bill.nextBill)}'
-                      : Formatting.dueDescription(bill.nextBill),
-                bill.hasNeverBeenBilled
-                    ? 'never billed'
-                    : 'last ${Formatting.date(bill.lastBilled)}',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: bill.isOverdue
-                    ? status.overdue
-                    : theme.colorScheme.onSurfaceVariant,
               ),
-            ),
-            if (canGenerate) ...[
               const SizedBox(height: Spacing.xs),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: TextButton.icon(
-                  onPressed: busy ? null : onGenerate,
-                  icon: busy
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Icon(Icons.receipt_long_outlined, size: 16),
-                  label: Text(busy ? 'Generating…' : 'Generate invoice now'),
-                ),
+              Row(
+                children: [
+                  // Past due is the news; otherwise the cycle names the row.
+                  StatusChip(
+                    bill.isOverdue ? 'overdue' : bill.cycleLabel,
+                    dense: true,
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Flexible(
+                    child: _Meta([
+                      if (bill.isOverdue) bill.cycleLabel,
+                      if (bill.nextBill != null)
+                        bill.isOverdue
+                            ? 'due ${Formatting.date(bill.nextBill)}'
+                            : Formatting.dueDescription(bill.nextBill),
+                      bill.hasNeverBeenBilled
+                          ? 'never billed'
+                          : 'last ${Formatting.date(bill.lastBilled)}',
+                    ].join(' · ')),
+                  ),
+                ],
               ),
             ],
-          ],
+          ),
+          trailing: Money(bill.lineTotal),
         ),
+        if (canGenerate)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.sm,
+              0,
+              Spacing.sm,
+              Spacing.xs,
+            ),
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: busy ? null : onGenerate,
+                icon: busy
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.receipt_long_outlined, size: 16),
+                label: Text(busy ? 'Generating…' : 'Generate invoice now'),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+/// The eyebrow that names a figure: Plex Mono, upper-case, quiet.
+class _Eyebrow extends StatelessWidget {
+  const _Eyebrow(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text.toUpperCase(),
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+/// A mono metadata line — cycle · due · last billed — in the eyebrow register.
+class _Meta extends StatelessWidget {
+  const _Meta(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text.toUpperCase(),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
       ),
     );
   }

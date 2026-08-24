@@ -56,13 +56,16 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
     });
 
     try {
-      final ticket = await ref.read(portalServiceProvider).createTicket(
+      final ticket = await ref
+          .read(portalServiceProvider)
+          .createTicket(
             subject: _subject.text.trim(),
             message: _message.text.trim(),
             department: _department,
             priority: _priority,
-            attachmentPaths:
-                _attachments.map((f) => f.path!).toList(growable: false),
+            attachmentPaths: _attachments
+                .map((f) => f.path!)
+                .toList(growable: false),
           );
       ref.invalidate(portalTicketsProvider);
       if (!mounted) return;
@@ -70,8 +73,10 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
       context.pushReplacement(PortalRoutes.ticketPath(ticket.id));
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error =
-          e.errorFor('subject') ?? e.errorFor('message') ?? e.message);
+      setState(
+        () => _error =
+            e.errorFor('subject') ?? e.errorFor('message') ?? e.message,
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -79,10 +84,14 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('New ticket')),
+      appBar: const ShellTopBar(eyebrow: 'Support', title: 'New ticket'),
       body: SafeArea(
         child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(Spacing.md),
           child: Form(
             key: _formKey,
@@ -93,56 +102,88 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
                   ErrorBanner(message: _error!),
                   const SizedBox(height: Spacing.md),
                 ],
+                FieldLabel('Subject'),
+                const SizedBox(height: Spacing.sm),
                 TextFormField(
                   controller: _subject,
                   enabled: !_submitting,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: const InputDecoration(labelText: 'Subject'),
+                  textInputAction: TextInputAction.next,
+                  decoration: const InputDecoration(
+                    hintText: 'One line on what this is about',
+                  ),
                   validator: (v) => (v == null || v.trim().isEmpty)
                       ? 'Enter a subject'
                       : null,
                 ),
                 const SizedBox(height: Spacing.md),
                 Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _department,
-                        decoration:
-                            const InputDecoration(labelText: 'Department'),
-                        items: const [
-                          DropdownMenuItem(
-                              value: 'support', child: Text('Support')),
-                          DropdownMenuItem(
-                              value: 'billing', child: Text('Billing')),
-                          DropdownMenuItem(
-                              value: 'sales', child: Text('Sales')),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          FieldLabel('Department'),
+                          const SizedBox(height: Spacing.sm),
+                          DropdownButtonFormField<String>(
+                            initialValue: _department,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'support',
+                                child: Text('Support'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'billing',
+                                child: Text('Billing'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'sales',
+                                child: Text('Sales'),
+                              ),
+                            ],
+                            onChanged: _submitting
+                                ? null
+                                : (v) => setState(() => _department = v!),
+                          ),
                         ],
-                        onChanged: _submitting
-                            ? null
-                            : (v) => setState(() => _department = v!),
                       ),
                     ),
-                    const SizedBox(width: Spacing.sm),
+                    const SizedBox(width: Spacing.md),
                     Expanded(
-                      child: DropdownButtonFormField<String>(
-                        initialValue: _priority,
-                        decoration:
-                            const InputDecoration(labelText: 'Priority'),
-                        items: const [
-                          DropdownMenuItem(value: 'low', child: Text('Low')),
-                          DropdownMenuItem(
-                              value: 'medium', child: Text('Medium')),
-                          DropdownMenuItem(value: 'high', child: Text('High')),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          FieldLabel('Priority'),
+                          const SizedBox(height: Spacing.sm),
+                          DropdownButtonFormField<String>(
+                            initialValue: _priority,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'low',
+                                child: Text('Low'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'medium',
+                                child: Text('Medium'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'high',
+                                child: Text('High'),
+                              ),
+                            ],
+                            onChanged: _submitting
+                                ? null
+                                : (v) => setState(() => _priority = v!),
+                          ),
                         ],
-                        onChanged: _submitting
-                            ? null
-                            : (v) => setState(() => _priority = v!),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: Spacing.md),
+                FieldLabel('How can we help?'),
+                const SizedBox(height: Spacing.sm),
                 TextFormField(
                   controller: _message,
                   enabled: !_submitting,
@@ -150,7 +191,9 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
                   maxLines: 10,
                   textCapitalization: TextCapitalization.sentences,
                   decoration: const InputDecoration(
-                    labelText: 'How can we help?',
+                    hintText:
+                        'What happened, what you expected, and anything you '
+                        'have already tried',
                     alignLabelWithHint: true,
                   ),
                   validator: (v) => (v == null || v.trim().isEmpty)
@@ -158,33 +201,46 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
                       : null,
                 ),
                 const SizedBox(height: Spacing.md),
-                if (_attachments.isNotEmpty)
-                  Wrap(
-                    spacing: Spacing.xs,
-                    children: [
-                      for (final (i, f) in _attachments.indexed)
-                        InputChip(
-                          label: Text(f.name),
-                          onDeleted: () =>
-                              setState(() => _attachments.removeAt(i)),
-                        ),
-                    ],
+                if (_attachments.isNotEmpty) ...[
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: Spacing.xs,
+                      runSpacing: Spacing.xs,
+                      children: [
+                        for (final (i, f) in _attachments.indexed)
+                          InputChip(
+                            label: Text(f.name),
+                            onDeleted: () =>
+                                setState(() => _attachments.removeAt(i)),
+                          ),
+                      ],
+                    ),
                   ),
-                TextButton.icon(
-                  onPressed: _submitting ? null : _pick,
-                  icon: const Icon(Icons.attach_file, size: 18),
-                  label: const Text('Attach files (max 5, 5 MB each)'),
+                  const SizedBox(height: Spacing.sm),
+                ],
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _submitting ? null : _pick,
+                    icon: const Icon(Icons.attach_file, size: 18),
+                    label: const Text('Attach files'),
+                  ),
                 ),
-                const SizedBox(height: Spacing.md),
-                FilledButton(
+                const SizedBox(height: Spacing.xs),
+                Text(
+                  'Up to 5 files, 5 MB each.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: Spacing.lg),
+                PrimaryButton(
+                  label: 'Open ticket',
+                  busy: _submitting,
                   onPressed: _submitting ? null : _submit,
-                  child: _submitting
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Open ticket'),
                 ),
+                const SizedBox(height: Spacing.xl),
               ],
             ),
           ),
@@ -193,3 +249,4 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
     );
   }
 }
+

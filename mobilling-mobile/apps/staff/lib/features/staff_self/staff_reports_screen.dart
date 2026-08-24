@@ -4,7 +4,7 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
-import '../crm/crm_ui.dart' show CrmAsyncView, FilterStrip;
+import '../crm/crm_ui.dart' show CrmAsyncView;
 import 'staff_self_providers.dart';
 
 /// Periodic staff reports — what you did, what blocked you, what's next.
@@ -32,22 +32,28 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
   @override
   Widget build(BuildContext context) {
     final reports = ref.watch(staffReportsProvider(_type));
-    final canSubmit = ref.watch(sessionControllerProvider).session?.can(
-            'staff_reports.submit') ??
+    final canSubmit =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can('staff_reports.submit') ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Staff reports')),
-      floatingActionButton: canSubmit
-          ? FloatingActionButton.extended(
-              onPressed: () => _submit(context),
-              icon: const Icon(Icons.edit_note_outlined),
-              label: const Text('Submit'),
-            )
-          : null,
+      appBar: ShellTopBar(
+        eyebrow: 'HR',
+        title: 'Staff reports',
+        trailing: canSubmit
+            ? InkActionButton(
+                icon: Icons.edit_note_outlined,
+                tooltip: 'Submit report',
+                onPressed: () => _submit(context),
+              )
+            : null,
+      ),
       body: Column(
         children: [
-          FilterStrip(
+          _ChoiceRow(
             options: _filters,
             selected: _type,
             onSelect: (v) => setState(() => _type = v),
@@ -58,10 +64,14 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
               errorTitle: 'Could not load reports',
               onRetry: () => ref.invalidate(staffReportsProvider(_type)),
               builder: (items) => items.isEmpty
-                  ? const StateMessage(
+                  ? StateMessage(
                       icon: Icons.assignment_outlined,
                       title: 'No reports yet',
-                      message: 'Submit your first report with the button below.',
+                      message: canSubmit
+                          ? 'Your first report starts the record.'
+                          : 'Reports shared with you appear here.',
+                      actionLabel: canSubmit ? 'Submit a report' : null,
+                      onAction: canSubmit ? () => _submit(context) : null,
                     )
                   : RefreshIndicator(
                       onRefresh: () async {
@@ -92,11 +102,48 @@ class _StaffReportsScreenState extends ConsumerState<StaffReportsScreen> {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => const _SubmitReportSheet(),
     );
     if (saved == true) ref.invalidate(staffReportsProvider(_type));
   }
+}
+
+/// A quiet single row of choice chips under the masthead. `null` is "all".
+class _ChoiceRow extends StatelessWidget {
+  const _ChoiceRow({
+    required this.options,
+    required this.selected,
+    required this.onSelect,
+  });
+
+  final List<(String?, String)> options;
+  final String? selected;
+  final ValueChanged<String?> onSelect;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+    height: 48,
+    child: ListView.separated(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.md,
+        vertical: Spacing.sm,
+      ),
+      itemCount: options.length,
+      separatorBuilder: (context, index) => const SizedBox(width: Spacing.sm),
+      itemBuilder: (context, index) {
+        final (value, label) = options[index];
+        return ChoiceChip(
+          label: Text(label.toUpperCase()),
+          selected: selected == value,
+          showCheckmark: false,
+          onSelected: (_) => onSelect(value),
+        );
+      },
+    ),
+  );
 }
 
 class _ReportCard extends ConsumerWidget {
@@ -108,37 +155,61 @@ class _ReportCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
 
     return Card(
       child: ExpansionTile(
         shape: const Border(),
         collapsedShape: const Border(),
-        title: Text(report.periodLabel),
-        subtitle: Text(
-          [
-            if (report.userName != null) report.userName!,
-            report.reportType,
-            if (report.isLate) 'late',
-            if (report.isReviewed) 'reviewed',
-          ].join(' · '),
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: report.isLate ? status.attention : null,
+        title: Text(report.periodLabel, style: theme.textTheme.titleSmall),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Row(
+            children: [
+              StatusChip(
+                report.isReviewed ? 'active' : 'pending',
+                dense: true,
+              ),
+              const SizedBox(width: Spacing.sm),
+              Flexible(
+                child: Text(
+                  [
+                    if (report.userName != null) report.userName!,
+                    report.reportType,
+                    if (report.isLate) 'late',
+                  ].join(' · ').toUpperCase(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: report.isLate
+                        ? status.attention
+                        : scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
         trailing: report.rating == null
-            ? StatusChip(report.isReviewed ? 'active' : 'pending', dense: true)
+            ? null
             : Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.star_rounded,
-                      size: 16, color: status.attention),
-                  Text('${report.rating}',
-                      style: theme.textTheme.labelLarge),
+                  Icon(Icons.star_rounded, size: 16, color: status.attention),
+                  const SizedBox(width: 2),
+                  Text(
+                    '${report.rating}',
+                    style: theme.textTheme.labelMedium,
+                  ),
                 ],
               ),
         childrenPadding: const EdgeInsets.fromLTRB(
-            Spacing.md, 0, Spacing.md, Spacing.md),
+          Spacing.md,
+          0,
+          Spacing.md,
+          Spacing.md,
+        ),
         expandedCrossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (report.achievements != null)
@@ -148,13 +219,20 @@ class _ReportCard extends ConsumerWidget {
           if (report.plans != null) _Section('Plans', report.plans!),
           if (report.reviewNotes != null) ...[
             const Divider(height: Spacing.lg),
-            _Section('Review by ${report.reviewerName ?? 'supervisor'}',
-                report.reviewNotes!),
+            _Section(
+              'Review by ${report.reviewerName ?? 'supervisor'}',
+              report.reviewNotes!,
+            ),
           ],
           if (report.replies.isNotEmpty) ...[
             const Divider(height: Spacing.lg),
-            Text('Discussion', style: theme.textTheme.labelMedium),
-            const SizedBox(height: Spacing.xs),
+            Text(
+              'DISCUSSION',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.sm),
             for (final reply in report.replies)
               Padding(
                 padding: const EdgeInsets.only(bottom: Spacing.sm),
@@ -162,13 +240,16 @@ class _ReportCard extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${reply.userName ?? 'Someone'} · ${Formatting.date(reply.createdAt)}',
+                      '${reply.userName ?? 'Someone'} · ${Formatting.date(reply.createdAt)}'
+                          .toUpperCase(),
                       style: theme.textTheme.labelSmall?.copyWith(
-                          color: reply.isReviewer
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.onSurfaceVariant),
+                        color: reply.isReviewer
+                            ? scheme.primary
+                            : scheme.onSurfaceVariant,
+                      ),
                     ),
-                    Text(reply.message, style: theme.textTheme.bodySmall),
+                    const SizedBox(height: 2),
+                    Text(reply.message, style: theme.textTheme.bodyMedium),
                   ],
                 ),
               ),
@@ -200,15 +281,17 @@ class _ReportCard extends ConsumerWidget {
           autofocus: true,
           maxLines: 3,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(labelText: 'Message'),
+          decoration: const InputDecoration(hintText: 'Your message'),
         ),
         actions: [
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text.trim()),
-              child: const Text('Send')),
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Send reply'),
+          ),
         ],
       ),
     );
@@ -239,10 +322,14 @@ class _Section extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: theme.textTheme.labelMedium
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-          Text(body, style: theme.textTheme.bodySmall),
+          Text(
+            label.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(body, style: theme.textTheme.bodyMedium),
         ],
       ),
     );
@@ -285,7 +372,9 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
       _error = null;
     });
     try {
-      await ref.read(staffSelfServiceProvider).submitStaffReport(
+      await ref
+          .read(staffSelfServiceProvider)
+          .submitStaffReport(
             reportType: _type,
             periodDate: _period,
             achievements: _achievements.text.trim(),
@@ -298,8 +387,12 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error =
-          e.errorFor('period_date') ?? e.errorFor('achievements') ?? e.message);
+      setState(
+        () => _error =
+            e.errorFor('period_date') ??
+            e.errorFor('achievements') ??
+            e.message,
+      );
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
@@ -308,12 +401,12 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return Padding(
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        top: Spacing.lg,
         bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
       ),
       child: SingleChildScrollView(
@@ -321,27 +414,37 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Submit report',
-                style: theme.textTheme.titleLarge,
-                textAlign: TextAlign.center),
-            const SizedBox(height: Spacing.md),
+            Text(
+              'STAFF REPORT',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.xs),
+            Text('Submit report', style: Type.display(22)),
+            const SizedBox(height: Spacing.lg),
             if (_error != null) ...[
               ErrorBanner(message: _error!),
-              const SizedBox(height: Spacing.sm),
+              const SizedBox(height: Spacing.md),
             ],
+            Text('Period', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
             DropdownButtonFormField<String>(
               initialValue: _type,
-              decoration: const InputDecoration(labelText: 'Period'),
               items: const [
                 DropdownMenuItem(value: 'daily', child: Text('Daily')),
                 DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
                 DropdownMenuItem(value: 'monthly', child: Text('Monthly')),
               ],
-              onChanged:
-                  _submitting ? null : (v) => setState(() => _type = v!),
+              onChanged: _submitting
+                  ? null
+                  : (v) => setState(() => _type = v!),
             ),
             const SizedBox(height: Spacing.md),
+            Text('Period date', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
             InkWell(
+              borderRadius: BorderRadius.circular(Radii.md),
               onTap: _submitting
                   ? null
                   : () async {
@@ -355,7 +458,6 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
                     },
               child: InputDecorator(
                 decoration: const InputDecoration(
-                  labelText: 'Period date',
                   helperText: 'Any date inside the period being reported',
                   suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
                 ),
@@ -363,39 +465,43 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
               ),
             ),
             const SizedBox(height: Spacing.md),
+            Text('What did you achieve?', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
             TextField(
               controller: _achievements,
               maxLines: 4,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
-                labelText: 'What did you achieve?',
-                alignLabelWithHint: true,
+                hintText: 'What got done this period',
               ),
             ),
             const SizedBox(height: Spacing.md),
+            Text('Challenges', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
             TextField(
               controller: _challenges,
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
-                labelText: 'Challenges (optional)',
-                alignLabelWithHint: true,
+                hintText: 'Optional — what got in the way',
               ),
             ),
             const SizedBox(height: Spacing.md),
+            Text('Plans', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
             TextField(
               controller: _plans,
               maxLines: 3,
               textCapitalization: TextCapitalization.sentences,
               decoration: const InputDecoration(
-                labelText: 'Plans (optional)',
-                alignLabelWithHint: true,
+                hintText: 'Optional — what comes next',
               ),
             ),
             const SizedBox(height: Spacing.lg),
-            FilledButton(
+            PrimaryButton(
+              label: _submitting ? 'Submitting…' : 'Submit report',
+              busy: _submitting,
               onPressed: _submitting ? null : _submit,
-              child: Text(_submitting ? 'Submitting…' : 'Submit report'),
             ),
           ],
         ),

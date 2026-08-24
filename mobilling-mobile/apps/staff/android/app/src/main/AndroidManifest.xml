@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Every screen in this app is a network call — without this the OS
+         blocks all of them and each one silently reports "could not reach
+         the server" instead of an obvious permission error. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
     <application
         android:label="MoBilling"
         android:name="${applicationName}"

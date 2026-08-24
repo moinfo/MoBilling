@@ -37,13 +37,16 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
   Widget build(BuildContext context) {
     final dashboard = ref.watch(followupDashboardProvider);
     final list = ref.watch(followupsProvider(_status));
-    final canLog = ref.watch(sessionControllerProvider).session?.can(
-              CrmPermissions.followupLog,
-            ) ??
+    final status = context.statusColors;
+    final canLog =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(CrmPermissions.followupLog) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Follow-ups')),
+      appBar: const ShellTopBar(eyebrow: 'Billing', title: 'Follow-ups'),
       body: Column(
         children: [
           // Counters come from the dashboard endpoint; the list below is the
@@ -51,35 +54,29 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
           dashboard.maybeWhen(
             data: (d) => Padding(
               padding: const EdgeInsets.fromLTRB(
-                  Spacing.md, Spacing.sm, Spacing.md, 0),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: StatTile(
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+                0,
+              ),
+              child: Reveal(
+                child: StatRail(
+                  items: [
+                    StatRailItem(
                       label: 'Due today',
-                      value: '${d.stats.dueToday}',
-                      icon: Icons.today_outlined,
+                      value: Formatting.integer(d.stats.dueToday),
                     ),
-                  ),
-                  const SizedBox(width: Spacing.sm),
-                  Expanded(
-                    child: StatTile(
+                    StatRailItem(
                       label: 'Overdue',
-                      value: '${d.stats.overdue}',
-                      emphasis: d.stats.overdue > 0
-                          ? context.statusColors.overdue
-                          : null,
-                      icon: Icons.warning_amber_rounded,
+                      value: Formatting.integer(d.stats.overdue),
+                      emphasis: d.stats.overdue > 0 ? status.overdue : null,
                     ),
-                  ),
-                  const SizedBox(width: Spacing.sm),
-                  Expanded(
-                    child: StatTile(
+                    StatRailItem(
                       label: 'Active',
-                      value: '${d.stats.totalActive}',
+                      value: Formatting.integer(d.stats.totalActive),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
             orElse: () => const SizedBox.shrink(),
@@ -98,6 +95,8 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
                   ? const StateMessage(
                       icon: Icons.phone_in_talk_outlined,
                       title: 'No follow-ups here',
+                      message:
+                          'Invoices scheduled for a collection call appear here.',
                     )
                   : RefreshIndicator(
                       onRefresh: () async {
@@ -108,20 +107,29 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
                         ref.invalidate(followupsProvider(_status));
                         await ref.read(followupsProvider(_status).future);
                       },
-                      child: ListView.separated(
+                      child: ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(Spacing.md),
-                        itemCount: items.length,
-                        separatorBuilder: (context, index) =>
-                            const SizedBox(height: Spacing.sm),
-                        itemBuilder: (context, index) => _FollowupCard(
-                          followup: items[index],
-                          canLog: canLog,
-                          onLogged: () {
-                            ref.invalidate(followupDashboardProvider);
-                            ref.invalidate(followupsProvider(_status));
-                          },
+                        padding: const EdgeInsets.fromLTRB(
+                          Spacing.md,
+                          Spacing.sm,
+                          Spacing.md,
+                          Spacing.xl,
                         ),
+                        children: [
+                          CrmCardList(
+                            children: [
+                              for (final followup in items)
+                                _FollowupRow(
+                                  followup: followup,
+                                  canLog: canLog,
+                                  onLogged: () {
+                                    ref.invalidate(followupDashboardProvider);
+                                    ref.invalidate(followupsProvider(_status));
+                                  },
+                                ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
             ),
@@ -132,8 +140,11 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
   }
 }
 
-class _FollowupCard extends ConsumerWidget {
-  const _FollowupCard({
+/// One invoice being chased: the balance as the trailing figure, the
+/// reference and call history in the metadata line, the promise (if any)
+/// in gold, and the call-and-log actions on the last row.
+class _FollowupRow extends ConsumerWidget {
+  const _FollowupRow({
     required this.followup,
     required this.canLog,
     required this.onLogged,
@@ -146,77 +157,101 @@ class _FollowupCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    final status = context.statusColors;
+    final canAct = canLog && followup.isOpenWork;
+    final hasPhone = followup.clientPhone != null;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+    final meta = [
+      if (followup.documentNumber != null) followup.documentNumber!,
+      if (followup.callDate != null) 'call ${Formatting.date(followup.callDate)}',
+      if (followup.callCount != null && followup.callCount! > 0)
+        '${Formatting.integer(followup.callCount)} '
+            '${followup.callCount == 1 ? 'call' : 'calls'}',
+    ].join(' · ');
+
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        Spacing.md,
+        Spacing.md,
+        Spacing.md,
+        hasPhone || canAct ? Spacing.xs : Spacing.md,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  followup.clientName ?? followup.documentNumber ?? 'Follow-up',
+                  style: theme.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: Spacing.sm),
+              Money(followup.invoiceBalance),
+            ],
+          ),
+          const SizedBox(height: Spacing.xs),
+          CrmStatusLine(status: followup.status, meta: meta),
+          if (followup.promiseDate != null) ...[
+            const SizedBox(height: Spacing.xs),
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                      followup.clientName ??
-                          followup.documentNumber ??
-                          'Follow-up',
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                Text(
+                  'Promised',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: status.attention,
+                  ),
                 ),
-                StatusChip(followup.status, dense: true),
+                const SizedBox(width: Spacing.xs),
+                Money(
+                  followup.promiseAmount ?? 0,
+                  scale: MoneyScale.dense,
+                  color: status.attention,
+                ),
+                const SizedBox(width: Spacing.xs),
+                Text(
+                  'by ${Formatting.date(followup.promiseDate)}',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: status.attention,
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 2),
+          ],
+          if (followup.outcome != null) ...[
+            const SizedBox(height: Spacing.xs),
             Text(
-              [
-                if (followup.documentNumber != null) followup.documentNumber!,
-                'balance ${Formatting.amount(followup.invoiceBalance)}',
-                if (followup.callDate != null)
-                  'call ${Formatting.date(followup.callDate)}',
-                if (followup.callCount != null && followup.callCount! > 0)
-                  '${followup.callCount} call${followup.callCount == 1 ? '' : 's'}',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              'Last outcome: ${followup.outcome}',
+              style: theme.textTheme.bodySmall,
             ),
-            if (followup.promiseDate != null) ...[
-              const SizedBox(height: Spacing.xs),
-              Text(
-                'Promised ${Formatting.amount(followup.promiseAmount ?? 0)} by ${Formatting.date(followup.promiseDate)}',
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: context.statusColors.attention),
-              ),
-            ],
-            if (followup.outcome != null) ...[
-              const SizedBox(height: Spacing.xs),
-              Text('Last: ${followup.outcome}',
-                  style: theme.textTheme.bodySmall),
-            ],
-            const SizedBox(height: Spacing.sm),
+          ],
+          if (hasPhone || canAct) ...[
+            const SizedBox(height: Spacing.xs),
             Row(
               children: [
-                if (followup.clientPhone != null)
-                  ContactRow(phone: followup.clientPhone, compact: true),
+                ContactRow(phone: followup.clientPhone, compact: true),
                 const Spacer(),
-                if (canLog && followup.isOpenWork)
-                  FilledButton.tonal(
+                if (canAct)
+                  TextButton.icon(
+                    icon: const Icon(Icons.phone_in_talk_outlined, size: 18),
+                    label: const Text('Log call'),
                     onPressed: () => _showLogSheet(context, ref),
-                    child: const Text('Log call'),
                   ),
               ],
             ),
           ],
-        ),
+        ],
       ),
     );
   }
 
   Future<void> _showLogSheet(BuildContext context, WidgetRef ref) async {
-    final logged = await showModalBottomSheet<bool>(
+    final logged = await showCrmSheet<bool>(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => _LogCallSheet(followup: followup),
     );
     if (logged == true) onLogged();
@@ -291,7 +326,9 @@ class _LogCallSheetState extends ConsumerState<_LogCallSheet> {
     });
 
     try {
-      final result = await ref.read(crmServiceProvider).logFollowupCall(
+      final result = await ref
+          .read(crmServiceProvider)
+          .logFollowupCall(
             widget.followup.id,
             outcome: _outcome,
             notes: _notes.text.trim(),
@@ -305,9 +342,7 @@ class _LogCallSheetState extends ConsumerState<_LogCallSheet> {
       Navigator.of(context).pop(true);
       showCrmMessage(
         context,
-        result.escalated
-            ? '${result.message} — escalated.'
-            : result.message,
+        result.escalated ? '${result.message} — escalated.' : result.message,
       );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -319,103 +354,83 @@ class _LogCallSheetState extends ConsumerState<_LogCallSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Padding(
-      padding: EdgeInsets.only(
-        left: Spacing.lg,
-        right: Spacing.lg,
-        top: Spacing.lg,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
-      ),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('Log call',
-                style: theme.textTheme.titleLarge,
-                textAlign: TextAlign.center),
-            Text(
-              widget.followup.clientName ?? '',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: Spacing.md),
-            if (_error != null) ...[
-              ErrorBanner(message: _error!),
-              const SizedBox(height: Spacing.sm),
+    return CrmSheet(
+      eyebrow: widget.followup.clientName ?? widget.followup.documentNumber,
+      title: 'Log call',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        CrmField(
+          label: 'Outcome',
+          child: DropdownButtonFormField<String>(
+            initialValue: _outcome,
+            items: [
+              for (final (value, label) in _outcomes)
+                DropdownMenuItem(value: value, child: Text(label)),
             ],
-            DropdownButtonFormField<String>(
-              initialValue: _outcome,
-              decoration: const InputDecoration(labelText: 'Outcome'),
-              items: [
-                for (final (value, label) in _outcomes)
-                  DropdownMenuItem(value: value, child: Text(label)),
-              ],
-              onChanged: _submitting
-                  ? null
-                  : (v) => setState(() => _outcome = v!),
-            ),
-            if (_isPromise) ...[
-              const SizedBox(height: Spacing.md),
-              TextField(
-                controller: _promiseAmount,
-                keyboardType:
-                    const TextInputType.numberWithOptions(decimal: true),
-                decoration: InputDecoration(
-                  labelText: 'Amount promised',
-                  prefixText: '${Formatting.tenantCurrency} ',
-                ),
-              ),
-              const SizedBox(height: Spacing.md),
-              InkWell(
-                onTap: _submitting ? null : () => _pick(true),
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Promised by',
-                    suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
-                  ),
-                  child: Text(_promiseDate == null
-                      ? 'Choose a date'
-                      : Formatting.date(_promiseDate)),
-                ),
-              ),
-            ],
-            const SizedBox(height: Spacing.md),
-            InkWell(
-              onTap: _submitting ? null : () => _pick(false),
-              child: InputDecorator(
-                decoration: const InputDecoration(
-                  labelText: 'Next follow-up (optional)',
-                  suffixIcon: Icon(Icons.event_outlined, size: 18),
-                ),
-                child: Text(_nextFollowup == null
-                    ? 'Not scheduled'
-                    : Formatting.date(_nextFollowup)),
-              ),
-            ),
-            const SizedBox(height: Spacing.md),
-            TextField(
-              controller: _notes,
-              maxLines: 3,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(labelText: 'Notes'),
-            ),
-            const SizedBox(height: Spacing.lg),
-            FilledButton(
-              onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Save call'),
-            ),
-          ],
+            onChanged: _submitting
+                ? null
+                : (v) => setState(() => _outcome = v!),
+          ),
         ),
-      ),
+        if (_isPromise) ...[
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'Amount promised',
+            child: TextField(
+              controller: _promiseAmount,
+              enabled: !_submitting,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                prefixText: '${Formatting.tenantCurrency} ',
+                hintText: '0.00',
+              ),
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          CrmPickerField(
+            label: 'Promised by',
+            value: _promiseDate == null
+                ? 'Choose a date'
+                : Formatting.date(_promiseDate),
+            placeholder: _promiseDate == null,
+            onTap: _submitting ? null : () => _pick(true),
+          ),
+        ],
+        const SizedBox(height: Spacing.md),
+        CrmPickerField(
+          label: 'Next follow-up (optional)',
+          value: _nextFollowup == null
+              ? 'Not scheduled'
+              : Formatting.date(_nextFollowup),
+          placeholder: _nextFollowup == null,
+          icon: Icons.event_outlined,
+          onTap: _submitting ? null : () => _pick(false),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Notes',
+          child: TextField(
+            controller: _notes,
+            enabled: !_submitting,
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'What was said, and what happens next',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _submitting ? 'Saving…' : 'Save call',
+          busy: _submitting,
+          onPressed: _submitting ? null : _submit,
+        ),
+      ],
     );
   }
 }

@@ -9,15 +9,14 @@ import 'comms_ui.dart';
 
 /// Posts for a status filter; null means every status.
 final AutoDisposeFutureProviderFamily<List<SocialPost>, String?>
-    socialPostsProvider =
-    FutureProvider.autoDispose.family<List<SocialPost>, String?>(
-  (ref, status) =>
-      ref.watch(commsServiceProvider).socialPosts(status: status),
-);
+socialPostsProvider = FutureProvider.autoDispose
+    .family<List<SocialPost>, String?>(
+      (ref, status) =>
+          ref.watch(commsServiceProvider).socialPosts(status: status),
+    );
 
 final AutoDisposeFutureProvider<List<SocialPlatformConfig>>
-    socialPlatformsProvider =
-    FutureProvider.autoDispose<List<SocialPlatformConfig>>(
+socialPlatformsProvider = FutureProvider.autoDispose<List<SocialPlatformConfig>>(
   (ref) => ref.watch(commsServiceProvider).socialPlatforms(),
 );
 
@@ -25,12 +24,12 @@ final AutoDisposeFutureProvider<List<SocialPlatformConfig>>
 /// rather than a DateTime because two DateTimes for the same day are not equal
 /// unless every field matches, and a family key must be stable.
 final AutoDisposeFutureProviderFamily<SocialWeeklySummary, String>
-    socialWeeklySummaryProvider =
-    FutureProvider.autoDispose.family<SocialWeeklySummary, String>(
-  (ref, weekStart) => ref
-      .watch(commsServiceProvider)
-      .socialWeeklySummary(weekStart: DateTime.parse(weekStart)),
-);
+socialWeeklySummaryProvider = FutureProvider.autoDispose
+    .family<SocialWeeklySummary, String>(
+      (ref, weekStart) => ref
+          .watch(commsServiceProvider)
+          .socialWeeklySummary(weekStart: DateTime.parse(weekStart)),
+    );
 
 enum _SocialSection { posts, week }
 
@@ -58,19 +57,22 @@ class _SocialMediaScreenState extends ConsumerState<SocialMediaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final canCreate =
-        ref.watch(commsPermissionProvider(CommsPermissions.socialCreate));
+    final canCreate = ref.watch(
+      commsPermissionProvider(CommsPermissions.socialCreate),
+    );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Social media')),
-      floatingActionButton:
-          (_section == _SocialSection.posts && canCreate)
-              ? FloatingActionButton.extended(
-                  onPressed: () => _showNewPostSheet(context, _status),
-                  icon: const Icon(Icons.add),
-                  label: const Text('New post'),
-                )
-              : null,
+      appBar: ShellTopBar(
+        eyebrow: 'Engagement',
+        title: 'Social media',
+        trailing: (_section == _SocialSection.posts && canCreate)
+            ? InkActionButton(
+                icon: Icons.add_rounded,
+                tooltip: 'New post',
+                onPressed: () => _showNewPostSheet(context, _status),
+              )
+            : null,
+      ),
       body: Column(
         children: [
           SectionSelector<_SocialSection>(
@@ -87,13 +89,15 @@ class _SocialMediaScreenState extends ConsumerState<SocialMediaScreen> {
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(
-                    horizontal: Spacing.md, vertical: Spacing.xs),
+                  horizontal: Spacing.md,
+                  vertical: Spacing.xs,
+                ),
                 itemCount: _statusFilters.length,
                 separatorBuilder: (context, index) =>
                     const SizedBox(width: Spacing.sm),
                 itemBuilder: (context, index) {
                   final (value, label) = _statusFilters[index];
-                  return FilterChip(
+                  return ChoiceChip(
                     label: Text(label),
                     selected: _status == value,
                     showCheckmark: false,
@@ -166,7 +170,9 @@ class _PostCardState extends ConsumerState<_PostCard> {
     final messenger = ScaffoldMessenger.of(context);
     setState(() => _busy = true);
     try {
-      await ref.read(commsServiceProvider).setSocialPostPosted(
+      await ref
+          .read(commsServiceProvider)
+          .setSocialPostPosted(
             widget.post.id,
             row.platform,
             posted: !row.posted,
@@ -192,8 +198,9 @@ class _PostCardState extends ConsumerState<_PostCard> {
     final post = widget.post;
     final theme = Theme.of(context);
     final status = context.statusColors;
-    final canUpdate =
-        ref.watch(commsPermissionProvider(CommsPermissions.socialUpdate));
+    final canUpdate = ref.watch(
+      commsPermissionProvider(CommsPermissions.socialUpdate),
+    );
 
     return Card(
       child: Padding(
@@ -202,20 +209,24 @@ class _PostCardState extends ConsumerState<_PostCard> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(
-                  post.isVideo
-                      ? Icons.videocam_outlined
-                      : Icons.image_outlined,
-                  size: 18,
-                  color: theme.colorScheme.onSurfaceVariant,
+                Padding(
+                  padding: const EdgeInsets.only(top: 1),
+                  child: Icon(
+                    post.isVideo ? Icons.videocam_outlined : Icons.image_outlined,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 const SizedBox(width: Spacing.sm),
                 Expanded(
-                  child: Text(post.title,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis),
+                  child: Text(
+                    post.title,
+                    style: theme.textTheme.titleSmall,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 const SizedBox(width: Spacing.sm),
                 CommsChip(
@@ -225,7 +236,7 @@ class _PostCardState extends ConsumerState<_PostCard> {
               ],
             ),
             const SizedBox(height: Spacing.xs),
-            Text(
+            CommsMeta(
               [
                 SocialLabels.postType(post.type),
                 post.postFormats.map(SocialLabels.postFormat).join(', '),
@@ -234,30 +245,37 @@ class _PostCardState extends ConsumerState<_PostCard> {
                   if (post.scheduledTime != null) post.scheduledTime!,
                 ].join(' '),
               ].join(' · '),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
             ),
             if (post.brief != null) ...[
               const SizedBox(height: Spacing.sm),
-              Text(post.brief!,
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis),
+              Text(
+                post.brief!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
             if (post.caption != null) ...[
               const SizedBox(height: Spacing.sm),
-              Text(post.caption!,
-                  style: theme.textTheme.bodyMedium,
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis),
+              Text(
+                post.caption!,
+                style: theme.textTheme.bodyMedium,
+                maxLines: 4,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
             if (post.hashtags != null) ...[
               const SizedBox(height: Spacing.xs),
-              Text(post.hashtags!,
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.primary),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis),
+              Text(
+                post.hashtags!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
             ],
             if (post.platforms.isNotEmpty) ...[
               const SizedBox(height: Spacing.sm),
@@ -274,13 +292,15 @@ class _PostCardState extends ConsumerState<_PostCard> {
                           : null,
                       onOpen: row.postUrl == null
                           ? null
-                          : () => launchUrl(Uri.parse(row.postUrl!),
-                              mode: LaunchMode.externalApplication),
+                          : () => launchUrl(
+                              Uri.parse(row.postUrl!),
+                              mode: LaunchMode.externalApplication,
+                            ),
                     ),
                 ],
               ),
             ],
-            const SizedBox(height: Spacing.sm),
+            const Divider(height: Spacing.lg),
             Row(
               children: [
                 _MiniState(
@@ -295,8 +315,12 @@ class _PostCardState extends ConsumerState<_PostCard> {
                   color: post.contentStatus == 'ready' ? status.settled : null,
                 ),
                 const Spacer(),
-                Text('${post.postedCount}/${post.platforms.length} posted',
-                    style: theme.textTheme.labelSmall),
+                Text(
+                  '${post.postedCount}/${post.platforms.length} POSTED',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
               ],
             ),
           ],
@@ -304,7 +328,6 @@ class _PostCardState extends ConsumerState<_PostCard> {
       ),
     );
   }
-
 }
 
 /// Colour for a post's derived status. `SocialPost::syncStatus` walks
@@ -332,7 +355,7 @@ class _PlatformChip extends StatelessWidget {
     final status = context.statusColors;
 
     return InputChip(
-      label: Text(row.platform),
+      label: Text(row.platform.toUpperCase()),
       avatar: Icon(
         row.posted ? Icons.check_circle : Icons.radio_button_unchecked,
         size: 16,
@@ -341,6 +364,7 @@ class _PlatformChip extends StatelessWidget {
       onPressed: onToggle,
       onDeleted: onOpen,
       deleteIcon: onOpen == null ? null : const Icon(Icons.link, size: 16),
+      deleteButtonTooltipMessage: 'Open post',
       tooltip: row.posted && row.postedAt != null
           ? 'Posted ${Formatting.dateTime(row.postedAt)}'
           : null,
@@ -348,6 +372,7 @@ class _PlatformChip extends StatelessWidget {
   }
 }
 
+/// `DESIGN  DONE` — an eyebrow and its state, both in the utility face.
 class _MiniState extends StatelessWidget {
   const _MiniState({required this.label, required this.value, this.color});
 
@@ -361,12 +386,19 @@ class _MiniState extends StatelessWidget {
 
     return Row(
       children: [
-        Text('$label ',
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-        Text(value,
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: color, fontWeight: FontWeight.w600)),
+        Text(
+          label.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(width: Spacing.xs + 2),
+        Text(
+          value.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: color ?? theme.colorScheme.onSurface,
+          ),
+        ),
       ],
     );
   }
@@ -394,8 +426,8 @@ class _WeekViewState extends ConsumerState<_WeekView> {
       '${_weekStart.month.toString().padLeft(2, '0')}-'
       '${_weekStart.day.toString().padLeft(2, '0')}';
 
-  void _shift(int weeks) => setState(
-      () => _weekStart = _weekStart.add(Duration(days: 7 * weeks)));
+  void _shift(int weeks) =>
+      setState(() => _weekStart = _weekStart.add(Duration(days: 7 * weeks)));
 
   @override
   Widget build(BuildContext context) {
@@ -414,10 +446,19 @@ class _WeekViewState extends ConsumerState<_WeekView> {
                 onPressed: () => _shift(-1),
               ),
               Expanded(
-                child: Text(
-                  'Week of ${Formatting.date(_weekStart)}',
-                  textAlign: TextAlign.center,
-                  style: theme.textTheme.titleSmall,
+                child: Column(
+                  children: [
+                    Text(
+                      'WEEK OF',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    Text(
+                      Formatting.date(_weekStart),
+                      style: theme.textTheme.titleSmall,
+                    ),
+                  ],
                 ),
               ),
               IconButton(
@@ -462,7 +503,8 @@ class _WeekViewState extends ConsumerState<_WeekView> {
                             Text(
                               'No weekly target has been set for this tenant.',
                               style: theme.textTheme.bodySmall?.copyWith(
-                                  color: theme.colorScheme.onSurfaceVariant),
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
                             ),
                           ],
                         ],
@@ -524,7 +566,9 @@ class _TargetBar extends StatelessWidget {
             Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
             Text(
               goal == 0 ? '$achieved' : '$achieved / $goal',
-              style: theme.textTheme.labelLarge,
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontFeatures: Type.figures,
+              ),
             ),
           ],
         ),
@@ -558,12 +602,14 @@ class _DayColumn extends StatelessWidget {
 
     return Column(
       children: [
-        Text(day.dayName,
-            style: theme.textTheme.labelSmall?.copyWith(
-              color: day.isActive
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.outline,
-            )),
+        Text(
+          day.dayName.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: day.isActive
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.outline,
+          ),
+        ),
         const SizedBox(height: Spacing.xs),
         Container(
           height: 28,
@@ -573,8 +619,9 @@ class _DayColumn extends StatelessWidget {
             shape: BoxShape.circle,
             color: !day.isActive
                 ? Colors.transparent
-                : (done > 0 ? status.settled : status.inactive)
-                    .withValues(alpha: 0.16),
+                : (done > 0 ? status.settled : status.inactive).withValues(
+                    alpha: 0.16,
+                  ),
             border: day.isActive
                 ? null
                 : Border.all(color: theme.colorScheme.outlineVariant),
@@ -582,9 +629,12 @@ class _DayColumn extends StatelessWidget {
           child: Text('$done', style: theme.textTheme.labelMedium),
         ),
         const SizedBox(height: Spacing.xs),
-        Text('${day.total}',
-            style: theme.textTheme.labelSmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+        Text(
+          '${day.total}',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }
@@ -615,9 +665,14 @@ class _PlatformsCard extends ConsumerWidget {
           child: Text(commsErrorText(error), style: theme.textTheme.bodySmall),
         ),
         data: (rows) => rows.isEmpty
-            ? const Padding(
-                padding: EdgeInsets.all(Spacing.md),
-                child: Text('No platforms are configured.'),
+            ? Padding(
+                padding: const EdgeInsets.all(Spacing.md),
+                child: Text(
+                  'No platforms are configured.',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
               )
             : Column(
                 children: [
@@ -625,8 +680,10 @@ class _PlatformsCard extends ConsumerWidget {
                     if (i > 0) const Divider(height: 1),
                     ListTile(
                       dense: true,
-                      title: Text(p.label),
-                      subtitle: Text(p.isActive ? p.name : '${p.name} · off'),
+                      title: Text(p.label, style: theme.textTheme.titleSmall),
+                      subtitle: CommsMeta(
+                        p.isActive ? p.name : '${p.name} · off',
+                      ),
                       trailing: p.profileUrl == null
                           ? null
                           : IconButton(
@@ -653,6 +710,7 @@ void _showNewPostSheet(BuildContext context, String? statusFilter) {
     context: context,
     isScrollControlled: true,
     showDragHandle: true,
+    shape: commsSheetShape,
     builder: (context) => _NewPostSheet(statusFilter: statusFilter),
   );
 }
@@ -681,6 +739,7 @@ class _NewPostSheetState extends ConsumerState<_NewPostSheet> {
   DateTime _date = DateTime.now();
   TimeOfDay? _time;
   bool _saving = false;
+  String? _formError;
 
   @override
   void dispose() {
@@ -689,6 +748,11 @@ class _NewPostSheetState extends ConsumerState<_NewPostSheet> {
     _hashtags.dispose();
     super.dispose();
   }
+
+  String get _timeLabel => _time == null
+      ? 'Time…'
+      : '${_time!.hour.toString().padLeft(2, '0')}:'
+            '${_time!.minute.toString().padLeft(2, '0')}';
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
@@ -713,9 +777,14 @@ class _NewPostSheetState extends ConsumerState<_NewPostSheet> {
     if (!(_form.currentState?.validate() ?? false)) return;
 
     final messenger = ScaffoldMessenger.of(context);
-    setState(() => _saving = true);
+    setState(() {
+      _saving = true;
+      _formError = null;
+    });
     try {
-      await ref.read(commsServiceProvider).createSocialPost(
+      await ref
+          .read(commsServiceProvider)
+          .createSocialPost(
             title: _title.text.trim(),
             type: _type,
             scheduledDate: _date,
@@ -724,7 +793,7 @@ class _NewPostSheetState extends ConsumerState<_NewPostSheet> {
             scheduledTime: _time == null
                 ? null
                 : '${_time!.hour.toString().padLeft(2, '0')}:'
-                    '${_time!.minute.toString().padLeft(2, '0')}',
+                      '${_time!.minute.toString().padLeft(2, '0')}',
             brief: _brief.text.trim(),
             hashtags: _hashtags.text.trim(),
           );
@@ -735,7 +804,7 @@ class _NewPostSheetState extends ConsumerState<_NewPostSheet> {
       showCommsMessage(messenger, 'Post planned.');
       if (mounted) Navigator.of(context).pop();
     } on ApiException catch (e) {
-      showCommsMessage(messenger, e.message, isError: true);
+      if (mounted) setState(() => _formError = e.message);
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -750,51 +819,64 @@ class _NewPostSheetState extends ConsumerState<_NewPostSheet> {
         maxHeight: MediaQuery.of(context).size.height * 0.9,
       ),
       child: SingleChildScrollView(
+        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
         padding: EdgeInsets.fromLTRB(
-          Spacing.md,
+          Spacing.lg,
           0,
-          Spacing.md,
-          Spacing.md + MediaQuery.of(context).viewInsets.bottom,
+          Spacing.lg,
+          Spacing.lg + MediaQuery.of(context).viewInsets.bottom,
         ),
         child: Form(
           key: _form,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('New post', style: theme.textTheme.titleMedium),
-              const SizedBox(height: Spacing.md),
+              const CommsSheetHeader(
+                eyebrow: 'Social media',
+                title: 'New post',
+              ),
+              const SizedBox(height: Spacing.lg),
+              if (_formError != null) ...[
+                ErrorBanner(message: _formError!),
+                const SizedBox(height: Spacing.md),
+              ],
+              const CommsFieldLabel('Title'),
+              const SizedBox(height: Spacing.sm),
               TextFormField(
                 controller: _title,
                 maxLength: 255,
+                enabled: !_saving,
+                textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
-                  labelText: 'Title',
-                  border: OutlineInputBorder(),
+                  hintText: 'What the post is about',
                 ),
                 validator: (value) => (value == null || value.trim().isEmpty)
-                    ? 'A title is required.'
+                    ? 'Enter a title for the post.'
                     : null,
               ),
+              const SizedBox(height: Spacing.md),
+              const CommsFieldLabel('Type'),
+              const SizedBox(height: Spacing.sm),
               DropdownButtonFormField<String>(
                 initialValue: _type,
                 isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Type',
-                  border: OutlineInputBorder(),
-                ),
                 items: [
                   for (final entry in SocialLabels.postTypes.entries)
                     DropdownMenuItem<String>(
-                        value: entry.key, child: Text(entry.value)),
+                      value: entry.key,
+                      child: Text(entry.value),
+                    ),
                 ],
                 onChanged: (value) {
                   if (value != null) setState(() => _type = value);
                 },
               ),
               const SizedBox(height: Spacing.md),
-              Text('Format', style: theme.textTheme.labelMedium),
-              const SizedBox(height: Spacing.xs),
+              const CommsFieldLabel('Format'),
+              const SizedBox(height: Spacing.sm),
               Wrap(
                 spacing: Spacing.sm,
+                runSpacing: Spacing.xs,
                 children: [
                   for (final entry in SocialLabels.postFormats.entries)
                     FilterChip(
@@ -814,61 +896,81 @@ class _NewPostSheetState extends ConsumerState<_NewPostSheet> {
                 ],
               ),
               const SizedBox(height: Spacing.md),
-              SegmentedButton<String>(
-                showSelectedIcon: false,
-                segments: const [
-                  ButtonSegment<String>(value: 'image', label: Text('Image')),
-                  ButtonSegment<String>(value: 'video', label: Text('Video')),
-                ],
-                selected: {_mediaType},
-                onSelectionChanged: (values) =>
-                    setState(() => _mediaType = values.first),
+              const CommsFieldLabel('Media'),
+              const SizedBox(height: Spacing.sm),
+              SizedBox(
+                width: double.infinity,
+                child: SegmentedButton<String>(
+                  showSelectedIcon: false,
+                  style: SegmentedButton.styleFrom(
+                    textStyle: theme.textTheme.labelMedium,
+                  ),
+                  segments: const [
+                    ButtonSegment<String>(value: 'image', label: Text('Image')),
+                    ButtonSegment<String>(value: 'video', label: Text('Video')),
+                  ],
+                  selected: {_mediaType},
+                  onSelectionChanged: (values) =>
+                      setState(() => _mediaType = values.first),
+                ),
               ),
               const SizedBox(height: Spacing.md),
+              const CommsFieldLabel('When'),
+              const SizedBox(height: Spacing.sm),
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton(
-                      onPressed: _pickDate,
-                      child: Text(Formatting.date(_date)),
+                    child: OutlinedButton.icon(
+                      onPressed: _saving ? null : _pickDate,
+                      icon: const Icon(Icons.calendar_today_outlined, size: 18),
+                      label: Text(
+                        Formatting.date(_date),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                   const SizedBox(width: Spacing.sm),
                   Expanded(
-                    child: OutlinedButton(
-                      onPressed: _pickTime,
-                      child: Text(_time == null
-                          ? 'Time…'
-                          : '${_time!.hour.toString().padLeft(2, '0')}:'
-                              '${_time!.minute.toString().padLeft(2, '0')}'),
+                    child: OutlinedButton.icon(
+                      onPressed: _saving ? null : _pickTime,
+                      icon: const Icon(Icons.schedule_outlined, size: 18),
+                      label: Text(
+                        _timeLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: Spacing.md),
+              const CommsFieldLabel('Brief'),
+              const SizedBox(height: Spacing.sm),
               TextFormField(
                 controller: _brief,
                 minLines: 3,
                 maxLines: 6,
+                enabled: !_saving,
                 keyboardType: TextInputType.multiline,
                 decoration: const InputDecoration(
-                  labelText: 'Brief',
+                  hintText: 'What the designer needs to know',
                   alignLabelWithHint: true,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: Spacing.sm),
-              TextFormField(
-                controller: _hashtags,
-                decoration: const InputDecoration(
-                  labelText: 'Hashtags',
-                  border: OutlineInputBorder(),
                 ),
               ),
               const SizedBox(height: Spacing.md),
-              FilledButton(
+              const CommsFieldLabel('Hashtags'),
+              const SizedBox(height: Spacing.sm),
+              TextFormField(
+                controller: _hashtags,
+                enabled: !_saving,
+                decoration: const InputDecoration(hintText: '#tag #another'),
+              ),
+              const SizedBox(height: Spacing.lg),
+              PrimaryButton(
+                label: _saving ? 'Planning…' : 'Plan post',
+                busy: _saving,
                 onPressed: _saving ? null : _save,
-                child: Text(_saving ? 'Saving…' : 'Plan post'),
               ),
             ],
           ),

@@ -52,6 +52,27 @@ class Formatting {
   /// currency in the header instead of on every row.
   static String amount(Object? value) => _amount.format(_toDouble(value));
 
+  /// A magnitude for a glance, the handoff's `TZS 4.2M`: `4250000` -> `4.2M`,
+  /// `850000` -> `850K`, `12500` -> `12.5K`, `980` -> `980`.
+  ///
+  /// For strips of three-or-more figures across a phone, where the full
+  /// grouped amount would not fit and the cents are not the point. Never
+  /// for a figure someone might need to audit — that is what [Money] is for.
+  static String compact(Object? value) {
+    final v = _toDouble(value);
+    final sign = v.isNegative ? '-' : '';
+    final a = v.abs();
+    String trim(double n) {
+      final s = n.toStringAsFixed(n >= 100 ? 0 : 1);
+      return s.endsWith('.0') ? s.substring(0, s.length - 2) : s;
+    }
+
+    if (a >= 1e9) return '$sign${trim(a / 1e9)}B';
+    if (a >= 1e6) return '$sign${trim(a / 1e6)}M';
+    if (a >= 1e4) return '$sign${trim(a / 1e3)}K';
+    return '$sign${_integer.format(a)}';
+  }
+
   /// Split an amount into the three pieces the [Money] readout sets at
   /// different sizes.
   ///
@@ -67,7 +88,8 @@ class Formatting {
     final dot = formatted.lastIndexOf('.');
     return MoneyParts(
       code: currencyCode ?? _tenantCurrency,
-      whole: '${amount.isNegative ? '-' : ''}'
+      whole:
+          '${amount.isNegative ? '-' : ''}'
           '${dot < 0 ? formatted : formatted.substring(0, dot)}',
       fraction: dot < 0 ? '00' : formatted.substring(dot + 1),
       isNegative: amount.isNegative,
@@ -75,10 +97,10 @@ class Formatting {
   }
 
   static double _toDouble(Object? value) => switch (value) {
-        num v when v.isFinite => v.toDouble(),
-        String v => double.tryParse(v) ?? 0,
-        _ => 0,
-      };
+    num v when v.isFinite => v.toDouble(),
+    String v => double.tryParse(v) ?? 0,
+    _ => 0,
+  };
 
   static final DateFormat _date = DateFormat('dd MMM yyyy');
   static final DateFormat _dateTime = DateFormat('dd MMM yyyy, HH:mm');
@@ -99,19 +121,21 @@ class Formatting {
   /// date-only columns like `due_date`. Both parse; anything else yields null
   /// so callers can render a placeholder instead of crashing.
   static DateTime? parseDate(Object? value) => switch (value) {
-        DateTime v => v,
-        String v when v.isNotEmpty => DateTime.tryParse(v),
-        _ => null,
-      };
+    DateTime v => v,
+    String v when v.isNotEmpty => DateTime.tryParse(v),
+    _ => null,
+  };
 
   /// Days until [value]; negative once past. Null when undated.
   static int? daysUntil(Object? value) {
     final parsed = parseDate(value);
     if (parsed == null) return null;
     final now = DateTime.now();
-    return DateTime(parsed.year, parsed.month, parsed.day)
-        .difference(DateTime(now.year, now.month, now.day))
-        .inDays;
+    return DateTime(
+      parsed.year,
+      parsed.month,
+      parsed.day,
+    ).difference(DateTime(now.year, now.month, now.day)).inDays;
   }
 
   /// Human phrasing for a due date — the single most-read string in a billing

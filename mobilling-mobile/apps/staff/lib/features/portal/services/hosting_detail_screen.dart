@@ -20,7 +20,10 @@ class PortalHostingDetailScreen extends ConsumerWidget {
     final detail = ref.watch(portalHostingDetailProvider(accountId));
 
     return Scaffold(
-      appBar: AppBar(title: Text(detail.valueOrNull?.domain ?? 'Hosting')),
+      appBar: ShellTopBar(
+        eyebrow: 'Services',
+        title: detail.valueOrNull?.domain ?? 'Hosting',
+      ),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => StateMessage(
@@ -57,57 +60,83 @@ class _BodyState extends ConsumerState<_Body> {
       await action();
     } on ApiException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(e.message)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
       }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
   }
 
-  Future<void> _sso({String service = 'cpanel', String? goto}) => _run(() async {
+  Future<void> _sso({String service = 'cpanel', String? goto}) =>
+      _run(() async {
         final url = await ref
             .read(portalServiceProvider)
             .hostingSsoUrl(a.id, service: service, goto: goto);
         if (url.isNotEmpty) {
           // One-time login URL — external browser, it's a full session.
-          await launchUrl(Uri.parse(url),
-              mode: LaunchMode.externalApplication);
+          await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
         }
       });
 
   Future<void> _refreshUsage() => _run(() async {
-        await ref.read(portalServiceProvider).refreshHostingUsage(a.id);
-        ref.invalidate(portalHostingDetailProvider(a.id));
-        ref.invalidate(portalHostingProvider);
-      });
+    await ref.read(portalServiceProvider).refreshHostingUsage(a.id);
+    ref.invalidate(portalHostingDetailProvider(a.id));
+    ref.invalidate(portalHostingProvider);
+  });
 
   Future<void> _changePassword() async {
     final controller = TextEditingController();
-    final password = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('New cPanel password'),
-        content: TextField(
-          controller: controller,
-          obscureText: true,
-          autofocus: true,
-          decoration: const InputDecoration(labelText: 'Password (min 8)'),
-        ),
-        actions: [
+    String? fieldError;
+    final password = await _showSheet<String>(
+      context,
+      eyebrow: a.domain ?? 'Hosting',
+      title: 'New cPanel password',
+      builder: (context, setSheetState) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FieldLabel('Password'),
+          const SizedBox(height: Spacing.sm),
+          TextField(
+            controller: controller,
+            obscureText: true,
+            autofocus: true,
+            onChanged: (_) {
+              if (fieldError != null) setSheetState(() => fieldError = null);
+            },
+            decoration: InputDecoration(
+              hintText: 'At least 8 characters',
+              prefixIcon: const Icon(Icons.lock_outline, size: 20),
+              errorText: fieldError,
+            ),
+          ),
+          const SizedBox(height: Spacing.lg),
+          PrimaryButton(
+            label: 'Change password',
+            onPressed: () {
+              if (controller.text.length < 8) {
+                setSheetState(
+                  () => fieldError = 'Use at least 8 characters.',
+                );
+                return;
+              }
+              Navigator.pop(context, controller.text);
+            },
+          ),
+          const SizedBox(height: Spacing.sm),
           TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel')),
-          FilledButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              child: const Text('Change')),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
         ],
       ),
     );
     if (password == null || password.length < 8) {
       if (password != null && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Use at least 8 characters.')));
+          const SnackBar(content: Text('Use at least 8 characters.')),
+        );
       }
       return;
     }
@@ -117,7 +146,8 @@ class _BodyState extends ConsumerState<_Body> {
           .changeHostingPassword(a.id, password);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('cPanel password changed.')));
+          const SnackBar(content: Text('cPanel password changed.')),
+        );
       }
     });
   }
@@ -126,44 +156,48 @@ class _BodyState extends ConsumerState<_Body> {
     final reason = TextEditingController();
     String when = 'end_of_period';
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Request cancellation'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: reason,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                    labelText: 'Why are you cancelling?'),
-              ),
-              const SizedBox(height: Spacing.md),
-              DropdownButtonFormField<String>(
-                initialValue: when,
-                decoration: const InputDecoration(labelText: 'When'),
-                items: const [
-                  DropdownMenuItem(
-                      value: 'end_of_period',
-                      child: Text('At the end of my billing period')),
-                  DropdownMenuItem(
-                      value: 'immediate', child: Text('Immediately')),
-                ],
-                onChanged: (v) => setDialogState(() => when = v!),
-              ),
-            ],
+    final confirmed = await _showSheet<bool>(
+      context,
+      eyebrow: a.domain ?? 'Hosting',
+      title: 'Request cancellation',
+      builder: (context, setSheetState) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          FieldLabel('Why are you cancelling?'),
+          const SizedBox(height: Spacing.sm),
+          TextField(
+            controller: reason,
+            maxLines: 3,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'A sentence or two helps us close it properly',
+            ),
           ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(context, false),
-                child: const Text('Back')),
-            FilledButton(
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Submit request')),
-          ],
-        ),
+          const SizedBox(height: Spacing.md),
+          FieldLabel('When'),
+          const SizedBox(height: Spacing.sm),
+          DropdownButtonFormField<String>(
+            initialValue: when,
+            items: const [
+              DropdownMenuItem(
+                value: 'end_of_period',
+                child: Text('At the end of my billing period'),
+              ),
+              DropdownMenuItem(value: 'immediate', child: Text('Immediately')),
+            ],
+            onChanged: (v) => setSheetState(() => when = v!),
+          ),
+          const SizedBox(height: Spacing.lg),
+          PrimaryButton(
+            label: 'Send request',
+            onPressed: () => Navigator.pop(context, true),
+          ),
+          const SizedBox(height: Spacing.sm),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Back'),
+          ),
+        ],
       ),
     );
     if (confirmed != true || reason.text.trim().isEmpty) return;
@@ -171,49 +205,40 @@ class _BodyState extends ConsumerState<_Body> {
     await _run(() async {
       final message = await ref
           .read(portalServiceProvider)
-          .requestHostingCancellation(a.id,
-              reason: reason.text.trim(), when: when);
+          .requestHostingCancellation(
+            a.id,
+            reason: reason.text.trim(),
+            when: when,
+          );
       if (mounted && message != null) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(message)));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(message)));
       }
     });
   }
 
   Future<void> _upgrade() async {
-    final options =
-        await ref.read(portalServiceProvider).hostingUpgradeOptions(a.id);
+    final options = await ref
+        .read(portalServiceProvider)
+        .hostingUpgradeOptions(a.id);
     if (!mounted) return;
 
-    final selected = await showModalBottomSheet<HostingPlanOption>(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-      builder: (context) => SafeArea(
+    final selected = await _showSheet<HostingPlanOption>(
+      context,
+      eyebrow: 'Current plan · ${options.currentPlan}',
+      title: 'Change plan',
+      padded: false,
+      builder: (context, _) => Card(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.all(Spacing.md),
-              child: Text('Change plan',
-                  style: Theme.of(context).textTheme.titleMedium),
-            ),
-            for (final plan in options.plans)
-              ListTile(
-                title: Text(plan.name),
-                subtitle: Text([
-                  Formatting.currency(plan.price),
-                  if (plan.billingCycle != null)
-                    plan.billingCycle!.replaceAll('_', ' '),
-                  if (!plan.isCurrent && plan.dueNow > 0)
-                    'due now ${Formatting.currency(plan.dueNow)}',
-                ].join(' · ')),
-                trailing: plan.isCurrent
-                    ? const StatusChip('active', dense: true)
-                    : const Icon(Icons.chevron_right),
-                enabled: !plan.isCurrent,
+            for (final (i, plan) in options.plans.indexed) ...[
+              if (i > 0) const Divider(height: 1),
+              _PlanRow(
+                plan: plan,
                 onTap: () => Navigator.pop(context, plan),
               ),
-            const SizedBox(height: Spacing.md),
+            ],
           ],
         ),
       ),
@@ -221,8 +246,9 @@ class _BodyState extends ConsumerState<_Body> {
     if (selected == null) return;
 
     await _run(() async {
-      final invoice =
-          await ref.read(portalServiceProvider).upgradeHosting(a.id, selected.id);
+      final invoice = await ref
+          .read(portalServiceProvider)
+          .upgradeHosting(a.id, selected.id);
       ref.invalidate(portalHostingDetailProvider(a.id));
       ref.invalidate(portalHostingProvider);
       if (!mounted) return;
@@ -230,8 +256,9 @@ class _BodyState extends ConsumerState<_Body> {
         // Prorated upgrade invoice — take them straight to pay it.
         context.push(PortalRoutes.invoicePath(invoice.documentId));
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Plan changed.')));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Plan changed.')));
       }
     });
   }
@@ -239,49 +266,90 @@ class _BodyState extends ConsumerState<_Body> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final active = a.status == 'active';
 
     return ListView(
       padding: const EdgeInsets.all(Spacing.md),
       children: [
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Spacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                        child: Text(a.domain ?? '—',
-                            style: theme.textTheme.titleMedium)),
-                    StatusChip(a.status, dense: true),
+        Reveal(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(Spacing.md),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'PLAN',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                            const SizedBox(height: Spacing.xs),
+                            Text(
+                              a.productName ?? a.package ?? '—',
+                              style: Type.display(22, color: scheme.onSurface),
+                            ),
+                          ],
+                        ),
+                      ),
+                      StatusChip(a.status, dense: true),
+                    ],
+                  ),
+                  if (a.price != null) ...[
+                    const SizedBox(height: Spacing.md),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.baseline,
+                      textBaseline: TextBaseline.alphabetic,
+                      children: [
+                        Money(a.price, scale: MoneyScale.headline),
+                        const SizedBox(width: Spacing.sm),
+                        _Cadence(_cadence(a.billingCycle)),
+                      ],
+                    ),
                   ],
-                ),
-                const SizedBox(height: Spacing.sm),
-                _InfoRow('Plan', a.productName ?? a.package ?? '—'),
-                if (a.price != null)
+                  const Divider(height: Spacing.lg),
                   _InfoRow(
-                      'Price',
-                      '${Formatting.currency(a.price)}'
-                      '${a.billingCycle == null ? '' : ' / ${a.billingCycle!.replaceAll('_', ' ')}'}'),
-                _InfoRow('cPanel user', a.cpanelUsername ?? '—'),
-                if (a.registeredAt != null)
-                  _InfoRow('Since', Formatting.date(a.registeredAt)),
-                if (a.nextDue != null)
-                  _InfoRow('Next due', Formatting.date(a.nextDue)),
-                if (a.diskUsed != null)
-                  _InfoRow('Disk', '${a.diskUsed} / ${a.diskLimit ?? '∞'}'),
-              ],
+                    'cPanel user',
+                    child: Text(
+                      a.cpanelUsername ?? '—',
+                      style: Type.mono(
+                        12.5,
+                        weight: FontWeight.w400,
+                        tracking: 0,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  if (a.registeredAt != null)
+                    _InfoRow('Since', value: Formatting.date(a.registeredAt)),
+                  if (a.nextDue != null)
+                    _InfoRow('Next due', value: Formatting.date(a.nextDue)),
+                  if (a.diskUsed != null)
+                    _InfoRow(
+                      'Disk',
+                      value: '${a.diskUsed} / ${a.diskLimit ?? '∞'}',
+                    ),
+                ],
+              ),
             ),
           ),
         ),
-        const SizedBox(height: Spacing.md),
 
-        if (a.status == 'active') ...[
-          FilledButton.icon(
+        if (active) ...[
+          const SizedBox(height: Spacing.md),
+          PrimaryButton(
+            label: 'Log in to cPanel',
+            icon: Icons.login,
+            busy: _busy,
             onPressed: _busy ? null : () => _sso(),
-            icon: const Icon(Icons.login, size: 18),
-            label: const Text('Log in to cPanel'),
           ),
           const SizedBox(height: Spacing.sm),
           OutlinedButton.icon(
@@ -289,9 +357,11 @@ class _BodyState extends ConsumerState<_Body> {
             icon: const Icon(Icons.mail_outline, size: 18),
             label: const Text('Open webmail'),
           ),
-          const SizedBox(height: Spacing.md),
         ],
 
+        const SizedBox(height: Spacing.lg),
+        const SectionHeader('Manage'),
+        const SizedBox(height: Spacing.sm),
         Card(
           child: Column(
             children: [
@@ -300,7 +370,12 @@ class _BodyState extends ConsumerState<_Body> {
                 title: const Text('Refresh disk usage'),
                 subtitle: a.lastSyncedAt == null
                     ? null
-                    : Text('Last synced ${Formatting.dateTime(a.lastSyncedAt)}'),
+                    : Text(
+                        'LAST SYNCED ${Formatting.dateTime(a.lastSyncedAt).toUpperCase()}',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
                 enabled: !_busy,
                 onTap: _refreshUsage,
               ),
@@ -308,56 +383,220 @@ class _BodyState extends ConsumerState<_Body> {
               ListTile(
                 leading: const Icon(Icons.password_outlined),
                 title: const Text('Change cPanel password'),
-                enabled: !_busy && a.status == 'active',
+                enabled: !_busy && active,
+                trailing: Icon(Icons.chevron_right, color: scheme.outline),
                 onTap: _changePassword,
               ),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.swap_vert),
-                title: const Text('Upgrade / downgrade plan'),
-                enabled: !_busy && a.status == 'active',
+                title: const Text('Upgrade or downgrade plan'),
+                enabled: !_busy && active,
+                trailing: Icon(Icons.chevron_right, color: scheme.outline),
                 onTap: _upgrade,
               ),
               const Divider(height: 1),
               ListTile(
-                leading: Icon(Icons.cancel_outlined,
-                    color: theme.colorScheme.error),
-                title: Text('Request cancellation',
-                    style: TextStyle(color: theme.colorScheme.error)),
+                leading: Icon(Icons.cancel_outlined, color: scheme.error),
+                title: Text(
+                  'Request cancellation',
+                  style: TextStyle(color: scheme.error),
+                ),
                 enabled: !_busy,
                 onTap: _requestCancellation,
               ),
             ],
           ),
         ),
+        const SizedBox(height: Spacing.xl),
       ],
     );
   }
 }
 
+/// `monthly` → `PER MONTH`, as the handoff's price-card cadence.
+String _cadence(String? cycle) => switch (cycle) {
+  null || 'once' => 'one-time',
+  'monthly' => 'per month',
+  'quarterly' => 'per quarter',
+  'semi_annually' || 'semiannually' => 'per 6 months',
+  'annually' || 'yearly' => 'per year',
+  'biennially' => 'per 2 years',
+  'triennially' => 'per 3 years',
+  final c => c.replaceAll('_', ' '),
+};
+
+/// One plan in the change-plan sheet: the price as the trailing figure, the
+/// prorated charge (if any) in the metadata line beside the cadence.
+class _PlanRow extends StatelessWidget {
+  const _PlanRow({required this.plan, required this.onTap});
+
+  final HostingPlanOption plan;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final muted = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+
+    return ListTile(
+      title: Text(plan.name, style: theme.textTheme.titleSmall),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: Spacing.xs),
+        child: Row(
+          children: [
+            if (plan.isCurrent) ...[
+              const StatusChip('active', dense: true),
+              const SizedBox(width: Spacing.sm),
+            ],
+            Text(_cadence(plan.billingCycle).toUpperCase(), style: muted),
+            if (!plan.isCurrent && plan.dueNow > 0) ...[
+              Text(' · DUE NOW ', style: muted),
+              Money(
+                plan.dueNow,
+                scale: MoneyScale.dense,
+                showCode: false,
+                color: scheme.onSurfaceVariant,
+              ),
+            ],
+          ],
+        ),
+      ),
+      trailing: Money(plan.price),
+      enabled: !plan.isCurrent,
+      onTap: onTap,
+    );
+  }
+}
+
+/// A label-and-value metadata line: the label in the mono face because it
+/// names the value, the value in the body face because it is content.
 class _InfoRow extends StatelessWidget {
-  const _InfoRow(this.label, this.value);
+  const _InfoRow(this.label, {this.value, this.child})
+    : assert(value != null || child != null);
 
   final String label;
-  final String value;
+  final String? value;
+  final Widget? child;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 3),
+      padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 110,
-            child: Text(label,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            width: 104,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                label.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
           ),
-          Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
+          Expanded(
+            child: child ?? Text(value!, style: theme.textTheme.bodyMedium),
+          ),
         ],
       ),
     );
   }
+}
+
+/// The mono cadence beside a figure — `PER MONTH`.
+class _Cadence extends StatelessWidget {
+  const _Cadence(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Text(
+      text.toUpperCase(),
+      style: theme.textTheme.labelSmall?.copyWith(
+        color: theme.colorScheme.onSurfaceVariant,
+      ),
+    );
+  }
+}
+
+
+/// The brand sheet: drag handle, an eyebrow naming the context, a display
+/// title, then [builder]'s content. Rises with the keyboard so a field near
+/// the bottom is never hidden behind it.
+Future<T?> _showSheet<T>(
+  BuildContext context, {
+  required String title,
+  String? eyebrow,
+  bool padded = true,
+  required Widget Function(BuildContext context, StateSetter setState) builder,
+}) {
+  return showModalBottomSheet<T>(
+    context: context,
+    showDragHandle: true,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
+    builder: (context) {
+      final theme = Theme.of(context);
+      return StatefulBuilder(
+        builder: (context, setState) => SafeArea(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              padded ? Spacing.lg : Spacing.md,
+              0,
+              padded ? Spacing.lg : Spacing.md,
+              Spacing.lg + MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: padded ? 0 : Spacing.sm,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (eyebrow != null) ...[
+                          Text(
+                            eyebrow.toUpperCase(),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: Spacing.xs),
+                        ],
+                        Text(
+                          title,
+                          style: Type.display(
+                            22,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.lg),
+                  builder(context, setState),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    },
+  );
 }

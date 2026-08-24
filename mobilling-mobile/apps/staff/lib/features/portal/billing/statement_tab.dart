@@ -8,6 +8,9 @@ import '../portal_providers.dart';
 
 /// Account statement: invoices vs payments with the server-computed running
 /// balance, optionally windowed by a date range.
+///
+/// Pushed from the More tab as a screen of its own, so it carries the
+/// masthead.
 class StatementTab extends ConsumerStatefulWidget {
   const StatementTab({super.key});
 
@@ -41,112 +44,178 @@ class _StatementTabState extends ConsumerState<StatementTab> {
   Widget build(BuildContext context) {
     final statement = ref.watch(portalStatementProvider(_key));
     final theme = Theme.of(context);
+    final status = context.statusColors;
 
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-              Spacing.md, Spacing.sm, Spacing.md, 0),
-          child: Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _pickRange,
-                  icon: const Icon(Icons.date_range_outlined, size: 18),
+    return Scaffold(
+      appBar: const ShellTopBar(eyebrow: 'Billing', title: 'Account statement'),
+      body: Column(
+        children: [
+          // The period, as one quiet chip under the masthead.
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.sm,
+              Spacing.md,
+              0,
+            ),
+            child: Row(
+              children: [
+                ActionChip(
+                  avatar: const Icon(Icons.date_range_outlined, size: 16),
                   label: Text(
                     _range == null
                         ? 'All time'
                         : '${Formatting.date(_range!.start)} – ${Formatting.date(_range!.end)}',
                     overflow: TextOverflow.ellipsis,
                   ),
-                  style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(40)),
+                  onPressed: _pickRange,
                 ),
-              ),
-              if (_range != null)
-                IconButton(
-                  icon: const Icon(Icons.clear),
-                  tooltip: 'Clear range',
-                  onPressed: () => setState(() => _range = null),
-                ),
-            ],
-          ),
-        ),
-        Expanded(
-          child: statement.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (error, _) => StateMessage(
-              icon: Icons.cloud_off_outlined,
-              title: 'Could not load your statement',
-              message: error is ApiException ? error.message : null,
-              actionLabel: 'Retry',
-              onAction: () => ref.invalidate(portalStatementProvider(_key)),
+                if (_range != null)
+                  IconButton(
+                    icon: const Icon(Icons.clear, size: 18),
+                    tooltip: 'Show all time',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => setState(() => _range = null),
+                  ),
+              ],
             ),
-            data: (s) => s.entries.isEmpty
-                ? const StateMessage(
-                    icon: Icons.receipt_outlined,
-                    title: 'Nothing in this period',
-                    message: 'Invoices and payments will appear here.',
-                  )
-                : RefreshIndicator(
-                    onRefresh: () =>
-                        ref.refresh(portalStatementProvider(_key).future),
-                    child: ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.all(Spacing.md),
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: StatTile.money(
-                                label: 'Invoiced',
-                                amount: s.totalDebits,
-                              ),
+          ),
+          Expanded(
+            child: statement.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => StateMessage(
+                icon: Icons.cloud_off_outlined,
+                title: 'Could not load your statement',
+                message: error is ApiException ? error.message : null,
+                actionLabel: 'Try again',
+                onAction: () => ref.invalidate(portalStatementProvider(_key)),
+              ),
+              data: (s) => s.entries.isEmpty
+                  ? StateMessage(
+                      icon: Icons.receipt_outlined,
+                      title: 'Nothing in this period',
+                      message: 'Invoices and payments will appear here.',
+                      actionLabel: _range == null ? null : 'Show all time',
+                      onAction: _range == null
+                          ? null
+                          : () => setState(() => _range = null),
+                    )
+                  : RefreshIndicator(
+                      onRefresh: () =>
+                          ref.refresh(portalStatementProvider(_key).future),
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(Spacing.md),
+                        children: [
+                          // The closing balance is what a statement is for.
+                          Reveal(
+                            child: _HeroFigure(
+                              label: s.closingBalance < 0
+                                  ? 'In credit'
+                                  : 'Closing balance',
+                              amount: s.closingBalance < 0
+                                  ? -s.closingBalance
+                                  : s.closingBalance,
+                              tone: s.closingBalance > 0
+                                  ? status.overdue
+                                  : status.settled,
                             ),
-                            const SizedBox(width: Spacing.sm),
-                            Expanded(
-                              child: StatTile.money(
-                                label: 'Paid',
-                                amount: s.totalCredits,
-                              ),
-                            ),
-                            const SizedBox(width: Spacing.sm),
-                            Expanded(
-                              child: StatTile.money(
-                                label: 'Balance',
-                                amount: s.closingBalance,
-                                emphasis: s.closingBalance > 0
-                                    ? context.statusColors.overdue
-                                    : context.statusColors.settled,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: Spacing.md),
-                        Card(
-                          child: Column(
+                          ),
+                          const SizedBox(height: Spacing.sm),
+                          Row(
                             children: [
-                              for (final (i, entry) in s.entries.indexed) ...[
-                                if (i > 0) const Divider(height: 1),
-                                _EntryTile(entry: entry),
-                              ],
+                              Expanded(
+                                child: StatTile.money(
+                                  label: 'Invoiced',
+                                  amount: s.totalDebits,
+                                ),
+                              ),
+                              const SizedBox(width: Spacing.sm),
+                              Expanded(
+                                child: StatTile.money(
+                                  label: 'Paid',
+                                  amount: s.totalCredits,
+                                  emphasis: status.settled,
+                                ),
+                              ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: Spacing.md),
-                        Text(
-                          'Amounts in ${Formatting.tenantCurrency}',
-                          textAlign: TextAlign.center,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
-                        ),
-                        const SizedBox(height: Spacing.xl),
-                      ],
+                          const SizedBox(height: Spacing.lg),
+                          const SectionHeader('Entries'),
+                          const SizedBox(height: Spacing.sm),
+                          Card(
+                            child: Column(
+                              children: [
+                                for (final (i, entry) in s.entries.indexed) ...[
+                                  if (i > 0) const Divider(height: 1),
+                                  _EntryTile(entry: entry),
+                                ],
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: Spacing.md),
+                          Text(
+                            'Amounts in ${Formatting.tenantCurrency}'
+                                .toUpperCase(),
+                            textAlign: TextAlign.center,
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: Spacing.xl),
+                        ],
+                      ),
                     ),
-                  ),
+            ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The one figure the screen is about: a mono eyebrow over a display-scale
+/// readout, on a card tinted 6% toward the figure's state.
+class _HeroFigure extends StatelessWidget {
+  const _HeroFigure({
+    required this.label,
+    required this.amount,
+    required this.tone,
+  });
+
+  final String label;
+  final Object? amount;
+  final Color tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      color: Color.alphaBlend(
+        tone.withValues(alpha: 0.06),
+        theme.cardTheme.color ?? theme.colorScheme.surface,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.sm),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Money(amount, scale: MoneyScale.display, color: tone),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }
@@ -164,33 +233,39 @@ class _EntryTile extends StatelessWidget {
 
     return ListTile(
       dense: true,
-      leading: Icon(
-        isPayment ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
-        size: 20,
-        color: isPayment ? status.settled : status.pending,
+      title: Text(
+        entry.description,
+        style: theme.textTheme.titleSmall,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
-      title: Text(entry.description),
-      subtitle: Text([
-        Formatting.date(entry.date),
-        if (entry.reference != null) entry.reference!,
-      ].join(' · ')),
+      subtitle: Text(
+        [
+          Formatting.date(entry.date),
+          if (entry.reference != null) entry.reference!,
+        ].join(' · ').toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
       trailing: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
-          Text(
-            // Sign from the client's perspective: payments reduce what's owed.
-            isPayment
-                ? '−${Formatting.amount(entry.credit)}'
-                : '+${Formatting.amount(entry.debit)}',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: isPayment ? status.settled : null,
-            ),
+          // Sign from the client's perspective: payments reduce what's owed.
+          Money(
+            isPayment ? -entry.credit : entry.debit,
+            showCode: false,
+            color: isPayment ? status.settled : null,
           ),
+          const SizedBox(height: 2),
           Text(
-            'bal ${Formatting.amount(entry.balance)}',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            'BAL ${Formatting.amount(entry.balance)}',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),

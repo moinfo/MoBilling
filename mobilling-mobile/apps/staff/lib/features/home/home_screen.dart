@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_auth/mobilling_auth.dart';
+import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../navigation/tabs.dart';
 import '../../providers.dart';
+import '../auth/account_sheet.dart';
 import '../auth/session_expired_sheet.dart';
 import 'app_drawer.dart';
 
@@ -32,7 +34,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final session = ref.watch(sessionControllerProvider);
     final user = session.user;
     final auth = session.session;
@@ -66,26 +67,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           return true;
         },
       ),
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(tabs[tab].title, style: theme.textTheme.titleMedium),
-            if (user != null)
-              Text(
-                user.tenant?.name ?? user.name,
-                style: theme.textTheme.bodySmall
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+      // The masthead: tenant as the eyebrow, the current tab as the title.
+      // Sign-out sits behind the account tile — see AccountSheet.
+      appBar: ShellTopBar(
+        eyebrow: user?.tenant?.name,
+        title: tabs[tab].title,
+        // The dashboard continues the ink below the masthead.
+        edge: tab != 0,
+        trailing: user == null
+            ? null
+            : InkAvatar(
+                name: user.name,
+                onTap: () => AccountSheet.show(context),
               ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            tooltip: 'Sign out',
-            onPressed: () => ref.read(sessionControllerProvider).logout(),
-          ),
-        ],
       ),
       body: IndexedStack(
         index: tab,

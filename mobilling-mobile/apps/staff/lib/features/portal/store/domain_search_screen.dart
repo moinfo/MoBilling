@@ -9,12 +9,16 @@ import '../portal_providers.dart';
 
 /// Register or transfer a domain: live availability check against the
 /// registry, then an order that produces an invoice.
+///
+/// The answer is the screen: once a name has been checked, the result card
+/// carries the verdict, the price as the one figure on the screen, and the
+/// single action that follows from it — register if it is free, transfer if
+/// it is not.
 class DomainSearchScreen extends ConsumerStatefulWidget {
   const DomainSearchScreen({super.key});
 
   @override
-  ConsumerState<DomainSearchScreen> createState() =>
-      _DomainSearchScreenState();
+  ConsumerState<DomainSearchScreen> createState() => _DomainSearchScreenState();
 }
 
 class _DomainSearchScreenState extends ConsumerState<DomainSearchScreen> {
@@ -70,18 +74,24 @@ class _DomainSearchScreenState extends ConsumerState<DomainSearchScreen> {
       _error = null;
     });
     try {
-      final order = await ref.read(portalServiceProvider).orderDomain(
+      final order = await ref
+          .read(portalServiceProvider)
+          .orderDomain(
             name: result.name,
             years: _years,
             action: action,
-            authInfo:
-                action == 'transfer' ? _authInfo.text.trim() : null,
+            authInfo: action == 'transfer' ? _authInfo.text.trim() : null,
           );
       ref.invalidate(portalDomainsProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(order.message ??
-              'Order placed — pay ${order.documentNumber} to proceed.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            order.message ??
+                'Order placed — pay ${order.documentNumber} to proceed.',
+          ),
+        ),
+      );
       context.pushReplacement(PortalRoutes.invoicePath(order.documentId));
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -94,12 +104,13 @@ class _DomainSearchScreenState extends ConsumerState<DomainSearchScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
     final result = _result;
     final pricing = result?.pricing;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Get a domain')),
+      appBar: const ShellTopBar(eyebrow: 'Store', title: 'Get a domain'),
       body: ListView(
         padding: const EdgeInsets.all(Spacing.md),
         children: [
@@ -107,6 +118,8 @@ class _DomainSearchScreenState extends ConsumerState<DomainSearchScreen> {
             ErrorBanner(message: _error!),
             const SizedBox(height: Spacing.md),
           ],
+          FieldLabel('Domain name'),
+          const SizedBox(height: Spacing.sm),
           Row(
             children: [
               Expanded(
@@ -118,7 +131,7 @@ class _DomainSearchScreenState extends ConsumerState<DomainSearchScreen> {
                   onSubmitted: (_) => _check(),
                   decoration: const InputDecoration(
                     hintText: 'mycompany.co.tz',
-                    prefixIcon: Icon(Icons.language_outlined),
+                    prefixIcon: Icon(Icons.language_outlined, size: 20),
                   ),
                 ),
               ),
@@ -129,97 +142,155 @@ class _DomainSearchScreenState extends ConsumerState<DomainSearchScreen> {
                     ? const SizedBox(
                         width: 18,
                         height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
                     : const Text('Check'),
               ),
             ],
           ),
           if (result != null) ...[
             const SizedBox(height: Spacing.lg),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(Spacing.md),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          result.available
-                              ? Icons.check_circle_outline
-                              : Icons.cancel_outlined,
-                          color: result.available
-                              ? status.settled
-                              : status.overdue,
-                        ),
-                        const SizedBox(width: Spacing.sm),
-                        Expanded(
-                          child: Text(
+            Reveal(
+              // A fresh verdict earns the one piece of motion on the screen.
+              key: ValueKey(result.name),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(Spacing.md),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
                             result.available
-                                ? '${result.name} is available!'
-                                : '${result.name} is taken',
-                            style: theme.textTheme.titleSmall,
+                                ? Icons.check_circle_outline
+                                : Icons.cancel_outlined,
+                            size: 20,
+                            color: result.available
+                                ? status.settled
+                                : status.overdue,
                           ),
-                        ),
-                      ],
-                    ),
-                    if (pricing == null) ...[
+                          const SizedBox(width: Spacing.sm),
+                          Text(
+                            result.available ? 'AVAILABLE' : 'TAKEN',
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: result.available
+                                  ? status.settled
+                                  : status.overdue,
+                            ),
+                          ),
+                        ],
+                      ),
                       const SizedBox(height: Spacing.sm),
                       Text(
-                        'This extension is not offered online — contact us.',
-                        style: theme.textTheme.bodySmall,
+                        result.name,
+                        style: Type.display(22, color: scheme.onSurface),
                       ),
-                    ] else ...[
-                      const SizedBox(height: Spacing.md),
-                      DropdownButtonFormField<int>(
-                        initialValue: _years,
-                        decoration:
-                            const InputDecoration(labelText: 'Period'),
-                        items: [
-                          for (var y = pricing.yearsMin;
-                              y <= pricing.yearsMax;
-                              y++)
-                            DropdownMenuItem(
-                                value: y,
-                                child: Text('$y year${y > 1 ? 's' : ''}')),
-                        ],
-                        onChanged: (v) => setState(() => _years = v!),
-                      ),
-                      const SizedBox(height: Spacing.md),
-                      if (result.available)
-                        FilledButton(
-                          onPressed:
-                              _ordering ? null : () => _order('register'),
-                          child: Text(_ordering
-                              ? 'Placing order…'
-                              : 'Register — ${Formatting.currency(pricing.registerPrice * _years)}'),
-                        )
-                      else ...[
-                        TextField(
-                          controller: _authInfo,
-                          autocorrect: false,
-                          decoration: const InputDecoration(
-                            labelText: 'Transfer (EPP) code',
-                            helperText:
-                                'Already yours? Transfer it to us with the code from your registrar.',
+                      if (pricing == null) ...[
+                        const SizedBox(height: Spacing.sm),
+                        Text(
+                          'This extension is not offered online — contact us '
+                          'and we will register it for you.',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: scheme.onSurfaceVariant,
                           ),
                         ),
-                        const SizedBox(height: Spacing.sm),
-                        OutlinedButton(
-                          onPressed:
-                              _ordering ? null : () => _order('transfer'),
-                          child: Text(
-                              'Transfer — ${Formatting.currency(pricing.transferPrice * _years)}'),
+                      ] else ...[
+                        const SizedBox(height: Spacing.md),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.baseline,
+                          textBaseline: TextBaseline.alphabetic,
+                          children: [
+                            Flexible(
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Money(
+                                  (result.available
+                                          ? pricing.registerPrice
+                                          : pricing.transferPrice) *
+                                      _years,
+                                  scale: MoneyScale.display,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: Spacing.sm),
+                            Text(
+                              'FOR $_years YEAR${_years > 1 ? 'S' : ''}',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                         ),
+                        const Divider(height: Spacing.lg),
+                        FieldLabel('Registration period'),
+                        const SizedBox(height: Spacing.sm),
+                        DropdownButtonFormField<int>(
+                          initialValue: _years,
+                          items: [
+                            for (
+                              var y = pricing.yearsMin;
+                              y <= pricing.yearsMax;
+                              y++
+                            )
+                              DropdownMenuItem(
+                                value: y,
+                                child: Text('$y year${y > 1 ? 's' : ''}'),
+                              ),
+                          ],
+                          onChanged: (v) => setState(() => _years = v!),
+                        ),
+                        const SizedBox(height: Spacing.md),
+                        if (result.available)
+                          PrimaryButton(
+                            label: 'Register this domain',
+                            busy: _ordering,
+                            onPressed: _ordering
+                                ? null
+                                : () => _order('register'),
+                          )
+                        else ...[
+                          Text(
+                            'Already yours? Transfer it to us with the code '
+                            'from your current registrar.',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: Spacing.md),
+                          FieldLabel('Transfer (EPP) code'),
+                          const SizedBox(height: Spacing.sm),
+                          TextField(
+                            controller: _authInfo,
+                            autocorrect: false,
+                            decoration: const InputDecoration(
+                              hintText: 'The code from your registrar',
+                            ),
+                          ),
+                          const SizedBox(height: Spacing.md),
+                          PrimaryButton(
+                            label: 'Transfer this domain',
+                            busy: _ordering,
+                            onPressed: _ordering
+                                ? null
+                                : () => _order('transfer'),
+                          ),
+                        ],
                       ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             ),
           ],
+          const SizedBox(height: Spacing.xl),
         ],
       ),
     );
   }
 }
+

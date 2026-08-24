@@ -48,12 +48,18 @@ class Money extends StatelessWidget {
     this.color,
     this.currencyCode,
     this.showCode = true,
+    this.display = false,
   });
 
   /// num or String — the API sends both for the same field. See
   /// [Formatting.parts].
   final Object? amount;
   final MoneyScale scale;
+
+  /// Set the integer part in the display face (Archivo) — for the one hero
+  /// figure on a screen, on ink. Everywhere else the platform face keeps a
+  /// column of money quiet.
+  final bool display;
 
   /// Overrides the integer part's colour. Use a [StatusColors] value to make
   /// a figure carry its own state; leave null everywhere else, because a
@@ -105,17 +111,24 @@ class Money extends StatelessWidget {
           ],
           Text(
             parts.whole,
-            style: TextStyle(
-              fontFamily: Type.family,
-              fontSize: unit,
-              fontWeight: FontWeight.w700,
-              // Large figures set at default tracking look loose; pulling them
-              // in is what makes the number read as one quantity.
-              letterSpacing: unit * -0.02,
-              color: primary,
-              height: 1,
-              fontFeatures: Type.figures,
-            ),
+            style: display
+                ? Type.display(
+                    unit,
+                    height: 1,
+                    color: primary,
+                  ).copyWith(fontFeatures: Type.figures)
+                : TextStyle(
+                    fontFamily: Type.family,
+                    fontSize: unit,
+                    fontWeight: FontWeight.w700,
+                    // Large figures set at default tracking look loose;
+                    // pulling them in is what makes the number read as one
+                    // quantity.
+                    letterSpacing: unit * -0.02,
+                    color: primary,
+                    height: 1,
+                    fontFeatures: Type.figures,
+                  ),
           ),
           Text(
             '.${parts.fraction}',
@@ -145,13 +158,13 @@ class BrandMark extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Image.asset(
-        'assets/moinfotech-logo.png',
-        package: 'mobilling_ui',
-        height: size,
-        fit: BoxFit.contain,
-        filterQuality: FilterQuality.medium,
-        semanticLabel: 'Moinfotech',
-      );
+    'assets/moinfotech-logo.png',
+    package: 'mobilling_ui',
+    height: size,
+    fit: BoxFit.contain,
+    filterQuality: FilterQuality.medium,
+    semanticLabel: 'Moinfotech',
+  );
 }
 
 /// A coloured pill for a document, service or domain status.
@@ -178,12 +191,12 @@ class StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(Radii.sm),
         border: Border.all(color: color.withValues(alpha: 0.35)),
       ),
+      // Plex Mono caps, as the handoff's PAID / PENDING / OVERDUE chips: a
+      // status is a label, and the mono face is what this app uses for
+      // anything that names rather than says.
       child: Text(
-        StatusColors.label(status),
-        style: (dense
-                ? Theme.of(context).textTheme.labelSmall
-                : Theme.of(context).textTheme.labelMedium)
-            ?.copyWith(color: color, fontWeight: FontWeight.w600),
+        StatusColors.label(status).toUpperCase(),
+        style: Type.mono(dense ? 9.5 : 10.5, tracking: 0.08, color: color),
       ),
     );
   }
@@ -227,17 +240,15 @@ class StateMessage extends StatelessWidget {
               const SizedBox(height: Spacing.sm),
               Text(
                 message!,
-                style: theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 textAlign: TextAlign.center,
               ),
             ],
             if (actionLabel != null && onAction != null) ...[
               const SizedBox(height: Spacing.lg),
-              OutlinedButton(
-                onPressed: onAction,
-                child: Text(actionLabel!),
-              ),
+              OutlinedButton(onPressed: onAction, child: Text(actionLabel!)),
             ],
           ],
         ),
@@ -308,18 +319,13 @@ class SectionHeader extends StatelessWidget {
           title.toUpperCase(),
           style: theme.textTheme.labelSmall?.copyWith(
             color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.w700,
-            letterSpacing: Type.eyebrowTracking,
           ),
         ),
         const SizedBox(width: Spacing.sm),
         Expanded(
           child: Divider(height: 1, color: theme.colorScheme.outlineVariant),
         ),
-        if (trailing != null) ...[
-          const SizedBox(width: Spacing.sm),
-          trailing!,
-        ],
+        if (trailing != null) ...[const SizedBox(width: Spacing.sm), trailing!],
       ],
     );
   }
@@ -394,14 +400,20 @@ class StatRail extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: Spacing.xs + 2),
-                      Text(
-                        item.label.toUpperCase(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: Type.eyebrowTracking,
+                      // At five or six columns the labels are wider than
+                      // their share of a phone; without this gutter
+                      // "WHATSAPP" and "PROSPECTS" touch and read as one
+                      // word.
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                        child: Text(
+                          item.label.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
                     ],
@@ -428,8 +440,8 @@ class StatTile extends StatelessWidget {
     required this.value,
     this.emphasis,
     this.icon,
-  })  : amount = null,
-        currencyCode = null;
+  }) : amount = null,
+       currencyCode = null;
 
   /// A tile whose figure is money. Prefer this over passing a pre-formatted
   /// string: it routes through [Money], so the amount is typeset like every
@@ -479,8 +491,6 @@ class StatTile extends StatelessWidget {
                     label.toUpperCase(),
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: Type.eyebrowTracking,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),

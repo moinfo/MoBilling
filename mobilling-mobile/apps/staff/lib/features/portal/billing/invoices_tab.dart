@@ -6,7 +6,8 @@ import '../../common/paged_list.dart';
 import '../portal_providers.dart';
 import 'dashboard_tab.dart' show InvoiceRow;
 
-/// Paginated invoice list with a status filter.
+/// Paginated invoice list with a status filter. A body inside the portal
+/// shell — the masthead belongs to the shell.
 class InvoicesTab extends ConsumerStatefulWidget {
   const InvoicesTab({super.key});
 
@@ -34,18 +35,21 @@ class _InvoicesTabState extends ConsumerState<InvoicesTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // One quiet row of chips under the masthead.
         SizedBox(
           height: 48,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(
-                horizontal: Spacing.md, vertical: Spacing.sm),
+              horizontal: Spacing.md,
+              vertical: Spacing.sm,
+            ),
             itemCount: _filters.length,
             separatorBuilder: (context, index) =>
                 const SizedBox(width: Spacing.sm),
             itemBuilder: (context, index) {
               final (value, label) = _filters[index];
-              return FilterChip(
+              return ChoiceChip(
                 label: Text(label),
                 selected: _status == value,
                 showCheckmark: false,
@@ -60,16 +64,24 @@ class _InvoicesTabState extends ConsumerState<InvoicesTab> {
         Expanded(
           child: PagedListView(
             key: _listKey,
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.sm,
+              Spacing.md,
+              Spacing.xl,
+            ),
             fetch: (page) => ref
                 .read(portalServiceProvider)
                 .documents(status: _status, page: page),
-            itemBuilder: (context, invoice) => InvoiceRow(invoice: invoice),
+            itemBuilder: (context, invoice) =>
+                Card(child: InvoiceRow(invoice: invoice)),
             emptyIcon: Icons.receipt_long_outlined,
             emptyTitle: _status == null
                 ? 'No invoices yet'
                 : 'No ${_filters.firstWhere((f) => f.$1 == _status).$2.toLowerCase()} invoices',
-            emptyMessage:
-                'Invoices from your service provider will appear here.',
+            emptyMessage: _status == null
+                ? 'Invoices from your service provider will appear here.'
+                : 'Choose another filter to see the rest of your invoices.',
           ),
         ),
       ],

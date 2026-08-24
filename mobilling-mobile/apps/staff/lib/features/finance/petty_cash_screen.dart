@@ -28,7 +28,7 @@ class PettyCashScreen extends ConsumerWidget {
     final canSpend = auth?.can(FinancePermissions.expensesCreate) ?? false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Petty cash')),
+      appBar: const ShellTopBar(eyebrow: 'Expenses', title: 'Petty cash'),
       body: CrmAsyncView(
         value: pettyCash,
         errorTitle: 'Could not load petty cash',
@@ -39,55 +39,64 @@ class PettyCashScreen extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(Spacing.md),
             children: [
-              _BalanceCard(data: data),
-              const SizedBox(height: Spacing.md),
-              Row(
-                children: [
-                  if (canSpend)
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        icon: const Icon(Icons.remove_circle_outline, size: 18),
-                        label: const Text('Spend'),
-                        onPressed: () => _spend(context, ref, data.accountId),
-                      ),
-                    ),
-                  if (canSpend && canTopUp) const SizedBox(width: Spacing.sm),
-                  if (canTopUp)
-                    Expanded(
-                      child: FilledButton.icon(
-                        icon: const Icon(Icons.add_circle_outline, size: 18),
-                        label: const Text('Top up'),
-                        onPressed: () => _transaction(context, ref),
-                      ),
-                    ),
-                ],
-              ),
-              if (canReconcile) ...[
+              // The one figure this screen is about.
+              Reveal(child: _BalanceCard(data: data)),
+              if (canSpend) ...[
+                const SizedBox(height: Spacing.md),
+                Reveal(
+                  delay: const Duration(milliseconds: 80),
+                  child: PrimaryButton(
+                    label: 'Record a spend',
+                    icon: Icons.remove_circle_outline,
+                    onPressed: () => _spend(context, ref, data.accountId),
+                  ),
+                ),
+              ],
+              if (canTopUp || canReconcile) ...[
                 const SizedBox(height: Spacing.sm),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.fact_check_outlined, size: 18),
-                  label: const Text('Count the cash'),
-                  onPressed: () => _reconcile(context, ref, data),
+                Row(
+                  children: [
+                    if (canTopUp)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.add_circle_outline, size: 18),
+                          label: const Text('Top up'),
+                          onPressed: () => _transaction(context, ref),
+                        ),
+                      ),
+                    if (canTopUp && canReconcile)
+                      const SizedBox(width: Spacing.sm),
+                    if (canReconcile)
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.fact_check_outlined, size: 18),
+                          label: const Text('Count the cash'),
+                          onPressed: () => _reconcile(context, ref, data),
+                        ),
+                      ),
+                  ],
                 ),
               ],
               if (data.reconciliations.isNotEmpty) ...[
                 const SizedBox(height: Spacing.lg),
-                Text('Last count',
-                    style: Theme.of(context).textTheme.titleSmall),
+                const SectionHeader('Last count'),
                 const SizedBox(height: Spacing.sm),
                 _ReconciliationCard(
-                    reconciliation: data.reconciliations.first),
+                  reconciliation: data.reconciliations.first,
+                ),
               ],
               const SizedBox(height: Spacing.lg),
-              Text('History', style: Theme.of(context).textTheme.titleSmall),
+              const SectionHeader('History'),
               const SizedBox(height: Spacing.sm),
               if (data.history.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: Spacing.lg),
-                  child: Center(
-                    child: Text('Nothing recorded yet.',
-                        style: Theme.of(context).textTheme.bodySmall),
-                  ),
+                StateMessage(
+                  icon: Icons.savings_outlined,
+                  title: 'Nothing recorded yet',
+                  message: 'Top-ups, returns and spends will appear here.',
+                  actionLabel: canSpend ? 'Record a spend' : null,
+                  onAction: canSpend
+                      ? () => _spend(context, ref, data.accountId)
+                      : null,
                 )
               else
                 Card(
@@ -109,10 +118,14 @@ class PettyCashScreen extends ConsumerWidget {
   }
 
   Future<void> _spend(
-      BuildContext context, WidgetRef ref, String accountId) async {
+    BuildContext context,
+    WidgetRef ref,
+    String accountId,
+  ) async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => RecordExpenseSheet(pettyCashAccountId: accountId),
     );
@@ -123,6 +136,7 @@ class PettyCashScreen extends ConsumerWidget {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => const _TransactionSheet(),
     );
@@ -130,10 +144,14 @@ class PettyCashScreen extends ConsumerWidget {
   }
 
   Future<void> _reconcile(
-      BuildContext context, WidgetRef ref, PettyCash data) async {
+    BuildContext context,
+    WidgetRef ref,
+    PettyCash data,
+  ) async {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => _ReconcileSheet(expected: data.committedBalance),
     );
@@ -141,6 +159,9 @@ class PettyCashScreen extends ConsumerWidget {
   }
 }
 
+/// The hero: what is available now, at display scale on paper. When vouchers
+/// are awaiting approval the two figures that explain the gap sit beneath a
+/// rule, as figures rather than as a sentence.
 class _BalanceCard extends StatelessWidget {
   const _BalanceCard({required this.data});
 
@@ -149,17 +170,28 @@ class _BalanceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
+    final eyebrow = theme.textTheme.labelSmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
+        padding: const EdgeInsets.all(Spacing.lg),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Available now',
-                style: theme.textTheme.labelMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            Text(
+              [
+                'Available now',
+                if (data.accountName.isNotEmpty) data.accountName,
+              ].join(' · ').toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: eyebrow,
+            ),
+            const SizedBox(height: Spacing.sm),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
@@ -171,28 +203,25 @@ class _BalanceCard extends StatelessWidget {
             ),
             // Only worth explaining the second number when it differs.
             if (data.hasPendingVouchers) ...[
-              const SizedBox(height: Spacing.sm),
-              Container(
-                padding: const EdgeInsets.all(Spacing.sm),
-                decoration: BoxDecoration(
-                  color: status.attention.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(Radii.sm),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.pending_actions_outlined,
-                        size: 16, color: status.attention),
-                    const SizedBox(width: Spacing.sm),
-                    Expanded(
-                      child: Text(
-                        '${data.pendingVoucherCount} expense${data.pendingVoucherCount == 1 ? '' : 's'} '
-                        'awaiting approval — ${Formatting.amount(data.pendingVoucherTotal)}. '
-                        'Official float is ${Formatting.currency(data.verifiedBalance)}.',
-                        style: theme.textTheme.bodySmall,
-                      ),
+              const Divider(height: Spacing.lg + Spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: _Figure(
+                      label:
+                          'Awaiting approval · ${Formatting.integer(data.pendingVoucherCount)}',
+                      amount: data.pendingVoucherTotal,
+                      tone: status.attention,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: Spacing.md),
+                  Expanded(
+                    child: _Figure(
+                      label: 'Official float',
+                      amount: data.verifiedBalance,
+                    ),
+                  ),
+                ],
               ),
             ],
           ],
@@ -202,6 +231,41 @@ class _BalanceCard extends StatelessWidget {
   }
 }
 
+/// A labelled row-scale figure inside a card.
+class _Figure extends StatelessWidget {
+  const _Figure({required this.label, required this.amount, this.tone});
+
+  final String label;
+  final Object? amount;
+  final Color? tone;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label.toUpperCase(),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.xs),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: Alignment.centerLeft,
+          child: Money(amount, color: tone, showCode: false),
+        ),
+      ],
+    );
+  }
+}
+
+/// One ledger line. Direction is said by the mono kind label and, for money
+/// in, by the figure's green — no signs, no coloured icons.
 class _HistoryTile extends StatelessWidget {
   const _HistoryTile({required this.entry});
 
@@ -212,33 +276,44 @@ class _HistoryTile extends StatelessWidget {
     final theme = Theme.of(context);
     final status = context.statusColors;
     final inflow = entry.isInflow;
+    final pending = entry.approvalStatus == 'pending';
 
     return ListTile(
       dense: true,
-      leading: Icon(
-        inflow ? Icons.add_circle_outline : Icons.remove_circle_outline,
-        size: 20,
-        color: inflow ? status.settled : status.pending,
+      title: Text(
+        entry.description,
+        style: theme.textTheme.titleSmall,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
-      title: Text(entry.description),
-      subtitle: Text(
-        [
-          Formatting.date(entry.date),
-          if (entry.createdByName != null) entry.createdByName!,
-          if (entry.approvalStatus == 'pending') 'awaiting approval',
-        ].join(' · '),
-        style: theme.textTheme.bodySmall,
+      subtitle: Row(
+        children: [
+          if (pending) ...[
+            const StatusChip('pending', dense: true),
+            const SizedBox(width: Spacing.sm),
+          ],
+          Flexible(
+            child: Text(
+              [
+                entry.kind.replaceAll('_', ' '),
+                Formatting.date(entry.date),
+                if (entry.createdByName != null) entry.createdByName!,
+              ].join(' · ').toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
       ),
-      trailing: Text(
-        '${inflow ? '+' : '−'}${Formatting.amount(entry.amount)}',
-        style: theme.textTheme.labelLarge?.copyWith(
-          color: inflow ? status.settled : null,
-        ),
-      ),
+      trailing: Money(entry.amount, color: inflow ? status.settled : null),
     );
   }
 }
 
+/// The most recent cash count: what was counted, and whether it balanced.
 class _ReconciliationCard extends StatelessWidget {
   const _ReconciliationCard({required this.reconciliation});
 
@@ -247,6 +322,7 @@ class _ReconciliationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
     final variance = reconciliation.variance;
     final balanced = variance.abs() < 0.005;
@@ -258,38 +334,95 @@ class _ReconciliationCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                      'Counted ${Formatting.currency(reconciliation.countedAmount)}',
-                      style: theme.textTheme.bodyMedium),
-                ),
-                Text(
-                  balanced
-                      ? 'Balanced'
-                      : '${variance > 0 ? 'Over' : 'Short'} ${Formatting.amount(variance.abs())}',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: balanced ? status.settled : status.overdue,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'COUNTED',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      const SizedBox(height: Spacing.xs),
+                      Money(
+                        reconciliation.countedAmount,
+                        scale: MoneyScale.headline,
+                      ),
+                    ],
                   ),
+                ),
+                const SizedBox(width: Spacing.md),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    _ToneTag(
+                      balanced
+                          ? 'Balanced'
+                          : variance > 0
+                          ? 'Over'
+                          : 'Short',
+                      color: balanced ? status.settled : status.overdue,
+                    ),
+                    if (!balanced) ...[
+                      const SizedBox(height: Spacing.xs),
+                      Money(
+                        variance.abs(),
+                        scale: MoneyScale.dense,
+                        color: status.overdue,
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
+            const SizedBox(height: Spacing.sm),
             Text(
               [
                 Formatting.date(reconciliation.reconciledAt),
                 if (reconciliation.createdByName != null)
                   reconciliation.createdByName!,
-              ].join(' · '),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              ].join(' · ').toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
-            if (reconciliation.notes != null)
+            if (reconciliation.notes != null) ...[
+              const SizedBox(height: Spacing.xs),
               Text(reconciliation.notes!, style: theme.textTheme.bodySmall),
+            ],
           ],
         ),
       ),
     );
   }
+}
+
+/// A [StatusChip]-shaped tag for a state the status enum has no word for
+/// (balanced / over / short).
+class _ToneTag extends StatelessWidget {
+  const _ToneTag(this.text, {required this.color});
+
+  final String text;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: Spacing.sm, vertical: 2),
+    decoration: BoxDecoration(
+      color: color.withValues(alpha: 0.14),
+      borderRadius: BorderRadius.circular(Radii.sm),
+      border: Border.all(color: color.withValues(alpha: 0.35)),
+    ),
+    child: Text(
+      text.toUpperCase(),
+      style: Type.mono(9.5, tracking: 0.08, color: color),
+    ),
+  );
 }
 
 class _TransactionSheet extends ConsumerStatefulWidget {
@@ -326,7 +459,9 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
       _error = null;
     });
     try {
-      await ref.read(financeServiceProvider).pettyCashTransaction(
+      await ref
+          .read(financeServiceProvider)
+          .pettyCashTransaction(
             type: _type,
             amount: amount,
             transactionDate: _date,
@@ -342,82 +477,107 @@ class _TransactionSheetState extends ConsumerState<_TransactionSheet> {
     }
   }
 
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(DateTime.now().year - 2),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) setState(() => _date = picked);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
     return Padding(
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        top: Spacing.lg,
         bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Petty cash movement',
-              style: Theme.of(context).textTheme.titleLarge,
-              textAlign: TextAlign.center),
-          const SizedBox(height: Spacing.md),
-          if (_error != null) ...[
-            ErrorBanner(message: _error!),
-            const SizedBox(height: Spacing.sm),
-          ],
-          DropdownButtonFormField<String>(
-            initialValue: _type,
-            decoration: const InputDecoration(labelText: 'Type'),
-            items: const [
-              DropdownMenuItem(value: 'top_up', child: Text('Top up the tin')),
-              DropdownMenuItem(
-                  value: 'return', child: Text('Return cash to bank')),
-              // Adjustments are only written by a reconciliation — the API
-              // rejects them here.
-            ],
-            onChanged:
-                _submitting ? null : (v) => setState(() => _type = v!),
-          ),
-          const SizedBox(height: Spacing.md),
-          TextField(
-            controller: _amount,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: InputDecoration(
-              labelText: 'Amount',
-              prefixText: '${Formatting.tenantCurrency} ',
-            ),
-          ),
-          const SizedBox(height: Spacing.md),
-          InkWell(
-            onTap: _submitting
-                ? null
-                : () async {
-                    final picked = await showDatePicker(
-                      context: context,
-                      initialDate: _date,
-                      firstDate: DateTime(DateTime.now().year - 2),
-                      lastDate: DateTime.now(),
-                    );
-                    if (picked != null) setState(() => _date = picked);
-                  },
-            child: InputDecorator(
-              decoration: const InputDecoration(
-                labelText: 'Date',
-                suffixIcon: Icon(Icons.calendar_today_outlined, size: 18),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'PETTY CASH',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
               ),
-              child: Text(Formatting.date(_date)),
             ),
-          ),
-          const SizedBox(height: Spacing.md),
-          TextField(
-            controller: _notes,
-            maxLines: 2,
-            decoration: const InputDecoration(labelText: 'Notes (optional)'),
-          ),
-          const SizedBox(height: Spacing.lg),
-          FilledButton(
-            onPressed: _submitting ? null : _submit,
-            child: Text(_submitting ? 'Saving…' : 'Save'),
-          ),
-        ],
+            const SizedBox(height: Spacing.xs),
+            Text(
+              'Petty cash movement',
+              style: Type.display(22, color: scheme.onSurface),
+            ),
+            const SizedBox(height: Spacing.lg),
+            if (_error != null) ...[
+              ErrorBanner(message: _error!),
+              const SizedBox(height: Spacing.md),
+            ],
+            const FieldLabel('Type'),
+            const SizedBox(height: Spacing.sm),
+            DropdownButtonFormField<String>(
+              initialValue: _type,
+              items: const [
+                DropdownMenuItem(value: 'top_up', child: Text('Top up the tin')),
+                DropdownMenuItem(
+                  value: 'return',
+                  child: Text('Return cash to bank'),
+                ),
+                // Adjustments are only written by a reconciliation — the API
+                // rejects them here.
+              ],
+              onChanged: _submitting
+                  ? null
+                  : (v) => setState(() => _type = v!),
+            ),
+            const SizedBox(height: Spacing.md),
+            const FieldLabel('Amount'),
+            const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: _amount,
+              enabled: !_submitting,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              decoration: InputDecoration(
+                hintText: '0.00',
+                prefixText: '${Formatting.tenantCurrency} ',
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            const FieldLabel('Date'),
+            const SizedBox(height: Spacing.sm),
+            _DateField(date: _date, onTap: _submitting ? null : _pickDate),
+            const SizedBox(height: Spacing.md),
+            const FieldLabel('Notes (optional)'),
+            const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: _notes,
+              enabled: !_submitting,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: 'Where the cash came from or went',
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            PrimaryButton(
+              label: _submitting
+                  ? 'Saving…'
+                  : _type == 'top_up'
+                  ? 'Record top-up'
+                  : 'Record return',
+              busy: _submitting,
+              onPressed: _submitting ? null : _submit,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -435,6 +595,7 @@ class _ReconcileSheet extends ConsumerStatefulWidget {
 class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
   final _counted = TextEditingController();
   final _notes = TextEditingController();
+
   /// accepted = book the difference as an adjustment; investigating = flag
   /// it and leave the ledger untouched.
   String _resolution = 'accepted';
@@ -459,7 +620,9 @@ class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
       _error = null;
     });
     try {
-      await ref.read(financeServiceProvider).reconcilePettyCash(
+      await ref
+          .read(financeServiceProvider)
+          .reconcilePettyCash(
             countedBalance: counted,
             resolution: _resolution,
             notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
@@ -477,6 +640,8 @@ class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final status = context.statusColors;
     final counted = double.tryParse(_counted.text.trim());
     final variance = counted == null ? null : counted - widget.expected;
 
@@ -484,88 +649,162 @@ class _ReconcileSheetState extends ConsumerState<_ReconcileSheet> {
       padding: EdgeInsets.only(
         left: Spacing.lg,
         right: Spacing.lg,
-        top: Spacing.lg,
         bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Count the cash',
-              style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
-          Text('Expected ${Formatting.currency(widget.expected)}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-              textAlign: TextAlign.center),
-          const SizedBox(height: Spacing.md),
-          if (_error != null) ...[
-            ErrorBanner(message: _error!),
-            const SizedBox(height: Spacing.sm),
-          ],
-          TextField(
-            controller: _counted,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            autofocus: true,
-            onChanged: (_) => setState(() {}),
-            decoration: InputDecoration(
-              labelText: 'Amount counted',
-              prefixText: '${Formatting.tenantCurrency} ',
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'PETTY CASH',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
             ),
-          ),
-          // Live variance so a miscount is obvious before submitting.
-          if (variance != null && variance.abs() >= 0.005) ...[
             const SizedBox(height: Spacing.xs),
             Text(
-              variance > 0
-                  ? 'Over by ${Formatting.amount(variance)}'
-                  : 'Short by ${Formatting.amount(variance.abs())}',
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: context.statusColors.overdue),
+              'Count the cash',
+              style: Type.display(22, color: scheme.onSurface),
             ),
-          ],
-          const SizedBox(height: Spacing.md),
-          // What to do with a difference — the API requires a decision.
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(
+            const SizedBox(height: Spacing.sm),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  'EXPECTED',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
+                Money(widget.expected, scale: MoneyScale.dense),
+              ],
+            ),
+            const SizedBox(height: Spacing.lg),
+            if (_error != null) ...[
+              ErrorBanner(message: _error!),
+              const SizedBox(height: Spacing.md),
+            ],
+            const FieldLabel('Amount counted'),
+            const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: _counted,
+              enabled: !_submitting,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              autofocus: true,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                hintText: '0.00',
+                prefixText: '${Formatting.tenantCurrency} ',
+              ),
+            ),
+            // Live variance so a miscount is obvious before submitting.
+            if (variance != null && variance.abs() >= 0.005) ...[
+              const SizedBox(height: Spacing.sm),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    variance > 0 ? 'OVER BY' : 'SHORT BY',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: status.overdue,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Money(
+                    variance.abs(),
+                    scale: MoneyScale.dense,
+                    color: status.overdue,
+                  ),
+                ],
+              ),
+            ],
+            const SizedBox(height: Spacing.md),
+            // What to do with a difference — the API requires a decision.
+            const FieldLabel('If it does not balance'),
+            const SizedBox(height: Spacing.sm),
+            SegmentedButton<String>(
+              segments: const [
+                ButtonSegment(
                   value: 'accepted',
                   icon: Icon(Icons.check, size: 16),
-                  label: Text('Book difference')),
-              ButtonSegment(
+                  label: Text('Book difference'),
+                ),
+                ButtonSegment(
                   value: 'investigating',
                   icon: Icon(Icons.search, size: 16),
-                  label: Text('Investigate')),
-            ],
-            selected: {_resolution},
-            onSelectionChanged: _submitting
-                ? null
-                : (s) => setState(() => _resolution = s.first),
-            showSelectedIcon: false,
-          ),
-          const SizedBox(height: Spacing.xs),
-          Text(
-            _resolution == 'accepted'
-                ? 'The ledger is adjusted to match the count.'
-                : 'The ledger is left as is and the difference is flagged.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: Spacing.md),
-          TextField(
-            controller: _notes,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              labelText: 'Notes',
-              helperText: 'Explain any difference',
+                  label: Text('Investigate'),
+                ),
+              ],
+              selected: {_resolution},
+              onSelectionChanged: _submitting
+                  ? null
+                  : (s) => setState(() => _resolution = s.first),
+              showSelectedIcon: false,
             ),
-          ),
-          const SizedBox(height: Spacing.lg),
-          FilledButton(
-            onPressed: _submitting ? null : _submit,
-            child: Text(_submitting ? 'Saving…' : 'Record count'),
-          ),
-        ],
+            const SizedBox(height: Spacing.sm),
+            Text(
+              _resolution == 'accepted'
+                  ? 'The ledger is adjusted to match the count.'
+                  : 'The ledger is left as is and the difference is flagged.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            const FieldLabel('Notes'),
+            const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: _notes,
+              enabled: !_submitting,
+              maxLines: 2,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(
+                hintText: 'Explain any difference',
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            PrimaryButton(
+              label: _submitting ? 'Saving…' : 'Record count',
+              busy: _submitting,
+              onPressed: _submitting ? null : _submit,
+            ),
+          ],
+        ),
       ),
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Private building blocks (candidates for mobilling_ui)
+// ---------------------------------------------------------------------------
+
+
+/// A date shown in a field, tapping opens the picker.
+class _DateField extends StatelessWidget {
+  const _DateField({required this.date, required this.onTap});
+
+  final DateTime date;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+    borderRadius: BorderRadius.circular(Radii.md),
+    onTap: onTap,
+    child: InputDecorator(
+      decoration: const InputDecoration(
+        prefixIcon: Icon(Icons.calendar_today_outlined, size: 20),
+      ),
+      child: Text(
+        Formatting.date(date),
+        style: Theme.of(context).textTheme.bodyLarge,
+      ),
+    ),
+  );
 }

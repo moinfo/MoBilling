@@ -27,6 +27,7 @@ class PayInvoiceSheet extends ConsumerStatefulWidget {
       showModalBottomSheet<bool>(
         context: context,
         isScrollControlled: true,
+        showDragHandle: true,
         // Dismissal is allowed while entering the amount, but once a checkout
         // exists we keep the sheet up so the poll can report the outcome.
         shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
@@ -91,8 +92,10 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
       if (url == null) {
         // Pesapal accepted nothing — the tracked payment exists but there is
         // no page to send the user to.
-        setState(() =>
-            _error = 'The payment gateway did not respond. Please try again.');
+        setState(
+          () => _error =
+              'The payment gateway did not respond. Please try again.',
+        );
         return;
       }
 
@@ -176,7 +179,7 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
         padding: EdgeInsets.only(
           left: Spacing.lg,
           right: Spacing.lg,
-          top: Spacing.lg,
+          top: Spacing.sm,
           bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.lg,
         ),
         child: switch (_phase) {
@@ -189,6 +192,25 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
     );
   }
 
+  /// The sheet's heading: the invoice it names as a mono eyebrow, then the
+  /// one display-face title.
+  Widget _heading(BuildContext context, String title) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          widget.document.documentNumber.toUpperCase(),
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.xs),
+        Text(title, style: Type.display(22, color: theme.colorScheme.onSurface)),
+      ],
+    );
+  }
+
   Widget _buildAmount(BuildContext context) {
     final theme = Theme.of(context);
 
@@ -198,28 +220,37 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Pay ${widget.document.documentNumber}',
-              style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
-          const SizedBox(height: Spacing.xs),
-          Text(
-            'Balance due: ${Formatting.currency(_balance)}',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            textAlign: TextAlign.center,
+          _heading(context, 'Pay invoice'),
+          const SizedBox(height: Spacing.md),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                'BALANCE DUE',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(width: Spacing.sm),
+              Money(_balance, scale: MoneyScale.row),
+            ],
           ),
           const SizedBox(height: Spacing.lg),
           if (_error != null) ...[
             ErrorBanner(message: _error!),
             const SizedBox(height: Spacing.md),
           ],
+          Text('Amount', style: theme.textTheme.titleSmall),
+          const SizedBox(height: Spacing.sm),
           TextFormField(
             controller: _amount,
             enabled: !_submitting,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: InputDecoration(
-              labelText: 'Amount',
+              hintText: '0.00',
               prefixText: '${Formatting.tenantCurrency} ',
-              helperText: 'You can pay part of the balance',
+              helperText: 'You can pay part of the balance.',
             ),
             validator: (value) {
               final parsed = double.tryParse(value?.trim() ?? '');
@@ -231,21 +262,18 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
             },
           ),
           const SizedBox(height: Spacing.lg),
-          FilledButton.icon(
+          PrimaryButton(
+            icon: Icons.lock_outline,
+            label: _submitting ? 'Connecting…' : 'Pay with Pesapal',
+            busy: _submitting,
             onPressed: _submitting ? null : _startCheckout,
-            icon: _submitting
-                ? const SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2))
-                : const Icon(Icons.lock_outline, size: 18),
-            label: Text(_submitting ? 'Connecting…' : 'Pay with Pesapal'),
           ),
-          const SizedBox(height: Spacing.xs),
+          const SizedBox(height: Spacing.sm),
           Text(
             'Card and mobile money via Pesapal’s secure page.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -261,7 +289,8 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const SizedBox(height: Spacing.sm),
+        _heading(context, 'Waiting for confirmation'),
+        const SizedBox(height: Spacing.lg),
         const Center(
           child: SizedBox(
             width: 32,
@@ -270,30 +299,29 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
           ),
         ),
         const SizedBox(height: Spacing.lg),
-        Text('Waiting for confirmation',
-            style: theme.textTheme.titleMedium, textAlign: TextAlign.center),
-        const SizedBox(height: Spacing.sm),
         Text(
           autoPollingStopped
               ? 'This is taking longer than usual. If you completed the '
-                  'payment, it will still be recorded — check again below.'
+                    'payment, it will still be recorded — check again below.'
               : 'Complete the payment in the browser window. This screen '
-                  'updates automatically once Pesapal confirms.',
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    'updates automatically once Pesapal confirms.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: Spacing.lg),
         if (autoPollingStopped)
-          FilledButton(
+          PrimaryButton(
+            label: 'Check again',
             onPressed: () => _checkStatus(manual: true),
-            child: const Text('Check again'),
           )
         else
           OutlinedButton(
             onPressed: () => _checkStatus(manual: true),
             child: const Text('I have completed the payment'),
           ),
+        const SizedBox(height: Spacing.sm),
         TextButton(
           onPressed: () {
             _poll?.cancel();
@@ -314,46 +342,56 @@ class _PayInvoiceSheetState extends ConsumerState<PayInvoiceSheet> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        _heading(context, success ? 'Payment received' : 'Payment failed'),
+        const SizedBox(height: Spacing.lg),
         Icon(
           success ? Icons.check_circle_outline : Icons.error_outline,
           size: 48,
           color: success ? colors.settled : colors.overdue,
         ),
         const SizedBox(height: Spacing.md),
-        Text(
-          success ? 'Payment received' : 'Payment failed',
-          style: theme.textTheme.titleLarge,
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: Spacing.sm),
         if (success && status != null) ...[
-          Text(
-            [
-              Formatting.currency(status.amount),
-              if (status.paymentMethod != null) 'via ${status.paymentMethod}',
-              if (status.confirmationCode != null)
-                'ref ${status.confirmationCode}',
-            ].join(' · '),
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            textAlign: TextAlign.center,
+          Center(
+            child: Money(
+              status.amount,
+              scale: MoneyScale.headline,
+              color: colors.settled,
+            ),
           ),
+          if (status.paymentMethod != null ||
+              status.confirmationCode != null) ...[
+            const SizedBox(height: Spacing.sm),
+            Text(
+              [
+                if (status.paymentMethod != null)
+                  'via ${status.paymentMethod}',
+                if (status.confirmationCode != null)
+                  'ref ${status.confirmationCode}',
+              ].join(' · ').toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ] else if (!success)
           Text(
             'No money was taken. You can try again, or use the offline '
             'payment details on the invoice.',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
         const SizedBox(height: Spacing.lg),
         if (success)
-          FilledButton(
+          PrimaryButton(
+            label: 'Done',
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Done'),
           )
         else ...[
-          FilledButton(onPressed: _retry, child: const Text('Try again')),
+          PrimaryButton(label: 'Try again', onPressed: _retry),
+          const SizedBox(height: Spacing.sm),
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Close'),

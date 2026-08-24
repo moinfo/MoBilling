@@ -4,8 +4,8 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../common/share_pdf.dart';
-import 'pay_invoice_sheet.dart';
 import '../portal_providers.dart';
+import 'pay_invoice_sheet.dart';
 
 /// Full invoice view — items, totals, payments, parties and how to pay.
 ///
@@ -22,27 +22,33 @@ class PortalInvoiceDetailScreen extends ConsumerWidget {
     final payable = document.valueOrNull?.isPayable ?? false;
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(document.valueOrNull?.documentNumber ?? 'Invoice'),
-        actions: [
-          if (document.hasValue) ...[
-            IconButton(
-              icon: const Icon(Icons.ios_share_outlined),
-              tooltip: 'Share PDF',
-              onPressed: () => sharePdf(
-                context,
-                fetch: () =>
-                    ref.read(portalServiceProvider).documentPdf(documentId),
-                filename: '${document.value!.documentNumber}.pdf',
+      appBar: ShellTopBar(
+        eyebrow: 'Billing',
+        title: document.valueOrNull?.documentNumber ?? 'Invoice',
+        trailing: !document.hasValue
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkActionButton(
+                    icon: Icons.ios_share_outlined,
+                    tooltip: 'Share PDF',
+                    onPressed: () => sharePdf(
+                      context,
+                      fetch: () => ref
+                          .read(portalServiceProvider)
+                          .documentPdf(documentId),
+                      filename: '${document.value!.documentNumber}.pdf',
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  InkActionButton(
+                    icon: Icons.forward_to_inbox_outlined,
+                    tooltip: 'Email me this invoice',
+                    onPressed: () => _resend(context, ref),
+                  ),
+                ],
               ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.forward_to_inbox_outlined),
-              tooltip: 'Email me this invoice',
-              onPressed: () => _resend(context, ref),
-            ),
-          ],
-        ],
       ),
       body: document.when(
         loading: () => const Center(child: CircularProgressIndicator()),
@@ -50,43 +56,17 @@ class PortalInvoiceDetailScreen extends ConsumerWidget {
           icon: Icons.cloud_off_outlined,
           title: 'Could not load this invoice',
           message: error is ApiException ? error.message : null,
-          actionLabel: 'Retry',
+          actionLabel: 'Try again',
           onAction: () => ref.invalidate(portalDocumentProvider(documentId)),
         ),
         data: (doc) => _InvoiceBody(doc: doc),
       ),
       bottomNavigationBar: !payable
           ? null
-          : SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(
-                    Spacing.md, Spacing.sm, Spacing.md, Spacing.md),
-                child: Row(
-                  children: [
-                    // Wallet credit, when there is any to apply.
-                    Consumer(builder: (context, ref, _) {
-                      final credit =
-                          ref.watch(portalCreditProvider).valueOrNull?.balance ?? 0;
-                      if (credit <= 0) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(right: Spacing.sm),
-                        child: OutlinedButton(
-                          onPressed: () => _applyCredit(context, ref),
-                          child: const Text('Use credit'),
-                        ),
-                      );
-                    }),
-                    Expanded(
-                      child: FilledButton.icon(
-                        icon: const Icon(Icons.lock_outline, size: 18),
-                        label: Text(
-                            'Pay ${Formatting.currency(document.valueOrNull?.balanceDue)}'),
-                        onPressed: () => _pay(context, ref, document.value!),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+          : _PayBar(
+              balanceDue: document.valueOrNull?.balanceDue,
+              onPay: () => _pay(context, ref, document.value!),
+              onUseCredit: () => _applyCredit(context, ref),
             ),
     );
   }
@@ -94,13 +74,15 @@ class PortalInvoiceDetailScreen extends ConsumerWidget {
   Future<void> _applyCredit(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
-      final message =
-          await ref.read(portalServiceProvider).applyCreditToInvoice(documentId);
+      final message = await ref
+          .read(portalServiceProvider)
+          .applyCreditToInvoice(documentId);
       ref.invalidate(portalDocumentProvider(documentId));
       ref.invalidate(portalCreditProvider);
       ref.invalidate(portalDashboardProvider);
       messenger.showSnackBar(
-          SnackBar(content: Text(message ?? 'Credit applied.')));
+        SnackBar(content: Text(message ?? 'Credit applied to this invoice.')),
+      );
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
@@ -133,6 +115,68 @@ class PortalInvoiceDetailScreen extends ConsumerWidget {
   }
 }
 
+/// The action bar pinned under a payable invoice: wallet credit when there
+/// is any to apply, and the one primary action — pay.
+class _PayBar extends ConsumerWidget {
+  const _PayBar({
+    required this.balanceDue,
+    required this.onPay,
+    required this.onUseCredit,
+  });
+
+  final Object? balanceDue;
+  final VoidCallback onPay;
+  final VoidCallback onUseCredit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final credit = ref.watch(portalCreditProvider).valueOrNull?.balance ?? 0;
+
+    return Material(
+      color: theme.cardTheme.color ?? scheme.surface,
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: scheme.outlineVariant)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.sm + Spacing.xs,
+              Spacing.md,
+              Spacing.md,
+            ),
+            child: Row(
+              children: [
+                if (credit > 0) ...[
+                  SizedBox(
+                    height: 52,
+                    child: OutlinedButton(
+                      onPressed: onUseCredit,
+                      child: const Text('Use credit'),
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                ],
+                Expanded(
+                  child: PrimaryButton(
+                    icon: Icons.lock_outline,
+                    label: 'Pay ${Formatting.currency(balanceDue)}',
+                    onPressed: onPay,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _InvoiceBody extends StatelessWidget {
   const _InvoiceBody({required this.doc});
 
@@ -141,109 +185,25 @@ class _InvoiceBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final status = context.statusColors;
 
     return ListView(
       padding: const EdgeInsets.all(Spacing.md),
       children: [
-        // Header: status + the number that matters most right now.
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(Spacing.md),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    StatusChip(doc.status),
-                    Text(
-                      Formatting.date(doc.date),
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: Spacing.md),
-                Text(
-                  doc.isPayable ? 'BALANCE DUE' : 'TOTAL',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                    letterSpacing: Type.eyebrowTracking,
-                  ),
-                ),
-                const SizedBox(height: Spacing.sm),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Money(
-                    doc.isPayable ? doc.balanceDue : doc.total,
-                    scale: MoneyScale.display,
-                    color: doc.isPayable ? status.overdue : status.settled,
-                  ),
-                ),
-                const SizedBox(height: Spacing.xs),
-                if (doc.isPayable && doc.dueDate != null)
-                  Text(
-                    Formatting.dueDescription(doc.dueDate),
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: (Formatting.daysUntil(doc.dueDate) ?? 1) < 0
-                          ? status.overdue
-                          : theme.colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: Spacing.md),
+        Reveal(child: _HeroFigure(doc: doc)),
+        const SizedBox(height: Spacing.lg),
 
         // Line items.
+        const SectionHeader('Items'),
+        const SizedBox(height: Spacing.sm),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(Spacing.md),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Items', style: theme.textTheme.titleSmall),
-                const SizedBox(height: Spacing.sm),
-                for (final item in doc.items) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(item.description,
-                                  style: theme.textTheme.bodyMedium),
-                              if (item.serviceFrom != null &&
-                                  item.serviceTo != null)
-                                Text(
-                                  '${Formatting.date(item.serviceFrom)} – ${Formatting.date(item.serviceTo)}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                      color:
-                                          theme.colorScheme.onSurfaceVariant),
-                                ),
-                              if (item.quantity != 1)
-                                Text(
-                                  '${Formatting.amount(item.quantity)} × ${Formatting.currency(item.price)}',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                      color:
-                                          theme.colorScheme.onSurfaceVariant),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: Spacing.sm),
-                        Money(item.total,
-                            scale: MoneyScale.dense, showCode: false),
-                      ],
-                    ),
-                  ),
+                for (final (i, item) in doc.items.indexed) ...[
+                  if (i > 0) const Divider(height: Spacing.md),
+                  _ItemRow(item: item),
                 ],
                 const Divider(height: Spacing.lg),
                 _TotalRow('Subtotal', doc.subtotal),
@@ -262,59 +222,45 @@ class _InvoiceBody extends StatelessWidget {
 
         // Payments made against this invoice.
         if (doc.payments.isNotEmpty) ...[
-          const SizedBox(height: Spacing.md),
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Payments'),
+          const SizedBox(height: Spacing.sm),
           Card(
-            child: Padding(
-              padding: const EdgeInsets.all(Spacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Payments', style: theme.textTheme.titleSmall),
-                  const SizedBox(height: Spacing.xs),
-                  for (final p in doc.payments)
-                    ListTile(
-                      dense: true,
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.check_circle_outline,
-                          color: status.settled, size: 20),
-                      title: Text(Formatting.date(p.paymentDate)),
-                      subtitle: Text([
-                        if (p.paymentMethod != null) p.paymentMethod!,
-                        if (p.reference != null) p.reference!,
-                      ].join(' · ')),
-                      trailing: Money(p.amount,
-                          color: context.statusColors.settled),
-                    ),
+            child: Column(
+              children: [
+                for (final (i, p) in doc.payments.indexed) ...[
+                  if (i > 0) const Divider(height: 1),
+                  _PaymentTile(payment: p),
                 ],
-              ),
+              ],
             ),
           ),
         ],
 
         // How to pay — the tenant's offline instructions.
         if (doc.isPayable && doc.paymentMethods.isNotEmpty) ...[
-          const SizedBox(height: Spacing.md),
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('How to pay'),
+          const SizedBox(height: Spacing.sm),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(Spacing.md),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('How to pay', style: theme.textTheme.titleSmall),
-                  const SizedBox(height: Spacing.sm),
-                  for (final method in doc.paymentMethods) ...[
+                  for (final (i, method) in doc.paymentMethods.indexed) ...[
+                    if (i > 0) const Divider(height: Spacing.md),
                     if (method.name != null)
-                      Text(method.name!,
-                          style: theme.textTheme.labelLarge),
-                    if (method.details != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: Spacing.sm),
-                        child: Text(
-                          method.details!,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                              color: theme.colorScheme.onSurfaceVariant),
+                      Text(method.name!, style: theme.textTheme.titleSmall),
+                    if (method.details != null) ...[
+                      const SizedBox(height: Spacing.xs),
+                      Text(
+                        method.details!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
                         ),
                       ),
+                    ],
                   ],
                 ],
               ),
@@ -324,39 +270,189 @@ class _InvoiceBody extends StatelessWidget {
 
         // Parties.
         if (doc.invoicedTo != null || doc.payTo != null) ...[
-          const SizedBox(height: Spacing.md),
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Parties'),
+          const SizedBox(height: Spacing.sm),
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (doc.invoicedTo != null)
                 Expanded(
-                    child: _PartyCard(title: 'Invoiced to', party: doc.invoicedTo!)),
+                  child: _PartyCard(
+                    title: 'Invoiced to',
+                    party: doc.invoicedTo!,
+                  ),
+                ),
               if (doc.invoicedTo != null && doc.payTo != null)
                 const SizedBox(width: Spacing.sm),
               if (doc.payTo != null)
-                Expanded(child: _PartyCard(title: 'Pay to', party: doc.payTo!)),
+                Expanded(
+                  child: _PartyCard(title: 'Pay to', party: doc.payTo!),
+                ),
             ],
           ),
         ],
 
         if (doc.notes != null) ...[
-          const SizedBox(height: Spacing.md),
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Notes'),
+          const SizedBox(height: Spacing.sm),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(Spacing.md),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Notes', style: theme.textTheme.titleSmall),
-                  const SizedBox(height: Spacing.xs),
-                  Text(doc.notes!, style: theme.textTheme.bodySmall),
-                ],
-              ),
+              child: Text(doc.notes!, style: theme.textTheme.bodyMedium),
             ),
           ),
         ],
         const SizedBox(height: Spacing.xl),
       ],
+    );
+  }
+}
+
+/// The one figure this screen is about — the balance due while the invoice
+/// is open, the total once it is settled — on a card tinted 6% toward the
+/// figure's state, with the status chip and the issue date above it.
+class _HeroFigure extends StatelessWidget {
+  const _HeroFigure({required this.doc});
+
+  final PortalDocument doc;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+    final late = doc.isPayable && (Formatting.daysUntil(doc.dueDate) ?? 1) < 0;
+    final tone = doc.isPayable
+        ? (late ? status.overdue : status.attention)
+        : status.settled;
+
+    return Card(
+      color: Color.alphaBlend(
+        tone.withValues(alpha: 0.06),
+        theme.cardTheme.color ?? theme.colorScheme.surface,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                StatusChip(doc.status),
+                const Spacer(),
+                Text(
+                  Formatting.date(doc.date).toUpperCase(),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.lg),
+            Text(
+              (doc.isPayable ? 'Balance due' : 'Total').toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.sm),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Money(
+                doc.isPayable ? doc.balanceDue : doc.total,
+                scale: MoneyScale.display,
+                color: tone,
+              ),
+            ),
+            if (doc.isPayable && doc.dueDate != null) ...[
+              const SizedBox(height: Spacing.sm),
+              Text(
+                Formatting.dueDescription(doc.dueDate),
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: late
+                      ? status.overdue
+                      : theme.colorScheme.onSurfaceVariant,
+                  fontWeight: late ? FontWeight.w600 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ItemRow extends StatelessWidget {
+  const _ItemRow({required this.item});
+
+  final DocumentItem item;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(item.description, style: theme.textTheme.bodyMedium),
+              if (item.serviceFrom != null && item.serviceTo != null)
+                Text(
+                  '${Formatting.date(item.serviceFrom)} – ${Formatting.date(item.serviceTo)}',
+                  style: muted,
+                ),
+              if (item.quantity != 1)
+                Text(
+                  '${Formatting.amount(item.quantity)} × ${Formatting.currency(item.price)}',
+                  style: muted,
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: Spacing.sm),
+        Money(item.total, scale: MoneyScale.dense, showCode: false),
+      ],
+    );
+  }
+}
+
+class _PaymentTile extends StatelessWidget {
+  const _PaymentTile({required this.payment});
+
+  final PaymentSummary payment;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+
+    return ListTile(
+      dense: true,
+      title: Text(
+        Formatting.date(payment.paymentDate),
+        style: theme.textTheme.titleSmall,
+      ),
+      subtitle: Text(
+        [
+          if (payment.paymentMethod != null) payment.paymentMethod!,
+          if (payment.reference != null) payment.reference!,
+        ].join(' · ').toUpperCase(),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      trailing: Money(payment.amount, color: status.settled),
     );
   }
 }
@@ -383,10 +479,12 @@ class _TotalRow extends StatelessWidget {
           Text(
             label,
             style: bold
-                ? theme.textTheme.bodyMedium
-                    ?.copyWith(fontWeight: FontWeight.w700)
-                : theme.textTheme.bodyMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                ? theme.textTheme.bodyMedium?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  )
+                : theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
           ),
           Money(
             value,
@@ -423,10 +521,13 @@ class _PartyCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title,
-                style: theme.textTheme.labelMedium
-                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
-            const SizedBox(height: Spacing.xs),
+            Text(
+              title.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.sm),
             for (final line in lines)
               Text(line, style: theme.textTheme.bodySmall),
           ],

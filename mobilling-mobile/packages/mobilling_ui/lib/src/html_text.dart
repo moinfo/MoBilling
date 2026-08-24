@@ -12,7 +12,10 @@ String htmlToPlainText(String html) {
   var text = html
       // Line-break producing tags first, so structure survives the strip.
       .replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n')
-      .replaceAll(RegExp(r'</p>|</div>|</h[1-6]>', caseSensitive: false), '\n\n')
+      .replaceAll(
+        RegExp(r'</p>|</div>|</h[1-6]>', caseSensitive: false),
+        '\n\n',
+      )
       .replaceAll(RegExp(r'<li[^>]*>', caseSensitive: false), '\n• ')
       .replaceAll(RegExp(r'</(ul|ol)>', caseSensitive: false), '\n')
       // Everything else goes.

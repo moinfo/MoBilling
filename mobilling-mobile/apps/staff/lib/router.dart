@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:mobilling_api/mobilling_api.dart' show CatalogProduct;
+import 'package:mobilling_api/mobilling_api.dart'
+    show CatalogProduct, UnpaidInvoice;
 import 'package:mobilling_auth/mobilling_auth.dart';
 
 import 'config/debug_hooks.dart';
@@ -115,7 +116,9 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
 
         // Registration is reachable while signed out — it is how a client
         // with no portal account gets one.
-        SessionStatus.signedOut =>
+        // `locked` shares the sign-in screen: it shows the biometric button
+        // and still accepts a password, which replaces the locked session.
+        SessionStatus.signedOut || SessionStatus.locked =>
           (location == Routes.login || location == PortalRoutes.register)
               ? null
               : Routes.login,
@@ -131,8 +134,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
               // the API would 403, but bouncing to their own home is clearer
               // than a screen full of errors.
               : _isForeignShell(location, session.session.shell)
-                  ? home
-                  : null,
+              ? home
+              : null,
       };
     },
     routes: [
@@ -189,27 +192,23 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/admin/tenants/:id/email',
-        builder: (context, state) => TenantEmailSettingsScreen(
-          tenantId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            TenantEmailSettingsScreen(tenantId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/admin/tenants/:id/sms',
-        builder: (context, state) => TenantSmsSettingsScreen(
-          tenantId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            TenantSmsSettingsScreen(tenantId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/admin/tenants/:id/templates',
-        builder: (context, state) => TenantTemplatesScreen(
-          tenantId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            TenantTemplatesScreen(tenantId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/admin/tenants/:id',
-        builder: (context, state) => TenantDetailScreen(
-          tenantId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            TenantDetailScreen(tenantId: state.pathParameters['id']!),
       ),
 
       // ── Client portal shell ────────────────────────────────────────────
@@ -231,9 +230,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/portal/invoices/:id',
-        builder: (context, state) => PortalInvoiceDetailScreen(
-          documentId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            PortalInvoiceDetailScreen(documentId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: PortalRoutes.payments,
@@ -256,21 +254,18 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/portal/kb/:slug',
-        builder: (context, state) => KbArticleScreen(
-          slug: state.pathParameters['slug']!,
-        ),
+        builder: (context, state) =>
+            KbArticleScreen(slug: state.pathParameters['slug']!),
       ),
       GoRoute(
         path: '/portal/hosting/:id',
-        builder: (context, state) => PortalHostingDetailScreen(
-          accountId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            PortalHostingDetailScreen(accountId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/portal/domains/:id',
-        builder: (context, state) => PortalDomainDetailScreen(
-          domainId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            PortalDomainDetailScreen(domainId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: PortalRoutes.store,
@@ -308,16 +303,18 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/tickets/:id',
-        builder: (context, state) => TicketDetailScreen(
-          ticketId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            TicketDetailScreen(ticketId: state.pathParameters['id']!),
       ),
 
       // Money movement. '/payments/record' must precede any '/payments/:id'
       // route added later — go_router matches in declaration order.
       GoRoute(
         path: '/payments/record',
-        builder: (context, state) => const RecordPaymentScreen(),
+        // `extra` carries an invoice when the flow starts from that invoice's
+        // detail screen, so the picker is skipped.
+        builder: (context, state) =>
+            RecordPaymentScreen(invoice: state.extra as UnpaidInvoice?),
       ),
       GoRoute(
         path: '/payments-out',
@@ -341,14 +338,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: '/automation',
         builder: (context, state) => const AutomationScreen(),
       ),
-      GoRoute(
-        path: '/team',
-        builder: (context, state) => const TeamScreen(),
-      ),
-      GoRoute(
-        path: '/roles',
-        builder: (context, state) => const RolesScreen(),
-      ),
+      GoRoute(path: '/team', builder: (context, state) => const TeamScreen()),
+      GoRoute(path: '/roles', builder: (context, state) => const RolesScreen()),
       GoRoute(
         path: '/settings',
         builder: (context, state) => const SettingsScreen(),
@@ -376,19 +367,15 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // HR
-      GoRoute(
-        path: '/leave',
-        builder: (context, state) => const LeaveScreen(),
-      ),
+      GoRoute(path: '/leave', builder: (context, state) => const LeaveScreen()),
       GoRoute(
         path: '/payroll',
         builder: (context, state) => const PayrollScreen(),
       ),
       GoRoute(
         path: '/payroll/runs/:id',
-        builder: (context, state) => PayrollRunScreen(
-          runId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            PayrollRunScreen(runId: state.pathParameters['id']!),
       ),
 
       // Reports — hub plus one screen driven by the slug.
@@ -398,9 +385,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/reports/:slug',
-        builder: (context, state) => ReportScreen(
-          slug: state.pathParameters['slug']!,
-        ),
+        builder: (context, state) =>
+            ReportScreen(slug: state.pathParameters['slug']!),
       ),
 
       // My working life
@@ -446,10 +432,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         path: '/statutory-schedule',
         builder: (context, state) => const StatutoryScheduleScreen(),
       ),
-      GoRoute(
-        path: '/bills',
-        builder: (context, state) => const BillsScreen(),
-      ),
+      GoRoute(path: '/bills', builder: (context, state) => const BillsScreen()),
       GoRoute(
         path: '/bill-categories',
         builder: (context, state) => const BillCategoriesScreen(),
@@ -458,9 +441,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       // Documents + catalog
       GoRoute(
         path: '/documents/:id',
-        builder: (context, state) => DocumentDetailScreen(
-          documentId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            DocumentDetailScreen(documentId: state.pathParameters['id']!),
       ),
       GoRoute(
         path: '/quotations',
@@ -557,9 +539,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/field-marketing/:id',
-        builder: (context, state) => FieldSessionScreen(
-          sessionId: state.pathParameters['id']!,
-        ),
+        builder: (context, state) =>
+            FieldSessionScreen(sessionId: state.pathParameters['id']!),
       ),
 
       // Communications

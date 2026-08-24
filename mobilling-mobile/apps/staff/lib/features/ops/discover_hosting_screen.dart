@@ -5,7 +5,7 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
 import '../common/pickers.dart';
-import '../crm/crm_ui.dart' show CrmAsyncView, CrmDetailRow;
+import '../crm/crm_ui.dart' show CrmAsyncView;
 import 'ops_providers.dart';
 
 /// Cross-check WHM against what MoBilling bills: every cPanel account on
@@ -39,31 +39,33 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
   @override
   Widget build(BuildContext context) {
     final discovery = ref.watch(discoveryProvider(_imported));
-    final theme = Theme.of(context);
     final status = context.statusColors;
-    final canImport = ref.watch(sessionControllerProvider).session?.can(
-            OpsPermissions.hostingCreate) ??
+    final canImport =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(OpsPermissions.hostingCreate) ??
         false;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Discover cPanel accounts')),
+      appBar: ShellTopBar(
+        eyebrow: 'Web Services',
+        title: 'Discover accounts',
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Filter by username, domain or client',
+          onChanged: (_) => setState(() {}),
+        ),
+      ),
       body: Column(
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(
-                Spacing.md, Spacing.sm, Spacing.md, 0),
-            child: TextField(
-              controller: _search,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                hintText: 'Filter by username, domain or client',
-                prefixIcon: Icon(Icons.search),
-                isDense: true,
-              ),
+              Spacing.md,
+              Spacing.md,
+              Spacing.md,
+              0,
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(Spacing.md),
             child: SegmentedButton<bool?>(
               segments: const [
                 ButtonSegment(value: false, label: Text('Unlinked')),
@@ -73,8 +75,7 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
               selected: {_imported},
               onSelectionChanged: (s) => setState(() => _imported = s.first),
               showSelectedIcon: false,
-              style:
-                  const ButtonStyle(visualDensity: VisualDensity.compact),
+              style: const ButtonStyle(visualDensity: VisualDensity.compact),
             ),
           ),
           Expanded(
@@ -105,7 +106,11 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.fromLTRB(
-                        Spacing.md, 0, Spacing.md, Spacing.xl),
+                      Spacing.md,
+                      Spacing.sm,
+                      Spacing.md,
+                      Spacing.xl,
+                    ),
                     children: [
                       for (final error in result.errors)
                         Padding(
@@ -118,7 +123,7 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
                           child: ListView(
                             scrollDirection: Axis.horizontal,
                             children: [
-                              FilterChip(
+                              ChoiceChip(
                                 label: const Text('All servers'),
                                 selected: _serverId == null,
                                 showCheckmark: false,
@@ -127,7 +132,7 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
                               ),
                               for (final entry in servers.entries) ...[
                                 const SizedBox(width: Spacing.sm),
-                                FilterChip(
+                                ChoiceChip(
                                   label: Text(entry.value),
                                   selected: _serverId == entry.key,
                                   showCheckmark: false,
@@ -140,22 +145,24 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
                         ),
                         const SizedBox(height: Spacing.sm),
                       ],
-                      Row(
-                        children: [
-                          Text('${rows.length} account${rows.length == 1 ? '' : 's'}',
-                              style: theme.textTheme.bodySmall),
-                          const Spacer(),
+                      StatRail(
+                        items: [
+                          StatRailItem(
+                            label: 'Accounts',
+                            value: Formatting.integer(rows.length),
+                          ),
                           if (_imported != true)
-                            Text(
-                              '${result.unimportedCount} not imported',
-                              style: theme.textTheme.labelMedium?.copyWith(
-                                color: result.unimportedCount > 0
-                                    ? status.attention
-                                    : status.settled,
-                              ),
+                            StatRailItem(
+                              label: 'Not imported',
+                              value: Formatting.integer(result.unimportedCount),
+                              emphasis: result.unimportedCount > 0
+                                  ? status.attention
+                                  : status.settled,
                             ),
                         ],
                       ),
+                      const SizedBox(height: Spacing.lg),
+                      const SectionHeader('On the server'),
                       const SizedBox(height: Spacing.sm),
                       if (rows.isEmpty)
                         SizedBox(
@@ -165,17 +172,26 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
                             title: _imported == false
                                 ? 'Everything on the server is billed'
                                 : 'No accounts match',
+                            message: _imported == false
+                                ? 'Every cPanel account is linked to a client.'
+                                : 'Try another name, or pick a different server.',
                           ),
                         )
                       else
-                        for (final account in rows) ...[
-                          _DiscoveredCard(
-                            account: account,
-                            canImport: canImport,
-                            onImport: () => _import(context, account),
+                        Card(
+                          child: Column(
+                            children: [
+                              for (final (i, account) in rows.indexed) ...[
+                                if (i > 0) const Divider(height: 1),
+                                _DiscoveredRow(
+                                  account: account,
+                                  canImport: canImport,
+                                  onImport: () => _import(context, account),
+                                ),
+                              ],
+                            ],
                           ),
-                          const SizedBox(height: Spacing.sm),
-                        ],
+                        ),
                     ],
                   ),
                 );
@@ -191,6 +207,7 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
     final imported = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      showDragHandle: true,
       shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
       builder: (_) => _ImportSheet(account: account),
     );
@@ -198,8 +215,11 @@ class _DiscoverHostingScreenState extends ConsumerState<DiscoverHostingScreen> {
   }
 }
 
-class _DiscoveredCard extends StatelessWidget {
-  const _DiscoveredCard({
+/// One cPanel account: the import state (and suspension) as chips, then the
+/// username, server, package and disk as one mono line. Unlinked rows carry
+/// the import action; linked ones name the client they bill to.
+class _DiscoveredRow extends StatelessWidget {
+  const _DiscoveredRow({
     required this.account,
     required this.canImport,
     required this.onImport,
@@ -212,66 +232,53 @@ class _DiscoveredCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final status = context.statusColors;
+    final importable = !account.imported && canImport;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(Spacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return ListTile(
+      onTap: importable ? onImport : null,
+      title: Text(
+        account.domain ?? account.cpanelUsername,
+        style: theme.textTheme.titleSmall,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 2),
+        child: Row(
           children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(account.domain ?? account.cpanelUsername,
-                      style: theme.textTheme.titleSmall,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ),
-                if (account.suspended) ...[
-                  const StatusChip('suspended', dense: true),
-                  const SizedBox(width: Spacing.xs),
-                ],
-                StatusChip(account.imported ? 'imported' : 'not_imported',
-                    dense: true),
-              ],
+            StatusChip(
+              account.imported ? 'imported' : 'not_imported',
+              dense: true,
             ),
-            const SizedBox(height: Spacing.xs),
-            Text(
-              [
-                account.cpanelUsername,
-                account.serverName,
-                if (account.plan != null) account.plan!,
-                if (account.diskUsed != null)
-                  '${account.diskUsed}${account.diskLimit == null ? '' : ' / ${account.diskLimit}'}',
-              ].join(' · '),
-              style: theme.textTheme.bodySmall
-                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-            ),
-            if (account.imported && account.clientName != null) ...[
-              const SizedBox(height: Spacing.xs),
-              Row(
-                children: [
-                  Icon(Icons.link, size: 14, color: status.settled),
-                  const SizedBox(width: Spacing.xs),
-                  Text(account.clientName!, style: theme.textTheme.bodySmall),
-                ],
-              ),
+            if (account.suspended) ...[
+              const SizedBox(width: Spacing.xs),
+              const StatusChip('suspended', dense: true),
             ],
-            if (!account.imported && canImport) ...[
-              const SizedBox(height: Spacing.sm),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.tonalIcon(
-                  icon: const Icon(Icons.download_outlined, size: 18),
-                  label: const Text('Import'),
-                  onPressed: onImport,
+            const SizedBox(width: Spacing.sm),
+            Flexible(
+              child: Text(
+                [
+                  if (account.imported && account.clientName != null)
+                    account.clientName!,
+                  account.cpanelUsername,
+                  account.serverName,
+                  if (account.plan != null) account.plan!,
+                  if (account.diskUsed != null)
+                    '${account.diskUsed}${account.diskLimit == null ? '' : ' / ${account.diskLimit}'}',
+                ].join(' · '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
                 ),
               ),
-            ],
+            ),
           ],
         ),
       ),
+      trailing: importable
+          ? TextButton(onPressed: onImport, child: const Text('Import'))
+          : null,
     );
   }
 }
@@ -308,7 +315,9 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
       _error = null;
     });
     try {
-      final message = await ref.read(opsServiceProvider).importAccount(
+      final message = await ref
+          .read(opsServiceProvider)
+          .importAccount(
             serverId: widget.account.serverId,
             cpanelUsername: widget.account.cpanelUsername,
             domain: _domain.text.trim(),
@@ -316,8 +325,9 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
             productServiceId: _product!.id,
           );
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message ?? 'Account imported.')));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message ?? 'Account imported.')));
       Navigator.of(context).pop(true);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -329,67 +339,102 @@ class _ImportSheetState extends ConsumerState<_ImportSheet> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final account = widget.account;
 
     return Padding(
-      padding: EdgeInsets.only(
-        left: Spacing.md,
-        right: Spacing.md,
-        top: Spacing.md,
-        bottom: MediaQuery.of(context).viewInsets.bottom + Spacing.md,
+      padding: EdgeInsets.fromLTRB(
+        Spacing.lg,
+        0,
+        Spacing.lg,
+        MediaQuery.viewInsetsOf(context).bottom + Spacing.lg,
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Import ${account.cpanelUsername}',
-              style: theme.textTheme.titleMedium),
-          const SizedBox(height: Spacing.xs),
-          CrmDetailRow('Server', account.serverName),
-          if (account.plan != null) CrmDetailRow('WHM package', account.plan!),
-          const SizedBox(height: Spacing.md),
-          if (_error != null) ...[
-            ErrorBanner(message: _error!),
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // The server and WHM package name the context; the username is
+            // the subject.
+            Text(
+              [
+                account.serverName,
+                if (account.plan != null) account.plan!,
+              ].join(' · ').toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.xs),
+            Text(
+              'Import ${account.cpanelUsername}',
+              style: Type.display(22, color: scheme.onSurface),
+            ),
+            const SizedBox(height: Spacing.lg),
+            if (_error != null) ...[
+              ErrorBanner(message: _error!),
+              const SizedBox(height: Spacing.md),
+            ],
+            Text('Domain', style: theme.textTheme.titleSmall),
             const SizedBox(height: Spacing.sm),
+            TextField(
+              controller: _domain,
+              enabled: !_saving,
+              autocorrect: false,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(hintText: 'example.co.tz'),
+            ),
+            const SizedBox(height: Spacing.md),
+            Text('Client', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.person_outline, size: 18),
+              label: Text(
+                _client?.name ?? 'Choose client',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      final picked = await ClientPickerSheet.show(context);
+                      if (picked != null) setState(() => _client = picked);
+                    },
+            ),
+            const SizedBox(height: Spacing.md),
+            Text('Hosting product', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
+            OutlinedButton.icon(
+              icon: const Icon(Icons.inventory_2_outlined, size: 18),
+              label: Text(
+                _product?.name ?? 'Choose hosting product',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+              onPressed: _saving
+                  ? null
+                  : () async {
+                      final picked = await ProductPickerSheet.show(context);
+                      if (picked != null) setState(() => _product = picked);
+                    },
+            ),
+            const SizedBox(height: Spacing.md),
+            Text(
+              'Creates an active subscription on this product for the client '
+              'and links the existing cPanel account to it. Nothing is '
+              'changed on the server.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            PrimaryButton(
+              label: _saving ? 'Importing…' : 'Import and link',
+              busy: _saving,
+              onPressed: _saving ? null : _import,
+            ),
           ],
-          TextField(
-            controller: _domain,
-            autocorrect: false,
-            keyboardType: TextInputType.url,
-            decoration: const InputDecoration(labelText: 'Domain'),
-          ),
-          const SizedBox(height: Spacing.sm),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.person_outline, size: 18),
-            label: Text(_client?.name ?? 'Choose client'),
-            onPressed: () async {
-              final picked = await ClientPickerSheet.show(context);
-              if (picked != null) setState(() => _client = picked);
-            },
-          ),
-          const SizedBox(height: Spacing.sm),
-          OutlinedButton.icon(
-            icon: const Icon(Icons.inventory_2_outlined, size: 18),
-            label: Text(_product?.name ?? 'Choose hosting product'),
-            onPressed: () async {
-              final picked = await ProductPickerSheet.show(context);
-              if (picked != null) setState(() => _product = picked);
-            },
-          ),
-          const SizedBox(height: Spacing.xs),
-          Text(
-            'Creates an active subscription on this product for the client '
-            'and links the existing cPanel account to it. Nothing is '
-            'changed on the server.',
-            style: theme.textTheme.bodySmall
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: Spacing.md),
-          FilledButton(
-            onPressed: _saving ? null : _import,
-            child: Text(_saving ? 'Importing…' : 'Import and link'),
-          ),
-        ],
+        ),
       ),
     );
   }
