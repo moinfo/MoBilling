@@ -97,6 +97,12 @@ class MoreTab extends ConsumerWidget {
                 label: 'Register or transfer a domain',
                 onTap: () => context.push(PortalRoutes.domainSearch),
               ),
+              const Divider(height: 1),
+              _Link(
+                icon: Icons.workspace_premium_outlined,
+                label: 'Reseller — wholesale domains',
+                onTap: () => context.push(PortalRoutes.reseller),
+              ),
             ],
           ),
         ),
@@ -149,7 +155,10 @@ class _Link extends StatelessWidget {
     return ListTile(
       leading: Icon(icon, color: scheme.onSurfaceVariant),
       title: Text(label),
-      trailing: Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+      trailing: Icon(
+        Icons.chevron_right_rounded,
+        color: scheme.onSurfaceVariant,
+      ),
       onTap: onTap,
     );
   }

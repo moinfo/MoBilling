@@ -79,8 +79,10 @@ class PortalDashboard {
       announcements: json.list('announcements', AnnouncementSummary.fromJson),
       recentInvoices: json.list('recent_invoices', InvoiceSummary.fromJson),
       recentPayments: json.list('recent_payments', PaymentSummary.fromJson),
-      upcomingSubscriptions:
-          json.list('upcoming_subscriptions', UpcomingSubscription.fromJson),
+      upcomingSubscriptions: json.list(
+        'upcoming_subscriptions',
+        UpcomingSubscription.fromJson,
+      ),
     );
   }
 }
@@ -101,12 +103,12 @@ class ClientInfo {
   final String? phone;
 
   factory ClientInfo.fromJson(Map<String, dynamic> json) => ClientInfo(
-        company: json.str('company'),
-        contact: json.str('contact'),
-        address: json.str('address'),
-        email: json.str('email'),
-        phone: json.str('phone'),
-      );
+    company: json.str('company'),
+    contact: json.str('contact'),
+    address: json.str('address'),
+    email: json.str('email'),
+    phone: json.str('phone'),
+  );
 }
 
 class RecentService {
@@ -125,16 +127,21 @@ class RecentService {
   final String? hostingAccountId;
 
   factory RecentService.fromJson(Map<String, dynamic> json) => RecentService(
-        id: json.id(),
-        status: json.strOr('status', 'unknown'),
-        product: json.str('product'),
-        label: json.str('label'),
-        hostingAccountId: json.str('hosting_account_id'),
-      );
+    id: json.id(),
+    status: json.strOr('status', 'unknown'),
+    product: json.str('product'),
+    label: json.str('label'),
+    hostingAccountId: json.str('hosting_account_id'),
+  );
 }
 
 class PortalContact {
-  const PortalContact({required this.id, required this.name, this.email, this.role});
+  const PortalContact({
+    required this.id,
+    required this.name,
+    this.email,
+    this.role,
+  });
 
   final String id;
   final String name;
@@ -142,11 +149,11 @@ class PortalContact {
   final String? role;
 
   factory PortalContact.fromJson(Map<String, dynamic> json) => PortalContact(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        email: json.str('email'),
-        role: json.str('role'),
-      );
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    email: json.str('email'),
+    role: json.str('role'),
+  );
 }
 
 class RecentTicket {
@@ -165,12 +172,12 @@ class RecentTicket {
   final DateTime? lastReplyAt;
 
   factory RecentTicket.fromJson(Map<String, dynamic> json) => RecentTicket(
-        id: json.id(),
-        subject: json.strOr('subject', '—'),
-        status: json.strOr('status', 'open'),
-        ticketNumber: json.str('ticket_number'),
-        lastReplyAt: json.date('last_reply_at'),
-      );
+    id: json.id(),
+    subject: json.strOr('subject', '—'),
+    status: json.strOr('status', 'open'),
+    ticketNumber: json.str('ticket_number'),
+    lastReplyAt: json.date('last_reply_at'),
+  );
 }
 
 class AnnouncementSummary {
@@ -241,6 +248,7 @@ class InvoiceSummary {
     required this.total,
     required this.paid,
     required this.balance,
+    this.cancellationRequested = false,
     this.description,
     this.date,
     this.dueDate,
@@ -252,29 +260,36 @@ class InvoiceSummary {
   final double total;
   final double paid;
   final double balance;
+
+  /// An open billing ticket asks staff to cancel this invoice. Payment is on
+  /// hold until they answer, so the row hides its pay action.
+  final bool cancellationRequested;
+
   final String? description;
   final DateTime? date;
   final DateTime? dueDate;
 
   factory InvoiceSummary.fromJson(Map<String, dynamic> json) => InvoiceSummary(
-        id: json.id(),
-        documentNumber: json.strOr('document_number', '—'),
-        status: json.strOr('status', 'sent'),
-        total: json.money('total'),
-        // Dashboard rows call these paid/balance; the index appends
-        // paid_amount/balance_due to the raw model. Accept either spelling.
-        paid: json.containsKey('paid')
-            ? json.money('paid')
-            : json.money('paid_amount'),
-        balance: json.containsKey('balance')
-            ? json.money('balance')
-            : json.money('balance_due'),
-        description: json.str('description') ??
-            _firstItemDescription(json) ??
-            json.str('notes'),
-        date: json.date('date'),
-        dueDate: json.date('due_date'),
-      );
+    id: json.id(),
+    documentNumber: json.strOr('document_number', '—'),
+    status: json.strOr('status', 'sent'),
+    cancellationRequested: json.flag('cancellation_requested'),
+    total: json.money('total'),
+    // Dashboard rows call these paid/balance; the index appends
+    // paid_amount/balance_due to the raw model. Accept either spelling.
+    paid: json.containsKey('paid')
+        ? json.money('paid')
+        : json.money('paid_amount'),
+    balance: json.containsKey('balance')
+        ? json.money('balance')
+        : json.money('balance_due'),
+    description:
+        json.str('description') ??
+        _firstItemDescription(json) ??
+        json.str('notes'),
+    date: json.date('date'),
+    dueDate: json.date('due_date'),
+  );
 
   static String? _firstItemDescription(Map<String, dynamic> json) {
     final items = json['items'];
@@ -304,6 +319,7 @@ class PortalDocument {
     required this.items,
     required this.payments,
     required this.paymentMethods,
+    this.cancellationRequested = false,
     this.date,
     this.dueDate,
     this.notes,
@@ -329,6 +345,11 @@ class PortalDocument {
   /// the invoice so a client can pay outside Pesapal.
   final List<OfflinePaymentMethod> paymentMethods;
 
+  /// True while an open billing ticket asks staff to cancel this invoice.
+  /// The backend refuses a second request, and the web portal puts payment on
+  /// hold until the ticket is resolved — mirror both.
+  final bool cancellationRequested;
+
   final DateTime? date;
   final DateTime? dueDate;
   final String? notes;
@@ -336,7 +357,26 @@ class PortalDocument {
   final PartyPanel? payTo;
 
   bool get isPayable =>
-      balanceDue > 0 && status != 'paid' && status != 'cancelled';
+      balanceDue > 0 &&
+      status != 'paid' &&
+      status != 'cancelled' &&
+      !cancellationRequested;
+
+  /// Statuses `PortalDocumentController::requestCancellation` accepts. Anything
+  /// else is already paid, cancelled, or still a draft.
+  static const cancellableStatuses = {
+    'sent',
+    'overdue',
+    'partial',
+    'pending_approval',
+  };
+
+  /// Whether a cancellation request would be accepted — the caller must also
+  /// be a portal admin, which only the session knows.
+  bool get isCancellable =>
+      type == 'invoice' &&
+      !cancellationRequested &&
+      cancellableStatuses.contains(status);
 
   factory PortalDocument.fromJson(Map<String, dynamic> json) {
     final invoicedTo = json.object('invoiced_to');
@@ -355,8 +395,11 @@ class PortalDocument {
       lateFee: json.money('late_fee'),
       items: json.list('items', DocumentItem.fromJson),
       payments: json.list('payments', PaymentSummary.fromJson),
-      paymentMethods:
-          json.list('payment_methods', OfflinePaymentMethod.fromJson),
+      paymentMethods: json.list(
+        'payment_methods',
+        OfflinePaymentMethod.fromJson,
+      ),
+      cancellationRequested: json.flag('cancellation_requested'),
       date: json.date('date'),
       dueDate: json.date('due_date'),
       notes: json.str('notes'),
@@ -386,19 +429,25 @@ class DocumentItem {
   final DateTime? serviceTo;
 
   factory DocumentItem.fromJson(Map<String, dynamic> json) => DocumentItem(
-        id: json.id(),
-        description: json.strOr('description', '—'),
-        quantity: json.money('quantity', fallback: 1),
-        price: json.money('price'),
-        total: json.money('total'),
-        serviceFrom: json.date('service_from'),
-        serviceTo: json.date('service_to'),
-      );
+    id: json.id(),
+    description: json.strOr('description', '—'),
+    quantity: json.money('quantity', fallback: 1),
+    price: json.money('price'),
+    total: json.money('total'),
+    serviceFrom: json.date('service_from'),
+    serviceTo: json.date('service_to'),
+  );
 }
 
 /// The invoiced_to / pay_to blocks on the invoice view.
 class PartyPanel {
-  const PartyPanel({this.name, this.address, this.email, this.phone, this.taxId});
+  const PartyPanel({
+    this.name,
+    this.address,
+    this.email,
+    this.phone,
+    this.taxId,
+  });
 
   final String? name;
   final String? address;
@@ -407,12 +456,12 @@ class PartyPanel {
   final String? taxId;
 
   factory PartyPanel.fromJson(Map<String, dynamic> json) => PartyPanel(
-        name: json.str('name'),
-        address: json.str('address'),
-        email: json.str('email'),
-        phone: json.str('phone'),
-        taxId: json.str('tax_id'),
-      );
+    name: json.str('name'),
+    address: json.str('address'),
+    email: json.str('email'),
+    phone: json.str('phone'),
+    taxId: json.str('tax_id'),
+  );
 }
 
 /// One entry of `tenants.payment_methods` — free-form label + instructions.
@@ -550,11 +599,11 @@ class Statement {
   final double closingBalance;
 
   factory Statement.fromJson(Map<String, dynamic> json) => Statement(
-        entries: json.list('entries', StatementEntry.fromJson),
-        totalDebits: json.money('total_debits'),
-        totalCredits: json.money('total_credits'),
-        closingBalance: json.money('closing_balance'),
-      );
+    entries: json.list('entries', StatementEntry.fromJson),
+    totalDebits: json.money('total_debits'),
+    totalCredits: json.money('total_credits'),
+    closingBalance: json.money('closing_balance'),
+  );
 }
 
 class StatementEntry {
@@ -582,12 +631,12 @@ class StatementEntry {
   bool get isPayment => type == 'payment';
 
   factory StatementEntry.fromJson(Map<String, dynamic> json) => StatementEntry(
-        type: json.strOr('type', 'invoice'),
-        description: json.strOr('description', '—'),
-        debit: json.money('debit'),
-        credit: json.money('credit'),
-        balance: json.money('balance'),
-        date: json.date('date'),
-        reference: json.str('reference'),
-      );
+    type: json.strOr('type', 'invoice'),
+    description: json.strOr('description', '—'),
+    debit: json.money('debit'),
+    credit: json.money('credit'),
+    balance: json.money('balance'),
+    date: json.date('date'),
+    reference: json.str('reference'),
+  );
 }

@@ -11,9 +11,9 @@ class CatalogGroup {
   final List<CatalogProduct> products;
 
   factory CatalogGroup.fromJson(Map<String, dynamic> json) => CatalogGroup(
-        name: json.strOr('name', '—'),
-        products: json.list('products', CatalogProduct.fromJson),
-      );
+    name: json.strOr('name', '—'),
+    products: json.list('products', CatalogProduct.fromJson),
+  );
 }
 
 class CatalogProduct {
@@ -38,13 +38,13 @@ class CatalogProduct {
   final String? billingCycle;
 
   factory CatalogProduct.fromJson(Map<String, dynamic> json) => CatalogProduct(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        price: json.money('price'),
-        features: json.strings('features'),
-        needsDomain: json.flag('needs_domain'),
-        billingCycle: json.str('billing_cycle'),
-      );
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    price: json.money('price'),
+    features: json.strings('features'),
+    needsDomain: json.flag('needs_domain'),
+    billingCycle: json.str('billing_cycle'),
+  );
 }
 
 class TldPricing {
@@ -63,12 +63,12 @@ class TldPricing {
   final int yearsMax;
 
   factory TldPricing.fromJson(Map<String, dynamic> json) => TldPricing(
-        tld: json.strOr('tld', ''),
-        registerPrice: json.money('register_price'),
-        transferPrice: json.money('transfer_price'),
-        yearsMin: json.count('years_min', fallback: 1),
-        yearsMax: json.count('years_max', fallback: 10),
-      );
+    tld: json.strOr('tld', ''),
+    registerPrice: json.money('register_price'),
+    transferPrice: json.money('transfer_price'),
+    yearsMin: json.count('years_min', fallback: 1),
+    yearsMax: json.count('years_max', fallback: 10),
+  );
 }
 
 class DomainAddon {
@@ -87,12 +87,12 @@ class DomainAddon {
   final String? description;
 
   factory DomainAddon.fromJson(Map<String, dynamic> json) => DomainAddon(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        price: json.money('price'),
-        isFree: json.flag('is_free'),
-        description: json.str('description'),
-      );
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    price: json.money('price'),
+    isFree: json.flag('is_free'),
+    description: json.str('description'),
+  );
 }
 
 class ProductAddon {
@@ -111,12 +111,12 @@ class ProductAddon {
   final String? billingCycle;
 
   factory ProductAddon.fromJson(Map<String, dynamic> json) => ProductAddon(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        price: json.money('price'),
-        description: json.str('description'),
-        billingCycle: json.str('billing_cycle'),
-      );
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    price: json.money('price'),
+    description: json.str('description'),
+    billingCycle: json.str('billing_cycle'),
+  );
 }
 
 class ConfigOptionGroup {
@@ -159,27 +159,30 @@ class ConfigOption {
   final double? unitPrice;
 
   factory ConfigOption.fromJson(Map<String, dynamic> json) => ConfigOption(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        optionType: json.strOr('option_type', 'dropdown'),
-        choices: json.list('choices', ConfigChoice.fromJson),
-        unitPrice:
-            json['unit_price'] == null ? null : json.money('unit_price'),
-      );
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    optionType: json.strOr('option_type', 'dropdown'),
+    choices: json.list('choices', ConfigChoice.fromJson),
+    unitPrice: json['unit_price'] == null ? null : json.money('unit_price'),
+  );
 }
 
 class ConfigChoice {
-  const ConfigChoice({required this.id, required this.label, required this.price});
+  const ConfigChoice({
+    required this.id,
+    required this.label,
+    required this.price,
+  });
 
   final String id;
   final String label;
   final double price;
 
   factory ConfigChoice.fromJson(Map<String, dynamic> json) => ConfigChoice(
-        id: json.id(),
-        label: json.strOr('label', '—'),
-        price: json.money('price'),
-      );
+    id: json.id(),
+    label: json.strOr('label', '—'),
+    price: json.money('price'),
+  );
 }
 
 /// A config selection to submit with an order.
@@ -191,10 +194,10 @@ class ConfigSelection {
   final int? quantity;
 
   Map<String, dynamic> toJson() => {
-        'option_id': optionId,
-        if (choiceId != null) 'choice_id': choiceId,
-        if (quantity != null) 'quantity': quantity,
-      };
+    'option_id': optionId,
+    if (choiceId != null) 'choice_id': choiceId,
+    if (quantity != null) 'quantity': quantity,
+  };
 }
 
 class CouponResult {
@@ -211,11 +214,11 @@ class CouponResult {
   final String? description;
 
   factory CouponResult.fromJson(Map<String, dynamic> json) => CouponResult(
-        valid: json.flag('valid'),
-        discount: json.money('discount'),
-        message: json.str('message'),
-        description: json.str('description'),
-      );
+    valid: json.flag('valid'),
+    discount: json.money('discount'),
+    message: json.str('message'),
+    description: json.str('description'),
+  );
 }
 
 class DomainCheckResult {
@@ -264,6 +267,117 @@ class PlacedOrder {
       documentNumber: data.strOr('document_number', '—'),
       total: data.money('total'),
       subscriptionId: data.str('subscription_id'),
+      message: json.str('message'),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Reseller — GET /portal/reseller/status, GET /portal/reseller/domains/check
+// ---------------------------------------------------------------------------
+
+/// Membership state plus the wholesale price list — GET /portal/reseller/status.
+///
+/// Every portal client can read this: a non-member gets [isReseller] false and
+/// [membershipPrice] set, which is the pitch. [membershipPrice] is null when
+/// the tenant never created the "Reseller Membership" product, in which case
+/// there is nothing to sell and the screen says so.
+class ResellerStatus {
+  const ResellerStatus({
+    required this.isReseller,
+    required this.walletBalance,
+    required this.tlds,
+    this.expireDate,
+    this.membershipPrice,
+  });
+
+  final bool isReseller;
+
+  /// Wallet credit — reseller orders are paid from it and nothing else.
+  final double walletBalance;
+
+  final List<ResellerTld> tlds;
+  final DateTime? expireDate;
+  final double? membershipPrice;
+
+  factory ResellerStatus.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return ResellerStatus(
+      isReseller: data.flag('is_reseller'),
+      walletBalance: data.money('wallet_balance'),
+      tlds: data.list('tlds', ResellerTld.fromJson),
+      expireDate: data.date('expire_date'),
+      membershipPrice: data['membership_price'] == null
+          ? null
+          : data.money('membership_price'),
+    );
+  }
+
+  /// The wholesale price row for `example.co.tz` → the `.co.tz` entry, or null
+  /// when this tenant offers no reseller price for that extension.
+  ResellerTld? pricingFor(String domainName) {
+    final parts = domainName.split('.');
+    if (parts.length < 2) return null;
+    final tld = parts.sublist(1).join('.').toLowerCase();
+    for (final row in tlds) {
+      if (row.tld.toLowerCase() == tld) return row;
+    }
+    return null;
+  }
+}
+
+/// One TLD at wholesale cost.
+class ResellerTld {
+  const ResellerTld({
+    required this.tld,
+    required this.resellerPrice,
+    required this.yearsMin,
+    required this.yearsMax,
+  });
+
+  final String tld;
+  final double resellerPrice;
+  final int yearsMin;
+  final int yearsMax;
+
+  factory ResellerTld.fromJson(Map<String, dynamic> json) => ResellerTld(
+    tld: json.strOr('tld', ''),
+    resellerPrice: json.money('reseller_price'),
+    yearsMin: json.count('years_min', fallback: 1),
+    yearsMax: json.count('years_max', fallback: 10),
+  );
+}
+
+/// Availability at wholesale pricing — GET /portal/reseller/domains/check.
+///
+/// [pricing] is null when the extension carries no reseller price; the backend
+/// then sends an explanatory [message] instead, which is safe to show verbatim.
+class ResellerCheckResult {
+  const ResellerCheckResult({
+    required this.name,
+    required this.available,
+    this.pricing,
+    this.message,
+  });
+
+  final String name;
+  final bool available;
+  final ResellerTld? pricing;
+  final String? message;
+
+  factory ResellerCheckResult.fromJson(Map<String, dynamic> json) {
+    final pricing = json.object('pricing');
+    return ResellerCheckResult(
+      name: json.strOr('name', ''),
+      available: json.flag('available'),
+      // The check response omits `tld`; carry the name's own extension so the
+      // row is self-describing if it is ever rendered on its own.
+      pricing: pricing == null
+          ? null
+          : ResellerTld.fromJson({
+              'tld': json.strOr('name', '').split('.').skip(1).join('.'),
+              ...pricing,
+            }),
       message: json.str('message'),
     );
   }

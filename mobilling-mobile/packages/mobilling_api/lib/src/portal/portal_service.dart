@@ -52,8 +52,7 @@ class PortalService {
   /// GET /portal/documents/{id} — full invoice with items, payments and the
   /// invoiced_to / pay_to panels.
   Future<PortalDocument> document(String id) async {
-    final body =
-        await _api.get<Map<String, dynamic>>('/portal/documents/$id');
+    final body = await _api.get<Map<String, dynamic>>('/portal/documents/$id');
     final data = body['data'];
     return PortalDocument.fromJson(
       data is Map ? Map<String, dynamic>.from(data) : body,
@@ -63,6 +62,23 @@ class PortalService {
   /// POST /portal/documents/{id}/resend — email the document to the client.
   Future<void> resendDocument(String id) =>
       _api.post<dynamic>('/portal/documents/$id/resend');
+
+  /// POST /portal/documents/{id}/request-cancellation — opens a billing ticket
+  /// for staff; nothing is cancelled automatically.
+  ///
+  /// Portal admins only (403 for viewers), and only while the invoice is still
+  /// open — the backend answers 422 for a settled invoice or a request that is
+  /// already pending. Returns the message naming the ticket it created.
+  Future<String?> requestDocumentCancellation(
+    String id, {
+    required String reason,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/portal/documents/$id/request-cancellation',
+      body: {'reason': reason},
+    );
+    return body['message']?.toString();
+  }
 
   /// GET /portal/payments — paginated payment history.
   Future<Paginated<PaymentSummary>> payments({
@@ -181,11 +197,9 @@ class PortalService {
     required String message,
     List<String> attachmentPaths = const [],
   }) async {
-    final body = await _postWithAttachments(
-      '/portal/tickets/$id/reply',
-      {'message': message},
-      attachmentPaths,
-    );
+    final body = await _postWithAttachments('/portal/tickets/$id/reply', {
+      'message': message,
+    }, attachmentPaths);
     return PortalTicket.fromJson(_unwrap(body));
   }
 
@@ -199,8 +213,7 @@ class PortalService {
 
   /// GET /portal/announcements — the tenant's published announcements.
   Future<List<Announcement>> announcements() async {
-    final body =
-        await _api.get<dynamic>('/portal/announcements');
+    final body = await _api.get<dynamic>('/portal/announcements');
     return Paginated.fromJson(body, Announcement.fromJson).items;
   }
 
@@ -216,8 +229,7 @@ class PortalService {
 
   /// GET /portal/knowledgebase/{slug} — a full article (increments views).
   Future<KbArticle> kbArticle(String slug) async {
-    final body =
-        await _api.get<dynamic>('/portal/knowledgebase/$slug');
+    final body = await _api.get<dynamic>('/portal/knowledgebase/$slug');
     return KbArticle.fromJson(_unwrap(body));
   }
 
@@ -227,15 +239,15 @@ class PortalService {
 
   /// GET /portal/subscriptions — everything except cancelled ones.
   Future<List<ClientSubscription>> subscriptions() async {
-    final body =
-        await _api.get<dynamic>('/portal/subscriptions');
+    final body = await _api.get<dynamic>('/portal/subscriptions');
     return Paginated.fromJson(body, ClientSubscription.fromJson).items;
   }
 
   /// POST /portal/subscriptions/{id}/generate-invoice — bill now.
   Future<CreatedInvoiceRef> generateSubscriptionInvoice(String id) async {
     final body = await _api.post<Map<String, dynamic>>(
-        '/portal/subscriptions/$id/generate-invoice');
+      '/portal/subscriptions/$id/generate-invoice',
+    );
     return CreatedInvoiceRef.fromJson(body);
   }
 
@@ -253,8 +265,11 @@ class PortalService {
 
   /// POST /portal/hosting/{id}/sso — a one-time cPanel/webmail login URL.
   /// [goto] deep-links inside cPanel (values from HostingDetail.shortcuts).
-  Future<String> hostingSsoUrl(String id,
-      {String service = 'cpanel', String? goto}) async {
+  Future<String> hostingSsoUrl(
+    String id, {
+    String service = 'cpanel',
+    String? goto,
+  }) async {
     final body = await _api.post<Map<String, dynamic>>(
       '/portal/hosting/$id/sso',
       body: {'service': service, 'goto': ?goto},
@@ -268,8 +283,10 @@ class PortalService {
 
   /// POST /portal/hosting/{id}/change-password.
   Future<void> changeHostingPassword(String id, String password) =>
-      _api.post<dynamic>('/portal/hosting/$id/change-password',
-          body: {'password': password, 'password_confirmation': password});
+      _api.post<dynamic>(
+        '/portal/hosting/$id/change-password',
+        body: {'password': password, 'password_confirmation': password},
+      );
 
   /// POST /portal/hosting/{id}/request-cancellation — opens a staff ticket.
   Future<String?> requestHostingCancellation(
@@ -286,8 +303,9 @@ class PortalService {
 
   /// GET /portal/hosting/{id}/upgrade-options.
   Future<HostingUpgradeOptions> hostingUpgradeOptions(String id) async {
-    final body = await _api
-        .get<Map<String, dynamic>>('/portal/hosting/$id/upgrade-options');
+    final body = await _api.get<Map<String, dynamic>>(
+      '/portal/hosting/$id/upgrade-options',
+    );
     return HostingUpgradeOptions.fromJson(_unwrap(body));
   }
 
@@ -324,27 +342,104 @@ class PortalService {
 
   /// POST /portal/domains/{id}/epp-code — the transfer auth code.
   Future<String> domainEppCode(String id) async {
-    final body =
-        await _api.post<Map<String, dynamic>>('/portal/domains/$id/epp-code');
+    final body = await _api.post<Map<String, dynamic>>(
+      '/portal/domains/$id/epp-code',
+    );
     return body['auth_info']?.toString() ?? '';
   }
 
   /// GET /portal/domains/{id}/nameservers.
   Future<DomainNameservers> domainNameservers(String id) async {
-    final body = await _api
-        .get<Map<String, dynamic>>('/portal/domains/$id/nameservers');
+    final body = await _api.get<Map<String, dynamic>>(
+      '/portal/domains/$id/nameservers',
+    );
     return DomainNameservers.fromJson(_unwrap(body));
   }
 
   /// PUT /portal/domains/{id}/nameservers.
   Future<void> updateDomainNameservers(String id, List<String> nameservers) =>
-      _api.put<dynamic>('/portal/domains/$id/nameservers',
-          body: {'nameservers': nameservers});
+      _api.put<dynamic>(
+        '/portal/domains/$id/nameservers',
+        body: {'nameservers': nameservers},
+      );
 
   /// PUT /portal/domains/{id}/auto-renew — portal admins only (403 otherwise).
-  Future<void> setDomainAutoRenew(String id, bool enabled) =>
-      _api.put<dynamic>('/portal/domains/$id/auto-renew',
-          body: {'enabled': enabled});
+  Future<void> setDomainAutoRenew(String id, bool enabled) => _api.put<dynamic>(
+    '/portal/domains/$id/auto-renew',
+    body: {'enabled': enabled},
+  );
+
+  // -------------------------------------------------------------------------
+  // Reseller — wholesale domain pricing, paid from the wallet
+  // -------------------------------------------------------------------------
+
+  /// GET /portal/reseller/status — membership, wallet balance and the
+  /// wholesale price list. Open to every portal client: a non-member reads it
+  /// to decide whether to join.
+  Future<ResellerStatus> resellerStatus() async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/portal/reseller/status',
+    );
+    return ResellerStatus.fromJson(body);
+  }
+
+  /// POST /portal/reseller/subscribe — raise the annual membership invoice.
+  ///
+  /// Membership activates when that invoice is paid, by any means. Calling
+  /// twice reuses the pending invoice rather than raising a second one, so a
+  /// double tap is harmless; 422 means the client is already a reseller or the
+  /// tenant sells no membership product.
+  Future<CreatedInvoiceRef> subscribeReseller() async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/portal/reseller/subscribe',
+    );
+    return CreatedInvoiceRef.fromJson(body);
+  }
+
+  /// GET /portal/reseller/domains/check — availability at wholesale pricing.
+  /// 403 unless the client holds an active membership.
+  Future<ResellerCheckResult> checkResellerDomain(String name) async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/portal/reseller/domains/check',
+      query: {'name': name.toLowerCase().trim()},
+    );
+    return ResellerCheckResult.fromJson(body);
+  }
+
+  /// POST /portal/reseller/domains/order — register or transfer at wholesale,
+  /// settled from the wallet in the same request. There is no invoice to pay
+  /// afterwards; an insufficient balance comes back as a 422 naming the
+  /// shortfall.
+  Future<CreatedInvoiceRef> orderResellerDomain({
+    required String name,
+    required int years,
+    required String action, // register | transfer
+    String? authInfo,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/portal/reseller/domains/order',
+      body: {
+        'name': name.toLowerCase().trim(),
+        'years': years,
+        'action': action,
+        'auth_info': ?authInfo,
+      },
+    );
+    return CreatedInvoiceRef.fromJson(body);
+  }
+
+  /// POST /portal/reseller/domains/{id}/renew — wholesale renewal, also paid
+  /// from the wallet immediately.
+  Future<CreatedInvoiceRef> renewResellerDomain(
+    String domainId, {
+    int years = 1,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/portal/reseller/domains/$domainId/renew',
+      body: {'years': years},
+    );
+    return CreatedInvoiceRef.fromJson(body);
+  }
 
   // -------------------------------------------------------------------------
   // Account: profile, portal users, credit
@@ -357,20 +452,21 @@ class PortalService {
   }
 
   /// PUT /portal/profile — name and phone are the only self-editable fields.
-  Future<void> updateProfile({String? name, String? phone}) =>
-      _api.put<dynamic>('/portal/profile',
-          body: {'name': ?name, 'phone': ?phone});
+  Future<void> updateProfile({String? name, String? phone}) => _api
+      .put<dynamic>('/portal/profile', body: {'name': ?name, 'phone': ?phone});
 
   /// POST /portal/profile/change-password.
   Future<void> changePassword({
     required String currentPassword,
     required String newPassword,
-  }) =>
-      _api.post<dynamic>('/portal/profile/change-password', body: {
-        'current_password': currentPassword,
-        'password': newPassword,
-        'password_confirmation': newPassword,
-      });
+  }) => _api.post<dynamic>(
+    '/portal/profile/change-password',
+    body: {
+      'current_password': currentPassword,
+      'password': newPassword,
+      'password_confirmation': newPassword,
+    },
+  );
 
   /// GET /portal/users — portal admins only (403 otherwise).
   Future<List<PortalUser>> portalUsers() async {
@@ -386,13 +482,16 @@ class PortalService {
     required String role, // admin | viewer
     String? phone,
   }) async {
-    final body = await _api.post<Map<String, dynamic>>('/portal/users', body: {
-      'name': name,
-      'email': email,
-      'password': password,
-      'role': role,
-      'phone': ?phone,
-    });
+    final body = await _api.post<Map<String, dynamic>>(
+      '/portal/users',
+      body: {
+        'name': name,
+        'email': email,
+        'password': password,
+        'role': role,
+        'phone': ?phone,
+      },
+    );
     return PortalUser.fromJson(_unwrap(body));
   }
 
@@ -403,13 +502,15 @@ class PortalService {
     String? phone,
     String? role,
     bool? isActive,
-  }) =>
-      _api.put<dynamic>('/portal/users/$id', body: {
-        'name': ?name,
-        'phone': ?phone,
-        'role': ?role,
-        'is_active': ?isActive,
-      });
+  }) => _api.put<dynamic>(
+    '/portal/users/$id',
+    body: {
+      'name': ?name,
+      'phone': ?phone,
+      'role': ?role,
+      'is_active': ?isActive,
+    },
+  );
 
   /// DELETE /portal/users/{id} — cannot delete yourself (422).
   Future<void> deletePortalUser(String id) =>
@@ -433,8 +534,9 @@ class PortalService {
   /// POST /portal/documents/{id}/apply-credit — settle an invoice (fully or
   /// partly) from the wallet.
   Future<String?> applyCreditToInvoice(String documentId) async {
-    final body = await _api
-        .post<Map<String, dynamic>>('/portal/documents/$documentId/apply-credit');
+    final body = await _api.post<Map<String, dynamic>>(
+      '/portal/documents/$documentId/apply-credit',
+    );
     return body['message']?.toString();
   }
 
@@ -446,8 +548,10 @@ class PortalService {
   /// calls (token refresh, re-login) upsert; a token registered by a previous
   /// account on the same phone moves to the current one.
   Future<void> registerDeviceToken(String token, {String? platform}) =>
-      _api.post<dynamic>('/portal/device-tokens',
-          body: {'token': token, 'platform': ?platform});
+      _api.post<dynamic>(
+        '/portal/device-tokens',
+        body: {'token': token, 'platform': ?platform},
+      );
 
   /// DELETE /portal/device-tokens — call on sign-out so the next owner of
   /// this account doesn't keep receiving pushes on this phone.
@@ -472,22 +576,23 @@ class PortalService {
 
   /// GET /portal/domain-addons — addons offered with a bundled domain.
   Future<List<DomainAddon>> domainAddons() async {
-    final body =
-        await _api.get<dynamic>('/portal/domain-addons');
+    final body = await _api.get<dynamic>('/portal/domain-addons');
     return Paginated.fromJson(body, DomainAddon.fromJson).items;
   }
 
   /// GET /portal/products/{id}/addons.
   Future<List<ProductAddon>> productAddons(String productId) async {
-    final body = await _api
-        .get<Map<String, dynamic>>('/portal/products/$productId/addons');
+    final body = await _api.get<Map<String, dynamic>>(
+      '/portal/products/$productId/addons',
+    );
     return Paginated.fromJson(body, ProductAddon.fromJson).items;
   }
 
   /// GET /portal/products/{id}/config-options.
   Future<List<ConfigOptionGroup>> configOptions(String productId) async {
     final body = await _api.get<dynamic>(
-        '/portal/products/$productId/config-options');
+      '/portal/products/$productId/config-options',
+    );
     return Paginated.fromJson(body, ConfigOptionGroup.fromJson).items;
   }
 
@@ -588,10 +693,9 @@ class PortalService {
 
     final form = FormData.fromMap(fields);
     for (final filePath in attachmentPaths) {
-      form.files.add(MapEntry(
-        'attachments[]',
-        await MultipartFile.fromFile(filePath),
-      ));
+      form.files.add(
+        MapEntry('attachments[]', await MultipartFile.fromFile(filePath)),
+      );
     }
 
     try {

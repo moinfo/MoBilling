@@ -49,18 +49,24 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
               else ...[
-                Icon(Icons.cloud_off_outlined,
-                    size: 32, color: theme.colorScheme.onSurfaceVariant),
+                Icon(
+                  Icons.cloud_off_outlined,
+                  size: 32,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
                 const SizedBox(height: Spacing.sm),
-                Text('Could not reach the server',
-                    style: theme.textTheme.titleMedium),
+                Text(
+                  'Could not reach the server',
+                  style: theme.textTheme.titleMedium,
+                ),
                 const SizedBox(height: Spacing.xs),
                 Text(
                   session.restoreError ??
                       'Your sign-in could not be checked. Connect and try '
                           'again, or sign in afresh.',
-                  style: theme.textTheme.bodySmall
-                      ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: Spacing.lg),

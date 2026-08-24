@@ -287,10 +287,80 @@ class _DomainSearchScreenState extends ConsumerState<DomainSearchScreen> {
               ),
             ),
           ],
+
+          // What is on offer. Without it the only way to learn that .co.tz is
+          // sold and .io is not is to guess a name and read the rejection.
+          const SizedBox(height: Spacing.lg),
+          _TldPriceList(onPick: _useTld),
           const SizedBox(height: Spacing.xl),
         ],
       ),
     );
   }
+
+  /// Tapping an extension fills it in behind whatever has been typed, so the
+  /// price list doubles as the extension picker.
+  void _useTld(String tld) {
+    final typed = _name.text.trim().toLowerCase();
+    final stem = typed.contains('.') ? typed.split('.').first : typed;
+    _name.text = stem.isEmpty ? '.$tld' : '$stem.$tld';
+    _name.selection = TextSelection.collapsed(offset: _name.text.length);
+    setState(() {});
+  }
 }
 
+/// The tenant's retail TLD price list — GET /portal/domain-tlds.
+class _TldPriceList extends ConsumerWidget {
+  const _TldPriceList({required this.onPick});
+
+  final void Function(String tld) onPick;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final tlds = ref.watch(portalTldsProvider).valueOrNull ?? const [];
+    if (tlds.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader('Extensions we offer'),
+        const SizedBox(height: Spacing.sm),
+        Card(
+          child: Column(
+            children: [
+              for (final (i, tld) in tlds.indexed) ...[
+                if (i > 0) const Divider(height: 1),
+                ListTile(
+                  dense: true,
+                  title: Text(
+                    '.${tld.tld}',
+                    style: Type.mono(
+                      13,
+                      weight: FontWeight.w500,
+                      tracking: 0,
+                      color: scheme.onSurface,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'TRANSFER ${Formatting.currency(tld.transferPrice)}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: Money(
+                    tld.registerPrice,
+                    scale: MoneyScale.dense,
+                    showCode: false,
+                  ),
+                  onTap: () => onPick(tld.tld),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

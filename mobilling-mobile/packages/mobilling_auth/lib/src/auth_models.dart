@@ -45,18 +45,18 @@ class AuthTenant {
   final bool isSelfHosted;
 
   factory AuthTenant.fromJson(Map<String, dynamic> json) => AuthTenant(
-        id: json['id'].toString(),
-        name: json['name']?.toString() ?? 'MoBilling',
-        logoUrl: json['logo_url']?.toString(),
-        website: json['website']?.toString(),
-        currency: json['currency']?.toString(),
-        isSelfHosted: switch (json['is_self_hosted']) {
-          bool v => v,
-          num v => v != 0,
-          '1' || 'true' => true,
-          _ => false,
-        },
-      );
+    id: json['id'].toString(),
+    name: json['name']?.toString() ?? 'MoBilling',
+    logoUrl: json['logo_url']?.toString(),
+    website: json['website']?.toString(),
+    currency: json['currency']?.toString(),
+    isSelfHosted: switch (json['is_self_hosted']) {
+      bool v => v,
+      num v => v != 0,
+      '1' || 'true' => true,
+      _ => false,
+    },
+  );
 }
 
 /// The signed-in principal. Covers both `ClientUser` and staff `User`, since
@@ -96,8 +96,7 @@ class AuthUser {
   /// Checked by role rather than by permissions: the login response gives a
   /// super admin `['*']`, but so could a fully-privileged tenant admin, and
   /// only the real super admin has no tenant and reaches `/admin/*`.
-  bool get isSuperAdmin =>
-      userType == UserType.tenant && role == 'super_admin';
+  bool get isSuperAdmin => userType == UserType.tenant && role == 'super_admin';
 
   factory AuthUser.fromJson(
     Map<String, dynamic> json, {
@@ -169,10 +168,11 @@ class OtpChallenge {
   final String? clientName;
 
   factory OtpChallenge.fromJson(Map<String, dynamic> json) => OtpChallenge(
-        message: json['message']?.toString() ??
-            'We sent a verification code to your email.',
-        clientName: json['client_name']?.toString(),
-      );
+    message:
+        json['message']?.toString() ??
+        'We sent a verification code to your email.',
+    clientName: json['client_name']?.toString(),
+  );
 }
 
 /// What a sign-in attempt produced: either a session, or an OTP challenge.
@@ -188,4 +188,21 @@ class LoginSucceeded extends LoginOutcome {
 class LoginNeedsOtp extends LoginOutcome {
   const LoginNeedsOtp(this.challenge);
   final OtpChallenge challenge;
+}
+
+/// The password was right, but the account has a second factor.
+///
+/// `/auth/login` answers 200 with `requires_2fa` and a short-lived
+/// `challenge_id` instead of a session; the session only exists after
+/// `/auth/2fa/verify-login` accepts a code. Treating this as an outcome
+/// rather than an error is what keeps the caller from mistaking a correct
+/// password for a failed one.
+class LoginNeedsTwoFactor extends LoginOutcome {
+  const LoginNeedsTwoFactor({required this.challengeId, this.message});
+
+  final String challengeId;
+
+  /// The server's own prompt — it knows whether this is an authenticator
+  /// app or something else.
+  final String? message;
 }

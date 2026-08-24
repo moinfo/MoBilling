@@ -20,13 +20,13 @@ class SessionExpiredSheet extends ConsumerStatefulWidget {
   /// Presented non-dismissibly: the session is unusable until resolved one way
   /// or the other, and a stray backdrop tap should not decide that.
   static Future<void> show(BuildContext context) => showModalBottomSheet<void>(
-        context: context,
-        isDismissible: false,
-        enableDrag: false,
-        isScrollControlled: true,
-        shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
-        builder: (_) => const SessionExpiredSheet(),
-      );
+    context: context,
+    isDismissible: false,
+    enableDrag: false,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
+    builder: (_) => const SessionExpiredSheet(),
+  );
 
   @override
   ConsumerState<SessionExpiredSheet> createState() =>
@@ -71,8 +71,10 @@ class _SessionExpiredSheetState extends ConsumerState<SessionExpiredSheet> {
         Navigator.of(context).pop();
       } else {
         // A 449 here would mean the portal account no longer exists at all.
-        setState(() =>
-            _error = 'This account is no longer active. Please sign in again.');
+        setState(
+          () => _error =
+              'This account is no longer active. Please sign in again.',
+        );
       }
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -105,19 +107,26 @@ class _SessionExpiredSheetState extends ConsumerState<SessionExpiredSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(Icons.lock_clock_outlined,
-              size: 36, color: theme.colorScheme.primary),
+          Icon(
+            Icons.lock_clock_outlined,
+            size: 36,
+            color: theme.colorScheme.primary,
+          ),
           const SizedBox(height: Spacing.md),
-          Text('Session ended',
-              style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
+          Text(
+            'Session ended',
+            style: theme.textTheme.titleLarge,
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: Spacing.sm),
           Text(
             identifier.isEmpty
                 ? 'Sign in again to continue. Your work on this screen is kept.'
                 : 'Sign in again as $identifier to continue. '
-                    'Your work on this screen is kept.',
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                      'Your work on this screen is kept.',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: Spacing.lg),
@@ -146,7 +155,8 @@ class _SessionExpiredSheetState extends ConsumerState<SessionExpiredSheet> {
                 ? const SizedBox(
                     width: 20,
                     height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2))
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
                 : const Text('Continue'),
           ),
           TextButton(

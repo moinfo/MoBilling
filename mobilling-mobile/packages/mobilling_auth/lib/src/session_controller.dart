@@ -46,8 +46,8 @@ class SessionController extends ChangeNotifier {
   SessionController({
     required AuthService authService,
     required TokenStore tokenStore,
-  })  : _auth = authService,
-        _tokens = tokenStore;
+  }) : _auth = authService,
+       _tokens = tokenStore;
 
   final AuthService _auth;
   final TokenStore _tokens;
@@ -144,6 +144,22 @@ class SessionController extends ChangeNotifier {
     );
     if (outcome is LoginSucceeded) await _adopt(outcome.session);
     return outcome;
+  }
+
+  /// Finish a login that stopped at the second factor. Adopting the session
+  /// here rather than in the screen keeps every path into a signed-in state
+  /// going through one place.
+  Future<void> completeTwoFactorLogin({
+    required String challengeId,
+    String? code,
+    String? recoveryCode,
+  }) async {
+    final session = await _auth.verifyTwoFactorLogin(
+      challengeId: challengeId,
+      code: code,
+      recoveryCode: recoveryCode,
+    );
+    await _adopt(session);
   }
 
   Future<void> register({

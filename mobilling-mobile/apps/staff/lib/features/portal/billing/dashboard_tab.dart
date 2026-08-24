@@ -509,7 +509,10 @@ class InvoiceRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(invoice.documentNumber, style: theme.textTheme.titleSmall),
+                  Text(
+                    invoice.documentNumber,
+                    style: theme.textTheme.titleSmall,
+                  ),
                   if (invoice.description != null) ...[
                     const SizedBox(height: 2),
                     Text(
@@ -524,20 +527,30 @@ class InvoiceRow extends StatelessWidget {
                   const SizedBox(height: Spacing.xs),
                   Row(
                     children: [
-                      if (chipStatus != null) ...[
+                      if (chipStatus != null &&
+                          !invoice.cancellationRequested) ...[
                         StatusChip(chipStatus, dense: true),
                         const SizedBox(width: Spacing.sm),
                       ],
                       Flexible(
                         child: Text(
-                          (unpaid
-                                  ? Formatting.dueDescription(invoice.dueDate)
-                                  : Formatting.date(invoice.date))
-                              .toUpperCase(),
+                          // A pending cancellation puts payment on hold, so
+                          // "overdue by 5 days" would be telling the client to
+                          // do something we've asked them not to do.
+                          invoice.cancellationRequested
+                              ? 'CANCELLATION PENDING'
+                              : (unpaid
+                                        ? Formatting.dueDescription(
+                                            invoice.dueDate,
+                                          )
+                                        : Formatting.date(invoice.date))
+                                    .toUpperCase(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.labelSmall?.copyWith(
-                            color: late
+                            color: invoice.cancellationRequested
+                                ? status.attention
+                                : late
                                 ? status.overdue
                                 : theme.colorScheme.onSurfaceVariant,
                           ),

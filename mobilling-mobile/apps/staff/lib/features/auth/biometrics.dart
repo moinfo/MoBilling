@@ -5,7 +5,8 @@ import 'package:local_auth/local_auth.dart';
 /// Device biometrics (Face ID, Touch ID, Android fingerprint/face) behind a
 /// small surface the sign-in screen can reason about.
 class Biometrics {
-  Biometrics([LocalAuthentication? auth]) : _auth = auth ?? LocalAuthentication();
+  Biometrics([LocalAuthentication? auth])
+    : _auth = auth ?? LocalAuthentication();
 
   final LocalAuthentication _auth;
 
@@ -54,5 +55,6 @@ class Biometrics {
   }
 }
 
-final Provider<Biometrics> biometricsProvider =
-    Provider<Biometrics>((ref) => Biometrics());
+final Provider<Biometrics> biometricsProvider = Provider<Biometrics>(
+  (ref) => Biometrics(),
+);

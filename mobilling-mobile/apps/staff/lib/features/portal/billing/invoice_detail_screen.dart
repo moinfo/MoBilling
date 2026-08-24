@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
+import '../../../providers.dart';
 import '../../common/share_pdf.dart';
 import '../portal_providers.dart';
+import '../portal_sheet.dart';
 import 'pay_invoice_sheet.dart';
 
 /// Full invoice view — items, totals, payments, parties and how to pay.
@@ -20,6 +22,12 @@ class PortalInvoiceDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final document = ref.watch(portalDocumentProvider(documentId));
     final payable = document.valueOrNull?.isPayable ?? false;
+
+    // Cancellation opens a billing ticket that commits the company to a
+    // conversation, so the API restricts it to portal admins — a viewer must
+    // not see an action that would only answer 403.
+    final isAdmin = ref.watch(currentUserProvider)?.isPortalAdmin ?? false;
+    final canCancel = isAdmin && (document.valueOrNull?.isCancellable ?? false);
 
     return Scaffold(
       appBar: ShellTopBar(
@@ -59,7 +67,12 @@ class PortalInvoiceDetailScreen extends ConsumerWidget {
           actionLabel: 'Try again',
           onAction: () => ref.invalidate(portalDocumentProvider(documentId)),
         ),
-        data: (doc) => _InvoiceBody(doc: doc),
+        data: (doc) => _InvoiceBody(
+          doc: doc,
+          onRequestCancellation: canCancel
+              ? () => _requestCancellation(context, ref, doc)
+              : null,
+        ),
       ),
       bottomNavigationBar: !payable
           ? null
@@ -99,6 +112,87 @@ class PortalInvoiceDetailScreen extends ConsumerWidget {
       // the status chip, totals and dashboard all reflect it.
       ref.invalidate(portalDocumentProvider(documentId));
       ref.invalidate(portalDashboardProvider);
+    }
+  }
+
+  /// Ask staff to cancel this invoice. Nothing is cancelled here — the API
+  /// raises a billing ticket, so the sheet says so and the confirm button
+  /// carries the verb rather than "OK".
+  Future<void> _requestCancellation(
+    BuildContext context,
+    WidgetRef ref,
+    PortalDocument doc,
+  ) async {
+    final reason = TextEditingController();
+    final scheme = Theme.of(context).colorScheme;
+    String? fieldError;
+
+    final confirmed = await showPortalSheet<bool>(
+      context,
+      eyebrow: doc.documentNumber,
+      title: 'Request cancellation',
+      builder: (context, setSheetState) => Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'This opens a support ticket for our billing team — the invoice '
+            'is not cancelled automatically, and payment is on hold until '
+            'they answer.',
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant),
+          ),
+          const SizedBox(height: Spacing.md),
+          FieldLabel('Why are you cancelling?'),
+          const SizedBox(height: Spacing.sm),
+          TextField(
+            controller: reason,
+            maxLines: 3,
+            autofocus: true,
+            textCapitalization: TextCapitalization.sentences,
+            onChanged: (_) {
+              if (fieldError != null) setSheetState(() => fieldError = null);
+            },
+            decoration: InputDecoration(
+              hintText: 'Tell us why this invoice should be cancelled',
+              errorText: fieldError,
+            ),
+          ),
+          const SizedBox(height: Spacing.lg),
+          PrimaryButton(
+            label: 'Request cancellation',
+            onPressed: () {
+              if (reason.text.trim().isEmpty) {
+                setSheetState(() => fieldError = 'Give a reason.');
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+          ),
+          const SizedBox(height: Spacing.sm),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Back'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final message = await ref
+          .read(portalServiceProvider)
+          .requestDocumentCancellation(documentId, reason: reason.text.trim());
+      // The invoice now carries cancellation_requested, which hides the pay
+      // bar — refetch rather than leave a stale, payable-looking screen.
+      ref.invalidate(portalDocumentProvider(documentId));
+      ref.invalidate(portalTicketsProvider);
+      messenger.showSnackBar(
+        SnackBar(content: Text(message ?? 'Cancellation request submitted.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
 
@@ -178,19 +272,55 @@ class _PayBar extends ConsumerWidget {
 }
 
 class _InvoiceBody extends StatelessWidget {
-  const _InvoiceBody({required this.doc});
+  const _InvoiceBody({required this.doc, this.onRequestCancellation});
 
   final PortalDocument doc;
+
+  /// Null for viewers, and for invoices the API would refuse to cancel.
+  final VoidCallback? onRequestCancellation;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
 
     return ListView(
       padding: const EdgeInsets.all(Spacing.md),
       children: [
         Reveal(child: _HeroFigure(doc: doc)),
         const SizedBox(height: Spacing.lg),
+
+        if (doc.cancellationRequested) ...[
+          Card(
+            color: Color.alphaBlend(
+              context.statusColors.attention.withValues(alpha: 0.08),
+              theme.cardTheme.color ?? scheme.surface,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(Spacing.md),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    Icons.pending_actions_outlined,
+                    size: 20,
+                    color: context.statusColors.attention,
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: Text(
+                      'A cancellation request for this invoice is with our '
+                      'billing team — payment is on hold until it is '
+                      'resolved. Check your tickets for updates.',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: Spacing.lg),
+        ],
 
         // Line items.
         const SectionHeader('Items'),
@@ -301,6 +431,28 @@ class _InvoiceBody extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(Spacing.md),
               child: Text(doc.notes!, style: theme.textTheme.bodyMedium),
+            ),
+          ),
+        ],
+
+        if (onRequestCancellation != null) ...[
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Manage'),
+          const SizedBox(height: Spacing.sm),
+          Card(
+            child: ListTile(
+              leading: Icon(Icons.cancel_outlined, color: scheme.error),
+              title: Text(
+                'Request cancellation',
+                style: TextStyle(color: scheme.error),
+              ),
+              subtitle: Text(
+                'OPENS A BILLING TICKET',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+              onTap: onRequestCancellation,
             ),
           ),
         ],

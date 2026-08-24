@@ -10,6 +10,8 @@ import '../../config/theme_mode.dart';
 import '../../providers.dart';
 import '../portal/portal_routes.dart';
 import 'biometrics.dart';
+import 'forgot_password_screen.dart';
+import 'two_factor_login_sheet.dart';
 
 /// The single sign-in for all three audiences.
 ///
@@ -97,12 +99,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(SnackBar(
-      content: Text(!_biometricsAvailable
-          ? 'No fingerprint or Face ID is set up on this phone.'
-          : 'Sign in with your password first — you’ll be offered '
-              '$_biometricLabel sign-in for next time.'),
-    ));
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          !_biometricsAvailable
+              ? 'No fingerprint or Face ID is set up on this phone.'
+              : 'Sign in with your password first — you’ll be offered '
+                    '$_biometricLabel sign-in for next time.',
+        ),
+      ),
+    );
   }
 
   /// Once, after a password sign-in on a capable device: offer to lock the
@@ -139,6 +145,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (enable ?? false) await session.setBiometricLock(true);
   }
 
+  /// Recovery carries whatever identifier is already typed, so the first
+  /// step is usually already filled in.
+  void _forgotPassword() {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ForgotPasswordScreen(
+          identifier: _identifier.text.trim().isEmpty
+              ? null
+              : _identifier.text.trim(),
+        ),
+      ),
+    );
+  }
+
   /// How far the form card rides up over the ink panel.
   static const double _overlap = 28;
 
@@ -171,6 +192,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           // No navigation here — the router redirects off the session, and
           // picks the shell from user_type + role.
           await _offerBiometrics();
+        case LoginNeedsTwoFactor(:final challengeId, :final message):
+          // The password was right; the session does not exist until the
+          // second factor is accepted, so nothing is adopted until then.
+          final signedIn = await TwoFactorLoginSheet.show(
+            context,
+            challengeId: challengeId,
+            message: message,
+          );
+          if (signedIn && mounted) await _offerBiometrics();
         case LoginNeedsOtp(:final challenge):
           // 449: a known client without a portal login. The code is already
           // sent, so go straight to the code step.
@@ -274,6 +304,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       onToggleObscure: () =>
                           setState(() => _obscure = !_obscure),
                       onSubmit: _submit,
+                      onForgotPassword: _forgotPassword,
                       onEdited: _formError == null
                           ? null
                           : () => setState(() => _formError = null),
@@ -364,6 +395,7 @@ class _FormCard extends StatelessWidget {
     required this.onToggleObscure,
     required this.onSubmit,
     required this.onEdited,
+    required this.onForgotPassword,
     this.biometric,
   });
 
@@ -379,6 +411,9 @@ class _FormCard extends StatelessWidget {
   final VoidCallback onToggleObscure;
   final VoidCallback onSubmit;
   final VoidCallback? onEdited;
+
+  /// Opens password recovery, seeded with whatever identifier was typed.
+  final VoidCallback onForgotPassword;
 
   @override
   Widget build(BuildContext context) {
@@ -430,7 +465,19 @@ class _FormCard extends StatelessWidget {
                     : null,
               ),
               const SizedBox(height: Spacing.md),
-              FieldLabel('Password'),
+              // The web puts "Forgot password?" on the label's line; so do
+              // we, because that is where someone looks once the password
+              // they typed has already been refused.
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  FieldLabel('Password'),
+                  TextButton(
+                    onPressed: submitting ? null : onForgotPassword,
+                    child: const Text('Forgot password?'),
+                  ),
+                ],
+              ),
               const SizedBox(height: Spacing.sm),
               TextFormField(
                 controller: password,
@@ -524,7 +571,6 @@ class _FormCard extends StatelessWidget {
     );
   }
 }
-
 
 /// What the fingerprint control needs from the screen.
 class _BiometricAction {

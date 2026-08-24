@@ -35,115 +35,137 @@ abstract final class PortalTab {
 /// back after being away, rather than showing stale figures forever.
 final AutoDisposeFutureProvider<PortalDashboard> portalDashboardProvider =
     FutureProvider.autoDispose<PortalDashboard>(
-  (ref) => ref.watch(portalServiceProvider).dashboard(),
-);
+      (ref) => ref.watch(portalServiceProvider).dashboard(),
+    );
 
 /// Full invoice detail, keyed by document id.
 final AutoDisposeFutureProviderFamily<PortalDocument, String>
-    portalDocumentProvider = FutureProvider.autoDispose.family<PortalDocument, String>(
-  (ref, id) => ref.watch(portalServiceProvider).document(id),
-);
+portalDocumentProvider = FutureProvider.autoDispose
+    .family<PortalDocument, String>(
+      (ref, id) => ref.watch(portalServiceProvider).document(id),
+    );
 
 /// Tickets, open first (the endpoint is unpaginated).
 final AutoDisposeFutureProvider<List<PortalTicket>> portalTicketsProvider =
     FutureProvider.autoDispose<List<PortalTicket>>(
-  (ref) => ref.watch(portalServiceProvider).tickets(),
-);
+      (ref) => ref.watch(portalServiceProvider).tickets(),
+    );
 
 /// One ticket with its reply thread.
-final AutoDisposeFutureProviderFamily<PortalTicket, String> portalTicketProvider =
-    FutureProvider.autoDispose.family<PortalTicket, String>(
+final AutoDisposeFutureProviderFamily<PortalTicket, String>
+portalTicketProvider = FutureProvider.autoDispose.family<PortalTicket, String>(
   (ref, id) => ref.watch(portalServiceProvider).ticket(id),
 );
 
-final AutoDisposeFutureProvider<List<Announcement>> portalAnnouncementsProvider =
-    FutureProvider.autoDispose<List<Announcement>>(
+final AutoDisposeFutureProvider<List<Announcement>>
+portalAnnouncementsProvider = FutureProvider.autoDispose<List<Announcement>>(
   (ref) => ref.watch(portalServiceProvider).announcements(),
 );
 
 /// Knowledgebase categories, keyed by search term (null = everything).
 final AutoDisposeFutureProviderFamily<List<KbCategory>, String?>
-    portalKnowledgebaseProvider =
-    FutureProvider.autoDispose.family<List<KbCategory>, String?>(
-  (ref, search) => ref.watch(portalServiceProvider).knowledgebase(search: search),
-);
+portalKnowledgebaseProvider = FutureProvider.autoDispose
+    .family<List<KbCategory>, String?>(
+      (ref, search) =>
+          ref.watch(portalServiceProvider).knowledgebase(search: search),
+    );
 
-final AutoDisposeFutureProviderFamily<KbArticle, String> portalKbArticleProvider =
-    FutureProvider.autoDispose.family<KbArticle, String>(
+final AutoDisposeFutureProviderFamily<KbArticle, String>
+portalKbArticleProvider = FutureProvider.autoDispose.family<KbArticle, String>(
   (ref, slug) => ref.watch(portalServiceProvider).kbArticle(slug),
 );
 
 final AutoDisposeFutureProvider<List<ClientSubscription>>
-    portalSubscriptionsProvider =
+portalSubscriptionsProvider =
     FutureProvider.autoDispose<List<ClientSubscription>>(
-  (ref) => ref.watch(portalServiceProvider).subscriptions(),
-);
+      (ref) => ref.watch(portalServiceProvider).subscriptions(),
+    );
 
 final AutoDisposeFutureProvider<List<HostingAccount>> portalHostingProvider =
     FutureProvider.autoDispose<List<HostingAccount>>(
-  (ref) => ref.watch(portalServiceProvider).hostingAccounts(),
-);
+      (ref) => ref.watch(portalServiceProvider).hostingAccounts(),
+    );
 
 final AutoDisposeFutureProviderFamily<HostingDetail, String>
-    portalHostingDetailProvider =
-    FutureProvider.autoDispose.family<HostingDetail, String>(
-  (ref, id) => ref.watch(portalServiceProvider).hostingAccount(id),
-);
+portalHostingDetailProvider = FutureProvider.autoDispose
+    .family<HostingDetail, String>(
+      (ref, id) => ref.watch(portalServiceProvider).hostingAccount(id),
+    );
 
 final AutoDisposeFutureProvider<DomainList> portalDomainsProvider =
     FutureProvider.autoDispose<DomainList>(
-  (ref) => ref.watch(portalServiceProvider).domains(),
-);
+      (ref) => ref.watch(portalServiceProvider).domains(),
+    );
 
 final AutoDisposeFutureProviderFamily<DomainDetail, String>
-    portalDomainDetailProvider =
-    FutureProvider.autoDispose.family<DomainDetail, String>(
-  (ref, id) => ref.watch(portalServiceProvider).domain(id),
-);
+portalDomainDetailProvider = FutureProvider.autoDispose
+    .family<DomainDetail, String>(
+      (ref, id) => ref.watch(portalServiceProvider).domain(id),
+    );
+
+/// Reseller membership, wallet balance and wholesale pricing.
+///
+/// Readable by every portal client — a non-member gets `is_reseller: false`
+/// and the membership price, which is what the join screen is built from.
+final AutoDisposeFutureProvider<ResellerStatus> portalResellerStatusProvider =
+    FutureProvider.autoDispose<ResellerStatus>(
+      (ref) => ref.watch(portalServiceProvider).resellerStatus(),
+    );
 
 final AutoDisposeFutureProvider<PortalProfile> portalProfileProvider =
     FutureProvider.autoDispose<PortalProfile>(
-  (ref) => ref.watch(portalServiceProvider).profile(),
-);
+      (ref) => ref.watch(portalServiceProvider).profile(),
+    );
 
 final AutoDisposeFutureProvider<List<PortalUser>> portalUsersProvider =
     FutureProvider.autoDispose<List<PortalUser>>(
-  (ref) => ref.watch(portalServiceProvider).portalUsers(),
-);
+      (ref) => ref.watch(portalServiceProvider).portalUsers(),
+    );
 
 final AutoDisposeFutureProvider<CreditWallet> portalCreditProvider =
     FutureProvider.autoDispose<CreditWallet>(
-  (ref) => ref.watch(portalServiceProvider).credit(),
-);
+      (ref) => ref.watch(portalServiceProvider).credit(),
+    );
 
 final AutoDisposeFutureProvider<List<CatalogGroup>> portalCatalogProvider =
     FutureProvider.autoDispose<List<CatalogGroup>>(
-  (ref) => ref.watch(portalServiceProvider).catalog(),
-);
+      (ref) => ref.watch(portalServiceProvider).catalog(),
+    );
 
 final AutoDisposeFutureProviderFamily<List<ProductAddon>, String>
-    portalProductAddonsProvider =
-    FutureProvider.autoDispose.family<List<ProductAddon>, String>(
-  (ref, productId) => ref.watch(portalServiceProvider).productAddons(productId),
-);
+portalProductAddonsProvider = FutureProvider.autoDispose
+    .family<List<ProductAddon>, String>(
+      (ref, productId) =>
+          ref.watch(portalServiceProvider).productAddons(productId),
+    );
 
 final AutoDisposeFutureProviderFamily<List<ConfigOptionGroup>, String>
-    portalConfigOptionsProvider =
-    FutureProvider.autoDispose.family<List<ConfigOptionGroup>, String>(
-  (ref, productId) => ref.watch(portalServiceProvider).configOptions(productId),
-);
+portalConfigOptionsProvider = FutureProvider.autoDispose
+    .family<List<ConfigOptionGroup>, String>(
+      (ref, productId) =>
+          ref.watch(portalServiceProvider).configOptions(productId),
+    );
+
+/// The TLDs this tenant sells, with retail pricing. Drives the price list on
+/// the domain search screen — without it a client has to guess which
+/// extensions are on offer before the availability check can tell them
+/// anything.
+final AutoDisposeFutureProvider<List<TldPricing>> portalTldsProvider =
+    FutureProvider.autoDispose<List<TldPricing>>(
+      (ref) => ref.watch(portalServiceProvider).tlds(),
+    );
 
 final AutoDisposeFutureProvider<List<DomainAddon>> portalDomainAddonsProvider =
     FutureProvider.autoDispose<List<DomainAddon>>(
-  (ref) => ref.watch(portalServiceProvider).domainAddons(),
-);
+      (ref) => ref.watch(portalServiceProvider).domainAddons(),
+    );
 
 /// Statement for an optional date window. Keyed by the (start, end) pair so
 /// switching ranges caches each window separately.
 final AutoDisposeFutureProviderFamily<Statement, ({String? start, String? end})>
-    portalStatementProvider = FutureProvider.autoDispose
-        .family<Statement, ({String? start, String? end})>(
-  (ref, range) => ref
-      .watch(portalServiceProvider)
-      .statement(startDate: range.start, endDate: range.end),
-);
+portalStatementProvider = FutureProvider.autoDispose
+    .family<Statement, ({String? start, String? end})>(
+      (ref, range) => ref
+          .watch(portalServiceProvider)
+          .statement(startDate: range.start, endDate: range.end),
+    );

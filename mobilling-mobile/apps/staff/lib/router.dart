@@ -52,6 +52,7 @@ import 'features/portal/portal_routes.dart';
 import 'features/portal/register_screen.dart';
 import 'features/portal/services/domain_detail_screen.dart';
 import 'features/portal/services/hosting_detail_screen.dart';
+import 'features/portal/services/reseller_screen.dart';
 import 'features/portal/store/configure_order_screen.dart';
 import 'features/portal/store/domain_search_screen.dart';
 import 'features/portal/store/order_flow.dart';
@@ -297,6 +298,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: PortalRoutes.credit,
         builder: (context, state) => const CreditScreen(),
+      ),
+      GoRoute(
+        path: PortalRoutes.reseller,
+        builder: (context, state) => const PortalResellerScreen(),
       ),
       // '/clients/new' precedes '/clients/:id', which would otherwise take
       // 'new' for an id. The screens reach these by push (the edit form needs

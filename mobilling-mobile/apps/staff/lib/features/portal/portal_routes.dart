@@ -17,6 +17,7 @@ abstract final class PortalRoutes {
   static const profile = '/portal/profile';
   static const portalUsers = '/portal/users';
   static const credit = '/portal/credit';
+  static const reseller = '/portal/reseller';
 
   /// `new` must be registered before `:id` — go_router matches in order.
   static const newTicket = '/portal/tickets/new';

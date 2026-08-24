@@ -27,6 +27,14 @@ class AuthService {
         '/auth/login',
         body: {'identifier': identifier.trim(), 'password': password},
       );
+      // A second factor answers 200 with no session in it — parsing this as
+      // one would produce a signed-in state that has no token behind it.
+      if (body['requires_2fa'] == true) {
+        return LoginNeedsTwoFactor(
+          challengeId: body['challenge_id'] as String? ?? '',
+          message: body['message'] as String?,
+        );
+      }
       return LoginSucceeded(AuthSession.fromJson(body));
     } on ApiException catch (e) {
       // 449 is the "we emailed you a code" handshake, not a failure.
@@ -96,4 +104,87 @@ class AuthService {
   /// Sanctum tokens never expire on their own, so skipping this on sign-out
   /// would leave a valid credential alive indefinitely.
   Future<void> logout() => _api.post<dynamic>('/auth/logout');
+
+  /// POST /auth/2fa/verify-login — finishes a [LoginNeedsTwoFactor].
+  ///
+  /// Takes either the authenticator's six digits or one of the recovery
+  /// codes, which is the way back in from a lost phone. The challenge is
+  /// short-lived; an expired one comes back as a validation error on
+  /// `challenge_id`, and the only cure is to sign in again.
+  Future<AuthSession> verifyTwoFactorLogin({
+    required String challengeId,
+    String? code,
+    String? recoveryCode,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/auth/2fa/verify-login',
+      body: {
+        'challenge_id': challengeId,
+        'code': ?code,
+        'recovery_code': ?recoveryCode,
+      },
+    );
+    return AuthSession.fromJson(body);
+  }
+
+  // -------------------------------------------------------------------
+  // Forgotten password
+  //
+  // Three steps, all public: ask for a code, prove you received it, set a
+  // new password. The identifier is the same one the sign-in field takes —
+  // an email or a phone number — and the server resolves it against staff
+  // users, portal users, then clients, exactly as login does.
+  // -------------------------------------------------------------------
+
+  /// POST /auth/forgot-password — sends a six-digit code.
+  ///
+  /// [channel] picks how it travels: `email` or `whatsapp`. Null lets the
+  /// server choose, which is what the web does. Returns the server's own
+  /// message, which names where the code went.
+  Future<String?> requestPasswordReset({
+    required String identifier,
+    String? channel,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/auth/forgot-password',
+      body: {'identifier': identifier.trim(), 'channel': ?channel},
+    );
+    return body['message'] as String?;
+  }
+
+  /// POST /auth/verify-reset-otp — checks the code before asking for a new
+  /// password, so a wrong code is caught while it is still the only thing
+  /// on screen.
+  Future<String?> verifyPasswordResetOtp({
+    required String identifier,
+    required String otp,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/auth/verify-reset-otp',
+      body: {'identifier': identifier.trim(), 'otp': otp},
+    );
+    return body['message'] as String?;
+  }
+
+  /// POST /auth/reset-password — sets the password against the verified code.
+  ///
+  /// The API also uses this route to create a portal account for a client
+  /// who never had one, so a success here can mean either "reset" or
+  /// "account created"; the returned message says which.
+  Future<String?> resetPassword({
+    required String identifier,
+    required String otp,
+    required String password,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/auth/reset-password',
+      body: {
+        'identifier': identifier.trim(),
+        'otp': otp,
+        'password': password,
+        'password_confirmation': password,
+      },
+    );
+    return body['message'] as String?;
+  }
 }
