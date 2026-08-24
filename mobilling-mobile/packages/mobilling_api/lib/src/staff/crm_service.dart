@@ -621,6 +621,52 @@ class CrmService {
     return FieldStats.fromJson(_unwrap(body));
   }
 
+  // ---------------------------------------------------------------------
+  // Marketing services — MarketingServiceController
+  //
+  // The tenant-customisable reference list field visits and WhatsApp
+  // contacts tag themselves with. Live data, not the hardcoded
+  // `FieldServices.values` the "services discussed" picker used to fall
+  // back to unconditionally.
+  // ---------------------------------------------------------------------
+
+  /// GET /marketing-services. Needs `marketing_services.read`.
+  Future<List<MarketingServiceItem>> marketingServices() async {
+    final body = await _api.get<dynamic>('/marketing-services');
+    return Paginated.fromJson(body, MarketingServiceItem.fromJson).items;
+  }
+
+  /// POST /marketing-services. Needs `marketing_services.create`. 422s with
+  /// a "Service already exists." message on a duplicate name.
+  Future<MarketingServiceItem> createMarketingService(String name) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/marketing-services',
+      body: {'name': name},
+    );
+    return MarketingServiceItem.fromJson(body);
+  }
+
+  /// PUT /marketing-services/{id}. Needs `marketing_services.update`.
+  Future<MarketingServiceItem> updateMarketingService(
+    String id,
+    String name,
+  ) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/marketing-services/$id',
+      body: {'name': name},
+    );
+    return MarketingServiceItem.fromJson(body);
+  }
+
+  /// DELETE /marketing-services/{id}. Needs `marketing_services.delete`.
+  Future<void> deleteMarketingService(String id) =>
+      _api.delete<dynamic>('/marketing-services/$id');
+
+  /// POST /marketing-services/reorder — [ids] in the new display order.
+  /// Needs `marketing_services.update` server-side, same as the PUT.
+  Future<void> reorderMarketingServices(List<String> ids) =>
+      _api.post<dynamic>('/marketing-services/reorder', body: {'ids': ids});
+
   /// The three CRM dashboards wrap their payload in `{data: {...}}`; the
   /// list endpoints in this service do not. Parsing the outer map produced
   /// an all-zero screen with no error.
@@ -668,4 +714,10 @@ abstract final class CrmPermissions {
   /// Choosing a colleague means listing `/users`, which is gated separately
   /// from the action itself — assign and set-target need both.
   static const settingsUsers = 'settings.users';
+
+  // ── Marketing services (the "services discussed" reference list) ──────
+  static const marketingServicesRead = 'marketing_services.read';
+  static const marketingServicesCreate = 'marketing_services.create';
+  static const marketingServicesUpdate = 'marketing_services.update';
+  static const marketingServicesDelete = 'marketing_services.delete';
 }

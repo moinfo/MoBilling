@@ -64,3 +64,10 @@ final AutoDisposeFutureProvider<List<BankAccount>> bankAccountsProvider =
       (ref) async =>
           (await ref.watch(adminServiceProvider).bankAccounts()).items,
     );
+
+/// One staff member's HR profile, keyed by user id.
+final AutoDisposeFutureProviderFamily<EmployeeProfilePage, String>
+employeeProfileProvider = FutureProvider.autoDispose
+    .family<EmployeeProfilePage, String>(
+      (ref, userId) => ref.watch(adminServiceProvider).employeeProfile(userId),
+    );

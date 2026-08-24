@@ -60,7 +60,10 @@ import 'features/portal/store/store_screen.dart';
 import 'features/portal/support/kb_article_screen.dart';
 import 'features/portal/support/new_ticket_screen.dart';
 import 'features/portal/support/ticket_detail_screen.dart' as portal_ticket;
+import 'features/platform/license_plans_screen.dart';
+import 'features/platform/licenses_screen.dart';
 import 'features/platform/platform_screens.dart';
+import 'features/platform/releases_screen.dart';
 import 'features/platform/platform_shell.dart';
 import 'features/platform/tenants_screens.dart';
 import 'navigation/admin_menu.dart';
@@ -182,6 +185,18 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AdminRoutes.smsPurchases,
         builder: (context, state) => const SmsPurchasesScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.licenses,
+        builder: (context, state) => const LicensesScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.licensePlans,
+        builder: (context, state) => const LicensePlansScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.releases,
+        builder: (context, state) => const ReleasesScreen(),
       ),
       GoRoute(
         path: AdminRoutes.permissions,
@@ -630,6 +645,12 @@ bool _isForeignShell(String location, AppShell shell) {
   // Segment-exact: the staff route `/portal-users` is not a portal route.
   bool under(String prefix) =>
       location == prefix || location.startsWith('$prefix/');
+
+  // 2FA is `auth:sanctum`-only on the server — every shell may reach it, so
+  // it is exempt from the prefix contract below rather than living under
+  // any one shell's namespace.
+  if (location == '/security') return false;
+
   final isPortalRoute = under('/portal');
   final isAdminRoute = under('/admin');
 

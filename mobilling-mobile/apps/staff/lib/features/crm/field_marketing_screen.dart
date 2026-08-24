@@ -9,6 +9,7 @@ import '../common/paged_list.dart';
 import '../common/pickers.dart';
 import 'crm_providers.dart';
 import 'crm_ui.dart';
+import 'marketing_services_screen.dart';
 
 /// The calls logged against one prospect. Declared here rather than in
 /// `crm_providers.dart` because nothing outside this screen reads them.
@@ -1844,26 +1845,11 @@ class _VisitFormSheetState extends ConsumerState<_VisitFormSheet> {
         ),
       ),
       const SizedBox(height: Spacing.md),
-      CrmField(
-        label: 'Services discussed',
-        child: Wrap(
-          spacing: Spacing.sm,
-          runSpacing: Spacing.sm,
-          children: [
-            for (final service in FieldServices.values)
-              FilterChip(
-                label: Text(service.toUpperCase()),
-                selected: _services.contains(service),
-                showCheckmark: false,
-                onSelected: _submitting
-                    ? null
-                    : (on) => setState(
-                        () => on
-                            ? _services.add(service)
-                            : _services.remove(service),
-                      ),
-              ),
-          ],
+      _ServicesDiscussedField(
+        selected: _services,
+        enabled: !_submitting,
+        onToggle: (service, on) => setState(
+          () => on ? _services.add(service) : _services.remove(service),
         ),
       ),
       const SizedBox(height: Spacing.md),
@@ -1899,6 +1885,84 @@ class _VisitFormSheetState extends ConsumerState<_VisitFormSheet> {
       ),
     ],
   );
+}
+
+/// The "services discussed" picker. Backed by the tenant's live
+/// `/marketing-services` list (same source `VisitForm.tsx` and
+/// `WhatsappContactForm.tsx` read on the web) rather than a hardcoded set —
+/// a tenant that customises or reorders their services via the web used to
+/// go unseen here, silently tagging visits against a stale list.
+///
+/// [marketingServicesProvider] is cached (not `autoDispose`), so after the
+/// first successful load this renders instantly with no spinner. Only a
+/// first-ever load with no connection falls back to [FieldServices.values]
+/// so a field rep on bad signal is never blocked from logging a visit.
+class _ServicesDiscussedField extends ConsumerWidget {
+  const _ServicesDiscussedField({
+    required this.selected,
+    required this.enabled,
+    required this.onToggle,
+  });
+
+  final Set<String> selected;
+  final bool enabled;
+  final void Function(String service, bool on) onToggle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final servicesAsync = ref.watch(marketingServicesProvider);
+    final names = servicesAsync.when(
+      // `.when` only reaches `loading` when nothing has ever loaded — once
+      // cached, a background refresh still renders the cached `data`.
+      loading: () => FieldServices.values,
+      error: (error, _) => FieldServices.values,
+      data: (items) => items.isEmpty
+          ? FieldServices.values
+          : [for (final s in items) s.name],
+    );
+    final session = ref.watch(sessionControllerProvider).session;
+    final canManage =
+        session?.can(CrmPermissions.marketingServicesRead) ?? false;
+
+    return CrmField(
+      label: 'Services discussed',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Wrap(
+            spacing: Spacing.sm,
+            runSpacing: Spacing.sm,
+            children: [
+              for (final service in names)
+                FilterChip(
+                  label: Text(service.toUpperCase()),
+                  selected: selected.contains(service),
+                  showCheckmark: false,
+                  onSelected: !enabled ? null : (on) => onToggle(service, on),
+                ),
+            ],
+          ),
+          if (canManage) ...[
+            const SizedBox(height: Spacing.xs),
+            InkWell(
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const MarketingServicesScreen(),
+                ),
+              ),
+              child: Text(
+                '+ Manage services',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  decoration: TextDecoration.underline,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
 }
 
 /// `August 2026` — the target period, which is a month rather than a date, so

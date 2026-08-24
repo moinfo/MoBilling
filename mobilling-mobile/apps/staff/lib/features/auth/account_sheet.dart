@@ -85,9 +85,11 @@ class AccountSheet extends ConsumerWidget {
             const AppearanceControl(),
             // Two-factor lives behind this: the phone is the device most
             // likely to be lost, so checking and revoking the second factor
-            // has to be reachable from it. Staff only — `/security` is a
-            // staff route, and the portal shell would be bounced home.
-            if (session.session.shell == AppShell.staff) ...[
+            // has to be reachable from it. `/auth/2fa/*` is `auth:sanctum`
+            // only — any signed-in tenant user, staff or super admin, may
+            // manage their own factor. (The portal shell is its own
+            // follow-up: `security_screen.dart` assumes a staff session.)
+            if (session.session.shell != AppShell.portal) ...[
               const SizedBox(height: Spacing.lg),
               OutlinedButton.icon(
                 icon: const Icon(Icons.lock_outline_rounded, size: 18),
@@ -95,6 +97,24 @@ class AccountSheet extends ConsumerWidget {
                 onPressed: () {
                   Navigator.of(context).pop();
                   context.push('/security');
+                },
+              ),
+            ],
+            // A super admin who is currently signed in as a tenant — the
+            // web's orange "Viewing: {tenant}" bar has no room to exist on a
+            // masthead this short, so the way back lives here instead. Above
+            // Sign out and in the theme's ordinary colour: this restores
+            // your own session, it doesn't end one.
+            if (session.isImpersonating) ...[
+              const SizedBox(height: Spacing.lg),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.undo_rounded, size: 18),
+                label: Text(
+                  'Back to ${session.preImpersonationName ?? 'your account'}',
+                ),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  ref.read(sessionControllerProvider).exitImpersonation();
                 },
               ),
             ],

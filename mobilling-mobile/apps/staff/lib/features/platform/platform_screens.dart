@@ -14,6 +14,7 @@ import '../crm/crm_ui.dart'
         FilterStrip;
 import 'platform_providers.dart';
 import 'platform_shell.dart';
+import 'role_template_editor_sheet.dart';
 
 // ---------------------------------------------------------------------------
 // Subscription plans
@@ -370,29 +371,40 @@ class RoleTemplatesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
 
-    return PlatformListScaffold<StaffRole>(
+    return PlatformListScaffold<RoleTemplate>(
       title: 'Role templates',
       value: ref.watch(roleTemplatesProvider),
       onRetry: () => ref.invalidate(roleTemplatesProvider),
       emptyIcon: Icons.shield_outlined,
       emptyTitle: 'No role templates',
       itemBuilder: (context, role) => ListTile(
-        title: Text(role.name, style: theme.textTheme.titleSmall),
+        title: Text(role.label, style: theme.textTheme.titleSmall),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 2),
           child: CrmMetaLine(
-            '${role.permissionNames.length} '
-            'permission${role.permissionNames.length == 1 ? '' : 's'}',
+            '${Formatting.integer(role.permissionsCount)} / '
+            '${Formatting.integer(role.totalPermissions)} permissions'
+            '${role.tenantsCount == null ? '' : ' · ${Formatting.integer(role.tenantsCount!)} tenants'}',
           ),
         ),
-        trailing: Text(
-          Formatting.integer(role.permissionNames.length),
-          style: theme.textTheme.labelMedium?.copyWith(
-            color: theme.colorScheme.onSurface,
-          ),
-        ),
+        trailing: role.editable
+            ? Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: theme.colorScheme.outline,
+              )
+            : Icon(
+                Icons.lock_outline,
+                size: 16,
+                color: theme.colorScheme.outline,
+              ),
+        onTap: !role.editable
+            ? null
+            : () => showRoleTemplateEditor(context, role),
       ),
-      footnote: 'These are the roles a newly created tenant starts with.',
+      footnote:
+          'These are the roles a newly created tenant starts with. Editing '
+          'one applies the change to every existing tenant of that type too.',
     );
   }
 }

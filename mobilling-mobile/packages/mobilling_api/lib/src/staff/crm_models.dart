@@ -1304,9 +1304,37 @@ class FieldStats {
   }
 }
 
-/// The service list the web app offers on a field visit, kept in step with
-/// `mobilling-ui/src/api/fieldMarketing.ts` so both clients tag visits the
-/// same way — the column is a free-form JSON array, so nothing enforces it.
+/// One row of `GET /marketing-services` — the tenant-editable reference list
+/// a field visit or WhatsApp contact tags itself with. `MarketingServiceController`
+/// answers bare (no `data` envelope): an array from `index`, a single object
+/// from `store`/`update`.
+class MarketingServiceItem {
+  const MarketingServiceItem({
+    required this.id,
+    required this.name,
+    required this.sortOrder,
+  });
+
+  final String id;
+  final String name;
+  final int sortOrder;
+
+  factory MarketingServiceItem.fromJson(Map<String, dynamic> json) =>
+      MarketingServiceItem(
+        id: json.id(),
+        name: json.strOr('name', '—'),
+        sortOrder: json.count('sort_order'),
+      );
+}
+
+/// Emergency fallback only, used when `GET /marketing-services` has never
+/// once succeeded (first launch offline, or the endpoint erroring) — see
+/// `_VisitFormSheetState` in `field_marketing_screen.dart`.
+///
+/// This used to be the *only* source for the "services discussed" picker,
+/// hardcoded and silently drifting from whatever a tenant had actually
+/// customised or reordered via the web's Field Marketing > Services tab.
+/// Every real load now comes from [MarketingServiceItem] instead.
 abstract final class FieldServices {
   static const values = <String>[
     'MoBilling',

@@ -13,6 +13,9 @@ abstract final class AdminRoutes {
   static const currencies = '/admin/currencies';
   static const smsPackages = '/admin/sms-packages';
   static const smsPurchases = '/admin/sms-purchases';
+  static const licenses = '/admin/licenses';
+  static const licensePlans = '/admin/license-plans';
+  static const releases = '/admin/releases';
   static const settings = '/admin/settings';
 
   static String tenantPath(String id) => '/admin/tenants/$id';
@@ -76,6 +79,24 @@ const List<AdminMenuEntry> adminMenu = [
     icon: Icons.receipt_long_outlined,
     path: AdminRoutes.smsPurchases,
     subtitle: 'Orders awaiting confirmation',
+  ),
+  AdminMenuEntry(
+    label: 'Licenses',
+    icon: Icons.vpn_key_outlined,
+    path: AdminRoutes.licenses,
+    subtitle: 'Self-hosted install keys, WHMCS-style',
+  ),
+  AdminMenuEntry(
+    label: 'License Plans',
+    icon: Icons.vpn_key_outlined,
+    path: AdminRoutes.licensePlans,
+    subtitle: 'Pricing for self-hosted installs',
+  ),
+  AdminMenuEntry(
+    label: 'Releases',
+    icon: Icons.rocket_launch_outlined,
+    path: AdminRoutes.releases,
+    subtitle: '"Check for updates" catalog',
   ),
   AdminMenuEntry(
     label: 'Currencies',

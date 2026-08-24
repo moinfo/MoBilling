@@ -64,3 +64,15 @@ final AutoDisposeFutureProvider<List<FieldTarget>> fieldTargetsProvider =
     FutureProvider.autoDispose<List<FieldTarget>>(
       (ref) => ref.watch(crmServiceProvider).fieldTargets(),
     );
+
+/// The field-visit / WhatsApp-contact "services discussed" reference list.
+///
+/// Deliberately **not** `autoDispose`: this is reference data a field rep
+/// may open the visit form for repeatedly, often on a poor connection, so a
+/// successful fetch stays cached for the rest of the session rather than
+/// re-fetching (and re-showing a spinner) every time the sheet reopens. The
+/// services management screen invalidates this explicitly after a write.
+final FutureProvider<List<MarketingServiceItem>> marketingServicesProvider =
+    FutureProvider<List<MarketingServiceItem>>(
+      (ref) => ref.watch(crmServiceProvider).marketingServices(),
+    );

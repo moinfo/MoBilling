@@ -21,6 +21,7 @@ import '../crm/crm_ui.dart'
         CrmStatusLine,
         showCrmSheet;
 import 'admin_providers.dart';
+import 'employee_profile_screen.dart';
 import 'role_editor_sheet.dart';
 
 // ---------------------------------------------------------------------------
@@ -579,6 +580,14 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
             .session
             ?.can(AdminPermissions.users) ??
         false;
+    // Separate permission from `canManage`: `employees.read`/`.update` gate
+    // the HR record (`EmployeeProfileController`), not the sign-in account.
+    final canViewProfile =
+        ref
+            .read(sessionControllerProvider)
+            .session
+            ?.can(AdminPermissions.employeesRead) ??
+        false;
 
     final action = await showCrmSheet<_TeamAction>(
       context: context,
@@ -611,6 +620,29 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
               ),
             ),
             const SizedBox(height: Spacing.md),
+            if (canViewProfile) ...[
+              CrmCardList(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.badge_outlined),
+                    title: Text(
+                      'HR profile',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    subtitle: Text(
+                      'Employee number, hire date, statutory numbers, '
+                      'pay-out details',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(_TeamAction.hrProfile),
+                  ),
+                ],
+              ),
+              const SizedBox(height: Spacing.md),
+            ],
             if (!canManage)
               Text(
                 'You can view the team, but not change it.',
@@ -667,6 +699,13 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
         await _openForm(user);
       case _TeamAction.toggle:
         await _toggle(user);
+      case _TeamAction.hrProfile:
+        await Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) =>
+                EmployeeProfileScreen(userId: user.id, userName: user.name),
+          ),
+        );
       case null:
         break;
     }
@@ -701,7 +740,7 @@ class _TeamScreenState extends ConsumerState<TeamScreen> {
   }
 }
 
-enum _TeamAction { edit, toggle }
+enum _TeamAction { edit, toggle, hrProfile }
 
 /// Add or edit a staff account.
 ///

@@ -291,6 +291,97 @@ class AdminService {
     );
     return Paginated.fromJson(body, BankAccount.fromJson);
   }
+
+  // ---------------------------------------------------------------------
+  // Employee HR profiles — EmployeeProfileController
+  // ---------------------------------------------------------------------
+
+  /// GET /employees — HR-admin roster: every active staff member and their
+  /// profile, if any. Needs `employees.read`. Not currently wired to a list
+  /// screen of its own — `TeamScreen` already lists staff via `/users` and
+  /// links each row into [employeeProfile] instead.
+  Future<Paginated<StaffUser>> employees({
+    String? search,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/employees',
+      query: {'search': search, 'page': page, 'per_page': perPage},
+    );
+    return Paginated.fromJson(body, StaffUser.fromJson);
+  }
+
+  /// GET /employees/{user} — one staff member's HR record. Needs
+  /// `employees.read`.
+  Future<EmployeeProfilePage> employeeProfile(String userId) async {
+    final body = await _api.get<Map<String, dynamic>>('/employees/$userId');
+    return EmployeeProfilePage.fromJson(body);
+  }
+
+  /// GET /employees/mine — the signed-in user's own HR record, read-only
+  /// (no permission required; everyone may see their own details).
+  Future<EmployeeProfilePage> myEmployeeProfile() async {
+    final body = await _api.get<Map<String, dynamic>>('/employees/mine');
+    return EmployeeProfilePage.fromJson(body);
+  }
+
+  /// PUT /employees/{user} — create or update the one HR-profile row for a
+  /// user. Needs `employees.update`. Every field is optional; omitted ones
+  /// are left unvalidated (unlike `updateUser`, this does not require the
+  /// whole record back).
+  Future<EmployeeProfile> updateEmployeeProfile(
+    String userId, {
+    String? employeeNumber,
+    DateTime? hireDate,
+    String? department,
+    String? position,
+    String? employmentType,
+    String? nationalId,
+    String? nssfNumber,
+    String? tinNumber,
+    String? nextOfKinName,
+    String? nextOfKinPhone,
+    String? bankName,
+    String? bankBranch,
+    String? bankAccountName,
+    String? bankAccountNumber,
+    String? mobileMoneyProvider,
+    String? mobileMoneyNumber,
+    String? notes,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/employees/$userId',
+      body: {
+        'employee_number': ?employeeNumber,
+        'hire_date': hireDate == null ? null : _ymd(hireDate),
+        'department': ?department,
+        'position': ?position,
+        'employment_type': ?employmentType,
+        'national_id': ?nationalId,
+        'nssf_number': ?nssfNumber,
+        'tin_number': ?tinNumber,
+        'next_of_kin_name': ?nextOfKinName,
+        'next_of_kin_phone': ?nextOfKinPhone,
+        'bank_name': ?bankName,
+        'bank_branch': ?bankBranch,
+        'bank_account_name': ?bankAccountName,
+        'bank_account_number': ?bankAccountNumber,
+        'mobile_money_provider': ?mobileMoneyProvider,
+        'mobile_money_number': ?mobileMoneyNumber,
+        'notes': ?notes,
+      },
+    );
+    final data = body['data'];
+    return EmployeeProfile.fromJson(
+      data is Map ? Map<String, dynamic>.from(data) : body,
+    );
+  }
+
+  static String _ymd(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 }
 
 /// Permission names these screens gate on, verbatim from routes/api.php.
@@ -307,4 +398,10 @@ abstract final class AdminPermissions {
   static const subscription = 'menu.subscription';
   static const automation = 'menu.automation';
   static const bankAccountsRead = 'bank_accounts.read';
+
+  /// `EmployeeProfileController::show`/`index` — viewing HR details.
+  static const employeesRead = 'employees.read';
+
+  /// `EmployeeProfileController::update` — editing them.
+  static const employeesUpdate = 'employees.update';
 }

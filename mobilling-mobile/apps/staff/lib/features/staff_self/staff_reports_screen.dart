@@ -1003,6 +1003,7 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
   final _achievements = TextEditingController();
   final _challenges = TextEditingController();
   final _plans = TextEditingController();
+  final _notes = TextEditingController();
 
   String _type = 'daily';
   DateTime _period = DateTime.now();
@@ -1014,6 +1015,7 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
     _achievements.dispose();
     _challenges.dispose();
     _plans.dispose();
+    _notes.dispose();
     super.dispose();
   }
 
@@ -1037,6 +1039,7 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
                 ? null
                 : _challenges.text.trim(),
             plans: _plans.text.trim().isEmpty ? null : _plans.text.trim(),
+            notes: _notes.text.trim().isEmpty ? null : _notes.text.trim(),
           );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -1127,6 +1130,17 @@ class _SubmitReportSheetState extends ConsumerState<_SubmitReportSheet> {
           decoration: const InputDecoration(
             hintText: 'Optional — what comes next',
           ),
+        ),
+      ),
+      const SizedBox(height: Spacing.md),
+      CrmField(
+        label: 'Notes',
+        child: TextField(
+          controller: _notes,
+          enabled: !_submitting,
+          maxLines: 2,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Optional'),
         ),
       ),
       const SizedBox(height: Spacing.lg),

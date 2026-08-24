@@ -239,4 +239,59 @@ class SessionController extends ChangeNotifier {
   /// No server call: the token that would authorise `/auth/logout` is the very
   /// one the server already rejected.
   Future<void> abandonExpiredSession() => _clear();
+
+  // -------------------------------------------------------------------
+  // Impersonation — a super admin viewing the app as a tenant's admin (or one
+  // of its specific users). Mirrors the web's `admin_token` stash in
+  // `AuthContext.tsx`'s `impersonate()`/`exitImpersonation()`: swapping in the
+  // new session keeps the current one in memory so [exitImpersonation] can
+  // restore it. Unlike the web, there is nothing persisted beyond this
+  // running instance — the web's stash survives a page reload because
+  // `localStorage` does; a killed app process loses it the same way the web
+  // loses its own stash once nothing has it in memory any more, and the way
+  // back is then what the web falls back to as well: sign out, sign back in
+  // as super admin.
+  // -------------------------------------------------------------------
+
+  AuthSession? _preImpersonationSession;
+
+  /// True once [impersonate] has swapped in someone else's session.
+  bool get isImpersonating => _preImpersonationSession != null;
+
+  /// Who [exitImpersonation] returns to — for a button that names its
+  /// destination rather than just saying "back".
+  String? get preImpersonationName => _preImpersonationSession?.user.name;
+
+  /// Adopt [session] (an impersonated tenant admin or tenant user), keeping
+  /// the current session so [exitImpersonation] can return to it later. A
+  /// second call while already impersonating — e.g. drilling from the tenant
+  /// admin into one of that tenant's own users — keeps the *original* session
+  /// as the return target rather than the intermediate one, the same rule the
+  /// web applies to `admin_token`.
+  Future<void> impersonate(AuthSession session) async {
+    _preImpersonationSession ??= _session;
+    await _adopt(session);
+    // The impersonation endpoints answer with no `permissions` field; refresh
+    // from `/auth/me` under the new token, exactly as the web's `impersonate()`
+    // does with its own follow-up `getMe()` call.
+    try {
+      _session = await _auth.me(session.token);
+    } on ApiException {
+      // Keep the coarser session from the impersonation response; not fatal.
+    }
+    // `_adopt` only notifies when [SessionStatus] itself changes, which it
+    // doesn't here (already `authenticated`) — without this, nothing tells
+    // the router the signed-in user (and therefore its shell) just changed.
+    notifyListeners();
+  }
+
+  /// Return to the session [impersonate] stashed away. No-op if not currently
+  /// impersonating.
+  Future<void> exitImpersonation() async {
+    final original = _preImpersonationSession;
+    if (original == null) return;
+    _preImpersonationSession = null;
+    await _adopt(original);
+    notifyListeners();
+  }
 }

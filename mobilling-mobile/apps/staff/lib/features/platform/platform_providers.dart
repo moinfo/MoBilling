@@ -79,9 +79,17 @@ platformPermissionsProvider = FutureProvider.autoDispose<List<PermissionInfo>>(
   (ref) => ref.watch(platformServiceProvider).permissions(),
 );
 
-final AutoDisposeFutureProvider<List<StaffRole>> roleTemplatesProvider =
-    FutureProvider.autoDispose<List<StaffRole>>(
+final AutoDisposeFutureProvider<List<RoleTemplate>> roleTemplatesProvider =
+    FutureProvider.autoDispose<List<RoleTemplate>>(
       (ref) => ref.watch(platformServiceProvider).roleTemplates(),
+    );
+
+/// One role template's full permission checklist, keyed by type.
+final AutoDisposeFutureProviderFamily<RoleTemplateDetail, String>
+roleTemplateDetailProvider = FutureProvider.autoDispose
+    .family<RoleTemplateDetail, String>(
+      (ref, type) =>
+          ref.watch(platformServiceProvider).roleTemplateDetail(type),
     );
 
 final AutoDisposeFutureProvider<PlatformSettings> platformSettingsProvider =

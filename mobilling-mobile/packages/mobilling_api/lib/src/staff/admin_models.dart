@@ -585,3 +585,170 @@ class BankAccount {
     branch: json.str('branch'),
   );
 }
+
+// ---------------------------------------------------------------------------
+// Employee HR profiles — EmployeeProfileController
+//
+// Separate from [StaffUser]/`UserController` (name, email, role — the sign-in
+// account) and from the payroll exemption "Assign" screens
+// (`EmployeeProfileController::payeSubscriptions` etc, which flip these same
+// database columns from Payroll > Settings for many staff at once). This is
+// the HR-admin record for one person: hire details, statutory numbers, next
+// of kin, pay-out details.
+// ---------------------------------------------------------------------------
+
+/// The signed-in-account side of `GET /employees/{user}` and
+/// `/employees/mine` — `$user->load('role', 'supervisor')`, not the fuller
+/// [StaffUser] shape `UserResource` builds.
+class EmployeeUserSummary {
+  const EmployeeUserSummary({
+    required this.id,
+    required this.name,
+    this.email,
+    this.phone,
+    this.roleLabel,
+    this.supervisorName,
+  });
+
+  final String id;
+  final String name;
+  final String? email;
+  final String? phone;
+  final String? roleLabel;
+  final String? supervisorName;
+
+  factory EmployeeUserSummary.fromJson(Map<String, dynamic> json) {
+    final role = json.object('role');
+    final supervisor = json.object('supervisor');
+    return EmployeeUserSummary(
+      id: json.id(),
+      name: json.strOr('name', '—'),
+      email: json.str('email'),
+      phone: json.str('phone'),
+      roleLabel: role?.str('label') ?? role?.str('name'),
+      supervisorName: supervisor?.str('name'),
+    );
+  }
+}
+
+/// One staff member's HR record. `null` fields simply mean nothing has been
+/// entered yet — `EmployeeProfileController::update` upserts the single row
+/// per user on first save.
+class EmployeeProfile {
+  const EmployeeProfile({
+    this.employeeNumber,
+    this.hireDate,
+    this.department,
+    this.position,
+    this.employmentType,
+    this.nationalId,
+    this.nssfNumber,
+    this.tinNumber,
+    this.dateOfBirth,
+    this.gender,
+    this.nextOfKinName,
+    this.nextOfKinPhone,
+    this.bankName,
+    this.bankBranch,
+    this.bankAccountName,
+    this.bankAccountNumber,
+    this.mobileMoneyProvider,
+    this.mobileMoneyNumber,
+    this.terminationDate,
+    this.notes,
+    this.subjectToPaye = true,
+  });
+
+  final String? employeeNumber;
+  final DateTime? hireDate;
+  final String? department;
+  final String? position;
+
+  /// full_time | part_time | contract | intern.
+  final String? employmentType;
+  final String? nationalId;
+  final String? nssfNumber;
+  final String? tinNumber;
+  final DateTime? dateOfBirth;
+  final String? gender;
+  final String? nextOfKinName;
+  final String? nextOfKinPhone;
+  final String? bankName;
+  final String? bankBranch;
+  final String? bankAccountName;
+  final String? bankAccountNumber;
+  final String? mobileMoneyProvider;
+  final String? mobileMoneyNumber;
+  final DateTime? terminationDate;
+  final String? notes;
+
+  /// The only exemption flag this record's own edit form touches — the rest
+  /// (attendance/report-penalty exemptions) live under Payroll > Settings >
+  /// Statutory Rates > Assign, same as the web's `UserProfile.tsx`.
+  final bool subjectToPaye;
+
+  factory EmployeeProfile.fromJson(Map<String, dynamic> json) =>
+      EmployeeProfile(
+        employeeNumber: json.str('employee_number'),
+        hireDate: json.date('hire_date'),
+        department: json.str('department'),
+        position: json.str('position'),
+        employmentType: json.str('employment_type'),
+        nationalId: json.str('national_id'),
+        nssfNumber: json.str('nssf_number'),
+        tinNumber: json.str('tin_number'),
+        dateOfBirth: json.date('date_of_birth'),
+        gender: json.str('gender'),
+        nextOfKinName: json.str('next_of_kin_name'),
+        nextOfKinPhone: json.str('next_of_kin_phone'),
+        bankName: json.str('bank_name'),
+        bankBranch: json.str('bank_branch'),
+        bankAccountName: json.str('bank_account_name'),
+        bankAccountNumber: json.str('bank_account_number'),
+        mobileMoneyProvider: json.str('mobile_money_provider'),
+        mobileMoneyNumber: json.str('mobile_money_number'),
+        terminationDate: json.date('termination_date'),
+        notes: json.str('notes'),
+        subjectToPaye: json.flag('subject_to_paye', fallback: true),
+      );
+}
+
+/// `{user, profile}` — what `show`, `update` and `mine` all answer with.
+/// [profile] is null until someone has saved HR details for this person.
+class EmployeeProfilePage {
+  const EmployeeProfilePage({required this.user, this.profile});
+
+  final EmployeeUserSummary user;
+  final EmployeeProfile? profile;
+
+  factory EmployeeProfilePage.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    final userJson = data.object('user');
+    return EmployeeProfilePage(
+      user: userJson == null
+          ? const EmployeeUserSummary(id: '', name: '—')
+          : EmployeeUserSummary.fromJson(userJson),
+      profile: data.object('profile') == null
+          ? null
+          : EmployeeProfile.fromJson(data.object('profile')!),
+    );
+  }
+}
+
+/// The employment-type choices `EmployeeProfileController::update` validates
+/// against (`nullable|in:full_time,part_time,contract,intern`).
+abstract final class EmploymentTypes {
+  static const values = <(String, String)>[
+    ('full_time', 'Full time'),
+    ('part_time', 'Part time'),
+    ('contract', 'Contract'),
+    ('intern', 'Intern'),
+  ];
+
+  static String label(String? value) {
+    for (final (v, l) in values) {
+      if (v == value) return l;
+    }
+    return value ?? '—';
+  }
+}
