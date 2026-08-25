@@ -135,6 +135,54 @@ sudo chown -R mobilling:www-data /var/www/html/MoBilling/unganisha-api
 sudo chmod -R 775 storage bootstrap/cache
 ```
 
+### 2.6 Firebase Cloud Messaging (push notifications)
+
+FCM is optional — `FcmService` is a silent no-op when unconfigured, so
+every notification channel that includes it stays safe to enable either
+way. To turn push notifications on for this server:
+
+1. Get the service-account JSON from the Firebase console (same one-time
+   step as on a dev machine — Project Settings → Service Accounts →
+   Generate new private key). One file per Firebase project, reused
+   across every server that project serves.
+2. Copy it onto this server, outside the web root, owned by the app user:
+
+   ```bash
+   scp firebase-service-account.json mobilling@yourserver:/tmp/
+   ssh mobilling@yourserver
+   sudo mv /tmp/firebase-service-account.json \
+     /var/www/html/MoBilling/unganisha-api/storage/app/private/firebase-service-account.json
+   sudo chown mobilling:www-data /var/www/html/MoBilling/unganisha-api/storage/app/private/firebase-service-account.json
+   sudo chmod 600 /var/www/html/MoBilling/unganisha-api/storage/app/private/firebase-service-account.json
+   ```
+
+3. Add to `.env`:
+
+   ```env
+   FCM_CREDENTIALS=/var/www/html/MoBilling/unganisha-api/storage/app/private/firebase-service-account.json
+   ```
+
+4. **Production-only gotcha**: step 2.4 already ran `php artisan
+   config:cache`, so Laravel is reading the cached config, not `.env`,
+   from that point on. Adding `FCM_CREDENTIALS` to `.env` alone does
+   **nothing** on a server that's already cached config — re-run:
+
+   ```bash
+   php artisan config:cache
+   ```
+
+   or it silently stays unconfigured with no error anywhere.
+
+5. Verify:
+
+   ```bash
+   php artisan tinker --execute="echo (new App\Services\FcmService())->isConfigured() ? 'configured' : 'NOT configured';"
+   ```
+
+A fresh clone onto a new server does **not** carry this file — it's
+under `storage/app/private/`, gitignored on purpose (it's a credential,
+not code). This whole section has to be repeated per server.
+
 ---
 
 ## 3. Frontend Deployment (React + Vite)
