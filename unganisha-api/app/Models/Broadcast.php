@@ -19,6 +19,7 @@ class Broadcast extends Model
         'subject',
         'body',
         'sms_body',
+        'whatsapp_body',
         'sent_count',
         'failed_count',
     ];

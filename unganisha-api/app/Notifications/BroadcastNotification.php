@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Channels\SmsChannel;
+use App\Channels\WhatsAppChannel;
 use App\Models\Broadcast;
 use App\Models\Tenant;
 use App\Notifications\Concerns\HasTenantBranding;
@@ -23,9 +24,10 @@ class BroadcastNotification extends Notification implements ShouldQueue
     public function via($notifiable): array
     {
         return match ($this->broadcast->channel) {
-            'email' => ['mail'],
-            'sms'   => [SmsChannel::class],
-            'both'  => ['mail', SmsChannel::class],
+            'email'    => ['mail'],
+            'sms'      => [SmsChannel::class],
+            'whatsapp' => [WhatsAppChannel::class],
+            'both'     => ['mail', SmsChannel::class],
         };
     }
 
@@ -45,5 +47,10 @@ class BroadcastNotification extends Notification implements ShouldQueue
     public function toSms($notifiable): string
     {
         return $this->broadcast->sms_body;
+    }
+
+    public function toWhatsApp($notifiable): string
+    {
+        return $this->broadcast->whatsapp_body;
     }
 }

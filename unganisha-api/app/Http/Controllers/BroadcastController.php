@@ -21,10 +21,11 @@ class BroadcastController extends Controller
     public function send(Request $request)
     {
         $request->validate([
-            'channel'    => 'required|in:email,sms,both',
+            'channel'    => 'required|in:email,sms,whatsapp,both',
             'subject'    => 'required_if:channel,email,both|nullable|string|max:255',
             'body'       => 'required_if:channel,email,both|nullable|string',
             'sms_body'   => 'required_if:channel,sms,both|nullable|string|max:160',
+            'whatsapp_body' => 'required_if:channel,whatsapp|nullable|string|max:4096',
             'client_ids' => 'nullable|array',
             'client_ids.*' => 'uuid|exists:clients,id',
         ]);
@@ -41,7 +42,7 @@ class BroadcastController extends Controller
         // Filter to clients who can receive on the chosen channel
         if ($channel === 'email') {
             $query->whereNotNull('email')->where('email', '!=', '');
-        } elseif ($channel === 'sms') {
+        } elseif (in_array($channel, ['sms', 'whatsapp'], true)) {
             $query->whereNotNull('phone')->where('phone', '!=', '');
         } else {
             // 'both' — need at least one contact method
@@ -65,6 +66,7 @@ class BroadcastController extends Controller
             'subject'          => $request->subject,
             'body'             => $request->body,
             'sms_body'         => $request->sms_body,
+            'whatsapp_body'    => $request->whatsapp_body,
         ]);
 
         $tenant = $request->user()->tenant()->withoutGlobalScopes()->first();

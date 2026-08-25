@@ -2,10 +2,11 @@ import api from './axios';
 
 export interface Broadcast {
   id: string;
-  channel: 'email' | 'sms' | 'both';
+  channel: 'email' | 'sms' | 'whatsapp' | 'both';
   subject: string | null;
   body: string | null;
   sms_body: string | null;
+  whatsapp_body: string | null;
   total_recipients: number;
   sent_count: number;
   failed_count: number;
@@ -14,10 +15,11 @@ export interface Broadcast {
 }
 
 export interface SendBroadcastPayload {
-  channel: 'email' | 'sms' | 'both';
+  channel: 'email' | 'sms' | 'whatsapp' | 'both';
   subject?: string;
   body?: string;
   sms_body?: string;
+  whatsapp_body?: string;
   client_ids?: string[];
 }
 
