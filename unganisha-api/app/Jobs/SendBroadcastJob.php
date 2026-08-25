@@ -60,6 +60,7 @@ class SendBroadcastJob
 
         $sentIds = $broadcast->sent_client_ids ?? [];
         $failedIds = $broadcast->failed_client_ids ?? [];
+        $reasons = $broadcast->failure_reasons ?? [];
 
         foreach ($this->clientIds as $clientId) {
             $client = $clients->get($clientId);
@@ -70,10 +71,12 @@ class SendBroadcastJob
                     $sentIds[] = $clientId;
                 } catch (\Throwable $e) {
                     $failedIds[] = $clientId;
+                    $reasons[$clientId] = $e->getMessage();
                     Log::warning("Broadcast {$broadcast->id}: send failed for client {$clientId}: {$e->getMessage()}");
                 }
             } else {
                 $failedIds[] = $clientId;
+                $reasons[$clientId] = 'Client no longer exists.';
             }
 
             $broadcast->update([
@@ -81,6 +84,7 @@ class SendBroadcastJob
                 'failed_count' => count($failedIds),
                 'sent_client_ids' => $sentIds,
                 'failed_client_ids' => $failedIds,
+                'failure_reasons' => $reasons,
             ]);
 
             if ($throttle) {

@@ -32,6 +32,7 @@ export interface BroadcastRecipient {
   name: string;
   email: string | null;
   phone: string | null;
+  reason: string | null;
 }
 
 export const getBroadcasts = (params?: { page?: number; per_page?: number }) =>

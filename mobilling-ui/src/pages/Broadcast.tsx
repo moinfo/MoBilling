@@ -380,6 +380,9 @@ export default function Broadcast() {
               <Paper key={r.id} withBorder p="xs" radius="sm">
                 <Text size="sm" fw={500}>{r.name}</Text>
                 <Text size="xs" c="dimmed">{[r.phone, r.email].filter(Boolean).join(' · ') || '—'}</Text>
+                {r.reason && (
+                  <Text size="xs" c="red" mt={4}>{r.reason}</Text>
+                )}
               </Paper>
             ))}
           </Stack>

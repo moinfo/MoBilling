@@ -11,6 +11,9 @@ class WhatsAppService
     /** AUTHENTICATION templates whose copy-code button carries the first variable. */
     private const AUTH_TEMPLATES = ['otp_code'];
 
+    /** Backoff (seconds) after each 429 from Meta before retrying — same idea as MosmsService::request(). */
+    private const RATE_LIMIT_BACKOFF_SECONDS = [2, 5];
+
     private string $apiVersion;
     private int $timeout;
 
@@ -34,15 +37,12 @@ class WhatsAppService
 
         $this->validateCredentials($tenant);
 
-        $response = Http::baseUrl("https://graph.facebook.com/{$this->apiVersion}")
-            ->timeout($this->timeout)
-            ->withToken($tenant->whatsapp_access_token)
-            ->post("/{$tenant->whatsapp_phone_number_id}/messages", [
-                'messaging_product' => 'whatsapp',
-                'to' => $this->formatPhone($recipient),
-                'type' => 'text',
-                'text' => ['body' => $message],
-            ]);
+        $response = $this->postWithRateLimitRetry($tenant, "/{$tenant->whatsapp_phone_number_id}/messages", [
+            'messaging_product' => 'whatsapp',
+            'to' => $this->formatPhone($recipient),
+            'type' => 'text',
+            'text' => ['body' => $message],
+        ]);
 
         if (!$response->successful()) {
             $error = $response->json('error.message') ?? $response->body();
@@ -116,10 +116,7 @@ class WhatsAppService
             $payload['template']['components'] = $components;
         }
 
-        $response = Http::baseUrl("https://graph.facebook.com/{$this->apiVersion}")
-            ->timeout($this->timeout)
-            ->withToken($tenant->whatsapp_access_token)
-            ->post("/{$tenant->whatsapp_phone_number_id}/messages", $payload);
+        $response = $this->postWithRateLimitRetry($tenant, "/{$tenant->whatsapp_phone_number_id}/messages", $payload);
 
         if (!$response->successful()) {
             $error = $response->json('error.message') ?? $response->body();
@@ -133,6 +130,27 @@ class WhatsAppService
         }
 
         return $response->json();
+    }
+
+    /** POST to the Graph API, retrying with backoff on a 429 (rate limited) before giving up. */
+    private function postWithRateLimitRetry(Tenant $tenant, string $path, array $payload): \Illuminate\Http\Client\Response
+    {
+        $client = Http::baseUrl("https://graph.facebook.com/{$this->apiVersion}")
+            ->timeout($this->timeout)
+            ->withToken($tenant->whatsapp_access_token);
+
+        $attempt = 0;
+        do {
+            $response = $client->post($path, $payload);
+
+            if ($response->successful() || $response->status() !== 429 || !isset(self::RATE_LIMIT_BACKOFF_SECONDS[$attempt])) {
+                return $response;
+            }
+
+            Log::warning('WhatsApp Graph API rate limited, retrying', ['path' => $path, 'attempt' => $attempt + 1]);
+            sleep(self::RATE_LIMIT_BACKOFF_SECONDS[$attempt]);
+            $attempt++;
+        } while (true);
     }
 
     /** True when the tenant has no direct Meta credentials but is linked to MoSMS. */

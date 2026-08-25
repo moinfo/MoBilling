@@ -83,17 +83,33 @@ class BroadcastController extends Controller
         ], 202);
     }
 
-    /** List the clients a broadcast did or didn't reach — for "which ones failed?" */
+    /** List the clients a broadcast did or didn't reach — for "which ones failed, and why?" */
     public function recipients(Request $request, Broadcast $broadcast)
     {
         $status = $request->input('status', 'failed');
         $ids = $status === 'sent' ? ($broadcast->sent_client_ids ?? []) : ($broadcast->failed_client_ids ?? []);
+        $reasons = $broadcast->failure_reasons ?? [];
 
         $clients = Client::withoutGlobalScopes()
             ->whereIn('id', $ids)
-            ->get(['id', 'name', 'email', 'phone']);
+            ->get(['id', 'name', 'email', 'phone'])
+            ->keyBy('id');
 
-        return response()->json(['data' => $clients]);
+        // Every id gets a row even if the client was since deleted — a
+        // failure is still worth showing, not silently dropped.
+        $data = collect($ids)->map(function ($id) use ($clients, $reasons, $status) {
+            $client = $clients->get($id);
+
+            return [
+                'id' => $id,
+                'name' => $client->name ?? 'Unknown client (removed)',
+                'email' => $client->email ?? null,
+                'phone' => $client->phone ?? null,
+                'reason' => $status === 'failed' ? ($reasons[$id] ?? null) : null,
+            ];
+        })->values();
+
+        return response()->json(['data' => $data]);
     }
 
     /** Re-send the exact same content to only the recipients who failed last time — never the ones already reached. */

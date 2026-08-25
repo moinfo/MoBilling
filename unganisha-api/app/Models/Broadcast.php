@@ -24,6 +24,7 @@ class Broadcast extends Model
         'failed_count',
         'sent_client_ids',
         'failed_client_ids',
+        'failure_reasons',
         'retry_of_broadcast_id',
     ];
 
@@ -31,6 +32,7 @@ class Broadcast extends Model
         'client_ids' => 'array',
         'sent_client_ids' => 'array',
         'failed_client_ids' => 'array',
+        'failure_reasons' => 'array',
     ];
 
     protected $appends = ['in_progress'];
