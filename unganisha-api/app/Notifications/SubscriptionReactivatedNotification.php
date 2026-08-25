@@ -39,7 +39,23 @@ class SubscriptionReactivatedNotification extends Notification implements Should
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $list = implode(', ', array_slice($this->labels, 0, 3))
+            . (count($this->labels) > 3 ? ' +' . (count($this->labels) - 3) . ' more' : '');
+
+        return [
+            'title' => 'Service restored — thank you for your payment',
+            'body'  => "Restored: {$list}.",
+            'data'  => ['type' => 'subscription'],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

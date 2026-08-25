@@ -38,7 +38,21 @@ class DomainAuthInfoRevealedNotification extends Notification implements ShouldQ
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        // The EPP/transfer code itself must never be pushed — keep this generic.
+        return [
+            'title' => 'Domain transfer code accessed',
+            'body'  => "The transfer (EPP) code for {$this->domain->name} was just accessed. If you didn't request it, contact us immediately.",
+            'data'  => ['type' => 'domain', 'domain_id' => $this->domain->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

@@ -31,7 +31,25 @@ class SystemVerificationIssueNotification extends Notification implements Should
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel toggles; FcmChannel
+        // no-ops when unconfigured or the user has no registered devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $this->report->loadMissing('user', 'systemVerification');
+
+        $staffName  = $this->report->user?->name ?? 'A staff member';
+        $systemName = $this->report->systemVerification?->name ?? 'a system';
+
+        return [
+            'title' => 'Verification issue reported',
+            'body'  => "{$staffName} flagged an issue on {$systemName}.",
+            'data'  => ['type' => 'system_verification', 'report_id' => $this->report->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

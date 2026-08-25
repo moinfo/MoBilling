@@ -27,7 +27,22 @@ class StaffTargetSelfReportedNotification extends Notification implements Should
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $staffName = $this->target->user->name;
+
+        return [
+            'title' => 'Target awaiting verification',
+            'body'  => "{$staffName} has self-reported on: {$this->target->title}.",
+            'data'  => ['type' => 'staff_target', 'staff_target_id' => $this->target->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

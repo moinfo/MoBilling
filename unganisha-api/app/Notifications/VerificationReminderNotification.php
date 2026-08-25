@@ -35,7 +35,22 @@ class VerificationReminderNotification extends Notification implements ShouldQue
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel toggles; FcmChannel
+        // no-ops when unconfigured or the user has no registered devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $count = count($this->pendingSystems);
+
+        return [
+            'title' => $this->isSecondReminder ? 'Final verification reminder' : 'Verification reminder',
+            'body'  => "You have {$count} system" . ($count === 1 ? '' : 's') . " awaiting your verification today.",
+            'data'  => ['type' => 'verification_reminder', 'pending_count' => $count],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

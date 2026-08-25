@@ -21,7 +21,18 @@ class ClientMessageNotification extends Notification
 
     public function via($notifiable): array
     {
-        return ['mail'];
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        return ['mail', \App\Channels\FcmChannel::class];
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => $this->subjectLine,
+            'body'  => \Illuminate\Support\Str::limit(trim($this->body), 150),
+            'data'  => ['type' => 'message'],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

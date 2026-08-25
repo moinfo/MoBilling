@@ -27,7 +27,23 @@ class StaffReportSubmittedNotification extends Notification implements ShouldQue
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $staffName = $this->report->user->name;
+        $typeLabel = ucfirst($this->report->report_type);
+
+        return [
+            'title' => "{$typeLabel} report submitted",
+            'body'  => "{$staffName} submitted their {$typeLabel} report.",
+            'data'  => ['type' => 'staff_report', 'staff_report_id' => $this->report->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

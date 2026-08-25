@@ -36,7 +36,24 @@ class InvoiceCancelledNotification extends Notification implements ShouldQueue
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $tenant = $this->document->tenant;
+
+        return [
+            'title' => "Invoice {$this->document->document_number} cancelled",
+            'body'  => "Invoice {$this->document->document_number} for {$tenant->currency} "
+                . number_format($this->document->total, 2) . ' has been cancelled. No payment is required.',
+            'data'  => ['type' => 'invoice', 'document_id' => $this->document->id],
+        ];
     }
 
     public function toWhatsApp($notifiable): array

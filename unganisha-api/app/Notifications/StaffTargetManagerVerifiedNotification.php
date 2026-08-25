@@ -27,7 +27,26 @@ class StaffTargetManagerVerifiedNotification extends Notification implements Sho
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $staffName = $this->target->user->name;
+        $earned    = (float) ($this->target->manager_commission_earned ?? 0);
+        $body = $earned > 0
+            ? "Manager commission earned: " . number_format($earned, 2) . " on {$staffName}'s target."
+            : "{$staffName}'s target was verified — no manager commission this period.";
+
+        return [
+            'title' => 'Manager commission update',
+            'body'  => $body,
+            'data'  => ['type' => 'staff_target', 'staff_target_id' => $this->target->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

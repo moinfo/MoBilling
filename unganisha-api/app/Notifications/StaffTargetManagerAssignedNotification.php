@@ -27,7 +27,22 @@ class StaffTargetManagerAssignedNotification extends Notification implements Sho
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $staffName = $this->target->user->name;
+
+        return [
+            'title' => 'You are managing a target',
+            'body'  => "You have been assigned to manage {$staffName}'s target: {$this->target->title}.",
+            'data'  => ['type' => 'staff_target', 'staff_target_id' => $this->target->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

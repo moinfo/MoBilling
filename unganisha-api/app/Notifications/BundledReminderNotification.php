@@ -42,6 +42,9 @@ class BundledReminderNotification extends Notification
             if (in_array($this->forceChannels, ['whatsapp', 'both']) && $this->tenant->whatsapp_enabled) {
                 $channels[] = WhatsAppChannel::class;
             }
+            // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+            // when the client has no registered devices, so it is always safe on.
+            $channels[] = \App\Channels\FcmChannel::class;
             return $channels;
         }
 
@@ -55,7 +58,25 @@ class BundledReminderNotification extends Notification
         if ($this->tenant->whatsapp_enabled && $this->tenant->reminder_whatsapp_enabled) {
             $channels[] = WhatsAppChannel::class;
         }
+
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $currency = $this->tenant->currency;
+        $count = $this->documents->count();
+        $totalBalance = $this->documents->sum('balance_due');
+
+        return [
+            'title' => "{$count} unpaid invoice(s) — {$currency} " . number_format((float) $totalBalance, 2),
+            'body'  => 'Invoices: ' . $this->documents->pluck('document_number')->join(', ') . '.',
+            'data'  => ['type' => 'invoice', 'count' => $count],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

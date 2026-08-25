@@ -139,6 +139,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout'])->group(function () {
     Route::post('/auth/2fa/disable', [\App\Http\Controllers\Auth\TwoFactorAuthController::class, 'disable']);
     Route::post('/auth/2fa/recovery-codes/regenerate', [\App\Http\Controllers\Auth\TwoFactorAuthController::class, 'regenerateRecoveryCodes']);
 
+    // Push notification device tokens (self-service; works for both staff and portal users)
+    Route::post('/device-tokens', [\App\Http\Controllers\DeviceTokenController::class, 'store']);
+    Route::delete('/device-tokens', [\App\Http\Controllers\DeviceTokenController::class, 'destroy']);
+
     // Notifications (available to all authenticated users — tenant + admin)
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::get('/notifications/unread-count', [NotificationController::class, 'unreadCount']);
@@ -985,8 +989,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/subscriptions/{clientSubscription}/generate-invoice', [PortalSubscriptionController::class, 'generateInvoice']);
     Route::post('/documents/{document}/pay', [InvoicePaymentController::class, 'checkout']);
     Route::get('/documents/{document}/pay/{payment}/status', [InvoicePaymentController::class, 'status']);
-    Route::post('/device-tokens', [\App\Http\Controllers\Portal\PortalDeviceTokenController::class, 'store']);
-    Route::delete('/device-tokens', [\App\Http\Controllers\Portal\PortalDeviceTokenController::class, 'destroy']);
+    Route::post('/device-tokens', [\App\Http\Controllers\DeviceTokenController::class, 'store']);
+    Route::delete('/device-tokens', [\App\Http\Controllers\DeviceTokenController::class, 'destroy']);
     Route::get('/profile', [PortalProfileController::class, 'show']);
     Route::put('/profile', [PortalProfileController::class, 'update']);
     Route::post('/profile/change-password', [PortalProfileController::class, 'changePassword']);

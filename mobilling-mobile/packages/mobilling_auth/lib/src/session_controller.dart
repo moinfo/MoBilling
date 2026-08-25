@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 
 import 'auth_models.dart';
 import 'auth_service.dart';
+import 'push_registration.dart';
 import 'token_store.dart';
 
 /// Where the app is in its authentication lifecycle.
@@ -46,11 +49,14 @@ class SessionController extends ChangeNotifier {
   SessionController({
     required AuthService authService,
     required TokenStore tokenStore,
+    PushRegistration pushRegistration = const NoopPushRegistration(),
   }) : _auth = authService,
-       _tokens = tokenStore;
+       _tokens = tokenStore,
+       _push = pushRegistration;
 
   final AuthService _auth;
   final TokenStore _tokens;
+  final PushRegistration _push;
 
   SessionStatus _status = SessionStatus.unknown;
   AuthSession? _session;
@@ -97,6 +103,11 @@ class SessionController extends ChangeNotifier {
     try {
       _session = await _auth.me(token);
       _setStatus(SessionStatus.authenticated);
+      // A stored session can outlive the device's last FCM token registration
+      // (reinstall, cleared app data, a token the server never saw because
+      // Firebase wasn't wired up yet) — re-assert it on every successful
+      // restore rather than only at the moment of login.
+      unawaited(_push.registerAfterLogin(_auth));
     } on ApiException catch (e) {
       if (e.kind == ApiErrorKind.unauthenticated ||
           e.kind == ApiErrorKind.forbidden) {
@@ -187,12 +198,24 @@ class SessionController extends ChangeNotifier {
     _session = session;
     await _tokens.save(session.token, userType: session.user.userType.toJson());
     _setStatus(SessionStatus.authenticated);
+    // Covers login, registration, impersonation and returning from it — every
+    // path that lands on a new bearer token needs the device's push token
+    // re-pointed at whoever now holds it.
+    unawaited(_push.registerAfterLogin(_auth));
   }
 
   /// Sign out deliberately. Revokes server-side first so the token cannot be
   /// replayed, but clears locally even if that call fails — the user asked to
   /// leave, and refusing would strand them.
   Future<void> logout() async {
+    // Must run before the token is revoked below — the DELETE call itself
+    // needs to authenticate as the very session that's ending.
+    try {
+      await _push.unregisterBeforeLogout(_auth);
+    } on ApiException {
+      // Best effort; a stale token left registered costs one wasted push,
+      // not a stuck sign-out.
+    }
     try {
       await _auth.logout();
     } on ApiException {

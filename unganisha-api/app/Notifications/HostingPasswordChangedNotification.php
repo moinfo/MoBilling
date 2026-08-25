@@ -36,7 +36,21 @@ class HostingPasswordChangedNotification extends Notification implements ShouldQ
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    /** Generic body — never includes the new password. */
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => "Password changed — {$this->account->domain}",
+            'body'  => 'Your hosting account password was changed. Contact us immediately if this was not you.',
+            'data'  => ['type' => 'hosting', 'hosting_account_id' => $this->account->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

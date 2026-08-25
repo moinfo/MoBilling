@@ -37,7 +37,23 @@ class SubscriptionSuspendedNotification extends Notification implements ShouldQu
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $currency = $this->tenant->currency;
+
+        return [
+            'title' => "Service suspended — {$this->subscription->label}",
+            'body'  => "Unpaid invoice {$this->document->document_number} ({$currency} "
+                . number_format((float) $this->document->total, 2) . '). Pay to reactivate.',
+            'data'  => ['type' => 'subscription', 'subscription_id' => $this->subscription->id, 'document_id' => $this->document->id],
+        ];
     }
 
     public function toWhatsApp($notifiable): array

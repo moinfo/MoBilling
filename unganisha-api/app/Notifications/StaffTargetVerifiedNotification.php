@@ -27,7 +27,25 @@ class StaffTargetVerifiedNotification extends Notification implements ShouldQueu
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $totalCommission = $this->target->totalCommissionEarned();
+        $commissionText  = $totalCommission > 0
+            ? ' Commission: KES ' . number_format($totalCommission, 2) . '.'
+            : '';
+
+        return [
+            'title' => 'Target verified',
+            'body'  => "Your target \"{$this->target->title}\" has been verified.{$commissionText}",
+            'data'  => ['type' => 'staff_target', 'staff_target_id' => $this->target->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

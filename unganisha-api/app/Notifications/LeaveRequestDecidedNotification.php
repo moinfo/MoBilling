@@ -27,7 +27,23 @@ class LeaveRequestDecidedNotification extends Notification implements ShouldQueu
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $typeLabel = $this->request->leaveType->name;
+        $verb = $this->request->status === 'approved' ? 'approved' : 'rejected';
+
+        return [
+            'title' => "Leave request {$verb}",
+            'body'  => "Your {$typeLabel} request was {$verb}.",
+            'data'  => ['type' => 'leave_request', 'leave_request_id' => $this->request->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

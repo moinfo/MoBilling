@@ -1,40 +1,66 @@
+import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
-import 'package:mobilling_api/mobilling_api.dart';
+import 'package:mobilling_auth/mobilling_auth.dart';
 
-/// Device push-token lifecycle.
+/// Requests notification permission, mints an FCM token, and keeps the
+/// server's copy current for as long as this instance lives (which is the
+/// app's lifetime — see `pushRegistrationProvider`).
 ///
-/// The backend side is fully live: `POST/DELETE /portal/device-tokens` and an
-/// FCM channel on invoice / receipt / ticket-reply notifications. What this
-/// build lacks is Firebase itself — `firebase_messaging` cannot even compile
-/// without per-app config files (google-services.json / GoogleService-Info
-/// .plist) that must come from your Firebase project. Hence this seam.
-///
-/// To turn push on:
-///   1. `dart pub global activate flutterfire_cli`
-///   2. `flutterfire configure` inside apps/client_portal (creates the
-///      Firebase config files and firebase_options.dart)
-///   3. Add `firebase_core` + `firebase_messaging` to pubspec.yaml
-///   4. Replace [NoopPushRegistration] with an implementation that requests
-///      permission, reads `FirebaseMessaging.instance.getToken()`, forwards
-///      it to [PortalService.registerDeviceToken], and re-registers on
-///      `onTokenRefresh`.
-///   5. Set FCM_CREDENTIALS on the API server to the service-account JSON.
-///
-/// See PUSH_SETUP.md at the repo root for the full walkthrough.
-abstract class PushRegistration {
-  Future<void> registerAfterLogin(PortalService portal);
-  Future<void> unregisterBeforeLogout(PortalService portal);
-}
+/// `POST/DELETE /device-tokens` is `auth:sanctum`-only — it works the same
+/// for a portal client, a staff member, or an impersonated super admin —
+/// which is why [PushRegistration] takes [AuthService] rather than a
+/// shell-specific service.
+class FirebasePushRegistration implements PushRegistration {
+  FirebasePushRegistration();
 
-/// Placeholder used until Firebase is configured — logs instead of pushing.
-class NoopPushRegistration implements PushRegistration {
-  const NoopPushRegistration();
+  StreamSubscription<String>? _refreshSub;
+  String? _registeredToken;
+
+  String get _platform => Platform.isIOS ? 'ios' : 'android';
 
   @override
-  Future<void> registerAfterLogin(PortalService portal) async {
-    debugPrint('Push disabled: Firebase not configured (see PUSH_SETUP.md).');
+  Future<void> registerAfterLogin(AuthService auth) async {
+    final messaging = FirebaseMessaging.instance;
+
+    // iOS asks the user; Android (<13) is silently granted and 13+ is
+    // covered by the manifest's POST_NOTIFICATIONS permission plus this same
+    // call, which the plugin routes to the platform-appropriate prompt.
+    final settings = await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      debugPrint('Push permission denied — device will not receive pushes.');
+      return;
+    }
+
+    // A fresh listener per login would leak one every time a device stays
+    // signed in across multiple accounts; drop any subscription from a prior
+    // session before starting a new one.
+    await _refreshSub?.cancel();
+    _refreshSub = messaging.onTokenRefresh.listen((token) {
+      _registeredToken = token;
+      unawaited(auth.registerDeviceToken(token, platform: _platform));
+    });
+
+    final token = await messaging.getToken();
+    if (token == null) return;
+    _registeredToken = token;
+    await auth.registerDeviceToken(token, platform: _platform);
   }
 
   @override
-  Future<void> unregisterBeforeLogout(PortalService portal) async {}
+  Future<void> unregisterBeforeLogout(AuthService auth) async {
+    await _refreshSub?.cancel();
+    _refreshSub = null;
+
+    final token = _registeredToken ?? await FirebaseMessaging.instance.getToken();
+    _registeredToken = null;
+    if (token == null) return;
+    await auth.unregisterDeviceToken(token);
+  }
 }

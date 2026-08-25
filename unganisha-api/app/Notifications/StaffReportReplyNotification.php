@@ -30,7 +30,22 @@ class StaffReportReplyNotification extends Notification implements ShouldQueue
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $typeLabel = ucfirst($this->report->report_type);
+
+        return [
+            'title' => "New reply on {$typeLabel} report",
+            'body'  => "{$this->authorName}: " . \Illuminate\Support\Str::limit($this->reply->message, 80),
+            'data'  => ['type' => 'staff_report', 'staff_report_id' => $this->report->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

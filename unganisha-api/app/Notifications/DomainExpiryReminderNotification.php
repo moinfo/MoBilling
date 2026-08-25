@@ -35,7 +35,22 @@ class DomainExpiryReminderNotification extends Notification implements ShouldQue
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $urgent = $this->daysLeft <= 7;
+
+        return [
+            'title' => ($urgent ? 'URGENT: ' : '') . "Domain {$this->domain->name} expires soon",
+            'body'  => "Expires on {$this->domain->expires_at->format('d M Y')} — in {$this->daysLeft} day(s). Renew to avoid interruption.",
+            'data'  => ['type' => 'domain', 'domain_id' => $this->domain->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

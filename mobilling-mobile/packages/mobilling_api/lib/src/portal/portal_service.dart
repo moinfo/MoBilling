@@ -541,24 +541,6 @@ class PortalService {
   }
 
   // -------------------------------------------------------------------------
-  // Push notifications
-  // -------------------------------------------------------------------------
-
-  /// POST /portal/device-tokens — register this device's FCM token. Repeat
-  /// calls (token refresh, re-login) upsert; a token registered by a previous
-  /// account on the same phone moves to the current one.
-  Future<void> registerDeviceToken(String token, {String? platform}) =>
-      _api.post<dynamic>(
-        '/portal/device-tokens',
-        body: {'token': token, 'platform': ?platform},
-      );
-
-  /// DELETE /portal/device-tokens — call on sign-out so the next owner of
-  /// this account doesn't keep receiving pushes on this phone.
-  Future<void> unregisterDeviceToken(String token) =>
-      _api.delete<dynamic>('/portal/device-tokens', body: {'token': token});
-
-  // -------------------------------------------------------------------------
   // Ordering
   // -------------------------------------------------------------------------
 

@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
@@ -5,6 +7,10 @@ import 'package:mobilling_auth/mobilling_auth.dart';
 
 import 'config/app_config.dart';
 import 'config/debug_hooks.dart';
+import 'features/push/push_deep_link.dart';
+import 'features/push/push_registration.dart';
+import 'navigation/shell.dart';
+import 'router.dart';
 
 /// Every provider here carries an explicit type annotation; see the client
 /// app's providers.dart for why.
@@ -47,15 +53,38 @@ final Provider<AuthService> authServiceProvider = Provider<AuthService>(
   (ref) => AuthService(ref.watch(apiClientProvider)),
 );
 
+/// iOS has no `GoogleService-Info.plist` / `DefaultFirebaseOptions` entry yet
+/// (APNs setup is deferred) — [NoopPushRegistration] there until it does.
+final Provider<PushRegistration> pushRegistrationProvider =
+    Provider<PushRegistration>(
+  (ref) =>
+      Platform.isAndroid ? FirebasePushRegistration() : const NoopPushRegistration(),
+);
+
 final ChangeNotifierProvider<SessionController> sessionControllerProvider =
     ChangeNotifierProvider<SessionController>((ref) {
   final controller = SessionController(
     authService: ref.watch(authServiceProvider),
     tokenStore: ref.watch(tokenStoreProvider),
+    pushRegistration: ref.watch(pushRegistrationProvider),
   );
   ref.watch(unauthenticatedHubProvider).handler =
       controller.handleUnauthenticated;
   return controller;
+});
+
+/// Subscribes to tapped-notification events exactly once for the life of the
+/// app. A `Provider`'s create callback only runs the first time something
+/// watches it, so this doubles as a "run this side effect once" seam —
+/// [StaffApp] watches it right alongside `routerProvider` rather than firing
+/// it from `main()`, where the router doesn't exist yet.
+final Provider<void> pushDeepLinkWiringProvider = Provider<void>((ref) {
+  if (Platform.isAndroid) {
+    wirePushDeepLinks(
+      ref.watch(routerProvider),
+      () => ref.read(sessionControllerProvider).session.shell,
+    );
+  }
 });
 
 /// Which bottom tab the staff shell is showing.

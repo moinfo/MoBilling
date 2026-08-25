@@ -17,7 +17,18 @@ class WelcomeNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        return ['mail', 'database'];
+        // Push is independent of the mail/database channels; FcmChannel
+        // no-ops when unconfigured or the recipient has no devices.
+        return ['mail', 'database', \App\Channels\FcmChannel::class];
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => 'Welcome to MoBilling!',
+            'body'  => "Your account for {$this->tenant->name} is ready. Enjoy your 7-day free trial.",
+            'data'  => ['type' => 'welcome', 'tenant_id' => $this->tenant->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

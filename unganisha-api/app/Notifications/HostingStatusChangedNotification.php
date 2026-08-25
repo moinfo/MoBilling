@@ -41,7 +41,24 @@ class HostingStatusChangedNotification extends Notification implements ShouldQue
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => $this->suspended
+                ? "Hosting suspended — {$this->account->domain}"
+                : "Hosting restored — {$this->account->domain}",
+            'body'  => $this->suspended
+                ? 'Your website and email on this domain are temporarily unavailable.' . ($this->reason ? " ({$this->reason})" : '')
+                : 'Your website and email are back online.',
+            'data'  => ['type' => 'hosting', 'hosting_account_id' => $this->account->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

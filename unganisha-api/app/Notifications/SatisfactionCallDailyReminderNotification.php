@@ -33,7 +33,20 @@ class SatisfactionCallDailyReminderNotification extends Notification implements 
             $channels[] = SmsChannel::class;
         }
 
+        // Push is independent of the tenant's channel toggles; FcmChannel
+        // no-ops when unconfigured or the user has no registered devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => 'Satisfaction calls today',
+            'body'  => "You have {$this->callCount} satisfaction call(s) scheduled for today.",
+            'data'  => ['type' => 'satisfaction_call', 'call_count' => $this->callCount],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

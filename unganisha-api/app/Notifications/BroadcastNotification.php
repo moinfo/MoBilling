@@ -22,11 +22,26 @@ class BroadcastNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        return match ($this->broadcast->channel) {
+        $channels = match ($this->broadcast->channel) {
             'email' => ['mail'],
             'sms'   => [SmsChannel::class],
             'both'  => ['mail', SmsChannel::class],
         };
+
+        // Push is independent of the broadcast's chosen channel; FcmChannel
+        // no-ops when unconfigured or the client has no registered devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
+        return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => $this->broadcast->subject,
+            'body'  => \Illuminate\Support\Str::limit(trim(strip_tags($this->broadcast->body)), 150),
+            'data'  => ['type' => 'broadcast', 'broadcast_id' => $this->broadcast->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

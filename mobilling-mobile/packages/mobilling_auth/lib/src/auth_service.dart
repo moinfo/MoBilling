@@ -187,4 +187,20 @@ class AuthService {
     );
     return body['message'] as String?;
   }
+
+  /// POST /device-tokens — register this device's FCM token against whoever
+  /// is currently signed in (staff, super admin, or portal — the route is
+  /// `auth:sanctum`-only, not shell-specific). Repeat calls (token refresh,
+  /// re-login) are safe: the server upserts by token, moving ownership to
+  /// whoever is signed in now if a previous account shared this device.
+  Future<void> registerDeviceToken(String token, {String? platform}) =>
+      _api.post<dynamic>(
+        '/device-tokens',
+        body: {'token': token, if (platform != null) 'platform': platform},
+      );
+
+  /// DELETE /device-tokens — call on sign-out so the next owner of this
+  /// device doesn't inherit pushes meant for the previous one.
+  Future<void> unregisterDeviceToken(String token) =>
+      _api.delete<dynamic>('/device-tokens', body: {'token': token});
 }

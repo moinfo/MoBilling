@@ -1,16 +1,19 @@
 <?php
 
-namespace App\Http\Controllers\Portal;
+namespace App\Http\Controllers;
 
-use App\Http\Controllers\Controller;
+use App\Models\ClientUser;
 use App\Models\DeviceToken;
 use Illuminate\Http\Request;
 
 /**
  * Mobile app push-token lifecycle: register on login / token refresh,
- * unregister on sign-out.
+ * unregister on sign-out. Shared by every signed-in owner the app can
+ * authenticate as — client-portal users and staff/super-admin alike — since
+ * DeviceToken::tokensFor() already resolves recipients generically by
+ * owner_type/owner_id.
  */
-class PortalDeviceTokenController extends Controller
+class DeviceTokenController extends Controller
 {
     public function store(Request $request)
     {
@@ -30,7 +33,7 @@ class PortalDeviceTokenController extends Controller
                 'owner_type'   => $user::class,
                 'owner_id'     => $user->id,
                 'platform'     => $data['platform'] ?? null,
-                'app'          => 'client_portal',
+                'app'          => $user instanceof ClientUser ? 'client_portal' : 'staff',
                 'last_seen_at' => now(),
             ]
         );

@@ -27,7 +27,23 @@ class StaffReportReviewedNotification extends Notification implements ShouldQueu
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $typeLabel = ucfirst($this->report->report_type);
+        $rating    = $this->report->rating ? " ({$this->report->rating}/5)" : '';
+
+        return [
+            'title' => "{$typeLabel} report reviewed",
+            'body'  => "Your {$typeLabel} report has been reviewed{$rating}.",
+            'data'  => ['type' => 'staff_report', 'staff_report_id' => $this->report->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

@@ -16,7 +16,20 @@ class ResetPasswordNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        return ['mail'];
+        // Push is independent of the mail channel; FcmChannel no-ops when
+        // unconfigured or the recipient has no registered devices.
+        return ['mail', \App\Channels\FcmChannel::class];
+    }
+
+    // SECURITY: never include the reset token/link here — a push is only
+    // used to alert that a reset was requested, in case it wasn't the user.
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => 'Password reset requested',
+            'body'  => 'A password reset was requested for your account.',
+            'data'  => ['type' => 'password_reset_requested'],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

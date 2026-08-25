@@ -135,6 +135,57 @@ sudo chown -R mobilling:www-data /var/www/html/MoBilling/unganisha-api
 sudo chmod -R 775 storage bootstrap/cache
 ```
 
+### 2.6 Firebase Cloud Messaging (mobile push notifications)
+
+Every notification the app sends (invoices, payments, tickets, domains,
+hosting, staff reports/targets, leave requests, etc.) also pushes to the
+mobile app via FCM. It's safe to skip this — `FcmService` silently no-ops
+until `FCM_CREDENTIALS` is set — but without it, no mobile push ever fires.
+
+**Get the credential** (one-time, from whoever manages the Firebase project):
+Firebase console → the project (`mobilling-bbf3c`) → ⚙️ Project Settings →
+**Service accounts** tab → **Generate new private key**. This downloads a
+JSON file — treat it like a database password, not like `google-services.json`
+(that one's fine to commit; this one is not).
+
+**Upload it to the server**, outside the web root, owned by the app user:
+
+```bash
+scp mobilling-fcm-adminsdk.json mobilling@your-server:/tmp/
+ssh mobilling@your-server
+sudo mkdir -p /var/www/html/MoBilling/unganisha-api/storage/app/private
+sudo mv /tmp/mobilling-fcm-adminsdk.json \
+  /var/www/html/MoBilling/unganisha-api/storage/app/private/fcm-service-account.json
+sudo chown mobilling:www-data /var/www/html/MoBilling/unganisha-api/storage/app/private/fcm-service-account.json
+sudo chmod 600 /var/www/html/MoBilling/unganisha-api/storage/app/private/fcm-service-account.json
+```
+
+**Add the path to `.env`:**
+
+```env
+FCM_CREDENTIALS=/var/www/html/MoBilling/unganisha-api/storage/app/private/fcm-service-account.json
+```
+
+**Re-run `config:cache`** — step 2.4 already cached config once, and Laravel
+reads a cached config file instead of `.env` from then on, so this new value
+won't take effect until you cache again:
+
+```bash
+cd /var/www/html/MoBilling/unganisha-api
+php artisan config:cache
+```
+
+**Verify it loaded** (should print `true`, not throw):
+
+```bash
+php artisan tinker --execute="echo app(\App\Services\FcmService::class)->isConfigured() ? 'true' : 'false';"
+```
+
+If a deploy ever runs `git pull` over the whole tree, double-check
+`storage/app/private/*.json` isn't tracked — it's in `.gitignore`, so a normal
+pull won't touch or overwrite it, but a fresh clone onto a new server starts
+without it and needs this section repeated.
+
 ---
 
 ## 3. Frontend Deployment (React + Vite)
@@ -431,3 +482,4 @@ php artisan schedule:list
 | Cron not running | Verify with `crontab -u mobilling -l`, check Laravel schedule: `php artisan schedule:list` |
 | File uploads fail | Check `client_max_body_size` in Nginx and PHP `upload_max_filesize` |
 | SMS not sending | Verify `SMS_GATEWAY_URL` and `SMS_GATEWAY_MASTER_AUTH` in `.env` |
+| Mobile push not sending | Verify `FCM_CREDENTIALS` in `.env` points to a file that exists, then `php artisan config:cache` (see §2.6) |

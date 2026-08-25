@@ -35,7 +35,21 @@ class BillOverdueNotification extends Notification implements ShouldQueue
             $channels[] = SmsChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the user has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => 'Bill Overdue',
+            'body'  => "{$this->bill->name} of {$this->tenant->currency} " . number_format($this->bill->amount, 2)
+                . " was due on {$this->bill->due_date->format('d M Y')} and is now overdue.",
+            'data'  => ['type' => 'bill', 'bill_id' => $this->bill->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

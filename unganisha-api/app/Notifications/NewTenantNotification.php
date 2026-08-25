@@ -17,7 +17,18 @@ class NewTenantNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        return ['mail', 'database'];
+        // Push is independent of the mail/database channels; FcmChannel
+        // no-ops when unconfigured or the recipient has no devices.
+        return ['mail', 'database', \App\Channels\FcmChannel::class];
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => 'New tenant registered',
+            'body'  => "{$this->tenant->name} ({$this->tenant->email}) just registered.",
+            'data'  => ['type' => 'new_tenant', 'tenant_id' => $this->tenant->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

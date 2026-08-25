@@ -35,7 +35,21 @@ class BillDueReminderNotification extends Notification implements ShouldQueue
             $channels[] = SmsChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the user has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => 'Bill Due Reminder',
+            'body'  => "{$this->bill->name} of {$this->tenant->currency} " . number_format($this->bill->amount, 2)
+                . " is due on {$this->bill->due_date->format('d M Y')}.",
+            'data'  => ['type' => 'bill', 'bill_id' => $this->bill->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

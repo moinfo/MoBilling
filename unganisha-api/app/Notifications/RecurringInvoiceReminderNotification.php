@@ -39,6 +39,9 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
             if (in_array($this->forceChannels, ['whatsapp', 'both']) && $this->tenant->whatsapp_enabled) {
                 $channels[] = WhatsAppChannel::class;
             }
+            // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+            // when the client has no registered devices, so it is always safe on.
+            $channels[] = \App\Channels\FcmChannel::class;
             return $channels;
         }
 
@@ -57,7 +60,23 @@ class RecurringInvoiceReminderNotification extends Notification implements Shoul
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $currency = $this->tenant->currency;
+
+        return [
+            'title' => "Invoice {$this->document->document_number} due in {$this->daysRemaining} day(s)",
+            'body'  => "Amount due: {$currency} " . number_format((float) $this->document->balance_due, 2)
+                . " — due {$this->document->due_date->format('d M Y')}.",
+            'data'  => ['type' => 'invoice', 'document_id' => $this->document->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

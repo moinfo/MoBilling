@@ -38,7 +38,23 @@ class InvoiceTerminationWarningNotification extends Notification implements Shou
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $currency = $this->tenant->currency;
+
+        return [
+            'title' => "Final notice — Invoice {$this->document->document_number}",
+            'body'  => "{$currency} " . number_format((float) $this->document->total, 2)
+                . ' is still unpaid. Service will be terminated in 7 days if not settled.',
+            'data'  => ['type' => 'invoice', 'document_id' => $this->document->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

@@ -10,7 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-/** SSL certificate on the client's domain is about to expire (email only). */
+/** SSL certificate on the client's domain is about to expire (email + push). */
 class SslExpiryReminderNotification extends Notification implements ShouldQueue
 {
     use Queueable, HasTenantBranding;
@@ -24,8 +24,23 @@ class SslExpiryReminderNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        return ($this->tenant->email_enabled && $this->tenant->reminder_email_enabled && $notifiable->email)
+        $channels = ($this->tenant->email_enabled && $this->tenant->reminder_email_enabled && $notifiable->email)
             ? ['mail'] : [];
+
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
+        return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => "SSL certificate for {$this->domain->name} expires in {$this->daysLeft} day(s)",
+            'body'  => "Expires on {$this->expiresAt}. Renew it to avoid a browser security warning for visitors.",
+            'data'  => ['type' => 'ssl', 'domain_id' => $this->domain->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

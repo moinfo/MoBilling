@@ -27,7 +27,23 @@ class LeaveRequestSubmittedNotification extends Notification implements ShouldQu
             $channels[] = 'mail';
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $staffName = $this->request->user->name;
+        $typeLabel = $this->request->leaveType->name;
+
+        return [
+            'title' => 'Leave request submitted',
+            'body'  => "{$staffName} requested {$typeLabel} ({$this->request->days} day(s)).",
+            'data'  => ['type' => 'leave_request', 'leave_request_id' => $this->request->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

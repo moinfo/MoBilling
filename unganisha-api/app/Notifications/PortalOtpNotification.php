@@ -18,7 +18,20 @@ class PortalOtpNotification extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        return ['mail'];
+        // Push is independent of the mail channel; FcmChannel no-ops when
+        // unconfigured or the recipient has no registered devices.
+        return ['mail', \App\Channels\FcmChannel::class];
+    }
+
+    // SECURITY: never include the OTP itself here — a push is only used to
+    // alert that a code was requested, in case someone else triggered it.
+    public function toFcm($notifiable): ?array
+    {
+        return [
+            'title' => 'Sign-in code requested',
+            'body'  => "A sign-in code was requested for your {$this->tenantName} account.",
+            'data'  => ['type' => 'otp_requested'],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

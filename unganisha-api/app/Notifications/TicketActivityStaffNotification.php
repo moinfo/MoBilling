@@ -16,7 +16,20 @@ class TicketActivityStaffNotification extends Notification
 
     public function via($notifiable): array
     {
-        return ['database', 'mail'];
+        // Push is independent of the database/mail channels; FcmChannel
+        // no-ops when unconfigured or the staff member has no devices.
+        return ['database', 'mail', \App\Channels\FcmChannel::class];
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $verb = $this->event === 'opened' ? 'opened a new ticket' : 'replied to a ticket';
+
+        return [
+            'title' => $this->event === 'opened' ? 'New support ticket' : 'Client replied to ticket',
+            'body'  => "{$this->ticket->client?->name} {$verb}: {$this->ticket->ticket_number} — {$this->ticket->subject}",
+            'data'  => ['type' => 'ticket', 'ticket_id' => $this->ticket->id],
+        ];
     }
 
     public function toDatabase($notifiable): array

@@ -33,7 +33,22 @@ class StaffReportDeadlineReminderNotification extends Notification implements Sh
             $channels[] = SmsChannel::class;
         }
 
+        // Push is independent of the tenant's channel settings; FcmChannel
+        // no-ops when unconfigured or the user has no devices.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $typeLabel = ucfirst($this->reportType);
+
+        return [
+            'title' => "{$typeLabel} report due today",
+            'body'  => "Your {$typeLabel} report for {$this->periodLabel} is due today by {$this->deadlineTime}.",
+            'data'  => ['type' => 'staff_report', 'report_type' => $this->reportType, 'period_label' => $this->periodLabel],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

@@ -21,7 +21,20 @@ class StaffTargetAssignedSupervisorNotification extends Notification implements 
 
     public function via($notifiable): array
     {
-        return ['database'];
+        // Push is independent of other channel toggles; FcmChannel no-ops
+        // when unconfigured or the user has no devices.
+        return ['database', \App\Channels\FcmChannel::class];
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $staffName = $this->target->user->name;
+
+        return [
+            'title' => 'Target assigned to your staff',
+            'body'  => "{$staffName} has been assigned a new target: {$this->target->title}.",
+            'data'  => ['type' => 'staff_target', 'staff_target_id' => $this->target->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

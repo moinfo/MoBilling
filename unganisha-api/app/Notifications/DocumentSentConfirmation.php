@@ -15,7 +15,20 @@ class DocumentSentConfirmation extends Notification implements ShouldQueue
 
     public function via($notifiable): array
     {
-        return ['database'];
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the user has no registered devices, so it is always safe on.
+        return ['database', \App\Channels\FcmChannel::class];
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $type = ucfirst($this->document->type);
+
+        return [
+            'title' => "{$type} Sent",
+            'body'  => "{$type} {$this->document->document_number} was sent to {$this->document->client->name}.",
+            'data'  => ['type' => 'document', 'document_id' => $this->document->id],
+        ];
     }
 
     public function toArray($notifiable): array

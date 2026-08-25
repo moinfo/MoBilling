@@ -40,7 +40,23 @@ class InvoiceLateFeeNotification extends Notification implements ShouldQueue
             $channels[] = WhatsAppChannel::class;
         }
 
+        // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
+        // when the client has no registered devices, so it is always safe on.
+        $channels[] = \App\Channels\FcmChannel::class;
+
         return $channels;
+    }
+
+    public function toFcm($notifiable): ?array
+    {
+        $currency = $this->tenant->currency;
+
+        return [
+            'title' => "Late fee applied — {$this->document->document_number}",
+            'body'  => "A late fee of {$currency} " . number_format($this->lateFeeAmount, 2)
+                . " was applied. New total: {$currency} " . number_format($this->newTotal, 2) . '.',
+            'data'  => ['type' => 'invoice', 'document_id' => $this->document->id],
+        ];
     }
 
     public function toMail($notifiable): MailMessage

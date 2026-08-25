@@ -1,77 +1,85 @@
-# Enabling push notifications
+# Push notifications
 
-The backend is **already live**: device-token registration endpoints and an
-FCM channel on the three client-facing events (invoice issued, payment
-receipt, ticket reply). Pushes silently no-op until both halves below are
-configured, so nothing breaks in the meantime.
+## Status
 
-## 1. Firebase project (one-time)
+- **Backend**: fully live, on every notification. `POST/DELETE /device-tokens`
+  (any signed-in user — staff, super admin, or portal) and
+  `/portal/device-tokens` (same controller, kept for the portal-prefixed
+  path) register/unregister a device's FCM token. `FcmService` sends via the
+  FCM HTTP v1 API using a real service-account credential (`FCM_CREDENTIALS`
+  is set; verified end-to-end with a live send that authenticated correctly
+  and was only rejected for using a fake token), and prunes tokens FCM
+  reports as UNREGISTERED. **Every one of the app's 45 notification classes**
+  now pushes — see the table below — spanning portal clients, tenant staff,
+  and platform super admins.
+- **Android app** (`apps/staff`): live. Firebase is initialized in `main.dart`,
+  `FirebasePushRegistration` (in `lib/features/push/push_registration.dart`)
+  requests permission, registers the FCM token, and re-registers on
+  `onTokenRefresh`. `SessionController` calls it after every login,
+  registration, impersonation swap, and app-relaunch session restore, and
+  unregisters the token right before a token is revoked at sign-out.
+- **Tap-to-deep-link**: partial. `lib/features/push/push_deep_link.dart`
+  handles `invoice`/`payment` (always portal) and `ticket` (portal or staff,
+  resolved from the signed-in shell — `TicketRepliedNotification` targets a
+  client, `TicketActivityStaffNotification` targets staff, and both use the
+  same `type`). The ~20 other `type` values introduced in the sweep below
+  (`bill`, `domain`, `hosting`, `subscription`, `ssl`, `staff_report`,
+  `staff_target`, `leave_request`, `broadcast`, `new_tenant`, …) aren't mapped
+  to a route yet — tapping one of those today just opens the app with no
+  navigation (safe no-op, not a crash). Extend `_pathFor` in that file per
+  type, as screens are confirmed to exist for each.
+- **iOS app**: not started. `firebase_options.dart` only has an `android`
+  entry — `DefaultFirebaseOptions.currentPlatform` throws on iOS on purpose,
+  so `main.dart` skips Firebase entirely there and the session falls back to
+  `NoopPushRegistration`.
 
-1. Create a project at <https://console.firebase.google.com>.
-2. Add an **Android app** (package `tz.co.mobilling.client_portal`) and an
-   **iOS app** (bundle `tz.co.mobilling.clientPortal`).
-3. Project settings → Service accounts → **Generate new private key** — this
-   JSON file is for the *server*.
+## Remaining: iOS
 
-## 2. API server
-
-```bash
-# .env
-FCM_CREDENTIALS=/var/www/secrets/mobilling-fcm.json
-```
-
-Place the service-account JSON at that path (outside the web root, mode 600).
-That's all — `FcmService` handles OAuth and dead-token pruning itself.
-
-## 3. Flutter app
-
-```bash
-dart pub global activate flutterfire_cli
-cd apps/client_portal
-flutterfire configure        # pick the Firebase project; writes config files
-flutter pub add firebase_core firebase_messaging
-```
-
-Then replace `NoopPushRegistration` in
-`lib/features/push/push_registration.dart` with:
-
-```dart
-class FirebasePushRegistration implements PushRegistration {
-  @override
-  Future<void> registerAfterLogin(PortalService portal) async {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    final messaging = FirebaseMessaging.instance;
-    final settings = await messaging.requestPermission();
-    if (settings.authorizationStatus == AuthorizationStatus.denied) return;
-
-    Future<void> send(String? token) async {
-      if (token == null) return;
-      await portal.registerDeviceToken(token,
-          platform: Platform.isIOS ? 'ios' : 'android');
-    }
-
-    await send(await messaging.getToken());
-    messaging.onTokenRefresh.listen(send);
-  }
-
-  @override
-  Future<void> unregisterBeforeLogout(PortalService portal) async {
-    final token = await FirebaseMessaging.instance.getToken();
-    if (token != null) await portal.unregisterDeviceToken(token);
-  }
-}
-```
-
-and swap the instance used in `session` wiring. iOS additionally needs the
-Push Notifications capability + APNs key uploaded to Firebase (Xcode →
-Signing & Capabilities → + Capability → Push Notifications).
+1. Firebase console → add an iOS app (bundle `tz.co.mobilling.staff`),
+   download `GoogleService-Info.plist` into `apps/staff/ios/Runner/`.
+2. Xcode → Runner → Signing & Capabilities → **+ Capability** → Push
+   Notifications, and upload an APNs key to the Firebase project.
+3. `flutterfire configure` (or hand-add an `ios` entry to
+   `DefaultFirebaseOptions` the same way `android` was added) so
+   `currentPlatform` resolves there too.
+4. Drop the `defaultTargetPlatform == TargetPlatform.android` guard in
+   `main.dart` and the `Platform.isAndroid` check in
+   `providers.dart#pushRegistrationProvider` once both platforms are covered.
 
 ## What gets pushed
 
-| Event | Title | Deep-link data |
-|---|---|---|
-| Invoice issued | `Invoice INV-…` | `{type: invoice, document_id}` |
-| Payment received | `Payment received — thank you!` | `{type: payment, document_id}` |
-| Ticket reply / closed | `New reply — TKT-…` | `{type: ticket, ticket_id}` |
+Every notification in `app/Notifications/` pushes now. Grouped by `data.type`:
 
-Tokens are pruned automatically when FCM reports a device as UNREGISTERED.
+| type | Notifications | Recipient |
+|---|---|---|
+| `invoice` | InvoiceSent, InvoiceCancelled, InvoiceOverdueReminder, InvoiceLateFee, InvoiceTerminationWarning, RecurringInvoiceReminder, BundledReminder | portal client |
+| `payment` | PaymentReceipt | portal client |
+| `ticket` | TicketReplied (client) / TicketActivityStaff (staff) | both — shell-resolved |
+| `bill` | BillDueReminder, BillOverdue | staff |
+| `document` | DocumentSentConfirmation | staff |
+| `domain` | DomainRegistered, DomainRenewed, DomainExpiryReminder, DomainAuthInfoRevealed | portal client |
+| `hosting` | HostingAccountProvisioned, HostingStatusChanged, HostingPasswordChanged | portal client |
+| `subscription` | SubscriptionReactivated, SubscriptionSuspended | portal client |
+| `ssl` | SslExpiryReminder | portal client |
+| `message` | ClientMessage | portal client |
+| `broadcast` | Broadcast | portal client |
+| `leave_request` | LeaveRequestSubmitted, LeaveRequestDecided | staff |
+| `staff_report` | StaffReportSubmitted/Reviewed/Reply/DeadlineReminder | staff |
+| `staff_target` | StaffTargetAssigned (+supervisor/manager variants), SelfReported, Verified (+manager) | staff |
+| `new_tenant` | NewTenant | super admin |
+| `sms_activation` | SmsActivationRequest | admin |
+| `system_verification` | SystemVerificationIssue | admin |
+| `verification_reminder` | VerificationReminder | staff |
+| `satisfaction_call` | SatisfactionCallDailyReminder | staff |
+| `welcome` | Welcome | new tenant admin |
+| `otp_requested` | PortalOtp | portal — **body never contains the code itself** |
+| `password_reset_requested` | ResetPassword | staff — **body never contains the token/link** |
+
+`DomainAuthInfoRevealedNotification` and `HostingPasswordChangedNotification`
+follow the same rule: the push alerts that a secret (EPP code / hosting
+password) was revealed or changed, never carries the secret.
+
+Foreground display isn't implemented (Android doesn't surface FCM's
+`notification` payload as a system notification while the app is
+foregrounded; that needs a local-notifications package, which hasn't been
+added) — background/terminated taps work today.
