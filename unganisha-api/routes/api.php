@@ -558,6 +558,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:menu.broadcast')->group(function () {
         Route::get('/broadcasts', [BroadcastController::class, 'index']);
         Route::post('/broadcasts', [BroadcastController::class, 'send']);
+        Route::get('/broadcasts/{broadcast}/recipients', [BroadcastController::class, 'recipients']);
+        Route::post('/broadcasts/{broadcast}/resend-failed', [BroadcastController::class, 'resendFailed']);
     });
 
     // WhatsApp Campaigns

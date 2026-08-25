@@ -2,12 +2,16 @@ import { useState } from 'react';
 import {
   Title, Group, Paper, Stack, SegmentedControl, TextInput, Textarea,
   MultiSelect, Button, Table, Badge, Text, Pagination, Loader, Select,
+  ActionIcon, Tooltip, Drawer,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconSend, IconBrandWhatsapp } from '@tabler/icons-react';
-import { getBroadcasts, sendBroadcast, type Broadcast as BroadcastType, type SendBroadcastPayload } from '../api/broadcasts';
+import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat } from '@tabler/icons-react';
+import {
+  getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast,
+  type Broadcast as BroadcastType, type SendBroadcastPayload, type BroadcastRecipient,
+} from '../api/broadcasts';
 import { getClients } from '../api/clients';
 import { formatDate } from '../utils/formatDate';
 
@@ -67,14 +71,43 @@ export default function Broadcast() {
     label: `${c.name}${c.email ? ` (${c.email})` : ''}`,
   }));
 
-  // Fetch broadcast history
+  // Fetch broadcast history — polls while anything on this page is still
+  // sending in the background (broadcasts now dispatch after the response
+  // returns, so counts fill in live rather than arriving all at once).
   const { data: historyData, isLoading: historyLoading } = useQuery({
     queryKey: ['broadcasts', page],
     queryFn: () => getBroadcasts({ page, per_page: 15 }),
+    refetchInterval: (query) => {
+      const rows: BroadcastType[] = query.state.data?.data?.data || [];
+      return rows.some((r) => r.in_progress) ? 3000 : false;
+    },
   });
 
   const broadcasts: BroadcastType[] = historyData?.data?.data || [];
   const totalPages = historyData?.data?.last_page || 1;
+
+  const [recipientsFor, setRecipientsFor] = useState<BroadcastType | null>(null);
+  const { data: recipientsData, isLoading: recipientsLoading } = useQuery({
+    queryKey: ['broadcast-recipients', recipientsFor?.id],
+    queryFn: () => getBroadcastRecipients(recipientsFor!.id, 'failed'),
+    enabled: !!recipientsFor,
+  });
+  const failedRecipients: BroadcastRecipient[] = recipientsData?.data?.data || [];
+
+  const resendMutation = useMutation({
+    mutationFn: (id: string) => resendFailedBroadcast(id),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Resend started', message: res.data.message, color: 'teal' });
+      queryClient.invalidateQueries({ queryKey: ['broadcasts'] });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Could not resend',
+        message: err.response?.data?.message || 'Something went wrong',
+        color: 'red',
+      });
+    },
+  });
 
   // Form
   const form = useForm<SendBroadcastPayload>({
@@ -122,9 +155,9 @@ export default function Broadcast() {
     onSuccess: (res) => {
       const d = res.data;
       notifications.show({
-        title: 'Broadcast sent',
-        message: `${d.sent_count} delivered, ${d.failed_count} failed out of ${d.total_recipients} recipients`,
-        color: d.failed_count > 0 ? 'orange' : 'green',
+        title: 'Broadcast started',
+        message: `Sending to ${d.total_recipients} recipient(s) in the background — watch History below for live progress.`,
+        color: 'blue',
       });
       form.reset();
       queryClient.invalidateQueries({ queryKey: ['broadcasts'] });
@@ -254,6 +287,7 @@ export default function Broadcast() {
                     <Table.Th>Delivered</Table.Th>
                     <Table.Th>Failed</Table.Th>
                     <Table.Th>Sent By</Table.Th>
+                    <Table.Th></Table.Th>
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -269,6 +303,9 @@ export default function Broadcast() {
                         >
                           {b.channel.toUpperCase()}
                         </Badge>
+                        {b.retry_of_broadcast_id && (
+                          <Badge size="xs" color="gray" variant="outline" ml={4}>retry</Badge>
+                        )}
                       </Table.Td>
                       <Table.Td style={{ maxWidth: 250 }}>
                         <Text truncate size="sm">
@@ -280,11 +317,34 @@ export default function Broadcast() {
                         <Text c="green" fw={500}>{b.sent_count}</Text>
                       </Table.Td>
                       <Table.Td>
-                        <Text c={b.failed_count > 0 ? 'red' : undefined} fw={b.failed_count > 0 ? 500 : undefined}>
-                          {b.failed_count}
-                        </Text>
+                        {b.in_progress ? (
+                          <Group gap={4} wrap="nowrap"><Loader size="xs" /><Text size="xs" c="dimmed">sending…</Text></Group>
+                        ) : (
+                          <Text c={b.failed_count > 0 ? 'red' : undefined} fw={b.failed_count > 0 ? 500 : undefined}>
+                            {b.failed_count}
+                          </Text>
+                        )}
                       </Table.Td>
                       <Table.Td>{b.sender?.name || '-'}</Table.Td>
+                      <Table.Td>
+                        {!b.in_progress && b.failed_count > 0 && (
+                          <Group gap={4} wrap="nowrap">
+                            <Tooltip label="View failed recipients">
+                              <ActionIcon variant="light" color="red" onClick={() => setRecipientsFor(b)}>
+                                <IconEye size={15} />
+                              </ActionIcon>
+                            </Tooltip>
+                            {(b.failed_client_ids?.length ?? 0) > 0 && (
+                              <Tooltip label="Resend to failed recipients only">
+                                <ActionIcon variant="light" color="teal" loading={resendMutation.isPending && resendMutation.variables === b.id}
+                                  onClick={() => resendMutation.mutate(b.id)}>
+                                  <IconRepeat size={15} />
+                                </ActionIcon>
+                              </Tooltip>
+                            )}
+                          </Group>
+                        )}
+                      </Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -298,6 +358,33 @@ export default function Broadcast() {
           </>
         )}
       </Paper>
+
+      <Drawer
+        opened={!!recipientsFor}
+        onClose={() => setRecipientsFor(null)}
+        title={<Text fw={700}>Failed recipients{recipientsFor ? ` — ${formatDate(recipientsFor.created_at)}` : ''}</Text>}
+        position="right"
+        size="md"
+      >
+        {recipientsLoading ? (
+          <Group justify="center" py="xl"><Loader /></Group>
+        ) : failedRecipients.length === 0 ? (
+          <Text c="dimmed" size="sm">
+            No per-recipient detail is available for this broadcast — it predates individual
+            failure tracking, so only the total failed count ({recipientsFor?.failed_count}) is known.
+          </Text>
+        ) : (
+          <Stack gap="xs">
+            <Text size="sm" c="dimmed">{failedRecipients.length} recipient(s) failed:</Text>
+            {failedRecipients.map((r) => (
+              <Paper key={r.id} withBorder p="xs" radius="sm">
+                <Text size="sm" fw={500}>{r.name}</Text>
+                <Text size="xs" c="dimmed">{[r.phone, r.email].filter(Boolean).join(' · ') || '—'}</Text>
+              </Paper>
+            ))}
+          </Stack>
+        )}
+      </Drawer>
     </Stack>
   );
 }
