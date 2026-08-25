@@ -822,9 +822,8 @@ Future<void> _adoptImpersonation(
 }
 
 /// `AlertDialog` shared by every impersonation entry point. Says plainly what
-/// is about to happen and — since there is currently no in-app "back to
-/// admin" control wired up anywhere reachable once impersonating — how to
-/// actually get back.
+/// is about to happen and how to get back — "Back to {name}" in the account
+/// sheet, next to Sign out.
 Future<bool> _confirmImpersonateDialog(
   BuildContext context, {
   required String title,
@@ -836,8 +835,8 @@ Future<bool> _confirmImpersonateDialog(
     builder: (context) => AlertDialog(
       title: Text(title, style: Type.display(22, color: scheme.onSurface)),
       content: Text(
-        '$body\n\nThere is no in-app way back from this yet — to return to '
-        'your own account, sign out and sign back in as super admin.',
+        '$body\n\nTo return, open the account sheet (tap your avatar) and '
+        'use "Back to …" — it stays there until you do.',
       ),
       actions: [
         TextButton(
@@ -914,8 +913,8 @@ Future<void> _offerImpersonateAfterPromote(
       ),
       content: const Text(
         'Sign in as this tenant now to finish branding and product setup? '
-        'There is no in-app way back yet — to return to your own account, '
-        'sign out and sign back in as super admin.',
+        'The account sheet (tap your avatar) can bring you back once you\'re '
+        'done.',
       ),
       actions: [
         TextButton(
