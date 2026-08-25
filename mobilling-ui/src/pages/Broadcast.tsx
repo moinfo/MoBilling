@@ -86,13 +86,13 @@ export default function Broadcast() {
   const broadcasts: BroadcastType[] = historyData?.data?.data || [];
   const totalPages = historyData?.data?.last_page || 1;
 
-  const [recipientsFor, setRecipientsFor] = useState<BroadcastType | null>(null);
+  const [recipientsFor, setRecipientsFor] = useState<{ broadcast: BroadcastType; status: 'sent' | 'failed' } | null>(null);
   const { data: recipientsData, isLoading: recipientsLoading } = useQuery({
-    queryKey: ['broadcast-recipients', recipientsFor?.id],
-    queryFn: () => getBroadcastRecipients(recipientsFor!.id, 'failed'),
+    queryKey: ['broadcast-recipients', recipientsFor?.broadcast.id, recipientsFor?.status],
+    queryFn: () => getBroadcastRecipients(recipientsFor!.broadcast.id, recipientsFor!.status),
     enabled: !!recipientsFor,
   });
-  const failedRecipients: BroadcastRecipient[] = recipientsData?.data?.data || [];
+  const viewedRecipients: BroadcastRecipient[] = recipientsData?.data?.data || [];
 
   const resendMutation = useMutation({
     mutationFn: (id: string) => resendFailedBroadcast(id),
@@ -314,7 +314,17 @@ export default function Broadcast() {
                       </Table.Td>
                       <Table.Td>{b.total_recipients}</Table.Td>
                       <Table.Td>
-                        <Text c="green" fw={500}>{b.sent_count}</Text>
+                        <Group gap={4} wrap="nowrap">
+                          <Text c="green" fw={500}>{b.sent_count}</Text>
+                          {(b.sent_client_ids?.length ?? 0) > 0 && (
+                            <Tooltip label="View numbers that received it">
+                              <ActionIcon variant="subtle" color="green" size="sm"
+                                onClick={() => setRecipientsFor({ broadcast: b, status: 'sent' })}>
+                                <IconEye size={13} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                        </Group>
                       </Table.Td>
                       <Table.Td>
                         {b.in_progress ? (
@@ -330,7 +340,7 @@ export default function Broadcast() {
                         {!b.in_progress && b.failed_count > 0 && (
                           <Group gap={4} wrap="nowrap">
                             <Tooltip label="View failed recipients">
-                              <ActionIcon variant="light" color="red" onClick={() => setRecipientsFor(b)}>
+                              <ActionIcon variant="light" color="red" onClick={() => setRecipientsFor({ broadcast: b, status: 'failed' })}>
                                 <IconEye size={15} />
                               </ActionIcon>
                             </Tooltip>
@@ -362,21 +372,27 @@ export default function Broadcast() {
       <Drawer
         opened={!!recipientsFor}
         onClose={() => setRecipientsFor(null)}
-        title={<Text fw={700}>Failed recipients{recipientsFor ? ` — ${formatDate(recipientsFor.created_at)}` : ''}</Text>}
+        title={
+          <Text fw={700}>
+            {recipientsFor?.status === 'sent' ? 'Delivered to' : 'Failed recipients'}
+            {recipientsFor ? ` — ${formatDate(recipientsFor.broadcast.created_at)}` : ''}
+          </Text>
+        }
         position="right"
         size="md"
       >
         {recipientsLoading ? (
           <Group justify="center" py="xl"><Loader /></Group>
-        ) : failedRecipients.length === 0 ? (
+        ) : viewedRecipients.length === 0 ? (
           <Text c="dimmed" size="sm">
             No per-recipient detail is available for this broadcast — it predates individual
-            failure tracking, so only the total failed count ({recipientsFor?.failed_count}) is known.
+            delivery tracking, so only the total count is known
+            ({recipientsFor?.status === 'sent' ? recipientsFor?.broadcast.sent_count : recipientsFor?.broadcast.failed_count}).
           </Text>
         ) : (
           <Stack gap="xs">
-            <Text size="sm" c="dimmed">{failedRecipients.length} recipient(s) failed:</Text>
-            {failedRecipients.map((r) => (
+            <Text size="sm" c="dimmed">{viewedRecipients.length} recipient(s) {recipientsFor?.status === 'sent' ? 'received it' : 'failed'}:</Text>
+            {viewedRecipients.map((r) => (
               <Paper key={r.id} withBorder p="xs" radius="sm">
                 <Text size="sm" fw={500}>{r.name}</Text>
                 <Text size="xs" c="dimmed">{[r.phone, r.email].filter(Boolean).join(' · ') || '—'}</Text>
