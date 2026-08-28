@@ -18,7 +18,7 @@ import {
   getTargets, setTarget, getFieldStats, getAllVisits,
   VISIT_STATUSES, type FieldSession, type FieldTarget, type FieldVisitReport,
 } from '../api/fieldMarketing';
-import { getUsers } from '../api/users';
+import { getAssignableUsers } from '../api/users';
 import SessionForm from '../components/FieldMarketing/SessionForm';
 import SessionDetailDrawer from '../components/FieldMarketing/SessionDetailDrawer';
 import TargetForm from '../components/FieldMarketing/TargetForm';
@@ -64,7 +64,7 @@ export default function FieldMarketing() {
 
   // ── Data queries ─────────────────────────────────────────────────────────
 
-  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => getUsers({ per_page: 100 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const users: { id: string; name: string }[] = usersData?.data?.data ?? [];
 
   const { data: sessions = [], isFetching: loadingSessions } = useQuery({

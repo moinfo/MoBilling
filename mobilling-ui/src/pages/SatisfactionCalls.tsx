@@ -20,7 +20,7 @@ import {
   getClientSatisfactionHistory, SatisfactionCallEntry,
 } from '../api/satisfactionCalls';
 import { getClientProfile, ClientProfile } from '../api/clients';
-import { getUsers, TenantUser } from '../api/users';
+import { getAssignableUsers, AssignableUser } from '../api/users';
 import { formatDate } from '../utils/formatDate';
 import { formatCurrency } from '../utils/formatCurrency';
 import { usePermissions } from '../hooks/usePermissions';
@@ -97,8 +97,8 @@ export default function SatisfactionCalls() {
   });
 
   const { data: usersData } = useQuery({
-    queryKey: ['users-list'],
-    queryFn: () => getUsers({ per_page: 100 }),
+    queryKey: ['assignable-users'],
+    queryFn: getAssignableUsers,
   });
 
   const { data: historyData, isLoading: histLoading } = useQuery({
@@ -211,8 +211,8 @@ export default function SatisfactionCalls() {
     assignMutation.mutate({ id: selectedCall.id, data: { user_id: assignUserId } });
   };
 
-  const users: TenantUser[] = usersData?.data?.data ?? [];
-  const userSelectData = users.filter((u) => u.is_active).map((u) => ({ value: u.id, label: u.name }));
+  const users: AssignableUser[] = usersData?.data?.data ?? [];
+  const userSelectData = users.map((u) => ({ value: u.id, label: u.name }));
 
   // Generate last 12 months for filter
   const monthOptions = Array.from({ length: 12 }, (_, i) => {

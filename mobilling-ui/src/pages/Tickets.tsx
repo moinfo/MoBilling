@@ -16,7 +16,7 @@ import {
   TicketRow, TICKET_STATUS_META, PRIORITY_COLORS, DEPARTMENT_COLORS,
 } from '../api/tickets';
 import { getCannedReplies, CannedReply } from '../api/cannedReplies';
-import { getUsers, TenantUser } from '../api/users';
+import { getAssignableUsers, AssignableUser } from '../api/users';
 import { usePermissions } from '../hooks/usePermissions';
 import dayjs from 'dayjs';
 
@@ -152,11 +152,11 @@ function TicketThreadDrawer({ id, onClose, can }: {
   const cannedReplies: CannedReply[] = cannedData?.data?.data ?? [];
 
   const { data: usersData } = useQuery({
-    queryKey: ['tenant-users-for-assign'],
-    queryFn: () => getUsers({ per_page: 200 }),
+    queryKey: ['assignable-users'],
+    queryFn: getAssignableUsers,
     enabled: !!id && can('tickets.manage'),
   });
-  const userOptions = (usersData?.data?.data ?? []).map((u: TenantUser) => ({ value: u.id, label: u.name }));
+  const userOptions = (usersData?.data?.data ?? []).map((u: AssignableUser) => ({ value: u.id, label: u.name }));
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['tickets'] });

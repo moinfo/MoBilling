@@ -16,7 +16,7 @@ import {
   getContacts, getStats, deleteContact, updateContact, claimContact, unclaimContact, claimBulkContacts, assignContact,
   LABEL_META, LABEL_ORDER, SOURCE_META, WhatsappContact, WaSource,
 } from '../api/whatsappContacts';
-import { getUsers, TenantUser } from '../api/users';
+import { getAssignableUsers, AssignableUser } from '../api/users';
 import { getCampaigns, deleteCampaign } from '../api/whatsappCampaigns';
 import { WhatsappCampaign } from '../api/whatsappCampaigns';
 import WhatsappContactForm from '../components/WhatsApp/WhatsappContactForm';
@@ -119,13 +119,12 @@ export default function WhatsappContacts() {
     onError: () => notifications.show({ message: 'Could not claim contacts.', color: 'red' }),
   });
 
-  // Admin only: list of tenant users to reassign a contact to.
   const { data: usersData } = useQuery({
-    queryKey: ['tenant-users-for-assign'],
-    queryFn: () => getUsers({ per_page: 200 }),
+    queryKey: ['assignable-users'],
+    queryFn: getAssignableUsers,
     enabled: can('whatsapp_contacts.view_all'),
   });
-  const userOptions = (usersData?.data?.data ?? []).map((u: TenantUser) => ({ value: u.id, label: u.name }));
+  const userOptions = (usersData?.data?.data ?? []).map((u: AssignableUser) => ({ value: u.id, label: u.name }));
 
   const assignMutation = useMutation({
     mutationFn: ({ id, userId }: { id: string; userId: string }) => assignContact(id, userId),

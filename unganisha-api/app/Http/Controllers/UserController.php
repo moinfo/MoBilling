@@ -30,6 +30,25 @@ class UserController extends Controller
         );
     }
 
+    /**
+     * Just id + name, for populating an "assign to" picker — deliberately
+     * not gated by settings.users (that's team *management*: create, edit
+     * roles, deactivate accounts). Any authenticated staff member needs to
+     * see their own teammates' names to assign a ticket, a WhatsApp lead, a
+     * field-marketing session, etc.; requiring settings.users for that shut
+     * out every non-admin role tenant-wide (confirmed on ARG SPARKLES: 18 of
+     * 20 users, everyone but admin/accountant, got a silent empty list).
+     */
+    public function assignable(Request $request)
+    {
+        return response()->json([
+            'data' => User::where('tenant_id', auth()->user()->tenant_id)
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name']),
+        ]);
+    }
+
     public function store(Request $request)
     {
         $this->authorizePermission('settings.users');

@@ -15,7 +15,7 @@ import { Alert } from '@mantine/core';
 import { IconAlertCircle } from '@tabler/icons-react';
 import { useState } from 'react';
 import { getCampaigns } from '../../api/whatsappCampaigns';
-import { getUsers } from '../../api/users';
+import { getAssignableUsers } from '../../api/users';
 import { getServices } from '../../api/marketingServices';
 import { Link } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
@@ -42,8 +42,8 @@ export default function WhatsappContactForm({ opened, onClose, contact }: Props)
   const serviceOptions = [...apiServices, ...extraServiceOptions.filter(e => !apiServices.includes(e))];
 
   const { data: usersData } = useQuery({
-    queryKey: ['users-simple'],
-    queryFn: () => getUsers({ per_page: 100 }),
+    queryKey: ['assignable-users'],
+    queryFn: getAssignableUsers,
   });
 
   const { data: campaignsData } = useQuery({

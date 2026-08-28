@@ -453,6 +453,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/available-permissions', [RoleController::class, 'availablePermissions']);
 
     // Users (Team)
+    Route::get('/users/assignable', [UserController::class, 'assignable']);
     Route::middleware('permission:settings.users')->group(function () {
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);

@@ -25,7 +25,7 @@ import {
   getSalaryAdvances, createSalaryAdvance, cancelSalaryAdvance,
   PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance, Payslip,
 } from '../api/payroll';
-import { getUsers } from '../api/users';
+import { getAssignableUsers } from '../api/users';
 import { formatCurrency } from '../utils/formatCurrency';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -422,7 +422,7 @@ function SalariesTab() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { data: usersData } = useQuery({ queryKey: ['users-simple'], queryFn: () => getUsers({ per_page: 200 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const { data, isLoading } = useQuery({ queryKey: ['staff-salaries'], queryFn: () => getStaffSalaries() });
 
   const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];
@@ -526,7 +526,7 @@ function LoansPanel() {
   const [modalOpen, setModalOpen] = useState(false);
   const [paymentsFor, setPaymentsFor] = useState<Loan | null>(null);
 
-  const { data: usersData } = useQuery({ queryKey: ['users-simple'], queryFn: () => getUsers({ per_page: 200 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const { data, isLoading } = useQuery({ queryKey: ['loans'], queryFn: () => getLoans() });
 
   const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];
@@ -703,7 +703,7 @@ function AdvancesPanel() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { data: usersData } = useQuery({ queryKey: ['users-simple'], queryFn: () => getUsers({ per_page: 200 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const { data, isLoading } = useQuery({ queryKey: ['salary-advances'], queryFn: () => getSalaryAdvances() });
 
   const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];

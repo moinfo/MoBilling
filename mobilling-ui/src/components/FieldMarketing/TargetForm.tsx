@@ -1,7 +1,7 @@
 import { Select, NumberInput, Button, Stack, Group } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery } from '@tanstack/react-query';
-import { getUsers } from '../../api/users';
+import { getAssignableUsers } from '../../api/users';
 
 interface Props {
   month: number;
@@ -11,7 +11,7 @@ interface Props {
 }
 
 export default function TargetForm({ month, year, onSubmit, loading }: Props) {
-  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => getUsers({ per_page: 100 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const users: { id: string; name: string }[] = usersData?.data?.data ?? [];
 
   const form = useForm({

@@ -12,7 +12,7 @@ import {
   getSystemVerifications, createSystemVerification, updateSystemVerification, deleteSystemVerification,
   getSystemVerificationReports, SystemVerification, SystemVerificationReport,
 } from '../api/systemVerifications';
-import { getUsers } from '../api/users';
+import { getAssignableUsers } from '../api/users';
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatDate } from '../utils/formatDate';
@@ -40,8 +40,8 @@ export default function SystemVerifications() {
     queryFn: () => getSystemVerifications({ page, search: debouncedSearch || undefined }),
   });
   const { data: usersData } = useQuery({
-    queryKey: ['users-all'],
-    queryFn: () => getUsers({ per_page: 500 }),
+    queryKey: ['assignable-users'],
+    queryFn: getAssignableUsers,
   });
   const { data: clientsData } = useQuery({
     queryKey: ['clients-all-for-sv'],
