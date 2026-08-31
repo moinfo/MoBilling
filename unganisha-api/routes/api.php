@@ -651,6 +651,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     });
     Route::middleware('permission:domains.renew')->post('/domains/{domain}/renew', [\App\Http\Controllers\DomainController::class, 'renew']);
     Route::middleware('permission:domains.create')->post('/domains/{domain}/retry', [\App\Http\Controllers\DomainController::class, 'retry']);
+    Route::middleware('permission:domains.create')->post('/domains/{domain}/confirm-manual', [\App\Http\Controllers\DomainController::class, 'confirmManual']);
     Route::middleware('permission:domains.renew')->put('/domains/{domain}/auto-renew', [\App\Http\Controllers\DomainController::class, 'setAutoRenew']);
     Route::middleware('permission:domains.read')->get('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'nameservers']);
     Route::middleware('permission:domains.manage_dns')->put('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'updateNameservers']);

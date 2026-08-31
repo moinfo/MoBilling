@@ -196,6 +196,9 @@ export const renewDomain = (id: string, years: number) =>
 export const retryDomain = (id: string) =>
   api.post<{ data: DomainRecord; message: string }>(`/domains/${id}/retry`);
 
+export const confirmManualRegistration = (id: string, data: { registered_at: string; expires_at: string }) =>
+  api.post<{ data: DomainRecord; message: string }>(`/domains/${id}/confirm-manual`, data);
+
 export interface DomainAuthInfoResult {
   auth_info?: string;
   generated?: boolean;

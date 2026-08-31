@@ -10,10 +10,11 @@ import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconWorldWww, IconPlus, IconHistory, IconRefresh, IconKey,
   IconCheck, IconX, IconCopy, IconWorld, IconWallet, IconArrowsLeftRight, IconClockExclamation, IconAlertTriangle,
-  IconHourglass, IconRepeat, IconShieldCheck, IconShieldOff, IconRotateClockwise,
+  IconHourglass, IconRepeat, IconShieldCheck, IconShieldOff, IconRotateClockwise, IconWorldCheck,
 } from '@tabler/icons-react';
 import {
   checkDomain, getDomains, getDomainStats, getRegistrarCredit, getDomainLogs, orderDomain, renewDomain, retryDomain,
+  confirmManualRegistration,
   getDomainAuthInfo, setDomainAutoRenew, describeDomainAction, addExistingDomain,
   createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
   DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
@@ -61,6 +62,7 @@ export default function Domains() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [logsFor, setLogsFor] = useState<DomainRecord | null>(null);
   const [renewFor, setRenewFor] = useState<DomainRecord | null>(null);
+  const [confirmManualFor, setConfirmManualFor] = useState<DomainRecord | null>(null);
   const [authInfoFor, setAuthInfoFor] = useState<{ domain: DomainRecord; code: string | null; sentInfo?: { message: string; hint: string | null } } | null>(null);
 
   const params: Record<string, string> = { page: String(page) };
@@ -368,9 +370,15 @@ export default function Domains() {
                           : <IconX size={15} color="var(--mantine-color-gray-5)" />}
                       </Table.Td>
                       <Table.Td>
-                        <Badge size="sm" color={DOMAIN_STATUS_COLORS[d.status]} variant="light">
-                          {d.status}
-                        </Badge>
+                        {d.meta?.awaiting_manual_registration ? (
+                          <Tooltip label="Invoice paid — no registrar integration for this TLD, register it yourself then mark it here">
+                            <Badge size="sm" color="orange" variant="light">Awaiting Registration</Badge>
+                          </Tooltip>
+                        ) : (
+                          <Badge size="sm" color={DOMAIN_STATUS_COLORS[d.status]} variant="light">
+                            {d.status}
+                          </Badge>
+                        )}
                       </Table.Td>
                       <Table.Td>
                         <Group gap={4} justify="flex-end" wrap="nowrap">
@@ -378,6 +386,13 @@ export default function Domains() {
                             <Tooltip label="Renew (creates invoice)">
                               <ActionIcon variant="light" color="green" onClick={() => setRenewFor(d)}>
                                 <IconRefresh size={15} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                          {can('domains.create') && d.meta?.awaiting_manual_registration && (
+                            <Tooltip label="Mark as registered (enter the real dates from your registrar)">
+                              <ActionIcon variant="light" color="teal" onClick={() => setConfirmManualFor(d)}>
+                                <IconWorldCheck size={15} />
                               </ActionIcon>
                             </Tooltip>
                           )}
@@ -419,6 +434,8 @@ export default function Domains() {
       <OrderWizard opened={wizardOpen} onClose={() => setWizardOpen(false)} />
 
       <RenewModal domain={renewFor} onClose={() => setRenewFor(null)} />
+
+      <ConfirmManualModal domain={confirmManualFor} onClose={() => setConfirmManualFor(null)} />
 
       <Drawer opened={!!logsFor} onClose={() => setLogsFor(null)}
         title={<Text fw={700}>{logsFor?.name ?? ''}</Text>} position="right" size="md">
@@ -697,7 +714,7 @@ function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void
           >
             {action === 'register'
               ? (checked.available
-                  ? `${checked.name} is available!`
+                  ? `${checked.name} is available!${checked.reason ? ` (${checked.reason})` : ''}`
                   : `${checked.name} is not available${checked.reason ? ` — ${checked.reason}` : ''}`)
               : (checked.available
                   ? `${checked.name} is not registered — nothing to transfer.`
@@ -798,6 +815,46 @@ function RenewModal({ domain, onClose }: { domain: DomainRecord | null; onClose:
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button color="green" loading={mutation.isPending} onClick={() => mutation.mutate()}>
             Create Renewal Invoice
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function ConfirmManualModal({ domain, onClose }: { domain: DomainRecord | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [registeredAt, setRegisteredAt] = useState<Date | null>(new Date());
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => confirmManualRegistration(domain!.id, {
+      registered_at: dayjs(registeredAt).format('YYYY-MM-DD'),
+      expires_at: dayjs(expiresAt).format('YYYY-MM-DD'),
+    }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domains'] });
+      notifications.show({ title: 'Domain activated', message: res.data.message, color: 'green' });
+      onClose();
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not confirm registration.', color: 'red',
+    }),
+  });
+
+  return (
+    <Modal opened={!!domain} onClose={onClose} title={`Mark ${domain?.name} as registered`} centered>
+      <Stack>
+        <Text size="xs" c="dimmed">
+          No registrar integration exists for this TLD — the invoice is paid, so this just records
+          what actually happened when you registered it yourself at your registrar.
+        </Text>
+        <DateInput label="Registered on" required value={registeredAt} onChange={(v) => setRegisteredAt(v as unknown as Date)} />
+        <DateInput label="Expires on" required value={expiresAt} onChange={(v) => setExpiresAt(v as unknown as Date)} />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button color="teal" disabled={!registeredAt || !expiresAt} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Mark as Registered
           </Button>
         </Group>
       </Stack>

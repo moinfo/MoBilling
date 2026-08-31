@@ -28,10 +28,16 @@ class DomainController extends Controller
 
         $pricing = DomainTld::priceFor(auth()->user()->tenant_id, $this->tldOf($name));
 
-        try {
-            $result = $this->registrar->driverFor(auth()->user()->tenant_id)->check($name);
-        } catch (RegistrarApiException $e) {
-            return response()->json(['message' => 'Registry check failed: ' . $e->getMessage()], 422);
+        // No registrar driver can answer for this TLD (gTLDs — only .tz is
+        // FRED-backed) — nothing to ask, so don't pretend to ask it.
+        if ($pricing && $pricing->is_unmanaged) {
+            $result = ['available' => true, 'reason' => 'Manually fulfilled — verify availability yourself before ordering; this was not checked against a live registry.'];
+        } else {
+            try {
+                $result = $this->registrar->driverFor(auth()->user()->tenant_id)->check($name);
+            } catch (RegistrarApiException $e) {
+                return response()->json(['message' => 'Registry check failed: ' . $e->getMessage()], 422);
+            }
         }
 
         return response()->json([
@@ -363,8 +369,11 @@ class DomainController extends Controller
             return response()->json(['message' => "Years must be between {$pricing->years_min} and {$pricing->years_max}."], 422);
         }
 
-        // Registration orders must be for available names (read-only EPP check).
-        if ($data['action'] === 'register') {
+        // Registration orders must be for available names (read-only EPP
+        // check) — skipped for unmanaged TLDs: no registrar driver exists to
+        // ask, staff is responsible for confirming availability themselves
+        // before ordering (see the advisory note check() already returns).
+        if ($data['action'] === 'register' && !$pricing->is_unmanaged) {
             try {
                 $check = $this->registrar->driverFor($tenantId)->check($name);
                 if (!$check['available']) {
@@ -378,7 +387,7 @@ class DomainController extends Controller
         $unitPrice = $data['action'] === 'register' ? $pricing->register_price : $pricing->transfer_price;
         $total     = round($unitPrice * $data['years'], 2);
 
-        $result = DB::transaction(function () use ($data, $name, $tenantId, $total, $unitPrice) {
+        $result = DB::transaction(function () use ($data, $name, $tenantId, $total, $unitPrice, $pricing) {
             $document = Document::create([
                 'tenant_id'       => $tenantId,
                 'client_id'       => $data['client_id'],
@@ -418,6 +427,7 @@ class DomainController extends Controller
                     'pending_action'    => $data['action'],
                     'pending_years'     => $data['years'],
                     'order_document_id' => $document->id,
+                    'unmanaged'         => $pricing->is_unmanaged,
                 ],
             ]);
 
@@ -440,7 +450,9 @@ class DomainController extends Controller
         return response()->json([
             'data'     => $domain->load('client:id,name'),
             'document' => ['id' => $document->id, 'document_number' => $document->document_number, 'total' => $document->total],
-            'message'  => "Order created — invoice {$document->document_number}. The domain will be {$data['action']}ed at the registry once the invoice is paid.",
+            'message'  => $pricing->is_unmanaged
+                ? "Order created — invoice {$document->document_number}. No registrar integration for .{$this->tldOf($name)}: once paid, {$data['action']} it yourself at your registrar, then mark it registered here."
+                : "Order created — invoice {$document->document_number}. The domain will be {$data['action']}ed at the registry once the invoice is paid.",
         ], 201);
     }
 
@@ -504,6 +516,46 @@ class DomainController extends Controller
         return response()->json([
             'data'    => $domain->fresh()->load('client:id,name'),
             'message' => "Retrying {$pendingAction} for {$domain->name}\u{2026}",
+        ]);
+    }
+
+    /**
+     * Staff confirms they've completed the registration themselves at the
+     * gTLD's actual registrar (no driver here to do it automatically) —
+     * records what really happened there and activates the domain.
+     */
+    public function confirmManual(Request $request, Domain $domain)
+    {
+        if (!($domain->meta['awaiting_manual_registration'] ?? false)) {
+            return response()->json(['message' => 'This domain is not awaiting manual registration.'], 422);
+        }
+
+        $data = $request->validate([
+            'registered_at' => 'required|date',
+            'expires_at'    => 'required|date|after:registered_at',
+        ]);
+
+        $meta = $domain->meta ?? [];
+        unset($meta['awaiting_manual_registration']);
+
+        $domain->update([
+            'status'        => 'active',
+            'registered_at' => $data['registered_at'],
+            'expires_at'    => $data['expires_at'],
+            'meta'          => $meta,
+        ]);
+
+        DomainLog::create([
+            'tenant_id' => $domain->tenant_id,
+            'domain_id' => $domain->id,
+            'action'    => 'manual_register_confirmed',
+            'request'   => ['by_user' => auth()->id(), 'registered_at' => $data['registered_at'], 'expires_at' => $data['expires_at']],
+            'status'    => 'success',
+        ]);
+
+        return response()->json([
+            'data'    => $domain->fresh()->load('client:id,name'),
+            'message' => "{$domain->name} marked as registered.",
         ]);
     }
 
