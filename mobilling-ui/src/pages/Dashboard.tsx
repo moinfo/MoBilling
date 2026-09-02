@@ -78,9 +78,13 @@ export default function Dashboard() {
         )}
       </Group>
 
-      {/* Everyone's own attendance/payroll — independent of billing summary */}
-      {can('dashboard.my_attendance') && <MyAttendance />}
-      <MyPayroll />
+      {/* Everyone's own attendance/payroll/deductions — independent of billing summary */}
+      <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }} spacing="md">
+        {can('dashboard.my_attendance') && <MyAttendance />}
+        <MyPayroll />
+        {summary && can('dashboard.my_total_deductions') && <TotalDeductions reportPenalties={summary.staff_penalties} />}
+        {summary && can('dashboard.my_report_deductions') && summary.staff_penalties && <StaffPenalties data={summary.staff_penalties} />}
+      </SimpleGrid>
 
       {summary && (
         <>
@@ -101,10 +105,6 @@ export default function Dashboard() {
             totalFieldVisits={summary.total_field_visits}
             periodLabel={periodLabel}
           />
-
-          {can('dashboard.my_total_deductions') && <TotalDeductions reportPenalties={summary.staff_penalties} />}
-
-          {can('dashboard.my_report_deductions') && summary.staff_penalties && <StaffPenalties data={summary.staff_penalties} />}
 
           {summary.hosting_domains && <HostingDomains data={summary.hosting_domains} />}
 
