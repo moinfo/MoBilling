@@ -1,11 +1,26 @@
-import { Card, Group, Text, Badge, ThemeIcon, Box, Button } from '@mantine/core';
-import { IconMoneybag, IconDownload } from '@tabler/icons-react';
+import { Card, Group, Text, Badge, Box, Button } from '@mantine/core';
+import { IconDownload } from '@tabler/icons-react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
+import dayjs from 'dayjs';
 import { getMyPayslips, downloadMyPayslipPdf, Payslip } from '../../api/payroll';
 import { formatCurrency } from '../../utils/formatCurrency';
 import classes from './Dashboard.module.css';
+
+/** One ruled ledger row: label left, figure right in tabular numerals. */
+function Line(
+  { label, value, tone, total }:
+  { label: string; value: string; tone?: 'keep' | 'lost'; total?: boolean },
+) {
+  const c = tone === 'keep' ? 'teal.7' : tone === 'lost' ? 'red.7' : undefined;
+  return (
+    <dl className={`${classes.ledgerRow} ${total ? classes.ledgerTotal : ''}`}>
+      <dt>{label}</dt>
+      <dd><Text span inherit c={c}>{value}</Text></dd>
+    </dl>
+  );
+}
 
 function num(v: number | string | null | undefined): number {
   const n = typeof v === 'string' ? parseFloat(v) : v;
@@ -30,7 +45,16 @@ function downloadBlob(data: BlobPart, filename: string) {
   window.URL.revokeObjectURL(url);
 }
 
-/** The logged-in staff member's most recent finalized payslip — self-service, no permission required (mirrors MyAttendance/TotalDeductions). */
+/**
+ * The logged-in staff member's most recent payslip, set as a payslip:
+ * gross, each deduction line, then net under a rule. Self-service, no
+ * permission required.
+ *
+ * Kept deliberately separate from the "Your month" band above it, because it
+ * describes a CLOSED period (last month's pay) while that band is the running
+ * one — the previous layout put the two side by side with nothing marking the
+ * difference.
+ */
 export default function MyPayroll() {
   const navigate = useNavigate();
   const { data } = useQuery({ queryKey: ['my-payslips'], queryFn: getMyPayslips });
@@ -43,6 +67,8 @@ export default function MyPayroll() {
   const net = num(p.net_pay);
   const deductions = Math.max(0, gross - net);
   const monthLabel = p.payroll_run?.month_key ?? '';
+  // "2026-08" is a database key, not something to show a person.
+  const prettyMonth = monthLabel ? dayjs(`${monthLabel}-01`).format('MMMM YYYY') : 'this period';
   const finalized = p.payroll_run?.status === 'finalized';
   const items = deductionItems(p);
 
@@ -58,48 +84,51 @@ export default function MyPayroll() {
   return (
     <Box>
       <div className={classes.sectionLabel} style={{ marginBottom: 12 }}>
-        <Text fw={700} size="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.5 }}>My Payroll</Text>
+        <Text fw={700} size="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.5 }}>
+          {finalized ? 'Your last payslip' : 'Your payslip in progress'}
+        </Text>
       </div>
 
-      <Card withBorder radius="md" p="md" shadow="xs" className={classes.statCard}
-        style={{ ['--stat-accent' as string]: 'var(--mantine-color-teal-6)' }}>
-        <Group justify="space-between" wrap="wrap">
-          <Group gap="sm" wrap="nowrap">
-            <ThemeIcon size={44} radius="md" variant="light" color="teal">
-              <IconMoneybag size={24} />
-            </ThemeIcon>
-            <div>
-              <Group gap={6} align="baseline">
-                <Text size="xl" fw={800} lh={1.1} c="teal">{formatCurrency(net)}</Text>
-                <Badge size="xs" color={finalized ? 'green' : 'yellow'}>{finalized ? 'Finalized' : 'Draft'}</Badge>
-              </Group>
-              <Text size="xs" c="dimmed">Net pay · {monthLabel}</Text>
-            </div>
-          </Group>
-          <Group gap="xs" wrap="wrap">
-            <Badge variant="light" radius="sm" color="blue">Gross: {formatCurrency(gross)}</Badge>
-            <Badge variant="light" radius="sm" color={deductions > 0 ? 'red' : 'gray'}>Deductions: {formatCurrency(deductions)}</Badge>
-          </Group>
-        </Group>
+      {/* A payslip is an arithmetic document, so it is set as one: ruled rows,
+          right-aligned tabular figures, the total under a rule. The badges this
+          replaces put gross, deductions and net in three differently-coloured
+          pills that never lined up — the sum they describe was invisible. */}
+      <Card withBorder radius="md" p="md" className={classes.payslip}>
+        <div className={classes.paneLabel}>
+          <span>Pay for {prettyMonth}</span>
+          <Badge size="xs" variant="light" color={finalized ? 'teal' : 'yellow'}>
+            {finalized ? 'Final' : 'Draft'}
+          </Badge>
+        </div>
 
-        {items.length > 0 && (
-          <Group gap={6} mt="sm">
-            {items.map((it, idx) => (
-              <Badge key={idx} size="xs" variant="light" color="orange" radius="sm">
-                {it.name}: {formatCurrency(it.amount)}
-              </Badge>
-            ))}
-          </Group>
-        )}
+        <div className={classes.ledger}>
+          <Line label="Gross pay" value={formatCurrency(gross)} />
+
+          {items.map((it, idx) => (
+            <Line key={idx} label={it.name} value={`−${formatCurrency(it.amount)}`} tone="lost" />
+          ))}
+
+          {items.length === 0 && deductions > 0 && (
+            <Line label="Deductions" value={`−${formatCurrency(deductions)}`} tone="lost" />
+          )}
+
+          <div className={classes.ledgerRule}>
+            <Line total label="Net pay" value={formatCurrency(net)} tone="keep" />
+          </div>
+        </div>
 
         {!finalized && (
-          <Text size="xs" c="dimmed" mt="xs">This period is still being prepared — deductions shown are current but may still change until finalized.</Text>
+          <p className={classes.ledgerNote}>
+            Still being prepared. These figures can change until the run is finalized.
+          </p>
         )}
 
-        <Group justify="flex-end" gap="xs" mt="sm">
-          <Button size="compact-xs" variant="light" onClick={() => navigate('/payroll')}>View all</Button>
+        <Group gap="xs" mt="md">
+          <Button size="compact-xs" variant="default" onClick={() => navigate('/payroll')}>All payslips</Button>
           {finalized && (
-            <Button size="compact-xs" variant="light" leftSection={<IconDownload size={14} />} onClick={download}>Download</Button>
+            <Button size="compact-xs" variant="default" leftSection={<IconDownload size={14} />} onClick={download}>
+              Download PDF
+            </Button>
           )}
         </Group>
       </Card>
