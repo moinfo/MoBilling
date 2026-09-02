@@ -1,8 +1,11 @@
 import { useState } from 'react';
-import { Card, Group, Text, Badge, Table, ThemeIcon, Box, Button, Modal } from '@mantine/core';
+import { useQuery, keepPreviousData } from '@tanstack/react-query';
+import { Card, Group, Text, Badge, Table, ThemeIcon, Box, Button, Modal, Loader } from '@mantine/core';
+import { MonthPickerInput } from '@mantine/dates';
 import { IconReceiptOff, IconCircleCheck, IconReportAnalytics } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import type { StaffPenaltiesSummary } from '../../api/dashboard';
+import { getMyPenalties } from '../../api/dashboard';
 import { formatCurrency } from '../../utils/formatCurrency';
 import classes from './Dashboard.module.css';
 
@@ -12,6 +15,19 @@ const typeLabel = (penalty: string, report: string) =>
 export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }) {
   const none = data.count_this_month === 0 && data.items.length === 0;
   const [open, setOpen] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+
+  const safeDate = selectedMonth instanceof Date && !isNaN(selectedMonth.getTime()) ? selectedMonth : new Date();
+  const reportMonth = safeDate.getMonth() + 1;
+  const reportYear = safeDate.getFullYear();
+
+  const { data: monthResp, isFetching } = useQuery({
+    queryKey: ['my-penalties', reportMonth, reportYear],
+    queryFn: () => getMyPenalties(reportMonth, reportYear),
+    enabled: open,
+    placeholderData: keepPreviousData,
+  });
+  const report = monthResp?.data;
 
   return (
     <Box>
@@ -63,7 +79,26 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
       </Card>
 
       <Modal opened={open} onClose={() => setOpen(false)} size="lg"
-        title={`Report deductions · ${data.month_label}`}>
+        title={`Report deductions · ${report?.month_label ?? data.month_label}`}>
+        <Group justify="space-between" align="center" mb="sm">
+          <Text size="sm" c="dimmed">
+            {report ? `${report.count_this_month} deduction${report.count_this_month === 1 ? '' : 's'} · ${formatCurrency(report.month_total)}` : ' '}
+          </Text>
+          <MonthPickerInput
+            value={selectedMonth}
+            onChange={(val) => {
+              if (!val) return;
+              try {
+                const d = new Date(val as any);
+                if (!isNaN(d.getTime())) setSelectedMonth(d);
+              } catch { /* ignore */ }
+            }}
+            maxDate={new Date()}
+            maxLevel="decade"
+            w={160}
+            size="sm"
+          />
+        </Group>
         <Table.ScrollContainer minWidth={420}>
           <Table verticalSpacing={6} highlightOnHover>
             <Table.Thead>
@@ -74,7 +109,7 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
-              {data.items.map((p) => (
+              {(report?.items ?? []).map((p) => (
                 <Table.Tr key={p.id}>
                   <Table.Td>{dayjs(p.period_date).format('D MMM YYYY')}</Table.Td>
                   <Table.Td>
@@ -88,6 +123,18 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
                   <Table.Td ta="right" fw={600} c="red">−{formatCurrency(p.amount)}</Table.Td>
                 </Table.Tr>
               ))}
+              {isFetching && (
+                <Table.Tr>
+                  <Table.Td colSpan={3}><Group justify="center" py="sm"><Loader size="xs" /></Group></Table.Td>
+                </Table.Tr>
+              )}
+              {!isFetching && report && report.items.length === 0 && (
+                <Table.Tr>
+                  <Table.Td colSpan={3}>
+                    <Text size="sm" c="dimmed" ta="center" py="sm">No deductions for {report.month_label}.</Text>
+                  </Table.Td>
+                </Table.Tr>
+              )}
             </Table.Tbody>
           </Table>
         </Table.ScrollContainer>

@@ -791,6 +791,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::post('/staff-reports/{staffReport}/review',   [\App\Http\Controllers\StaffReportsController::class, 'review']);
     Route::post('/staff-reports/{staffReport}/reply',    [\App\Http\Controllers\StaffReportsController::class, 'reply']);
     Route::get('/staff-reports/penalties',               [\App\Http\Controllers\StaffReportsController::class, 'penalties']);
+    Route::get('/staff-reports/my-penalties',            [\App\Http\Controllers\StaffReportsController::class, 'myPenalties']);
     Route::post('/staff-reports/penalties/{staffReportPenalty}/waive',   [\App\Http\Controllers\StaffReportsController::class, 'waivePenalty']);
     Route::post('/staff-reports/penalties/{staffReportPenalty}/unwaive', [\App\Http\Controllers\StaffReportsController::class, 'unwaivePenalty']);
 

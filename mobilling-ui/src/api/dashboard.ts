@@ -168,3 +168,6 @@ export interface DashboardSummary {
 
 export const getDashboardSummary = (month: number, year: number) =>
   api.get<DashboardSummary>('/dashboard/summary', { params: { month, year } });
+
+export const getMyPenalties = (month: number, year: number) =>
+  api.get<StaffPenaltiesSummary>('/staff-reports/my-penalties', { params: { month, year } });
