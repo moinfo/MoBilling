@@ -109,6 +109,13 @@ class ApplyStaffReportPenalties extends Command
      * Charge every staff member with no report for $checkPeriod (the report's
      * own period_date), attributing the penalty to $chargePeriod (the month it
      * belongs to, for display). For daily/monthly the two are the same.
+     *
+     * A missing report is not charged for a staff member on approved leave or
+     * sick that day (Attendance::EXCUSED) — they had no way to submit one.
+     * Field work ('field') is deliberately NOT excused here: it explains a
+     * *late* submission (see store()/backfillLate()), not a missing one — a
+     * field day still requires a report, just possibly submitted after
+     * getting back to the office.
      */
     private function chargeMissing($tenantId, $staffIds, string $type, string $checkPeriod, string $chargePeriod, float $amount, string $notes, bool $dry): int
     {
@@ -118,7 +125,13 @@ class ApplyStaffReportPenalties extends Command
             ->where('period_date', $checkPeriod)
             ->pluck('user_id')->all();
 
-        $missing = $staffIds->diff($submitted);
+        $excusedUserIds = \App\Models\Attendance::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('date', $checkPeriod)
+            ->whereIn('status', ['leave', 'sick'])
+            ->pluck('user_id')->all();
+
+        $missing = $staffIds->diff($submitted)->diff($excusedUserIds);
         if ($missing->isEmpty()) {
             return 0;
         }
@@ -141,7 +154,12 @@ class ApplyStaffReportPenalties extends Command
         return $n;
     }
 
-    /** Record late deductions for already-submitted late reports missing one. */
+    /**
+     * Record late deductions for already-submitted late reports missing one.
+     * Skips a report if the staff member was out on field work that day
+     * (Attendance status 'field') — that's the accepted reason a report
+     * lands late, same rule store() applies at submission time.
+     */
     private function backfillLate($tenantId, $s, $monthStart, $now): int
     {
         $lateReports = StaffReport::withoutGlobalScopes()
@@ -152,6 +170,14 @@ class ApplyStaffReportPenalties extends Command
 
         $n = 0;
         foreach ($lateReports as $r) {
+            $wasFieldDay = \App\Models\Attendance::withoutGlobalScopes()
+                ->where('tenant_id', $tenantId)->where('user_id', $r->user_id)
+                ->where('date', $r->period_date->toDateString())->where('status', 'field')
+                ->exists();
+            if ($wasFieldDay) {
+                continue;
+            }
+
             $created = StaffReportPenalty::firstOrCreate(
                 ['user_id' => $r->user_id, 'report_type' => $r->report_type, 'penalty_type' => 'late', 'period_date' => $r->period_date->toDateString()],
                 ['tenant_id' => $tenantId, 'amount' => $s->penalty_late, 'staff_report_id' => $r->id, 'notes' => 'Late ' . $r->report_type . ' report'],

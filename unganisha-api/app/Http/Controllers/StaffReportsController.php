@@ -80,8 +80,15 @@ class StaffReportsController extends Controller
         $report = StaffReport::create($data);
         $report->load(['user', 'reviewer', 'replies']);
 
-        // Late submission → record the late-report deduction (once per period).
-        if ($report->is_late) {
+        // Late submission → record the late-report deduction (once per
+        // period) — unless the staff member was out on field work that day,
+        // the accepted reason a report lands late.
+        $wasFieldDay = \App\Models\Attendance::withoutGlobalScopes()
+            ->where('tenant_id', $report->tenant_id)->where('user_id', $report->user_id)
+            ->where('date', $report->period_date->toDateString())->where('status', 'field')
+            ->exists();
+
+        if ($report->is_late && !$wasFieldDay) {
             $s = $this->getSettings();
             if ($s->penalties_enabled && (float) $s->penalty_late > 0) {
                 \App\Models\StaffReportPenalty::firstOrCreate(
