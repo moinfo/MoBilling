@@ -67,12 +67,24 @@ class PayrollRunController extends Controller
                 'generated_at' => now(),
             ]);
 
+            // A user already in this draft (regardless of current is_active)
+            // must stay eligible for recomputation — they earned this period's
+            // pay while active; deactivating them afterward (e.g. they left
+            // the company) must never make a re-generate silently drop their
+            // payslip. Only *newly* adding someone to a run requires them to
+            // currently be active.
+            $previousUserIds = $existing
+                ? Payslip::where('payroll_run_id', $run->id)->pluck('user_id')->all()
+                : [];
+
             if ($existing) {
                 $run->update(['generated_by' => auth()->id(), 'generated_at' => now()]);
                 Payslip::where('payroll_run_id', $run->id)->delete();
             }
 
-            $users = User::where('tenant_id', $tenantId)->where('is_active', true)->get();
+            $users = User::where('tenant_id', $tenantId)
+                ->where(fn ($q) => $q->where('is_active', true)->orWhereIn('id', $previousUserIds))
+                ->get();
             foreach ($users as $user) {
                 $result = $calculator->computeForUser($user, $data['month_key']);
                 if ($result === null) {

@@ -15,7 +15,7 @@ class DomainTld extends Model
 
     protected $fillable = [
         'tenant_id', 'tld', 'register_price', 'renew_price', 'transfer_price', 'reseller_price',
-        'years_min', 'years_max', 'is_active',
+        'years_min', 'years_max', 'is_active', 'is_unmanaged',
     ];
 
     protected $casts = [
@@ -24,6 +24,7 @@ class DomainTld extends Model
         'transfer_price' => 'decimal:2',
         'reseller_price' => 'decimal:2',
         'is_active'      => 'boolean',
+        'is_unmanaged'   => 'boolean',
     ];
 
     /** Retail price row for a tenant+tld, falling back to the platform row. */

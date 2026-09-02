@@ -80,8 +80,31 @@ class StaffReportsController extends Controller
         $report = StaffReport::create($data);
         $report->load(['user', 'reviewer', 'replies']);
 
-        // Late submission → record the late-report deduction (once per period).
-        if ($report->is_late) {
+        // A "missing" deduction may already have been charged by the daily
+        // cron before this (late) submission arrived — the report existing
+        // now proves it was never actually missing, so reverse that charge.
+        // Keep it as an auditable waive, not a delete, same as a reviewer
+        // manually waiving one.
+        \App\Models\StaffReportPenalty::where('user_id', $report->user_id)
+            ->where('report_type', $report->report_type)
+            ->where('penalty_type', 'missing')
+            ->where('period_date', $report->period_date->toDateString())
+            ->where('waived', false)
+            ->update([
+                'waived'       => true,
+                'waived_at'    => now(),
+                'waive_reason' => 'Report was submitted — the earlier "missing" charge no longer applies.',
+            ]);
+
+        // Late submission → record the late-report deduction (once per
+        // period) — unless the staff member was out on field work that day,
+        // the accepted reason a report lands late.
+        $wasFieldDay = \App\Models\Attendance::withoutGlobalScopes()
+            ->where('tenant_id', $report->tenant_id)->where('user_id', $report->user_id)
+            ->where('date', $report->period_date->toDateString())->where('status', 'field')
+            ->exists();
+
+        if ($report->is_late && !$wasFieldDay) {
             $s = $this->getSettings();
             if ($s->penalties_enabled && (float) $s->penalty_late > 0) {
                 \App\Models\StaffReportPenalty::firstOrCreate(
@@ -227,6 +250,57 @@ class StaffReportsController extends Controller
             'grand_total' => round((float) $rows->where('waived', false)->sum('amount'), 2),
             'staff'       => $staff,
         ]]);
+    }
+
+    /**
+     * Self-service: the current user's own deductions for one month.
+     * Powers the Dashboard "My Report Deductions" full-report modal,
+     * including its month switcher — unlike the summary bundled into the
+     * dashboard payload, this is always scoped to the requested month
+     * (defaults to the current one), items included.
+     */
+    public function myPenalties(Request $request)
+    {
+        $this->authorizePermission('staff_reports.submit');
+        $user = auth()->user();
+
+        $month = (int) $request->query('month', now()->month);
+        $year  = (int) $request->query('year', now()->year);
+        $start = Carbon::createFromDate($year, $month, 1)->startOfMonth();
+        $end   = $start->copy()->endOfMonth();
+
+        $rows = \App\Models\StaffReportPenalty::withoutGlobalScopes()
+            ->where('user_id', $user->id)
+            ->where('waived', false)
+            ->whereBetween('period_date', [$start->toDateString(), $end->toDateString()])
+            ->orderByDesc('period_date')->orderByDesc('created_at')
+            ->get();
+
+        $byType = collect(['daily', 'weekly', 'monthly'])->map(function ($t) use ($rows) {
+            $forType = $rows->where('report_type', $t);
+            return [
+                'report_type' => $t,
+                'count'       => $forType->count(),
+                'total'       => round((float) $forType->sum('amount'), 2),
+            ];
+        })->values();
+
+        return response()->json([
+            'month_label'      => $start->format('M Y'),
+            'month'            => $month,
+            'year'             => $year,
+            'month_total'      => round((float) $rows->sum('amount'), 2),
+            'by_type'          => $byType,
+            'count_this_month' => $rows->count(),
+            'items' => $rows->map(fn ($p) => [
+                'id'           => $p->id,
+                'report_type'  => $p->report_type,
+                'penalty_type' => $p->penalty_type,
+                'period_date'  => $p->period_date->format('Y-m-d'),
+                'amount'       => round((float) $p->amount, 2),
+                'notes'        => $p->notes,
+            ])->values(),
+        ]);
     }
 
     public function waivePenalty(Request $request, \App\Models\StaffReportPenalty $staffReportPenalty)

@@ -67,8 +67,13 @@ class FcmService
                         'message' => [
                             'token' => $token,
                             'notification' => ['title' => $title, 'body' => $body],
-                            // FCM data values must all be strings.
-                            'data' => array_map('strval', $data),
+                            // FCM data values must all be strings, and the field
+                            // itself must serialize as a JSON object even when
+                            // empty — a bare PHP [] encodes as JSON [] (a list),
+                            // which FCM rejects outright ("Cannot bind a list to
+                            // map for field 'data'"). Casting to stdClass forces
+                            // {} instead.
+                            'data' => (object) array_map('strval', $data),
                         ],
                     ]
                 );

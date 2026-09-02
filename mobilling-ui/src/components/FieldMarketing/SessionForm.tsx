@@ -5,7 +5,7 @@ import { useForm } from '@mantine/form';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
-import { getUsers } from '../../api/users';
+import { getAssignableUsers } from '../../api/users';
 import type { FieldSession } from '../../api/fieldMarketing';
 
 interface Props {
@@ -34,8 +34,8 @@ export default function SessionForm({ session, onSubmit, loading }: Props) {
   const canPickOfficer = can('settings.users');
 
   const { data: usersData } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => getUsers({ per_page: 100 }),
+    queryKey: ['assignable-users'],
+    queryFn: getAssignableUsers,
     enabled: canPickOfficer,
   });
   const users: { id: string; name: string }[] = usersData?.data?.data ?? [];

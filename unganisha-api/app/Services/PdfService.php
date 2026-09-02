@@ -108,13 +108,18 @@ class PdfService
 
     public function generatePayslip(Payslip $payslip)
     {
-        $payslip->load('user:id,name', 'payrollRun:id,month_key,status', 'user.tenant');
+        // A column-constrained eager load ('user:id,name') drops the
+        // foreign key the nested user.tenant relation needs to resolve —
+        // it silently comes back null, taking the whole header (company
+        // name + logo) with it. tenant_id must be in the column list.
+        $payslip->load('user:id,name,email,tenant_id', 'payrollRun:id,month_key,status', 'user.tenant', 'user.employeeProfile');
         $tenant = $payslip->user->tenant;
 
         return Pdf::loadView('pdf.payslip', [
             'payslip' => $payslip,
             'tenant' => $tenant,
             'employee' => $payslip->user,
+            'employeeProfile' => $payslip->user->employeeProfile,
         ])->setPaper('a4');
     }
 }

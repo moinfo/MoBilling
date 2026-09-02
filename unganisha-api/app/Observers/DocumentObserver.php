@@ -134,10 +134,18 @@ class DocumentObserver
         }
 
         foreach ($domains as $domain) {
-            // Unmanaged domains (gTLDs — no registrar driver yet): keep the paid
-            // order flagged for MANUAL fulfilment at the upstream registrar
-            // instead of firing EPP that would fail and mark the domain failed.
+            // Unmanaged domains (gTLDs — no registrar driver yet): the paid
+            // order needs MANUAL fulfilment at the upstream registrar instead
+            // of firing EPP that would fail and mark the domain failed.
+            // pending_action is cleared (no job will ever run for it) and
+            // replaced with an explicit flag DomainController::confirmManual()
+            // clears once staff records the real registration.
             if ($domain->meta['unmanaged'] ?? false) {
+                $meta = $domain->meta ?? [];
+                unset($meta['pending_action'], $meta['pending_years']);
+                $meta['awaiting_manual_registration'] = true;
+                $domain->update(['meta' => $meta]);
+
                 \Illuminate\Support\Facades\Log::info(
                     "Domain order paid but unmanaged (manual fulfilment needed): {$domain->name}"
                 );

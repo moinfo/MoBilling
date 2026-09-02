@@ -78,7 +78,8 @@ export default function Dashboard() {
 
       {/* Everyone's own month — attendance, what it has cost, and the last
           payslip. Independent of the billing summary, except that the report
-          penalties ride along on it, so the band re-renders once it lands. */}
+          penalties ride along on it as an instant first paint for the current
+          month, so the band re-renders once that lands. */}
       {(can('dashboard.my_attendance') || can('dashboard.my_total_deductions')) && (
         <MyMonth
           showAttendance={can('dashboard.my_attendance')}

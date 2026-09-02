@@ -135,56 +135,61 @@ sudo chown -R mobilling:www-data /var/www/html/MoBilling/unganisha-api
 sudo chmod -R 775 storage bootstrap/cache
 ```
 
-### 2.6 Firebase Cloud Messaging (mobile push notifications)
+### 2.6 Firebase Cloud Messaging (push notifications)
 
-Every notification the app sends (invoices, payments, tickets, domains,
-hosting, staff reports/targets, leave requests, etc.) also pushes to the
-mobile app via FCM. It's safe to skip this — `FcmService` silently no-ops
-until `FCM_CREDENTIALS` is set — but without it, no mobile push ever fires.
+FCM is optional — `FcmService` is a silent no-op when unconfigured, so every
+notification channel that includes it stays safe either way. Without it, no
+mobile push ever fires. To turn push on for this server:
 
-**Get the credential** (one-time, from whoever manages the Firebase project):
-Firebase console → the project (`mobilling-bbf3c`) → ⚙️ Project Settings →
-**Service accounts** tab → **Generate new private key**. This downloads a
-JSON file — treat it like a database password, not like `google-services.json`
-(that one's fine to commit; this one is not).
+1. **Get the service-account JSON** from the Firebase console: the project
+   (`mobilling-bbf3c`) → ⚙️ Project Settings → **Service accounts** →
+   **Generate new private key**. One file per Firebase project, reused across
+   every server that project serves.
 
-**Upload it to the server**, outside the web root, owned by the app user:
+   Treat it like a database password. It is *not* `google-services.json` —
+   that one ships with the app and is fine to commit; this one is a
+   credential and must never be.
 
-```bash
-scp mobilling-fcm-adminsdk.json mobilling@your-server:/tmp/
-ssh mobilling@your-server
-sudo mkdir -p /var/www/html/MoBilling/unganisha-api/storage/app/private
-sudo mv /tmp/mobilling-fcm-adminsdk.json \
-  /var/www/html/MoBilling/unganisha-api/storage/app/private/fcm-service-account.json
-sudo chown mobilling:www-data /var/www/html/MoBilling/unganisha-api/storage/app/private/fcm-service-account.json
-sudo chmod 600 /var/www/html/MoBilling/unganisha-api/storage/app/private/fcm-service-account.json
-```
+2. **Copy it onto the server**, outside the web root, owned by the app user:
 
-**Add the path to `.env`:**
+   ```bash
+   scp firebase-service-account.json mobilling@yourserver:/tmp/
+   ssh mobilling@yourserver
+   sudo mkdir -p /var/www/html/MoBilling/unganisha-api/storage/app/private
+   sudo mv /tmp/firebase-service-account.json \
+     /var/www/html/MoBilling/unganisha-api/storage/app/private/firebase-service-account.json
+   sudo chown mobilling:www-data /var/www/html/MoBilling/unganisha-api/storage/app/private/firebase-service-account.json
+   sudo chmod 600 /var/www/html/MoBilling/unganisha-api/storage/app/private/firebase-service-account.json
+   ```
 
-```env
-FCM_CREDENTIALS=/var/www/html/MoBilling/unganisha-api/storage/app/private/fcm-service-account.json
-```
+3. **Add the path to `.env`:**
 
-**Re-run `config:cache`** — step 2.4 already cached config once, and Laravel
-reads a cached config file instead of `.env` from then on, so this new value
-won't take effect until you cache again:
+   ```env
+   FCM_CREDENTIALS=/var/www/html/MoBilling/unganisha-api/storage/app/private/firebase-service-account.json
+   ```
 
-```bash
-cd /var/www/html/MoBilling/unganisha-api
-php artisan config:cache
-```
+4. **Production-only gotcha**: step 2.4 already ran `php artisan config:cache`,
+   so Laravel reads the cached config, not `.env`, from that point on. Adding
+   `FCM_CREDENTIALS` to `.env` alone does **nothing** on a server that has
+   already cached config — re-run:
 
-**Verify it loaded** (should print `true`, not throw):
+   ```bash
+   cd /var/www/html/MoBilling/unganisha-api
+   php artisan config:cache
+   ```
 
-```bash
-php artisan tinker --execute="echo app(\App\Services\FcmService::class)->isConfigured() ? 'true' : 'false';"
-```
+   or it silently stays unconfigured, with no error anywhere.
 
-If a deploy ever runs `git pull` over the whole tree, double-check
-`storage/app/private/*.json` isn't tracked — it's in `.gitignore`, so a normal
-pull won't touch or overwrite it, but a fresh clone onto a new server starts
-without it and needs this section repeated.
+5. **Verify** (should print `configured`):
+
+   ```bash
+   php artisan tinker --execute="echo (new App\Services\FcmService())->isConfigured() ? 'configured' : 'NOT configured';"
+   ```
+
+A fresh clone onto a new server does **not** carry this file — it lives under
+`storage/app/private/` and is gitignored on purpose (it is a credential, not
+code). A normal `git pull` will not touch or overwrite it, but this whole
+section has to be repeated per server.
 
 ---
 

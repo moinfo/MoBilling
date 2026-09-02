@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SendBroadcastJob;
 use App\Models\Broadcast;
 use App\Models\Client;
-use App\Notifications\BroadcastNotification;
 use Illuminate\Http\Request;
 
 class BroadcastController extends Controller
@@ -21,10 +21,11 @@ class BroadcastController extends Controller
     public function send(Request $request)
     {
         $request->validate([
-            'channel'    => 'required|in:email,sms,both',
+            'channel'    => 'required|in:email,sms,whatsapp,both',
             'subject'    => 'required_if:channel,email,both|nullable|string|max:255',
             'body'       => 'required_if:channel,email,both|nullable|string',
             'sms_body'   => 'required_if:channel,sms,both|nullable|string|max:160',
+            'whatsapp_body' => 'required_if:channel,whatsapp|nullable|string|max:4096',
             'client_ids' => 'nullable|array',
             'client_ids.*' => 'uuid|exists:clients,id',
         ]);
@@ -41,7 +42,7 @@ class BroadcastController extends Controller
         // Filter to clients who can receive on the chosen channel
         if ($channel === 'email') {
             $query->whereNotNull('email')->where('email', '!=', '');
-        } elseif ($channel === 'sms') {
+        } elseif (in_array($channel, ['sms', 'whatsapp'], true)) {
             $query->whereNotNull('phone')->where('phone', '!=', '');
         } else {
             // 'both' — need at least one contact method
@@ -65,34 +66,80 @@ class BroadcastController extends Controller
             'subject'          => $request->subject,
             'body'             => $request->body,
             'sms_body'         => $request->sms_body,
+            'whatsapp_body'    => $request->whatsapp_body,
+            'sent_count'       => 0,
+            'failed_count'     => 0,
         ]);
 
-        $tenant = $request->user()->tenant()->withoutGlobalScopes()->first();
-        $notification = new BroadcastNotification($broadcast, $tenant);
-
-        $sent = 0;
-        $failed = 0;
-
-        foreach ($clients as $client) {
-            try {
-                $client->notify($notification);
-                $sent++;
-            } catch (\Throwable $e) {
-                $failed++;
-            }
-        }
-
-        $broadcast->update([
-            'sent_count'   => $sent,
-            'failed_count' => $failed,
-        ]);
+        // Runs after the response is returned — see SendBroadcastJob for why
+        // (no queue worker of this app's own, and WhatsApp sends are
+        // throttled, so this can genuinely take minutes for a large list).
+        SendBroadcastJob::dispatch($broadcast->id, $clients->pluck('id')->all())->afterResponse();
 
         return response()->json([
-            'message'          => 'Broadcast sent',
+            'message'          => 'Broadcast started — sending in the background. Refresh History for live progress.',
             'broadcast_id'     => $broadcast->id,
             'total_recipients' => $clients->count(),
-            'sent_count'       => $sent,
-            'failed_count'     => $failed,
+        ], 202);
+    }
+
+    /** List the clients a broadcast did or didn't reach — for "which ones failed, and why?" */
+    public function recipients(Request $request, Broadcast $broadcast)
+    {
+        $status = $request->input('status', 'failed');
+        $ids = $status === 'sent' ? ($broadcast->sent_client_ids ?? []) : ($broadcast->failed_client_ids ?? []);
+        $reasons = $broadcast->failure_reasons ?? [];
+
+        $clients = Client::withoutGlobalScopes()
+            ->whereIn('id', $ids)
+            ->get(['id', 'name', 'email', 'phone'])
+            ->keyBy('id');
+
+        // Every id gets a row even if the client was since deleted — a
+        // failure is still worth showing, not silently dropped.
+        $data = collect($ids)->map(function ($id) use ($clients, $reasons, $status) {
+            $client = $clients->get($id);
+
+            return [
+                'id' => $id,
+                'name' => $client->name ?? 'Unknown client (removed)',
+                'email' => $client->email ?? null,
+                'phone' => $client->phone ?? null,
+                'reason' => $status === 'failed' ? ($reasons[$id] ?? null) : null,
+            ];
+        })->values();
+
+        return response()->json(['data' => $data]);
+    }
+
+    /** Re-send the exact same content to only the recipients who failed last time — never the ones already reached. */
+    public function resendFailed(Request $request, Broadcast $broadcast)
+    {
+        $failedIds = $broadcast->failed_client_ids ?? [];
+        if (empty($failedIds)) {
+            return response()->json(['message' => 'No failed recipients to resend to.'], 422);
+        }
+
+        $retry = Broadcast::create([
+            'sent_by'          => $request->user()->id,
+            'client_ids'       => $failedIds,
+            'total_recipients' => count($failedIds),
+            'channel'          => $broadcast->channel,
+            'subject'          => $broadcast->subject,
+            'body'             => $broadcast->body,
+            'sms_body'         => $broadcast->sms_body,
+            'whatsapp_body'    => $broadcast->whatsapp_body,
+            'sent_count'       => 0,
+            'failed_count'     => 0,
+            'retry_of_broadcast_id' => $broadcast->id,
         ]);
+
+        SendBroadcastJob::dispatch($retry->id, $failedIds)->afterResponse();
+
+        return response()->json([
+            'message'          => 'Resend started for ' . count($failedIds) . ' recipient(s) — refresh History for live progress.',
+            'broadcast_id'     => $retry->id,
+            'total_recipients' => count($failedIds),
+        ], 202);
     }
 }

@@ -229,16 +229,3 @@ export function ChartSvg({ r, full = false }: { r: AttendanceReport; full?: bool
     </div>
   );
 }
-
-export function MyAttendanceChart() {
-  const now = new Date();
-  const m = now.getMonth() + 1;
-  const y = now.getFullYear();
-  const { data } = useQuery({
-    queryKey: ['my-attendance-report', m, y],
-    queryFn: () => getMyAttendanceReport(m, y),
-  });
-  const r: AttendanceReport | undefined = data?.data?.data;
-  if (!r) return null;
-  return <ChartSvg r={r} />;
-}

@@ -198,6 +198,9 @@ class MosmsService
         return $token;
     }
 
+    /** Backoff (seconds) after each 429 before retrying — a broadcast paces its own sends, this is for everything else (and a safety net if that pacing still isn't enough). */
+    private const RATE_LIMIT_BACKOFF_SECONDS = [2, 5];
+
     /** @throws \RuntimeException on any non-2xx (message from MoSMS surfaced) */
     private function request(string $method, string $path, ?array $body, ?string $token = null): array
     {
@@ -206,13 +209,25 @@ class MosmsService
             $client = $client->withToken($token);
         }
 
-        $response = $method === 'get' ? $client->get($path, $body ?? []) : $client->post($path, $body ?? []);
+        $attempt = 0;
+        do {
+            $response = $method === 'get' ? $client->get($path, $body ?? []) : $client->post($path, $body ?? []);
 
-        if (!$response->successful()) {
+            if ($response->successful()) {
+                break;
+            }
+
+            if ($response->status() === 429 && isset(self::RATE_LIMIT_BACKOFF_SECONDS[$attempt])) {
+                Log::warning('MoSMS rate limited, retrying', ['path' => $path, 'attempt' => $attempt + 1]);
+                sleep(self::RATE_LIMIT_BACKOFF_SECONDS[$attempt]);
+                $attempt++;
+                continue;
+            }
+
             $msg = $response->json('message') ?? $response->body();
-            Log::error('MoSMS request failed', ['path' => $path, 'status' => $response->status(), 'message' => $msg]);
+            Log::error('MoSMS request failed', ['path' => $path, 'status' => $response->status(), 'message' => $msg, 'attempts' => $attempt + 1]);
             throw new \RuntimeException("MoSMS: {$msg}");
-        }
+        } while (true);
 
         return $response->json() ?? [];
     }

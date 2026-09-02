@@ -25,7 +25,7 @@ import {
   getSalaryAdvances, createSalaryAdvance, cancelSalaryAdvance,
   PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance, Payslip,
 } from '../api/payroll';
-import { getUsers } from '../api/users';
+import { getAssignableUsers } from '../api/users';
 import { formatCurrency } from '../utils/formatCurrency';
 import { usePermissions } from '../hooks/usePermissions';
 
@@ -422,7 +422,7 @@ function SalariesTab() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { data: usersData } = useQuery({ queryKey: ['users-simple'], queryFn: () => getUsers({ per_page: 200 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const { data, isLoading } = useQuery({ queryKey: ['staff-salaries'], queryFn: () => getStaffSalaries() });
 
   const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];
@@ -526,7 +526,7 @@ function LoansPanel() {
   const [modalOpen, setModalOpen] = useState(false);
   const [paymentsFor, setPaymentsFor] = useState<Loan | null>(null);
 
-  const { data: usersData } = useQuery({ queryKey: ['users-simple'], queryFn: () => getUsers({ per_page: 200 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const { data, isLoading } = useQuery({ queryKey: ['loans'], queryFn: () => getLoans() });
 
   const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];
@@ -703,7 +703,7 @@ function AdvancesPanel() {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
 
-  const { data: usersData } = useQuery({ queryKey: ['users-simple'], queryFn: () => getUsers({ per_page: 200 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const { data, isLoading } = useQuery({ queryKey: ['salary-advances'], queryFn: () => getSalaryAdvances() });
 
   const users = (usersData?.data?.data ?? []) as { id: string; name: string }[];
@@ -1288,10 +1288,32 @@ const EXEMPTION_KINDS = {
 
 function ExemptionSubscriptionModal({ kind, onClose }: { kind: keyof typeof EXEMPTION_KINDS; onClose: () => void }) {
   const { title, hint, queryKey, getFn, subscribeFn } = EXEMPTION_KINDS[kind];
+  const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: [queryKey], queryFn: getFn });
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   const subscribeMut = useMutation({
     mutationFn: (vars: { user_id: string; is_active: boolean }) => subscribeFn(vars),
+    onMutate: (vars) => setPendingId(vars.user_id),
+    onSuccess: (_res, vars) => {
+      // The toggle previously only ever reflected on a full modal
+      // remount — nothing here updated the cached list on success, so a
+      // save that actually worked looked like it silently did nothing.
+      qc.setQueryData<any>([queryKey], (old: any) => old && ({
+        ...old,
+        data: {
+          ...old.data,
+          data: {
+            ...old.data.data,
+            subscriptions: { ...old.data.data.subscriptions, [vars.user_id]: { is_active: vars.is_active } },
+          },
+        },
+      }));
+    },
+    onError: (err: any) => notifications.show({
+      message: err.response?.data?.message ?? 'Could not update — please try again.', color: 'red',
+    }),
+    onSettled: () => setPendingId(null),
   });
 
   const users = data?.data?.data?.users ?? [];
@@ -1309,6 +1331,7 @@ function ExemptionSubscriptionModal({ kind, onClose }: { kind: keyof typeof EXEM
                 <Text size="sm">{u.name}</Text>
                 <Switch
                   checked={sub?.is_active ?? true}
+                  disabled={pendingId === u.id}
                   onChange={(e) => subscribeMut.mutate({ user_id: u.id, is_active: e.currentTarget.checked })}
                 />
               </Group>

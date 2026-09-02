@@ -457,6 +457,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/available-permissions', [RoleController::class, 'availablePermissions']);
 
     // Users (Team)
+    Route::get('/users/assignable', [UserController::class, 'assignable']);
     Route::middleware('permission:settings.users')->group(function () {
         Route::get('/users', [UserController::class, 'index']);
         Route::post('/users', [UserController::class, 'store']);
@@ -562,6 +563,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:menu.broadcast')->group(function () {
         Route::get('/broadcasts', [BroadcastController::class, 'index']);
         Route::post('/broadcasts', [BroadcastController::class, 'send']);
+        Route::get('/broadcasts/{broadcast}/recipients', [BroadcastController::class, 'recipients']);
+        Route::post('/broadcasts/{broadcast}/resend-failed', [BroadcastController::class, 'resendFailed']);
     });
 
     // WhatsApp Campaigns
@@ -652,6 +655,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     });
     Route::middleware('permission:domains.renew')->post('/domains/{domain}/renew', [\App\Http\Controllers\DomainController::class, 'renew']);
     Route::middleware('permission:domains.create')->post('/domains/{domain}/retry', [\App\Http\Controllers\DomainController::class, 'retry']);
+    Route::middleware('permission:domains.create')->post('/domains/{domain}/confirm-manual', [\App\Http\Controllers\DomainController::class, 'confirmManual']);
     Route::middleware('permission:domains.renew')->put('/domains/{domain}/auto-renew', [\App\Http\Controllers\DomainController::class, 'setAutoRenew']);
     Route::middleware('permission:domains.read')->get('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'nameservers']);
     Route::middleware('permission:domains.manage_dns')->put('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'updateNameservers']);
@@ -791,6 +795,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::post('/staff-reports/{staffReport}/review',   [\App\Http\Controllers\StaffReportsController::class, 'review']);
     Route::post('/staff-reports/{staffReport}/reply',    [\App\Http\Controllers\StaffReportsController::class, 'reply']);
     Route::get('/staff-reports/penalties',               [\App\Http\Controllers\StaffReportsController::class, 'penalties']);
+    Route::get('/staff-reports/my-penalties',            [\App\Http\Controllers\StaffReportsController::class, 'myPenalties']);
     Route::post('/staff-reports/penalties/{staffReportPenalty}/waive',   [\App\Http\Controllers\StaffReportsController::class, 'waivePenalty']);
     Route::post('/staff-reports/penalties/{staffReportPenalty}/unwaive', [\App\Http\Controllers\StaffReportsController::class, 'unwaivePenalty']);
 

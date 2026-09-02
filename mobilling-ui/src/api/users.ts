@@ -23,6 +23,15 @@ export interface UserFormData {
 export const getUsers = (params?: { search?: string; page?: number; per_page?: number }) =>
   api.get('/users', { params });
 
+export interface AssignableUser {
+  id: string;
+  name: string;
+}
+
+/** id+name only, for an "assign to" picker — works for any authenticated staff member, not just settings.users. */
+export const getAssignableUsers = () =>
+  api.get<{ data: AssignableUser[] }>('/users/assignable');
+
 export const createUser = (data: UserFormData) =>
   api.post('/users', data);
 

@@ -9,15 +9,16 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconWorld, IconRefresh, IconKey, IconCopy, IconLock, IconLockOpen,
-  IconShieldCheck, IconArrowLeft, IconHistory, IconServer, IconRotateClockwise,
+  IconShieldCheck, IconArrowLeft, IconHistory, IconServer, IconRotateClockwise, IconWorldCheck,
 } from '@tabler/icons-react';
 import {
-  getDomain, getDomainLogs, renewDomain, retryDomain, getDomainAuthInfo, setDomainAutoRenew,
+  getDomain, getDomainLogs, renewDomain, retryDomain, confirmManualRegistration, getDomainAuthInfo, setDomainAutoRenew,
   getDomainNameservers, updateDomainNameservers, describeDomainAction,
   DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { usePermissions } from '../hooks/usePermissions';
 import dayjs from 'dayjs';
+import { DateInput } from '@mantine/dates';
 
 const fmtDate = (d: string | null | undefined) => (d ? dayjs(d).format('dddd, D MMMM YYYY') : '—');
 
@@ -36,6 +37,7 @@ export default function DomainDetails() {
   const qc = useQueryClient();
   const { can } = usePermissions();
   const [renewOpen, setRenewOpen] = useState(false);
+  const [confirmManualOpen, setConfirmManualOpen] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
   const [authGenerated, setAuthGenerated] = useState(false);
   const [authSentInfo, setAuthSentInfo] = useState<{ message: string; hint: string | null } | null>(null);
@@ -109,7 +111,11 @@ export default function DomainDetails() {
           <ActionIcon variant="subtle" onClick={() => navigate('/domains')}><IconArrowLeft size={18} /></ActionIcon>
           <IconWorld size={22} />
           <Title order={3}>{d.name}</Title>
-          <Badge color={DOMAIN_STATUS_COLORS[d.status]} variant="light">{d.status}</Badge>
+          {meta.awaiting_manual_registration ? (
+            <Badge color="orange" variant="light">Awaiting Registration</Badge>
+          ) : (
+            <Badge color={DOMAIN_STATUS_COLORS[d.status]} variant="light">{d.status}</Badge>
+          )}
           {isOurs && (
             <Tooltip label="Registry-confirmed on REG-MOINFOTECH">
               <IconShieldCheck size={18} color="var(--mantine-color-teal-6)" />
@@ -124,6 +130,12 @@ export default function DomainDetails() {
             <Button size="xs" variant="light" color="green" leftSection={<IconRefresh size={14} />}
               onClick={() => setRenewOpen(true)}>
               Renew (creates invoice)
+            </Button>
+          )}
+          {can('domains.create') && meta.awaiting_manual_registration && (
+            <Button size="xs" variant="light" color="teal" leftSection={<IconWorldCheck size={14} />}
+              onClick={() => setConfirmManualOpen(true)}>
+              Mark as Registered
             </Button>
           )}
           {can('domains.create') && d.status === 'failed' && meta.pending_action && (
@@ -274,6 +286,10 @@ export default function DomainDetails() {
       <Modal opened={renewOpen} onClose={() => setRenewOpen(false)} title={`Renew ${d.name}`} centered>
         <StaffRenewForm domainId={d.id} onDone={() => setRenewOpen(false)} />
       </Modal>
+
+      <Modal opened={confirmManualOpen} onClose={() => setConfirmManualOpen(false)} title={`Mark ${d.name} as registered`} centered>
+        <StaffConfirmManualForm domainId={d.id} onDone={() => setConfirmManualOpen(false)} />
+      </Modal>
     </Stack>
   );
 }
@@ -397,6 +413,42 @@ function StaffRenewForm({ domainId, onDone }: { domainId: string; onDone: () => 
       <Group justify="flex-end">
         <Button color="green" loading={mutation.isPending} onClick={() => mutation.mutate()}>
           Create Renewal Invoice
+        </Button>
+      </Group>
+    </Stack>
+  );
+}
+
+function StaffConfirmManualForm({ domainId, onDone }: { domainId: string; onDone: () => void }) {
+  const qc = useQueryClient();
+  const [registeredAt, setRegisteredAt] = useState<Date | null>(new Date());
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => confirmManualRegistration(domainId, {
+      registered_at: dayjs(registeredAt).format('YYYY-MM-DD'),
+      expires_at: dayjs(expiresAt).format('YYYY-MM-DD'),
+    }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domain', domainId] });
+      qc.invalidateQueries({ queryKey: ['domains'] });
+      notifications.show({ title: 'Domain activated', message: res.data.message, color: 'green' });
+      onDone();
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not confirm registration.', color: 'red' }),
+  });
+
+  return (
+    <Stack>
+      <Text size="xs" c="dimmed">
+        No registrar integration exists for this TLD — the invoice is paid, so this just records
+        what actually happened when you registered it yourself at your registrar.
+      </Text>
+      <DateInput label="Registered on" required value={registeredAt} onChange={(v) => setRegisteredAt(v as unknown as Date)} />
+      <DateInput label="Expires on" required value={expiresAt} onChange={(v) => setExpiresAt(v as unknown as Date)} />
+      <Group justify="flex-end">
+        <Button color="teal" disabled={!registeredAt || !expiresAt} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+          Mark as Registered
         </Button>
       </Group>
     </Stack>

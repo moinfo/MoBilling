@@ -39,7 +39,7 @@ import {
   type SocialPlatformConfig,
 } from '../api/socialMedia';
 import { getClients } from '../api/clients';
-import { getUsers } from '../api/users';
+import { getAssignableUsers } from '../api/users';
 import { usePermissions } from '../hooks/usePermissions';
 
 dayjs.extend(isoWeek);
@@ -1191,7 +1191,7 @@ function ClientDesignsTab({ can }: { can: (p: string) => boolean }) {
   const [selected, setSelected]   = useState<ClientDesignOrder | null>(null);
   const [editing,  setEditing]    = useState<ClientDesignOrder | null>(null);
 
-  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => getUsers({ per_page: 100 }) });
+  const { data: usersData } = useQuery({ queryKey: ['assignable-users'], queryFn: getAssignableUsers });
   const users = (usersData?.data?.data ?? []).map((u: any) => ({ value: u.id, label: u.name }));
 
   const { data, isLoading, refetch } = useQuery({

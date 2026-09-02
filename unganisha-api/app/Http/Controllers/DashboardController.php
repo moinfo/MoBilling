@@ -616,6 +616,7 @@ class DashboardController extends Controller
             $rows = \App\Models\StaffReportPenalty::withoutGlobalScopes()
                 ->where('user_id', $user->id)
                 ->where('waived', false)
+                ->whereBetween('period_date', [$monthStart, $monthEnd])
                 ->orderByDesc('period_date')->orderByDesc('created_at')
                 ->limit(15)->get();
 
