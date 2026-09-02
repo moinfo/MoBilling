@@ -80,6 +80,22 @@ class StaffReportsController extends Controller
         $report = StaffReport::create($data);
         $report->load(['user', 'reviewer', 'replies']);
 
+        // A "missing" deduction may already have been charged by the daily
+        // cron before this (late) submission arrived — the report existing
+        // now proves it was never actually missing, so reverse that charge.
+        // Keep it as an auditable waive, not a delete, same as a reviewer
+        // manually waiving one.
+        \App\Models\StaffReportPenalty::where('user_id', $report->user_id)
+            ->where('report_type', $report->report_type)
+            ->where('penalty_type', 'missing')
+            ->where('period_date', $report->period_date->toDateString())
+            ->where('waived', false)
+            ->update([
+                'waived'       => true,
+                'waived_at'    => now(),
+                'waive_reason' => 'Report was submitted — the earlier "missing" charge no longer applies.',
+            ]);
+
         // Late submission → record the late-report deduction (once per
         // period) — unless the staff member was out on field work that day,
         // the accepted reason a report lands late.
