@@ -13,27 +13,46 @@ const typeLabel = (penalty: string, report: string) =>
   `${penalty === 'late' ? 'Late' : 'Missing'} ${report} report`;
 
 export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }) {
-  const none = data.count_this_month === 0 && data.items.length === 0;
   const [open, setOpen] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
 
   const safeDate = selectedMonth instanceof Date && !isNaN(selectedMonth.getTime()) ? selectedMonth : new Date();
-  const reportMonth = safeDate.getMonth() + 1;
-  const reportYear = safeDate.getFullYear();
+  const month = safeDate.getMonth() + 1;
+  const year = safeDate.getFullYear();
+  const now = new Date();
+  const isCurrentMonth = month === now.getMonth() + 1 && year === now.getFullYear();
 
   const { data: monthResp, isFetching } = useQuery({
-    queryKey: ['my-penalties', reportMonth, reportYear],
-    queryFn: () => getMyPenalties(reportMonth, reportYear),
-    enabled: open,
+    queryKey: ['my-penalties', month, year],
+    queryFn: () => getMyPenalties(month, year),
     placeholderData: keepPreviousData,
   });
-  const report = monthResp?.data;
+  // The dashboard's own payload already has the current month, so use it
+  // as an instant first paint instead of waiting on this card's own fetch.
+  const report = monthResp?.data ?? (isCurrentMonth ? data : undefined);
+  const none = (report?.count_this_month ?? 0) === 0 && (report?.items.length ?? 0) === 0;
 
   return (
     <Box>
-      <div className={classes.sectionLabel} style={{ marginBottom: 12 }}>
-        <Text fw={700} size="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.5 }}>My Report Deductions</Text>
-      </div>
+      <Group justify="space-between" align="center" mb={12}>
+        <div className={classes.sectionLabel}>
+          <Text fw={700} size="sm" tt="uppercase" c="dimmed" style={{ letterSpacing: 0.5 }}>My Report Deductions</Text>
+        </div>
+        <MonthPickerInput
+          value={selectedMonth}
+          onChange={(val) => {
+            if (!val) return;
+            try {
+              const d = new Date(val as any);
+              if (!isNaN(d.getTime())) setSelectedMonth(d);
+            } catch { /* ignore */ }
+          }}
+          maxDate={now}
+          maxLevel="decade"
+          w={150}
+          size="xs"
+        />
+      </Group>
 
       <Card withBorder radius="md" p="md" shadow="xs" className={classes.statCard}
         style={{ ['--stat-accent' as string]: `var(--mantine-color-${none ? 'teal' : 'red'}-6)` }}>
@@ -44,14 +63,15 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
             </ThemeIcon>
             <div>
               <Text size="xl" fw={800} lh={1.1} c={none ? 'teal' : 'red'}>
-                {formatCurrency(data.month_total)}
+                {report ? formatCurrency(report.month_total) : <Loader size="sm" />}
               </Text>
               <Text size="xs" c="dimmed">
-                Deducted in {data.month_label} · {data.count_this_month} report{data.count_this_month === 1 ? '' : 's'}
+                Deducted in {report?.month_label ?? dayjs(safeDate).format('MMM YYYY')}
+                {report ? ` · ${report.count_this_month} report${report.count_this_month === 1 ? '' : 's'}` : ''}
               </Text>
             </div>
           </Group>
-          {!none && data.items.length > 0 && (
+          {!none && (report?.items.length ?? 0) > 0 && (
             <Button size="compact-xs" variant="light" color="red" leftSection={<IconReportAnalytics size={14} />}
               onClick={() => setOpen(true)}>
               Full report
@@ -60,9 +80,9 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
         </Group>
 
         {/* Per-type breakdown so daily / weekly / monthly are all visible */}
-        {(data.by_type?.length ?? 0) > 0 && (
+        {(report?.by_type?.length ?? 0) > 0 && (
           <Group gap="xs" mt="sm">
-            {data.by_type!.map((t) => (
+            {report!.by_type!.map((t) => (
               <Badge key={t.report_type} variant="light" radius="sm"
                 color={t.count > 0 ? 'red' : 'gray'} tt="capitalize">
                 {t.report_type}: {t.count > 0 ? `${t.count} · ${formatCurrency(t.total)}` : 'none'}
@@ -73,32 +93,15 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
 
         {none && (
           <Text size="sm" c="dimmed" mt="xs">
-            Great — no missing or late reports this month. Submit each report before its deadline to avoid deductions.
+            {isCurrentMonth
+              ? 'Great — no missing or late reports this month. Submit each report before its deadline to avoid deductions.'
+              : `No missing or late reports for ${report?.month_label ?? dayjs(safeDate).format('MMM YYYY')}.`}
           </Text>
         )}
       </Card>
 
       <Modal opened={open} onClose={() => setOpen(false)} size="lg"
-        title={`Report deductions · ${report?.month_label ?? data.month_label}`}>
-        <Group justify="space-between" align="center" mb="sm">
-          <Text size="sm" c="dimmed">
-            {report ? `${report.count_this_month} deduction${report.count_this_month === 1 ? '' : 's'} · ${formatCurrency(report.month_total)}` : ' '}
-          </Text>
-          <MonthPickerInput
-            value={selectedMonth}
-            onChange={(val) => {
-              if (!val) return;
-              try {
-                const d = new Date(val as any);
-                if (!isNaN(d.getTime())) setSelectedMonth(d);
-              } catch { /* ignore */ }
-            }}
-            maxDate={new Date()}
-            maxLevel="decade"
-            w={160}
-            size="sm"
-          />
-        </Group>
+        title={`Report deductions · ${report?.month_label ?? dayjs(safeDate).format('MMM YYYY')}`}>
         <Table.ScrollContainer minWidth={420}>
           <Table verticalSpacing={6} highlightOnHover>
             <Table.Thead>
@@ -126,13 +129,6 @@ export default function StaffPenalties({ data }: { data: StaffPenaltiesSummary }
               {isFetching && (
                 <Table.Tr>
                   <Table.Td colSpan={3}><Group justify="center" py="sm"><Loader size="xs" /></Group></Table.Td>
-                </Table.Tr>
-              )}
-              {!isFetching && report && report.items.length === 0 && (
-                <Table.Tr>
-                  <Table.Td colSpan={3}>
-                    <Text size="sm" c="dimmed" ta="center" py="sm">No deductions for {report.month_label}.</Text>
-                  </Table.Td>
                 </Table.Tr>
               )}
             </Table.Tbody>
