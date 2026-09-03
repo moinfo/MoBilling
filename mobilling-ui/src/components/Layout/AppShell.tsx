@@ -98,7 +98,7 @@ export default function AppLayout() {
   const showWebServices = canAny(['menu.hosting', 'menu.domains']);
   const showSupport = canAny(['menu.tickets', 'menu.announcements']);
   const showEngagement = canAny(['menu.satisfaction_calls', 'menu.whatsapp', 'menu.field_marketing', 'menu.social_media', 'menu.served_customers']);
-  const showRecords = canAny(['menu.system_records', 'menu.my_verifications']);
+  const showRecords = canAny(['menu.system_records', 'menu.my_verifications', 'menu.report_balance_statement']);
   const showComms = canAny(['menu.sms', 'menu.broadcast', 'menu.announcements']);
   const showAccount = canAny(['menu.subscription', 'menu.users', 'menu.roles', 'settings.users', 'menu.settings']);
 
@@ -382,6 +382,10 @@ export default function AppLayout() {
               {showSystemRecords && (
                 <NavLink label="System Records" leftSection={<IconDatabase size={16} />}
                   active={isActive('/system-records')} onClick={() => navigateAndClose('/system-records')} />
+              )}
+              {can('menu.report_balance_statement') && (
+                <NavLink label="Bank Balance Statement" leftSection={<IconBuildingBank size={16} />}
+                  active={isActive('/reports/bank-balance-statement')} onClick={() => navigateAndClose('/reports/bank-balance-statement')} />
               )}
               {can('menu.my_verifications') && (
                 <NavLink label="My Verifications" leftSection={<IconShieldCheck size={16} />}
