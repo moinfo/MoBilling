@@ -12,7 +12,7 @@ import {
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
-  IconDatabase, IconShoppingCart, IconDeviceLaptop,
+  IconDatabase, IconShoppingCart, IconDeviceLaptop, IconBuildingBank,
   IconCalendarTime, IconMoneybag, IconUserCog,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -409,6 +409,10 @@ export default function AppLayout() {
               {can('menu.report_system_records') && (
                 <NavLink label="System Records Report" leftSection={<IconDatabase size={16} />}
                   active={isActive('/reports/system-records')} onClick={() => navigateAndClose('/reports/system-records')} />
+              )}
+              {can('menu.report_balance_statement') && (
+                <NavLink label="Bank Balance Statement" leftSection={<IconBuildingBank size={16} />}
+                  active={isActive('/reports/bank-balance-statement')} onClick={() => navigateAndClose('/reports/bank-balance-statement')} />
               )}
               {can('menu.report_system_verifications') && (
                 <NavLink label="System Verifications Report" leftSection={<IconShieldCheck size={16} />}

@@ -444,6 +444,35 @@ export interface SystemRecordsReport {
 export const getSystemRecordsReport = (params: DateRange) =>
   api.get<SystemRecordsReport>('/reports/system-records-report', { params });
 
+// ─── Bank Balance Statement ────────────────────────────────────
+
+export interface BalanceStatementRow {
+  id: string;
+  record_date: string;
+  type: 'deposit' | 'withdraw' | 'charge';
+  system_name: string;
+  system_property_name: string;
+  amount: number;
+  signed_amount: number;
+  running_balance: number;
+  notes: string | null;
+}
+
+export interface BankBalanceStatement {
+  bank_account: { id: string; bank_name: string; account_number: string };
+  period_start: string;
+  period_end: string;
+  opening_balance: number;
+  rows: BalanceStatementRow[];
+  closing_balance: number;
+  total_deposits: number;
+  total_withdrawals: number;
+  total_charges: number;
+}
+
+export const getBankBalanceStatement = (params: DateRange & { bank_account_id: string }) =>
+  api.get<BankBalanceStatement>('/reports/bank-balance-statement', { params });
+
 // ─── System Verifications Report ──────────────────────────────
 
 export interface SystemVerificationReportRow {

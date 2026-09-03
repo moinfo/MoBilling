@@ -128,6 +128,7 @@ import ClientStatementReport from './pages/reports/ClientStatementReport';
 import PaymentCollectionReport from './pages/reports/PaymentCollectionReport';
 import ExpenseReportPage from './pages/reports/ExpenseReportPage';
 import SystemRecordsReportPage from './pages/reports/SystemRecordsReportPage';
+import BankBalanceStatementReportPage from './pages/reports/BankBalanceStatementReportPage';
 import SystemVerificationsReportPage from './pages/reports/SystemVerificationsReportPage';
 import ProfitLossReport from './pages/reports/ProfitLossReport';
 import StatutoryComplianceReport from './pages/reports/StatutoryComplianceReport';
@@ -291,6 +292,7 @@ export default function App() {
                   <Route path="/reports/payment-collection" element={<PaymentCollectionReport />} />
                   <Route path="/reports/expenses" element={<ExpenseReportPage />} />
                   <Route path="/reports/system-records" element={<SystemRecordsReportPage />} />
+                  <Route path="/reports/bank-balance-statement" element={<BankBalanceStatementReportPage />} />
                   <Route path="/reports/system-verifications" element={<SystemVerificationsReportPage />} />
                   <Route path="/reports/profit-loss" element={<ProfitLossReport />} />
                   <Route path="/reports/statutory" element={<StatutoryComplianceReport />} />

@@ -4,6 +4,7 @@ export interface BankAccount {
   id: string;
   bank_name: string;
   account_number: string;
+  opening_balance: string;
   is_active: boolean;
   created_at: string;
 }
@@ -11,6 +12,7 @@ export interface BankAccount {
 export interface BankAccountPayload {
   bank_name: string;
   account_number: string;
+  opening_balance?: number;
   is_active?: boolean;
 }
 

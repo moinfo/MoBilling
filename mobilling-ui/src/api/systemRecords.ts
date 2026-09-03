@@ -1,5 +1,7 @@
 import api from './axios';
 
+export type SystemRecordType = 'deposit' | 'withdraw' | 'charge';
+
 export interface SystemRecord {
   id: string;
   system_id: string;
@@ -8,6 +10,7 @@ export interface SystemRecord {
   system_property?: { id: string; name: string };
   bank_account_id: string | null;
   bank_account?: { id: string; bank_name: string; account_number: string };
+  type: SystemRecordType;
   record_date: string;
   amount: string;
   notes: string | null;
@@ -20,6 +23,7 @@ export interface SystemRecordPayload {
   system_id: string;
   system_property_id: string;
   bank_account_id?: string | null;
+  type: SystemRecordType;
   record_date: string;
   amount: number;
   notes?: string;
@@ -32,6 +36,7 @@ const buildFormData = (data: SystemRecordPayload, includeMethodOverride = false)
   fd.append('system_id', data.system_id);
   fd.append('system_property_id', data.system_property_id);
   if (data.bank_account_id) fd.append('bank_account_id', data.bank_account_id);
+  fd.append('type', data.type);
   fd.append('record_date', data.record_date);
   fd.append('amount', String(data.amount));
   if (data.notes) fd.append('notes', data.notes);
@@ -46,6 +51,7 @@ export const getSystemRecords = (params?: {
   system_id?: string;
   system_property_id?: string;
   bank_account_id?: string;
+  type?: SystemRecordType;
   date_from?: string;
   date_to?: string;
 }) => api.get('/system-records', { params });

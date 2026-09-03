@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BankAccount;
 use App\Models\Bill;
 use App\Models\Client;
 use App\Models\ClientSubscription;
@@ -997,6 +998,7 @@ class ReportController extends Controller
             ->join('system_properties as sp', 'sp.id', '=', 'sr.system_property_id')
             ->where('sr.tenant_id', $tenantId)
             ->whereNull('sr.deleted_at')
+            ->where('sr.type', 'deposit')
             ->whereBetween('sr.record_date', [$start->toDateString(), $end->toDateString()])
             ->selectRaw('sr.record_date, s.name as system_name, sp.name as system_property_name, SUM(sr.amount) as total')
             ->groupBy('sr.record_date', 's.name', 'sp.name')
@@ -1043,6 +1045,94 @@ class ReportController extends Controller
             'days'         => $days,
             'system_totals'=> $systemTotals,
             'grand_total'  => $grandTotal,
+        ]);
+    }
+
+    // ─── Bank Balance Statement ──────────────────────────────────
+    /**
+     * A running balance for one bank account: opening balance (the
+     * account's opening_balance plus the net of everything before the
+     * range), then every record in range with a running balance attached,
+     * then a closing balance. Mirrors PettyCashAccount::balances()'s
+     * two-SUM(CASE) shape rather than a cached/mutated balance column —
+     * nothing else ever needs to gate on this balance, so a live
+     * computation avoids any locking/reconciliation complexity.
+     */
+    public function bankBalanceStatement(Request $request): JsonResponse
+    {
+        $request->validate(['bank_account_id' => 'required|uuid']);
+        [$start, $end] = $this->dateRange($request);
+        $tenantId = auth()->user()->tenant_id;
+
+        $bankAccount = BankAccount::where('tenant_id', $tenantId)
+            ->findOrFail($request->bank_account_id);
+
+        $prior = DB::table('system_records')
+            ->where('bank_account_id', $bankAccount->id)
+            ->whereNull('deleted_at')
+            ->where('record_date', '<', $start->toDateString())
+            ->selectRaw("
+                COALESCE(SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END), 0) AS additions,
+                COALESCE(SUM(CASE WHEN type IN ('withdraw', 'charge') THEN amount ELSE 0 END), 0) AS subtractions
+            ")->first();
+
+        $openingBalance = round(
+            (float) $bankAccount->opening_balance + (float) $prior->additions - (float) $prior->subtractions,
+            2
+        );
+
+        $records = DB::table('system_records as sr')
+            ->join('systems as s', 's.id', '=', 'sr.system_id')
+            ->join('system_properties as sp', 'sp.id', '=', 'sr.system_property_id')
+            ->where('sr.bank_account_id', $bankAccount->id)
+            ->whereNull('sr.deleted_at')
+            ->whereBetween('sr.record_date', [$start->toDateString(), $end->toDateString()])
+            ->selectRaw('sr.id, sr.record_date, sr.type, sr.amount, sr.notes, s.name as system_name, sp.name as system_property_name')
+            ->orderBy('sr.record_date')
+            ->orderBy('sr.created_at')
+            ->get();
+
+        $running = $openingBalance;
+        $totalDeposits = 0.0;
+        $totalWithdrawals = 0.0;
+        $totalCharges = 0.0;
+
+        $rows = $records->map(function ($r) use (&$running, &$totalDeposits, &$totalWithdrawals, &$totalCharges) {
+            $amount = (float) $r->amount;
+            $signed = $r->type === 'deposit' ? $amount : -$amount;
+            $running = round($running + $signed, 2);
+
+            if ($r->type === 'deposit') $totalDeposits += $amount;
+            elseif ($r->type === 'withdraw') $totalWithdrawals += $amount;
+            else $totalCharges += $amount;
+
+            return [
+                'id' => $r->id,
+                'record_date' => substr($r->record_date, 0, 10),
+                'type' => $r->type,
+                'system_name' => $r->system_name,
+                'system_property_name' => $r->system_property_name,
+                'amount' => round($amount, 2),
+                'signed_amount' => round($signed, 2),
+                'running_balance' => $running,
+                'notes' => $r->notes,
+            ];
+        })->values();
+
+        return response()->json([
+            'bank_account' => [
+                'id' => $bankAccount->id,
+                'bank_name' => $bankAccount->bank_name,
+                'account_number' => $bankAccount->account_number,
+            ],
+            'period_start' => $start->toDateString(),
+            'period_end' => $end->toDateString(),
+            'opening_balance' => $openingBalance,
+            'rows' => $rows,
+            'closing_balance' => $running,
+            'total_deposits' => round($totalDeposits, 2),
+            'total_withdrawals' => round($totalWithdrawals, 2),
+            'total_charges' => round($totalCharges, 2),
         ]);
     }
 }

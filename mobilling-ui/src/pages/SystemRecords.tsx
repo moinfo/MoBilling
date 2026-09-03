@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Stack, Textarea, FileInput, Anchor } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Stack, Textarea, FileInput, Anchor, Badge } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
@@ -8,13 +8,20 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconEdit, IconTrash, IconSearch, IconUpload, IconDownload } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import { getSystemRecords, createSystemRecord, updateSystemRecord, deleteSystemRecord, SystemRecord } from '../api/systemRecords';
+import { getSystemRecords, createSystemRecord, updateSystemRecord, deleteSystemRecord, SystemRecord, SystemRecordType } from '../api/systemRecords';
 import { getSystems, System } from '../api/systems';
 import { getSystemProperties, SystemProperty } from '../api/systemProperties';
 import { getBankAccounts, BankAccount } from '../api/bankAccounts';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import { usePermissions } from '../hooks/usePermissions';
+
+const TYPE_OPTIONS = [
+  { value: 'deposit', label: 'Deposit' },
+  { value: 'withdraw', label: 'Withdraw' },
+  { value: 'charge', label: 'Charge' },
+];
+const TYPE_COLOR: Record<SystemRecordType, string> = { deposit: 'green', withdraw: 'red', charge: 'orange' };
 
 export default function SystemRecords() {
   const queryClient = useQueryClient();
@@ -29,6 +36,7 @@ export default function SystemRecords() {
   const [filterSystem, setFilterSystem] = useState<string | null>(null);
   const [filterProperty, setFilterProperty] = useState<string | null>(null);
   const [filterBank, setFilterBank] = useState<string | null>(null);
+  const [filterType, setFilterType] = useState<string | null>(null);
   const [dateFrom, setDateFrom] = useState<string | null>(null);
   const [dateTo, setDateTo] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -58,13 +66,14 @@ export default function SystemRecords() {
   }));
 
   const { data } = useQuery({
-    queryKey: ['system-records', page, debouncedSearch, filterSystem, filterProperty, filterBank, dateFrom, dateTo],
+    queryKey: ['system-records', page, debouncedSearch, filterSystem, filterProperty, filterBank, filterType, dateFrom, dateTo],
     queryFn: () => getSystemRecords({
       page,
       search: debouncedSearch || undefined,
       system_id: filterSystem || undefined,
       system_property_id: filterProperty || undefined,
       bank_account_id: filterBank || undefined,
+      type: (filterType as SystemRecordType) || undefined,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
     }),
@@ -77,6 +86,7 @@ export default function SystemRecords() {
       system_id: '',
       system_property_id: '',
       bank_account_id: '',
+      type: 'deposit' as SystemRecordType,
       record_date: new Date(),
       amount: 0,
       notes: '',
@@ -85,6 +95,7 @@ export default function SystemRecords() {
     validate: {
       system_id: (v) => (v ? null : 'Required'),
       system_property_id: (v) => (v ? null : 'Required'),
+      type: (v) => (v ? null : 'Required'),
       amount: (v) => (v >= 0 ? null : 'Must be 0 or greater'),
       // The browser-level required attribute handles the create case but
       // we double-check at form-validate time too in case JS-only paths
@@ -100,7 +111,7 @@ export default function SystemRecords() {
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ system_id: '', system_property_id: '', bank_account_id: '', record_date: new Date(), amount: 0, notes: '', receipt: null });
+    form.setValues({ system_id: '', system_property_id: '', bank_account_id: '', type: 'deposit', record_date: new Date(), amount: 0, notes: '', receipt: null });
     setFormOpen(true);
   };
   const openEdit = (r: SystemRecord) => {
@@ -109,6 +120,7 @@ export default function SystemRecords() {
       system_id: r.system_id,
       system_property_id: r.system_property_id,
       bank_account_id: r.bank_account_id || '',
+      type: r.type,
       record_date: new Date(r.record_date),
       amount: parseFloat(r.amount) || 0,
       notes: r.notes || '',
@@ -121,6 +133,7 @@ export default function SystemRecords() {
     system_id: v.system_id,
     system_property_id: v.system_property_id,
     bank_account_id: v.bank_account_id || null,
+    type: v.type,
     record_date: dayjs(v.record_date).format('YYYY-MM-DD'),
     amount: v.amount,
     notes: v.notes || undefined,
@@ -184,6 +197,8 @@ export default function SystemRecords() {
           value={filterProperty} onChange={(v) => { setFilterProperty(v); setPage(1); }} maw={220} />
         <Select placeholder="All bank accounts" data={bankOptions} clearable searchable
           value={filterBank} onChange={(v) => { setFilterBank(v); setPage(1); }} maw={240} />
+        <Select placeholder="All types" data={TYPE_OPTIONS} clearable
+          value={filterType} onChange={(v) => { setFilterType(v); setPage(1); }} maw={160} />
         <DateInput placeholder="From" clearable
           value={dateFrom ? new Date(dateFrom) : null}
           onChange={(v) => { setDateFrom(v ? dayjs(v).format('YYYY-MM-DD') : null); setPage(1); }} maw={160} />
@@ -200,6 +215,7 @@ export default function SystemRecords() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>Date</Table.Th>
+                <Table.Th>Type</Table.Th>
                 <Table.Th>System</Table.Th>
                 <Table.Th>System Property</Table.Th>
                 <Table.Th>Bank Account</Table.Th>
@@ -213,6 +229,9 @@ export default function SystemRecords() {
               {items.map((r) => (
                 <Table.Tr key={r.id}>
                   <Table.Td>{formatDate(r.record_date)}</Table.Td>
+                  <Table.Td>
+                    <Badge size="sm" variant="light" color={TYPE_COLOR[r.type]} tt="capitalize">{r.type}</Badge>
+                  </Table.Td>
                   <Table.Td fw={500}>{r.system?.name || '—'}</Table.Td>
                   <Table.Td>{r.system_property?.name || '—'}</Table.Td>
                   <Table.Td>
@@ -269,6 +288,7 @@ export default function SystemRecords() {
             <Select label="Bank Account" data={bankOptions} searchable clearable
               placeholder="Choose a bank account (optional)"
               {...form.getInputProps('bank_account_id')} />
+            <Select label="Type" required data={TYPE_OPTIONS} {...form.getInputProps('type')} />
             <DateInput label="Date" required {...form.getInputProps('record_date')} />
             <NumberInput label="Amount" required min={0} decimalScale={2} {...form.getInputProps('amount')} />
             <FileInput

@@ -550,6 +550,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::middleware('permission:reports.payment_collection')->get('/payment-collection', [ReportController::class, 'paymentCollection']);
         Route::middleware('permission:reports.expense')->get('/expense-report', [ReportController::class, 'expenseReport']);
         Route::middleware('permission:reports.system_records')->get('/system-records-report', [ReportController::class, 'systemRecordsReport']);
+        Route::middleware('permission:reports.balance_statement')->get('/bank-balance-statement', [ReportController::class, 'bankBalanceStatement']);
         Route::middleware('permission:reports.system_verifications')->get('/system-verifications-report', [ReportController::class, 'systemVerificationsReport']);
         Route::middleware('permission:reports.profit_loss')->get('/profit-loss', [ReportController::class, 'profitLoss']);
         Route::middleware('permission:reports.statutory')->get('/statutory-compliance', [ReportController::class, 'statutoryCompliance']);

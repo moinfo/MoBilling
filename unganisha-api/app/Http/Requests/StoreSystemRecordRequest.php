@@ -37,6 +37,7 @@ class StoreSystemRecordRequest extends FormRequest
                 'nullable', 'uuid',
                 Rule::exists('bank_accounts', 'id')->where('tenant_id', $tenantId)->whereNull('deleted_at'),
             ],
+            'type' => 'required|in:deposit,withdraw,charge',
             'record_date' => 'required|date|before_or_equal:today',
             'amount' => 'required|numeric|min:0',
             'notes' => 'nullable|string|max:2000',
