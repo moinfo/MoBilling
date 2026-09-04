@@ -995,6 +995,88 @@ class ServedWeeklySummary {
       );
 }
 
+/// One day of `GET /served/report` — richer than [ServedDay] (which backs
+/// the weekly summary): each day also carries its own target and percent
+/// achieved, and which ISO week it falls in, for a month-spanning table.
+class ServedReportDay {
+  const ServedReportDay({
+    required this.date,
+    required this.dayName,
+    required this.week,
+    required this.isActive,
+    required this.newCustomers,
+    required this.newTarget,
+    required this.newPct,
+    required this.callsMade,
+    required this.callsTarget,
+    required this.callsPct,
+  });
+
+  final String date;
+  final String dayName;
+  final int week;
+  final bool isActive;
+  final int newCustomers;
+  final int newTarget;
+  final double newPct;
+  final int callsMade;
+  final int callsTarget;
+  final double callsPct;
+
+  factory ServedReportDay.fromJson(Map<String, dynamic> json) =>
+      ServedReportDay(
+        date: json.strOr('date', ''),
+        dayName: json.strOr('day_name', ''),
+        week: json.count('week'),
+        isActive: json.flag('is_active', fallback: true),
+        newCustomers: json.count('new_customers'),
+        newTarget: json.count('new_target'),
+        newPct: readDouble(json['new_pct']),
+        callsMade: json.count('calls_made'),
+        callsTarget: json.count('calls_target'),
+        callsPct: readDouble(json['calls_pct']),
+      );
+}
+
+/// `GET /served/report` — a date range's daily breakdown against target,
+/// defaulting server-side to the current month.
+class ServedReport {
+  const ServedReport({
+    required this.startDate,
+    required this.endDate,
+    required this.newCustomersAchieved,
+    required this.newCustomersTarget,
+    required this.callsAchieved,
+    required this.callsTarget,
+    required this.daily,
+    this.target,
+  });
+
+  final String startDate;
+  final String endDate;
+  final int newCustomersAchieved;
+  final int newCustomersTarget;
+  final int callsAchieved;
+  final int callsTarget;
+  final List<ServedReportDay> daily;
+
+  /// Null when the tenant has never set a target.
+  final ServedTarget? target;
+
+  factory ServedReport.fromJson(Map<String, dynamic> json) => ServedReport(
+    startDate: json.strOr('start_date', ''),
+    endDate: json.strOr('end_date', ''),
+    newCustomersAchieved: json.count('new_customers_achieved'),
+    newCustomersTarget: json.count('new_customers_target'),
+    callsAchieved: json.count('calls_achieved'),
+    callsTarget: json.count('calls_target'),
+    daily: json.list('daily', ServedReportDay.fromJson),
+    target: json.object('target') == null
+        ? null
+        : ServedTarget.fromJson(json.object('target')!),
+  );
+}
+
 /// Outcomes `POST /served/customers/{id}/feedback` accepts.
 abstract final class ServedFeedbackOutcomes {
   static const values = <(String, String)>[

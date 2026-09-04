@@ -855,6 +855,108 @@ class SocialWeeklySummary {
   }
 }
 
+/// A client's ask for artwork — a logo, flyer, banner etc. — tracked through
+/// to delivery. Unrelated to [SocialPost]: this is a service request, not a
+/// scheduled publish.
+class ClientDesignOrder {
+  const ClientDesignOrder({
+    required this.id,
+    required this.title,
+    required this.designType,
+    required this.status,
+    required this.isOverdue,
+    required this.revisionCount,
+    this.description,
+    this.referenceUrl,
+    this.clientId,
+    this.clientName,
+    this.designerId,
+    this.designerName,
+    this.dueDate,
+    this.fileUrl,
+    this.revisionNotes,
+    this.price,
+    this.createdAt,
+  });
+
+  final String id;
+  final String title;
+
+  /// logo | flyer | brochure | business_card | banner | book_cover |
+  /// label_poster | social_media_graphic | merchandise | other.
+  final String designType;
+
+  /// pending | in_progress | needs_revision | done | delivered.
+  final String status;
+  final bool isOverdue;
+
+  /// Bumped server-side each time [status] moves to `needs_revision`.
+  final int revisionCount;
+  final String? description;
+  final String? referenceUrl;
+  final String? clientId;
+  final String? clientName;
+  final String? designerId;
+  final String? designerName;
+  final DateTime? dueDate;
+  final String? fileUrl;
+  final String? revisionNotes;
+  final double? price;
+  final DateTime? createdAt;
+
+  factory ClientDesignOrder.fromJson(Map<String, dynamic> json) {
+    final client = json.object('client');
+    final designer = json.object('designer');
+    return ClientDesignOrder(
+      id: json.id(),
+      title: json.strOr('title', '—'),
+      designType: json.strOr('design_type', 'other'),
+      status: json.strOr('status', 'pending'),
+      isOverdue: json.flag('is_overdue'),
+      revisionCount: json.count('revision_count'),
+      description: json.str('description'),
+      referenceUrl: json.str('reference_url'),
+      clientId: json.str('client_id') ?? client?.str('id'),
+      clientName: client?.str('name'),
+      designerId: json.str('assigned_designer_id') ?? designer?.str('id'),
+      designerName: designer?.str('name'),
+      dueDate: json.date('due_date'),
+      fileUrl: json.str('file_url'),
+      revisionNotes: json.str('revision_notes'),
+      price: json['price'] == null ? null : readDouble(json['price']),
+      createdAt: json.date('created_at'),
+    );
+  }
+}
+
+/// Display labels for the design-order enums, mirroring
+/// `mobilling-ui/src/pages/SocialMedia.tsx`'s Client Designs tab.
+abstract final class DesignOrderLabels {
+  static const types = <String, String>{
+    'logo': 'Logo',
+    'flyer': 'Flyer',
+    'brochure': 'Brochure',
+    'business_card': 'Business card',
+    'banner': 'Banner',
+    'book_cover': 'Book cover',
+    'label_poster': 'Label / poster',
+    'social_media_graphic': 'Social media graphic',
+    'merchandise': 'Merchandise',
+    'other': 'Other',
+  };
+
+  static const statuses = <String, String>{
+    'pending': 'Pending',
+    'in_progress': 'In progress',
+    'needs_revision': 'Needs revision',
+    'done': 'Done',
+    'delivered': 'Delivered',
+  };
+
+  static String type(String? value) => types[value] ?? _humanise(value);
+  static String status(String? value) => statuses[value] ?? _humanise(value);
+}
+
 /// Display labels for the raw social-media enums, mirroring
 /// `mobilling-ui/src/api/socialMedia.ts` so both clients read alike.
 abstract final class SocialLabels {

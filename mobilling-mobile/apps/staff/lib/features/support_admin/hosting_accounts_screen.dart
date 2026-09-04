@@ -280,8 +280,10 @@ class _AccountActionsSheetState extends ConsumerState<_AccountActionsSheet> {
     );
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: Spacing.md),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          bottom: Spacing.md + sheetBottomInset(context),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

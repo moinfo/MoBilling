@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
+import '../../router.dart';
 import 'crm_providers.dart';
 import 'crm_ui.dart';
 
@@ -33,6 +35,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     Appointment appointment, {
     String? status,
     DateTime? date,
+    String? notes,
   }) async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -42,6 +45,7 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
             appointment.id,
             appointmentStatus: status,
             appointmentDate: date,
+            appointmentNotes: notes,
           );
       ref.invalidate(appointmentsProvider(_status));
       messenger.showSnackBar(
@@ -54,6 +58,21 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+
+  /// Web's status-change modal always asks for notes before it PATCHes; a
+  /// sheet returning `null` means the user backed out rather than confirmed
+  /// with no notes (which comes back as `''`).
+  Future<void> _changeStatus(Appointment appointment, String status) async {
+    final notes = await showCrmSheet<String>(
+      context: context,
+      builder: (_) => _StatusNotesSheet(
+        status: status,
+        initialNotes: appointment.appointmentNotes,
+      ),
+    );
+    if (notes == null) return;
+    await _update(appointment, status: status, notes: notes.isEmpty ? null : notes);
   }
 
   Future<void> _reschedule(Appointment appointment) async {
@@ -106,6 +125,18 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                     value: Formatting.integer(p.stats.overdue),
                     emphasis: p.stats.overdue > 0 ? status.overdue : null,
                   ),
+                  StatRailItem(
+                    label: 'Pending',
+                    value: Formatting.integer(p.stats.pending),
+                  ),
+                  StatRailItem(
+                    label: 'Confirmed',
+                    value: Formatting.integer(p.stats.confirmed),
+                  ),
+                  StatRailItem(
+                    label: 'Completed',
+                    value: Formatting.integer(p.stats.completed),
+                  ),
                 ],
               ),
             ),
@@ -145,12 +176,8 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
                               for (final appointment in p.page.items)
                                 _AppointmentTile(
                                   appointment: appointment,
-                                  onConfirm: () =>
-                                      _update(appointment, status: 'confirmed'),
-                                  onComplete: () =>
-                                      _update(appointment, status: 'completed'),
-                                  onCancel: () =>
-                                      _update(appointment, status: 'cancelled'),
+                                  onStatusChange: (s) =>
+                                      _changeStatus(appointment, s),
                                   onReschedule: () => _reschedule(appointment),
                                 ),
                             ],
@@ -166,20 +193,59 @@ class _AppointmentsScreenState extends ConsumerState<AppointmentsScreen> {
   }
 }
 
+/// Colours for a satisfaction-call outcome. `StatusColors.forStatus` doesn't
+/// know these values (they're call outcomes, not document/appointment
+/// statuses), so map them here onto the same green/amber/red/grey vocabulary
+/// the rest of the app already uses.
+Color _outcomeColor(BuildContext context, String outcome) {
+  final status = context.statusColors;
+  return switch (outcome) {
+    'satisfied' => status.settled,
+    'needs_improvement' => status.attention,
+    'complaint' => status.overdue,
+    'suggestion' => status.pending,
+    _ => status.inactive, // no_answer, unreachable
+  };
+}
+
+/// A dense pill for `Appointment.outcome`, styled like [StatusChip] since it
+/// sits right next to one.
+class _OutcomeBadge extends StatelessWidget {
+  const _OutcomeBadge({required this.outcome});
+
+  final String outcome;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _outcomeColor(context, outcome);
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: Spacing.sm,
+        vertical: 2,
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(Radii.sm),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        SatisfactionOutcomes.label(outcome).toUpperCase(),
+        style: Type.mono(9.5, tracking: 0.08, color: color),
+      ),
+    );
+  }
+}
+
 /// One appointment: who, when (and how late), where, and the status menu.
 class _AppointmentTile extends StatelessWidget {
   const _AppointmentTile({
     required this.appointment,
-    required this.onConfirm,
-    required this.onComplete,
-    required this.onCancel,
+    required this.onStatusChange,
     required this.onReschedule,
   });
 
   final Appointment appointment;
-  final VoidCallback onConfirm;
-  final VoidCallback onComplete;
-  final VoidCallback onCancel;
+  final ValueChanged<String> onStatusChange;
   final VoidCallback onReschedule;
 
   @override
@@ -190,6 +256,7 @@ class _AppointmentTile extends StatelessWidget {
     final settled = status == 'completed' || status == 'cancelled';
     final days = Formatting.daysUntil(appointment.appointmentDate);
     final late = !settled && (days ?? 0) < 0;
+    final clientId = appointment.clientId;
 
     final meta = [
       if (appointment.appointmentDate != null)
@@ -203,11 +270,19 @@ class _AppointmentTile extends StatelessWidget {
     ].join(' · ');
 
     return ListTile(
-      title: Text(
-        appointment.clientName ?? 'Client',
-        style: theme.textTheme.titleSmall,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+      title: GestureDetector(
+        onTap: clientId == null
+            ? null
+            : () => context.push(Routes.clientPath(clientId)),
+        child: Text(
+          appointment.clientName ?? 'Client',
+          style: theme.textTheme.titleSmall?.copyWith(
+            color: clientId == null ? null : scheme.primary,
+            decoration: clientId == null ? null : TextDecoration.underline,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,6 +293,10 @@ class _AppointmentTile extends StatelessWidget {
             meta: meta,
             tone: late ? context.statusColors.overdue : null,
           ),
+          if (appointment.outcome != null) ...[
+            const SizedBox(height: Spacing.xs),
+            _OutcomeBadge(outcome: appointment.outcome!),
+          ],
           if (appointment.assignedTo != null) ...[
             const SizedBox(height: Spacing.xs),
             Text(
@@ -263,16 +342,14 @@ class _AppointmentTile extends StatelessWidget {
               icon: Icon(Icons.more_vert, color: scheme.onSurfaceVariant),
               tooltip: 'Appointment actions',
               onSelected: (action) => switch (action) {
-                'confirm' => onConfirm(),
-                'complete' => onComplete(),
-                'cancel' => onCancel(),
-                _ => onReschedule(),
+                'reschedule' => onReschedule(),
+                _ => onStatusChange(action),
               },
               itemBuilder: (context) => [
                 if (status != 'confirmed')
-                  const PopupMenuItem(value: 'confirm', child: Text('Confirm')),
+                  const PopupMenuItem(value: 'confirmed', child: Text('Confirm')),
                 const PopupMenuItem(
-                  value: 'complete',
+                  value: 'completed',
                   child: Text('Mark completed'),
                 ),
                 const PopupMenuItem(
@@ -280,13 +357,68 @@ class _AppointmentTile extends StatelessWidget {
                   child: Text('Reschedule'),
                 ),
                 const PopupMenuItem(
-                  value: 'cancel',
+                  value: 'cancelled',
                   child: Text('Cancel appointment'),
                 ),
               ],
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Notes captured on every status change, as the web modal requires.
+class _StatusNotesSheet extends StatefulWidget {
+  const _StatusNotesSheet({required this.status, this.initialNotes});
+
+  final String status;
+  final String? initialNotes;
+
+  @override
+  State<_StatusNotesSheet> createState() => _StatusNotesSheetState();
+}
+
+class _StatusNotesSheetState extends State<_StatusNotesSheet> {
+  late final _notes = TextEditingController(text: widget.initialNotes);
+
+  @override
+  void dispose() {
+    _notes.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final action = switch (widget.status) {
+      'confirmed' => 'Confirm',
+      'completed' => 'Mark completed',
+      'cancelled' => 'Cancel appointment',
+      _ => 'Save',
+    };
+
+    return CrmSheet(
+      eyebrow: 'Appointment',
+      title: action,
+      children: [
+        CrmField(
+          label: 'Notes',
+          child: TextField(
+            controller: _notes,
+            minLines: 3,
+            maxLines: 5,
+            maxLength: 500,
+            decoration: const InputDecoration(
+              hintText: 'Visit notes, observations, next steps…',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        FilledButton(
+          onPressed: () => Navigator.of(context).pop(_notes.text.trim()),
+          child: Text(action),
+        ),
+      ],
     );
   }
 }

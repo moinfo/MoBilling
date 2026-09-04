@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
@@ -16,9 +18,93 @@ final AutoDisposeFutureProvider<ServedTarget?> servedTargetProvider =
       (ref) => ref.watch(crmServiceProvider).servedTarget(),
     );
 
-/// Walk-in customers served at the counter, plus this week's progress against
-/// target. Recording someone served is a counter-staff action, so the form is
-/// deliberately short: name, what they came for, optional phone.
+/// A week's achievement plus its daily breakdown, read from `/served/report`
+/// scoped to Monday–Sunday.
+///
+/// `/served/weekly-summary` (`CrmService.servedWeeklySummary`) takes no
+/// parameters and always answers for the current week, so it cannot back a
+/// "previous/next week" control. `/served/report` accepts an arbitrary date
+/// range and already reports per-day target + percent achieved, so scoping it
+/// to one week is how week navigation works without adding anything to the
+/// API layer.
+final AutoDisposeFutureProviderFamily<ServedReport, int>
+_servedWeekReportProvider = FutureProvider.autoDispose
+    .family<ServedReport, int>((ref, weekOffset) {
+      final start = _weekStart(weekOffset);
+      return ref
+          .watch(crmServiceProvider)
+          .servedReport(
+            startDate: start,
+            endDate: start.add(const Duration(days: 6)),
+          );
+    });
+
+/// A calendar month's daily breakdown for the Report tab, keyed by months
+/// offset from the current one (0 = this month).
+final AutoDisposeFutureProviderFamily<ServedReport, int>
+_servedMonthReportProvider = FutureProvider.autoDispose
+    .family<ServedReport, int>((ref, monthOffset) {
+      final start = _monthAnchor(monthOffset);
+      return ref
+          .watch(crmServiceProvider)
+          .servedReport(startDate: start, endDate: _monthEnd(start));
+    });
+
+/// Monday of the ISO week [offset] weeks from the current one (0 = this
+/// week), matching the web's `dayjs().isoWeekday(1).add(offset, 'week')`.
+DateTime _weekStart(int offset) {
+  final now = DateTime.now();
+  final monday = DateTime(now.year, now.month, now.day - (now.weekday - 1));
+  return monday.add(Duration(days: 7 * offset));
+}
+
+/// The first of the month [offset] months from the current one (0 = this
+/// month).
+DateTime _monthAnchor(int offset) {
+  final now = DateTime.now();
+  return DateTime(now.year, now.month + offset, 1);
+}
+
+DateTime _monthEnd(DateTime monthStart) =>
+    DateTime(monthStart.year, monthStart.month + 1, 0);
+
+const _monthNames = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+String _monthLabel(DateTime month) =>
+    '${_monthNames[month.month - 1]} ${month.year}';
+
+/// Green/yellow/red by percent achieved, matching the web's `barColor` /
+/// `pctColor` helpers. `null` (no target) reads as neutral, not red.
+Color _pctColor(BuildContext context, num? pct) {
+  final status = context.statusColors;
+  if (pct == null) return Theme.of(context).colorScheme.onSurfaceVariant;
+  if (pct >= 100) return status.settled;
+  if (pct >= 50) return status.attention;
+  return status.overdue;
+}
+
+enum _Section { customers, target, report, services }
+
+/// Walk-in customers served at the counter: who was served, this week's and
+/// this month's progress against target, and the service types they can be
+/// logged under.
+///
+/// Web: `ServedCustomers.tsx`'s four tabs (Customers / Target / Report /
+/// Services). Kept as one screen with an in-page `TabController` here too,
+/// rather than four routes, so switching tabs never leaves the module.
 class ServedCustomersScreen extends ConsumerStatefulWidget {
   const ServedCustomersScreen({super.key});
 
@@ -27,13 +113,51 @@ class ServedCustomersScreen extends ConsumerStatefulWidget {
       _ServedCustomersScreenState();
 }
 
-class _ServedCustomersScreenState extends ConsumerState<ServedCustomersScreen> {
-  final _listKey = GlobalKey<PagedListViewState>();
+class _ServedCustomersScreenState extends ConsumerState<ServedCustomersScreen>
+    with SingleTickerProviderStateMixin {
+  final _customersTabKey = GlobalKey<_CustomersTabState>();
+  late final List<_Section> _sections;
+  late final TabController _tabs;
+  late _Section _section;
+
+  @override
+  void initState() {
+    super.initState();
+    // Read once rather than watch: permissions do not change for the life of
+    // this screen, and a `TabController`'s length cannot change after the
+    // fact anyway.
+    final session = ref.read(sessionControllerProvider).session;
+    final canRead = session?.can(CrmPermissions.servedRead) ?? false;
+    final canSettings = session?.can(CrmPermissions.servedSettings) ?? false;
+    _sections = [
+      if (canRead) _Section.customers,
+      if (canRead) _Section.target,
+      if (canRead) _Section.report,
+      if (canSettings) _Section.services,
+    ];
+    // The menu already gates entry to this screen on one of the two
+    // permissions above, so an empty list would mean a menu/permission
+    // mismatch — fall back to Customers rather than hand a 0-length
+    // TabController to the mixin.
+    if (_sections.isEmpty) _sections.add(_Section.customers);
+    _section = _sections.first;
+    _tabs = TabController(length: _sections.length, vsync: this)
+      ..addListener(_onTab);
+  }
+
+  void _onTab() {
+    final next = _sections[_tabs.index];
+    if (next != _section) setState(() => _section = next);
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final summary = ref.watch(servedWeeklySummaryProvider);
-    final status = context.statusColors;
     final session = ref.watch(sessionControllerProvider).session;
     final canCreate = session?.can(CrmPermissions.servedCreate) ?? false;
     final canSettings = session?.can(CrmPermissions.servedSettings) ?? false;
@@ -42,110 +166,218 @@ class _ServedCustomersScreenState extends ConsumerState<ServedCustomersScreen> {
       appBar: ShellTopBar(
         eyebrow: 'Engagement',
         title: 'Served customers',
-        trailing: (canCreate || canSettings)
-            ? Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (canSettings)
-                    InkActionButton(
-                      icon: Icons.flag_outlined,
-                      tooltip: 'Daily target',
-                      onPressed: () => _editTarget(context),
-                    ),
-                  if (canCreate)
-                    Padding(
-                      padding: EdgeInsets.only(
-                        left: canSettings ? Spacing.sm : 0,
-                      ),
-                      child: InkActionButton(
-                        icon: Icons.person_add_alt_1_outlined,
-                        tooltip: 'Record a customer',
-                        onPressed: () => _recordCustomer(context),
-                      ),
-                    ),
-                ],
+        trailing: switch (_section) {
+          _Section.customers when canCreate => InkActionButton(
+            icon: Icons.person_add_alt_1_outlined,
+            tooltip: 'Record a customer',
+            onPressed: () => _recordCustomer(context),
+          ),
+          _Section.target when canSettings => InkActionButton(
+            icon: Icons.flag_outlined,
+            tooltip: 'Daily target',
+            onPressed: () => _editTarget(context, ref),
+          ),
+          _Section.services when canSettings => InkActionButton(
+            icon: Icons.add,
+            tooltip: 'Add a service',
+            onPressed: () => _addService(context, ref),
+          ),
+          _ => null,
+        },
+        bottom: _sections.length > 1
+            ? InkTabBar(
+                controller: _tabs,
+                tabs: [for (final s in _sections) _sectionLabel(s)],
               )
             : null,
       ),
-      body: Column(
-        children: [
-          summary.maybeWhen(
-            data: (s) {
-              final metTarget =
-                  s.newCustomersTarget != null &&
-                  s.newCustomersAchieved >= s.newCustomersTarget!;
-              return Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  Spacing.md,
-                  Spacing.md,
-                  Spacing.md,
-                  0,
-                ),
-                child: Reveal(
-                  child: StatRail(
-                    items: [
-                      StatRailItem(
-                        label: 'New this week',
-                        value: s.newCustomersTarget == null
-                            ? Formatting.integer(s.newCustomersAchieved)
-                            : '${Formatting.integer(s.newCustomersAchieved)}'
-                                  '/${Formatting.integer(s.newCustomersTarget)}',
-                        emphasis: metTarget ? status.settled : null,
-                      ),
-                      StatRailItem(
-                        label: 'Calls this week',
-                        value: s.callsTarget == null
-                            ? Formatting.integer(s.callsAchieved)
-                            : '${Formatting.integer(s.callsAchieved)}'
-                                  '/${Formatting.integer(s.callsTarget)}',
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-            orElse: () => const SizedBox.shrink(),
-          ),
-          Expanded(
-            child: PagedListView(
-              key: _listKey,
-              padding: const EdgeInsets.all(Spacing.md),
-              fetch: (page) =>
-                  ref.read(crmServiceProvider).servedCustomers(page: page),
-              itemBuilder: (context, customer) =>
-                  _CustomerCard(customer: customer, onChanged: _reload),
-              emptyIcon: Icons.how_to_reg_outlined,
-              emptyTitle: 'Nobody logged yet',
-              emptyMessage: 'Walk-in customers you serve appear here.',
-            ),
-          ),
-        ],
-      ),
+      body: switch (_section) {
+        _Section.customers => _CustomersTab(key: _customersTabKey),
+        _Section.target => const _TargetTab(),
+        _Section.report => const _ReportTab(),
+        _Section.services => const _ServicesTab(),
+      },
     );
   }
 
-  void _reload() {
-    _listKey.currentState?.reload();
-    ref.invalidate(servedWeeklySummaryProvider);
-  }
+  static String _sectionLabel(_Section section) => switch (section) {
+    _Section.customers => 'Customers',
+    _Section.target => 'Target',
+    _Section.report => 'Report',
+    _Section.services => 'Services',
+  };
 
   Future<void> _recordCustomer(BuildContext context) async {
     final saved = await showCrmSheet<bool>(
       context: context,
       builder: (_) => const _ServedCustomerFormSheet(),
     );
-    if (saved == true) _reload();
+    if (saved == true) _customersTabKey.currentState?.reload();
+  }
+}
+
+/// Set or edit the daily target, and refresh everything it feeds: the
+/// target itself plus every week/month report already fetched (an offset a
+/// viewer isn't currently looking at should not go stale silently).
+Future<void> _editTarget(BuildContext context, WidgetRef ref) async {
+  final saved = await showCrmSheet<bool>(
+    context: context,
+    builder: (_) => const _ServedTargetSheet(),
+  );
+  if (saved == true) {
+    ref.invalidate(servedTargetProvider);
+    ref.invalidate(_servedWeekReportProvider);
+    ref.invalidate(_servedMonthReportProvider);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Customers tab
+// ─────────────────────────────────────────────────────────────
+
+/// The walk-in log: search, a date filter, a running record count, and the
+/// infinite-scroll list itself. All three fetch parameters are already
+/// accepted by [CrmService.servedCustomers] — this tab is what was missing to
+/// reach them.
+class _CustomersTab extends ConsumerStatefulWidget {
+  const _CustomersTab({super.key});
+
+  @override
+  ConsumerState<_CustomersTab> createState() => _CustomersTabState();
+}
+
+class _CustomersTabState extends ConsumerState<_CustomersTab> {
+  final _listKey = GlobalKey<PagedListViewState>();
+  final _search = TextEditingController();
+  Timer? _debounce;
+  DateTime? _dateFilter;
+  int _total = 0;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
   }
 
-  Future<void> _editTarget(BuildContext context) async {
-    final saved = await showCrmSheet<bool>(
+  void reload() => _listKey.currentState?.reload();
+
+  void _onSearchChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), reload);
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
       context: context,
-      builder: (_) => const _ServedTargetSheet(),
+      initialDate: _dateFilter ?? now,
+      firstDate: DateTime(now.year - 2),
+      lastDate: now,
     );
-    if (saved == true) {
-      ref.invalidate(servedTargetProvider);
-      ref.invalidate(servedWeeklySummaryProvider);
+    if (picked != null) {
+      setState(() => _dateFilter = picked);
+      reload();
     }
+  }
+
+  void _clearDate() {
+    setState(() => _dateFilter = null);
+    reload();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: theme.colorScheme.onSurfaceVariant,
+    );
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.md,
+            Spacing.md,
+            Spacing.sm,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _search,
+                onChanged: _onSearchChanged,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  hintText: 'Search name or phone',
+                ),
+              ),
+              const SizedBox(height: Spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.calendar_today_outlined, size: 15),
+                      label: Text(
+                        _dateFilter == null
+                            ? 'Filter by date'
+                            : Formatting.date(_dateFilter),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onPressed: _pickDate,
+                    ),
+                  ),
+                  if (_dateFilter != null)
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: 'Clear date filter',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _clearDate,
+                    ),
+                  const SizedBox(width: Spacing.sm),
+                  Text(
+                    '$_total record${_total == 1 ? '' : 's'}',
+                    style: muted,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: PagedListView(
+            key: _listKey,
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              0,
+              Spacing.md,
+              Spacing.md,
+            ),
+            fetch: (page) async {
+              final result = await ref
+                  .read(crmServiceProvider)
+                  .servedCustomers(
+                    search: _search.text.trim().isEmpty
+                        ? null
+                        : _search.text.trim(),
+                    date: _dateFilter,
+                    page: page,
+                  );
+              if (mounted) setState(() => _total = result.total);
+              return result;
+            },
+            itemBuilder: (context, customer) =>
+                _CustomerCard(customer: customer, onChanged: reload),
+            emptyIcon: Icons.how_to_reg_outlined,
+            emptyTitle: 'Nobody logged yet',
+            emptyMessage: 'Walk-in customers you serve appear here.',
+          ),
+        ),
+      ],
+    );
   }
 }
 
@@ -491,184 +723,6 @@ class _CustomerSheet extends ConsumerWidget {
   }
 }
 
-/// The counter's daily target — one row per tenant, not per person, so this
-/// sheet always edits the same record.
-class _ServedTargetSheet extends ConsumerStatefulWidget {
-  const _ServedTargetSheet();
-
-  @override
-  ConsumerState<_ServedTargetSheet> createState() => _ServedTargetSheetState();
-}
-
-class _ServedTargetSheetState extends ConsumerState<_ServedTargetSheet> {
-  static const _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-  final _newCustomers = TextEditingController(text: '10');
-  final _calls = TextEditingController(text: '5');
-  final Set<int> _activeDays = {1, 2, 3, 4, 5};
-
-  DateTime _effectiveFrom = DateTime.now();
-  bool _loaded = false;
-  bool _submitting = false;
-  String? _error;
-
-  @override
-  void dispose() {
-    _newCustomers.dispose();
-    _calls.dispose();
-    super.dispose();
-  }
-
-  /// Seed the form from the stored target the first time it arrives, then
-  /// leave the fields alone so a refetch cannot overwrite typing.
-  void _seed(ServedTarget? target) {
-    if (_loaded || target == null) return;
-    _loaded = true;
-    _newCustomers.text = '${target.newCustomersTarget}';
-    _calls.text = '${target.calledCustomersTarget}';
-    if (target.activeDays.isNotEmpty) {
-      _activeDays
-        ..clear()
-        ..addAll(target.activeDays);
-    }
-    _effectiveFrom = target.effectiveFrom ?? _effectiveFrom;
-  }
-
-  Future<void> _submit() async {
-    final newCustomers = int.tryParse(_newCustomers.text.trim()) ?? 0;
-    final calls = int.tryParse(_calls.text.trim()) ?? 0;
-    if (newCustomers < 1 || calls < 1) {
-      setState(() => _error = 'Both targets must be at least one a day.');
-      return;
-    }
-    if (_activeDays.isEmpty) {
-      setState(() => _error = 'Pick at least one day the target applies to.');
-      return;
-    }
-
-    setState(() {
-      _submitting = true;
-      _error = null;
-    });
-    try {
-      await ref
-          .read(crmServiceProvider)
-          .setServedTarget(
-            newCustomersTarget: newCustomers,
-            calledCustomersTarget: calls,
-            activeDays: _activeDays.toList()..sort(),
-            effectiveFrom: _effectiveFrom,
-          );
-      if (!mounted) return;
-      Navigator.of(context).pop(true);
-      showCrmMessage(context, 'Target saved.');
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      setState(() => _error = e.message);
-    } finally {
-      if (mounted) setState(() => _submitting = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final target = ref.watch(servedTargetProvider);
-    _seed(target.valueOrNull);
-
-    return CrmSheet(
-      eyebrow: 'Served customers',
-      title: target.valueOrNull == null ? 'Set the target' : 'Edit the target',
-      children: [
-        if (_error != null) ...[
-          ErrorBanner(message: _error!),
-          const SizedBox(height: Spacing.md),
-        ],
-        if (target.isLoading)
-          const Padding(
-            padding: EdgeInsets.only(bottom: Spacing.md),
-            child: LinearProgressIndicator(minHeight: 2),
-          ),
-        CrmField(
-          label: 'New customers a day',
-          child: TextField(
-            controller: _newCustomers,
-            enabled: !_submitting,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(hintText: 'e.g. 10'),
-          ),
-        ),
-        const SizedBox(height: Spacing.md),
-        CrmField(
-          label: 'Follow-up calls a day',
-          child: TextField(
-            controller: _calls,
-            enabled: !_submitting,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(hintText: 'e.g. 5'),
-          ),
-        ),
-        const SizedBox(height: Spacing.md),
-        CrmField(
-          label: 'Days the target applies',
-          child: Wrap(
-            spacing: Spacing.sm,
-            runSpacing: Spacing.sm,
-            children: [
-              for (var day = 1; day <= 7; day++)
-                FilterChip(
-                  label: Text(_dayNames[day - 1].toUpperCase()),
-                  selected: _activeDays.contains(day),
-                  showCheckmark: false,
-                  onSelected: _submitting
-                      ? null
-                      : (on) => setState(
-                          () => on
-                              ? _activeDays.add(day)
-                              : _activeDays.remove(day),
-                        ),
-                ),
-            ],
-          ),
-        ),
-        const SizedBox(height: Spacing.md),
-        CrmPickerField(
-          label: 'Effective from',
-          value: Formatting.date(_effectiveFrom),
-          onTap: _submitting
-              ? null
-              : () async {
-                  final now = DateTime.now();
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: _effectiveFrom,
-                    firstDate: DateTime(now.year - 2),
-                    lastDate: DateTime(now.year + 2, 12, 31),
-                  );
-                  if (picked != null) {
-                    setState(() => _effectiveFrom = picked);
-                  }
-                },
-        ),
-        const SizedBox(height: Spacing.sm),
-        Text(
-          'The weekly figures at the top of this screen are measured against '
-          'this.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: Spacing.lg),
-        PrimaryButton(
-          label: _submitting ? 'Saving…' : 'Save target',
-          busy: _submitting,
-          onPressed: _submitting ? null : _submit,
-        ),
-      ],
-    );
-  }
-}
-
 /// Record a walk-in, or correct one already recorded.
 ///
 /// `storeCustomer` and `updateCustomer` validate the same fields, so one form
@@ -1009,4 +1063,1202 @@ class _FeedbackSheetState extends ConsumerState<_FeedbackSheet> {
       ],
     );
   }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Target tab
+// ─────────────────────────────────────────────────────────────
+
+/// Progress against the daily target, one week at a time, with the 7-day
+/// breakdown the web shows and the mobile screen previously fetched
+/// ([ServedWeeklySummary.daily]) without ever rendering.
+class _TargetTab extends ConsumerStatefulWidget {
+  const _TargetTab();
+
+  @override
+  ConsumerState<_TargetTab> createState() => _TargetTabState();
+}
+
+class _TargetTabState extends ConsumerState<_TargetTab> {
+  int _weekOffset = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final target = ref.watch(servedTargetProvider);
+    final weekStart = _weekStart(_weekOffset);
+    final weekEnd = weekStart.add(const Duration(days: 6));
+
+    return ListView(
+      padding: const EdgeInsets.all(Spacing.md),
+      children: [
+        Row(
+          children: [
+            IconButton(
+              icon: const Icon(Icons.chevron_left),
+              tooltip: 'Previous week',
+              onPressed: () => setState(() => _weekOffset -= 1),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  Text(
+                    '${Formatting.date(weekStart)} – ${Formatting.date(weekEnd)}',
+                    style: theme.textTheme.titleSmall,
+                    textAlign: TextAlign.center,
+                  ),
+                  if (_weekOffset != 0)
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                      ),
+                      onPressed: () => setState(() => _weekOffset = 0),
+                      child: const Text('This week'),
+                    ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: const Icon(Icons.chevron_right),
+              tooltip: 'Next week',
+              onPressed: () => setState(() => _weekOffset += 1),
+            ),
+          ],
+        ),
+        const SizedBox(height: Spacing.sm),
+        target.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: Spacing.xl),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (error, _) => ErrorBanner(
+            message: error is ApiException
+                ? error.message
+                : 'Could not load the target.',
+          ),
+          data: (t) {
+            if (t == null) {
+              final canSettings =
+                  ref
+                      .watch(sessionControllerProvider)
+                      .session
+                      ?.can(CrmPermissions.servedSettings) ??
+                  false;
+              return StateMessage(
+                icon: Icons.flag_outlined,
+                title: 'No target set yet',
+                message: 'Set a daily target to track progress here.',
+                actionLabel: canSettings ? 'Set target' : null,
+                onAction: canSettings
+                    ? () => _editTarget(context, ref)
+                    : null,
+              );
+            }
+
+            final report = ref.watch(_servedWeekReportProvider(_weekOffset));
+            return report.when(
+              loading: () => const Padding(
+                padding: EdgeInsets.symmetric(vertical: Spacing.xl),
+                child: Center(child: CircularProgressIndicator()),
+              ),
+              error: (error, _) => ErrorBanner(
+                message: error is ApiException
+                    ? error.message
+                    : 'Could not load this week.',
+              ),
+              data: (r) => _TargetProgress(target: t, report: r),
+            );
+          },
+        ),
+      ],
+    );
+  }
+}
+
+class _TargetProgress extends StatelessWidget {
+  const _TargetProgress({required this.target, required this.report});
+
+  final ServedTarget target;
+  final ServedReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Spacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _ProgressRow(
+                  icon: Icons.person_add_alt_1_outlined,
+                  label: 'New customers',
+                  perDay: target.newCustomersTarget,
+                  achieved: report.newCustomersAchieved,
+                  target: report.newCustomersTarget,
+                ),
+                const SizedBox(height: Spacing.md),
+                _ProgressRow(
+                  icon: Icons.call_outlined,
+                  label: 'Customers called',
+                  perDay: target.calledCustomersTarget,
+                  achieved: report.callsAchieved,
+                  target: report.callsTarget,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (report.daily.isNotEmpty) ...[
+          const SizedBox(height: Spacing.md),
+          const SectionHeader('Daily breakdown'),
+          const SizedBox(height: Spacing.sm),
+          Row(
+            children: [
+              for (final day in report.daily)
+                Expanded(child: _DayCell(day: day)),
+            ],
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _ProgressRow extends StatelessWidget {
+  const _ProgressRow({
+    required this.icon,
+    required this.label,
+    required this.perDay,
+    required this.achieved,
+    required this.target,
+  });
+
+  final IconData icon;
+  final String label;
+  final int perDay;
+  final int achieved;
+  final int target;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final pct = target > 0 ? (achieved / target * 100) : null;
+    final color = _pctColor(context, pct);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Icon(icon, size: 18, color: scheme.onSurfaceVariant),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: Wrap(
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  Text(label, style: theme.textTheme.titleSmall),
+                  const SizedBox(width: 4),
+                  Text(
+                    '($perDay/day)',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              '$achieved / $target',
+              style: theme.textTheme.titleSmall?.copyWith(color: color),
+            ),
+          ],
+        ),
+        const SizedBox(height: Spacing.xs),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(Radii.sm),
+          child: LinearProgressIndicator(
+            value: pct == null ? 0 : (pct / 100).clamp(0, 1).toDouble(),
+            minHeight: 6,
+            color: color,
+            backgroundColor: scheme.surfaceContainerHighest,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// One day of the week strip: day name, whether the target even applies that
+/// day, and the two counts — greyed out on an inactive day, as the web does.
+class _DayCell extends StatelessWidget {
+  const _DayCell({required this.day});
+
+  final ServedReportDay day;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Opacity(
+      opacity: day.isActive ? 1 : 0.4,
+      child: Column(
+        children: [
+          Text(
+            day.dayName.toUpperCase(),
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 4),
+          CircleAvatar(
+            radius: 14,
+            backgroundColor: day.isActive
+                ? scheme.primaryContainer
+                : scheme.surfaceContainerHighest,
+            child: Text(
+              '${day.newCustomers}',
+              style: theme.textTheme.labelMedium,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${day.callsMade} calls',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The counter's daily target — one row per tenant, not per person, so this
+/// sheet always edits the same record.
+class _ServedTargetSheet extends ConsumerStatefulWidget {
+  const _ServedTargetSheet();
+
+  @override
+  ConsumerState<_ServedTargetSheet> createState() => _ServedTargetSheetState();
+}
+
+class _ServedTargetSheetState extends ConsumerState<_ServedTargetSheet> {
+  static const _dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+  final _newCustomers = TextEditingController(text: '10');
+  final _calls = TextEditingController(text: '5');
+  final Set<int> _activeDays = {1, 2, 3, 4, 5};
+
+  DateTime _effectiveFrom = DateTime.now();
+  bool _loaded = false;
+  bool _submitting = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _newCustomers.dispose();
+    _calls.dispose();
+    super.dispose();
+  }
+
+  /// Seed the form from the stored target the first time it arrives, then
+  /// leave the fields alone so a refetch cannot overwrite typing.
+  void _seed(ServedTarget? target) {
+    if (_loaded || target == null) return;
+    _loaded = true;
+    _newCustomers.text = '${target.newCustomersTarget}';
+    _calls.text = '${target.calledCustomersTarget}';
+    if (target.activeDays.isNotEmpty) {
+      _activeDays
+        ..clear()
+        ..addAll(target.activeDays);
+    }
+    _effectiveFrom = target.effectiveFrom ?? _effectiveFrom;
+  }
+
+  Future<void> _submit() async {
+    final newCustomers = int.tryParse(_newCustomers.text.trim()) ?? 0;
+    final calls = int.tryParse(_calls.text.trim()) ?? 0;
+    if (newCustomers < 1 || calls < 1) {
+      setState(() => _error = 'Both targets must be at least one a day.');
+      return;
+    }
+    if (_activeDays.isEmpty) {
+      setState(() => _error = 'Pick at least one day the target applies to.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await ref
+          .read(crmServiceProvider)
+          .setServedTarget(
+            newCustomersTarget: newCustomers,
+            calledCustomersTarget: calls,
+            activeDays: _activeDays.toList()..sort(),
+            effectiveFrom: _effectiveFrom,
+          );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      showCrmMessage(context, 'Target saved.');
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final target = ref.watch(servedTargetProvider);
+    _seed(target.valueOrNull);
+
+    return CrmSheet(
+      eyebrow: 'Served customers',
+      title: target.valueOrNull == null ? 'Set the target' : 'Edit the target',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        if (target.isLoading)
+          const Padding(
+            padding: EdgeInsets.only(bottom: Spacing.md),
+            child: LinearProgressIndicator(minHeight: 2),
+          ),
+        CrmField(
+          label: 'New customers a day',
+          child: TextField(
+            controller: _newCustomers,
+            enabled: !_submitting,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(hintText: 'e.g. 10'),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Follow-up calls a day',
+          child: TextField(
+            controller: _calls,
+            enabled: !_submitting,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(hintText: 'e.g. 5'),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Days the target applies',
+          child: Wrap(
+            spacing: Spacing.sm,
+            runSpacing: Spacing.sm,
+            children: [
+              for (var day = 1; day <= 7; day++)
+                FilterChip(
+                  label: Text(_dayNames[day - 1].toUpperCase()),
+                  selected: _activeDays.contains(day),
+                  showCheckmark: false,
+                  onSelected: _submitting
+                      ? null
+                      : (on) => setState(
+                          () => on
+                              ? _activeDays.add(day)
+                              : _activeDays.remove(day),
+                        ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmPickerField(
+          label: 'Effective from',
+          value: Formatting.date(_effectiveFrom),
+          onTap: _submitting
+              ? null
+              : () async {
+                  final now = DateTime.now();
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _effectiveFrom,
+                    firstDate: DateTime(now.year - 2),
+                    lastDate: DateTime(now.year + 2, 12, 31),
+                  );
+                  if (picked != null) {
+                    setState(() => _effectiveFrom = picked);
+                  }
+                },
+        ),
+        const SizedBox(height: Spacing.sm),
+        Text(
+          'The weekly figures at the top of this screen are measured against '
+          'this.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _submitting ? 'Saving…' : 'Save target',
+          busy: _submitting,
+          onPressed: _submitting ? null : _submit,
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Report tab
+// ─────────────────────────────────────────────────────────────
+
+/// A calendar month's daily achievement vs target, grouped by ISO week —
+/// the mobile equivalent of the web's month-scoped report table. The web
+/// also allows an arbitrary date range; a month picker is the simplification
+/// made here, since every other date-scoped screen in this app already pages
+/// by month rather than offering a free-form range.
+class _ReportTab extends ConsumerStatefulWidget {
+  const _ReportTab();
+
+  @override
+  ConsumerState<_ReportTab> createState() => _ReportTabState();
+}
+
+class _ReportTabState extends ConsumerState<_ReportTab> {
+  int _monthOffset = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final month = _monthAnchor(_monthOffset);
+    final reportAsync = ref.watch(_servedMonthReportProvider(_monthOffset));
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.md,
+            Spacing.md,
+            Spacing.sm,
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.chevron_left),
+                tooltip: 'Previous month',
+                onPressed: () => setState(() => _monthOffset -= 1),
+              ),
+              Expanded(
+                child: Text(
+                  _monthLabel(month),
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.titleSmall,
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.chevron_right),
+                tooltip: 'Next month',
+                onPressed: () => setState(() => _monthOffset += 1),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: reportAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (error, _) => StateMessage(
+              icon: Icons.cloud_off_outlined,
+              title: 'Could not load the report',
+              message: error is ApiException ? error.message : null,
+              actionLabel: 'Retry',
+              onAction: () =>
+                  ref.invalidate(_servedMonthReportProvider(_monthOffset)),
+            ),
+            data: (report) => _ReportBody(report: report),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReportBody extends StatelessWidget {
+  const _ReportBody({required this.report});
+
+  final ServedReport report;
+
+  @override
+  Widget build(BuildContext context) {
+    final weeks = <int, List<ServedReportDay>>{};
+    for (final day in report.daily) {
+      weeks.putIfAbsent(day.week, () => []).add(day);
+    }
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        Spacing.md,
+        0,
+        Spacing.md,
+        Spacing.xl,
+      ),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _ReportSummaryCard(
+                label: 'New customers',
+                achieved: report.newCustomersAchieved,
+                target: report.newCustomersTarget,
+              ),
+            ),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: _ReportSummaryCard(
+                label: 'Calls made',
+                achieved: report.callsAchieved,
+                target: report.callsTarget,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: Spacing.md),
+        for (final entry in weeks.entries) ...[
+          _WeekReportCard(week: entry.key, days: entry.value),
+          const SizedBox(height: Spacing.sm),
+        ],
+      ],
+    );
+  }
+}
+
+class _ReportSummaryCard extends StatelessWidget {
+  const _ReportSummaryCard({
+    required this.label,
+    required this.achieved,
+    required this.target,
+  });
+
+  final String label;
+  final int achieved;
+  final int target;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final pct = target > 0 ? (achieved / target * 100).round() : null;
+    final color = _pctColor(context, pct);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label.toUpperCase(),
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.xs),
+            Text(Formatting.integer(achieved), style: Type.display(24)),
+            Text(
+              'Target: ${Formatting.integer(target)}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (pct != null) ...[
+              const SizedBox(height: Spacing.xs),
+              Text(
+                '$pct%',
+                style: theme.textTheme.labelMedium?.copyWith(
+                  color: color,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One ISO week's days, with a bold subtotal header — the card-list
+/// restatement of the web's per-week table subtotal row.
+class _WeekReportCard extends StatelessWidget {
+  const _WeekReportCard({required this.week, required this.days});
+
+  final int week;
+  final List<ServedReportDay> days;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final newTotal = days.fold<int>(0, (s, d) => s + d.newCustomers);
+    final newTargetTotal = days.fold<int>(0, (s, d) => s + d.newTarget);
+    final callsTotal = days.fold<int>(0, (s, d) => s + d.callsMade);
+    final callsTargetTotal = days.fold<int>(0, (s, d) => s + d.callsTarget);
+
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            color: theme.colorScheme.surfaceContainerHighest,
+            padding: const EdgeInsets.symmetric(
+              horizontal: Spacing.md,
+              vertical: Spacing.sm,
+            ),
+            child: Row(
+              children: [
+                Text(
+                  'WEEK $week',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '$newTotal/$newTargetTotal new · $callsTotal/$callsTargetTotal calls',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          for (final (index, day) in days.indexed) ...[
+            if (index > 0) const Divider(height: 1),
+            _ReportDayRow(day: day),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ReportDayRow extends StatelessWidget {
+  const _ReportDayRow({required this.day});
+
+  final ServedReportDay day;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Opacity(
+      opacity: day.isActive ? 1 : 0.5,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.md,
+          vertical: Spacing.sm,
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 96,
+              child: Text(
+                Formatting.date(day.date),
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            SizedBox(
+              width: 32,
+              child: Text(
+                day.dayName.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            if (day.isActive) ...[
+              Expanded(
+                child: _MetricPair(
+                  label: 'New',
+                  value: day.newCustomers,
+                  target: day.newTarget,
+                  pct: day.newPct,
+                ),
+              ),
+              Expanded(
+                child: _MetricPair(
+                  label: 'Calls',
+                  value: day.callsMade,
+                  target: day.callsTarget,
+                  pct: day.callsPct,
+                ),
+              ),
+            ] else
+              Expanded(
+                child: Text(
+                  'Inactive',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricPair extends StatelessWidget {
+  const _MetricPair({
+    required this.label,
+    required this.value,
+    required this.target,
+    required this.pct,
+  });
+
+  final String label;
+  final int value;
+  final int target;
+  final double pct;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final color = target > 0 ? _pctColor(context, pct) : null;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          '$label ',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        Text(
+          '$value/$target',
+          style: theme.textTheme.bodySmall?.copyWith(
+            fontWeight: FontWeight.w600,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Services tab
+// ─────────────────────────────────────────────────────────────
+
+enum _ServiceAction { edit, toggleActive, moveUp, moveDown, delete }
+
+/// The service types walk-ins can be logged under — a short,
+/// rarely-touched settings list, so this follows [MarketingServicesScreen]'s
+/// row-plus-sheet shape rather than an infinite-scroll list.
+class _ServicesTab extends ConsumerWidget {
+  const _ServicesTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final canManage =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(CrmPermissions.servedSettings) ??
+        false;
+    final servicesAsync = ref.watch(servedServicesProvider);
+
+    return CrmAsyncView(
+      value: servicesAsync,
+      errorTitle: 'Could not load services',
+      onRetry: () => ref.invalidate(servedServicesProvider),
+      builder: (items) => items.isEmpty
+          ? StateMessage(
+              icon: Icons.design_services_outlined,
+              title: 'No services yet',
+              message: 'Add the services walk-ins can be logged under.',
+              actionLabel: canManage ? 'Add a service' : null,
+              onAction: canManage ? () => _addService(context, ref) : null,
+            )
+          : ListView(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+                Spacing.xl,
+              ),
+              children: [
+                CrmCardList(
+                  children: [
+                    for (final (index, service) in items.indexed)
+                      ListTile(
+                        leading: SizedBox(
+                          width: 20,
+                          child: Text(
+                            Formatting.integer(index + 1),
+                            style: Type.mono(
+                              12,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ),
+                        title: Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                service.name,
+                                style: theme.textTheme.titleSmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            if (!service.isActive) ...[
+                              const SizedBox(width: Spacing.sm),
+                              StatusChip('inactive', dense: true),
+                            ],
+                          ],
+                        ),
+                        subtitle: service.description == null
+                            ? null
+                            : Text(
+                                service.description!,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                        trailing: canManage
+                            ? Icon(
+                                Icons.chevron_right,
+                                size: 18,
+                                color: theme.colorScheme.outline,
+                              )
+                            : null,
+                        onTap: canManage
+                            ? () => _openActions(context, ref, items, index)
+                            : null,
+                      ),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _openActions(
+    BuildContext context,
+    WidgetRef ref,
+    List<ServedService> items,
+    int index,
+  ) async {
+    final service = items[index];
+    final action = await showCrmSheet<_ServiceAction>(
+      context: context,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return CrmSheet(
+          eyebrow: 'Served customers',
+          title: service.name,
+          children: [
+            CrmCardList(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: Text('Edit', style: theme.textTheme.titleSmall),
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop(_ServiceAction.edit),
+                ),
+                ListTile(
+                  leading: Icon(
+                    service.isActive
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                  title: Text(
+                    service.isActive ? 'Mark inactive' : 'Mark active',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  onTap: () => Navigator.of(
+                    sheetContext,
+                  ).pop(_ServiceAction.toggleActive),
+                ),
+                if (index > 0)
+                  ListTile(
+                    leading: const Icon(Icons.arrow_upward),
+                    title: Text('Move up', style: theme.textTheme.titleSmall),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(_ServiceAction.moveUp),
+                  ),
+                if (index < items.length - 1)
+                  ListTile(
+                    leading: const Icon(Icons.arrow_downward),
+                    title: Text(
+                      'Move down',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    onTap: () => Navigator.of(
+                      sheetContext,
+                    ).pop(_ServiceAction.moveDown),
+                  ),
+                ListTile(
+                  leading: Icon(
+                    Icons.delete_outline,
+                    color: theme.colorScheme.error,
+                  ),
+                  title: Text(
+                    'Delete',
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                  onTap: () =>
+                      Navigator.of(sheetContext).pop(_ServiceAction.delete),
+                ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!context.mounted) return;
+    switch (action) {
+      case _ServiceAction.edit:
+        await _editService(context, ref, service);
+      case _ServiceAction.toggleActive:
+        await _toggleActive(context, ref, service);
+      case _ServiceAction.moveUp:
+        await _reorder(context, ref, items, index, index - 1);
+      case _ServiceAction.moveDown:
+        await _reorder(context, ref, items, index, index + 1);
+      case _ServiceAction.delete:
+        await _deleteService(context, ref, service);
+      case null:
+        break;
+    }
+  }
+
+  Future<void> _editService(
+    BuildContext context,
+    WidgetRef ref,
+    ServedService service,
+  ) async {
+    final saved = await showCrmSheet<bool>(
+      context: context,
+      builder: (_) => _ServedServiceFormSheet(service: service),
+    );
+    if (saved == true) ref.invalidate(servedServicesProvider);
+  }
+
+  Future<void> _toggleActive(
+    BuildContext context,
+    WidgetRef ref,
+    ServedService service,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(crmServiceProvider)
+          .updateServedService(service.id, isActive: !service.isActive);
+      ref.invalidate(servedServicesProvider);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// There is no bulk reorder endpoint for served services (unlike marketing
+  /// services' `/reorder`), so a move is a sequential `sort_order` rewrite of
+  /// the whole list — fine for a settings list this short.
+  Future<void> _reorder(
+    BuildContext context,
+    WidgetRef ref,
+    List<ServedService> items,
+    int from,
+    int to,
+  ) async {
+    final reordered = [...items];
+    final moved = reordered.removeAt(from);
+    reordered.insert(to, moved);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final service = ref.read(crmServiceProvider);
+      for (final (index, item) in reordered.indexed) {
+        if (item.sortOrder != index) {
+          await service.updateServedService(item.id, sortOrder: index);
+        }
+      }
+      ref.invalidate(servedServicesProvider);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _deleteService(
+    BuildContext context,
+    WidgetRef ref,
+    ServedService service,
+  ) async {
+    final sure = await confirmCrmAction(
+      context,
+      title: 'Delete "${service.name}"?',
+      message:
+          'Walk-ins already logged under it keep the record; new ones can '
+          'no longer choose it.',
+      verb: 'Delete',
+    );
+    if (!sure || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(crmServiceProvider).deleteServedService(service.id);
+      ref.invalidate(servedServicesProvider);
+      messenger.showSnackBar(
+        SnackBar(content: Text('${service.name} deleted.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+}
+
+Future<void> _addService(BuildContext context, WidgetRef ref) async {
+  final saved = await showCrmSheet<bool>(
+    context: context,
+    builder: (_) => const _ServedServiceFormSheet(),
+  );
+  if (saved == true) ref.invalidate(servedServicesProvider);
+}
+
+class _ServedServiceFormSheet extends ConsumerStatefulWidget {
+  const _ServedServiceFormSheet({this.service});
+
+  final ServedService? service;
+
+  @override
+  ConsumerState<_ServedServiceFormSheet> createState() =>
+      _ServedServiceFormSheetState();
+}
+
+class _ServedServiceFormSheetState
+    extends ConsumerState<_ServedServiceFormSheet> {
+  late final _name = TextEditingController(text: widget.service?.name ?? '');
+  late final _description = TextEditingController(
+    text: widget.service?.description ?? '',
+  );
+  late bool _isActive = widget.service?.isActive ?? true;
+  bool _submitting = false;
+  String? _error;
+
+  bool get _isEdit => widget.service != null;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _name.text.trim();
+    if (name.isEmpty) {
+      setState(() => _error = 'Give the service a name.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      final service = ref.read(crmServiceProvider);
+      final description = _description.text.trim();
+      if (_isEdit) {
+        await service.updateServedService(
+          widget.service!.id,
+          name: name,
+          description: description.isEmpty ? null : description,
+          isActive: _isActive,
+        );
+      } else {
+        await service.createServedService(
+          name: name,
+          description: description.isEmpty ? null : description,
+          isActive: _isActive,
+        );
+      }
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      showCrmMessage(
+        context,
+        _isEdit ? 'Service updated.' : 'Service added.',
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.errorFor('name') ?? e.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => CrmSheet(
+    eyebrow: 'Served customers',
+    title: _isEdit ? 'Edit service' : 'Add a service',
+    children: [
+      if (_error != null) ...[
+        ErrorBanner(message: _error!),
+        const SizedBox(height: Spacing.md),
+      ],
+      CrmField(
+        label: 'Name',
+        child: TextField(
+          controller: _name,
+          enabled: !_submitting,
+          textCapitalization: TextCapitalization.words,
+          decoration: const InputDecoration(hintText: 'e.g. Consultation'),
+        ),
+      ),
+      const SizedBox(height: Spacing.md),
+      CrmField(
+        label: 'Description (optional)',
+        child: TextField(
+          controller: _description,
+          enabled: !_submitting,
+          maxLines: 2,
+          decoration: const InputDecoration(
+            hintText: 'Shown to staff recording a walk-in',
+          ),
+        ),
+      ),
+      const SizedBox(height: Spacing.md),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('Active'),
+        subtitle: const Text(
+          'Inactive services no longer appear on the record form.',
+        ),
+        value: _isActive,
+        onChanged: _submitting ? null : (v) => setState(() => _isActive = v),
+      ),
+      const SizedBox(height: Spacing.lg),
+      PrimaryButton(
+        label: _submitting
+            ? 'Saving…'
+            : (_isEdit ? 'Save changes' : 'Add service'),
+        busy: _submitting,
+        onPressed: _submitting ? null : _submit,
+      ),
+    ],
+  );
 }

@@ -331,8 +331,10 @@ class _ServerActionsSheetState extends ConsumerState<_ServerActionsSheet> {
     final packages = _packages;
 
     return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: Spacing.md),
+      child: SingleChildScrollView(
+        padding: EdgeInsets.only(
+          bottom: Spacing.md + sheetBottomInset(context),
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

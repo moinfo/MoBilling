@@ -406,6 +406,62 @@ class CommsService {
     return Paginated.fromJson(body, SocialPlatformConfig.fromJson).items;
   }
 
+  /// POST /social/platforms — needs social.targets. [name] becomes the
+  /// posting-row key (`platform`) — an existing post's rows don't retroactively
+  /// gain one, so add platforms before they're needed, not after.
+  Future<SocialPlatformConfig> createSocialPlatform({
+    required String name,
+    required String label,
+    String? color,
+    String? icon,
+    String? profileUrl,
+    bool isActive = true,
+    int sortOrder = 0,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/social/platforms',
+      body: {
+        'name': name,
+        'label': label,
+        'color': ?color,
+        'icon': ?icon,
+        'profile_url': ?profileUrl,
+        'is_active': isActive,
+        'sort_order': sortOrder,
+      },
+    );
+    return SocialPlatformConfig.fromJson(_data(body));
+  }
+
+  /// PUT /social/platforms/{id} — needs social.targets. `name` is immutable
+  /// once created (it's the posting-row key), so it isn't a parameter here.
+  Future<SocialPlatformConfig> updateSocialPlatform(
+    String id, {
+    String? label,
+    String? color,
+    String? icon,
+    String? profileUrl,
+    bool? isActive,
+    int? sortOrder,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/social/platforms/$id',
+      body: {
+        'label': ?label,
+        'color': ?color,
+        'icon': ?icon,
+        'profile_url': ?profileUrl,
+        'is_active': ?isActive,
+        'sort_order': ?sortOrder,
+      },
+    );
+    return SocialPlatformConfig.fromJson(_data(body));
+  }
+
+  /// DELETE /social/platforms/{id} — needs social.targets.
+  Future<void> deleteSocialPlatform(String id) =>
+      _api.delete<dynamic>('/social/platforms/$id');
+
   /// GET /social/posts — needs social.read. Unpaginated, ordered by schedule.
   ///
   /// [weekStart] narrows to that Monday's seven days; omit for everything.
@@ -475,6 +531,79 @@ class CommsService {
     return SocialPost.fromJson(_data(body));
   }
 
+  /// PUT /social/posts/{id} — needs social.update. Every field is
+  /// `sometimes`; the plan (title, type, format, schedule, brief) only —
+  /// [updatePostContent] and [updatePostDesign] own the rest, matching how
+  /// the three sit on separate tabs on web.
+  Future<SocialPost> updateSocialPost(
+    String postId, {
+    String? title,
+    String? type,
+    List<String>? postFormats,
+    String? mediaType,
+    DateTime? scheduledDate,
+    String? scheduledTime,
+    String? brief,
+    String? hashtags,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/social/posts/$postId',
+      body: {
+        'title': ?title,
+        'type': ?type,
+        'post_format': ?postFormats,
+        'media_type': ?mediaType,
+        if (scheduledDate != null) 'scheduled_date': _day(scheduledDate),
+        'scheduled_time': ?scheduledTime,
+        'brief': ?brief,
+        'hashtags': ?hashtags,
+      },
+    );
+    return SocialPost.fromJson(_data(body));
+  }
+
+  /// PATCH /social/posts/{id}/design — needs social.update. [designStatus]
+  /// is required by the controller: `pending | in_progress | done`.
+  Future<SocialPost> updatePostDesign(
+    String postId, {
+    required String designStatus,
+    String? designNotes,
+    String? designFileUrl,
+  }) async {
+    final body = await _api.patch<Map<String, dynamic>>(
+      '/social/posts/$postId/design',
+      body: {
+        'design_status': designStatus,
+        'design_notes': ?designNotes,
+        'design_file_url': ?designFileUrl,
+      },
+    );
+    return SocialPost.fromJson(_data(body));
+  }
+
+  /// PATCH /social/posts/{id}/content — needs social.update. [contentStatus]
+  /// is required by the controller: `pending | ready`.
+  Future<SocialPost> updatePostContent(
+    String postId, {
+    required String contentStatus,
+    String? caption,
+    String? hashtags,
+  }) async {
+    final body = await _api.patch<Map<String, dynamic>>(
+      '/social/posts/$postId/content',
+      body: {
+        'content_status': contentStatus,
+        'caption': ?caption,
+        'hashtags': ?hashtags,
+      },
+    );
+    return SocialPost.fromJson(_data(body));
+  }
+
+  /// DELETE /social/posts/{id} — needs social.delete.
+  Future<void> deleteSocialPost(String postId) =>
+      _api.delete<dynamic>('/social/posts/$postId');
+
   /// PATCH /social/posts/{id}/platform/{platform} — needs social.update.
   /// Marks the post posted (or not) on one platform and re-derives its status.
   Future<SocialPost> setSocialPostPosted(
@@ -492,6 +621,98 @@ class CommsService {
     );
     return SocialPost.fromJson(_data(body));
   }
+
+  // ─── Client design orders ───────────────────────────────────────────────
+  //
+  // A separate work queue from the post planner above: a client asking for
+  // a logo, flyer, banner etc., tracked through to delivery. Nothing here
+  // seeds a [SocialPost] — the two are unrelated except for sharing the
+  // `social.*` permissions and a designer pool.
+
+  /// GET /social/design-orders — needs social.read.
+  Future<List<ClientDesignOrder>> socialDesignOrders({
+    String? status,
+    String? designType,
+    String? designerId,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/social/design-orders',
+      query: {
+        'status': status,
+        'design_type': designType,
+        'designer_id': designerId,
+      },
+    );
+    return Paginated.fromJson(body, ClientDesignOrder.fromJson).items;
+  }
+
+  /// POST /social/design-orders — needs social.create.
+  Future<ClientDesignOrder> createDesignOrder({
+    required String title,
+    required String designType,
+    String? clientId,
+    String? description,
+    String? referenceUrl,
+    String? designerId,
+    DateTime? dueDate,
+    double? price,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/social/design-orders',
+      body: {
+        'title': title,
+        'design_type': designType,
+        'client_id': ?clientId,
+        'description': ?description,
+        'reference_url': ?referenceUrl,
+        'assigned_designer_id': ?designerId,
+        if (dueDate != null) 'due_date': _day(dueDate),
+        'price': ?price,
+      },
+    );
+    return ClientDesignOrder.fromJson(_data(body));
+  }
+
+  /// PUT /social/design-orders/{id} — needs social.update. Every field is
+  /// `sometimes`. Setting [status] to `needs_revision` auto-increments the
+  /// order's revision count server-side — nothing to send for that beyond
+  /// the status itself.
+  Future<ClientDesignOrder> updateDesignOrder(
+    String id, {
+    String? title,
+    String? clientId,
+    String? designType,
+    String? description,
+    String? referenceUrl,
+    String? designerId,
+    String? status,
+    DateTime? dueDate,
+    String? fileUrl,
+    String? revisionNotes,
+    double? price,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/social/design-orders/$id',
+      body: {
+        'title': ?title,
+        'client_id': ?clientId,
+        'design_type': ?designType,
+        'description': ?description,
+        'reference_url': ?referenceUrl,
+        'assigned_designer_id': ?designerId,
+        'status': ?status,
+        if (dueDate != null) 'due_date': _day(dueDate),
+        'file_url': ?fileUrl,
+        'revision_notes': ?revisionNotes,
+        'price': ?price,
+      },
+    );
+    return ClientDesignOrder.fromJson(_data(body));
+  }
+
+  /// DELETE /social/design-orders/{id} — needs social.delete.
+  Future<void> deleteDesignOrder(String id) =>
+      _api.delete<dynamic>('/social/design-orders/$id');
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
@@ -536,4 +757,20 @@ abstract final class CommsPermissions {
   static const socialRead = 'social.read';
   static const socialCreate = 'social.create';
   static const socialUpdate = 'social.update';
+  static const socialDelete = 'social.delete';
+
+  /// Platform CRUD and both target endpoints share this one, despite the
+  /// name suggesting only targets.
+  static const socialTargets = 'social.targets';
+
+  /// `social.settings` is also enforced server-side, on platform
+  /// update/delete (`SocialMediaController`). The five below are seeded
+  /// permissions used only for tab/section visibility — every actual write
+  /// still goes through `socialRead`/`Create`/`Update`/`Delete` above.
+  static const socialSettings = 'social.settings';
+  static const socialBoard = 'social.board';
+  static const socialClientDesigns = 'social.client_designs';
+  static const socialDesignWork = 'social.design_work';
+  static const socialContent = 'social.content';
+  static const socialQa = 'social.qa';
 }

@@ -6,6 +6,9 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
 import '../common/pickers.dart';
+import '../crm/crm_providers.dart';
+import '../crm/crm_ui.dart';
+import '../crm/marketing_services_screen.dart';
 import 'comms_providers.dart';
 import 'comms_ui.dart';
 
@@ -209,6 +212,11 @@ class _ContactsView extends ConsumerStatefulWidget {
 class _ContactsViewState extends ConsumerState<_ContactsView> {
   final _search = TextEditingController();
 
+  /// Raw `label`/`source` enum values (not the typed enums) — [FilterStrip]
+  /// works in strings, and that is what [WhatsappContact] stores them as too.
+  String? _label;
+  String? _source;
+
   @override
   void dispose() {
     _search.dispose();
@@ -218,6 +226,9 @@ class _ContactsViewState extends ConsumerState<_ContactsView> {
   List<WhatsappContact> _visible(List<WhatsappContact> all) {
     final query = _search.text.trim().toLowerCase();
     var rows = widget.dueOnly ? all.where((c) => c.isFollowupDue) : all;
+
+    if (_label != null) rows = rows.where((c) => c.label == _label);
+    if (_source != null) rows = rows.where((c) => c.source == _source);
 
     if (query.isNotEmpty) {
       rows = rows.where(
@@ -240,11 +251,36 @@ class _ContactsViewState extends ConsumerState<_ContactsView> {
   @override
   Widget build(BuildContext context) {
     final contacts = ref.watch(whatsappContactsProvider);
+    final stats = ref.watch(whatsappStatsProvider).valueOrNull;
 
     return Column(
       children: [
         if (!widget.dueOnly) ...[
           const _StatsStrip(),
+          FilterStrip(
+            options: [
+              (null, 'All stages'),
+              for (final label in WhatsappLabel.values)
+                (
+                  label.value,
+                  '${label.label} (${stats?.byLabel[label.value] ?? 0})',
+                ),
+            ],
+            selected: _label,
+            onSelect: (value) => setState(() => _label = value),
+          ),
+          FilterStrip(
+            options: [
+              (null, 'All sources'),
+              for (final source in WhatsappSource.values)
+                (
+                  source.value,
+                  '${source.label} (${stats?.bySource[source.value] ?? 0})',
+                ),
+            ],
+            selected: _source,
+            onSelect: (value) => setState(() => _source = value),
+          ),
           Padding(
             padding: const EdgeInsets.fromLTRB(
               Spacing.md,
@@ -323,6 +359,9 @@ class _StatsStrip extends ConsumerWidget {
 
     final status = context.statusColors;
     final leads = stats.byLabel['lead'] ?? 0;
+    final conversionRate = stats.total == 0
+        ? 0
+        : (stats.converted / stats.total * 100).round();
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -344,6 +383,7 @@ class _StatsStrip extends ConsumerWidget {
               value: Formatting.integer(stats.converted),
               emphasis: stats.converted > 0 ? status.settled : null,
             ),
+            StatRailItem(label: 'Conversion', value: '$conversionRate%'),
           ],
         ),
       ),
@@ -1590,6 +1630,7 @@ class _ContactFormSheetState extends ConsumerState<_ContactFormSheet> {
   late bool _important = widget.contact?.isImportant ?? false;
   late String? _campaignId = widget.contact?.campaignId;
   late DateTime? _nextFollowup = widget.contact?.nextFollowupDate;
+  late final Set<String> _services = {...?widget.contact?.services};
 
   bool _submitting = false;
   String? _error;
@@ -1602,6 +1643,16 @@ class _ContactFormSheetState extends ConsumerState<_ContactFormSheet> {
     _phone.dispose();
     _notes.dispose();
     super.dispose();
+  }
+
+  void _toggleService(String service, bool on) {
+    setState(() {
+      if (on) {
+        _services.add(service);
+      } else {
+        _services.remove(service);
+      }
+    });
   }
 
   Future<void> _submit() async {
@@ -1632,6 +1683,7 @@ class _ContactFormSheetState extends ConsumerState<_ContactFormSheet> {
           isImportant: _important,
           campaignId: _campaignId,
           notes: notes.isEmpty ? null : notes,
+          services: _services.toList(),
           nextFollowupDate: _nextFollowup,
         );
         message = created.matchesExistingClient
@@ -1648,6 +1700,7 @@ class _ContactFormSheetState extends ConsumerState<_ContactFormSheet> {
           isImportant: _important,
           campaignId: _campaignId,
           notes: notes,
+          services: _services.toList(),
           nextFollowupDate: _nextFollowup,
         );
         message = 'Contact updated.';
@@ -1753,6 +1806,12 @@ class _ContactFormSheetState extends ConsumerState<_ContactFormSheet> {
           ),
         ],
         const SizedBox(height: Spacing.md),
+        _ServicesField(
+          selected: _services,
+          enabled: !_submitting,
+          onToggle: _toggleService,
+        ),
+        const SizedBox(height: Spacing.md),
         const CommsFieldLabel('Next call (optional)'),
         const SizedBox(height: Spacing.sm),
         OutlinedButton(
@@ -1804,6 +1863,77 @@ class _ContactFormSheetState extends ConsumerState<_ContactFormSheet> {
           busy: _submitting,
           onPressed: _submitting ? null : _submit,
         ),
+      ],
+    );
+  }
+}
+
+/// "Services interested in" — the same tenant-defined reference list
+/// `_ServicesDiscussedField` in field_marketing_screen.dart reads for a field
+/// visit, since a WhatsApp lead and a visit tag against one shared list of
+/// what the business sells.
+class _ServicesField extends ConsumerWidget {
+  const _ServicesField({
+    required this.selected,
+    required this.enabled,
+    required this.onToggle,
+  });
+
+  final Set<String> selected;
+  final bool enabled;
+  final void Function(String service, bool on) onToggle;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final servicesAsync = ref.watch(marketingServicesProvider);
+    // Same offline fallback as the field-visit picker: only reached when the
+    // reference list has never once loaded.
+    final names = servicesAsync.when(
+      loading: () => FieldServices.values,
+      error: (error, _) => FieldServices.values,
+      data: (items) => items.isEmpty
+          ? FieldServices.values
+          : [for (final item in items) item.name],
+    );
+    final canManage = ref.watch(
+      commsPermissionProvider(CrmPermissions.marketingServicesRead),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const CommsFieldLabel('Services interested in'),
+        const SizedBox(height: Spacing.sm),
+        Wrap(
+          spacing: Spacing.sm,
+          runSpacing: Spacing.sm,
+          children: [
+            for (final service in names)
+              FilterChip(
+                label: Text(service.toUpperCase()),
+                selected: selected.contains(service),
+                showCheckmark: false,
+                onSelected: !enabled ? null : (on) => onToggle(service, on),
+              ),
+          ],
+        ),
+        if (canManage) ...[
+          const SizedBox(height: Spacing.xs),
+          InkWell(
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const MarketingServicesScreen(),
+              ),
+            ),
+            child: Text(
+              '+ Manage services',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }

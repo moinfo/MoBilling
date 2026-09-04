@@ -7,6 +7,7 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 import '../../providers.dart';
 import '../common/paged_list.dart';
 import '../common/pickers.dart';
+import '../staff_self/attendance_screen.dart' show MonthStepper;
 import 'crm_providers.dart';
 import 'crm_ui.dart';
 import 'marketing_services_screen.dart';
@@ -20,10 +21,24 @@ fieldVisitFollowupsProvider = FutureProvider.autoDispose
           ref.watch(crmServiceProvider).fieldVisitFollowups(visitId),
     );
 
-/// This month's canvassing totals, shown above the targets.
-final AutoDisposeFutureProvider<FieldStats> fieldStatsProvider =
-    FutureProvider.autoDispose<FieldStats>(
-      (ref) => ref.watch(crmServiceProvider).fieldStats(),
+/// A month's canvassing totals, shown above the targets and on the Stats
+/// tab. Keyed by (month, year) so the shared month stepper drives both without
+/// either tab holding the fetch.
+final AutoDisposeFutureProviderFamily<FieldStats, (int, int)>
+fieldStatsProvider = FutureProvider.autoDispose.family<FieldStats, (int, int)>(
+  (ref, period) =>
+      ref.watch(crmServiceProvider).fieldStats(month: period.$1, year: period.$2),
+);
+
+/// Officer targets for one month. Named distinctly from crm_providers.dart's
+/// unscoped `fieldTargetsProvider` (which this screen no longer reads) so the
+/// two aren't confused — this one always carries the month the stepper is on.
+final AutoDisposeFutureProviderFamily<List<FieldTarget>, (int, int)>
+fieldTargetsForPeriodProvider = FutureProvider.autoDispose
+    .family<List<FieldTarget>, (int, int)>(
+      (ref, period) => ref
+          .watch(crmServiceProvider)
+          .fieldTargets(month: period.$1, year: period.$2),
     );
 
 /// Field marketing: canvassing sessions, the businesses visited, and monthly
@@ -43,16 +58,35 @@ class FieldMarketingScreen extends ConsumerStatefulWidget {
       _FieldMarketingScreenState();
 }
 
-enum _Section { sessions, visits, targets }
+// Order matches web's tab order (FieldMarketing.tsx): Sessions, Targets,
+// Stats, All Visits, Services.
+enum _Section { sessions, targets, stats, visits, services }
 
 class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 3, vsync: this)
+  late final TabController _tabs = TabController(length: 5, vsync: this)
     ..addListener(_onTab);
   _Section _section = _Section.sessions;
 
+  // Shared across Sessions/Targets/Stats — one stepper rather than three,
+  // since all three read the same officer-month data from different angles.
+  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+
   void _onTab() {
     final next = _Section.values[_tabs.index];
+    if (next == _Section.services) {
+      // `MarketingServicesScreen` owns its own masthead; embedding it inline
+      // would stack a second app bar under this screen's tab bar. Pushing it
+      // keeps one masthead on screen at a time and snaps the tab back once
+      // the officer is done there, so it still reads as "a tab" to tap.
+      final previous = _tabs.previousIndex;
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const MarketingServicesScreen()))
+          .then((_) {
+            if (mounted) _tabs.index = previous;
+          });
+      return;
+    }
     if (next != _section) setState(() => _section = next);
   }
 
@@ -72,6 +106,10 @@ class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
     final canSetTarget =
         (session?.can(CrmPermissions.fieldTargetsUpdate) ?? false) &&
         (session?.can(CrmPermissions.settingsUsers) ?? false);
+    final showMonthStepper =
+        _section == _Section.sessions ||
+        _section == _Section.targets ||
+        _section == _Section.stats;
 
     return Scaffold(
       appBar: ShellTopBar(
@@ -91,15 +129,28 @@ class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
           _ => null,
         },
         bottom: InkTabBar(
-          tabs: const ['Sessions', 'Visits', 'Targets'],
+          tabs: const ['Sessions', 'Targets', 'Stats', 'Visits', 'Services'],
           controller: _tabs,
         ),
       ),
-      body: switch (_section) {
-        _Section.sessions => const _SessionsList(),
-        _Section.visits => const _VisitsList(),
-        _Section.targets => const _TargetsList(),
-      },
+      body: Column(
+        children: [
+          if (showMonthStepper)
+            MonthStepper(
+              month: _month,
+              onChanged: (m) => setState(() => _month = m),
+            ),
+          Expanded(
+            child: switch (_section) {
+              _Section.sessions => _SessionsList(month: _month),
+              _Section.targets => _TargetsList(month: _month),
+              _Section.stats => _StatsList(month: _month),
+              _Section.visits => const _VisitsList(),
+              _Section.services => const SizedBox.shrink(),
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -108,7 +159,7 @@ class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
       context: context,
       builder: (_) => _FieldTargetSheet(existing: existing),
     );
-    if (saved == true) ref.invalidate(fieldTargetsProvider);
+    if (saved == true) ref.invalidate(fieldTargetsForPeriodProvider);
   }
 
   Future<void> _startSession(BuildContext context) async {
@@ -205,7 +256,10 @@ class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
 }
 
 class _SessionsList extends ConsumerStatefulWidget {
-  const _SessionsList();
+  const _SessionsList({required this.month});
+
+  /// The shared stepper's period — day-of-month is never read.
+  final DateTime month;
 
   @override
   ConsumerState<_SessionsList> createState() => _SessionsListState();
@@ -213,50 +267,119 @@ class _SessionsList extends ConsumerStatefulWidget {
 
 class _SessionsListState extends ConsumerState<_SessionsList> {
   final _listKey = GlobalKey<PagedListViewState>();
+  String? _officerId;
+  String? _officerName;
+
+  @override
+  void didUpdateWidget(covariant _SessionsList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // PagedListView only fetches on init; a month change from the shared
+    // stepper needs an explicit reload to be seen.
+    if (oldWidget.month.year != widget.month.year ||
+        oldWidget.month.month != widget.month.month) {
+      _listKey.currentState?.reload();
+    }
+  }
+
+  Future<void> _pickOfficer() async {
+    final user = await StaffUserPickerSheet.show(context);
+    if (user == null) return;
+    setState(() {
+      _officerId = user.id;
+      _officerName = user.name;
+    });
+    _listKey.currentState?.reload();
+  }
+
+  void _clearOfficer() {
+    setState(() {
+      _officerId = null;
+      _officerName = null;
+    });
+    _listKey.currentState?.reload();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return PagedListView(
-      key: _listKey,
-      fetch: (page) => ref.read(crmServiceProvider).fieldSessions(page: page),
-      itemBuilder: (context, session) => Card(
-        clipBehavior: Clip.antiAlias,
-        child: ListTile(
-          title: Text(
-            session.area,
-            style: theme.textTheme.titleSmall,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.sm,
+            Spacing.md,
+            0,
           ),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SizedBox(height: Spacing.xs),
-              CrmMetaLine(
-                [
-                  if (session.visitDate != null)
-                    Formatting.date(session.visitDate),
-                  '${Formatting.integer(session.visitsCount)} '
-                      '${session.visitsCount == 1 ? 'visit' : 'visits'}',
-                  if (session.convertedCount > 0)
-                    '${Formatting.integer(session.convertedCount)} converted',
-                ].join(' · '),
-              ),
-              if (session.officerName != null) ...[
-                const SizedBox(height: Spacing.xs),
-                Text(session.officerName!, style: theme.textTheme.bodySmall),
-              ],
-            ],
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: InputChip(
+              avatar: const Icon(Icons.person_outline, size: 16),
+              label: Text(_officerName ?? 'All officers'),
+              onPressed: _pickOfficer,
+              onDeleted: _officerId == null ? null : _clearOfficer,
+            ),
           ),
-          trailing: Icon(Icons.chevron_right, color: theme.colorScheme.outline),
-          onTap: () => context.push('/field-marketing/${session.id}'),
         ),
-      ),
-      emptyIcon: Icons.place_outlined,
-      emptyTitle: 'No sessions yet',
-      emptyMessage: 'Start a session to log the businesses you visit.',
+        Expanded(
+          child: PagedListView(
+            key: _listKey,
+            fetch: (page) => ref
+                .read(crmServiceProvider)
+                .fieldSessions(
+                  month: widget.month.month,
+                  year: widget.month.year,
+                  officerId: _officerId,
+                  page: page,
+                ),
+            itemBuilder: (context, session) => Card(
+              clipBehavior: Clip.antiAlias,
+              child: ListTile(
+                title: Text(
+                  session.area,
+                  style: theme.textTheme.titleSmall,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: Spacing.xs),
+                    CrmMetaLine(
+                      [
+                        if (session.visitDate != null)
+                          Formatting.date(session.visitDate),
+                        '${Formatting.integer(session.visitsCount)} '
+                            '${session.visitsCount == 1 ? 'visit' : 'visits'}',
+                        if (session.interestedCount > 0)
+                          '${Formatting.integer(session.interestedCount)} interested',
+                        if (session.convertedCount > 0)
+                          '${Formatting.integer(session.convertedCount)} converted',
+                      ].join(' · '),
+                    ),
+                    if (session.officerName != null) ...[
+                      const SizedBox(height: Spacing.xs),
+                      Text(
+                        session.officerName!,
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ],
+                  ],
+                ),
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: theme.colorScheme.outline,
+                ),
+                onTap: () => context.push('/field-marketing/${session.id}'),
+              ),
+            ),
+            emptyIcon: Icons.place_outlined,
+            emptyTitle: 'No sessions yet',
+            emptyMessage: 'Start a session to log the businesses you visit.',
+          ),
+        ),
+      ],
     );
   }
 }
@@ -271,6 +394,10 @@ class _VisitsList extends ConsumerStatefulWidget {
 class _VisitsListState extends ConsumerState<_VisitsList> {
   final _listKey = GlobalKey<PagedListViewState>();
   String? _status;
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+  String? _officerId;
+  String? _officerName;
 
   static const _filters = <(String?, String)>[
     (null, 'All'),
@@ -280,6 +407,106 @@ class _VisitsListState extends ConsumerState<_VisitsList> {
     ('follow_up', 'Follow-up'),
   ];
 
+  bool get _hasExtraFilters =>
+      _dateFrom != null || _dateTo != null || _officerId != null;
+
+  /// A sheet rather than more inline controls — date-from/to plus officer
+  /// would crowd the status strip that already scrolls horizontally.
+  Future<void> _openFilters() async {
+    var from = _dateFrom;
+    var to = _dateTo;
+    var officerId = _officerId;
+    var officerName = _officerName;
+
+    final applied = await showCrmSheet<bool>(
+      context: context,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => CrmSheet(
+          eyebrow: 'All visits',
+          title: 'Filter visits',
+          children: [
+            CrmPickerField(
+              label: 'From date',
+              value: from == null ? 'Any date' : Formatting.date(from),
+              placeholder: from == null,
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: sheetContext,
+                  initialDate: from ?? DateTime.now(),
+                  firstDate: DateTime(DateTime.now().year - 2),
+                  lastDate: DateTime.now(),
+                );
+                if (picked != null) setSheetState(() => from = picked);
+              },
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmPickerField(
+              label: 'To date',
+              value: to == null ? 'Any date' : Formatting.date(to),
+              placeholder: to == null,
+              onTap: () async {
+                final picked = await showDatePicker(
+                  context: sheetContext,
+                  initialDate: to ?? DateTime.now(),
+                  firstDate: DateTime(DateTime.now().year - 2),
+                  lastDate: DateTime.now(),
+                );
+                if (picked != null) setSheetState(() => to = picked);
+              },
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmPickerField(
+              label: 'Officer',
+              value: officerName ?? 'All officers',
+              placeholder: officerName == null,
+              onTap: () async {
+                final user = await StaffUserPickerSheet.show(sheetContext);
+                if (user != null) {
+                  setSheetState(() {
+                    officerId = user.id;
+                    officerName = user.name;
+                  });
+                }
+              },
+            ),
+            const SizedBox(height: Spacing.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => setSheetState(() {
+                      from = null;
+                      to = null;
+                      officerId = null;
+                      officerName = null;
+                    }),
+                    child: const Text('Clear'),
+                  ),
+                ),
+                const SizedBox(width: Spacing.md),
+                Expanded(
+                  child: PrimaryButton(
+                    label: 'Apply',
+                    onPressed: () => Navigator.of(sheetContext).pop(true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (applied != true) return;
+    setState(() {
+      _dateFrom = from;
+      _dateTo = to;
+      _officerId = officerId;
+      _officerName = officerName;
+    });
+    _listKey.currentState?.reload();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -287,13 +514,29 @@ class _VisitsListState extends ConsumerState<_VisitsList> {
 
     return Column(
       children: [
-        FilterStrip(
-          options: _filters,
-          selected: _status,
-          onSelect: (v) {
-            setState(() => _status = v);
-            _listKey.currentState?.reload();
-          },
+        Row(
+          children: [
+            Expanded(
+              child: FilterStrip(
+                options: _filters,
+                selected: _status,
+                onSelect: (v) {
+                  setState(() => _status = v);
+                  _listKey.currentState?.reload();
+                },
+              ),
+            ),
+            IconButton(
+              icon: Icon(
+                Icons.tune,
+                color: _hasExtraFilters
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurfaceVariant,
+              ),
+              tooltip: 'Filter by date or officer',
+              onPressed: _openFilters,
+            ),
+          ],
         ),
         Expanded(
           child: PagedListView(
@@ -306,7 +549,13 @@ class _VisitsListState extends ConsumerState<_VisitsList> {
             ),
             fetch: (page) => ref
                 .read(crmServiceProvider)
-                .allFieldVisits(status: _status, page: page),
+                .allFieldVisits(
+                  status: _status,
+                  officerId: _officerId,
+                  dateFrom: _dateFrom,
+                  dateTo: _dateTo,
+                  page: page,
+                ),
             itemBuilder: (context, visit) => Card(
               clipBehavior: Clip.antiAlias,
               child: ListTile(
@@ -372,11 +621,14 @@ class _VisitsListState extends ConsumerState<_VisitsList> {
 }
 
 class _TargetsList extends ConsumerWidget {
-  const _TargetsList();
+  const _TargetsList({required this.month});
+
+  final DateTime month;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final targets = ref.watch(fieldTargetsProvider);
+    final period = (month.month, month.year);
+    final targets = ref.watch(fieldTargetsForPeriodProvider(period));
     final session = ref.watch(sessionControllerProvider).session;
     final canSetTarget =
         (session?.can(CrmPermissions.fieldTargetsUpdate) ?? false) &&
@@ -385,18 +637,18 @@ class _TargetsList extends ConsumerWidget {
     return CrmAsyncView(
       value: targets,
       errorTitle: 'Could not load targets',
-      onRetry: () => ref.invalidate(fieldTargetsProvider),
+      onRetry: () => ref.invalidate(fieldTargetsForPeriodProvider(period)),
       builder: (items) => RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(fieldStatsProvider);
-          ref.invalidate(fieldTargetsProvider);
-          await ref.read(fieldTargetsProvider.future);
+          ref.invalidate(fieldStatsProvider(period));
+          ref.invalidate(fieldTargetsForPeriodProvider(period));
+          await ref.read(fieldTargetsForPeriodProvider(period).future);
         },
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(Spacing.md),
           children: [
-            const _FieldStatsRail(),
+            _FieldStatsRail(month: month),
             if (items.isEmpty)
               const StateMessage(
                 icon: Icons.flag_outlined,
@@ -418,7 +670,7 @@ class _TargetsList extends ConsumerWidget {
                                     _FieldTargetSheet(existing: target),
                               );
                               if (saved == true) {
-                                ref.invalidate(fieldTargetsProvider);
+                                ref.invalidate(fieldTargetsForPeriodProvider);
                               }
                             },
                     ),
@@ -435,11 +687,15 @@ class _TargetsList extends ConsumerWidget {
 /// This month's canvassing at a glance — `GET /field-stats`. Sits above the
 /// targets because it is what the targets are measured against.
 class _FieldStatsRail extends ConsumerWidget {
-  const _FieldStatsRail();
+  const _FieldStatsRail({required this.month});
+
+  final DateTime month;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final stats = ref.watch(fieldStatsProvider).valueOrNull;
+    final stats = ref
+        .watch(fieldStatsProvider((month.month, month.year)))
+        .valueOrNull;
     if (stats == null) return const SizedBox.shrink();
 
     final status = context.statusColors;
@@ -462,6 +718,154 @@ class _FieldStatsRail extends ConsumerWidget {
               label: 'Converted',
               value: Formatting.integer(stats.totalConverted),
               emphasis: stats.totalConverted > 0 ? status.settled : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// `GET /field-stats` in full: totals, the status breakdown, and the
+/// by-officer leaderboard — the mobile counterpart to web's Stats tab
+/// (FieldMarketing.tsx:294-347). [_FieldStatsRail] above only shows the
+/// totals it needs for the Targets tab; this renders everything the endpoint
+/// returns.
+class _StatsList extends ConsumerWidget {
+  const _StatsList({required this.month});
+
+  final DateTime month;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final period = (month.month, month.year);
+    final statsAsync = ref.watch(fieldStatsProvider(period));
+    final theme = Theme.of(context);
+
+    return CrmAsyncView(
+      value: statsAsync,
+      errorTitle: 'Could not load stats',
+      onRetry: () => ref.invalidate(fieldStatsProvider(period)),
+      builder: (stats) => RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(fieldStatsProvider(period));
+          await ref.read(fieldStatsProvider(period).future);
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(Spacing.md),
+          children: [
+            StatRail(
+              items: [
+                StatRailItem(
+                  label: 'Visits',
+                  value: Formatting.integer(stats.totalVisits),
+                ),
+                StatRailItem(
+                  label: 'Converted',
+                  value: Formatting.integer(stats.totalConverted),
+                  emphasis: stats.totalConverted > 0
+                      ? context.statusColors.settled
+                      : null,
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.lg),
+            Text('By status', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
+            Wrap(
+              spacing: Spacing.sm,
+              runSpacing: Spacing.sm,
+              children: [
+                for (final (raw, label) in FieldVisitStatuses.values)
+                  _StatusCountCard(
+                    label: label,
+                    count: stats.byStatus[raw] ?? 0,
+                  ),
+              ],
+            ),
+            const SizedBox(height: Spacing.lg),
+            Text('By officer', style: theme.textTheme.titleSmall),
+            const SizedBox(height: Spacing.sm),
+            if (stats.byOfficer.isEmpty)
+              const StateMessage(
+                icon: Icons.leaderboard_outlined,
+                title: 'No visits yet',
+                message: 'Officer conversion rates appear here once logged.',
+              )
+            else
+              CrmCardList(
+                children: [
+                  for (final row in stats.byOfficer)
+                    ListTile(
+                      title: Text(
+                        row.officerName ?? row.officerId ?? '—',
+                        style: theme.textTheme.titleSmall,
+                      ),
+                      subtitle: CrmMetaLine(
+                        '${Formatting.integer(row.visits)} '
+                        '${row.visits == 1 ? 'visit' : 'visits'}',
+                      ),
+                      trailing: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            '${Formatting.integer(row.won)} won',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: context.statusColors.settled,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          Text(
+                            row.visits > 0
+                                ? '${(row.won / row.visits * 100).round()}%'
+                                : '—',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            const SizedBox(height: Spacing.xl),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One status's count in the Stats tab's breakdown — a small card rather
+/// than a [StatRail] entry, since a `StatRail` row wouldn't fit four of
+/// these next to the totals row above on a phone width.
+class _StatusCountCard extends StatelessWidget {
+  const _StatusCountCard({required this.label, required this.count});
+
+  final String label;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.md,
+          vertical: Spacing.sm,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(Formatting.integer(count), style: theme.textTheme.titleLarge),
+            Text(
+              label,
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),

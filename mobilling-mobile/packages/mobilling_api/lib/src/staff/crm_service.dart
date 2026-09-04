@@ -124,15 +124,24 @@ class CrmService {
   }
 
   /// GET /satisfaction-calls — the call queue. Statuses are
-  /// `scheduled | completed | missed | cancelled`. Paginated server-side;
-  /// the screen shows one generous page.
+  /// `scheduled | completed | missed | cancelled`; [outcome] is one of
+  /// `satisfied | needs_improvement | complaint | suggestion | no_answer |
+  /// unreachable`; [month] is `YYYY-MM` (`month_key`). Paginated
+  /// server-side; the screen shows one generous page.
   Future<List<SatisfactionCall>> satisfactionCalls({
     String? status,
+    String? outcome,
+    String? month,
     int perPage = 100,
   }) async {
     final body = await _api.get<dynamic>(
       '/satisfaction-calls',
-      query: {'status': status, 'per_page': perPage},
+      query: {
+        'status': status,
+        'outcome': outcome,
+        'month': month,
+        'per_page': perPage,
+      },
     );
     return Paginated.fromJson(body, SatisfactionCall.fromJson).items;
   }
@@ -241,17 +250,85 @@ class CrmService {
     return Paginated.fromJson(body, ServedService.fromJson).items;
   }
 
-  /// GET /served/customers — paginated walk-in log.
+  /// GET /served/customers — paginated walk-in log. [date] scopes to one
+  /// day exactly (`whereDate`), not a range.
   Future<Paginated<ServedCustomer>> servedCustomers({
     String? search,
+    DateTime? date,
     int page = 1,
     int perPage = 20,
   }) async {
     final body = await _api.get<dynamic>(
       '/served/customers',
-      query: {'search': search, 'page': page, 'per_page': perPage},
+      query: {
+        'search': search,
+        'date': date == null ? null : _ymd(date),
+        'page': page,
+        'per_page': perPage,
+      },
     );
     return Paginated.fromJson(body, ServedCustomer.fromJson);
+  }
+
+  /// POST /served/services — a new service type walk-ins can be logged
+  /// under. Needs `served.settings`.
+  Future<ServedService> createServedService({
+    required String name,
+    String? description,
+    bool isActive = true,
+    int sortOrder = 0,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/served/services',
+      body: {
+        'name': name,
+        'description': ?description,
+        'is_active': isActive,
+        'sort_order': sortOrder,
+      },
+    );
+    return ServedService.fromJson(_unwrap(body));
+  }
+
+  /// PUT /served/services/{id}. Every field is `sometimes`. Needs
+  /// `served.settings`.
+  Future<ServedService> updateServedService(
+    String id, {
+    String? name,
+    String? description,
+    bool? isActive,
+    int? sortOrder,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/served/services/$id',
+      body: {
+        'name': ?name,
+        'description': ?description,
+        'is_active': ?isActive,
+        'sort_order': ?sortOrder,
+      },
+    );
+    return ServedService.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /served/services/{id}. Needs `served.settings`.
+  Future<void> deleteServedService(String id) =>
+      _api.delete<dynamic>('/served/services/$id');
+
+  /// GET /served/report — daily new-customers/calls-made vs target over a
+  /// date range, defaulting server-side to the current month.
+  Future<ServedReport> servedReport({
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/served/report',
+      query: {
+        'start_date': startDate == null ? null : _ymd(startDate),
+        'end_date': endDate == null ? null : _ymd(endDate),
+      },
+    );
+    return ServedReport.fromJson(body);
   }
 
   /// POST /served/customers — log someone served at the counter.
@@ -369,14 +446,24 @@ class CrmService {
   // Field marketing
   // ---------------------------------------------------------------------
 
-  /// GET /field-sessions — a day's canvassing in an area.
+  /// GET /field-sessions — a day's canvassing in an area. [month]/[year]
+  /// and [officerId] are independent filters — pass whichever apply.
   Future<Paginated<FieldSession>> fieldSessions({
+    String? officerId,
+    int? month,
+    int? year,
     int page = 1,
     int perPage = 20,
   }) async {
     final body = await _api.get<dynamic>(
       '/field-sessions',
-      query: {'page': page, 'per_page': perPage},
+      query: {
+        'officer_id': officerId,
+        'month': month,
+        'year': year,
+        'page': page,
+        'per_page': perPage,
+      },
     );
     return Paginated.fromJson(body, FieldSession.fromJson);
   }
@@ -444,14 +531,25 @@ class CrmService {
   );
 
   /// GET /field-visits-report — every visit across sessions, for follow-up.
+  /// [dateFrom]/[dateTo] filter by the parent session's visit date.
   Future<Paginated<FieldVisit>> allFieldVisits({
     String? status,
+    String? officerId,
+    DateTime? dateFrom,
+    DateTime? dateTo,
     int page = 1,
     int perPage = 20,
   }) async {
     final body = await _api.get<dynamic>(
       '/field-visits-report',
-      query: {'status': status, 'page': page, 'per_page': perPage},
+      query: {
+        'status': status,
+        'officer_id': officerId,
+        'date_from': dateFrom == null ? null : _ymd(dateFrom),
+        'date_to': dateTo == null ? null : _ymd(dateTo),
+        'page': page,
+        'per_page': perPage,
+      },
     );
     return Paginated.fromJson(body, FieldVisit.fromJson);
   }
