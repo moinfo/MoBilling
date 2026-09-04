@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
+import 'package:mobilling_auth/mobilling_auth.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
+import '../../router.dart';
+import '../billing_money/billing_money_providers.dart';
 import '../common/paged_list.dart';
+import '../common/pickers.dart' show ClientPickerSheet;
+import '../crm/crm_providers.dart';
 import '../crm/crm_ui.dart'
     show
         CrmAsyncView,
@@ -16,6 +21,7 @@ import '../crm/crm_ui.dart'
         CrmMetaLine,
         CrmSheet,
         CrmStatusLine,
+        FilterStrip,
         RatingStars,
         showCrmSheet;
 import '../documents/documents_tab.dart' show StaffInvoiceCard;
@@ -26,13 +32,18 @@ import 'client_providers.dart';
 ///
 /// The subject of the screen is the person or company; the figure it is about
 /// is what they owe. Everything else is a section under that — what they buy,
-/// who else works there, what we have sent them — with the invoice list kept
-/// intact on its own tab, paged exactly as it was.
+/// who else works there, what we have sent them — with invoices, quotes and
+/// payments each kept on their own paged tab rather than folded into
+/// Overview, since a busy client can outgrow what one screen shows at once.
 ///
 /// Editing lives here now: the record, the staff notes, the wallet, the
-/// additional contacts and portal access are all reachable without a browser.
-/// Merging two clients and deleting one deliberately are not — both are
-/// reconciliation work with a blast radius no phone screen should carry.
+/// additional contacts and portal access are all reachable without a
+/// browser. So do merging and deleting a client, and signing in as their
+/// portal account — each carries a blast radius (another record's history,
+/// or the record itself), so the actions sheet gates every one of them on
+/// its own permission and the confirmation in front of it says plainly what
+/// is about to happen rather than leaning on a server-side safety net that,
+/// for delete in particular, does not exist.
 class ClientDetailScreen extends ConsumerStatefulWidget {
   const ClientDetailScreen({
     super.key,
@@ -52,9 +63,31 @@ class ClientDetailScreen extends ConsumerStatefulWidget {
 
 class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabs = TabController(length: 4, vsync: this);
+  // Payments is the one tab gated on a permission most billing roles do
+  // hold but not all do (`payments_in.read`) — decided once at open time,
+  // since permissions do not change under a screen that is already showing.
+  late final bool _showPayments;
+  late final List<String> _tabLabels;
+  late final TabController _tabs;
 
   String get _clientId => widget.clientId;
+
+  @override
+  void initState() {
+    super.initState();
+    final session = ref.read(sessionControllerProvider).session;
+    _showPayments =
+        session?.can(BillingMoneyPermissions.paymentsInRead) ?? false;
+    _tabLabels = [
+      'Overview',
+      'Invoices',
+      'Quotes',
+      if (_showPayments) 'Payments',
+      'People',
+      'Activity',
+    ];
+    _tabs = TabController(length: _tabLabels.length, vsync: this);
+  }
 
   @override
   void dispose() {
@@ -95,6 +128,12 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
         );
       case 'reseller':
         await _makeReseller(profile);
+      case 'portal-login':
+        await _loginAsClient(profile);
+      case 'merge':
+        await _mergeClient(profile);
+      case 'delete':
+        await _deleteClient(profile);
     }
   }
 
@@ -124,6 +163,124 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
     }
   }
 
+  /// Mints a live portal session and swaps into it — the same
+  /// swap-and-stash mechanism platform-admin tenant impersonation uses (see
+  /// `_adoptImpersonation` in `features/platform/tenants_screens.dart`), just
+  /// against the client-portal login endpoint instead of the tenant one.
+  /// Unlike that endpoint, this one's response already carries
+  /// `user_type: 'client'`, so the body needs no injection before
+  /// `AuthSession.fromJson` reads it.
+  Future<void> _loginAsClient(ClientProfile profile) async {
+    final confirmed = await _confirm(
+      context,
+      title: "Sign in as ${profile.client.name}'s portal account?",
+      body:
+          'This swaps your session for their client-portal login. Open the '
+          'account sheet (tap your avatar) and use "Back to …" to return.',
+      verb: 'Sign in',
+    );
+    if (!confirmed || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final body = await ref
+          .read(staffServiceProvider)
+          .portalLoginAsClient(profile.client.id);
+      final session = AuthSession.fromJson(body);
+      await ref.read(sessionControllerProvider).impersonate(session);
+    } on ApiException catch (e) {
+      // Most likely "Client has no email address. Add an email first." —
+      // shown verbatim rather than a generic failure.
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// The server enforces no guard of its own on this — no outstanding
+  /// balance check, nothing — so the confirmation dialog is the only thing
+  /// standing between a tap and a client record that is simply gone.
+  Future<void> _deleteClient(ClientProfile profile) async {
+    final client = profile.client;
+    final confirmed = await _confirm(
+      context,
+      title: 'Delete ${client.name}?',
+      body:
+          'Type-to-confirm is skipped on a phone, so read this instead: '
+          'deleting "${client.name}" removes the client record itself. '
+          'Their invoices, subscriptions and history stay for audit '
+          'purposes, but the client will no longer appear anywhere in the '
+          'app. This cannot be undone.',
+      verb: 'Delete client',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final message = await ref
+          .read(staffServiceProvider)
+          .deleteClient(client.id);
+      if (!mounted) return;
+      // Nothing left on this screen to show — back to the list, the way
+      // every other "this record is gone" flow in the app already leaves.
+      context.pop();
+      messenger.showSnackBar(
+        SnackBar(content: Text(message ?? '${client.name} deleted.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  /// Picks the other client, picks a survivor, spells out what moves before
+  /// asking, then shows exactly what did move — the confirmation is the
+  /// safety net; the summary afterwards is the audit trail for whoever ran
+  /// it, since [ClientMergeResult.movedCounts] would otherwise be silently
+  /// trusted rather than seen.
+  Future<void> _mergeClient(ClientProfile profile) async {
+    final first = profile.client;
+    final second = await ClientPickerSheet.show(context);
+    if (second == null || !mounted) return;
+
+    final keep = await _chooseMergeSurvivor(
+      context,
+      first: first,
+      second: second,
+    );
+    if (keep == null || !mounted) return;
+
+    final survivorName = keep == 'first' ? first.name : second.name;
+    final absorbedName = keep == 'first' ? second.name : first.name;
+    final confirmed = await _confirm(
+      context,
+      title: 'Merge into $survivorName?',
+      body:
+          'Everything belonging to "$absorbedName" — invoices, '
+          'subscriptions, tickets, payments and more — is reassigned to '
+          '$survivorName. "$absorbedName" is then gone for good. This '
+          'cannot be undone.',
+      verb: 'Merge clients',
+      destructive: true,
+    );
+    if (!confirmed || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await ref
+          .read(staffServiceProvider)
+          .mergeClients(first.id, otherClientId: second.id, keep: keep);
+      if (!mounted) return;
+      await _showMergeSummary(context, result, survivorName: survivorName);
+      if (!mounted) return;
+      if (keep == 'first') {
+        ref.invalidate(clientProfileProvider(first.id));
+      } else {
+        context.pushReplacement(Routes.clientPath(result.survivorId));
+      }
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final profile = ref.watch(clientProfileProvider(_clientId));
@@ -143,7 +300,8 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
               ),
         bottom: InkTabBar(
           controller: _tabs,
-          tabs: const ['Overview', 'Invoices', 'People', 'Activity'],
+          isScrollable: _tabLabels.length > 3,
+          tabs: _tabLabels,
         ),
       ),
       body: TabBarView(
@@ -155,10 +313,14 @@ class _ClientDetailScreenState extends ConsumerState<ClientDetailScreen>
             onRetry: () => ref.invalidate(clientProfileProvider(_clientId)),
             builder: (data) => _OverviewTab(profile: data),
           ),
-          // The invoice list is unchanged: its own paging, its own empty
-          // state, and still without the client's name on every row — the
-          // masthead already says whose these are.
+          // The invoice list is its own paged read against /documents rather
+          // than the profile's embedded copy — the profile caps every list
+          // it carries at 50 rows, and a client with a longer history needs
+          // more than that.
           _InvoicesTab(clientId: _clientId),
+          // Same reasoning, same endpoint, `type: 'quotation'` instead.
+          _QuotesTab(clientId: _clientId),
+          if (_showPayments) _PaymentsTab(clientId: _clientId),
           CrmAsyncView(
             value: profile,
             errorTitle: 'Could not load this client',
@@ -201,6 +363,82 @@ Future<bool> _confirm(
     ),
   );
   return result ?? false;
+}
+
+/// Which of the two clients a merge keeps. Returns `'first'`, `'second'`, or
+/// null on Cancel — `first` is always the profile already open, matching
+/// what `StaffService.mergeClients`'s `keep` parameter expects.
+Future<String?> _chooseMergeSurvivor(
+  BuildContext context, {
+  required StaffClient first,
+  required StaffClient second,
+}) {
+  var choice = 'first';
+  return showDialog<String>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (dialogContext, setState) => AlertDialog(
+        title: const Text('Which client survives?'),
+        content: RadioGroup<String>(
+          groupValue: choice,
+          onChanged: (value) => setState(() => choice = value ?? choice),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              RadioListTile<String>(
+                value: 'first',
+                contentPadding: EdgeInsets.zero,
+                title: Text(first.name),
+              ),
+              RadioListTile<String>(
+                value: 'second',
+                contentPadding: EdgeInsets.zero,
+                title: Text(second.name),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, choice),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+/// The "verify" step of a merge: what actually moved, named per table,
+/// rather than trusting the confirmation dialog's prediction silently.
+Future<void> _showMergeSummary(
+  BuildContext context,
+  ClientMergeResult result, {
+  required String survivorName,
+}) {
+  final moved = result.movedCounts.entries.where((e) => e.value > 0).toList();
+  return showDialog<void>(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Clients merged'),
+      content: Text(
+        moved.isEmpty
+            ? 'Nothing needed moving into $survivorName.'
+            : 'Moved into $survivorName: '
+                  '${moved.map((e) => '${e.value} ${e.key.replaceAll('_', ' ')}').join(', ')}.',
+      ),
+      actions: [
+        FilledButton(
+          onPressed: () => Navigator.pop(dialogContext),
+          child: const Text('Done'),
+        ),
+      ],
+    ),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -611,9 +849,160 @@ class _Figure extends StatelessWidget {
 // Invoices
 // ---------------------------------------------------------------------------
 
-/// The screen's original body, unchanged: this client's invoices, paged.
-class _InvoicesTab extends ConsumerWidget {
+/// This client's invoices, paged — plus the status filter and running
+/// totals footer the web profile shows. Filtering re-fetches from page 1
+/// (the API filters server-side, same as the tenant-wide documents list);
+/// the totals footer accumulates from whatever pages the fetch has actually
+/// returned, since [StaffInvoiceRow] carries `total` but not the
+/// subtotal/late-fee/paid/balance split the web's full, unpaginated table
+/// sums separately — that finer breakdown only exists on the profile's own
+/// (50-row-capped) copy, which is exactly what this tab exists to get past.
+class _InvoicesTab extends ConsumerStatefulWidget {
   const _InvoicesTab({required this.clientId});
+
+  final String clientId;
+
+  @override
+  ConsumerState<_InvoicesTab> createState() => _InvoicesTabState();
+}
+
+class _InvoicesTabState extends ConsumerState<_InvoicesTab> {
+  static const _filters = <(String?, String)>[
+    (null, 'All'),
+    ('sent', 'Unpaid'),
+    ('paid', 'Paid'),
+    ('overdue', 'Overdue'),
+    ('cancelled', 'Cancelled'),
+  ];
+
+  final _listKey = GlobalKey<PagedListViewState>();
+  String? _status;
+  double _loadedTotal = 0;
+  int _loadedCount = 0;
+  int _serverTotal = 0;
+
+  Future<Paginated<StaffInvoiceRow>> _fetch(int page) async {
+    final result = await ref
+        .read(staffServiceProvider)
+        .documents(clientId: widget.clientId, status: _status, page: page);
+    if (!mounted) return result;
+    setState(() {
+      // Page 1 is both the first load and every pull-to-refresh — either
+      // way the running total starts over rather than double-counting.
+      if (page == 1) {
+        _loadedTotal = 0;
+        _loadedCount = 0;
+      }
+      for (final row in result.items) {
+        _loadedTotal += row.total;
+      }
+      _loadedCount += result.items.length;
+      _serverTotal = result.total;
+    });
+    return result;
+  }
+
+  void _onFilter(String? status) {
+    setState(() {
+      _status = status;
+      _loadedTotal = 0;
+      _loadedCount = 0;
+    });
+    _listKey.currentState?.reload();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      FilterStrip(options: _filters, selected: _status, onSelect: _onFilter),
+      Expanded(
+        child: PagedListView<StaffInvoiceRow>(
+          key: _listKey,
+          fetch: _fetch,
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            0,
+            Spacing.md,
+            Spacing.xl,
+          ),
+          itemBuilder: (context, doc) => InkWell(
+            borderRadius: Radii.card,
+            onTap: () => context.push('/documents/${doc.id}'),
+            // The masthead already names the client; repeating it on every
+            // row would leave the invoice itself unidentified.
+            child: StaffInvoiceCard(document: doc, showClient: false),
+          ),
+          emptyIcon: Icons.receipt_long_outlined,
+          emptyTitle: 'No invoices for this client',
+          emptyMessage: 'Invoices raised for them will appear here.',
+        ),
+      ),
+      if (_loadedCount > 0)
+        _TotalsFooter(
+          count: _loadedCount,
+          serverTotal: _serverTotal,
+          amount: _loadedTotal,
+        ),
+    ],
+  );
+}
+
+/// Sits under a paged list once at least one row has loaded — "so far"
+/// rather than "in total" until every page has, since the amount can only
+/// be as complete as what has actually been fetched.
+class _TotalsFooter extends StatelessWidget {
+  const _TotalsFooter({
+    required this.count,
+    required this.serverTotal,
+    required this.amount,
+  });
+
+  final int count;
+  final int serverTotal;
+  final double amount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final complete = count >= serverTotal;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.cardTheme.color,
+        border: Border(top: BorderSide(color: theme.colorScheme.outlineVariant)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          horizontal: Spacing.md,
+          vertical: Spacing.sm,
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              complete
+                  ? 'Total · ${Formatting.integer(count)}'
+                  : '$count of ${Formatting.integer(serverTotal)} loaded',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            Money(amount, scale: MoneyScale.row),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quotes
+// ---------------------------------------------------------------------------
+
+/// This client's quotations, paged the same way invoices are — the profile's
+/// own `quotations` list is capped at 50, so a busy client needs the real
+/// endpoint rather than that shortcut.
+class _QuotesTab extends ConsumerWidget {
+  const _QuotesTab({required this.clientId});
 
   final String clientId;
 
@@ -621,7 +1010,7 @@ class _InvoicesTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) => PagedListView(
     fetch: (page) => ref
         .read(staffServiceProvider)
-        .documents(clientId: clientId, page: page),
+        .documents(type: 'quotation', clientId: clientId, page: page),
     padding: const EdgeInsets.fromLTRB(
       Spacing.md,
       Spacing.md,
@@ -631,13 +1020,56 @@ class _InvoicesTab extends ConsumerWidget {
     itemBuilder: (context, doc) => InkWell(
       borderRadius: Radii.card,
       onTap: () => context.push('/documents/${doc.id}'),
-      // The masthead already names the client; repeating it on every row
-      // would leave the invoice itself unidentified.
       child: StaffInvoiceCard(document: doc, showClient: false),
     ),
-    emptyIcon: Icons.receipt_long_outlined,
-    emptyTitle: 'No invoices for this client',
-    emptyMessage: 'Invoices raised for them will appear here.',
+    emptyIcon: Icons.description_outlined,
+    emptyTitle: 'No quotes for this client',
+    emptyMessage: 'Quotations raised for them will appear here.',
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+/// Money received from this client — `payments_in.read`, gated one tab
+/// higher up so the whole tab is absent rather than shown empty to a role
+/// that cannot see it.
+class _PaymentsTab extends ConsumerWidget {
+  const _PaymentsTab({required this.clientId});
+
+  final String clientId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => PagedListView(
+    fetch: (page) => ref
+        .read(billingMoneyServiceProvider)
+        .paymentsIn(clientId: clientId, page: page),
+    padding: const EdgeInsets.fromLTRB(
+      Spacing.md,
+      Spacing.md,
+      Spacing.md,
+      Spacing.xl,
+    ),
+    itemBuilder: (context, payment) => Card(
+      child: ListTile(
+        title: Text(Formatting.date(payment.paymentDate)),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: CrmMetaLine(
+            [
+              if (payment.paymentMethod != null) payment.paymentMethod!,
+              if (payment.reference != null) payment.reference!,
+              if (payment.documentNumber != null) payment.documentNumber!,
+            ].join(' · '),
+          ),
+        ),
+        trailing: Money(payment.amount),
+      ),
+    ),
+    emptyIcon: Icons.payments_outlined,
+    emptyTitle: 'No payments for this client',
+    emptyMessage: 'Payments recorded against them will appear here.',
   );
 }
 
@@ -802,8 +1234,18 @@ class _PeopleTab extends ConsumerWidget {
 // Activity
 // ---------------------------------------------------------------------------
 
+/// This client's follow-up call history — `menu.followups` gates it, same as
+/// satisfaction calls sit behind their own menu permission just below.
+final AutoDisposeFutureProviderFamily<List<FollowupEntry>, String>
+_clientFollowupHistoryProvider = FutureProvider.autoDispose
+    .family<List<FollowupEntry>, String>(
+      (ref, clientId) =>
+          ref.watch(crmServiceProvider).clientFollowupHistory(clientId),
+    );
+
 /// What has passed between us and this client: the messages the system sent,
-/// and the satisfaction calls staff made.
+/// the follow-up calls chasing an invoice, and the satisfaction calls staff
+/// made.
 class _ActivityTab extends ConsumerWidget {
   const _ActivityTab({required this.clientId});
 
@@ -815,12 +1257,14 @@ class _ActivityTab extends ConsumerWidget {
     final scheme = theme.colorScheme;
     final status = context.statusColors;
     final session = ref.watch(sessionControllerProvider).session;
+    final canFollowups = session?.can(CrmPermissions.followups) ?? false;
     final canSatisfaction =
         session?.can(CrmPermissions.satisfactionCalls) ?? false;
     final logs = ref.watch(clientCommunicationsProvider(clientId));
 
     return RefreshIndicator(
       onRefresh: () async {
+        ref.invalidate(_clientFollowupHistoryProvider(clientId));
         ref.invalidate(clientSatisfactionProvider(clientId));
         ref.invalidate(clientCommunicationsProvider(clientId));
         await ref.read(clientCommunicationsProvider(clientId).future);
@@ -891,6 +1335,106 @@ class _ActivityTab extends ConsumerWidget {
                     ],
                   ),
           ),
+
+          if (canFollowups) ...[
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Follow-up calls'),
+            const SizedBox(height: Spacing.sm),
+            ref
+                .watch(_clientFollowupHistoryProvider(clientId))
+                .when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.all(Spacing.lg),
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                  error: (error, _) => ErrorBanner(
+                    message: error is ApiException
+                        ? error.message
+                        : 'Could not load the follow-up history.',
+                    onRetry: () =>
+                        ref.invalidate(_clientFollowupHistoryProvider(clientId)),
+                  ),
+                  data: (calls) => calls.isEmpty
+                      ? Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(Spacing.md),
+                            child: Text(
+                              'No follow-up calls recorded for this client.',
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
+                        )
+                      : CrmCardList(
+                          children: [
+                            for (final call in calls)
+                              ListTile(
+                                title: Text(
+                                  call.outcome?.replaceAll('_', ' ') ??
+                                      'Follow-up call',
+                                  style: theme.textTheme.titleSmall,
+                                ),
+                                subtitle: Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      CrmStatusLine(
+                                        status: call.status,
+                                        meta: [
+                                          if (call.callDate != null)
+                                            Formatting.date(call.callDate),
+                                          if (call.assignedTo != null)
+                                            call.assignedTo!,
+                                        ].join(' · '),
+                                      ),
+                                      if (call.notes != null &&
+                                          call.notes!.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          call.notes!,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                                color: scheme.onSurfaceVariant,
+                                              ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                                trailing: call.nextFollowup == null
+                                    ? null
+                                    : Column(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.center,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.end,
+                                        children: [
+                                          Text(
+                                            'NEXT',
+                                            style: theme.textTheme.labelSmall
+                                                ?.copyWith(
+                                                  color:
+                                                      scheme.onSurfaceVariant,
+                                                ),
+                                          ),
+                                          Text(
+                                            Formatting.date(
+                                              call.nextFollowup,
+                                            ),
+                                            style: theme.textTheme.bodySmall,
+                                          ),
+                                        ],
+                                      ),
+                              ),
+                          ],
+                        ),
+                ),
+          ],
 
           if (canSatisfaction) ...[
             const SizedBox(height: Spacing.lg),
@@ -1010,9 +1554,15 @@ class _ActionsSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final session = ref.watch(sessionControllerProvider).session;
     bool can(String permission) => session?.can(permission) ?? false;
+    final scheme = Theme.of(context).colorScheme;
+    final status = context.statusColors;
 
     final canUpdate = can(Permissions.clientsUpdate);
     final canCredit = can(Permissions.creditManage);
+    final canPortalLogin = can(Permissions.clientsPortalLogin);
+    // Delete and merge share this permission on the server — both move or
+    // destroy another record's history, so both sit behind the same gate.
+    final canDelete = can(Permissions.clientsDelete);
     final hasCredit = profile.creditBalance > 0.005;
     final hasUnpaid = profile.unpaidInvoices.isNotEmpty;
 
@@ -1020,6 +1570,14 @@ class _ActionsSheet extends ConsumerWidget {
       eyebrow: 'Client',
       title: profile.client.name,
       children: [
+        if (canPortalLogin)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.login),
+            title: const Text('Login as this client'),
+            subtitle: const Text("Opens their portal, in this client's shoes"),
+            onTap: () => Navigator.of(context).pop('portal-login'),
+          ),
         if (canUpdate)
           ListTile(
             contentPadding: EdgeInsets.zero,
@@ -1062,16 +1620,23 @@ class _ActionsSheet extends ConsumerWidget {
             subtitle: const Text('Raises the annual membership invoice'),
             onTap: () => Navigator.of(context).pop('reseller'),
           ),
-        const Divider(height: Spacing.lg),
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.info_outline),
-          title: const Text('Merging and deleting stay on the web'),
-          subtitle: const Text(
-            'Both move or destroy history across the whole account.',
+        if (canDelete) ...[
+          const Divider(height: Spacing.lg),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.call_merge, color: status.pending),
+            title: const Text('Merge with another client'),
+            subtitle: const Text('Moves everything into whichever survives'),
+            onTap: () => Navigator.of(context).pop('merge'),
           ),
-          enabled: false,
-        ),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Icon(Icons.delete_outline, color: scheme.error),
+            title: Text('Delete client', style: TextStyle(color: scheme.error)),
+            subtitle: const Text('Removes the client record — irreversible'),
+            onTap: () => Navigator.of(context).pop('delete'),
+          ),
+        ],
       ],
     );
   }

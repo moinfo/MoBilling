@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_auth/mobilling_auth.dart' show AuthSession;
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:share_plus/share_plus.dart' show Share;
 
 import '../../providers.dart';
 import '../clients/client_detail_screen.dart' show ContactActions;
@@ -62,9 +64,40 @@ class DocumentDetailScreen extends ConsumerWidget {
           // surface; it runs them through the same path so a decision made
           // there and one made in the sheet behave identically.
           onAction: (action) => _run(context, ref, doc, action),
+          onRemoveItem: (item) => _removeItem(context, ref, doc, item),
         ),
       ),
     );
+  }
+
+  /// Drops one line and recalculates — the server refuses this on a paid or
+  /// cancelled document, or on a document's last remaining item, and that
+  /// refusal is shown verbatim rather than re-worded.
+  Future<void> _removeItem(
+    BuildContext context,
+    WidgetRef ref,
+    StaffDocument doc,
+    StaffDocumentItem item,
+  ) async {
+    final confirmed = await _confirm(
+      context,
+      'Remove this line',
+      'Remove "${item.description}" from ${doc.documentNumber}? '
+          'The total is recalculated.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    );
+    if (!confirmed || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(billingCatalogServiceProvider)
+          .removeDocumentItem(doc.id, item.id);
+      ref.invalidate(staffDocumentProvider(documentId));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
   }
 
   Future<void> _openActions(
@@ -731,13 +764,22 @@ class _RefundSheetState extends ConsumerState<_RefundSheet> {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.doc, required this.onAction});
+  const _Body({
+    required this.doc,
+    required this.onAction,
+    required this.onRemoveItem,
+  });
 
   final StaffDocument doc;
 
   /// Runs an action through the screen's one handler, so the panel below the
   /// hero and the actions sheet cannot drift apart.
   final Future<void> Function(_DocumentAction) onAction;
+
+  /// Drops one line item. Scoped to a single row rather than folded into
+  /// [_DocumentAction] — that enum is for whole-document actions offered from
+  /// one sheet, and this one only ever applies to the row it's tapped on.
+  final Future<void> Function(StaffDocumentItem item) onRemoveItem;
 
   @override
   Widget build(BuildContext context) {
@@ -764,6 +806,8 @@ class _Body extends StatelessWidget {
         if (doc.isPayable) ...[
           const SizedBox(height: Spacing.md),
           _RecordPaymentAction(doc: doc),
+          const SizedBox(height: Spacing.md),
+          _SharePayPanel(doc: doc),
         ],
 
         if (doc.clientName != null) ...[
@@ -818,7 +862,18 @@ class _Body extends StatelessWidget {
               children: [
                 for (final (i, item) in doc.items.indexed) ...[
                   if (i > 0) const Divider(height: Spacing.md),
-                  _ItemRow(item: item),
+                  _ItemRow(
+                    item: item,
+                    // The last line on a document stands for cancelling it,
+                    // and a paid or cancelled document is a closed financial
+                    // record — the server refuses both, so neither is offered.
+                    onRemove:
+                        doc.items.length > 1 &&
+                            !doc.isCancelled &&
+                            doc.payments.isEmpty
+                        ? () => onRemoveItem(item)
+                        : null,
+                  ),
                 ],
                 const Divider(height: Spacing.lg),
                 _TotalRow('Subtotal', doc.subtotal),
@@ -1031,9 +1086,13 @@ class _HeroFigure extends StatelessWidget {
 }
 
 class _ItemRow extends StatelessWidget {
-  const _ItemRow({required this.item});
+  const _ItemRow({required this.item, this.onRemove});
 
   final StaffDocumentItem item;
+
+  /// Null hides the affordance outright — [_Body] only ever passes a
+  /// callback where the server would actually accept the removal.
+  final VoidCallback? onRemove;
 
   @override
   Widget build(BuildContext context) {
@@ -1067,6 +1126,21 @@ class _ItemRow extends StatelessWidget {
         ),
         const SizedBox(width: Spacing.sm),
         Money(item.total, scale: MoneyScale.dense, showCode: false),
+        if (onRemove != null) ...[
+          const SizedBox(width: Spacing.xs),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+            tooltip: 'Remove line',
+            icon: Icon(
+              Icons.delete_outline,
+              size: 18,
+              color: theme.colorScheme.error,
+            ),
+            onPressed: onRemove,
+          ),
+        ],
       ],
     );
   }
@@ -1108,6 +1182,133 @@ class _TotalRow extends StatelessWidget {
             color: bold ? null : theme.colorScheme.onSurfaceVariant,
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The client-facing pay link, built the same way the web does — string
+/// concatenation, no API call — plus the itemised summary staff already
+/// retype by hand into WhatsApp when chasing an invoice from a phone.
+class _SharePayPanel extends StatelessWidget {
+  const _SharePayPanel({required this.doc});
+
+  final StaffDocument doc;
+
+  /// The web builds this as `${window.location.origin}/pay/${doc.id}`; a
+  /// phone has no browser origin to read, so the production host is spelled
+  /// out here to match `AppConfig._productionBaseUrl` with `/api` dropped —
+  /// that constant is private to its file, so this mirrors it rather than
+  /// importing it. The link must reach production even from a debug build
+  /// talking to a local API, since it is handed to a real client.
+  static const _payBaseUrl = 'https://mobilling.co.tz';
+
+  String get _payUrl => '$_payBaseUrl/pay/${doc.id}';
+
+  String get _summary {
+    final lines = <String>[
+      'INVOICE ${doc.documentNumber}',
+      if (doc.clientName != null) 'To: ${doc.clientName}',
+      '',
+      'Items:',
+      for (final item in doc.items)
+        '  - ${item.description}: ${Formatting.amount(item.quantity)} x '
+            '${Formatting.amount(item.price)} = '
+            '${Formatting.amount(item.total)}',
+      '',
+      'Total: ${Formatting.amount(doc.total)}',
+      if (doc.paidAmount > 0) 'Paid: ${Formatting.amount(doc.paidAmount)}',
+      'Balance due: ${Formatting.amount(doc.balanceDue)}',
+      if (doc.dueDate != null) 'Due date: ${Formatting.date(doc.dueDate)}',
+      '',
+      'Pay online: $_payUrl',
+    ];
+    return lines.join('\n');
+  }
+
+  Future<void> _copy(BuildContext context, String value, String message) async {
+    await Clipboard.setData(ClipboardData(text: value));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final tone = context.statusColors.settled;
+
+    return Card(
+      color: Color.alphaBlend(
+        tone.withValues(alpha: 0.06),
+        theme.cardTheme.color ?? scheme.surface,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.link_rounded, size: 18, color: tone),
+                const SizedBox(width: Spacing.xs),
+                Text(
+                  'Share & pay',
+                  style: theme.textTheme.titleSmall?.copyWith(color: tone),
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _payUrl,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFamily: 'monospace',
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: 'Copy link',
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  onPressed: () =>
+                      _copy(context, _payUrl, 'Payment link copied.'),
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.copy_outlined, size: 16),
+                    label: const Text('Copy details'),
+                    onPressed: () =>
+                        _copy(context, _summary, 'Invoice details copied.'),
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
+                Expanded(
+                  child: FilledButton.icon(
+                    icon: const Icon(Icons.share_outlined, size: 16),
+                    label: const Text('Share'),
+                    onPressed: () => Share.share(
+                      _summary,
+                      subject: 'Invoice ${doc.documentNumber}',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

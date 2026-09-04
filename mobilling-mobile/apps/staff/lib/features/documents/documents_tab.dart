@@ -11,7 +11,7 @@ import '../billing_catalog/billing_catalog_providers.dart';
 import '../billing_catalog/document_form_screen.dart';
 import '../common/paged_list.dart';
 import '../crm/crm_ui.dart'
-    show CrmSheet, CrmStatusLine, FilterStrip, showCrmSheet;
+    show CrmSheet, CrmStatusLine, FilterStrip, showCrmMessage, showCrmSheet;
 
 /// Tenant-wide invoice list with status filter + search. A tab body inside the
 /// home shell — the shell owns the masthead, so this starts with the search.
@@ -36,10 +36,16 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
   Timer? _debounce;
   late String? _status = widget.initialStatus;
 
-  /// Chasing mode. Off, the list behaves as it always has — a row opens the
-  /// document. On, rows tick instead, and the button at the foot sends.
-  bool _selecting = false;
+  /// Picking mode. Null, the list behaves as it always has — a row opens the
+  /// document. Set, rows tick instead, and the button at the foot acts on
+  /// whichever job started the picking.
+  _PickMode? _pickMode;
   final _selected = <String>{};
+
+  /// Every ticked row in [_PickMode.merge] must share one client — this is
+  /// it, set from whichever row is ticked first and cleared with the rest of
+  /// the selection.
+  String? _mergeClientId;
 
   // 'sent' expands server-side to sent+overdue+partial ("unpaid").
   static const _filters = <(String?, String)>[
@@ -72,6 +78,14 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
       (row.type == null || row.type == 'invoice') &&
       const {'sent', 'overdue', 'partial'}.contains(row.status);
 
+  /// `mergeDocuments` refuses anything paid, cancelled, or carrying any
+  /// payment at all — 'partial' means a payment is already recorded, so it is
+  /// excluded here the same way [StaffDocument.canReturnToDraft] and
+  /// [StaffDocument.isDeletable] both key off "no payments yet" server-side.
+  bool _isMergeable(StaffInvoiceRow row) =>
+      (row.type == null || row.type == 'invoice') &&
+      !const {'paid', 'cancelled', 'partial'}.contains(row.status);
+
   /// Chasing only makes sense on a list of unpaid invoices, so the entry
   /// appears on those two filters and nowhere else — and only for the
   /// permission the route itself requires.
@@ -84,6 +98,13 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
         (_status == 'sent' || _status == 'overdue');
   }
 
+  /// Merging is raising a new document, so it is gated the same way as
+  /// raising one — and unlike chasing, it is not tied to any one filter.
+  bool get _mergeable {
+    final auth = ref.watch(sessionControllerProvider).session;
+    return auth?.can(BillingCatalogPermissions.documentsCreate) ?? false;
+  }
+
   /// Raising an invoice is gated on the same permission `POST /documents`
   /// requires, and lands on the new document so sending it is the next tap.
   bool get _creatable {
@@ -92,14 +113,47 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
     return auth?.can(BillingCatalogPermissions.documentsCreate) ?? false;
   }
 
-  void _toggle(StaffInvoiceRow row) => setState(() {
-    if (!_selected.remove(row.id)) _selected.add(row.id);
-    if (_selected.isEmpty) _selecting = false;
-  });
+  void _toggle(StaffInvoiceRow row) {
+    if (_pickMode == _PickMode.merge) {
+      _toggleMerge(row);
+      return;
+    }
+    setState(() {
+      if (!_selected.remove(row.id)) _selected.add(row.id);
+      if (_selected.isEmpty) _pickMode = null;
+    });
+  }
+
+  /// A row for a different client than what is already picked is refused
+  /// rather than silently swapped in — the server rejects a mixed-client
+  /// batch outright, so there is nothing useful a mixed tick could do.
+  void _toggleMerge(StaffInvoiceRow row) {
+    if (_selected.remove(row.id)) {
+      setState(() {
+        if (_selected.isEmpty) {
+          _pickMode = null;
+          _mergeClientId = null;
+        }
+      });
+      return;
+    }
+    if (_mergeClientId != null && row.clientId != _mergeClientId) {
+      showCrmMessage(
+        context,
+        'Merged invoices must all be for the same client.',
+      );
+      return;
+    }
+    setState(() {
+      _selected.add(row.id);
+      _mergeClientId ??= row.clientId;
+    });
+  }
 
   void _endSelecting() => setState(() {
-    _selecting = false;
+    _pickMode = null;
     _selected.clear();
+    _mergeClientId = null;
   });
 
   Future<void> _remind() async {
@@ -125,9 +179,57 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
     _listKey.currentState?.reload();
   }
 
+  /// Combines every ticked invoice onto one new invoice and cancels the
+  /// originals — a confirm first, since that cancellation is not undoable
+  /// from here, then whatever the server refuses (a payment that slipped in
+  /// since the tick, say) is shown exactly as it came back.
+  Future<void> _merge() async {
+    final ids = _selected.toList();
+    if (ids.length < 2) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Merge invoices'),
+        content: Text(
+          'Combine these ${Formatting.integer(ids.length)} invoices into '
+          'one new invoice? The originals are cancelled once this succeeds.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Merge'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final merged = await ref
+          .read(billingCatalogServiceProvider)
+          .mergeDocuments(ids);
+      if (!mounted) return;
+      _endSelecting();
+      _listKey.currentState?.reload();
+      messenger.showSnackBar(
+        SnackBar(content: Text('Merged into ${merged.documentNumber}.')),
+      );
+      context.push('/documents/${merged.id}');
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final remindable = _remindable;
+    final mergeable = _mergeable;
     final creatable = _creatable;
 
     return Column(
@@ -155,15 +257,16 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
           onSelect: (value) {
             setState(() {
               _status = value;
-              _selecting = false;
+              _pickMode = null;
               _selected.clear();
+              _mergeClientId = null;
             });
             _listKey.currentState?.reload();
           },
         ),
-        if (remindable || creatable)
+        if (remindable || mergeable || creatable)
           _ListActionStrip(
-            selecting: _selecting,
+            mode: _pickMode,
             count: _selected.length,
             onCreate: creatable
                 ? () => raiseDocument(
@@ -171,8 +274,11 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
                     onSaved: () => _listKey.currentState?.reload(),
                   )
                 : null,
-            onStart: remindable
-                ? () => setState(() => _selecting = true)
+            onRemindStart: remindable
+                ? () => setState(() => _pickMode = _PickMode.remind)
+                : null,
+            onMergeStart: mergeable
+                ? () => setState(() => _pickMode = _PickMode.merge)
                 : null,
             onCancel: _endSelecting,
           ),
@@ -195,20 +301,26 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
               Spacing.xl,
             ),
             itemBuilder: (context, doc) {
-              final tickable = remindable && _isChaseable(doc);
+              final eligible = switch (_pickMode) {
+                _PickMode.remind => _isChaseable(doc),
+                _PickMode.merge => _isMergeable(doc),
+                null => false,
+              };
               return StaffInvoiceCard(
                 document: doc,
-                selected: _selecting && tickable
-                    ? _selected.contains(doc.id)
-                    : null,
-                onTap: _selecting && tickable
+                selected: eligible ? _selected.contains(doc.id) : null,
+                onTap: eligible
                     ? () => _toggle(doc)
                     : () => context.push('/documents/${doc.id}'),
                 // Press and hold to start chasing, the way a phone starts any
-                // multi-select — so the strip above is a hint, not the only way.
-                onLongPress: tickable && !_selecting
+                // multi-select — so the strip above is a hint, not the only
+                // way. Merging has no long-press entry of its own: most rows
+                // that qualify for it also qualify for chasing, so a bare
+                // long press stays this one meaning rather than a guess.
+                onLongPress:
+                    _pickMode == null && remindable && _isChaseable(doc)
                     ? () {
-                        setState(() => _selecting = true);
+                        setState(() => _pickMode = _PickMode.remind);
                         _toggle(doc);
                       }
                     : null,
@@ -219,7 +331,7 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
             emptyMessage: 'Try another number, client or filter.',
           ),
         ),
-        if (_selecting && _selected.isNotEmpty)
+        if (_pickMode != null && _selected.isNotEmpty)
           SafeArea(
             top: false,
             child: Padding(
@@ -229,13 +341,16 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
                 Spacing.md,
                 Spacing.md,
               ),
-              child: PrimaryButton(
-                label: _selected.length == 1
-                    ? 'Send a reminder'
-                    : 'Remind ${Formatting.integer(_selected.length)} invoices',
-                icon: Icons.notifications_active_outlined,
-                onPressed: _remind,
-              ),
+              child: _pickMode == _PickMode.merge
+                  ? _MergeAction(count: _selected.length, onMerge: _merge)
+                  : PrimaryButton(
+                      label: _selected.length == 1
+                          ? 'Send a reminder'
+                          : 'Remind ${Formatting.integer(_selected.length)} '
+                                'invoices',
+                      icon: Icons.notifications_active_outlined,
+                      onPressed: _remind,
+                    ),
             ),
           ),
       ],
@@ -243,34 +358,70 @@ class _DocumentsTabState extends ConsumerState<DocumentsTab> {
   }
 }
 
+/// Merging takes at least two invoices, so the bottom bar names what is
+/// still missing rather than offering a button that would only 422.
+class _MergeAction extends StatelessWidget {
+  const _MergeAction({required this.count, required this.onMerge});
+
+  final int count;
+  final VoidCallback onMerge;
+
+  @override
+  Widget build(BuildContext context) {
+    if (count < 2) {
+      return Text(
+        'Pick one more invoice for the same client to merge.',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+      );
+    }
+    return PrimaryButton(
+      label: 'Merge Selected (${Formatting.integer(count)})',
+      icon: Icons.call_merge_outlined,
+      onPressed: onMerge,
+    );
+  }
+}
+
+/// Which bulk job a ticked row is being picked for — chasing payment or
+/// merging into one invoice. Kept as one mode rather than two booleans so a
+/// row can never be ambiguously ticked for both at once.
+enum _PickMode { remind, merge }
+
 /// The line between the filters and the list: what can be done to the list as
-/// a whole. Raising a new document sits on the left, chasing the existing ones
-/// on the right — and once ticking has started the whole line becomes the
-/// running count with a way out.
+/// a whole. Raising a new document sits on the left, the two bulk jobs on the
+/// right — and once ticking has started the whole line becomes the running
+/// count with a way out.
 class _ListActionStrip extends StatelessWidget {
   const _ListActionStrip({
-    required this.selecting,
+    required this.mode,
     required this.count,
     required this.onCreate,
-    required this.onStart,
+    required this.onRemindStart,
+    required this.onMergeStart,
     required this.onCancel,
   });
 
-  final bool selecting;
+  final _PickMode? mode;
   final int count;
 
   /// Null without `documents.create`.
   final VoidCallback? onCreate;
 
   /// Null without `documents.send`, or on a filter where chasing is meaningless.
-  final VoidCallback? onStart;
+  final VoidCallback? onRemindStart;
+
+  /// Null without `documents.create` — merging raises a new document.
+  final VoidCallback? onMergeStart;
   final VoidCallback onCancel;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    if (!selecting) {
+    if (mode == null) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: Spacing.sm),
         child: Row(
@@ -282,9 +433,15 @@ class _ListActionStrip extends StatelessWidget {
                 label: const Text('New invoice'),
               ),
             const Spacer(),
-            if (onStart != null)
+            if (onMergeStart != null)
               TextButton.icon(
-                onPressed: onStart,
+                onPressed: onMergeStart,
+                icon: const Icon(Icons.call_merge_outlined, size: 18),
+                label: const Text('Merge invoices'),
+              ),
+            if (onRemindStart != null)
+              TextButton.icon(
+                onPressed: onRemindStart,
                 icon: const Icon(Icons.notifications_active_outlined, size: 18),
                 label: const Text('Remind unpaid'),
               ),
@@ -293,15 +450,24 @@ class _ListActionStrip extends StatelessWidget {
       );
     }
 
+    final label = switch (mode!) {
+      _PickMode.remind =>
+        count == 0
+            ? 'PICK THE INVOICES TO CHASE'
+            : '${Formatting.integer(count)} SELECTED',
+      _PickMode.merge =>
+        count == 0
+            ? 'PICK THE INVOICES TO MERGE'
+            : '${Formatting.integer(count)} SELECTED',
+    };
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(Spacing.md, 0, Spacing.sm, 0),
       child: Row(
         children: [
           Expanded(
             child: Text(
-              count == 0
-                  ? 'PICK THE INVOICES TO CHASE'
-                  : '${Formatting.integer(count)} SELECTED',
+              label,
               style: theme.textTheme.labelSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -539,8 +705,43 @@ class StaffInvoiceCard extends StatelessWidget {
             ],
           ],
         ),
-        trailing: Money(document.total),
+        trailing: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Money(document.total),
+            if (document.reminderCount > 0) ...[
+              const SizedBox(height: 2),
+              _ReminderBadge(count: document.reminderCount),
+            ],
+          ],
+        ),
       ),
+    );
+  }
+}
+
+/// The detail screen's "N reminders sent" line, scaled down to a row: the
+/// same tone, just an icon standing in for the words a whole column of these
+/// has no room to repeat.
+class _ReminderBadge extends StatelessWidget {
+  const _ReminderBadge({required this.count});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = context.statusColors.attention;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.notifications_active_outlined, size: 12, color: tone),
+        const SizedBox(width: 2),
+        Text(
+          '$count',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(color: tone),
+        ),
+      ],
     );
   }
 }

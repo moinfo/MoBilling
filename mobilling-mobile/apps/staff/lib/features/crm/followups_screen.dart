@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
+import '../../router.dart';
+import 'call_script_sheet.dart';
 import 'crm_providers.dart';
 import 'crm_ui.dart';
 
@@ -22,6 +25,12 @@ class FollowupsScreen extends ConsumerStatefulWidget {
 class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
   String? _status;
 
+  // `outcome` is a second, independent axis from `status` (a fulfilled
+  // follow-up can have been fulfilled by any outcome), so it filters the
+  // already-fetched list client-side rather than becoming a second query
+  // parameter the backend list route does not accept.
+  String? _outcome;
+
   static const _filters = <(String?, String)>[
     // `Followup.status` values; `promised` is an outcome, not a status.
     (null, 'All'),
@@ -33,20 +42,33 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
     ('cancelled', 'Cancelled'),
   ];
 
+  static const _outcomeFilters = <(String?, String)>[
+    (null, 'All outcomes'),
+    ...FollowupOutcomes.values,
+  ];
+
   @override
   Widget build(BuildContext context) {
     final dashboard = ref.watch(followupDashboardProvider);
     final list = ref.watch(followupsProvider(_status));
     final status = context.statusColors;
-    final canLog =
-        ref
-            .watch(sessionControllerProvider)
-            .session
-            ?.can(CrmPermissions.followupLog) ??
-        false;
+    final session = ref.watch(sessionControllerProvider).session;
+    final canLog = session?.can(CrmPermissions.followupLog) ?? false;
+    final agentName = session?.user.name ?? 'Agent';
 
     return Scaffold(
-      appBar: const ShellTopBar(eyebrow: 'Billing', title: 'Follow-ups'),
+      appBar: ShellTopBar(
+        eyebrow: 'Billing',
+        title: 'Follow-ups',
+        trailing: InkActionButton(
+          icon: Icons.menu_book_outlined,
+          tooltip: 'Call script',
+          onPressed: () => showCrmSheet<void>(
+            context: context,
+            builder: (_) => CallScriptSheet(agentName: agentName),
+          ),
+        ),
+      ),
       body: Column(
         children: [
           // Counters come from the dashboard endpoint; the list below is the
@@ -86,12 +108,21 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
             selected: _status,
             onSelect: (v) => setState(() => _status = v),
           ),
+          FilterStrip(
+            options: _outcomeFilters,
+            selected: _outcome,
+            onSelect: (v) => setState(() => _outcome = v),
+          ),
           Expanded(
             child: CrmAsyncView(
               value: list,
               errorTitle: 'Could not load follow-ups',
               onRetry: () => ref.invalidate(followupsProvider(_status)),
-              builder: (items) => items.isEmpty
+              builder: (all) {
+                final items = _outcome == null
+                    ? all
+                    : all.where((f) => f.outcome == _outcome).toList();
+                return items.isEmpty
                   ? const StateMessage(
                       icon: Icons.phone_in_talk_outlined,
                       title: 'No follow-ups here',
@@ -131,7 +162,8 @@ class _FollowupsScreenState extends ConsumerState<FollowupsScreen> {
                           ),
                         ],
                       ),
-                    ),
+                    );
+              },
             ),
           ),
         ],
@@ -160,9 +192,12 @@ class _FollowupRow extends ConsumerWidget {
     final status = context.statusColors;
     final canAct = canLog && followup.isOpenWork;
     final hasPhone = followup.clientPhone != null;
+    final clientId = followup.clientId;
+    final documentId = followup.documentId;
 
+    // Call date and call count stay in the plain meta line; the document
+    // number is pulled out so it alone can be a tap-through to the invoice.
     final meta = [
-      if (followup.documentNumber != null) followup.documentNumber!,
       if (followup.callDate != null)
         'call ${Formatting.date(followup.callDate)}',
       if (followup.callCount != null && followup.callCount! > 0)
@@ -184,19 +219,68 @@ class _FollowupRow extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Text(
-                  followup.clientName ?? followup.documentNumber ?? 'Follow-up',
-                  style: theme.textTheme.titleSmall,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                child: clientId == null
+                    ? Text(
+                        followup.clientName ??
+                            followup.documentNumber ??
+                            'Follow-up',
+                        style: theme.textTheme.titleSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      )
+                    : InkWell(
+                        onTap: () =>
+                            context.push(Routes.clientPath(clientId)),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Flexible(
+                              child: Text(
+                                followup.clientName ?? 'Follow-up',
+                                style: theme.textTheme.titleSmall,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Icon(
+                              Icons.chevron_right,
+                              size: 16,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
+                      ),
               ),
               const SizedBox(width: Spacing.sm),
               Money(followup.invoiceBalance),
             ],
           ),
           const SizedBox(height: Spacing.xs),
-          CrmStatusLine(status: followup.status, meta: meta),
+          Row(
+            children: [
+              StatusChip(followup.status, dense: true),
+              if (followup.documentNumber != null) ...[
+                const SizedBox(width: Spacing.sm),
+                InkWell(
+                  onTap: documentId == null
+                      ? null
+                      : () => context.push('/documents/$documentId'),
+                  child: Text(
+                    followup.documentNumber!.toUpperCase(),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: documentId == null
+                          ? theme.colorScheme.onSurfaceVariant
+                          : theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+              ],
+              if (meta.isNotEmpty) ...[
+                const SizedBox(width: Spacing.sm),
+                Flexible(child: CrmMetaLine(meta)),
+              ],
+            ],
+          ),
           if (followup.promiseDate != null) ...[
             const SizedBox(height: Spacing.xs),
             Row(
@@ -236,12 +320,19 @@ class _FollowupRow extends ConsumerWidget {
               children: [
                 ContactRow(phone: followup.clientPhone, compact: true),
                 const Spacer(),
-                if (canAct)
+                if (canAct) ...[
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    tooltip: 'Cancel follow-up',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () => _cancel(context, ref),
+                  ),
                   TextButton.icon(
                     icon: const Icon(Icons.phone_in_talk_outlined, size: 18),
                     label: const Text('Log call'),
                     onPressed: () => _showLogSheet(context, ref),
                   ),
+                ],
               ],
             ),
           ],
@@ -256,6 +347,51 @@ class _FollowupRow extends ConsumerWidget {
       builder: (_) => _LogCallSheet(followup: followup),
     );
     if (logged == true) onLogged();
+  }
+
+  Future<void> _cancel(BuildContext context, WidgetRef ref) async {
+    final reason = await _promptCancelReason(context);
+    if (reason == null) return; // dialog dismissed — leave the follow-up be
+
+    try {
+      await ref
+          .read(crmServiceProvider)
+          .cancelFollowup(followup.id, reason: reason.isEmpty ? null : reason);
+      if (!context.mounted) return;
+      showCrmMessage(context, 'Follow-up cancelled.');
+      onLogged();
+    } on ApiException catch (e) {
+      if (!context.mounted) return;
+      showCrmMessage(context, e.message);
+    }
+  }
+
+  Future<String?> _promptCancelReason(BuildContext context) {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Cancel follow-up'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: 2,
+          textCapitalization: TextCapitalization.sentences,
+          decoration: const InputDecoration(hintText: 'Reason (optional)'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(controller.text.trim()),
+            child: const Text('Cancel follow-up'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

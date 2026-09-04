@@ -285,6 +285,35 @@ class BillingCatalogService {
         body: {'due_date': _ymd(dueDate)},
       );
 
+  /// POST /documents/merge — combines every line item of [documentIds] onto
+  /// one new invoice and cancels the originals. Needs `documents.create`.
+  ///
+  /// Server-side, every id must be an unpaid, uncancelled invoice for the
+  /// same client — a partially-paid one is refused (422: remove its payments
+  /// first). Callers should refetch the list after; this returns the new
+  /// document, not confirmation of what happened to the originals.
+  Future<StaffDocument> mergeDocuments(List<String> documentIds) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/documents/merge',
+      body: {'document_ids': documentIds},
+    );
+    return StaffDocument.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /documents/{document}/items/{item} — drop one line from a
+  /// multi-item, not-yet-paid document and recalculate the total. Needs
+  /// `documents.update`. Refused on a paid/cancelled document, and on the
+  /// last remaining item (cancel the document instead).
+  Future<StaffDocument> removeDocumentItem(
+    String documentId,
+    String itemId,
+  ) async {
+    final body = await _api.delete<Map<String, dynamic>>(
+      '/documents/$documentId/items/$itemId',
+    );
+    return StaffDocument.fromJson(_unwrap(body));
+  }
+
   /// GET /credit-notes — same table as documents, different endpoint.
   Future<Paginated<StaffInvoiceRow>> creditNotes({
     String? status,
@@ -333,6 +362,98 @@ class BillingCatalogService {
     return Paginated.fromJson(body, ProductService.fromJson);
   }
 
+  /// POST /product-services. Needs `products.create`.
+  ///
+  /// The four provisioning fields and [portalVisible] are write-only on this
+  /// endpoint's own resource — a GET never echoes them back, so an edit form
+  /// cannot prefill them from [ProductService] and must ask again each time.
+  Future<ProductService> createProduct({
+    required String type,
+    required String name,
+    required double price,
+    String? code,
+    String? description,
+    double? taxPercent,
+    String? unit,
+    String? category,
+    String? billingCycle,
+    bool isActive = true,
+    String provisioningType = 'none',
+    String? serverId,
+    String? cpanelPackage,
+    bool autoProvision = false,
+    bool portalVisible = true,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/product-services',
+      body: {
+        'type': type,
+        'name': name,
+        'price': price,
+        'code': ?code,
+        'description': ?description,
+        'tax_percent': ?taxPercent,
+        'unit': ?unit,
+        'category': ?category,
+        'billing_cycle': ?billingCycle,
+        'is_active': isActive,
+        'provisioning_type': provisioningType,
+        'server_id': ?serverId,
+        'cpanel_package': ?cpanelPackage,
+        'auto_provision': autoProvision,
+        'portal_visible': portalVisible,
+      },
+    );
+    return ProductService.fromJson(_unwrap(body));
+  }
+
+  /// PUT /product-services/{id}. Needs `products.update`. Every field is
+  /// `sometimes`; pass only what changed.
+  Future<ProductService> updateProduct(
+    String id, {
+    String? type,
+    String? name,
+    double? price,
+    String? code,
+    String? description,
+    double? taxPercent,
+    String? unit,
+    String? category,
+    String? billingCycle,
+    bool? isActive,
+    String? provisioningType,
+    String? serverId,
+    String? cpanelPackage,
+    bool? autoProvision,
+    bool? portalVisible,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/product-services/$id',
+      body: {
+        'type': ?type,
+        'name': ?name,
+        'price': ?price,
+        'code': ?code,
+        'description': ?description,
+        'tax_percent': ?taxPercent,
+        'unit': ?unit,
+        'category': ?category,
+        'billing_cycle': ?billingCycle,
+        'is_active': ?isActive,
+        'provisioning_type': ?provisioningType,
+        'server_id': ?serverId,
+        'cpanel_package': ?cpanelPackage,
+        'auto_provision': ?autoProvision,
+        'portal_visible': ?portalVisible,
+      },
+    );
+    return ProductService.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /product-services/{id}. Needs `products.delete`.
+  Future<void> deleteProduct(String id) =>
+      _api.delete<dynamic>('/product-services/$id');
+
   /// GET /product-addons — unpaginated.
   Future<List<StaffProductAddon>> addons({String? search}) async {
     final body = await _api.get<dynamic>(
@@ -341,6 +462,64 @@ class BillingCatalogService {
     );
     return Paginated.fromJson(body, StaffProductAddon.fromJson).items;
   }
+
+  /// POST /product-addons. Needs `products.create` (add-ons share the
+  /// product permissions).
+  Future<StaffProductAddon> createAddon({
+    required String name,
+    required double price,
+    required String billingCycle,
+    String? description,
+    double? taxPercent,
+    bool isActive = true,
+    List<String> productServiceIds = const [],
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/product-addons',
+      body: {
+        'name': name,
+        'price': price,
+        'billing_cycle': billingCycle,
+        'description': ?description,
+        'tax_percent': ?taxPercent,
+        'is_active': isActive,
+        'product_service_ids': productServiceIds,
+      },
+    );
+    return StaffProductAddon.fromJson(_unwrap(body));
+  }
+
+  /// PUT /product-addons/{id}. Every field is `sometimes`.
+  Future<StaffProductAddon> updateAddon(
+    String id, {
+    String? name,
+    double? price,
+    String? billingCycle,
+    String? description,
+    double? taxPercent,
+    bool? isActive,
+    List<String>? productServiceIds,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/product-addons/$id',
+      body: {
+        'name': ?name,
+        'price': ?price,
+        'billing_cycle': ?billingCycle,
+        'description': ?description,
+        'tax_percent': ?taxPercent,
+        'is_active': ?isActive,
+        'product_service_ids': ?productServiceIds,
+      },
+    );
+    return StaffProductAddon.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /product-addons/{id}. A service that already has this add-on
+  /// keeps its own attached copy — deleting the catalog entry only stops it
+  /// being offered on new orders.
+  Future<void> deleteAddon(String id) =>
+      _api.delete<dynamic>('/product-addons/$id');
 
   /// GET /config-option-groups — unpaginated, with options and choices nested.
   Future<List<StaffConfigGroup>> configGroups({String? search}) async {
@@ -351,10 +530,146 @@ class BillingCatalogService {
     return Paginated.fromJson(body, StaffConfigGroup.fromJson).items;
   }
 
+  /// POST /config-option-groups. Needs `products.create`. [options] is the
+  /// group's complete option tree — see [ConfigOptionInput].
+  Future<StaffConfigGroup> createConfigGroup({
+    required String name,
+    String? description,
+    bool isActive = true,
+    List<String> productServiceIds = const [],
+    List<ConfigOptionInput> options = const [],
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/config-option-groups',
+      body: {
+        'name': name,
+        'description': ?description,
+        'is_active': isActive,
+        'product_service_ids': productServiceIds,
+        'options': [for (final o in options) o.toJson()],
+      },
+    );
+    return StaffConfigGroup.fromJson(_unwrap(body));
+  }
+
+  /// PUT /config-option-groups/{id}. [options], when passed, replaces the
+  /// group's *entire* option tree — an existing option or choice left out
+  /// of the list is deleted server-side. Send the full desired tree, not a
+  /// diff (round-trip through [StaffConfigOption.toInput] /
+  /// [StaffConfigChoice.toInput] to build it from what's already there).
+  Future<StaffConfigGroup> updateConfigGroup(
+    String id, {
+    String? name,
+    String? description,
+    bool? isActive,
+    List<String>? productServiceIds,
+    List<ConfigOptionInput>? options,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/config-option-groups/$id',
+      body: {
+        'name': ?name,
+        'description': ?description,
+        'is_active': ?isActive,
+        'product_service_ids': ?productServiceIds,
+        if (options != null) 'options': [for (final o in options) o.toJson()],
+      },
+    );
+    return StaffConfigGroup.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /config-option-groups/{id}. Needs `products.delete`. Takes every
+  /// option and choice in the group with it.
+  Future<void> deleteConfigGroup(String id) =>
+      _api.delete<dynamic>('/config-option-groups/$id');
+
   /// GET /coupons — unpaginated, with redemption counts.
   Future<List<StaffCoupon>> coupons({String? search}) async {
     final body = await _api.get<dynamic>('/coupons', query: {'search': search});
     return Paginated.fromJson(body, StaffCoupon.fromJson).items;
+  }
+
+  /// POST /coupons. Needs `products.create` (coupons share the product
+  /// permissions). [code] must be unique per tenant, including against a
+  /// soft-deleted coupon's old code.
+  Future<StaffCoupon> createCoupon({
+    required String code,
+    required String type,
+    required double value,
+    String? description,
+    String appliesTo = 'all',
+    int? maxUses,
+    double? minOrder,
+    DateTime? startsAt,
+    DateTime? expiresAt,
+    bool recurring = false,
+    bool isActive = true,
+    List<String> productServiceIds = const [],
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/coupons',
+      body: {
+        'code': code,
+        'type': type,
+        'value': value,
+        'description': ?description,
+        'applies_to': appliesTo,
+        'max_uses': ?maxUses,
+        'min_order': ?minOrder,
+        if (startsAt != null) 'starts_at': _ymd(startsAt),
+        if (expiresAt != null) 'expires_at': _ymd(expiresAt),
+        'recurring': recurring,
+        'is_active': isActive,
+        'product_service_ids': productServiceIds,
+      },
+    );
+    return StaffCoupon.fromJson(_unwrap(body));
+  }
+
+  /// PUT /coupons/{id}. Every field is `sometimes`.
+  Future<StaffCoupon> updateCoupon(
+    String id, {
+    String? code,
+    String? type,
+    double? value,
+    String? description,
+    String? appliesTo,
+    int? maxUses,
+    double? minOrder,
+    DateTime? startsAt,
+    DateTime? expiresAt,
+    bool? recurring,
+    bool? isActive,
+    List<String>? productServiceIds,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/coupons/$id',
+      body: {
+        'code': ?code,
+        'type': ?type,
+        'value': ?value,
+        'description': ?description,
+        'applies_to': ?appliesTo,
+        'max_uses': ?maxUses,
+        'min_order': ?minOrder,
+        if (startsAt != null) 'starts_at': _ymd(startsAt),
+        if (expiresAt != null) 'expires_at': _ymd(expiresAt),
+        'recurring': ?recurring,
+        'is_active': ?isActive,
+        'product_service_ids': ?productServiceIds,
+      },
+    );
+    return StaffCoupon.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /coupons/{id}. Needs `products.delete`.
+  Future<void> deleteCoupon(String id) =>
+      _api.delete<dynamic>('/coupons/$id');
+
+  /// GET /coupons/{id}/redemptions — newest first, capped at 200 server-side.
+  Future<List<CouponRedemption>> couponRedemptions(String id) async {
+    final body = await _api.get<dynamic>('/coupons/$id/redemptions');
+    return Paginated.fromJson(body, CouponRedemption.fromJson).items;
   }
 
   /// GET /client-subscriptions — tenant-wide, paginated.
@@ -375,6 +690,101 @@ class BillingCatalogService {
     );
     return Paginated.fromJson(body, StaffSubscription.fromJson);
   }
+
+  /// POST /client-subscriptions — a single line. Needs
+  /// `client_subscriptions.create`. For more than one product on the same
+  /// order, use [createSubscriptionsBulk] instead — it is what the web's own
+  /// "New subscription" modal actually calls.
+  Future<StaffSubscription> createSubscription({
+    required String clientId,
+    required String productServiceId,
+    required DateTime startDate,
+    String? label,
+    int quantity = 1,
+    String? discountType,
+    double? discountValue,
+    String status = 'active',
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/client-subscriptions',
+      body: {
+        'client_id': clientId,
+        'product_service_id': productServiceId,
+        'start_date': _ymd(startDate),
+        'label': ?label,
+        'quantity': quantity,
+        'discount_type': ?discountType,
+        'discount_value': ?discountValue,
+        'status': status,
+      },
+    );
+    return StaffSubscription.fromJson(_unwrap(body));
+  }
+
+  /// POST /client-subscriptions/bulk — one or more lines for the same client
+  /// and start date in a single order, each its own subscription row.
+  Future<List<StaffSubscription>> createSubscriptionsBulk({
+    required String clientId,
+    required DateTime startDate,
+    required List<SubscriptionLineInput> items,
+    String status = 'active',
+  }) async {
+    final body = await _api.post<dynamic>(
+      '/client-subscriptions/bulk',
+      body: {
+        'client_id': clientId,
+        'start_date': _ymd(startDate),
+        'status': status,
+        'items': [for (final item in items) item.toJson()],
+      },
+    );
+    return Paginated.fromJson(body, StaffSubscription.fromJson).items;
+  }
+
+  /// PUT /client-subscriptions/{id}. Every field is `sometimes`.
+  Future<StaffSubscription> updateSubscription(
+    String id, {
+    String? productServiceId,
+    String? label,
+    int? quantity,
+    String? discountType,
+    double? discountValue,
+    DateTime? startDate,
+    String? status,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/client-subscriptions/$id',
+      body: {
+        'product_service_id': ?productServiceId,
+        'label': ?label,
+        'quantity': ?quantity,
+        'discount_type': ?discountType,
+        'discount_value': ?discountValue,
+        if (startDate != null) 'start_date': _ymd(startDate),
+        'status': ?status,
+      },
+    );
+    return StaffSubscription.fromJson(_unwrap(body));
+  }
+
+  /// PATCH /client-subscriptions/{id}/expire-date — the "Renew" action:
+  /// corrects or extends the renewal date without touching anything else.
+  Future<StaffSubscription> renewSubscription(
+    String id, {
+    required DateTime expireDate,
+  }) async {
+    final body = await _api.patch<Map<String, dynamic>>(
+      '/client-subscriptions/$id/expire-date',
+      body: {'expire_date': _ymd(expireDate)},
+    );
+    return StaffSubscription.fromJson(_unwrap(body));
+  }
+
+  /// DELETE /client-subscriptions/{id}. Needs `client_subscriptions.delete`.
+  /// The billing record only — a provisioned hosting account keeps running
+  /// unbilled unless it is terminated separately.
+  Future<void> deleteSubscription(String id) =>
+      _api.delete<dynamic>('/client-subscriptions/$id');
 
   /// Binary GET through the same bearer-token channel as everything else, so
   /// no URL ever has to carry a token. Mirrors `HrService._download`.
@@ -419,5 +829,15 @@ abstract final class BillingCatalogPermissions {
   static const paymentsInCreate = 'payments_in.create';
 
   static const productsRead = 'products.read';
+
+  /// Add-ons, configurable-option groups and coupons all share these three —
+  /// none has its own dedicated permission set.
+  static const productsCreate = 'products.create';
+  static const productsUpdate = 'products.update';
+  static const productsDelete = 'products.delete';
+
   static const subscriptionsRead = 'client_subscriptions.read';
+  static const subscriptionsCreate = 'client_subscriptions.create';
+  static const subscriptionsUpdate = 'client_subscriptions.update';
+  static const subscriptionsDelete = 'client_subscriptions.delete';
 }

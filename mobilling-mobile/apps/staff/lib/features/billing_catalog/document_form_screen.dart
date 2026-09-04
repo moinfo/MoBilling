@@ -703,6 +703,16 @@ class _ItemSheetState extends State<_ItemSheet> {
   late final _quantity = TextEditingController(text: _plain(_draft.quantity));
   late final _price = TextEditingController(text: _plain(_draft.price));
   late final _tax = TextEditingController(text: _plain(_draft.taxPercent));
+  late final _discount = TextEditingController(
+    text: _plain(_draft.discountValue),
+  );
+
+  /// 'flat' or 'percent' — kept even while the value field is empty, so
+  /// switching the toggle before typing a figure still lands on the type the
+  /// user picked.
+  late String _discountType = _draft.discountType == 'percent'
+      ? 'percent'
+      : 'flat';
 
   String? _error;
 
@@ -712,6 +722,7 @@ class _ItemSheetState extends State<_ItemSheet> {
     _quantity.dispose();
     _price.dispose();
     _tax.dispose();
+    _discount.dispose();
     super.dispose();
   }
 
@@ -731,6 +742,13 @@ class _ItemSheetState extends State<_ItemSheet> {
       _draft.quantity = _number(_quantity) ?? 0;
       _draft.price = _number(_price) ?? 0;
       _draft.taxPercent = _number(_tax);
+      final discount = _number(_discount);
+      _draft.discountValue = discount;
+      // A blank field means no discount at all, not "zero percent" — nulling
+      // the type along with the value keeps `toJson` from sending either.
+      _draft.discountType = (discount == null || discount <= 0)
+          ? null
+          : _discountType;
     });
   }
 
@@ -773,6 +791,10 @@ class _ItemSheetState extends State<_ItemSheet> {
     }
     if ((_draft.taxPercent ?? 0) < 0 || (_draft.taxPercent ?? 0) > 100) {
       setState(() => _error = 'Tax must be between 0 and 100 percent.');
+      return;
+    }
+    if (_draft.discountType == 'percent' && (_draft.discountValue ?? 0) > 100) {
+      setState(() => _error = 'A percentage discount cannot exceed 100%.');
       return;
     }
     Navigator.of(context).pop(_draft);
@@ -865,6 +887,43 @@ class _ItemSheetState extends State<_ItemSheet> {
               hintText: 'None',
               suffixText: '%',
             ),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Discount',
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _discount,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  onChanged: (_) => _sync(),
+                  decoration: InputDecoration(
+                    hintText: 'None',
+                    suffixText: _discountType == 'percent'
+                        ? '%'
+                        : Formatting.tenantCurrency,
+                  ),
+                ),
+              ),
+              const SizedBox(width: Spacing.md),
+              SegmentedButton<String>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(value: 'flat', label: Text('Flat')),
+                  ButtonSegment(value: 'percent', label: Text('%')),
+                ],
+                selected: {_discountType},
+                onSelectionChanged: (choice) {
+                  setState(() => _discountType = choice.first);
+                  _sync();
+                },
+              ),
+            ],
           ),
         ),
         const SizedBox(height: Spacing.lg),

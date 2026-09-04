@@ -31,6 +31,7 @@ class _PortalUsersDirectoryScreenState
   Timer? _debounce;
   String? _role;
   bool? _active;
+  int _perPage = 25;
 
   static const _roleFilters = <(String?, String)>[
     (null, 'All roles'),
@@ -77,19 +78,53 @@ class _PortalUsersDirectoryScreenState
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(Spacing.md, 0, Spacing.md, 0),
-            child: SegmentedButton<bool?>(
-              segments: const [
-                ButtonSegment(value: null, label: Text('All')),
-                ButtonSegment(value: true, label: Text('Active')),
-                ButtonSegment(value: false, label: Text('Disabled')),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SegmentedButton<bool?>(
+                    segments: const [
+                      ButtonSegment(value: null, label: Text('All')),
+                      ButtonSegment(value: true, label: Text('Active')),
+                      ButtonSegment(value: false, label: Text('Disabled')),
+                    ],
+                    selected: {_active},
+                    onSelectionChanged: (s) {
+                      setState(() => _active = s.first);
+                      _listKey.currentState?.reload();
+                    },
+                    showSelectedIcon: false,
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
+                PopupMenuButton<int>(
+                  tooltip: 'Rows per page',
+                  initialValue: _perPage,
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 25, child: Text('25 / page')),
+                    PopupMenuItem(value: 50, child: Text('50 / page')),
+                    PopupMenuItem(value: 100, child: Text('100 / page')),
+                  ],
+                  onSelected: (v) {
+                    setState(() => _perPage = v);
+                    _listKey.currentState?.reload();
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Spacing.sm,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('$_perPage', style: Theme.of(context).textTheme.labelMedium),
+                        const Icon(Icons.arrow_drop_down, size: 18),
+                      ],
+                    ),
+                  ),
+                ),
               ],
-              selected: {_active},
-              onSelectionChanged: (s) {
-                setState(() => _active = s.first);
-                _listKey.currentState?.reload();
-              },
-              showSelectedIcon: false,
-              style: const ButtonStyle(visualDensity: VisualDensity.compact),
             ),
           ),
           const SizedBox(height: Spacing.md),
@@ -118,6 +153,7 @@ class _PortalUsersDirectoryScreenState
                         role: _role,
                         active: _active,
                         page: page,
+                        perPage: _perPage,
                       ),
                   itemBuilder: (context, user) => _PortalUserRow(
                     user: user,

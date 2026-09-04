@@ -7,6 +7,7 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
 import '../common/paged_list.dart';
+import '../common/pickers.dart' show ClientPickerSheet;
 import 'billing_money_providers.dart';
 import 'payment_method_field.dart';
 
@@ -14,7 +15,10 @@ import 'payment_method_field.dart';
 /// desk ("the client just paid, log it before I forget").
 ///
 /// Two steps: pick the invoice, then confirm the amount. Picking the invoice
-/// first is what supplies `client_id`, which the API requires.
+/// first is what supplies `client_id`, which the API requires. The "no
+/// invoice" trailing action skips straight to a client picker instead, for a
+/// standalone payment — the API accepts `document_id` as optional and only
+/// ever needed it for that one field.
 class RecordPaymentScreen extends ConsumerStatefulWidget {
   const RecordPaymentScreen({super.key, this.invoice});
 
@@ -33,6 +37,7 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
   Timer? _debounce;
 
   UnpaidInvoice? _selected;
+  StaffClient? _standaloneClient;
 
   @override
   void initState() {
@@ -55,25 +60,43 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
     );
   }
 
+  Future<void> _pickStandaloneClient() async {
+    final client = await ClientPickerSheet.show(context);
+    if (client != null) setState(() => _standaloneClient = client);
+  }
+
   @override
   Widget build(BuildContext context) {
     final selected = _selected;
+    final standalone = _standaloneClient;
+    final showingForm = selected != null || standalone != null;
 
     return Scaffold(
       appBar: ShellTopBar(
         eyebrow: 'Billing',
-        title: selected == null ? 'Choose invoice' : 'Record payment',
+        title: showingForm ? 'Record payment' : 'Choose invoice',
+        trailing: showingForm
+            ? null
+            : InkActionButton(
+                icon: Icons.person_search_outlined,
+                tooltip: 'Standalone payment — no invoice',
+                onPressed: _pickStandaloneClient,
+              ),
         // The search lives on the ink while picking, and leaves with the
         // picker so the form's masthead is the one line it needs.
-        bottom: selected == null
-            ? InkSearchField(
+        bottom: showingForm
+            ? null
+            : InkSearchField(
                 controller: _search,
                 hint: 'Search invoice number or client',
                 onChanged: _onSearchChanged,
-              )
-            : null,
+              ),
       ),
-      body: selected == null ? _buildPicker() : _buildForm(selected),
+      body: selected != null
+          ? _buildForm(selected)
+          : standalone != null
+          ? _buildStandaloneForm(standalone)
+          : _buildPicker(),
     );
   }
 
@@ -123,15 +146,32 @@ class _RecordPaymentScreenState extends ConsumerState<RecordPaymentScreen> {
 
   Widget _buildForm(UnpaidInvoice invoice) => _PaymentForm(
     invoice: invoice,
-    onChangeInvoice: () => setState(() => _selected = null),
+    clientId: invoice.clientId ?? '',
+    clientName: invoice.clientName,
+    onChangeSelection: () => setState(() => _selected = null),
+  );
+
+  Widget _buildStandaloneForm(StaffClient client) => _PaymentForm(
+    clientId: client.id,
+    clientName: client.name,
+    onChangeSelection: () => setState(() => _standaloneClient = null),
   );
 }
 
 class _PaymentForm extends ConsumerStatefulWidget {
-  const _PaymentForm({required this.invoice, required this.onChangeInvoice});
+  const _PaymentForm({
+    this.invoice,
+    required this.clientId,
+    this.clientName,
+    required this.onChangeSelection,
+  });
 
-  final UnpaidInvoice invoice;
-  final VoidCallback onChangeInvoice;
+  /// Null for a standalone payment — the amount goes on the books with no
+  /// invoice attached at all.
+  final UnpaidInvoice? invoice;
+  final String clientId;
+  final String? clientName;
+  final VoidCallback onChangeSelection;
 
   @override
   ConsumerState<_PaymentForm> createState() => _PaymentFormState();
@@ -153,14 +193,16 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
   /// the person collecting says otherwise.
   bool _sendEmail = true;
 
-  UnpaidInvoice get invoice => widget.invoice;
+  UnpaidInvoice? get invoice => widget.invoice;
 
   @override
   void initState() {
     super.initState();
-    // Prefill the balance due — the overwhelmingly common case is paying in full.
+    // Prefill the balance due — the overwhelmingly common case is paying in
+    // full. A standalone payment has no balance to prefill from.
+    final invoice = widget.invoice;
     _amount = TextEditingController(
-      text: invoice.balanceDue.toStringAsFixed(2),
+      text: invoice == null ? '' : invoice.balanceDue.toStringAsFixed(2),
     );
   }
 
@@ -186,9 +228,9 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
 
-    final clientId = invoice.clientId;
-    if (clientId == null || clientId.isEmpty) {
-      // The API requires client_id and the invoice row is where we get it.
+    final clientId = widget.clientId;
+    if (clientId.isEmpty) {
+      // The API requires client_id — an invoice missing one can't be posted.
       setState(
         () => _error =
             'This invoice has no client on record — record the payment from the web app.',
@@ -207,7 +249,7 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
           .read(billingMoneyServiceProvider)
           .recordPaymentIn(
             clientId: clientId,
-            documentId: invoice.id,
+            documentId: widget.invoice?.id,
             amount: double.parse(_amount.text.trim()),
             paymentDate: _date,
             paymentMethod: _method!,
@@ -244,6 +286,7 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final invoice = widget.invoice;
 
     return SingleChildScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
@@ -263,25 +306,38 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
               const SizedBox(height: Spacing.md),
             ],
 
-            // The one figure this screen is about: what is still owed.
+            // The one figure this screen is about: what is still owed — or,
+            // for a standalone payment, simply who it's for.
             Reveal(
-              child: _HeroFigure(
-                label: 'Balance due',
-                amount: invoice.balanceDue,
-                title: invoice.clientName ?? invoice.documentNumber,
-                meta: [
-                  invoice.documentNumber,
-                  if (invoice.isPartlyPaid)
-                    'paid ${Formatting.currency(invoice.paidAmount)}',
-                  if (invoice.dueDate != null)
-                    Formatting.dueDescription(invoice.dueDate),
-                ].join(' · '),
-                status: invoice.status,
-                action: TextButton(
-                  onPressed: _submitting ? null : widget.onChangeInvoice,
-                  child: const Text('Change invoice'),
-                ),
-              ),
+              child: invoice == null
+                  ? _StandaloneHeader(
+                      clientName: widget.clientName ?? 'Client',
+                      action: TextButton(
+                        onPressed: _submitting
+                            ? null
+                            : widget.onChangeSelection,
+                        child: const Text('Change client'),
+                      ),
+                    )
+                  : _HeroFigure(
+                      label: 'Balance due',
+                      amount: invoice.balanceDue,
+                      title: invoice.clientName ?? invoice.documentNumber,
+                      meta: [
+                        invoice.documentNumber,
+                        if (invoice.isPartlyPaid)
+                          'paid ${Formatting.currency(invoice.paidAmount)}',
+                        if (invoice.dueDate != null)
+                          Formatting.dueDescription(invoice.dueDate),
+                      ].join(' · '),
+                      status: invoice.status,
+                      action: TextButton(
+                        onPressed: _submitting
+                            ? null
+                            : widget.onChangeSelection,
+                        child: const Text('Change invoice'),
+                      ),
+                    ),
             ),
             const SizedBox(height: Spacing.lg),
 
@@ -299,8 +355,9 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
               decoration: InputDecoration(
                 hintText: '0.00',
                 prefixText: '${Formatting.tenantCurrency} ',
-                helperText:
-                    'Balance due ${Formatting.amount(invoice.balanceDue)}',
+                helperText: invoice == null
+                    ? null
+                    : 'Balance due ${Formatting.amount(invoice.balanceDue)}',
               ),
               validator: (v) {
                 final parsed = double.tryParse(v?.trim() ?? '');
@@ -308,8 +365,9 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
                   return 'Enter the amount received';
                 }
                 // Overpayment isn't rejected by the API (credit can result),
-                // so warn rather than block — but catch obvious typos.
-                if (parsed > invoice.balanceDue * 10) {
+                // so warn rather than block — but catch obvious typos. A
+                // standalone payment has no balance to sanity-check against.
+                if (invoice != null && parsed > invoice.balanceDue * 10) {
                   return 'That looks far too large — check the amount';
                 }
                 return null;
@@ -358,25 +416,29 @@ class _PaymentFormState extends ConsumerState<_PaymentForm> {
 
             // The receipt is the client's proof, so it goes out by default —
             // but a payment logged days late, or one the client already has a
-            // paper receipt for, should not mail a second one.
-            CheckboxListTile(
-              value: _sendEmail,
-              onChanged: _submitting
-                  ? null
-                  : (v) => setState(() => _sendEmail = v ?? true),
-              contentPadding: EdgeInsets.zero,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: const Text('Email the receipt to the client'),
-              subtitle: Text(
-                invoice.clientName == null
-                    ? 'Sent to the address on the client record.'
-                    : 'Sent to ${invoice.clientName}’s address on file.',
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
+            // paper receipt for, should not mail a second one. The API only
+            // mails a receipt when there's a document to attach it to, so a
+            // standalone payment has nothing for this checkbox to do.
+            if (invoice != null) ...[
+              CheckboxListTile(
+                value: _sendEmail,
+                onChanged: _submitting
+                    ? null
+                    : (v) => setState(() => _sendEmail = v ?? true),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.leading,
+                title: const Text('Email the receipt to the client'),
+                subtitle: Text(
+                  invoice.clientName == null
+                      ? 'Sent to the address on the client record.'
+                      : 'Sent to ${invoice.clientName}’s address on file.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: Spacing.md),
+              const SizedBox(height: Spacing.md),
+            ],
 
             PrimaryButton(
               label: _submitting ? 'Recording…' : 'Record payment',
@@ -464,6 +526,57 @@ class _HeroFigure extends StatelessWidget {
                 ?action,
               ],
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// The card a standalone form leads with instead of [_HeroFigure] — there is
+/// no balance to headline, only the client the payment is being logged for.
+class _StandaloneHeader extends StatelessWidget {
+  const _StandaloneHeader({required this.clientName, this.action});
+
+  final String clientName;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+          Spacing.md,
+          Spacing.md,
+          Spacing.sm,
+          Spacing.sm,
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'STANDALONE PAYMENT · NO INVOICE',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  ),
+                  const SizedBox(height: Spacing.xs),
+                  Text(
+                    clientName,
+                    style: theme.textTheme.titleSmall,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+            ?action,
           ],
         ),
       ),

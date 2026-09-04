@@ -107,6 +107,36 @@ class StaffService {
     return _message(body);
   }
 
+  /// DELETE /clients/{id} — needs `clients.delete`.
+  ///
+  /// The server enforces no safety check of its own — no outstanding-balance
+  /// guard, nothing — so a caller offering this must supply its own
+  /// confirmation; there is no 422 to fall back on if someone taps it by
+  /// mistake.
+  Future<String?> deleteClient(String clientId) async {
+    final body = await _api.delete<dynamic>('/clients/$clientId');
+    return _message(body);
+  }
+
+  /// POST /clients/{id}/merge — needs `clients.delete`. [id] is "the first
+  /// client" in the request but not necessarily the survivor: [keep] says
+  /// which of the two the record continues as. Everything belonging to the
+  /// other — documents, subscriptions, tickets, communications, and more —
+  /// is reassigned to the survivor; [ClientMergeResult.moved] is the exact
+  /// per-table count of what moved, meant for a confirmation summary before
+  /// this runs, not just a report after.
+  Future<ClientMergeResult> mergeClients(
+    String clientId, {
+    required String otherClientId,
+    required String keep,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/clients/$clientId/merge',
+      body: {'second_client_id': otherClientId, 'keep': keep},
+    );
+    return ClientMergeResult.fromJson(_data(body));
+  }
+
   // -------------------------------------------------------------------------
   // Clients — additional contacts
   // -------------------------------------------------------------------------
@@ -253,16 +283,19 @@ class StaffService {
 
   /// POST /clients/{id}/portal-login — needs `clients.portal_login`.
   ///
-  /// Mints a live portal session for the client, creating a portal user first
-  /// if they have none (which needs the client to have an email). The staff
-  /// app has no portal shell to hand the token to, so nothing calls this yet;
-  /// it is here so a future in-app "view as client" needs no API work.
-  Future<ClientPortalLogin> portalLoginAsClient(String clientId) async {
-    final body = await _api.post<Map<String, dynamic>>(
-      '/clients/$clientId/portal-login',
-    );
-    return ClientPortalLogin.fromJson(body);
-  }
+  /// Mints a live portal session for the client, creating a portal user
+  /// first if they have none (which needs the client to have an email, or
+  /// this 422s: "Client has no email address. Add an email first.").
+  ///
+  /// Returns the raw response rather than a parsed model: it already comes
+  /// back shaped exactly like a login response (`user`, `token`,
+  /// `user_type: 'client'`, `permissions`), so a caller builds
+  /// `AuthSession.fromJson(body)` straight from it and hands that to
+  /// `SessionController.impersonate` — the same swap-and-stash mechanism
+  /// platform-admin tenant impersonation already uses (see
+  /// `_adoptImpersonation` in `features/platform/tenants_screens.dart`).
+  Future<Map<String, dynamic>> portalLoginAsClient(String clientId) =>
+      _api.post<Map<String, dynamic>>('/clients/$clientId/portal-login');
 
   /// GET /satisfaction-calls/client/{id} — this client's call history, most
   /// recent first. Needs `menu.satisfaction_calls`, which most billing roles
@@ -276,12 +309,15 @@ class StaffService {
     return Paginated.fromJson(body, SatisfactionCall.fromJson).items;
   }
 
-  /// GET /documents — paginated documents of any type.
+  /// GET /documents — paginated documents of any type. [dateFrom]/[dateTo]
+  /// filter on the document's own `date`, inclusive both ends.
   Future<Paginated<StaffInvoiceRow>> documents({
     String type = 'invoice',
     String? status,
     String? search,
     String? clientId,
+    DateTime? dateFrom,
+    DateTime? dateTo,
     int page = 1,
     int perPage = 20,
   }) async {
@@ -292,6 +328,8 @@ class StaffService {
         'status': status,
         'search': search,
         'client_id': clientId,
+        'date_from': dateFrom == null ? null : _ymd(dateFrom),
+        'date_to': dateTo == null ? null : _ymd(dateTo),
         'page': page,
         'per_page': perPage,
       },
@@ -514,6 +552,10 @@ abstract final class Permissions {
   /// their address.
   static const clientsPortalLogin = 'clients.portal_login';
 
+  /// Delete and merge share this — both are irreversible and both take
+  /// another record's data down with them.
+  static const clientsDelete = 'clients.delete';
+
   /// The wallet: reading the balance and ledger, adjusting it, and spending
   /// it against an invoice all sit behind this one name.
   static const creditManage = 'credit.manage';
@@ -534,6 +576,11 @@ abstract final class Permissions {
   /// though the assign call itself does not.
   static const settingsUsers = 'settings.users';
 }
+
+String _ymd(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-'
+    '${date.month.toString().padLeft(2, '0')}-'
+    '${date.day.toString().padLeft(2, '0')}';
 
 // Re-exported so staff screens rendering reply threads need one import.
 typedef StaffTicketReply = TicketReply;

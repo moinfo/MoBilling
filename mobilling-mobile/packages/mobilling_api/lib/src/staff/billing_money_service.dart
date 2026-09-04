@@ -73,6 +73,9 @@ class BillingMoneyService {
   Future<Paginated<StaffPaymentIn>> paymentsIn({
     String? search,
     String? documentId,
+    String? clientId,
+    DateTime? dateFrom,
+    DateTime? dateTo,
     int page = 1,
     int perPage = 20,
   }) async {
@@ -81,6 +84,9 @@ class BillingMoneyService {
       query: {
         'search': search,
         'document_id': documentId,
+        'client_id': clientId,
+        'date_from': dateFrom == null ? null : _ymd(dateFrom),
+        'date_to': dateTo == null ? null : _ymd(dateTo),
         'page': page,
         'per_page': perPage,
       },

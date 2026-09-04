@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
+import '../billing_catalog/billing_catalog_providers.dart';
 import '../billing_money/billing_money_providers.dart';
 import '../billing_money/payment_method_field.dart';
 import '../common/paged_list.dart';
@@ -31,6 +33,9 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
   final _search = TextEditingController();
   Timer? _debounce;
 
+  DateTime? _dateFrom;
+  DateTime? _dateTo;
+
   @override
   void dispose() {
     _debounce?.cancel();
@@ -44,6 +49,46 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
       const Duration(milliseconds: 400),
       () => _listKey.currentState?.reload(),
     );
+  }
+
+  Future<void> _pickDateFrom() => _pickDate(
+    initial: _dateFrom,
+    // Can't start after the current "to" bound.
+    last: _dateTo ?? DateTime.now(),
+    onPicked: (picked) => setState(() => _dateFrom = picked),
+  );
+
+  Future<void> _pickDateTo() => _pickDate(
+    initial: _dateTo,
+    first: _dateFrom,
+    onPicked: (picked) => setState(() => _dateTo = picked),
+  );
+
+  Future<void> _pickDate({
+    DateTime? initial,
+    DateTime? first,
+    DateTime? last,
+    required ValueChanged<DateTime> onPicked,
+  }) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial ?? now,
+      firstDate: first ?? DateTime(now.year - 5),
+      lastDate: last ?? now,
+    );
+    if (picked != null) {
+      onPicked(picked);
+      _listKey.currentState?.reload();
+    }
+  }
+
+  void _clearDateRange() {
+    setState(() {
+      _dateFrom = null;
+      _dateTo = null;
+    });
+    _listKey.currentState?.reload();
   }
 
   Future<void> _openActions(StaffPaymentIn payment) async {
@@ -69,14 +114,54 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
             Spacing.md,
             Spacing.sm,
           ),
-          child: TextField(
-            controller: _search,
-            onChanged: _onSearchChanged,
-            textInputAction: TextInputAction.search,
-            decoration: const InputDecoration(
-              hintText: 'Search reference or client',
-              prefixIcon: Icon(Icons.search, size: 20),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _search,
+                onChanged: _onSearchChanged,
+                textInputAction: TextInputAction.search,
+                decoration: const InputDecoration(
+                  hintText: 'Search reference or client',
+                  prefixIcon: Icon(Icons.search, size: 20),
+                ),
+              ),
+              const SizedBox(height: Spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.calendar_today_outlined, size: 15),
+                      label: Text(
+                        _dateFrom == null ? 'From' : Formatting.date(_dateFrom),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onPressed: _pickDateFrom,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.calendar_today_outlined, size: 15),
+                      label: Text(
+                        _dateTo == null ? 'To' : Formatting.date(_dateTo),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      onPressed: _pickDateTo,
+                    ),
+                  ),
+                  if (_dateFrom != null || _dateTo != null)
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      tooltip: 'Clear date filter',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _clearDateRange,
+                    ),
+                ],
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -91,6 +176,8 @@ class _PaymentsTabState extends ConsumerState<PaymentsTab> {
                   search: _search.text.trim().isEmpty
                       ? null
                       : _search.text.trim(),
+                  dateFrom: _dateFrom,
+                  dateTo: _dateTo,
                   page: page,
                 ),
             padding: const EdgeInsets.fromLTRB(
@@ -170,7 +257,10 @@ class _PaymentActionsSheetState extends ConsumerState<_PaymentActionsSheet> {
         auth?.can(BillingMoneyPermissions.paymentsInDelete) ?? false;
     final canResend =
         auth?.can(BillingMoneyPermissions.paymentsInResendReceipt) ?? false;
-    final nothingGranted = !canRead && !canUpdate && !canDelete && !canResend;
+    final canSendInvoice =
+        auth?.can(BillingCatalogPermissions.documentsSend) ?? false;
+    final nothingGranted =
+        !canRead && !canUpdate && !canDelete && !canResend && !canSendInvoice;
 
     return SafeArea(
       child: CrmSheet(
@@ -181,6 +271,39 @@ class _PaymentActionsSheetState extends ConsumerState<_PaymentActionsSheet> {
             padding: const EdgeInsets.only(bottom: Spacing.md),
             child: _Meta(_metaLine(payment)),
           ),
+          if (payment.receivedByName != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.md),
+              child: Text(
+                'Received by ${payment.receivedByName}',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          if (payment.attachmentUrl != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: Spacing.md),
+              child: InkWell(
+                onTap: () => launchUrl(
+                  Uri.parse(payment.attachmentUrl!),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.attach_file, size: 16, color: scheme.primary),
+                    const SizedBox(width: Spacing.xs),
+                    Text(
+                      'View attachment',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.primary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           if (payment.notes != null && payment.notes!.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: Spacing.md),
@@ -207,6 +330,19 @@ class _PaymentActionsSheetState extends ConsumerState<_PaymentActionsSheet> {
               ),
               enabled: !_busy && payment.hasInvoice,
               onTap: _resendReceipt,
+            ),
+          // Distinct from the receipt above: this emails the invoice itself,
+          // so it only makes sense when the payment is actually against one.
+          if (canSendInvoice && payment.documentId != null)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Resend the invoice'),
+              subtitle: const Text(
+                'Emails the invoice itself, not the receipt',
+              ),
+              enabled: !_busy,
+              onTap: _resendInvoice,
             ),
           if (canRead)
             ListTile(
@@ -282,6 +418,26 @@ class _PaymentActionsSheetState extends ConsumerState<_PaymentActionsSheet> {
     } on ApiException catch (e) {
       // "Client has no email address" is the API's own 422 wording, and it is
       // the most useful thing to show.
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _resendInvoice() async {
+    final documentId = payment.documentId;
+    if (documentId == null) return;
+
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final message = await ref
+          .read(billingCatalogServiceProvider)
+          .sendDocument(documentId);
+      messenger.showSnackBar(
+        SnackBar(content: Text(message ?? 'Invoice email sent.')),
+      );
+    } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     } finally {
       if (mounted) setState(() => _busy = false);

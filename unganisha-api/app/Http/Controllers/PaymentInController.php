@@ -23,6 +23,10 @@ class PaymentInController extends Controller
             $query->where('document_id', $request->document_id);
         }
 
+        if ($request->filled('client_id')) {
+            $query->where('client_id', $request->client_id);
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {

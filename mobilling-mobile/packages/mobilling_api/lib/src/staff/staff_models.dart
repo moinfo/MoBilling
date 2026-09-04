@@ -505,6 +505,7 @@ class StaffInvoiceRow {
     this.type,
     this.date,
     this.dueDate,
+    this.reminderCount = 0,
   });
 
   final String id;
@@ -517,6 +518,10 @@ class StaffInvoiceRow {
   final String? type;
   final DateTime? date;
   final DateTime? dueDate;
+
+  /// How many payment reminders have gone out for this document — same
+  /// field the detail screen already reads, just missing from the list row.
+  final int reminderCount;
 
   factory StaffInvoiceRow.fromJson(Map<String, dynamic> json) {
     final client = json.object('client');
@@ -531,6 +536,7 @@ class StaffInvoiceRow {
       type: json.str('type'),
       date: json.date('date'),
       dueDate: json.date('due_date'),
+      reminderCount: json.count('reminder_count'),
     );
   }
 
@@ -1291,29 +1297,31 @@ class ClientCreditEntry {
       );
 }
 
-/// What `POST /clients/{client}/portal-login` answers with — a live portal
-/// session for the client, minted for the staff user.
-class ClientPortalLogin {
-  const ClientPortalLogin({
-    required this.token,
-    required this.name,
-    required this.email,
-    required this.message,
+/// What `POST /clients/{client}/merge` answers with — [movedCounts] is a
+/// table-name → row-count map of everything reassigned to [survivorId],
+/// meant to be shown as a confirmation summary before the merge runs, not
+/// just a report of what already happened.
+class ClientMergeResult {
+  const ClientMergeResult({
+    required this.survivorId,
+    required this.movedCounts,
+    this.message,
   });
 
-  /// A Sanctum token scoped to the client's portal user.
-  final String token;
-  final String name;
-  final String email;
-  final String message;
+  final String survivorId;
+  final Map<String, int> movedCounts;
+  final String? message;
 
-  factory ClientPortalLogin.fromJson(Map<String, dynamic> json) {
-    final user = json.object('user') ?? const {};
-    return ClientPortalLogin(
-      token: json.strOr('token', ''),
-      name: user.strOr('name', '—'),
-      email: user.strOr('email', ''),
-      message: json.strOr('message', 'Signed in as the client.'),
+  int get totalMoved => movedCounts.values.fold(0, (a, b) => a + b);
+
+  factory ClientMergeResult.fromJson(Map<String, dynamic> json) {
+    final moved = json.object('moved') ?? const {};
+    return ClientMergeResult(
+      survivorId: json.str('survivor_id') ?? '',
+      movedCounts: {
+        for (final entry in moved.entries) entry.key: readInt(entry.value),
+      },
+      message: json.str('message'),
     );
   }
 }

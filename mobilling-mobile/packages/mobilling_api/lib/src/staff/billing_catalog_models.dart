@@ -610,6 +610,7 @@ class StaffProductAddon {
     required this.price,
     required this.isActive,
     required this.productNames,
+    required this.productIds,
     this.description,
     this.billingCycle,
     this.taxPercent,
@@ -622,26 +623,36 @@ class StaffProductAddon {
 
   /// Which products offer this add-on.
   final List<String> productNames;
+
+  /// Alongside [productNames] — needed to pre-select the product-link
+  /// multi-select on edit, which names alone can't do.
+  final List<String> productIds;
   final String? description;
   final String? billingCycle;
   final double? taxPercent;
 
-  factory StaffProductAddon.fromJson(Map<String, dynamic> json) =>
-      StaffProductAddon(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        price: json.money('price'),
-        isActive: json.flag('is_active', fallback: true),
-        productNames: json
-            .list('products', (p) => p.strOr('name', ''))
-            .where((n) => n.isNotEmpty)
-            .toList(growable: false),
-        description: json.str('description'),
-        billingCycle: json.str('billing_cycle'),
-        taxPercent: json['tax_percent'] == null
-            ? null
-            : json.money('tax_percent'),
-      );
+  factory StaffProductAddon.fromJson(Map<String, dynamic> json) {
+    final products = json.list('products', (p) => p);
+    return StaffProductAddon(
+      id: json.id(),
+      name: json.strOr('name', '—'),
+      price: json.money('price'),
+      isActive: json.flag('is_active', fallback: true),
+      productNames: products
+          .map((p) => p.strOr('name', ''))
+          .where((n) => n.isNotEmpty)
+          .toList(growable: false),
+      productIds: products
+          .map((p) => p.str('id') ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false),
+      description: json.str('description'),
+      billingCycle: json.str('billing_cycle'),
+      taxPercent: json['tax_percent'] == null
+          ? null
+          : json.money('tax_percent'),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -655,6 +666,7 @@ class StaffConfigGroup {
     required this.isActive,
     required this.options,
     required this.productNames,
+    required this.productIds,
     this.description,
   });
 
@@ -663,20 +675,30 @@ class StaffConfigGroup {
   final bool isActive;
   final List<StaffConfigOption> options;
   final List<String> productNames;
+
+  /// Alongside [productNames] — needed to pre-select the product-link
+  /// multi-select on edit, which names alone can't do.
+  final List<String> productIds;
   final String? description;
 
-  factory StaffConfigGroup.fromJson(Map<String, dynamic> json) =>
-      StaffConfigGroup(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        isActive: json.flag('is_active', fallback: true),
-        options: json.list('options', StaffConfigOption.fromJson),
-        productNames: json
-            .list('products', (p) => p.strOr('name', ''))
-            .where((n) => n.isNotEmpty)
-            .toList(growable: false),
-        description: json.str('description'),
-      );
+  factory StaffConfigGroup.fromJson(Map<String, dynamic> json) {
+    final products = json.list('products', (p) => p);
+    return StaffConfigGroup(
+      id: json.id(),
+      name: json.strOr('name', '—'),
+      isActive: json.flag('is_active', fallback: true),
+      options: json.list('options', StaffConfigOption.fromJson),
+      productNames: products
+          .map((p) => p.strOr('name', ''))
+          .where((n) => n.isNotEmpty)
+          .toList(growable: false),
+      productIds: products
+          .map((p) => p.str('id') ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false),
+      description: json.str('description'),
+    );
+  }
 }
 
 class StaffConfigOption {
@@ -704,6 +726,14 @@ class StaffConfigOption {
         choices: json.list('choices', StaffConfigChoice.fromJson),
         unitPrice: json['unit_price'] == null ? null : json.money('unit_price'),
       );
+
+  ConfigOptionInput toInput() => ConfigOptionInput(
+    id: id,
+    name: name,
+    optionType: optionType,
+    unitPrice: unitPrice,
+    choices: [for (final c in choices) c.toInput()],
+  );
 }
 
 class StaffConfigChoice {
@@ -723,6 +753,72 @@ class StaffConfigChoice {
         label: json.strOr('label', '—'),
         price: json.money('price'),
       );
+
+  ConfigChoiceInput toInput() =>
+      ConfigChoiceInput(id: id, label: label, price: price);
+}
+
+/// One choice on a save to `/config-option-groups` — dropdown/radio options
+/// only. [id] is null for a choice being added; the whole group's option
+/// tree is sent on every save (see [ConfigOptionInput]), so leaving an
+/// existing choice out of the list is how it gets deleted.
+class ConfigChoiceInput {
+  ConfigChoiceInput({
+    this.id,
+    required this.label,
+    this.price = 0,
+    this.sortOrder = 0,
+  });
+
+  String? id;
+  String label;
+  double price;
+  int sortOrder;
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) 'id': id,
+    'label': label,
+    'price': price,
+    'sort_order': sortOrder,
+  };
+}
+
+/// One option on a save to `/config-option-groups`. [id] is null for a new
+/// option; [choices] applies only to `dropdown`/`radio` — `quantity`/`yesno`
+/// price off [unitPrice] instead.
+///
+/// The server treats the group's whole `options` array (and each option's
+/// `choices` array) as the complete desired state: anything sent replaces
+/// what's there, and anything omitted is deleted. There is no separate
+/// add/remove-option or add/remove-choice endpoint.
+class ConfigOptionInput {
+  ConfigOptionInput({
+    this.id,
+    required this.name,
+    required this.optionType,
+    this.unitPrice,
+    this.sortOrder = 0,
+    this.choices = const [],
+  });
+
+  String? id;
+  String name;
+
+  /// dropdown | radio | quantity | yesno.
+  String optionType;
+  double? unitPrice;
+  int sortOrder;
+  List<ConfigChoiceInput> choices;
+
+  Map<String, dynamic> toJson() => {
+    if (id != null) 'id': id,
+    'name': name,
+    'option_type': optionType,
+    if (unitPrice != null) 'unit_price': unitPrice,
+    'sort_order': sortOrder,
+    if (choices.isNotEmpty)
+      'choices': [for (final c in choices) c.toJson()],
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -740,6 +836,7 @@ class StaffCoupon {
     required this.isActive,
     required this.recurring,
     required this.productNames,
+    required this.productIds,
     this.description,
     this.appliesTo,
     this.maxUses,
@@ -762,6 +859,10 @@ class StaffCoupon {
   /// Whether the discount repeats on renewals, not just the first invoice.
   final bool recurring;
   final List<String> productNames;
+
+  /// Alongside [productNames] — needed to pre-select the product-link
+  /// multi-select on edit, which names alone can't do.
+  final List<String> productIds;
   final String? description;
   final String? appliesTo;
   final int? maxUses;
@@ -796,27 +897,63 @@ class StaffCoupon {
   String? get percentLabel =>
       isPercent ? '${value.toStringAsFixed(value % 1 == 0 ? 0 : 1)}%' : null;
 
-  factory StaffCoupon.fromJson(Map<String, dynamic> json) => StaffCoupon(
-    id: json.id(),
-    code: json.strOr('code', '—'),
-    type: json.strOr('type', 'percent'),
-    value: json.money('value'),
-    uses: json.count('uses'),
-    redemptionsCount: json.count('redemptions_count'),
-    isActive: json.flag('is_active', fallback: true),
-    recurring: json.flag('recurring'),
-    productNames: json
-        .list('products', (p) => p.strOr('name', ''))
-        .where((n) => n.isNotEmpty)
-        .toList(growable: false),
-    description: json.str('description'),
-    appliesTo: json.str('applies_to'),
-    maxUses: json['max_uses'] == null ? null : json.count('max_uses'),
-    minOrder: json['min_order'] == null ? null : json.money('min_order'),
-    startsAt: json.date('starts_at'),
-    expiresAt: json.date('expires_at'),
-    lastUsedAt: json.date('last_used_at'),
-  );
+  factory StaffCoupon.fromJson(Map<String, dynamic> json) {
+    final products = json.list('products', (p) => p);
+    return StaffCoupon(
+      id: json.id(),
+      code: json.strOr('code', '—'),
+      type: json.strOr('type', 'percent'),
+      value: json.money('value'),
+      uses: json.count('uses'),
+      redemptionsCount: json.count('redemptions_count'),
+      isActive: json.flag('is_active', fallback: true),
+      recurring: json.flag('recurring'),
+      productNames: products
+          .map((p) => p.strOr('name', ''))
+          .where((n) => n.isNotEmpty)
+          .toList(growable: false),
+      productIds: products
+          .map((p) => p.str('id') ?? '')
+          .where((id) => id.isNotEmpty)
+          .toList(growable: false),
+      description: json.str('description'),
+      appliesTo: json.str('applies_to'),
+      maxUses: json['max_uses'] == null ? null : json.count('max_uses'),
+      minOrder: json['min_order'] == null ? null : json.money('min_order'),
+      startsAt: json.date('starts_at'),
+      expiresAt: json.date('expires_at'),
+      lastUsedAt: json.date('last_used_at'),
+    );
+  }
+}
+
+/// One row of `GET /coupons/{id}/redemptions`.
+class CouponRedemption {
+  const CouponRedemption({
+    required this.id,
+    required this.discountAmount,
+    this.clientId,
+    this.clientName,
+    this.documentId,
+    this.createdAt,
+  });
+
+  final String id;
+  final double discountAmount;
+  final String? clientId;
+  final String? clientName;
+  final String? documentId;
+  final DateTime? createdAt;
+
+  factory CouponRedemption.fromJson(Map<String, dynamic> json) =>
+      CouponRedemption(
+        id: json.id(),
+        discountAmount: json.money('discount_amount'),
+        clientId: json.str('client_id'),
+        clientName: json.str('client_name'),
+        documentId: json.str('document_id'),
+        createdAt: json.date('created_at'),
+      );
 }
 
 // ---------------------------------------------------------------------------
@@ -832,6 +969,7 @@ class StaffSubscription {
     this.label,
     this.clientId,
     this.clientName,
+    this.productServiceId,
     this.productName,
     this.billingCycle,
     this.startDate,
@@ -845,6 +983,10 @@ class StaffSubscription {
   final String? label;
   final String? clientId;
   final String? clientName;
+
+  /// Needed to prefill the product select on edit — [productName] alone
+  /// can't do that.
+  final String? productServiceId;
   final String? productName;
   final String? billingCycle;
   final DateTime? startDate;
@@ -870,10 +1012,38 @@ class StaffSubscription {
       label: json.str('label'),
       clientId: json.str('client_id') ?? client?.str('id'),
       clientName: json.str('client_name') ?? client?.str('name'),
+      productServiceId:
+          json.str('product_service_id') ?? product?.str('id'),
       productName: json.str('product_service_name') ?? product?.str('name'),
       billingCycle: json.str('billing_cycle') ?? product?.str('billing_cycle'),
       startDate: json.date('start_date'),
       expireDate: json.date('expire_date'),
     );
   }
+}
+
+/// One product line in a `POST /client-subscriptions/bulk` order — the
+/// client and start date live on the request, not per line.
+class SubscriptionLineInput {
+  SubscriptionLineInput({
+    required this.productServiceId,
+    this.label,
+    this.quantity = 1,
+    this.discountType,
+    this.discountValue,
+  });
+
+  String productServiceId;
+  String? label;
+  int quantity;
+  String? discountType;
+  double? discountValue;
+
+  Map<String, dynamic> toJson() => {
+    'product_service_id': productServiceId,
+    'label': ?label,
+    'quantity': quantity,
+    'discount_type': ?discountType,
+    'discount_value': ?discountValue,
+  };
 }
