@@ -66,3 +66,11 @@ hostingLogsProvider = FutureProvider.autoDispose
       (ref, accountId) =>
           ref.watch(supportAdminServiceProvider).hostingLogs(accountId),
     );
+
+/// The WHM boxes accounts are provisioned onto. Unpaginated — a tenant runs a
+/// handful of servers, and the package pickers elsewhere need the whole list
+/// to resolve an account's server anyway.
+final AutoDisposeFutureProvider<List<HostingServer>> hostingServersProvider =
+    FutureProvider.autoDispose<List<HostingServer>>(
+      (ref) => ref.watch(supportAdminServiceProvider).servers(),
+    );

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
@@ -44,6 +45,61 @@ serviceUpgradeOptionsProvider = FutureProvider.autoDispose
           .watch(supportAdminServiceProvider)
           .serviceUpgradeOptions(subscriptionId),
     );
+
+/// The WHM package list for [serverId], or null when a picker cannot be
+/// offered: no server assigned, no `hosting.settings`, or the server itself
+/// refused. Callers fall back to typing the name, which is what the web does
+/// when its own package query errors.
+Future<List<String>?> _fetchServerPackages(WidgetRef ref, String? serverId) async {
+  if (serverId == null || serverId.isEmpty) return null;
+  final allowed =
+      ref
+          .read(sessionControllerProvider)
+          .session
+          ?.can(SupportAdminPermissions.hostingSettings) ??
+      false;
+  if (!allowed) return null;
+  try {
+    final packages = await ref
+        .read(supportAdminServiceProvider)
+        .serverPackages(serverId);
+    return packages.isEmpty ? null : packages;
+  } on ApiException {
+    return null;
+  }
+}
+
+/// Picks one WHM package name. [current] is kept in the list even when the
+/// server no longer offers it, so an account on a retired package can still
+/// see what it is on.
+Future<String?> _pickPackage(
+  BuildContext context, {
+  required List<String> packages,
+  required String? current,
+  required String eyebrow,
+}) {
+  final options = <String>{
+    if (current != null && current.isNotEmpty) current,
+    ...packages,
+  }.toList();
+
+  return showCrmSheet<String>(
+    context: context,
+    builder: (sheetContext) => CrmSheet(
+      eyebrow: eyebrow,
+      title: 'WHM package',
+      children: [
+        for (final package in options)
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(package),
+            trailing: package == current ? const Icon(Icons.check) : null,
+            onTap: () => Navigator.of(sheetContext).pop(package),
+          ),
+      ],
+    ),
+  );
+}
 
 /// The admin Products/Services tab — the web's `ServiceManagement.tsx`.
 ///
@@ -261,8 +317,17 @@ class ManageServiceDetailScreen extends ConsumerWidget {
         );
       case 'client':
         context.push('/clients/${detail.clientId}');
+      // No order document means no single invoice to open; the client's own
+      // list is where the rest of them are.
       case 'invoice':
-        context.push('/documents/${detail.orderDocumentId}');
+        context.push(
+          detail.orderDocumentId == null
+              ? '/clients/${detail.clientId}'
+              : '/documents/${detail.orderDocumentId}',
+        );
+      // The record this screen is showing is gone.
+      case 'deleted':
+        context.pop();
     }
   }
 }
@@ -303,9 +368,32 @@ class _ServiceFormState extends ConsumerState<_ServiceForm> {
   bool _recalculate = false;
 
   bool _saving = false;
+  bool _loadingPackages = false;
   String? _error;
 
   HostingServiceDetail get detail => widget.detail;
+
+  /// Whether anything differs from the loaded record. The discard control only
+  /// earns its place once there is something to discard.
+  bool get _dirty {
+    final d = detail;
+    return _recalculate ||
+        _productServiceId != d.productServiceId ||
+        _status != d.status ||
+        _serverId != d.serverId ||
+        _paymentMethod != d.paymentMethod ||
+        _startDate != d.startDate ||
+        _nextDueDate != d.nextDueDate ||
+        _terminationDate != d.terminationDate ||
+        _trimmed(_domain) != d.domain ||
+        _trimmed(_dedicatedIp) != d.dedicatedIp ||
+        _trimmed(_username) != d.username ||
+        _trimmed(_package) != d.package ||
+        _trimmed(_promoCode) != d.promoCode ||
+        int.tryParse(_quantity.text.trim()) != d.quantity ||
+        _amount(_firstPayment) != d.firstPaymentAmount ||
+        _amount(_recurring) != d.recurringAmount;
+  }
 
   @override
   void initState() {
@@ -423,6 +511,37 @@ class _ServiceFormState extends ConsumerState<_ServiceForm> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// The package belongs to whichever server the form is pointing at, not to
+  /// whichever one provisioned it — changing both at once is exactly how a
+  /// service gets moved.
+  Future<void> _choosePackage() async {
+    setState(() => _loadingPackages = true);
+    final packages = await _fetchServerPackages(
+      ref,
+      _serverId ?? detail.hostingAccount?.serverId,
+    );
+    if (!mounted) return;
+    setState(() => _loadingPackages = false);
+
+    if (packages == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'The server could not list its packages — type the name instead.',
+          ),
+        ),
+      );
+      return;
+    }
+    final picked = await _pickPackage(
+      context,
+      packages: packages,
+      current: _trimmed(_package),
+      eyebrow: detail.clientName,
+    );
+    if (picked != null && mounted) setState(() => _package.text = picked);
   }
 
   Future<void> _pickDate(
@@ -603,6 +722,20 @@ class _ServiceFormState extends ConsumerState<_ServiceForm> {
             decoration: const InputDecoration(hintText: 'Package name'),
           ),
         ),
+        // The server's own list when we may ask for it; typing stays available
+        // either way, because a package the server has since dropped still has
+        // to be nameable.
+        if (canUpdate)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              icon: const Icon(Icons.dns_outlined, size: 18),
+              label: Text(
+                _loadingPackages ? 'Loading packages…' : 'Choose from server',
+              ),
+              onPressed: _saving || _loadingPackages ? null : _choosePackage,
+            ),
+          ),
         const SizedBox(height: Spacing.lg),
         const SectionHeader('Billing'),
         const SizedBox(height: Spacing.md),
@@ -740,6 +873,28 @@ class _ServiceFormState extends ConsumerState<_ServiceForm> {
             icon: Icons.save_outlined,
             onPressed: _saving ? null : _save,
           ),
+          // Typing does not go through setState, so the edited-ness of the
+          // text fields has to be watched directly for this to appear.
+          ListenableBuilder(
+            listenable: Listenable.merge([
+              _domain,
+              _dedicatedIp,
+              _username,
+              _package,
+              _quantity,
+              _firstPayment,
+              _recurring,
+              _promoCode,
+            ]),
+            builder: (context, _) => _dirty
+                ? TextButton(
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() => _seed(detail)),
+                    child: const Text('Discard changes'),
+                  )
+                : const SizedBox.shrink(),
+          ),
         ],
         if (detail.metrics.isNotEmpty) ...[
           const SizedBox(height: Spacing.xl),
@@ -750,6 +905,18 @@ class _ServiceFormState extends ConsumerState<_ServiceForm> {
               for (final metric in detail.metrics)
                 ListTile(
                   dense: true,
+                  // Whether cPanel is tracking the metric at all — a disabled
+                  // one reads as "no usage" otherwise, which is a different
+                  // thing entirely.
+                  leading: Icon(
+                    metric.enabled
+                        ? Icons.check_circle_outline
+                        : Icons.remove_circle_outline,
+                    size: 18,
+                    color: metric.enabled
+                        ? context.statusColors.settled
+                        : context.statusColors.inactive,
+                  ),
                   title: Text(metric.metric, style: theme.textTheme.bodyMedium),
                   subtitle: metric.lastUpdate == null
                       ? null
@@ -903,6 +1070,8 @@ class _CommandsSheetState extends ConsumerState<_CommandsSheet> {
     final canSuspend = can(SupportAdminPermissions.hostingSuspend);
     final canTerminate = can(SupportAdminPermissions.hostingTerminate);
     final canChangePackage = can(SupportAdminPermissions.hostingChangePackage);
+    final canCreate = can(SupportAdminPermissions.hostingCreate);
+    final canDelete = can(SupportAdminPermissions.clientSubscriptionsDelete);
 
     final account = detail.hostingAccount;
     final service = ref.read(supportAdminServiceProvider);
@@ -911,17 +1080,49 @@ class _CommandsSheetState extends ConsumerState<_CommandsSheet> {
       eyebrow: detail.clientName,
       title: detail.title,
       children: [
-        if (account == null)
+        if (account == null) ...[
           Padding(
             padding: const EdgeInsets.only(bottom: Spacing.md),
             child: Text(
-              'Nothing is provisioned on a server for this service, so the '
-              'module commands have nothing to act on.',
+              canCreate
+                  ? 'Nothing is provisioned on a server for this service yet. '
+                        'Creating it makes the cPanel account from the '
+                        'product, server and package on the form.'
+                  : 'Nothing is provisioned on a server for this service, so '
+                        'the module commands have nothing to act on.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: scheme.onSurfaceVariant,
               ),
             ),
           ),
+          if (canCreate)
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: Icon(
+                Icons.add_circle_outline,
+                color: context.statusColors.settled,
+              ),
+              title: const Text('Create on server'),
+              subtitle: const Text('Provisions the cPanel account'),
+              enabled: !_busy,
+              onTap: () async {
+                final ok = await _confirm(
+                  title: 'Create the account?',
+                  body:
+                      'A cPanel account is created on the server for '
+                      '${detail.title}, and the client is sent the welcome '
+                      'message with its login.',
+                  verb: 'Create',
+                );
+                if (!ok) return;
+                await _run(
+                  () => service.provisionSubscription(detail.id),
+                  fallbackMessage: 'Provisioning queued.',
+                );
+              },
+            ),
+          const Divider(height: Spacing.lg),
+        ],
         if (account != null) ...[
           if (canSso && account.isActive && account.isOnServer)
             ListTile(
@@ -1008,12 +1209,8 @@ class _CommandsSheetState extends ConsumerState<_CommandsSheet> {
               subtitle: const Text('On the server, not the billing plan'),
               enabled: !_busy,
               onTap: () async {
-                final package = await _prompt(
-                  title: 'Change package',
-                  label: 'WHM package name',
-                  hint: 'e.g. reseller_business',
-                  initial: detail.package ?? '',
-                  action: 'Change package',
+                final package = await _askPackage(
+                  account.serverId ?? detail.serverId,
                 );
                 if (package == null || package.isEmpty) return;
                 await _run(
@@ -1059,10 +1256,7 @@ class _CommandsSheetState extends ConsumerState<_CommandsSheet> {
                   verb: 'Reset',
                 );
                 if (!ok) return;
-                await _run(
-                  () => service.resetHostingWelcome(account.id),
-                  fallbackMessage: 'Password reset and welcome sent.',
-                );
+                await _resetAndReveal(account.id);
               },
             ),
           ],
@@ -1112,16 +1306,165 @@ class _CommandsSheetState extends ConsumerState<_CommandsSheet> {
           title: const Text('Client profile'),
           onTap: () => Navigator.of(context).pop('client'),
         ),
-        if (detail.orderDocumentId != null)
+        // Always offered: with no order document there is still the client's
+        // own invoice list to fall back to, which is the question being asked.
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.receipt_long_outlined),
+          title: Text(
+            detail.orderDocumentId == null ? 'Client invoices' : 'Order invoice',
+          ),
+          onTap: () => Navigator.of(context).pop('invoice'),
+        ),
+        if (canDelete) ...[
+          const Divider(height: Spacing.lg),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.receipt_long_outlined),
-            title: const Text('Order invoice'),
-            onTap: () => Navigator.of(context).pop('invoice'),
+            leading: Icon(Icons.delete_outline, color: scheme.error),
+            title: Text(
+              'Delete service record',
+              style: TextStyle(color: scheme.error),
+            ),
+            enabled: !_busy,
+            onTap: () async {
+              final ok = await _confirm(
+                title: 'Delete this service?',
+                body: account == null
+                    ? 'The billing record for ${detail.title} is removed. '
+                          'This cannot be undone.'
+                    : 'The billing record for ${detail.title} is removed, but '
+                          'the cPanel account keeps running unbilled — '
+                          'terminate it first if it should go too. This '
+                          'cannot be undone.',
+                verb: 'Delete',
+              );
+              if (!ok) return;
+              await _delete();
+            },
           ),
+        ],
       ],
     );
   }
+
+  /// Deleting leaves nothing for the detail screen behind this sheet to show,
+  /// so the sheet reports it and the screen pops itself.
+  Future<void> _delete() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      await ref
+          .read(supportAdminServiceProvider)
+          .deleteClientSubscription(detail.id);
+      ref.invalidate(clientServicesProvider(detail.clientId));
+      messenger.showSnackBar(const SnackBar(content: Text('Service deleted.')));
+      navigator.pop('deleted');
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// The server's package list when it can be had, the typed field when it
+  /// cannot — a service on a server we may not query still has to be movable.
+  Future<String?> _askPackage(String? serverId) async {
+    final packages = await _fetchServerPackages(ref, serverId);
+    if (!mounted) return null;
+    if (packages != null) {
+      return _pickPackage(
+        context,
+        packages: packages,
+        current: detail.package,
+        eyebrow: detail.clientName,
+      );
+    }
+    return _prompt(
+      title: 'Change package',
+      label: 'WHM package name',
+      hint: 'e.g. reseller_business',
+      initial: detail.package ?? '',
+      action: 'Change package',
+    );
+  }
+
+  /// Reset, then show what the server generated. This response is the only
+  /// place the password ever appears — [_run] would close the sheet before it
+  /// could be read, so this handles its own busy state and pops afterwards.
+  Future<void> _resetAndReveal(String accountId) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+    try {
+      final result = await ref
+          .read(supportAdminServiceProvider)
+          .resetHostingWelcome(accountId);
+      ref.invalidate(hostingServiceProvider(detail.id));
+      final password = result.password;
+      if (!mounted) return;
+      if (password == null || password.isEmpty) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(result.message ?? 'Password reset and welcome sent.'),
+          ),
+        );
+      } else {
+        await _revealPassword(password);
+      }
+      if (navigator.canPop()) navigator.pop();
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _revealPassword(String password) => showCrmSheet<void>(
+    context: context,
+    builder: (sheetContext) {
+      final theme = Theme.of(sheetContext);
+      return CrmSheet(
+        eyebrow: detail.title,
+        title: 'New cPanel password',
+        children: [
+          Text(
+            'Set on the server and emailed to the client. Note it now — it is '
+            'not shown again.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          Container(
+            padding: const EdgeInsets.all(Spacing.md),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest,
+              borderRadius: BorderRadius.circular(Radii.md),
+            ),
+            child: SelectableText(
+              password,
+              textAlign: TextAlign.center,
+              style: Type.mono(
+                18,
+                tracking: 0.08,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+          ),
+          const SizedBox(height: Spacing.lg),
+          PrimaryButton(
+            label: 'Copy and close',
+            icon: Icons.copy_outlined,
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: password));
+              if (sheetContext.mounted) Navigator.pop(sheetContext);
+            },
+          ),
+        ],
+      );
+    },
+  );
 
   Future<bool> _confirm({
     required String title,

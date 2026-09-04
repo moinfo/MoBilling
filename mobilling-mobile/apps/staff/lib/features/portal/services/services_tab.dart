@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../portal_routes.dart';
 import '../portal_providers.dart';
+import '../../../providers.dart';
 
 /// Services hub: subscriptions, hosting accounts and domains, switched by a
 /// segmented control. A tab body inside the portal shell — the masthead is
@@ -249,7 +251,6 @@ class _HostingList extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final accounts = ref.watch(portalHostingProvider);
-    final theme = Theme.of(context);
 
     return accounts.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -281,40 +282,7 @@ class _HostingList extends ConsumerWidget {
                       children: [
                         for (final (i, a) in items.indexed) ...[
                           if (i > 0) const Divider(height: 1),
-                          ListTile(
-                            title: Text(
-                              a.domain ?? a.cpanelUsername ?? '—',
-                              style: theme.textTheme.titleSmall,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            subtitle: Padding(
-                              padding: const EdgeInsets.only(top: Spacing.xs),
-                              child: Row(
-                                children: [
-                                  StatusChip(a.status, dense: true),
-                                  const SizedBox(width: Spacing.sm),
-                                  Flexible(
-                                    child: _MetaLine([
-                                      if (a.package != null) a.package!,
-                                      if (a.diskUsed != null &&
-                                          a.diskLimit != null)
-                                        '${a.diskUsed} / ${a.diskLimit}',
-                                      if (a.expiresAt != null) 'renews',
-                                    ]),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            trailing: a.expiresAt == null
-                                ? Icon(
-                                    Icons.chevron_right,
-                                    color: theme.colorScheme.outline,
-                                  )
-                                : _TrailingDate(a.expiresAt),
-                            onTap: () =>
-                                context.push(PortalRoutes.hostingPath(a.id)),
-                          ),
+                          _HostingRow(account: a),
                         ],
                       ],
                     ),
@@ -322,6 +290,129 @@ class _HostingList extends ConsumerWidget {
                 ],
               ),
             ),
+    );
+  }
+}
+
+/// One hosting account in the list.
+///
+/// Stateful only to hold the SSO busy flag: the cPanel link is minted on
+/// demand and the round trip is long enough that a row with no feedback reads
+/// as a dead tap.
+class _HostingRow extends ConsumerStatefulWidget {
+  const _HostingRow({required this.account});
+
+  final HostingAccount account;
+
+  @override
+  ConsumerState<_HostingRow> createState() => _HostingRowState();
+}
+
+class _HostingRowState extends ConsumerState<_HostingRow> {
+  bool _busy = false;
+
+  HostingAccount get a => widget.account;
+
+  Future<void> _openCpanel() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final url = await ref.read(portalServiceProvider).hostingSsoUrl(a.id);
+      if (url.isNotEmpty) {
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      }
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+    final isAdmin = ref.watch(currentUserProvider)?.isPortalAdmin ?? false;
+    final suspended = a.status == 'suspended';
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ListTile(
+          title: Text(
+            a.domain ?? a.cpanelUsername ?? '—',
+            style: theme.textTheme.titleSmall,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Padding(
+            padding: const EdgeInsets.only(top: Spacing.xs),
+            child: Row(
+              children: [
+                StatusChip(a.status, dense: true),
+                const SizedBox(width: Spacing.sm),
+                Flexible(
+                  child: _MetaLine([
+                    if (a.cpanelUsername != null) a.cpanelUsername!,
+                    if (a.package != null) a.package!,
+                    if (a.diskUsed != null && a.diskLimit != null)
+                      '${a.diskUsed} / ${a.diskLimit}',
+                    if (a.expiresAt != null) 'renews',
+                  ]),
+                ),
+              ],
+            ),
+          ),
+          trailing: a.expiresAt == null
+              ? Icon(Icons.chevron_right, color: theme.colorScheme.outline)
+              : _TrailingDate(a.expiresAt),
+          onTap: () => context.push(PortalRoutes.hostingPath(a.id)),
+        ),
+        // Why the site is down, said on the row rather than one tap in — a
+        // suspension is almost always an unpaid invoice, and that is
+        // actionable from the same screen.
+        if (suspended)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              0,
+              Spacing.md,
+              Spacing.sm,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Suspended — please settle any unpaid invoices.',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: status.attention,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (isAdmin && a.status == 'active')
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.sm,
+              0,
+              Spacing.sm,
+              Spacing.xs,
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton.icon(
+                  onPressed: _busy ? null : _openCpanel,
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: Text(_busy ? 'Opening…' : 'Log in to cPanel'),
+                ),
+              ],
+            ),
+          ),
+      ],
     );
   }
 }

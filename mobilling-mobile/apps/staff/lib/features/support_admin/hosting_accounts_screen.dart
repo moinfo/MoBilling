@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -37,6 +39,7 @@ class _HostingAccountsScreenState extends ConsumerState<HostingAccountsScreen> {
     ('suspended', 'Suspended'),
     ('pending', 'Pending'),
     ('failed', 'Failed'),
+    ('terminated', 'Terminated'),
   ];
 
   @override
@@ -319,6 +322,22 @@ class _AccountActionsSheetState extends ConsumerState<_AccountActionsSheet> {
               ),
             ),
             const Divider(height: Spacing.lg),
+            // The billing side of the same thing: the subscription is where
+            // the plan, the dates and the money live, and none of that is on
+            // an account row. Only reachable when something was ordered —
+            // an imported account may have no subscription behind it.
+            if (account.subscriptionId != null)
+              ListTile(
+                leading: const Icon(Icons.receipt_long_outlined),
+                title: const Text('Open service'),
+                subtitle: const Text('Plan, billing and dates'),
+                trailing: Icon(Icons.chevron_right, color: scheme.outline),
+                enabled: !_busy,
+                onTap: () {
+                  Navigator.of(context).pop(_changed);
+                  context.push('/hosting/services/${account.subscriptionId}');
+                },
+              ),
             if (canSso && account.isActive)
               ListTile(
                 leading: const Icon(Icons.login),
@@ -386,6 +405,7 @@ class _AccountActionsSheetState extends ConsumerState<_AccountActionsSheet> {
                 title: const Text('Reset password & resend welcome'),
                 enabled: !_busy,
                 onTap: () async {
+                  final messenger = ScaffoldMessenger.of(context);
                   final confirmed = await _confirm(
                     context,
                     'Reset the password for $name?',
@@ -395,10 +415,26 @@ class _AccountActionsSheetState extends ConsumerState<_AccountActionsSheet> {
                     confirmLabel: 'Reset & send',
                   );
                   if (!confirmed) return;
-                  await _runWithMessage(
-                    () => service.resetHostingWelcome(account.id),
-                    fallback: 'Password reset and welcome message sent.',
-                  );
+                  String? generated;
+                  final done = await _run(() async {
+                    final result = await service.resetHostingWelcome(
+                      account.id,
+                    );
+                    generated = result.password;
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          result.message ??
+                              'Password reset and welcome message sent.',
+                        ),
+                      ),
+                    );
+                  });
+                  // The response is the only place this ever appears — staff
+                  // on a call need to be able to read it out.
+                  if (done && generated != null && context.mounted) {
+                    await _showGeneratedPassword(context, generated!);
+                  }
                 },
               ),
             ],
@@ -582,63 +618,94 @@ class _AccountActionsSheetState extends ConsumerState<_AccountActionsSheet> {
     return result ?? false;
   }
 
-  /// The WHM package list sits behind `GET /servers/{id}/packages`, which
-  /// needs `hosting.settings` and a server id the account rows do not carry
-  /// — so this is a typed field starting from the current package rather
-  /// than the web's picker.
-  Future<String?> _askPackage(BuildContext context) async {
-    final controller = TextEditingController(text: account.package ?? '');
-    try {
-      return await showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Change package'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Type the WHM package name exactly as the server spells it.',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              const SizedBox(height: Spacing.md),
-              TextField(
-                controller: controller,
-                autofocus: true,
-                autocorrect: false,
-                enableSuggestions: false,
-                decoration: InputDecoration(
-                  hintText: account.package == null
-                      ? 'WHM package name'
-                      : 'Currently ${account.package}',
-                  prefixIcon: const Icon(Icons.inventory_2_outlined, size: 20),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
+  /// Shown once, after the server has generated it. The welcome message is
+  /// the client's copy; this is the only time the password reaches staff, so
+  /// it is selectable and copyable rather than something to memorise.
+  Future<void> _showGeneratedPassword(BuildContext context, String password) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('New cPanel password'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'Note it now — it is not shown again. The client also has it '
+              'in the welcome message.',
+              style: theme.textTheme.bodySmall,
             ),
-            ValueListenableBuilder<TextEditingValue>(
-              valueListenable: controller,
-              builder: (context, value, _) {
-                final package = value.text.trim();
-                return FilledButton(
-                  onPressed: package.isEmpty || package == account.package
-                      ? null
-                      : () => Navigator.pop(context, package),
-                  child: const Text('Change package'),
-                );
-              },
+            const SizedBox(height: Spacing.md),
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: Spacing.md,
+                vertical: Spacing.sm,
+              ),
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(Radii.md),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      password,
+                      style: Type.mono(
+                        13,
+                        weight: FontWeight.w400,
+                        tracking: 0,
+                        color: scheme.onSurface,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Copy',
+                    icon: const Icon(Icons.copy_rounded, size: 18),
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: password));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Password copied.')),
+                      );
+                    },
+                  ),
+                ],
+              ),
             ),
           ],
         ),
-      );
-    } finally {
-      controller.dispose();
-    }
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Done'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// The WHM package list sits behind `GET /servers/{id}/packages`, which
+  /// needs `hosting.settings`. With that permission and the account's server
+  /// this offers the real list; without either — or if WHM cannot be reached
+  /// — it degrades to a typed field, the same swap the web makes when its
+  /// package query errors.
+  Future<String?> _askPackage(BuildContext context) {
+    final canListPackages =
+        ref.read(sessionControllerProvider).session?.can(
+          SupportAdminPermissions.hostingSettings,
+        ) ??
+        false;
+
+    return showDialog<String>(
+      context: context,
+      builder: (context) => _PackageDialog(
+        current: account.package,
+        serverId: canListPackages ? account.serverId : null,
+        service: ref.read(supportAdminServiceProvider),
+      ),
+    );
   }
 
   /// Obscured by default, with the same 8-character floor the API enforces
@@ -737,5 +804,211 @@ class _AccountActionsSheetState extends ConsumerState<_AccountActionsSheet> {
       (_) => alphabet[random.nextInt(alphabet.length)],
     ).join();
     return '$body${symbols[random.nextInt(symbols.length)]}${random.nextInt(10)}';
+  }
+}
+
+/// Picks the new WHM package, from the server's own list where that is
+/// readable and by hand where it is not.
+///
+/// A [serverId] of null means the caller could not offer the list — no
+/// `hosting.settings`, or an account with no server — and the dialog opens
+/// straight into the typed field. A WHM that cannot be reached lands in the
+/// same place, with the reason said out loud.
+class _PackageDialog extends StatefulWidget {
+  const _PackageDialog({
+    required this.current,
+    required this.serverId,
+    required this.service,
+  });
+
+  final String? current;
+  final String? serverId;
+  final SupportAdminService service;
+
+  @override
+  State<_PackageDialog> createState() => _PackageDialogState();
+}
+
+class _PackageDialogState extends State<_PackageDialog> {
+  final _typed = TextEditingController();
+  final _filter = TextEditingController();
+
+  List<String>? _packages;
+  bool _loading = false;
+
+  /// Set when WHM refused or could not be reached, to distinguish "we never
+  /// asked" from "we asked and it failed" in the typed field's explanation.
+  String? _loadError;
+
+  @override
+  void initState() {
+    super.initState();
+    _typed.text = widget.current ?? '';
+    if (widget.serverId != null) _load(widget.serverId!);
+  }
+
+  @override
+  void dispose() {
+    _typed.dispose();
+    _filter.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load(String serverId) async {
+    setState(() => _loading = true);
+    try {
+      final packages = await widget.service.serverPackages(serverId);
+      if (!mounted) return;
+      // The account's own package may predate the list, or have been renamed
+      // on the server — keep it selectable either way.
+      final current = widget.current;
+      final all =
+          {if (current != null && current.isNotEmpty) current, ...packages}
+              .toList()
+            ..sort();
+      setState(() {
+        // A server that reports no packages at all leaves nothing to pick
+        // from — the typed field is the only way through.
+        _packages = all.isEmpty ? null : all;
+        _loading = false;
+      });
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _loadError = e.message;
+        _loading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final packages = _packages;
+
+    return AlertDialog(
+      title: const Text('Change package'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: _loading
+            ? const Padding(
+                padding: EdgeInsets.symmetric(vertical: Spacing.lg),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            : packages == null
+            ? _typedField(theme)
+            : _picker(theme, packages),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        if (packages == null && !_loading)
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: _typed,
+            builder: (context, value, _) {
+              final package = value.text.trim();
+              return FilledButton(
+                onPressed: package.isEmpty || package == widget.current
+                    ? null
+                    : () => Navigator.pop(context, package),
+                child: const Text('Change package'),
+              );
+            },
+          ),
+      ],
+    );
+  }
+
+  Widget _typedField(ThemeData theme) => Column(
+    mainAxisSize: MainAxisSize.min,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(
+        _loadError == null
+            ? 'Type the WHM package name exactly as the server spells it.'
+            : 'Could not load packages from the server — type the exact WHM '
+                  'package name.',
+        style: theme.textTheme.bodySmall,
+      ),
+      const SizedBox(height: Spacing.md),
+      TextField(
+        controller: _typed,
+        autofocus: true,
+        autocorrect: false,
+        enableSuggestions: false,
+        decoration: InputDecoration(
+          hintText: widget.current == null
+              ? 'WHM package name'
+              : 'Currently ${widget.current}',
+          prefixIcon: const Icon(Icons.inventory_2_outlined, size: 20),
+        ),
+      ),
+    ],
+  );
+
+  Widget _picker(ThemeData theme, List<String> packages) {
+    final query = _filter.text.trim().toLowerCase();
+    final shown = query.isEmpty
+        ? packages
+        : packages.where((p) => p.toLowerCase().contains(query)).toList();
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // A WHM box with a handful of packages does not need a search field
+        // taking the top of a dialog this small.
+        if (packages.length > 8) ...[
+          TextField(
+            controller: _filter,
+            autocorrect: false,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              hintText: 'Filter packages',
+              prefixIcon: Icon(Icons.search, size: 20),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: Spacing.sm),
+        ],
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxHeight: 280),
+          child: shown.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: Spacing.md),
+                  child: Text(
+                    'No package matches that.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: shown.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, i) {
+                    final package = shown[i];
+                    final isCurrent = package == widget.current;
+                    return ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(
+                        package,
+                        style: theme.textTheme.bodyMedium,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      trailing: isCurrent
+                          ? const StatusChip('active', dense: true)
+                          : null,
+                      enabled: !isCurrent,
+                      onTap: () => Navigator.pop(context, package),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
   }
 }

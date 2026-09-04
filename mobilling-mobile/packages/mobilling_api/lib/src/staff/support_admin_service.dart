@@ -165,6 +165,96 @@ class SupportAdminService {
       _api.delete<dynamic>('/kb/articles/$id');
 
   // ---------------------------------------------------------------------
+  // Servers (WHM) — all behind `hosting.settings`
+  // ---------------------------------------------------------------------
+
+  /// GET /servers — every WHM box, with its hosting-account count.
+  Future<List<HostingServer>> servers() async {
+    final body = await _api.get<Map<String, dynamic>>('/servers');
+    return (body['data'] as List? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(HostingServer.fromJson)
+        .toList();
+  }
+
+  /// POST /servers. [apiToken] is required here; WHM issues it under
+  /// *Development → Manage API Tokens*.
+  Future<HostingServer> createServer({
+    required String name,
+    required String hostname,
+    required String username,
+    required String apiToken,
+    int port = 2087,
+    bool isActive = true,
+    bool verifySsl = true,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/servers',
+      body: {
+        'name': name,
+        'hostname': hostname,
+        'username': username,
+        'api_token': apiToken,
+        'port': port,
+        'is_active': isActive,
+        'verify_ssl': verifySsl,
+      },
+    );
+    return HostingServer.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// PUT /servers/{id}. Leave [apiToken] null to keep the stored one — the
+  /// API treats a blank token as "unchanged", and the token is never read
+  /// back, so an edit form has nothing to prefill it with.
+  Future<HostingServer> updateServer(
+    String id, {
+    String? name,
+    String? hostname,
+    String? username,
+    String? apiToken,
+    int? port,
+    bool? isActive,
+    bool? verifySsl,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/servers/$id',
+      body: {
+        if (name != null) 'name': name,
+        if (hostname != null) 'hostname': hostname,
+        if (username != null) 'username': username,
+        if (apiToken != null && apiToken.isNotEmpty) 'api_token': apiToken,
+        if (port != null) 'port': port,
+        if (isActive != null) 'is_active': isActive,
+        if (verifySsl != null) 'verify_ssl': verifySsl,
+      },
+    );
+    return HostingServer.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// DELETE /servers/{id}. The API refuses (422) while any hosting account
+  /// still points at the server — deactivate it instead.
+  Future<void> deleteServer(String id) =>
+      _api.delete<dynamic>('/servers/$id');
+
+  /// POST /servers/{id}/test — proves the credentials by listing WHM
+  /// packages. A failure comes back as a 422 [ApiException] carrying WHM's
+  /// own complaint, so callers only ever see the success shape.
+  Future<List<String>> testServer(String id) async {
+    final body = await _api.post<Map<String, dynamic>>('/servers/$id/test');
+    return (body['packages'] as List? ?? const [])
+        .map((p) => p.toString())
+        .toList();
+  }
+
+  /// GET /servers/{id}/packages — the WHM package names, for a picker.
+  Future<List<String>> serverPackages(String id) async {
+    final body = await _api.get<Map<String, dynamic>>('/servers/$id/packages');
+    return (body['data'] as List? ?? const [])
+        .map((p) => p.toString())
+        .toList();
+  }
+
+  // ---------------------------------------------------------------------
   // Hosting accounts
   // ---------------------------------------------------------------------
 
@@ -233,9 +323,10 @@ class SupportAdminService {
   /// `hosting.change_package`. [package] is the WHM package name, which must
   /// match the server's spelling exactly; also queued, so 202 + message.
   ///
-  /// The package list itself lives behind `GET /servers/{server}/packages`,
-  /// which needs `hosting.settings` and a server id the list rows do not
-  /// carry — callers ask staff to type the name.
+  /// The package list itself lives behind `GET /servers/{server}/packages`
+  /// ([serverPackages]), which needs `hosting.settings` — so a caller holding
+  /// that permission can offer a picker off [StaffHostingAccount.serverId],
+  /// and one without it falls back to asking staff to type the name.
   Future<String?> changeHostingPackage(String accountId, String package) async {
     final body = await _api.post<Map<String, dynamic>>(
       '/hosting-accounts/$accountId/change-package',
@@ -266,15 +357,42 @@ class SupportAdminService {
   /// cPanel password and sends the client the welcome message carrying it.
   /// Needs `hosting.change_package`.
   ///
-  /// The response also echoes the generated password; it is deliberately not
-  /// returned — the client's welcome message is the delivery channel, and
-  /// staff have no reason to hold it. Only the message comes back.
-  Future<String?> resetHostingWelcome(String accountId) async {
+  /// The generated password comes back with the message. The welcome email is
+  /// the client's copy, but staff on a call need to be able to read it out —
+  /// and this response is the only place it ever appears, so a caller that
+  /// drops it cannot get it back.
+  Future<({String? message, String? password})> resetHostingWelcome(
+    String accountId,
+  ) async {
     final body = await _api.post<Map<String, dynamic>>(
       '/hosting-accounts/$accountId/reset-welcome',
     );
+    return (
+      message: body['message']?.toString(),
+      password: body['password']?.toString(),
+    );
+  }
+
+  /// POST /client-subscriptions/{id}/provision — create the cPanel account
+  /// for a subscription that has none. Needs `hosting.create`.
+  ///
+  /// Keyed on the subscription rather than an account because the account is
+  /// precisely what does not exist yet; queued, so the message reports what
+  /// was started.
+  Future<String?> provisionSubscription(String subscriptionId) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/client-subscriptions/$subscriptionId/provision',
+    );
     return body['message']?.toString();
   }
+
+  /// DELETE /client-subscriptions/{id} — removes the billing record. Needs
+  /// `client_subscriptions.delete`.
+  ///
+  /// This does not touch the server: a provisioned account has to be
+  /// terminated separately, or it keeps running unbilled.
+  Future<void> deleteClientSubscription(String subscriptionId) =>
+      _api.delete<dynamic>('/client-subscriptions/$subscriptionId');
 
   // ---------------------------------------------------------------------
   // Hosting services — the admin Products/Services tab
@@ -613,6 +731,17 @@ abstract final class SupportAdminPermissions {
 
   /// Also gates the two password endpoints, not just the package change.
   static const hostingChangePackage = 'hosting.change_package';
+
+  /// Provisioning an account for a subscription that has none, and importing
+  /// a discovered one.
+  static const hostingCreate = 'hosting.create';
+
+  /// The whole `/servers` group — the WHM boxes themselves, plus the package
+  /// lists a picker reads.
+  static const hostingSettings = 'hosting.settings';
+
+  /// Deleting the billing record behind a service.
+  static const clientSubscriptionsDelete = 'client_subscriptions.delete';
   /// The admin Products/Services tab: reading a client's services and their
   /// detail. Distinct from `hosting.read`, which is the server-side view.
   static const clientSubscriptionsRead = 'client_subscriptions.read';

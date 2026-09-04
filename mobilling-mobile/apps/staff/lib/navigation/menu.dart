@@ -118,6 +118,16 @@ const List<MenuNode> staffMenu = [
         ready: true,
       ),
       MenuEntry(
+        label: 'Servers',
+        icon: Icons.dns_outlined,
+        path: '/hosting/servers',
+        permission: 'menu.hosting',
+        // The whole /servers group sits behind this on the API, distinct
+        // from the hosting-account permissions the other entries need.
+        alsoRequires: 'hosting.settings',
+        ready: true,
+      ),
+      MenuEntry(
         label: 'Domains',
         icon: Icons.public_outlined,
         path: '/domains',

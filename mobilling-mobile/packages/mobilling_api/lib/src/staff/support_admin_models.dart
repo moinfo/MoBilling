@@ -169,6 +169,7 @@ class StaffHostingAccount {
     this.cpanelUsername,
     this.package,
     this.clientName,
+    this.serverId,
     this.serverName,
     this.serverHostname,
     this.diskUsed,
@@ -183,6 +184,10 @@ class StaffHostingAccount {
   final String? cpanelUsername;
   final String? package;
   final String? clientName;
+
+  /// The WHM box this account lives on. Carried so a caller holding
+  /// `hosting.settings` can fetch that server's package list for a picker.
+  final String? serverId;
   final String? serverName;
   final String? serverHostname;
   final String? diskUsed;
@@ -208,6 +213,7 @@ class StaffHostingAccount {
       // meta.plan is the live cPanel package; the column is the ordered one.
       package: meta?.str('plan') ?? json.str('package'),
       clientName: subscription?.object('client')?.str('name'),
+      serverId: server?.str('id'),
       serverName: server?.str('name'),
       serverHostname: server?.str('hostname'),
       diskUsed: meta?.str('disk_used'),
@@ -216,6 +222,58 @@ class StaffHostingAccount {
       subscriptionId: json.str('client_subscription_id'),
     );
   }
+}
+
+/// A WHM box hosting accounts are provisioned onto.
+///
+/// The API token is write-only — it is accepted on create and update but
+/// never returned, so an edit form leaves the field blank and blank means
+/// "keep the stored one".
+class HostingServer {
+  const HostingServer({
+    required this.id,
+    required this.name,
+    required this.hostname,
+    required this.port,
+    required this.username,
+    required this.isActive,
+    required this.verifySsl,
+    this.type,
+    this.nameservers = const [],
+    this.hostingAccountsCount = 0,
+  });
+
+  final String id;
+  final String name;
+  final String hostname;
+  final int port;
+  final String username;
+  final bool isActive;
+  final bool verifySsl;
+  final String? type;
+  final List<String> nameservers;
+
+  /// How many accounts point at this server. The API refuses to delete a
+  /// server while this is above zero.
+  final int hostingAccountsCount;
+
+  bool get hasAccounts => hostingAccountsCount > 0;
+
+  /// `host:port` — how WHM is actually addressed, and what staff recognise.
+  String get address => '$hostname:$port';
+
+  factory HostingServer.fromJson(Map<String, dynamic> json) => HostingServer(
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    hostname: json.strOr('hostname', ''),
+    port: json.count('port', fallback: 2087),
+    username: json.strOr('username', 'root'),
+    isActive: json.flag('is_active', fallback: true),
+    verifySsl: json.flag('verify_ssl', fallback: true),
+    type: json.str('type'),
+    nameservers: json.strings('nameservers'),
+    hostingAccountsCount: json.count('hosting_accounts_count'),
+  );
 }
 
 /// One line from an account's provisioning log.

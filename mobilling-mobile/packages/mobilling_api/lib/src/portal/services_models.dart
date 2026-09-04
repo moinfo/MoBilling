@@ -140,6 +140,7 @@ class HostingDetail {
     this.cpanelUsername,
     this.package,
     this.productName,
+    this.productGroup,
     this.price,
     this.billingCycle,
     this.registeredAt,
@@ -158,6 +159,10 @@ class HostingDetail {
   final String? cpanelUsername;
   final String? package;
   final String? productName;
+
+  /// The catalog category the plan sits in ("Shared Hosting", "Reseller") —
+  /// the product's own name rarely says which family it belongs to.
+  final String? productGroup;
   final double? price;
   final String? billingCycle;
   final DateTime? registeredAt;
@@ -174,6 +179,7 @@ class HostingDetail {
         cpanelUsername: json.str('cpanel_username'),
         package: json.str('package'),
         productName: json.str('product_name'),
+        productGroup: json.str('product_group'),
         price: json['price'] == null ? null : json.money('price'),
         billingCycle: json.str('billing_cycle'),
         registeredAt: json.date('registered_at'),

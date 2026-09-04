@@ -75,6 +75,7 @@ import 'features/staff_self/targets_and_systems_screens.dart';
 import 'features/support_admin/announcements_screen.dart';
 import 'features/support_admin/canned_replies_screen.dart';
 import 'features/support_admin/hosting_accounts_screen.dart';
+import 'features/support_admin/servers_screen.dart';
 import 'features/support_admin/knowledgebase_screen.dart';
 import 'features/support_admin/manage_services_screen.dart';
 import 'features/support_admin/staff_domains_screen.dart';
@@ -564,6 +565,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/hosting/discover',
         builder: (context, state) => const DiscoverHostingScreen(),
+      ),
+      GoRoute(
+        path: '/hosting/servers',
+        builder: (context, state) => const ServersScreen(),
       ),
       GoRoute(
         path: '/hosting/services',

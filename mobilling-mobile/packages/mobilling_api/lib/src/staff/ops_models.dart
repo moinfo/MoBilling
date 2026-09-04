@@ -156,31 +156,6 @@ class PortalUserRow {
 // cPanel account discovery
 // ---------------------------------------------------------------------------
 
-/// A WHM server configured for this tenant (`GET /servers`).
-class HostingServer {
-  const HostingServer({
-    required this.id,
-    required this.name,
-    required this.isActive,
-    required this.hostingAccountsCount,
-    this.hostname,
-  });
-
-  final String id;
-  final String name;
-  final bool isActive;
-  final int hostingAccountsCount;
-  final String? hostname;
-
-  factory HostingServer.fromJson(Map<String, dynamic> json) => HostingServer(
-        id: json.id(),
-        name: json.strOr('name', '—'),
-        isActive: json.flag('is_active', fallback: true),
-        hostingAccountsCount: json.count('hosting_accounts_count'),
-        hostname: json.str('hostname'),
-      );
-}
-
 /// One cPanel account as WHM reports it, merged with whether MoBilling
 /// already tracks it. Un-imported accounts are sites being hosted — and
 /// possibly never billed — that no client here is linked to.
