@@ -302,6 +302,298 @@ class HrService {
   Future<void> cancelSalaryAdvance(String id) =>
       _api.post<dynamic>('/salary-advances/$id/cancel');
 
+  // ---------------------------------------------------------------------
+  // Payroll catalogs: allowances, deductions, statutory rates
+  // ---------------------------------------------------------------------
+
+  /// GET /allowances — needs `payroll.manage`/`payroll.view`.
+  Future<List<PayComponent>> allowances() async {
+    final body = await _api.get<dynamic>('/allowances');
+    return Paginated.fromJson(body, PayComponent.fromJson).items;
+  }
+
+  /// POST /allowances — needs `payroll.manage`.
+  Future<PayComponent> createAllowance({
+    required String name,
+    required String calculationType,
+    required double defaultAmount,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/allowances',
+      body: {
+        'name': name,
+        'calculation_type': calculationType,
+        'default_amount': defaultAmount,
+      },
+    );
+    return PayComponent.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// PUT /allowances/{id} — needs `payroll.manage`.
+  Future<PayComponent> updateAllowance(
+    String id, {
+    required String name,
+    required String calculationType,
+    required double defaultAmount,
+    bool isActive = true,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/allowances/$id',
+      body: {
+        'name': name,
+        'calculation_type': calculationType,
+        'default_amount': defaultAmount,
+        'is_active': isActive,
+      },
+    );
+    return PayComponent.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// DELETE /allowances/{id} — needs `payroll.manage`.
+  Future<void> deleteAllowance(String id) =>
+      _api.delete<dynamic>('/allowances/$id');
+
+  /// GET /allowances/{id}/subscriptions
+  Future<SubscriptionsPage> allowanceSubscriptions(String id) async {
+    final body =
+        await _api.get<Map<String, dynamic>>('/allowances/$id/subscriptions');
+    return SubscriptionsPage.fromJson(body);
+  }
+
+  /// POST /allowances/{id}/subscriptions — upsert one employee's opt-in.
+  Future<void> setAllowanceSubscription(
+    String allowanceId, {
+    required String userId,
+    double? amountOverride,
+    bool isActive = true,
+  }) =>
+      _api.post<dynamic>(
+        '/allowances/$allowanceId/subscriptions',
+        body: {
+          'user_id': userId,
+          'amount_override': amountOverride,
+          'is_active': isActive,
+        },
+      );
+
+  /// GET /deductions — needs `payroll.manage`/`payroll.view`.
+  Future<List<PayComponent>> deductions() async {
+    final body = await _api.get<dynamic>('/deductions');
+    return Paginated.fromJson(body, PayComponent.fromJson).items;
+  }
+
+  /// POST /deductions — needs `payroll.manage`.
+  Future<PayComponent> createDeduction({
+    required String name,
+    required String calculationType,
+    required double defaultAmount,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/deductions',
+      body: {
+        'name': name,
+        'calculation_type': calculationType,
+        'default_amount': defaultAmount,
+      },
+    );
+    return PayComponent.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// PUT /deductions/{id} — needs `payroll.manage`.
+  Future<PayComponent> updateDeduction(
+    String id, {
+    required String name,
+    required String calculationType,
+    required double defaultAmount,
+    bool isActive = true,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/deductions/$id',
+      body: {
+        'name': name,
+        'calculation_type': calculationType,
+        'default_amount': defaultAmount,
+        'is_active': isActive,
+      },
+    );
+    return PayComponent.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// DELETE /deductions/{id} — needs `payroll.manage`.
+  Future<void> deleteDeduction(String id) =>
+      _api.delete<dynamic>('/deductions/$id');
+
+  /// GET /deductions/{id}/subscriptions
+  Future<SubscriptionsPage> deductionSubscriptions(String id) async {
+    final body =
+        await _api.get<Map<String, dynamic>>('/deductions/$id/subscriptions');
+    return SubscriptionsPage.fromJson(body);
+  }
+
+  /// POST /deductions/{id}/subscriptions — upsert one employee's opt-in.
+  Future<void> setDeductionSubscription(
+    String deductionId, {
+    required String userId,
+    double? amountOverride,
+    bool isActive = true,
+  }) =>
+      _api.post<dynamic>(
+        '/deductions/$deductionId/subscriptions',
+        body: {
+          'user_id': userId,
+          'amount_override': amountOverride,
+          'is_active': isActive,
+        },
+      );
+
+  /// GET /statutory-rates — needs `payroll.manage`/`payroll.view`.
+  Future<List<StatutoryRate>> statutoryRates() async {
+    final body = await _api.get<dynamic>('/statutory-rates');
+    return Paginated.fromJson(body, StatutoryRate.fromJson).items;
+  }
+
+  /// POST /statutory-rates — needs `payroll.manage`.
+  Future<StatutoryRate> createStatutoryRate({
+    required String name,
+    required double employeePercent,
+    required double employerPercent,
+    bool reducesTaxableIncome = false,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/statutory-rates',
+      body: {
+        'name': name,
+        'employee_percent': employeePercent,
+        'employer_percent': employerPercent,
+        'reduces_taxable_income': reducesTaxableIncome,
+      },
+    );
+    return StatutoryRate.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// PUT /statutory-rates/{id} — needs `payroll.manage`.
+  Future<StatutoryRate> updateStatutoryRate(
+    String id, {
+    required String name,
+    required double employeePercent,
+    required double employerPercent,
+    bool reducesTaxableIncome = false,
+    bool isActive = true,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/statutory-rates/$id',
+      body: {
+        'name': name,
+        'employee_percent': employeePercent,
+        'employer_percent': employerPercent,
+        'reduces_taxable_income': reducesTaxableIncome,
+        'is_active': isActive,
+      },
+    );
+    return StatutoryRate.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  /// DELETE /statutory-rates/{id} — needs `payroll.manage`.
+  Future<void> deleteStatutoryRate(String id) =>
+      _api.delete<dynamic>('/statutory-rates/$id');
+
+  /// GET /statutory-rates/{id}/subscriptions
+  Future<SubscriptionsPage> statutoryRateSubscriptions(String id) async {
+    final body = await _api
+        .get<Map<String, dynamic>>('/statutory-rates/$id/subscriptions');
+    return SubscriptionsPage.fromJson(body);
+  }
+
+  /// POST /statutory-rates/{id}/subscriptions — upsert one employee's opt-in.
+  ///
+  /// [referenceNumber] is only sent when non-null: the controller only
+  /// touches that column when the key is present in the request, so a
+  /// toggle-only call must omit it rather than send null and wipe it.
+  Future<void> setStatutoryRateSubscription(
+    String rateId, {
+    required String userId,
+    bool isActive = true,
+    String? referenceNumber,
+  }) =>
+      _api.post<dynamic>(
+        '/statutory-rates/$rateId/subscriptions',
+        body: {
+          'user_id': userId,
+          'is_active': isActive,
+          'reference_number': ?referenceNumber,
+        },
+      );
+
+  // ---------------------------------------------------------------------
+  // Payroll settings: PAYE brackets and the three exemption toggles
+  // ---------------------------------------------------------------------
+
+  /// GET /payroll-settings — needs `payroll.view`.
+  Future<PayrollSettings> payrollSettings() async {
+    final body = await _api.get<Map<String, dynamic>>('/payroll-settings');
+    return PayrollSettings.fromJson(body);
+  }
+
+  /// PUT /payroll-settings — replaces the whole bracket table. Needs
+  /// `payroll.manage`.
+  Future<PayrollSettings> updatePayrollSettings(
+    List<PayeBracket> brackets,
+  ) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/payroll-settings',
+      body: {'paye_brackets': [for (final b in brackets) b.toJson()]},
+    );
+    return PayrollSettings.fromJson(body);
+  }
+
+  /// GET /employees/paye-subscriptions — who is subject to PAYE at all (a
+  /// blanket exemption skips the whole bracket calculation for them).
+  Future<SubscriptionsPage> payeExemptions() =>
+      _exemptionSubscriptions('/employees/paye-subscriptions');
+
+  /// POST /employees/paye-subscriptions
+  Future<void> setPayeExemption({
+    required String userId,
+    required bool isActive,
+  }) =>
+      _api.post<dynamic>(
+        '/employees/paye-subscriptions',
+        body: {'user_id': userId, 'is_active': isActive},
+      );
+
+  /// GET /employees/attendance-penalty-subscriptions.
+  Future<SubscriptionsPage> attendancePenaltyExemptions() =>
+      _exemptionSubscriptions('/employees/attendance-penalty-subscriptions');
+
+  /// POST /employees/attendance-penalty-subscriptions.
+  Future<void> setAttendancePenaltyExemption({
+    required String userId,
+    required bool isActive,
+  }) =>
+      _api.post<dynamic>(
+        '/employees/attendance-penalty-subscriptions',
+        body: {'user_id': userId, 'is_active': isActive},
+      );
+
+  /// GET /employees/report-penalty-subscriptions.
+  Future<SubscriptionsPage> reportPenaltyExemptions() =>
+      _exemptionSubscriptions('/employees/report-penalty-subscriptions');
+
+  /// POST /employees/report-penalty-subscriptions.
+  Future<void> setReportPenaltyExemption({
+    required String userId,
+    required bool isActive,
+  }) =>
+      _api.post<dynamic>(
+        '/employees/report-penalty-subscriptions',
+        body: {'user_id': userId, 'is_active': isActive},
+      );
+
+  Future<SubscriptionsPage> _exemptionSubscriptions(String path) async {
+    final body = await _api.get<Map<String, dynamic>>(path);
+    return SubscriptionsPage.fromJson(body);
+  }
+
   Future<Uint8List> _download(String path) async {
     try {
       final response = await _api.raw.get<List<int>>(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
@@ -121,6 +123,7 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
   final _subject = TextEditingController();
   final _body = TextEditingController();
   final _smsBody = TextEditingController();
+  final _whatsappBody = TextEditingController();
 
   BroadcastChannel _channel = BroadcastChannel.email;
 
@@ -140,6 +143,7 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
     _subject.dispose();
     _body.dispose();
     _smsBody.dispose();
+    _whatsappBody.dispose();
     super.dispose();
   }
 
@@ -150,6 +154,7 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
       _subject.text = template.subject;
       _body.text = template.body;
       _smsBody.text = template.sms;
+      _whatsappBody.text = template.body;
     });
   }
 
@@ -175,6 +180,7 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
     final channelWording = switch (_channel) {
       BroadcastChannel.email => 'saved email address',
       BroadcastChannel.sms => 'saved phone number',
+      BroadcastChannel.whatsapp => 'saved phone number',
       BroadcastChannel.both => 'saved email address or phone number',
     };
 
@@ -228,17 +234,14 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
             subject: _subject.text.trim(),
             body: _body.text.trim(),
             smsBody: _smsBody.text.trim(),
+            whatsappBody: _whatsappBody.text.trim(),
             clientIds: _recipients.keys.toList(),
           );
-      showCommsMessage(
-        messenger,
-        '${result.sentCount} of ${result.totalRecipients} delivered'
-        '${result.failedCount > 0 ? ', ${result.failedCount} failed' : ''}.',
-        isError: result.sentCount == 0 && result.totalRecipients > 0,
-      );
+      showCommsMessage(messenger, result.message);
       _subject.clear();
       _body.clear();
       _smsBody.clear();
+      _whatsappBody.clear();
       _recipients.clear();
       ref.read(broadcastsRefreshProvider.notifier).state++;
     } on ApiException catch (e) {
@@ -396,6 +399,26 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
                   : null,
             ),
           ],
+          if (_channel.includesWhatsapp) ...[
+            const SizedBox(height: Spacing.md),
+            const CommsFieldLabel('WhatsApp message'),
+            const SizedBox(height: Spacing.sm),
+            TextFormField(
+              controller: _whatsappBody,
+              minLines: 6,
+              maxLines: 12,
+              enabled: !_sending,
+              maxLength: 4096,
+              keyboardType: TextInputType.multiline,
+              decoration: const InputDecoration(
+                hintText: 'Dear Client, …',
+                alignLabelWithHint: true,
+              ),
+              validator: (value) => (value == null || value.trim().isEmpty)
+                  ? 'Enter the WhatsApp message.'
+                  : null,
+            ),
+          ],
           const SizedBox(height: Spacing.lg),
           PrimaryButton(
             label: _sending ? 'Sending…' : 'Send broadcast',
@@ -406,8 +429,8 @@ class _ComposeViewState extends ConsumerState<_ComposeView> {
           const SizedBox(height: Spacing.md),
           Text(
             'Clients without an address for the chosen channel are skipped '
-            'server-side. Sending is not queued — keep the app open until the '
-            'tally comes back.',
+            'server-side. Sending happens in the background — check the '
+            'Sent tab for live progress.',
             style: theme.textTheme.bodySmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -663,6 +686,35 @@ class _BroadcastHistoryView extends ConsumerStatefulWidget {
 class _BroadcastHistoryViewState extends ConsumerState<_BroadcastHistoryView> {
   final _list = GlobalKey<PagedListViewState<Broadcast>>();
 
+  /// Live progress: while a fetched page still has a broadcast whose send
+  /// hasn't settled, reload again in a few seconds so the tally catches up.
+  /// [PagedListView] has no hook of its own for "a page just loaded", so this
+  /// wraps the fetcher passed to it instead of touching its public API.
+  Timer? _pollTimer;
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<Paginated<Broadcast>> _fetch(int page) async {
+    final result = await ref.read(commsServiceProvider).broadcasts(page: page);
+    _scheduleNextPollIfNeeded(result);
+    return result;
+  }
+
+  void _scheduleNextPollIfNeeded(Paginated<Broadcast> page) {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+    if (!page.items.any((b) => b.inProgress)) return;
+
+    _pollTimer = Timer(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      _list.currentState?.reload();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.listen<int>(
@@ -672,7 +724,7 @@ class _BroadcastHistoryViewState extends ConsumerState<_BroadcastHistoryView> {
 
     return PagedListView<Broadcast>(
       key: _list,
-      fetch: (page) => ref.read(commsServiceProvider).broadcasts(page: page),
+      fetch: _fetch,
       emptyIcon: Icons.campaign_outlined,
       emptyTitle: 'Nothing sent yet',
       emptyMessage: 'Broadcasts you send will be listed here.',
@@ -683,13 +735,18 @@ class _BroadcastHistoryViewState extends ConsumerState<_BroadcastHistoryView> {
 
 /// One sent broadcast: subject, status beside its metadata, the delivery
 /// tally as the aligned figure on the right, and a preview of the body.
-class _BroadcastCard extends StatelessWidget {
+///
+/// While [Broadcast.inProgress] the tally is replaced by a small spinner —
+/// the send is still running server-side (`SendBroadcastJob`) and the counts
+/// have not settled yet, so showing `0/40` would read as a failure rather
+/// than as work in progress.
+class _BroadcastCard extends ConsumerWidget {
   const _BroadcastCard({required this.broadcast});
 
   final Broadcast broadcast;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
     final status = context.statusColors;
     final preview = broadcast.body ?? broadcast.smsBody;
@@ -707,11 +764,27 @@ class _BroadcastCard extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        broadcast.subject ?? broadcast.smsBody ?? 'Broadcast',
-                        style: theme.textTheme.titleSmall,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              broadcast.subject ??
+                                  broadcast.smsBody ??
+                                  'Broadcast',
+                              style: theme.textTheme.titleSmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (broadcast.isRetry) ...[
+                            const SizedBox(width: Spacing.sm),
+                            CommsChip(
+                              label: 'Retry',
+                              color: theme.colorScheme.tertiary,
+                            ),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: Spacing.xs),
                       Row(
@@ -722,8 +795,6 @@ class _BroadcastCard extends StatelessWidget {
                             child: CommsMeta(
                               [
                                 broadcast.channel.label,
-                                if (broadcast.failedCount > 0)
-                                  '${broadcast.failedCount} failed',
                                 if (broadcast.wasTargeted) 'selected clients',
                                 if (broadcast.senderName != null)
                                   broadcast.senderName!,
@@ -731,21 +802,41 @@ class _BroadcastCard extends StatelessWidget {
                               ].join(' · '),
                             ),
                           ),
+                          if (!broadcast.inProgress &&
+                              broadcast.failedCount > 0) ...[
+                            const SizedBox(width: Spacing.sm),
+                            InkWell(
+                              onTap: () =>
+                                  _showRecipients(context, ref, sent: false),
+                              child: Text(
+                                '${broadcast.failedCount} failed',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: status.overdue,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ],
                   ),
                 ),
                 const SizedBox(width: Spacing.md),
-                _Tally(
-                  sent: broadcast.sentCount,
-                  total: broadcast.totalRecipients,
-                  color: switch (broadcast.deliveryStatus) {
-                    'failed' => status.overdue,
-                    'partial' => status.attention,
-                    _ => null,
-                  },
-                ),
+                broadcast.inProgress
+                    ? const _SendingIndicator()
+                    : _Tally(
+                        sent: broadcast.sentCount,
+                        total: broadcast.totalRecipients,
+                        color: switch (broadcast.deliveryStatus) {
+                          'failed' => status.overdue,
+                          'partial' => status.attention,
+                          _ => null,
+                        },
+                        onTap: broadcast.sentCount == 0
+                            ? null
+                            : () => _showRecipients(context, ref, sent: true),
+                      ),
               ],
             ),
             if (preview != null) ...[
@@ -759,26 +850,107 @@ class _BroadcastCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
             ],
+            if (broadcast.canResendFailed) ...[
+              const SizedBox(height: Spacing.sm),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    minimumSize: const Size(0, 36),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Spacing.sm,
+                    ),
+                  ),
+                  icon: const Icon(Icons.replay, size: 16),
+                  label: Text(
+                    'Resend to ${broadcast.failedCount} failed',
+                  ),
+                  onPressed: () => _resendFailed(context, ref),
+                ),
+              ),
+            ],
           ],
         ),
       ),
     );
   }
+
+  Future<void> _showRecipients(
+    BuildContext context,
+    WidgetRef ref, {
+    required bool sent,
+  }) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    shape: commsSheetShape,
+    builder: (context) =>
+        _BroadcastRecipientsSheet(broadcastId: broadcast.id, sent: sent),
+  );
+
+  Future<void> _resendFailed(BuildContext context, WidgetRef ref) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await ref
+          .read(commsServiceProvider)
+          .resendFailedBroadcast(broadcast.id);
+      showCommsMessage(messenger, result.message);
+      ref.read(broadcastsRefreshProvider.notifier).state++;
+    } on ApiException catch (e) {
+      showCommsMessage(messenger, e.message, isError: true);
+    }
+  }
 }
 
-/// `12/40` over a SENT eyebrow — the list's right-hand column.
-class _Tally extends StatelessWidget {
-  const _Tally({required this.sent, required this.total, this.color});
-
-  final int sent;
-  final int total;
-  final Color? color;
+/// The right-hand column while a send is still running: a small spinner and
+/// "sending…", mirroring the web's `Loader size="xs"` in the Failed column.
+class _SendingIndicator extends StatelessWidget {
+  const _SendingIndicator();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        const SizedBox(
+          width: 14,
+          height: 14,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+        const SizedBox(height: Spacing.xs),
+        Text(
+          'sending…',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// `12/40` over a SENT eyebrow — the list's right-hand column. Tappable once
+/// there is somebody to show, opening the sent-recipients sheet.
+class _Tally extends StatelessWidget {
+  const _Tally({
+    required this.sent,
+    required this.total,
+    this.color,
+    this.onTap,
+  });
+
+  final int sent;
+  final int total;
+  final Color? color;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Text(
@@ -800,6 +972,143 @@ class _Tally extends StatelessWidget {
           ),
         ),
       ],
+    );
+
+    if (onTap == null) return content;
+    return InkWell(
+      borderRadius: BorderRadius.circular(Radii.sm),
+      onTap: onTap,
+      child: Padding(padding: const EdgeInsets.all(Spacing.xs), child: content),
+    );
+  }
+}
+
+/// Who did or didn't get one broadcast — `GET /broadcasts/{id}/recipients`,
+/// opened from the sent count or the failed count on [_BroadcastCard].
+class _BroadcastRecipientsSheet extends ConsumerStatefulWidget {
+  const _BroadcastRecipientsSheet({
+    required this.broadcastId,
+    required this.sent,
+  });
+
+  final String broadcastId;
+  final bool sent;
+
+  @override
+  ConsumerState<_BroadcastRecipientsSheet> createState() =>
+      _BroadcastRecipientsSheetState();
+}
+
+class _BroadcastRecipientsSheetState
+    extends ConsumerState<_BroadcastRecipientsSheet> {
+  late final Future<List<BroadcastRecipient>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref
+        .read(commsServiceProvider)
+        .broadcastRecipients(widget.broadcastId, sent: widget.sent);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.85,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.lg,
+              0,
+              Spacing.lg,
+              Spacing.md,
+            ),
+            child: CommsSheetHeader(
+              eyebrow: 'Broadcast',
+              title: widget.sent ? 'Sent to' : 'Failed for',
+            ),
+          ),
+          Flexible(
+            child: FutureBuilder<List<BroadcastRecipient>>(
+              future: _future,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState != ConnectionState.done) {
+                  return const Padding(
+                    padding: EdgeInsets.all(Spacing.xl),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.all(Spacing.lg),
+                    child: ErrorBanner(
+                      message: commsErrorText(snapshot.error!),
+                    ),
+                  );
+                }
+
+                final recipients = snapshot.data ?? const [];
+                if (recipients.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(Spacing.xl),
+                    child: Center(
+                      child: Text(
+                        widget.sent ? 'Nobody yet.' : 'No failures.',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  );
+                }
+
+                return ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Spacing.lg,
+                    vertical: Spacing.sm,
+                  ),
+                  itemCount: recipients.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final r = recipients[index];
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(
+                        r.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: r.reason != null
+                          ? Text(
+                              r.reason!,
+                              maxLines: 2,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.error,
+                              ),
+                            )
+                          : CommsMeta(
+                              [
+                                if (r.email != null) r.email!,
+                                if (r.phone != null) r.phone!,
+                              ].join(' · '),
+                            ),
+                    );
+                  },
+                );
+              },
+            ),
+          ),
+          SizedBox(height: sheetBottomInset(context) + Spacing.md),
+        ],
+      ),
     );
   }
 }

@@ -193,10 +193,14 @@ class SmsPurchaseStatus {
 // ─── Broadcasts ─────────────────────────────────────────────────────────────
 
 /// Channels a broadcast can go out on, verbatim from
-/// `BroadcastController::send`'s `in:email,sms,both` rule.
+/// `BroadcastController::send`'s `in:email,sms,whatsapp,both` rule.
+///
+/// `both` only ever means email + SMS — WhatsApp is always sent alone, never
+/// combined with the others, exactly as the web's compose form restricts it.
 enum BroadcastChannel {
   email('email', 'Email'),
   sms('sms', 'SMS'),
+  whatsapp('whatsapp', 'WhatsApp'),
   both('both', 'Email + SMS');
 
   const BroadcastChannel(this.value, this.label);
@@ -204,8 +208,9 @@ enum BroadcastChannel {
   final String value;
   final String label;
 
-  bool get includesEmail => this != BroadcastChannel.sms;
-  bool get includesSms => this != BroadcastChannel.email;
+  bool get includesEmail => this == BroadcastChannel.email || this == both;
+  bool get includesSms => this == BroadcastChannel.sms || this == both;
+  bool get includesWhatsapp => this == BroadcastChannel.whatsapp;
 
   static BroadcastChannel parse(String? value) =>
       BroadcastChannel.values.firstWhere(
@@ -215,6 +220,10 @@ enum BroadcastChannel {
 }
 
 /// A sent broadcast, with its delivery tally.
+///
+/// The send always runs in the background (`SendBroadcastJob::dispatch(...)
+/// ->afterResponse()`), so [sentCount]/[failedCount] only settle once
+/// [inProgress] goes false — poll by re-fetching the list.
 class Broadcast {
   const Broadcast({
     required this.id,
@@ -222,11 +231,16 @@ class Broadcast {
     required this.totalRecipients,
     required this.sentCount,
     required this.failedCount,
+    required this.inProgress,
     this.subject,
     this.body,
     this.smsBody,
+    this.whatsappBody,
     this.senderName,
     this.clientIds,
+    this.sentClientIds,
+    this.failedClientIds,
+    this.retryOfBroadcastId,
     this.createdAt,
   });
 
@@ -235,20 +249,32 @@ class Broadcast {
   final int totalRecipients;
   final int sentCount;
   final int failedCount;
+
+  /// `(sent_count + failed_count) < total_recipients`, computed server-side.
+  final bool inProgress;
   final String? subject;
   final String? body;
   final String? smsBody;
+  final String? whatsappBody;
   final String? senderName;
 
   /// Null when the broadcast went to every eligible client.
   final List<String>? clientIds;
+  final List<String>? sentClientIds;
+  final List<String>? failedClientIds;
+
+  /// Set when this broadcast is a "resend failed" retry of another one.
+  final String? retryOfBroadcastId;
   final DateTime? createdAt;
 
   bool get wasTargeted => clientIds != null && clientIds!.isNotEmpty;
+  bool get isRetry => retryOfBroadcastId != null;
+  bool get canResendFailed => !inProgress && (failedClientIds?.isNotEmpty ?? false);
 
-  /// A status word for [StatusChip]: nothing delivered reads as failed, a
-  /// partial delivery as partial.
+  /// A status word for [StatusChip]: still sending reads as pending, nothing
+  /// delivered as failed, a partial delivery as partial.
   String get deliveryStatus {
+    if (inProgress) return 'pending';
     if (sentCount == 0 && totalRecipients > 0) return 'failed';
     if (failedCount > 0) return 'partial';
     return 'completed';
@@ -260,36 +286,75 @@ class Broadcast {
     totalRecipients: json.count('total_recipients'),
     sentCount: json.count('sent_count'),
     failedCount: json.count('failed_count'),
+    inProgress: json.flag('in_progress'),
     subject: json.str('subject'),
     body: json.str('body'),
     smsBody: json.str('sms_body'),
+    whatsappBody: json.str('whatsapp_body'),
     senderName: json.object('sender')?.str('name'),
     clientIds: json['client_ids'] == null ? null : json.strings('client_ids'),
+    sentClientIds: json['sent_client_ids'] == null
+        ? null
+        : json.strings('sent_client_ids'),
+    failedClientIds: json['failed_client_ids'] == null
+        ? null
+        : json.strings('failed_client_ids'),
+    retryOfBroadcastId: json.str('retry_of_broadcast_id'),
     createdAt: json.date('created_at'),
   );
 }
 
-/// The tally returned straight after sending — the send is synchronous
-/// server-side, so these numbers are final.
-class BroadcastResult {
-  const BroadcastResult({
+/// What `POST /broadcasts` and `POST /broadcasts/{id}/resend-failed` answer
+/// with — a 202: the send has only just been queued, so there is no tally
+/// yet, only a count of who is targeted.
+class BroadcastSendResult {
+  const BroadcastSendResult({
+    required this.message,
     required this.totalRecipients,
-    required this.sentCount,
-    required this.failedCount,
     this.broadcastId,
   });
 
+  final String message;
   final int totalRecipients;
-  final int sentCount;
-  final int failedCount;
   final String? broadcastId;
 
-  factory BroadcastResult.fromJson(Map<String, dynamic> json) =>
-      BroadcastResult(
+  factory BroadcastSendResult.fromJson(Map<String, dynamic> json) =>
+      BroadcastSendResult(
+        message: json.strOr(
+          'message',
+          'Broadcast started — sending in the background.',
+        ),
         totalRecipients: json.count('total_recipients'),
-        sentCount: json.count('sent_count'),
-        failedCount: json.count('failed_count'),
         broadcastId: json.str('broadcast_id'),
+      );
+}
+
+/// One row of `GET /broadcasts/{id}/recipients` — who did or didn't get it,
+/// and why not.
+class BroadcastRecipient {
+  const BroadcastRecipient({
+    required this.id,
+    required this.name,
+    this.email,
+    this.phone,
+    this.reason,
+  });
+
+  final String id;
+  final String name;
+  final String? email;
+  final String? phone;
+
+  /// Only present when listing `status=failed`.
+  final String? reason;
+
+  factory BroadcastRecipient.fromJson(Map<String, dynamic> json) =>
+      BroadcastRecipient(
+        id: json.id(),
+        name: json.strOr('name', '—'),
+        email: json.str('email'),
+        phone: json.str('phone'),
+        reason: json.str('reason'),
       );
 }
 

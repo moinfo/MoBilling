@@ -31,6 +31,7 @@ class Expense {
     this.controlNumber,
     this.reference,
     this.notes,
+    this.recordedById,
     this.recordedByName,
     this.approvedByName,
     this.approvedAt,
@@ -58,6 +59,11 @@ class Expense {
   final String? controlNumber;
   final String? reference;
   final String? notes;
+
+  /// Who submitted this expense — needed to disable approve/reject on your
+  /// own submission (separation of duties; the server does not enforce this
+  /// itself, so the check has to live here).
+  final String? recordedById;
   final String? recordedByName;
   final String? approvedByName;
   final DateTime? approvedAt;
@@ -107,6 +113,7 @@ class Expense {
       controlNumber: json.str('control_number'),
       reference: json.str('reference'),
       notes: json.str('notes'),
+      recordedById: json.str('recorded_by'),
       recordedByName: json.str('recorded_by_name'),
       approvedByName: json.str('approved_by_name'),
       approvedAt: json.date('approved_at'),
@@ -128,17 +135,20 @@ class ExpenseCategory {
     required this.id,
     required this.name,
     required this.subCategories,
+    this.isActive = true,
   });
 
   final String id;
   final String name;
   final List<ExpenseSubCategory> subCategories;
+  final bool isActive;
 
   factory ExpenseCategory.fromJson(Map<String, dynamic> json) =>
       ExpenseCategory(
         id: json.id(),
         name: json.strOr('name', '—'),
         subCategories: json.list('sub_categories', ExpenseSubCategory.fromJson),
+        isActive: json.flag('is_active', fallback: true),
       );
 }
 
@@ -147,17 +157,20 @@ class ExpenseSubCategory {
     required this.id,
     required this.name,
     this.categoryId,
+    this.isActive = true,
   });
 
   final String id;
   final String name;
   final String? categoryId;
+  final bool isActive;
 
   factory ExpenseSubCategory.fromJson(Map<String, dynamic> json) =>
       ExpenseSubCategory(
         id: json.id(),
         name: json.strOr('name', '—'),
         categoryId: json.str('expense_category_id'),
+        isActive: json.flag('is_active', fallback: true),
       );
 }
 

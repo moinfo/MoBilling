@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../providers.dart';
+import '../admin/admin_providers.dart' show adminServiceProvider;
 import '../common/pickers.dart';
 import '../crm/crm_ui.dart' show CrmAsyncView, CrmCardList, CrmMetaLine;
 
@@ -169,7 +171,13 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     final needsClientFirst = spec.needsClient && _client == null;
 
     return Scaffold(
-      appBar: ShellTopBar(eyebrow: 'Reports', title: spec.title),
+      appBar: ShellTopBar(
+        eyebrow: 'Reports',
+        title: spec.title,
+        trailing: needsClientFirst
+            ? null
+            : _ExportAction(spec: spec, query: _query),
+      ),
       body: Column(
         children: [
           if (spec.needsDateRange || spec.needsClient)
@@ -319,13 +327,29 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
                         child: Text(
                           'Showing the first 200 of '
                           '${Formatting.integer(result.rows.length)} — '
-                          'use the web app for the full export.',
+                          'export CSV above for every row.',
                           style: theme.textTheme.bodySmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
                           textAlign: TextAlign.center,
                         ),
                       ),
+                  ],
+                  if (result.secondaryRows.isNotEmpty) ...[
+                    const SizedBox(height: Spacing.lg),
+                    SectionHeader(
+                      result.secondaryRowsLabel ?? 'Breakdown',
+                      trailing: CrmMetaLine(
+                        Formatting.integer(result.secondaryRows.length),
+                      ),
+                    ),
+                    const SizedBox(height: Spacing.sm),
+                    CrmCardList(
+                      children: [
+                        for (final row in result.secondaryRows.take(200))
+                          _RowTile(row: row),
+                      ],
+                    ),
                   ],
                 ],
               ),
@@ -350,6 +374,84 @@ class _ReportScreenState extends ConsumerState<ReportScreen> {
     MetricTone.bad => context.statusColors.overdue,
     MetricTone.neutral => null,
   };
+}
+
+/// Mirrors the web report pages' "Export CSV" button — every one of them
+/// does a pure client-side CSV export of whatever's already on screen (see
+/// `mobilling-ui/src/components/Reports/ExportButton.tsx`), so this shares
+/// the same already-fetched [ReportResult] as text rather than adding a
+/// second network round trip or a backend export endpoint that doesn't
+/// exist.
+class _ExportAction extends ConsumerWidget {
+  const _ExportAction({required this.spec, required this.query});
+
+  final ReportSpec spec;
+  final ReportQuery query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final result = ref.watch(reportProvider(query)).valueOrNull;
+    if (result == null || result.isEmpty) return const SizedBox.shrink();
+
+    return InkActionButton(
+      icon: Icons.ios_share_rounded,
+      tooltip: 'Export CSV',
+      onPressed: () => Share.share(
+        _toCsv(spec, result),
+        subject: '${spec.title} — ${Formatting.date(DateTime.now())}',
+      ),
+    );
+  }
+}
+
+/// `title,subtitle,amount,status,count` plus a small metrics header — the
+/// same shape [ReportRow] already commits to, so every report exports
+/// through one honest path instead of thirteen bespoke column sets.
+String _toCsv(ReportSpec spec, ReportResult result) {
+  String cell(Object? value) {
+    final text = value?.toString() ?? '';
+    return text.contains(',') || text.contains('"') || text.contains('\n')
+        ? '"${text.replaceAll('"', '""')}"'
+        : text;
+  }
+
+  final lines = <String>[spec.title];
+  for (final metric in result.metrics) {
+    lines.add('${cell(metric.label)},${cell(metric.value)}');
+  }
+  if (result.metrics.isNotEmpty && result.rows.isNotEmpty) lines.add('');
+  if (result.rows.isNotEmpty) {
+    lines.add(result.rowsLabel);
+    lines.add('Title,Subtitle,Amount,Status,Count');
+    for (final row in result.rows) {
+      lines.add(
+        [
+          cell(row.title),
+          cell(row.subtitle),
+          cell(row.amount),
+          cell(row.status),
+          cell(row.count),
+        ].join(','),
+      );
+    }
+  }
+  if (result.secondaryRows.isNotEmpty) {
+    lines.add('');
+    lines.add(result.secondaryRowsLabel ?? 'Breakdown');
+    lines.add('Title,Subtitle,Amount,Status,Count');
+    for (final row in result.secondaryRows) {
+      lines.add(
+        [
+          cell(row.title),
+          cell(row.subtitle),
+          cell(row.amount),
+          cell(row.status),
+          cell(row.count),
+        ].join(','),
+      );
+    }
+  }
+  return lines.join('\n');
 }
 
 /// The report's headline figure: a mono eyebrow naming it, the figure itself
@@ -521,6 +623,345 @@ class _FilterPill extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Bank balance statement — not one of the thirteen ReportSpec reports (see
+// BankBalanceStatement's doc comment); a bank account has to be picked
+// before anything else can be asked for.
+// ---------------------------------------------------------------------------
+
+final AutoDisposeFutureProvider<List<BankAccount>> _reportBankAccountsProvider =
+    FutureProvider.autoDispose<List<BankAccount>>(
+  (ref) async =>
+      (await ref.watch(adminServiceProvider).bankAccounts()).items,
+);
+
+typedef _BankStatementQuery = ({
+  String bankAccountId,
+  String? from,
+  String? to,
+});
+
+final AutoDisposeFutureProviderFamily<BankBalanceStatement, _BankStatementQuery>
+_bankBalanceStatementProvider =
+    FutureProvider.autoDispose.family<BankBalanceStatement, _BankStatementQuery>(
+  (ref, query) => ref.watch(reportsServiceProvider).bankBalanceStatement(
+        bankAccountId: query.bankAccountId,
+        startDate: query.from == null ? null : DateTime.parse(query.from!),
+        endDate: query.to == null ? null : DateTime.parse(query.to!),
+      ),
+);
+
+class BankBalanceStatementScreen extends ConsumerStatefulWidget {
+  const BankBalanceStatementScreen({super.key});
+
+  @override
+  ConsumerState<BankBalanceStatementScreen> createState() =>
+      _BankBalanceStatementScreenState();
+}
+
+class _BankBalanceStatementScreenState
+    extends ConsumerState<BankBalanceStatementScreen> {
+  BankAccount? _account;
+  DateTimeRange? _range;
+
+  static final _ymd = DateFormat('yyyy-MM-dd');
+
+  Future<void> _pickAccount() async {
+    final accounts = ref.read(_reportBankAccountsProvider).valueOrNull;
+    if (accounts == null || accounts.isEmpty) return;
+
+    final chosen = await showModalBottomSheet<BankAccount>(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: Spacing.md),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final account in accounts.where((a) => a.isActive))
+                ListTile(
+                  leading: const Icon(Icons.account_balance_outlined),
+                  title: Text(account.bankName),
+                  subtitle: account.accountNumber == null
+                      ? null
+                      : Text(account.accountNumber!),
+                  onTap: () => Navigator.pop(sheetContext, account),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (chosen != null) setState(() => _account = chosen);
+  }
+
+  Future<void> _pickRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDateRange:
+          _range ?? DateTimeRange(start: DateTime(now.year, now.month, 1), end: now),
+    );
+    if (picked != null) setState(() => _range = picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accounts = ref.watch(_reportBankAccountsProvider);
+
+    return Scaffold(
+      appBar: ShellTopBar(
+        eyebrow: 'Records & Verification',
+        title: 'Bank balance statement',
+        trailing: _account == null
+            ? null
+            : _BankStatementExportAction(
+                query: (
+                  bankAccountId: _account!.id,
+                  from: _range == null ? null : _ymd.format(_range!.start),
+                  to: _range == null ? null : _ymd.format(_range!.end),
+                ),
+              ),
+      ),
+      body: accounts.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => ErrorBanner(
+          message: e is ApiException
+              ? e.message
+              : 'Could not load bank accounts.',
+          onRetry: () => ref.invalidate(_reportBankAccountsProvider),
+        ),
+        data: (list) => Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.md,
+                Spacing.md,
+                Spacing.sm,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _FilterPill(
+                      icon: Icons.account_balance_outlined,
+                      label: _account == null
+                          ? 'Choose a bank account'
+                          : _account!.bankName,
+                      selected: _account != null,
+                      onTap: _pickAccount,
+                    ),
+                  ),
+                  const SizedBox(width: Spacing.sm),
+                  Expanded(
+                    child: _FilterPill(
+                      icon: Icons.date_range_outlined,
+                      label: _range == null
+                          ? 'This month'
+                          : '${Formatting.date(_range!.start)} – '
+                              '${Formatting.date(_range!.end)}',
+                      selected: _range != null,
+                      onTap: _pickRange,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: _account == null
+                  ? StateMessage(
+                      icon: Icons.account_balance_outlined,
+                      title: 'Choose a bank account',
+                      message: 'Its statement appears here once you do.',
+                      actionLabel: list.isEmpty ? null : 'Choose account',
+                      onAction: list.isEmpty ? null : _pickAccount,
+                    )
+                  : _StatementBody(
+                      query: (
+                        bankAccountId: _account!.id,
+                        from: _range == null ? null : _ymd.format(_range!.start),
+                        to: _range == null ? null : _ymd.format(_range!.end),
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Same client-side CSV export as [_ExportAction], for the one report that
+/// isn't driven by the generic [ReportScreen].
+class _BankStatementExportAction extends ConsumerWidget {
+  const _BankStatementExportAction({required this.query});
+
+  final _BankStatementQuery query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statement = ref.watch(_bankBalanceStatementProvider(query)).valueOrNull;
+    if (statement == null || statement.rows.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    String cell(Object? value) {
+      final text = value?.toString() ?? '';
+      return text.contains(',') || text.contains('"') || text.contains('\n')
+          ? '"${text.replaceAll('"', '""')}"'
+          : text;
+    }
+
+    final lines = <String>[
+      statement.bankAccountName,
+      'Opening balance,${statement.openingBalance}',
+      'Closing balance,${statement.closingBalance}',
+      'Total deposits,${statement.totalDeposits}',
+      'Total withdrawals,${statement.totalWithdrawals}',
+      'Total charges,${statement.totalCharges}',
+      '',
+      'Date,Type,System,Property,Amount,Running balance,Notes',
+      for (final row in statement.rows)
+        [
+          cell(row.recordDate),
+          cell(row.type),
+          cell(row.systemName),
+          cell(row.propertyName),
+          cell(row.signedAmount),
+          cell(row.runningBalance),
+          cell(row.notes),
+        ].join(','),
+    ];
+
+    return InkActionButton(
+      icon: Icons.ios_share_rounded,
+      tooltip: 'Export CSV',
+      onPressed: () => Share.share(
+        lines.join('\n'),
+        subject: 'Bank balance statement — ${statement.bankAccountName}',
+      ),
+    );
+  }
+}
+
+class _StatementBody extends ConsumerWidget {
+  const _StatementBody({required this.query});
+
+  final _BankStatementQuery query;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final statement = ref.watch(_bankBalanceStatementProvider(query));
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final status = context.statusColors;
+
+    return CrmAsyncView(
+      value: statement,
+      errorTitle: 'Could not load the statement',
+      onRetry: () => ref.invalidate(_bankBalanceStatementProvider(query)),
+      builder: (r) => ListView(
+        padding: const EdgeInsets.fromLTRB(
+          Spacing.md,
+          0,
+          Spacing.md,
+          Spacing.xl,
+        ),
+        children: [
+          Text(
+            r.bankAccountName,
+            style: theme.textTheme.titleSmall,
+          ),
+          Text(
+            '${Formatting.date(DateTime.parse(r.periodStart))} — '
+            '${Formatting.date(DateTime.parse(r.periodEnd))}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: Spacing.sm,
+            crossAxisSpacing: Spacing.sm,
+            childAspectRatio: 2.4,
+            children: [
+              StatTile.money(label: 'Opening balance', amount: r.openingBalance),
+              StatTile.money(
+                label: 'Closing balance',
+                amount: r.closingBalance,
+                emphasis: scheme.primary,
+              ),
+              StatTile.money(
+                label: 'Deposits',
+                amount: r.totalDeposits,
+                emphasis: status.settled,
+              ),
+              StatTile.money(
+                label: 'Withdrawals + charges',
+                amount: r.totalWithdrawals + r.totalCharges,
+                emphasis: status.overdue,
+              ),
+            ],
+          ),
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Transactions'),
+          const SizedBox(height: Spacing.sm),
+          if (r.rows.isEmpty)
+            const StateMessage(
+              icon: Icons.receipt_long_outlined,
+              title: 'No transactions',
+              message: 'Nothing recorded against this account in this period.',
+            )
+          else
+            CrmCardList(
+              children: [
+                for (final row in r.rows)
+                  ListTile(
+                    leading: StatusChip(row.type, dense: true),
+                    title: Text(row.systemName ?? '—'),
+                    subtitle: CrmMetaLine(
+                      [
+                        Formatting.date(DateTime.parse(row.recordDate)),
+                        if (row.propertyName != null) row.propertyName!,
+                        if (row.notes != null) row.notes!,
+                      ].join(' · '),
+                    ),
+                    trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Money(
+                          row.signedAmount,
+                          scale: MoneyScale.dense,
+                          showCode: false,
+                          color: row.signedAmount < 0
+                              ? status.overdue
+                              : status.settled,
+                        ),
+                        const SizedBox(height: 2),
+                        Money(
+                          row.runningBalance,
+                          scale: MoneyScale.dense,
+                          showCode: false,
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+        ],
       ),
     );
   }

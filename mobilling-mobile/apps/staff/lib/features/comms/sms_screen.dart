@@ -6,6 +6,7 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../common/paged_list.dart';
+import '../common/share_pdf.dart';
 import 'comms_providers.dart';
 import 'comms_ui.dart';
 
@@ -543,9 +544,31 @@ class _PurchaseHistoryViewState extends ConsumerState<_PurchaseHistoryView> {
         purchase: purchase,
         onCheckStatus: () => _checkStatus(purchase),
         onPay: canPay ? () => _retry(purchase) : null,
+        onReceipt: purchase.isCompleted
+            ? () => _downloadReceipt(context, purchase)
+            : null,
+        onInvoice: () => _downloadInvoice(context, purchase),
       ),
     );
   }
+
+  Future<void> _downloadReceipt(
+    BuildContext context,
+    SmsPurchase purchase,
+  ) => sharePdf(
+    context,
+    fetch: () => ref.read(commsServiceProvider).smsReceiptPdf(purchase.id),
+    filename: 'sms-receipt-${purchase.receiptNumber ?? purchase.id}.pdf',
+  );
+
+  Future<void> _downloadInvoice(
+    BuildContext context,
+    SmsPurchase purchase,
+  ) => sharePdf(
+    context,
+    fetch: () => ref.read(commsServiceProvider).smsInvoicePdf(purchase.id),
+    filename: 'sms-invoice-${purchase.id}.pdf',
+  );
 }
 
 /// One purchase: the credits bought, status beside the reference line, the
@@ -556,11 +579,19 @@ class _PurchaseCard extends StatelessWidget {
     required this.purchase,
     required this.onCheckStatus,
     this.onPay,
+    this.onReceipt,
+    this.onInvoice,
   });
 
   final SmsPurchase purchase;
   final VoidCallback onCheckStatus;
   final VoidCallback? onPay;
+
+  /// Null while the purchase has yet to complete — the server 422s a receipt
+  /// request until then, so the action is hidden rather than offered and
+  /// refused.
+  final VoidCallback? onReceipt;
+  final VoidCallback? onInvoice;
 
   @override
   Widget build(BuildContext context) {
@@ -637,6 +668,37 @@ class _PurchaseCard extends StatelessWidget {
                       ),
                     ),
                   ],
+                ],
+              ),
+            ],
+            if (onReceipt != null || onInvoice != null) ...[
+              const SizedBox(height: Spacing.sm),
+              Row(
+                children: [
+                  if (onReceipt != null)
+                    Expanded(
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                        ),
+                        icon: const Icon(Icons.receipt_long_outlined, size: 16),
+                        label: const Text('Receipt'),
+                        onPressed: onReceipt,
+                      ),
+                    ),
+                  if (onReceipt != null && onInvoice != null)
+                    const SizedBox(width: Spacing.sm),
+                  if (onInvoice != null)
+                    Expanded(
+                      child: TextButton.icon(
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(0, 44),
+                        ),
+                        icon: const Icon(Icons.description_outlined, size: 16),
+                        label: const Text('Invoice'),
+                        onPressed: onInvoice,
+                      ),
+                    ),
                 ],
               ),
             ],

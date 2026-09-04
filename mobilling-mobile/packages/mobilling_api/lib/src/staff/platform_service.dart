@@ -401,6 +401,11 @@ class PlatformService {
         : _api.put<dynamic>('/admin/sms-packages/$id', body: body);
   }
 
+  /// DELETE /admin/sms-packages/{id} — hard delete, no guard against tenants
+  /// currently subscribed to it, so callers should confirm first.
+  Future<void> deleteSmsPackage(String id) =>
+      _api.delete<dynamic>('/admin/sms-packages/$id');
+
   Future<Paginated<PlatformSmsPurchase>> smsPurchases({
     String? status,
     int page = 1,

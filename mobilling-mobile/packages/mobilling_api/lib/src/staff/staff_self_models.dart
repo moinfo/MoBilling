@@ -171,18 +171,259 @@ class AttendanceSettings {
     required this.penaltiesEnabled,
     this.checkInTime,
     this.checkOutTime,
+    this.workingDays = const [1, 2, 3, 4, 5],
+    this.penaltyAbsent,
+    this.penaltyLate,
+    this.penaltyLeftEarly,
+    this.penaltyNoCheckout,
   });
 
   final bool penaltiesEnabled;
   final String? checkInTime;
   final String? checkOutTime;
 
-  factory AttendanceSettings.fromJson(Map<String, dynamic> json) =>
-      AttendanceSettings(
-        penaltiesEnabled: json.flag('penalties_enabled'),
-        checkInTime: json.str('check_in_time'),
-        checkOutTime: json.str('check_out_time'),
+  /// ISO weekdays, 1 = Monday. Only present on `GET/PUT /attendance/settings`
+  /// — [MyAttendance]'s embedded settings omit it.
+  final List<int> workingDays;
+  final double? penaltyAbsent;
+  final double? penaltyLate;
+  final double? penaltyLeftEarly;
+  final double? penaltyNoCheckout;
+
+  factory AttendanceSettings.fromJson(Map<String, dynamic> json) {
+    final days = json['working_days'];
+    return AttendanceSettings(
+      penaltiesEnabled: json.flag('penalties_enabled'),
+      checkInTime: json.str('check_in_time'),
+      checkOutTime: json.str('check_out_time'),
+      workingDays: days is List
+          ? days.map(readInt).toList()
+          : const [1, 2, 3, 4, 5],
+      penaltyAbsent: json['penalty_absent'] == null
+          ? null
+          : json.money('penalty_absent'),
+      penaltyLate: json['penalty_late'] == null
+          ? null
+          : json.money('penalty_late'),
+      penaltyLeftEarly: json['penalty_left_early'] == null
+          ? null
+          : json.money('penalty_left_early'),
+      penaltyNoCheckout: json['penalty_no_checkout'] == null
+          ? null
+          : json.money('penalty_no_checkout'),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Attendance — iVMS import
+// ---------------------------------------------------------------------------
+
+/// `POST /attendance/import/preview` — the server's best-guess column mapping
+/// plus a handful of sample rows, so the confirmation form can pre-fill.
+class AttendanceImportPreview {
+  const AttendanceImportPreview({
+    required this.headers,
+    required this.rows,
+    required this.total,
+    required this.guess,
+  });
+
+  final List<String> headers;
+
+  /// The first ~8 data rows, as raw cell strings.
+  final List<List<String>> rows;
+  final int total;
+  final AttendanceImportGuess guess;
+
+  factory AttendanceImportPreview.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    final rawRows = data['rows'];
+    return AttendanceImportPreview(
+      headers: data.strings('headers'),
+      rows: rawRows is List
+          ? [
+              for (final row in rawRows)
+                if (row is List) [for (final cell in row) cell.toString()],
+            ]
+          : const [],
+      total: data.count('total'),
+      guess: AttendanceImportGuess.fromJson(data.object('guess') ?? const {}),
+    );
+  }
+}
+
+/// The server's guess at which column is which — 0-based indexes into
+/// [AttendanceImportPreview.headers]/`rows`.
+class AttendanceImportGuess {
+  const AttendanceImportGuess({
+    required this.matchBy,
+    required this.identityCol,
+    required this.timeMode,
+    this.dateCol,
+    this.inCol,
+    this.outCol,
+    this.timeCol,
+    this.employeeNoCol,
+  });
+
+  /// name | employee_no.
+  final String matchBy;
+  final int identityCol;
+
+  /// single | inout.
+  final String timeMode;
+  final int? dateCol;
+  final int? inCol;
+  final int? outCol;
+  final int? timeCol;
+  final int? employeeNoCol;
+
+  factory AttendanceImportGuess.fromJson(Map<String, dynamic> json) =>
+      AttendanceImportGuess(
+        matchBy: json.strOr('match_by', 'name'),
+        identityCol: json.count('identity_col'),
+        timeMode: json.strOr('time_mode', 'single'),
+        dateCol: json['date_col'] == null ? null : json.count('date_col'),
+        inCol: json['in_col'] == null ? null : json.count('in_col'),
+        outCol: json['out_col'] == null ? null : json.count('out_col'),
+        timeCol: json['time_col'] == null ? null : json.count('time_col'),
+        employeeNoCol: json['employee_no_col'] == null
+            ? null
+            : json.count('employee_no_col'),
       );
+}
+
+/// `POST /attendance/import/commit` — the outcome of applying a confirmed
+/// column mapping.
+class AttendanceImportResult {
+  const AttendanceImportResult({
+    required this.days,
+    required this.matchedRows,
+    required this.unmatched,
+    required this.skipped,
+    required this.linked,
+  });
+
+  final int days;
+  final int matchedRows;
+
+  /// Identity text (a name or employee number) → how many rows it appeared
+  /// on that could not be matched to a staff member.
+  final Map<String, int> unmatched;
+  final int skipped;
+  final int linked;
+
+  factory AttendanceImportResult.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    final unmatched = data.object('unmatched') ?? const <String, dynamic>{};
+    return AttendanceImportResult(
+      days: data.count('days'),
+      matchedRows: data.count('matched_rows'),
+      unmatched: {
+        for (final entry in unmatched.entries) entry.key: readInt(entry.value),
+      },
+      skipped: data.count('skipped'),
+      linked: data.count('linked'),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Attendance — HIKVISION device webhook
+// ---------------------------------------------------------------------------
+
+class DeviceAttendanceConfig {
+  const DeviceAttendanceConfig({
+    required this.name,
+    required this.isActive,
+    required this.webhookUrl,
+    this.lastEventAt,
+  });
+
+  final String name;
+  final bool isActive;
+  final String webhookUrl;
+  final DateTime? lastEventAt;
+
+  factory DeviceAttendanceConfig.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return DeviceAttendanceConfig(
+      name: data.strOr('name', '—'),
+      isActive: data.flag('is_active'),
+      webhookUrl: data.strOr('webhook_url', ''),
+      lastEventAt: data.date('last_event_at'),
+    );
+  }
+}
+
+/// One raw webhook delivery, for troubleshooting a device that isn't
+/// checking anyone in.
+class DeviceEvent {
+  const DeviceEvent({
+    required this.id,
+    required this.contentType,
+    required this.payload,
+    this.employeeNo,
+    this.eventTime,
+    this.createdAt,
+  });
+
+  final String id;
+  final String contentType;
+
+  /// The raw body, truncated server-side to 20,000 characters.
+  final String payload;
+  final String? employeeNo;
+  final DateTime? eventTime;
+  final DateTime? createdAt;
+
+  factory DeviceEvent.fromJson(Map<String, dynamic> json) => DeviceEvent(
+        id: json.id(),
+        contentType: json.strOr('content_type', '—'),
+        payload: json.strOr('payload', ''),
+        employeeNo: json.str('employee_no'),
+        eventTime: json.date('event_time'),
+        createdAt: json.date('created_at'),
+      );
+}
+
+class DeviceStaffMapping {
+  const DeviceStaffMapping({
+    required this.id,
+    required this.name,
+    this.deviceEmployeeNo,
+  });
+
+  final String id;
+  final String name;
+  final String? deviceEmployeeNo;
+
+  bool get isLinked => deviceEmployeeNo != null && deviceEmployeeNo!.isNotEmpty;
+
+  factory DeviceStaffMapping.fromJson(Map<String, dynamic> json) =>
+      DeviceStaffMapping(
+        id: json.id(),
+        name: json.strOr('name', '—'),
+        deviceEmployeeNo: json.str('device_employee_no'),
+      );
+}
+
+/// `GET /attendance/device-mappings` — every staff member's device number,
+/// plus numbers seen on the wire that no one has claimed yet.
+class DeviceMappings {
+  const DeviceMappings({required this.staff, required this.unlinked});
+
+  final List<DeviceStaffMapping> staff;
+  final List<String> unlinked;
+
+  factory DeviceMappings.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return DeviceMappings(
+      staff: data.list('staff', DeviceStaffMapping.fromJson),
+      unlinked: data.strings('unlinked'),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -837,6 +1078,254 @@ class StaffColleague {
   );
 }
 
+/// `GET/PUT /staff-reports/settings` — the cadence and penalties every
+/// employee is measured against. Needs `staff_reports.submit` (read) /
+/// `staff_reports.review` (write).
+class StaffReportSettings {
+  const StaffReportSettings({
+    required this.dailyTarget,
+    required this.weeklyTarget,
+    required this.monthlyTarget,
+    required this.weeklyDeadlineDay,
+    required this.monthlyDeadlineDay,
+    required this.penaltiesEnabled,
+    required this.workingDays,
+    this.dailyDeadlineTime,
+    this.weeklyDeadlineTime,
+    this.monthlyDeadlineTime,
+    this.penaltyMissingDaily,
+    this.penaltyLate,
+    this.penaltyMissingWeekly,
+    this.penaltyMissingMonthly,
+  });
+
+  final int dailyTarget;
+  final int weeklyTarget;
+  final int monthlyTarget;
+  final String? dailyDeadlineTime;
+  final String? weeklyDeadlineTime;
+  final String? monthlyDeadlineTime;
+
+  /// ISO weekday, 1 = Monday.
+  final int weeklyDeadlineDay;
+
+  /// Day of month, 1-28.
+  final int monthlyDeadlineDay;
+  final bool penaltiesEnabled;
+  final double? penaltyMissingDaily;
+  final double? penaltyLate;
+  final double? penaltyMissingWeekly;
+  final double? penaltyMissingMonthly;
+
+  /// ISO weekdays a report is expected on.
+  final List<int> workingDays;
+
+  factory StaffReportSettings.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    final days = data['working_days'];
+    return StaffReportSettings(
+      dailyTarget: data.count('daily_target', fallback: 1),
+      weeklyTarget: data.count('weekly_target', fallback: 1),
+      monthlyTarget: data.count('monthly_target', fallback: 1),
+      dailyDeadlineTime: data.str('daily_deadline_time'),
+      weeklyDeadlineTime: data.str('weekly_deadline_time'),
+      monthlyDeadlineTime: data.str('monthly_deadline_time'),
+      weeklyDeadlineDay: data.count('weekly_deadline_day', fallback: 5),
+      monthlyDeadlineDay: data.count('monthly_deadline_day', fallback: 28),
+      penaltiesEnabled: data.flag('penalties_enabled'),
+      penaltyMissingDaily: data['penalty_missing_daily'] == null
+          ? null
+          : data.money('penalty_missing_daily'),
+      penaltyLate:
+          data['penalty_late'] == null ? null : data.money('penalty_late'),
+      penaltyMissingWeekly: data['penalty_missing_weekly'] == null
+          ? null
+          : data.money('penalty_missing_weekly'),
+      penaltyMissingMonthly: data['penalty_missing_monthly'] == null
+          ? null
+          : data.money('penalty_missing_monthly'),
+      workingDays:
+          days is List ? days.map(readInt).toList() : const [1, 2, 3, 4, 5],
+    );
+  }
+}
+
+/// One row of `GET /staff-reports/holidays`.
+class StaffReportHoliday {
+  const StaffReportHoliday({required this.id, this.date, this.name});
+
+  final String id;
+  final DateTime? date;
+  final String? name;
+
+  factory StaffReportHoliday.fromJson(Map<String, dynamic> json) =>
+      StaffReportHoliday(
+        id: json.id(),
+        date: json.date('date'),
+        name: json.str('name'),
+      );
+}
+
+/// One row of `GET /staff-reports/supervisors` — every active employee and
+/// who reviews their reports/targets.
+class SupervisorAssignment {
+  const SupervisorAssignment({
+    required this.id,
+    required this.name,
+    this.supervisorId,
+    this.supervisorName,
+  });
+
+  final String id;
+  final String name;
+  final String? supervisorId;
+  final String? supervisorName;
+
+  factory SupervisorAssignment.fromJson(Map<String, dynamic> json) {
+    final supervisor = json.object('supervisor');
+    return SupervisorAssignment(
+      id: json.id(),
+      name: json.strOr('name', '—'),
+      supervisorId: supervisor?.str('id'),
+      supervisorName: supervisor?.str('name'),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Staff reports — matrix report
+// ---------------------------------------------------------------------------
+
+/// `GET /staff-reports/report` — one employee's whole month across all three
+/// cadences at once, for the printable matrix.
+class StaffReportMatrix {
+  const StaffReportMatrix({
+    required this.monthLabel,
+    required this.daily,
+    required this.weekly,
+    required this.totals,
+    this.monthly,
+  });
+
+  final String monthLabel;
+  final List<StaffReportMatrixDay> daily;
+  final List<StaffReportMatrixWeek> weekly;
+  final StaffReportMatrixMonth? monthly;
+  final StaffReportMatrixTotals totals;
+
+  factory StaffReportMatrix.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    final monthly = data.object('monthly');
+    return StaffReportMatrix(
+      monthLabel: data.strOr('month_label', ''),
+      daily: data.list('daily', StaffReportMatrixDay.fromJson),
+      weekly: data.list('weekly', StaffReportMatrixWeek.fromJson),
+      monthly:
+          monthly == null ? null : StaffReportMatrixMonth.fromJson(monthly),
+      totals: StaffReportMatrixTotals.fromJson(data.object('totals') ?? const {}),
+    );
+  }
+}
+
+class StaffReportMatrixDay {
+  const StaffReportMatrixDay({
+    required this.dateKey,
+    required this.weekday,
+    required this.status,
+    required this.deduction,
+    this.submittedAt,
+  });
+
+  final String dateKey;
+  final String weekday;
+
+  /// submitted | missing | not_due — the server's own word for the cell.
+  final String status;
+  final double deduction;
+  final DateTime? submittedAt;
+
+  factory StaffReportMatrixDay.fromJson(Map<String, dynamic> json) =>
+      StaffReportMatrixDay(
+        dateKey: json.strOr('date', ''),
+        weekday: json.strOr('weekday', ''),
+        status: json.strOr('status', 'pending'),
+        deduction: json.money('deduction'),
+        submittedAt: json.date('submitted_at'),
+      );
+}
+
+class StaffReportMatrixWeek {
+  const StaffReportMatrixWeek({
+    required this.weekLabel,
+    required this.status,
+    required this.deduction,
+    this.submittedAt,
+  });
+
+  final String weekLabel;
+  final String status;
+  final double deduction;
+  final DateTime? submittedAt;
+
+  factory StaffReportMatrixWeek.fromJson(Map<String, dynamic> json) =>
+      StaffReportMatrixWeek(
+        weekLabel: json.strOr('week_label', ''),
+        status: json.strOr('status', 'pending'),
+        deduction: json.money('deduction'),
+        submittedAt: json.date('submitted_at'),
+      );
+}
+
+class StaffReportMatrixMonth {
+  const StaffReportMatrixMonth({
+    required this.label,
+    required this.status,
+    required this.deduction,
+    this.submittedAt,
+  });
+
+  final String label;
+  final String status;
+  final double deduction;
+  final DateTime? submittedAt;
+
+  factory StaffReportMatrixMonth.fromJson(Map<String, dynamic> json) =>
+      StaffReportMatrixMonth(
+        label: json.strOr('label', ''),
+        status: json.strOr('status', 'pending'),
+        deduction: json.money('deduction'),
+        submittedAt: json.date('submitted_at'),
+      );
+}
+
+class StaffReportMatrixTotals {
+  const StaffReportMatrixTotals({
+    required this.dailyWritten,
+    required this.dailyExpected,
+    required this.weeklyCovered,
+    required this.weeklyExpected,
+    required this.late,
+    required this.deductionTotal,
+  });
+
+  final int dailyWritten;
+  final int dailyExpected;
+  final int weeklyCovered;
+  final int weeklyExpected;
+  final int late;
+  final double deductionTotal;
+
+  factory StaffReportMatrixTotals.fromJson(Map<String, dynamic> json) =>
+      StaffReportMatrixTotals(
+        dailyWritten: json.count('daily_written'),
+        dailyExpected: json.count('daily_expected'),
+        weeklyCovered: json.count('weekly_covered'),
+        weeklyExpected: json.count('weekly_expected'),
+        late: json.count('late'),
+        deductionTotal: json.money('deduction_total'),
+      );
+}
+
 // ---------------------------------------------------------------------------
 // Staff targets — StaffTargetsController
 // ---------------------------------------------------------------------------
@@ -870,6 +1359,7 @@ class StaffTarget {
     this.managerName,
     this.managerCommissionType = 'none',
     this.managerCommissionValue,
+    this.managerCommissionEarned,
     this.groupCommissionType = 'none',
     this.groupCommissionValue,
     this.staffSalary,
@@ -907,6 +1397,9 @@ class StaffTarget {
   /// none | fixed | percentage.
   final String managerCommissionType;
   final double? managerCommissionValue;
+
+  /// What the manager actually earned — only settled once verified.
+  final double? managerCommissionEarned;
 
   /// The all-goals-met bonus. none | fixed | percentage.
   final String groupCommissionType;
@@ -967,6 +1460,9 @@ class StaffTarget {
     managerCommissionValue: json['manager_commission_value'] == null
         ? null
         : json.money('manager_commission_value'),
+    managerCommissionEarned: json['manager_commission_earned'] == null
+        ? null
+        : json.money('manager_commission_earned'),
     groupCommissionType: json.strOr('group_commission_type', 'none'),
     groupCommissionValue: json['group_commission_value'] == null
         ? null
@@ -1173,6 +1669,7 @@ class SystemVerification {
     required this.name,
     required this.isActive,
     this.domainName,
+    this.clientId,
     this.clientName,
     this.assignedUserName,
     this.assignedUserId,
@@ -1185,6 +1682,7 @@ class SystemVerification {
   final String name;
   final bool isActive;
   final String? domainName;
+  final String? clientId;
   final String? clientName;
   final String? assignedUserName;
   final String? assignedUserId;
@@ -1204,6 +1702,7 @@ class SystemVerification {
       name: json.strOr('name', '—'),
       isActive: json.flag('is_active', fallback: true),
       domainName: json.str('domain_name'),
+      clientId: json.str('client_id'),
       clientName: json.object('client')?.str('name'),
       assignedUserName: json.object('assigned_user')?.str('name'),
       assignedUserId: json.str('assigned_user_id'),
@@ -1247,6 +1746,7 @@ class SystemRecord {
   const SystemRecord({
     required this.id,
     required this.amount,
+    required this.type,
     this.systemId,
     this.systemName,
     this.systemPropertyId,
@@ -1261,6 +1761,10 @@ class SystemRecord {
 
   final String id;
   final double amount;
+
+  /// deposit | withdraw | charge. Required by the API on both create and
+  /// update — see `StoreSystemRecordRequest::rules`.
+  final String type;
   final String? systemId;
   final String? systemName;
   final String? systemPropertyId;
@@ -1279,6 +1783,7 @@ class SystemRecord {
     return SystemRecord(
       id: json.id(),
       amount: json.money('amount'),
+      type: json.strOr('type', 'deposit'),
       systemId: json.str('system_id'),
       systemName: json.object('system')?.str('name'),
       systemPropertyId: json.str('system_property_id'),
@@ -1296,6 +1801,19 @@ class SystemRecord {
       receiptUrl: json.str('receipt_attachment_url'),
     );
   }
+}
+
+/// `type` values `StoreSystemRecordRequest` accepts, with the labels
+/// `mobilling-ui/src/pages/SystemRecords.tsx` uses.
+abstract final class SystemRecordTypes {
+  static const values = <(String, String)>[
+    ('deposit', 'Deposit'),
+    ('withdraw', 'Withdraw'),
+    ('charge', 'Charge'),
+  ];
+
+  static String label(String? value) =>
+      values.firstWhere((v) => v.$1 == value, orElse: () => (value ?? '', value ?? '—')).$2;
 }
 
 /// A named row a system record points at — a system or a system property.

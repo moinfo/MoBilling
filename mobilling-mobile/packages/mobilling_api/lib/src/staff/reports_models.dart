@@ -64,6 +64,8 @@ class ReportResult {
     required this.rows,
     this.rowsLabel = 'Details',
     this.percentSuffixLabels = const {},
+    this.secondaryRows = const [],
+    this.secondaryRowsLabel,
   });
 
   final List<ReportMetric> metrics;
@@ -73,7 +75,14 @@ class ReportResult {
   /// Metric labels whose value should render with a '%' suffix.
   final Set<String> percentSuffixLabels;
 
-  bool get isEmpty => metrics.isEmpty && rows.isEmpty;
+  /// A second, independent table — e.g. subscriptions' per-product
+  /// breakdown alongside its upcoming-renewals list, or expenses' category
+  /// sub-breakdown. Empty for the reports that only ever had one list.
+  final List<ReportRow> secondaryRows;
+  final String? secondaryRowsLabel;
+
+  bool get isEmpty =>
+      metrics.isEmpty && rows.isEmpty && secondaryRows.isEmpty;
 
   // -------------------------------------------------------------------------
   // 1. Revenue summary
@@ -256,6 +265,7 @@ class ReportResult {
   factory ReportResult.expenseReport(Map<String, dynamic> json) =>
       ReportResult(
         rowsLabel: 'Expenses',
+        secondaryRowsLabel: 'By sub-category',
         metrics: [
           ReportMetric(
               label: 'Total expenses',
@@ -279,6 +289,18 @@ class ReportResult {
               ].where((s) => s.isNotEmpty).join(' · '),
               amount: row.money('amount'),
             )),
+        secondaryRows: [
+          for (final category in json.list('by_category', (c) => c))
+            for (final sub in category.list('sub_categories', (s) => s))
+              ReportRow(
+                title: sub.strOr('name', '—'),
+                subtitle: [
+                  category.strOr('name', category.strOr('category', '')),
+                  if (sub['count'] != null) '${sub.count('count')} expenses',
+                ].where((s) => s.isNotEmpty).join(' · '),
+                amount: sub.money('total'),
+              ),
+        ],
       );
 
   // -------------------------------------------------------------------------
@@ -350,6 +372,13 @@ class ReportResult {
               if (row.date('next_due_date') != null)
                 'due ${_d(row.date('next_due_date'))}',
               row.strOr('cycle', ''),
+              [
+                if (row.count('paid_on_time') > 0)
+                  '${row.count('paid_on_time')} on time',
+                if (row.count('paid_late') > 0)
+                  '${row.count('paid_late')} late',
+                if (row.count('unpaid') > 0) '${row.count('unpaid')} unpaid',
+              ].join(', '),
             ].where((s) => s.isNotEmpty).join(' · '),
             amount: row.money('amount'),
             status: row.str('status'),
@@ -364,6 +393,18 @@ class ReportResult {
     final byStatus = json.object('by_status') ?? const {};
     return ReportResult(
       rowsLabel: 'Upcoming renewals',
+      secondaryRowsLabel: 'By product',
+      secondaryRows: json.list('by_product', (row) => ReportRow(
+            title: row.strOr('product_name', '—'),
+            subtitle: [
+              row.strOr('billing_cycle', ''),
+              '${row.count('total_subscriptions')} subs '
+                  '(${row.count('active_count')} active'
+                  '${row.count('suspended_count') > 0 ? ', ${row.count('suspended_count')} suspended' : ''}'
+                  '${row.count('pending_count') > 0 ? ', ${row.count('pending_count')} pending' : ''})',
+            ].where((s) => s.isNotEmpty).join(' · '),
+            amount: row.money('total_revenue'),
+          )),
       metrics: [
         ReportMetric(
             label: 'Active',
@@ -467,6 +508,19 @@ class ReportResult {
             tone: MetricTone.good),
         ReportMetric.percent('Complaints', stats.money('complaint_rate'),
             tone: MetricTone.bad),
+        if (stats['appointments_total'] != null) ...[
+          ReportMetric(
+              label: 'Appointments',
+              value: stats.count('appointments_total').toDouble()),
+          ReportMetric(
+              label: 'Appointments pending',
+              value: stats.count('appointments_pending').toDouble(),
+              tone: MetricTone.warn),
+          ReportMetric(
+              label: 'Appointments completed',
+              value: stats.count('appointments_completed').toDouble(),
+              tone: MetricTone.good),
+        ],
       ],
       rows: json.list('calls', (row) => ReportRow(
             title: row.object('client')?.str('name') ??
@@ -477,6 +531,10 @@ class ReportResult {
               if ((row.date('scheduled_date') ?? row.date('called_at')) !=
                   null)
                 _d(row.date('scheduled_date') ?? row.date('called_at')),
+              if (row.flag('appointment_requested'))
+                'appointment requested'
+                    '${row.date('appointment_date') != null ? ' for ${_d(row.date('appointment_date'))}' : ''}'
+                    '${row.str('appointment_status') != null ? ' (${row.str('appointment_status')})' : ''}',
             ].where((s) => s.isNotEmpty).join(' · '),
             status: row.str('status'),
           )),
@@ -489,7 +547,22 @@ class ReportResult {
   factory ReportResult.communicationLog(Map<String, dynamic> json) =>
       ReportResult(
         rowsLabel: 'Messages',
+        percentSuffixLabels: const {'Delivery rate'},
         metrics: [
+          ReportMetric(
+              label: 'Total messages',
+              value: json.count('total').toDouble()),
+          ReportMetric(
+              label: 'Sent',
+              value: json.count('total_sent').toDouble(),
+              tone: MetricTone.good),
+          ReportMetric(
+              label: 'Failed',
+              value: json.count('total_failed').toDouble(),
+              tone: MetricTone.bad),
+          ReportMetric.percent(
+              'Delivery rate', json.money('overall_delivery_rate'),
+              tone: MetricTone.good),
           for (final channel in json.list('by_channel', (c) => c))
             ReportMetric(
               label: channel.strOr('channel', '—'),
@@ -566,6 +639,24 @@ class ReportResult {
         systems.fold<int>(0, (total, s) => total + s.count(key));
     return ReportResult(
       rowsLabel: 'Systems',
+      secondaryRowsLabel: 'By staff',
+      secondaryRows: json.list('by_staff', (row) => ReportRow(
+            title: row.strOr('staff_name', '—'),
+            subtitle: [
+              '${row.count('systems_assigned')} systems',
+              '${row.count('completed_days')}/${row.count('total_days_possible')} days',
+              '${row.money('submission_rate').toStringAsFixed(0)}%',
+              if (row.count('issue_count') > 0)
+                '${row.count('issue_count')} issues',
+              if (row.count('missed_days') > 0)
+                '${row.count('missed_days')} missed',
+            ].where((s) => s.isNotEmpty).join(' · '),
+            status: row.count('issue_count') > 0
+                ? 'overdue'
+                : row.count('missed_days') > 0
+                    ? 'partial'
+                    : 'active',
+          )),
       metrics: [
         ReportMetric(label: 'Days', value: json.count('total_days').toDouble()),
         ReportMetric(
@@ -725,4 +816,91 @@ class ReportSpec {
     }
     return null;
   }
+}
+
+/// `GET /reports/bank-balance-statement` — a running ledger for one bank
+/// account, not one of the thirteen [ReportSpec] reports: it needs a bank
+/// account picked first, and its shape (a running balance per row) has no
+/// equivalent in the generic [ReportResult].
+class BankBalanceStatement {
+  const BankBalanceStatement({
+    required this.bankAccountName,
+    required this.periodStart,
+    required this.periodEnd,
+    required this.openingBalance,
+    required this.closingBalance,
+    required this.totalDeposits,
+    required this.totalWithdrawals,
+    required this.totalCharges,
+    required this.rows,
+  });
+
+  final String bankAccountName;
+  final String periodStart;
+  final String periodEnd;
+  final double openingBalance;
+  final double closingBalance;
+  final double totalDeposits;
+  final double totalWithdrawals;
+  final double totalCharges;
+  final List<BankBalanceStatementRow> rows;
+
+  factory BankBalanceStatement.fromJson(Map<String, dynamic> json) {
+    final bank = json.object('bank_account');
+    return BankBalanceStatement(
+      bankAccountName: bank == null
+          ? '—'
+          : [
+              bank.str('bank_name'),
+              bank.str('account_number'),
+            ].whereType<String>().join(' · '),
+      periodStart: json.strOr('period_start', ''),
+      periodEnd: json.strOr('period_end', ''),
+      openingBalance: json.money('opening_balance'),
+      closingBalance: json.money('closing_balance'),
+      totalDeposits: json.money('total_deposits'),
+      totalWithdrawals: json.money('total_withdrawals'),
+      totalCharges: json.money('total_charges'),
+      rows: json.list('rows', BankBalanceStatementRow.fromJson),
+    );
+  }
+}
+
+class BankBalanceStatementRow {
+  const BankBalanceStatementRow({
+    required this.id,
+    required this.recordDate,
+    required this.type,
+    required this.signedAmount,
+    required this.runningBalance,
+    this.systemName,
+    this.propertyName,
+    this.notes,
+  });
+
+  final String id;
+  final String recordDate;
+
+  /// deposit | withdraw | charge.
+  final String type;
+
+  /// Negative for withdraw/charge, positive for deposit — already signed
+  /// server-side, so the UI never has to branch on [type] to colour it.
+  final double signedAmount;
+  final double runningBalance;
+  final String? systemName;
+  final String? propertyName;
+  final String? notes;
+
+  factory BankBalanceStatementRow.fromJson(Map<String, dynamic> json) =>
+      BankBalanceStatementRow(
+        id: json.id(),
+        recordDate: json.strOr('record_date', ''),
+        type: json.strOr('type', 'deposit'),
+        signedAmount: json.money('signed_amount'),
+        runningBalance: json.money('running_balance'),
+        systemName: json.str('system_name'),
+        propertyName: json.str('system_property_name'),
+        notes: json.str('notes'),
+      );
 }

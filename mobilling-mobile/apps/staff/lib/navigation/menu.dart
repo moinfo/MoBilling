@@ -436,6 +436,20 @@ const List<MenuNode> staffMenu = [
         permission: 'menu.my_verifications',
         ready: true,
       ),
+      MenuEntry(
+        label: 'Bank Balance Statement',
+        icon: Icons.account_balance_outlined,
+        path: '/bank-balance-statement',
+        permission: 'reports.balance_statement',
+        ready: true,
+      ),
+      MenuEntry(
+        label: 'System Verifications',
+        icon: Icons.shield_outlined,
+        path: '/system-verifications',
+        permission: 'system_verifications.read',
+        ready: true,
+      ),
     ],
   )),
   // One hub on mobile; each report gates itself inside (`ReportSpec.all`).

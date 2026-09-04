@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
 import '../common/paged_list.dart';
@@ -16,6 +19,56 @@ import '../crm/crm_ui.dart'
         FilterStrip,
         showCrmSheet;
 import 'staff_self_providers.dart';
+
+// ---------------------------------------------------------------------------
+// Local support for the Dashboard and Managed Targets tabs.
+//
+// Both are read views over the same `/staff-targets` endpoint the shared
+// `staffTargetsProvider` already covers, just with `managed_only=true` — a
+// query the shared provider doesn't expose, so it gets its own small
+// provider here rather than growing `staff_self_providers.dart`.
+// ---------------------------------------------------------------------------
+
+/// GET /staff-targets?managed_only=true — targets where the caller is the
+/// manager-override, not the assignee.
+final AutoDisposeFutureProvider<List<StaffTarget>> _managedTargetsProvider =
+    FutureProvider.autoDispose<List<StaffTarget>>(
+      (ref) =>
+          ref.watch(staffSelfServiceProvider).staffTargets(managedOnly: true),
+    );
+
+/// Ported from the web app's `criterionPotential` — what a criterion would
+/// pay if its goal were exactly met.
+double _criterionPotential(TargetCriterion c) {
+  if (c.commissionType == 'none') return 0;
+  if (c.commissionType == 'fixed') return c.commissionValue ?? 0;
+  return (c.commissionValue ?? 0) / 100 * c.goalValue;
+}
+
+/// Ported from the web app's `groupBonusPotential` — the all-goals-met bonus,
+/// assuming it is earned.
+double _groupBonusPotential(StaffTarget t) {
+  if (t.groupCommissionType == 'none') return 0;
+  if (t.groupCommissionType == 'fixed') return t.groupCommissionValue ?? 0;
+  return (t.groupCommissionValue ?? 0) / 100 * (t.staffSalary ?? 0);
+}
+
+/// What a team lead's override on [t] would pay if every goal — and the
+/// group bonus — were met. Mirrors the web dashboard's `managerPotential`
+/// reducer, but for a single target rather than a running sum.
+double _managerPotential(StaffTarget t) {
+  if (t.managerCommissionType == 'fixed') return t.managerCommissionValue ?? 0;
+  if (t.managerCommissionType == 'percentage') {
+    final criteriaPotential = t.criteria.fold<double>(
+      0,
+      (sum, c) => sum + _criterionPotential(c),
+    );
+    return (t.managerCommissionValue ?? 0) /
+        100 *
+        (criteriaPotential + _groupBonusPotential(t));
+  }
+  return 0;
+}
 
 // ---------------------------------------------------------------------------
 // Staff targets
@@ -38,9 +91,18 @@ class StaffTargetsScreen extends ConsumerWidget {
         session?.can(StaffSelfPermissions.staffTargetsManage) ?? false;
     final canVerify =
         session?.can(StaffSelfPermissions.staffTargetsVerify) ?? false;
+    final canSubmit =
+        session?.can(StaffSelfPermissions.staffTargetsSubmit) ?? false;
 
     final tabs = <(String, Widget)>[
+      if (canSubmit) ('Dashboard', const _DashboardTab()),
       ('Targets', _TargetsTab(canManage: canManage, canVerify: canVerify)),
+      // Only submitters can be assigned a `manager_id`, so gating on either
+      // permission — rather than waiting to see whether the managed-only
+      // query actually returns anything — avoids a tab that flickers in
+      // once the request resolves.
+      if (canManage || canSubmit)
+        ('Managed Targets', const _ManagedTargetsTab()),
       ('Commission', const _CommissionTab()),
     ];
 
@@ -77,7 +139,8 @@ Future<void> _openTargetForm(
   if (saved == true) {
     ref
       ..invalidate(staffTargetsProvider)
-      ..invalidate(targetCommissionsProvider);
+      ..invalidate(targetCommissionsProvider)
+      ..invalidate(_managedTargetsProvider);
   }
 }
 
@@ -156,6 +219,8 @@ class _TargetsTabState extends ConsumerState<_TargetsTab> {
 
   void _refresh() => ref
     ..invalidate(staffTargetsProvider(_status))
+    ..invalidate(staffTargetsProvider(null))
+    ..invalidate(_managedTargetsProvider)
     ..invalidate(targetCommissionsProvider)
     ..invalidate(dashboardProvider);
 }
@@ -166,12 +231,25 @@ class _TargetCard extends ConsumerWidget {
     required this.canManage,
     required this.canVerify,
     required this.onChanged,
+    this.showManagerCommission = false,
+    this.readOnly = false,
   });
 
   final StaffTarget target;
   final bool canManage;
   final bool canVerify;
   final VoidCallback onChanged;
+
+  /// Shows the manager's own override commission below the assignee's own —
+  /// only meaningful on the Managed Targets tab, where the number that
+  /// matters to the viewer is the override, not the assignee's payout.
+  final bool showManagerCommission;
+
+  /// Hides every action (self-report, verify, edit, delete). The Managed
+  /// Targets tab is a read view of someone else's target — those actions
+  /// belong to the assignee or a verifier, not to a manager just watching an
+  /// override.
+  final bool readOnly;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -274,6 +352,29 @@ class _TargetCard extends ConsumerWidget {
                 ],
               ),
             ],
+            if (showManagerCommission &&
+                target.managerCommissionType != 'none') ...[
+              const SizedBox(height: Spacing.sm),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      (target.isVerified
+                              ? 'Your override commission'
+                              : 'Potential override')
+                          .toUpperCase(),
+                      style: eyebrow,
+                    ),
+                  ),
+                  Money(
+                    target.isVerified
+                        ? (target.managerCommissionEarned ?? 0)
+                        : _managerPotential(target),
+                    color: target.isVerified ? status.settled : null,
+                  ),
+                ],
+              ),
+            ],
             if ((target.salaryDeduction ?? 0) > 0) ...[
               const SizedBox(height: Spacing.sm),
               Row(
@@ -355,9 +456,10 @@ class _TargetCard extends ConsumerWidget {
   }
 
   bool get _hasActions =>
-      (target.awaitingSelfReport && target.criteria.isNotEmpty) ||
-      (canVerify && target.isVerifiable && target.criteria.isNotEmpty) ||
-      (canManage && (target.isEditable || target.isDeletable));
+      !readOnly &&
+      ((target.awaitingSelfReport && target.criteria.isNotEmpty) ||
+          (canVerify && target.isVerifiable && target.criteria.isNotEmpty) ||
+          (canManage && (target.isEditable || target.isDeletable)));
 
   Future<void> _selfReport(BuildContext context, WidgetRef ref) async {
     final saved = await showCrmSheet<bool>(
@@ -409,6 +511,292 @@ class _TargetCard extends ConsumerWidget {
     } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — the same GET /staff-targets, narrowed to the signed-in user,
+// plus the managed-only query for the "As manager" section.
+// ---------------------------------------------------------------------------
+
+class _DashboardTab extends ConsumerWidget {
+  const _DashboardTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final targets = ref.watch(staffTargetsProvider(null));
+
+    return CrmAsyncView(
+      value: targets,
+      errorTitle: 'Could not load targets',
+      onRetry: () => ref.invalidate(staffTargetsProvider(null)),
+      builder: (items) => _DashboardBody(allTargets: items),
+    );
+  }
+}
+
+class _DashboardBody extends ConsumerWidget {
+  const _DashboardBody({required this.allTargets});
+
+  final List<StaffTarget> allTargets;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+
+    // `staffTargetsProvider` is scoped server-side to "mine, plus everyone's
+    // if I manage/verify" — the dashboard only ever means *my* numbers, so it
+    // narrows to the signed-in user the same way the web dashboard does.
+    final myId = ref.watch(sessionControllerProvider).session?.user.id;
+    final myTargets = myId == null
+        ? allTargets
+        : allTargets.where((t) => t.userId == myId).toList();
+    final active = myTargets
+        .where((t) => t.awaitingSelfReport || t.awaitingVerification)
+        .toList();
+    final verified = myTargets.where((t) => t.isVerified).toList();
+    final managed =
+        ref.watch(_managedTargetsProvider).valueOrNull ?? const <StaffTarget>[];
+
+    if (myTargets.isEmpty && managed.isEmpty) {
+      return const StateMessage(
+        icon: Icons.flag_outlined,
+        title: 'No targets',
+        message: 'No targets assigned to you yet.',
+      );
+    }
+
+    void refresh() => ref
+      ..invalidate(staffTargetsProvider(null))
+      ..invalidate(targetCommissionsProvider)
+      ..invalidate(_managedTargetsProvider);
+
+    final totalEarned = verified.fold<double>(
+      0,
+      (sum, t) => sum + t.totalCommission,
+    );
+    final totalDeducted = verified.fold<double>(
+      0,
+      (sum, t) => sum + (t.salaryDeduction ?? 0),
+    );
+    final totalPotential = active.fold<double>(0, (sum, t) {
+      final criteriaPotential = t.criteria.fold<double>(
+        0,
+        (s, c) => s + _criterionPotential(c),
+      );
+      return sum + criteriaPotential + _groupBonusPotential(t);
+    });
+
+    final managedActive = managed
+        .where((t) => t.awaitingSelfReport || t.awaitingVerification)
+        .toList();
+    final managedVerified = managed.where((t) => t.isVerified).toList();
+    final managerEarned = managedVerified.fold<double>(
+      0,
+      (sum, t) => sum + (t.managerCommissionEarned ?? 0),
+    );
+    final managerPotential = managedActive.fold<double>(
+      0,
+      (sum, t) => sum + _managerPotential(t),
+    );
+    final pendingVerifications = managed
+        .where((t) => t.awaitingVerification)
+        .length;
+
+    return RefreshIndicator(
+      onRefresh: () async {
+        refresh();
+        await ref.read(staffTargetsProvider(null).future);
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(Spacing.md),
+        children: [
+          Reveal(
+            child: GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: Spacing.sm,
+              crossAxisSpacing: Spacing.sm,
+              childAspectRatio: 1.6,
+              children: [
+                StatTile.money(
+                  label: 'Commission earned',
+                  amount: totalEarned,
+                  emphasis: status.settled,
+                  icon: Icons.payments_outlined,
+                ),
+                StatTile.money(
+                  label: 'Potential (active)',
+                  amount: totalPotential,
+                  icon: Icons.trending_up,
+                ),
+                StatTile(
+                  label: 'Active targets',
+                  value: Formatting.integer(active.length),
+                  icon: Icons.flag_outlined,
+                ),
+                if (totalDeducted > 0)
+                  StatTile.money(
+                    label: 'Deductions',
+                    amount: totalDeducted,
+                    emphasis: status.overdue,
+                    icon: Icons.warning_amber_outlined,
+                  ),
+              ],
+            ),
+          ),
+          if (active.isNotEmpty) ...[
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Active target progress'),
+            const SizedBox(height: Spacing.sm),
+            for (final t in active) ...[
+              _TargetCard(
+                target: t,
+                canManage: false,
+                canVerify: false,
+                onChanged: refresh,
+              ),
+              const SizedBox(height: Spacing.sm),
+            ],
+          ],
+          if (verified.isNotEmpty) ...[
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Recent commission earned'),
+            const SizedBox(height: Spacing.sm),
+            for (final t in verified.take(5)) ...[
+              Card(
+                child: ListTile(
+                  title: Text(
+                    t.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(
+                    [
+                      if (t.periodStart != null && t.periodEnd != null)
+                        '${Formatting.date(t.periodStart)} – '
+                            '${Formatting.date(t.periodEnd)}',
+                      if ((t.salaryDeduction ?? 0) > 0)
+                        'deduction ${Formatting.amount(t.salaryDeduction)}',
+                    ].join(' · ').toUpperCase(),
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                  trailing: Money(
+                    t.totalCommission,
+                    scale: MoneyScale.dense,
+                    color: t.totalCommission > 0 ? status.settled : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: Spacing.sm),
+            ],
+          ],
+          if (managed.isNotEmpty) ...[
+            const SizedBox(height: Spacing.xl),
+            Row(
+              children: [
+                Icon(
+                  Icons.supervisor_account_outlined,
+                  size: 16,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: Spacing.xs),
+                Text('As manager', style: theme.textTheme.titleSmall),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: Spacing.sm,
+              crossAxisSpacing: Spacing.sm,
+              childAspectRatio: 1.6,
+              children: [
+                StatTile(
+                  label: 'Targets managed',
+                  value: Formatting.integer(managed.length),
+                  icon: Icons.groups_outlined,
+                ),
+                StatTile.money(
+                  label: 'Override earned',
+                  amount: managerEarned,
+                  emphasis: status.settled,
+                  icon: Icons.payments_outlined,
+                ),
+                StatTile.money(
+                  label: 'Potential override',
+                  amount: managerPotential,
+                  icon: Icons.trending_up,
+                ),
+                StatTile(
+                  label: 'Pending verification',
+                  value: Formatting.integer(pendingVerifications),
+                  emphasis: pendingVerifications > 0 ? status.pending : null,
+                  icon: Icons.hourglass_empty,
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: Spacing.xl),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Managed targets — GET /staff-targets?managed_only=true, a read view of what
+// a team lead's override applies to. Verifying/self-reporting stays on the
+// Targets tab; this is only for seeing the override.
+// ---------------------------------------------------------------------------
+
+class _ManagedTargetsTab extends ConsumerWidget {
+  const _ManagedTargetsTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final targets = ref.watch(_managedTargetsProvider);
+
+    return CrmAsyncView(
+      value: targets,
+      errorTitle: 'Could not load managed targets',
+      onRetry: () => ref.invalidate(_managedTargetsProvider),
+      builder: (items) => items.isEmpty
+          ? const StateMessage(
+              icon: Icons.supervisor_account_outlined,
+              title: 'Nothing to manage',
+              message:
+                  'Targets where you earn a team-lead override appear here '
+                  'once someone assigns you as the manager.',
+            )
+          : RefreshIndicator(
+              onRefresh: () async {
+                ref.invalidate(_managedTargetsProvider);
+                await ref.read(_managedTargetsProvider.future);
+              },
+              child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(Spacing.md),
+                itemCount: items.length,
+                separatorBuilder: (context, index) =>
+                    const SizedBox(height: Spacing.sm),
+                itemBuilder: (context, index) => _TargetCard(
+                  target: items[index],
+                  canManage: false,
+                  canVerify: false,
+                  readOnly: true,
+                  showManagerCommission: true,
+                  onChanged: () => ref.invalidate(_managedTargetsProvider),
+                ),
+              ),
+            ),
+    );
   }
 }
 
@@ -1640,6 +2028,136 @@ class SystemRecordsScreen extends ConsumerStatefulWidget {
 
 class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
   final _listKey = GlobalKey<PagedListViewState<SystemRecord>>();
+  final _search = TextEditingController();
+  Timer? _debounce;
+
+  String? _type;
+  String? _systemId;
+  String? _propertyId;
+  String? _bankId;
+  DateTimeRange? _range;
+
+  // 'All' plus the API's three record types, in the shape FilterStrip wants.
+  static final _typeFilters = <(String?, String)>[
+    (null, 'All'),
+    ...SystemRecordTypes.values,
+  ];
+
+  bool get _hasExtraFilters =>
+      _systemId != null ||
+      _propertyId != null ||
+      _bankId != null ||
+      _range != null;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _reload() => _listKey.currentState?.reload();
+
+  void _onSearchChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), _reload);
+  }
+
+  /// System, property, bank and date range in one sheet rather than four more
+  /// chips — the type filter already earns its place on the strip because
+  /// every record has one, but these can be unset for most records.
+  Future<void> _openFilters() async {
+    var systemId = _systemId;
+    var propertyId = _propertyId;
+    var bankId = _bankId;
+    var range = _range;
+
+    final applied = await showCrmSheet<bool>(
+      context: context,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (sheetContext, setSheetState) => CrmSheet(
+          eyebrow: 'System records',
+          title: 'Filter records',
+          children: [
+            _OptionField(
+              label: 'System',
+              hint: 'All systems',
+              provider: systemsProvider,
+              value: systemId,
+              enabled: true,
+              onChanged: (v) => setSheetState(() => systemId = v),
+            ),
+            const SizedBox(height: Spacing.md),
+            _OptionField(
+              label: 'Property',
+              hint: 'All properties',
+              provider: systemPropertiesProvider,
+              value: propertyId,
+              enabled: true,
+              onChanged: (v) => setSheetState(() => propertyId = v),
+            ),
+            const SizedBox(height: Spacing.md),
+            _BankField(
+              value: bankId,
+              enabled: true,
+              onChanged: (v) => setSheetState(() => bankId = v),
+            ),
+            const SizedBox(height: Spacing.md),
+            CrmPickerField(
+              label: 'Date range',
+              value: range == null
+                  ? 'Any date'
+                  : '${Formatting.date(range!.start)} – '
+                        '${Formatting.date(range!.end)}',
+              placeholder: range == null,
+              onTap: () async {
+                final now = DateTime.now();
+                final picked = await showDateRangePicker(
+                  context: sheetContext,
+                  firstDate: DateTime(now.year - 3),
+                  lastDate: now,
+                  initialDateRange: range,
+                );
+                if (picked != null) setSheetState(() => range = picked);
+              },
+            ),
+            const SizedBox(height: Spacing.lg),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => setSheetState(() {
+                      systemId = null;
+                      propertyId = null;
+                      bankId = null;
+                      range = null;
+                    }),
+                    child: const Text('Clear'),
+                  ),
+                ),
+                const SizedBox(width: Spacing.md),
+                Expanded(
+                  child: PrimaryButton(
+                    label: 'Apply',
+                    onPressed: () => Navigator.of(sheetContext).pop(true),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (applied != true) return;
+    setState(() {
+      _systemId = systemId;
+      _propertyId = propertyId;
+      _bankId = bankId;
+      _range = range;
+    });
+    _reload();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1664,41 +2182,100 @@ class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
               )
             : null,
       ),
-      body: PagedListView<SystemRecord>(
-        key: _listKey,
-        fetch: (page) =>
-            ref.read(staffSelfServiceProvider).systemRecords(page: page),
-        itemBuilder: (context, record) => Card(
-          child: ListTile(
-            onTap: () => _openDetail(record, canUpdate, canDelete),
-            title: Text(
-              record.systemName ?? '—',
-              style: theme.textTheme.titleSmall,
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              Spacing.md,
+              Spacing.md,
+              Spacing.md,
+              0,
             ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                [
-                  if (record.propertyName != null) record.propertyName!,
-                  Formatting.date(record.recordDate),
-                  if (record.bankName != null) record.bankName!,
-                  if (record.createdByName != null) record.createdByName!,
-                ].join(' · ').toUpperCase(),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: theme.textTheme.labelSmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
+            child: TextField(
+              controller: _search,
+              onChanged: _onSearchChanged,
+              decoration: const InputDecoration(
+                isDense: true,
+                prefixIcon: Icon(Icons.search, size: 18),
+                hintText: 'Search notes',
               ),
             ),
-            trailing: Money(record.amount),
           ),
-        ),
-        emptyIcon: Icons.dns_outlined,
-        emptyTitle: 'No system records',
-        emptyMessage: canCreate
-            ? 'Add the first one from the button above.'
-            : 'Records appear here as they are entered.',
+          Row(
+            children: [
+              Expanded(
+                child: FilterStrip(
+                  options: _typeFilters,
+                  selected: _type,
+                  onSelect: (v) {
+                    setState(() => _type = v);
+                    _reload();
+                  },
+                ),
+              ),
+              IconButton(
+                icon: Icon(
+                  Icons.tune,
+                  color: _hasExtraFilters
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                tooltip: 'Filter by system, property, bank or date',
+                onPressed: _openFilters,
+              ),
+            ],
+          ),
+          Expanded(
+            child: PagedListView<SystemRecord>(
+              key: _listKey,
+              fetch: (page) => ref
+                  .read(staffSelfServiceProvider)
+                  .systemRecords(
+                    systemId: _systemId,
+                    systemPropertyId: _propertyId,
+                    bankAccountId: _bankId,
+                    type: _type,
+                    search: _search.text.trim().isEmpty
+                        ? null
+                        : _search.text.trim(),
+                    dateFrom: _range?.start,
+                    dateTo: _range?.end,
+                    page: page,
+                  ),
+              itemBuilder: (context, record) => Card(
+                child: ListTile(
+                  onTap: () => _openDetail(record, canUpdate, canDelete),
+                  title: Text(
+                    record.systemName ?? '—',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  subtitle: Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      [
+                        if (record.propertyName != null) record.propertyName!,
+                        Formatting.date(record.recordDate),
+                        if (record.bankName != null) record.bankName!,
+                        if (record.createdByName != null) record.createdByName!,
+                      ].join(' · ').toUpperCase(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  trailing: Money(record.amount),
+                ),
+              ),
+              emptyIcon: Icons.dns_outlined,
+              emptyTitle: 'No system records',
+              emptyMessage: canCreate
+                  ? 'Add the first one from the button above.'
+                  : 'Records appear here as they are entered.',
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1793,9 +2370,12 @@ class _SystemRecordDetailSheet extends StatelessWidget {
       eyebrow: Formatting.date(record.recordDate),
       title: record.systemName ?? 'System record',
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Money(record.amount, scale: MoneyScale.headline),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(child: Money(record.amount, scale: MoneyScale.headline)),
+            StatusChip(record.type, dense: true),
+          ],
         ),
         const SizedBox(height: Spacing.md),
         if (record.propertyName != null)
@@ -1803,10 +2383,16 @@ class _SystemRecordDetailSheet extends StatelessWidget {
         if (record.bankName != null) CrmDetailRow('Bank', record.bankName!),
         if (record.createdByName != null)
           CrmDetailRow('Entered by', record.createdByName!),
-        CrmDetailRow(
-          'Receipt',
-          record.receiptUrl == null ? 'None on file' : 'On file',
-        ),
+        if (record.receiptUrl == null)
+          const CrmDetailRow('Receipt', 'None on file')
+        else
+          InkWell(
+            onTap: () => launchUrl(
+              Uri.parse(record.receiptUrl!),
+              mode: LaunchMode.externalApplication,
+            ),
+            child: const CrmDetailRow('Receipt', 'View receipt →'),
+          ),
         if (record.notes != null) CrmDetailRow('Notes', record.notes!),
         const SizedBox(height: Spacing.lg),
         if (canUpdate)
@@ -1854,6 +2440,10 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
   String? _systemId;
   String? _propertyId;
   String? _bankId;
+  // The API rejects a submission with no type (`required|in:deposit,
+  // withdraw,charge`), so this always carries a valid value rather than
+  // starting null — 'deposit' matches the web form's own default.
+  String _type = SystemRecordTypes.values.first.$1;
   DateTime _date = DateTime.now();
   PlatformFile? _receipt;
   bool _submitting = false;
@@ -1872,6 +2462,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
     _systemId = r.systemId;
     _propertyId = r.systemPropertyId;
     _bankId = r.bankAccountId;
+    _type = r.type;
     _amount.text = Formatting.amount(r.amount);
     _notes.text = r.notes ?? '';
     _date = r.recordDate ?? DateTime.now();
@@ -1941,6 +2532,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
           widget.record!.id,
           systemId: _systemId!,
           systemPropertyId: _propertyId!,
+          type: _type,
           recordDate: _date,
           amount: amount,
           bankAccountId: _bankId,
@@ -1951,6 +2543,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
         await service.createSystemRecord(
           systemId: _systemId!,
           systemPropertyId: _propertyId!,
+          type: _type,
           recordDate: _date,
           amount: amount,
           bankAccountId: _bankId,
@@ -2012,6 +2605,21 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
           value: _bankId,
           enabled: !_submitting,
           onChanged: (v) => setState(() => _bankId = v),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Type',
+          child: SegmentedButton<String>(
+            segments: [
+              for (final (value, label) in SystemRecordTypes.values)
+                ButtonSegment(value: value, label: Text(label)),
+            ],
+            selected: {_type},
+            onSelectionChanged: _submitting
+                ? null
+                : (s) => setState(() => _type = s.first),
+            showSelectedIcon: false,
+          ),
         ),
         const SizedBox(height: Spacing.md),
         CrmPickerField(

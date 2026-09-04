@@ -1,9 +1,17 @@
+import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../providers.dart';
+import '../common/pickers.dart' show StaffUserPickerSheet;
 import '../crm/crm_ui.dart'
     show CrmAsyncView, CrmField, CrmPickerField, CrmSheet, showCrmSheet;
 import 'staff_self_providers.dart';
@@ -37,6 +45,10 @@ class AttendanceScreen extends ConsumerWidget {
       ('My month', const _MyReportTab()),
       if (canManage) ('Team', const _TeamTab()),
       if (canManage) ('Deductions', const _DeductionsTab()),
+      if (canManage) ('Report', const _StaffReportTab()),
+      if (canManage) ('Import', const _ImportTab()),
+      if (canManage) ('Device', const _DeviceTab()),
+      if (canManage) ('Settings', const _AttendanceSettingsTab()),
     ];
 
     return DefaultTabController(
@@ -681,7 +693,6 @@ class _MyReportTabState extends ConsumerState<_MyReportTab> {
   Widget build(BuildContext context) {
     final key = monthKeyOf(_month);
     final report = ref.watch(myAttendanceReportProvider(key));
-    final status = context.statusColors;
 
     return Column(
       children: [
@@ -699,82 +710,98 @@ class _MyReportTabState extends ConsumerState<_MyReportTab> {
                 ref.invalidate(myAttendanceReportProvider(key));
                 await ref.read(myAttendanceReportProvider(key).future);
               },
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(Spacing.md),
-                children: [
-                  Reveal(
-                    child: StatRail(
-                      items: [
-                        StatRailItem(
-                          label: 'Present',
-                          value: Formatting.integer(data.totals.present),
-                          emphasis: data.totals.present > 0
-                              ? status.settled
-                              : null,
-                        ),
-                        StatRailItem(
-                          label: 'Late',
-                          value: Formatting.integer(data.totals.late),
-                          emphasis: data.totals.late > 0
-                              ? status.attention
-                              : null,
-                        ),
-                        StatRailItem(
-                          label: 'Absent',
-                          value: Formatting.integer(data.totals.absent),
-                          emphasis: data.totals.absent > 0
-                              ? status.overdue
-                              : null,
-                        ),
-                        StatRailItem(
-                          label: 'Excused',
-                          value: Formatting.integer(data.totals.excused),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (data.totals.deductionTotal > 0) ...[
-                    const SizedBox(height: Spacing.sm),
-                    StatTile.money(
-                      label: 'Docked · ${data.monthLabel}',
-                      amount: data.totals.deductionTotal,
-                      emphasis: status.overdue,
-                    ),
-                  ],
-                  const SizedBox(height: Spacing.lg),
-                  SectionHeader(
-                    data.checkInTime == null
-                        ? 'Day by day'
-                        : 'Day by day · in by ${data.checkInTime}'
-                              ' · out by ${data.checkOutTime}',
-                  ),
-                  const SizedBox(height: Spacing.sm),
-                  if (data.days.isEmpty)
-                    const Card(
-                      child: StateMessage(
-                        icon: Icons.event_busy_outlined,
-                        title: 'Nothing to report',
-                        message: 'This month has no days on record yet.',
-                      ),
-                    )
-                  else
-                    Card(
-                      child: Column(
-                        children: [
-                          for (final (i, day) in data.days.indexed) ...[
-                            if (i > 0) const Divider(height: 1),
-                            _ReportDayTile(day: day),
-                          ],
-                        ],
-                      ),
-                    ),
-                  const SizedBox(height: Spacing.xl),
-                ],
-              ),
+              child: _ReportBody(data: data),
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+/// The body of an [AttendanceReport] — totals, the docked amount, and the
+/// day-by-day list — shared by "My month" and the clerk's "Report" tab
+/// (which runs the same view for an arbitrary staff member and adds the
+/// export buttons via [actions]).
+class _ReportBody extends StatelessWidget {
+  const _ReportBody({required this.data, this.actions});
+
+  final AttendanceReport data;
+  final Widget? actions;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = context.statusColors;
+
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(Spacing.md),
+      children: [
+        Reveal(
+          child: StatRail(
+            items: [
+              StatRailItem(
+                label: 'Present',
+                value: Formatting.integer(data.totals.present),
+                emphasis: data.totals.present > 0 ? status.settled : null,
+              ),
+              StatRailItem(
+                label: 'Late',
+                value: Formatting.integer(data.totals.late),
+                emphasis: data.totals.late > 0 ? status.attention : null,
+              ),
+              StatRailItem(
+                label: 'Absent',
+                value: Formatting.integer(data.totals.absent),
+                emphasis: data.totals.absent > 0 ? status.overdue : null,
+              ),
+              StatRailItem(
+                label: 'Excused',
+                value: Formatting.integer(data.totals.excused),
+              ),
+            ],
+          ),
+        ),
+        if (data.totals.deductionTotal > 0) ...[
+          const SizedBox(height: Spacing.sm),
+          StatTile.money(
+            label: 'Docked · ${data.monthLabel}',
+            amount: data.totals.deductionTotal,
+            emphasis: status.overdue,
+          ),
+        ],
+        if (actions != null) ...[
+          const SizedBox(height: Spacing.md),
+          actions!,
+        ],
+        const SizedBox(height: Spacing.lg),
+        SectionHeader(
+          data.checkInTime == null
+              ? 'Day by day'
+              : 'Day by day · in by ${data.checkInTime}'
+                    ' · out by ${data.checkOutTime}',
+        ),
+        const SizedBox(height: Spacing.sm),
+        if (data.days.isEmpty)
+          const Card(
+            child: StateMessage(
+              icon: Icons.event_busy_outlined,
+              title: 'Nothing to report',
+              message: 'This month has no days on record yet.',
+            ),
+          )
+        else
+          Card(
+            child: Column(
+              children: [
+                for (final (i, day) in data.days.indexed) ...[
+                  if (i > 0) const Divider(height: 1),
+                  _ReportDayTile(day: day),
+                ],
+              ],
+            ),
+          ),
+        const SizedBox(height: Spacing.xl),
       ],
     );
   }
@@ -1549,6 +1576,1508 @@ class _RecordDaySheetState extends State<_RecordDaySheet> {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Report — the clerk's version of "My month", for any staff member
+// (attendance.manage)
+// ---------------------------------------------------------------------------
+
+/// The key `attendanceReport`/`attendanceReportExport` are fetched by: whose
+/// month, and which one.
+typedef _ReportKey = ({String userId, int year, int month});
+
+/// GET /attendance/report. Needs `attendance.manage`.
+final AutoDisposeFutureProviderFamily<AttendanceReport, _ReportKey>
+_staffAttendanceReportProvider = FutureProvider.autoDispose
+    .family<AttendanceReport, _ReportKey>(
+      (ref, key) => ref
+          .watch(staffSelfServiceProvider)
+          .attendanceReport(userId: key.userId, month: key.month, year: key.year),
+    );
+
+class _StaffReportTab extends ConsumerStatefulWidget {
+  const _StaffReportTab();
+
+  @override
+  ConsumerState<_StaffReportTab> createState() => _StaffReportTabState();
+}
+
+class _StaffReportTabState extends ConsumerState<_StaffReportTab> {
+  StaffUser? _user;
+  DateTime _month = DateTime.now();
+  bool _exporting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = _user;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(Spacing.md, Spacing.sm, Spacing.md, 0),
+          child: _StaffPickerRow(user: user, onPick: _pickUser),
+        ),
+        if (user != null)
+          MonthStepper(
+            month: _month,
+            onChanged: (m) => setState(() => _month = m),
+          ),
+        Expanded(
+          child: user == null
+              ? const StateMessage(
+                  icon: Icons.badge_outlined,
+                  title: 'Choose a staff member',
+                  message: 'Pick who to run the attendance report for.',
+                )
+              : _buildReport(user),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReport(StaffUser user) {
+    final key = (userId: user.id, year: _month.year, month: _month.month);
+    final report = ref.watch(_staffAttendanceReportProvider(key));
+
+    return CrmAsyncView(
+      value: report,
+      errorTitle: 'Could not load the report',
+      onRetry: () => ref.invalidate(_staffAttendanceReportProvider(key)),
+      builder: (data) => RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(_staffAttendanceReportProvider(key));
+          await ref.read(_staffAttendanceReportProvider(key).future);
+        },
+        child: _ReportBody(
+          data: data,
+          actions: Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                  label: const Text('Export PDF'),
+                  onPressed: _exporting ? null : () => _export(user, 'pdf'),
+                ),
+              ),
+              const SizedBox(width: Spacing.sm),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.table_chart_outlined, size: 18),
+                  label: const Text('Export CSV'),
+                  onPressed: _exporting ? null : () => _export(user, 'csv'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickUser() async {
+    final user = await StaffUserPickerSheet.show(context);
+    if (user == null) return;
+    setState(() => _user = user);
+  }
+
+  Future<void> _export(StaffUser user, String format) async {
+    setState(() => _exporting = true);
+    final monthKey =
+        '${_month.year}-${_month.month.toString().padLeft(2, '0')}';
+    await _exportAttendanceFile(
+      context,
+      fetch: () => ref
+          .read(staffSelfServiceProvider)
+          .attendanceReportExport(
+            userId: user.id,
+            month: _month.month,
+            year: _month.year,
+            format: format,
+          ),
+      filename: 'attendance-${user.name.replaceAll(' ', '_')}-$monthKey.$format',
+      mimeType: format == 'pdf' ? 'application/pdf' : 'text/csv',
+    );
+    if (mounted) setState(() => _exporting = false);
+  }
+}
+
+/// Names who the report tab is showing, and opens the picker to change it.
+class _StaffPickerRow extends StatelessWidget {
+  const _StaffPickerRow({required this.user, required this.onPick});
+
+  final StaffUser? user;
+  final VoidCallback onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      child: ListTile(
+        leading: const Icon(Icons.badge_outlined),
+        title: Text(
+          user?.name ?? 'No staff member chosen',
+          style: theme.textTheme.titleSmall,
+        ),
+        subtitle: user?.roleName == null
+            ? null
+            : Text(
+                user!.roleName!.toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+        trailing: TextButton(
+          onPressed: onPick,
+          child: Text(user == null ? 'Choose' : 'Change'),
+        ),
+      ),
+    );
+  }
+}
+
+/// Download report bytes and hand them to the platform share sheet — the
+/// same pattern `share_pdf.dart` uses, generalised to the CSV format the
+/// export route also returns.
+Future<void> _exportAttendanceFile(
+  BuildContext context, {
+  required Future<Uint8List> Function() fetch,
+  required String filename,
+  required String mimeType,
+}) async {
+  final messenger = ScaffoldMessenger.of(context);
+  messenger.showSnackBar(
+    const SnackBar(
+      content: Text('Preparing the file…'),
+      duration: Duration(seconds: 8),
+    ),
+  );
+
+  try {
+    final bytes = await fetch();
+    if (bytes.isEmpty) {
+      messenger.hideCurrentSnackBar();
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('That came back empty. Try again in a moment.'),
+        ),
+      );
+      return;
+    }
+
+    final dir = await getTemporaryDirectory();
+    final file = File('${dir.path}/$filename');
+    await file.writeAsBytes(bytes, flush: true);
+
+    messenger.hideCurrentSnackBar();
+    await Share.shareXFiles([
+      XFile(file.path, mimeType: mimeType),
+    ], subject: filename);
+  } on ApiException catch (e) {
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(SnackBar(content: Text(e.message)));
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Import — the iVMS CSV import (attendance.manage)
+// ---------------------------------------------------------------------------
+
+class _ImportTab extends ConsumerStatefulWidget {
+  const _ImportTab();
+
+  @override
+  ConsumerState<_ImportTab> createState() => _ImportTabState();
+}
+
+class _ImportTabState extends ConsumerState<_ImportTab> {
+  String? _filePath;
+  String? _fileName;
+  AttendanceImportPreview? _preview;
+  AttendanceImportResult? _result;
+  bool _busy = false;
+
+  String _matchBy = 'name';
+  int? _identityCol;
+  String _timeMode = 'single';
+  int? _dateCol;
+  int? _timeCol;
+  int? _inCol;
+  int? _outCol;
+  int? _employeeNoCol;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(Spacing.md),
+      children: [
+        if (_result != null)
+          _buildResultStep()
+        else if (_preview == null)
+          _buildPickStep()
+        else
+          _buildMappingStep(),
+        const SizedBox(height: Spacing.xl),
+      ],
+    );
+  }
+
+  Widget _buildPickStep() {
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Icon(Icons.upload_file_outlined, size: 32, color: theme.colorScheme.primary),
+            const SizedBox(height: Spacing.sm),
+            Text('Import from a device export', style: theme.textTheme.titleMedium),
+            const SizedBox(height: Spacing.xs),
+            Text(
+              'Choose the CSV file exported from iVMS. The next step lets '
+              'you confirm how its columns map to a name and a time before '
+              'anything is saved.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.md),
+            PrimaryButton(
+              label: _busy ? 'Reading file…' : 'Choose CSV file',
+              icon: Icons.folder_outlined,
+              busy: _busy,
+              onPressed: _busy ? null : _pickFile,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMappingStep() {
+    final theme = Theme.of(context);
+    final preview = _preview!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(_fileName ?? '', style: theme.textTheme.titleSmall),
+        Text(
+          '${Formatting.integer(preview.total)} ROWS DETECTED',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        const SectionHeader('Sample rows'),
+        const SizedBox(height: Spacing.sm),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Padding(
+            padding: const EdgeInsets.all(Spacing.sm),
+            child: _ImportPreviewTable(preview: preview),
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        const SectionHeader('Confirm the mapping'),
+        const SizedBox(height: Spacing.sm),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Spacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                CrmField(
+                  label: 'Match staff by',
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'name', label: Text('Name')),
+                      ButtonSegment(
+                        value: 'employee_no',
+                        label: Text('Employee no.'),
+                      ),
+                    ],
+                    selected: {_matchBy},
+                    onSelectionChanged: (s) =>
+                        setState(() => _matchBy = s.first),
+                  ),
+                ),
+                const SizedBox(height: Spacing.md),
+                CrmField(
+                  label: _matchBy == 'name'
+                      ? 'Name column'
+                      : 'Employee no. column',
+                  child: DropdownButtonFormField<int>(
+                    initialValue: _identityCol,
+                    items: _requiredColumnItems(preview),
+                    onChanged: (v) => setState(() => _identityCol = v),
+                  ),
+                ),
+                const SizedBox(height: Spacing.md),
+                CrmField(
+                  label: 'Date column',
+                  child: DropdownButtonFormField<int?>(
+                    initialValue: _dateCol,
+                    items: _optionalColumnItems(preview),
+                    onChanged: (v) => setState(() => _dateCol = v),
+                  ),
+                ),
+                const SizedBox(height: Spacing.md),
+                CrmField(
+                  label: 'Time format',
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'single',
+                        label: Text('One column'),
+                      ),
+                      ButtonSegment(value: 'inout', label: Text('In / out')),
+                    ],
+                    selected: {_timeMode},
+                    onSelectionChanged: (s) =>
+                        setState(() => _timeMode = s.first),
+                  ),
+                ),
+                const SizedBox(height: Spacing.md),
+                if (_timeMode == 'single')
+                  CrmField(
+                    label: 'Time column',
+                    child: DropdownButtonFormField<int?>(
+                      initialValue: _timeCol,
+                      items: _optionalColumnItems(preview),
+                      onChanged: (v) => setState(() => _timeCol = v),
+                    ),
+                  )
+                else
+                  Row(
+                    children: [
+                      Expanded(
+                        child: CrmField(
+                          label: 'In column',
+                          child: DropdownButtonFormField<int?>(
+                            initialValue: _inCol,
+                            items: _optionalColumnItems(preview),
+                            onChanged: (v) => setState(() => _inCol = v),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: Spacing.sm),
+                      Expanded(
+                        child: CrmField(
+                          label: 'Out column',
+                          child: DropdownButtonFormField<int?>(
+                            initialValue: _outCol,
+                            items: _optionalColumnItems(preview),
+                            onChanged: (v) => setState(() => _outCol = v),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                const SizedBox(height: Spacing.md),
+                CrmField(
+                  label: 'Employee no. column (optional)',
+                  child: DropdownButtonFormField<int?>(
+                    initialValue: _employeeNoCol,
+                    items: _optionalColumnItems(preview),
+                    onChanged: (v) => setState(() => _employeeNoCol = v),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: _busy ? null : _reset,
+                child: const Text('Cancel'),
+              ),
+            ),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: PrimaryButton(
+                label: _busy ? 'Importing…' : 'Import',
+                busy: _busy,
+                onPressed: _busy || _identityCol == null ? null : _commit,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResultStep() {
+    final theme = Theme.of(context);
+    final result = _result!;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(Spacing.lg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      color: context.statusColors.settled,
+                    ),
+                    const SizedBox(width: Spacing.sm),
+                    Text('Import complete', style: theme.textTheme.titleMedium),
+                  ],
+                ),
+                const SizedBox(height: Spacing.md),
+                StatRail(
+                  items: [
+                    StatRailItem(
+                      label: 'Days',
+                      value: Formatting.integer(result.days),
+                    ),
+                    StatRailItem(
+                      label: 'Matched',
+                      value: Formatting.integer(result.matchedRows),
+                    ),
+                    StatRailItem(
+                      label: 'Skipped',
+                      value: Formatting.integer(result.skipped),
+                    ),
+                    StatRailItem(
+                      label: 'Linked',
+                      value: Formatting.integer(result.linked),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (result.unmatched.isNotEmpty) ...[
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Not matched to a staff member'),
+          const SizedBox(height: Spacing.sm),
+          Card(
+            child: Column(
+              children: [
+                for (final (i, entry) in result.unmatched.entries.indexed) ...[
+                  if (i > 0) const Divider(height: 1),
+                  ListTile(
+                    dense: true,
+                    title: Text(entry.key),
+                    trailing: Text(
+                      '${entry.value} ROW${entry.value == 1 ? '' : 'S'}',
+                      style: theme.textTheme.labelSmall,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+        const SizedBox(height: Spacing.lg),
+        OutlinedButton(
+          onPressed: _reset,
+          child: const Text('Import another file'),
+        ),
+      ],
+    );
+  }
+
+  List<DropdownMenuItem<int>> _requiredColumnItems(
+    AttendanceImportPreview preview,
+  ) => [
+    for (final (i, h) in preview.headers.indexed)
+      DropdownMenuItem<int>(
+        value: i,
+        child: Text(
+          h.isEmpty ? 'Column ${i + 1}' : h,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+  ];
+
+  List<DropdownMenuItem<int?>> _optionalColumnItems(
+    AttendanceImportPreview preview,
+  ) => [
+    const DropdownMenuItem<int?>(value: null, child: Text('Not used')),
+    for (final (i, h) in preview.headers.indexed)
+      DropdownMenuItem<int?>(
+        value: i,
+        child: Text(
+          h.isEmpty ? 'Column ${i + 1}' : h,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ),
+  ];
+
+  void _reset() {
+    setState(() {
+      _filePath = null;
+      _fileName = null;
+      _preview = null;
+      _result = null;
+    });
+  }
+
+  Future<void> _pickFile() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: const ['csv'],
+    );
+    final file = (picked?.files ?? const <PlatformFile>[]).firstOrNull;
+    if (file?.path == null || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() {
+      _filePath = file!.path;
+      _fileName = file.name;
+      _busy = true;
+    });
+    try {
+      final preview = await ref
+          .read(staffSelfServiceProvider)
+          .previewAttendanceImport(_filePath!);
+      if (!mounted) return;
+      setState(() {
+        _preview = preview;
+        _matchBy = preview.guess.matchBy;
+        _identityCol = preview.guess.identityCol;
+        _timeMode = preview.guess.timeMode;
+        _dateCol = preview.guess.dateCol;
+        _timeCol = preview.guess.timeCol;
+        _inCol = preview.guess.inCol;
+        _outCol = preview.guess.outCol;
+        _employeeNoCol = preview.guess.employeeNoCol;
+      });
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+      if (mounted) {
+        setState(() {
+          _filePath = null;
+          _fileName = null;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _commit() async {
+    final path = _filePath;
+    final identityCol = _identityCol;
+    if (path == null || identityCol == null) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final result = await ref
+          .read(staffSelfServiceProvider)
+          .commitAttendanceImport(
+            path,
+            matchBy: _matchBy,
+            identityCol: identityCol,
+            timeMode: _timeMode,
+            dateCol: _dateCol,
+            timeCol: _timeMode == 'single' ? _timeCol : null,
+            inCol: _timeMode == 'inout' ? _inCol : null,
+            outCol: _timeMode == 'inout' ? _outCol : null,
+            employeeNoCol: _employeeNoCol,
+          );
+      ref
+        ..invalidate(attendanceBoardProvider)
+        ..invalidate(attendanceOverviewProvider)
+        ..invalidate(myAttendanceProvider)
+        ..invalidate(dashboardProvider);
+      if (!mounted) return;
+      setState(() => _result = result);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+}
+
+/// The first ~8 rows of the chosen file, so the mapping form below is
+/// confirming something visible rather than guessing blind.
+class _ImportPreviewTable extends StatelessWidget {
+  const _ImportPreviewTable({required this.preview});
+
+  final AttendanceImportPreview preview;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        headingRowHeight: 32,
+        dataRowMinHeight: 28,
+        dataRowMaxHeight: 36,
+        columns: [
+          for (final h in preview.headers)
+            DataColumn(
+              label: Text(
+                h.isEmpty ? '—' : h,
+                style: theme.textTheme.labelSmall,
+              ),
+            ),
+        ],
+        rows: [
+          for (final row in preview.rows)
+            DataRow(
+              cells: [
+                for (var i = 0; i < preview.headers.length; i++)
+                  DataCell(
+                    Text(
+                      i < row.length ? row[i] : '',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Device — the HIKVISION webhook (attendance.manage)
+// ---------------------------------------------------------------------------
+
+final AutoDisposeFutureProvider<DeviceAttendanceConfig>
+_deviceAttendanceConfigProvider = FutureProvider.autoDispose(
+  (ref) => ref.watch(staffSelfServiceProvider).deviceAttendanceConfig(),
+);
+
+final AutoDisposeFutureProvider<List<DeviceEvent>> _deviceEventsProvider =
+    FutureProvider.autoDispose(
+      (ref) => ref.watch(staffSelfServiceProvider).deviceEvents(),
+    );
+
+final AutoDisposeFutureProvider<DeviceMappings> _deviceMappingsProvider =
+    FutureProvider.autoDispose(
+      (ref) => ref.watch(staffSelfServiceProvider).deviceMappings(),
+    );
+
+class _DeviceTab extends ConsumerStatefulWidget {
+  const _DeviceTab();
+
+  @override
+  ConsumerState<_DeviceTab> createState() => _DeviceTabState();
+}
+
+class _DeviceTabState extends ConsumerState<_DeviceTab> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final config = ref.watch(_deviceAttendanceConfigProvider);
+    final mappings = ref.watch(_deviceMappingsProvider);
+    final events = ref.watch(_deviceEventsProvider);
+
+    return CrmAsyncView(
+      value: config,
+      errorTitle: 'Could not load the device',
+      onRetry: () => ref.invalidate(_deviceAttendanceConfigProvider),
+      builder: (cfg) => RefreshIndicator(
+        onRefresh: () async {
+          ref
+            ..invalidate(_deviceAttendanceConfigProvider)
+            ..invalidate(_deviceMappingsProvider)
+            ..invalidate(_deviceEventsProvider);
+          await ref.read(_deviceAttendanceConfigProvider.future);
+        },
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(Spacing.md),
+          children: [
+            Reveal(
+              child: _DeviceConfigCard(
+                config: cfg,
+                busy: _busy,
+                onRegenerate: _regenerate,
+                onRunNow: _runNow,
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            const SectionHeader('Staff mappings'),
+            const SizedBox(height: Spacing.sm),
+            mappings.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => ErrorBanner(
+                message: e is ApiException
+                    ? e.message
+                    : 'Could not load the mappings',
+                onRetry: () => ref.invalidate(_deviceMappingsProvider),
+              ),
+              data: (m) => _MappingsList(
+                mappings: m,
+                onEditRow: _editMapping,
+                onAssignUnlinked: _assignUnlinked,
+              ),
+            ),
+            const SizedBox(height: Spacing.lg),
+            events.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => ErrorBanner(
+                message: e is ApiException
+                    ? e.message
+                    : 'Could not load recent events',
+                onRetry: () => ref.invalidate(_deviceEventsProvider),
+              ),
+              data: (list) => _RecentEvents(events: list),
+            ),
+            const SizedBox(height: Spacing.xl),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _regenerate() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Regenerate the webhook?'),
+        content: const Text(
+          'The old URL stops working immediately — update the device with '
+          'the new one before continuing.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Regenerate'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      await ref.read(staffSelfServiceProvider).regenerateDeviceToken();
+      ref.invalidate(_deviceAttendanceConfigProvider);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Webhook regenerated.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _runNow() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final result = await ref
+          .read(staffSelfServiceProvider)
+          .runDeviceImportNow();
+      _refreshAfterImport();
+      messenger.showSnackBar(SnackBar(content: Text(_importSummary(result))));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _editMapping(DeviceStaffMapping row) async {
+    final controller = TextEditingController(text: row.deviceEmployeeNo ?? '');
+    final value = await showDialog<String>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(row.name),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Device employee number',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          if (row.isLinked)
+            TextButton(
+              onPressed: () => Navigator.pop(context, ''),
+              child: const Text('Clear'),
+            ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (value == null || !mounted) return;
+    await _saveMapping(row.id, value.isEmpty ? null : value);
+  }
+
+  Future<void> _assignUnlinked(String deviceNo) async {
+    final user = await StaffUserPickerSheet.show(context);
+    if (user == null || !mounted) return;
+    await _saveMapping(user.id, deviceNo);
+  }
+
+  Future<void> _saveMapping(String userId, String? deviceEmployeeNo) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await ref
+          .read(staffSelfServiceProvider)
+          .saveDeviceMapping(userId: userId, deviceEmployeeNo: deviceEmployeeNo);
+      _refreshAfterImport();
+      messenger.showSnackBar(SnackBar(content: Text(_importSummary(result))));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  void _refreshAfterImport() {
+    ref
+      ..invalidate(_deviceMappingsProvider)
+      ..invalidate(attendanceBoardProvider)
+      ..invalidate(attendanceOverviewProvider)
+      ..invalidate(myAttendanceProvider)
+      ..invalidate(dashboardProvider);
+  }
+}
+
+String _importSummary(AttendanceImportResult r) =>
+    '${Formatting.integer(r.days)} day${r.days == 1 ? '' : 's'} imported · '
+    '${Formatting.integer(r.matchedRows)} matched'
+    '${r.skipped > 0 ? ' · ${Formatting.integer(r.skipped)} skipped' : ''}';
+
+class _DeviceConfigCard extends StatelessWidget {
+  const _DeviceConfigCard({
+    required this.config,
+    required this.busy,
+    required this.onRegenerate,
+    required this.onRunNow,
+  });
+
+  final DeviceAttendanceConfig config;
+  final bool busy;
+  final VoidCallback onRegenerate;
+  final VoidCallback onRunNow;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(config.name, style: theme.textTheme.titleMedium),
+                ),
+                StatusChip(config.isActive ? 'active' : 'inactive', dense: true),
+              ],
+            ),
+            const SizedBox(height: Spacing.md),
+            Text(
+              'WEBHOOK URL',
+              style: theme.textTheme.labelSmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Expanded(
+                  child: SelectableText(
+                    config.webhookUrl,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontFeatures: Type.figures,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy_outlined, size: 18),
+                  tooltip: 'Copy',
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: config.webhookUrl),
+                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Copied.')),
+                      );
+                    }
+                  },
+                ),
+              ],
+            ),
+            if (config.lastEventAt != null) ...[
+              const SizedBox(height: Spacing.xs),
+              Text(
+                'Last event ${Formatting.dateTime(config.lastEventAt)}'
+                    .toUpperCase(),
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+            const SizedBox(height: Spacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.refresh, size: 18),
+                    label: const Text('Run import now'),
+                    onPressed: busy ? null : onRunNow,
+                  ),
+                ),
+                const SizedBox(width: Spacing.sm),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.autorenew, size: 18),
+                    label: const Text('Regenerate'),
+                    onPressed: busy ? null : onRegenerate,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MappingsList extends StatelessWidget {
+  const _MappingsList({
+    required this.mappings,
+    required this.onEditRow,
+    required this.onAssignUnlinked,
+  });
+
+  final DeviceMappings mappings;
+  final ValueChanged<DeviceStaffMapping> onEditRow;
+  final ValueChanged<String> onAssignUnlinked;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (mappings.staff.isEmpty)
+          const Card(
+            child: StateMessage(
+              icon: Icons.badge_outlined,
+              title: 'No staff yet',
+              message: 'Active staff members appear here to map to a device.',
+            ),
+          )
+        else
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (final (i, row) in mappings.staff.indexed) ...[
+                  if (i > 0) const Divider(height: 1),
+                  ListTile(
+                    dense: true,
+                    title: Text(row.name, style: theme.textTheme.titleSmall),
+                    subtitle: Text(
+                      (row.isLinked ? row.deviceEmployeeNo! : 'Not linked')
+                          .toUpperCase(),
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: row.isLinked
+                            ? theme.colorScheme.onSurfaceVariant
+                            : status.attention,
+                      ),
+                    ),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () => onEditRow(row),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        if (mappings.unlinked.isNotEmpty) ...[
+          const SizedBox(height: Spacing.lg),
+          const SectionHeader('Unclaimed device numbers'),
+          const SizedBox(height: Spacing.sm),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                for (final (i, no) in mappings.unlinked.indexed) ...[
+                  if (i > 0) const Divider(height: 1),
+                  ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.device_unknown_outlined),
+                    title: Text(
+                      no,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontFeatures: Type.figures,
+                      ),
+                    ),
+                    trailing: TextButton(
+                      onPressed: () => onAssignUnlinked(no),
+                      child: const Text('Assign'),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _RecentEvents extends StatelessWidget {
+  const _RecentEvents({required this.events});
+
+  final List<DeviceEvent> events;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: ExpansionTile(
+        shape: const Border(),
+        collapsedShape: const Border(),
+        title: Text('Recent events', style: theme.textTheme.titleSmall),
+        subtitle: Text(
+          '${events.length} DELIVERIES',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        children: [
+          if (events.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(Spacing.md),
+              child: Text('No deliveries yet.'),
+            )
+          else
+            for (final (i, event) in events.indexed) ...[
+              if (i > 0) const Divider(height: 1),
+              _EventTile(event: event),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EventTile extends StatelessWidget {
+  const _EventTile({required this.event});
+
+  final DeviceEvent event;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ExpansionTile(
+      shape: const Border(),
+      collapsedShape: const Border(),
+      dense: true,
+      title: Text(
+        [
+          if (event.employeeNo != null) event.employeeNo!,
+          if (event.eventTime != null) Formatting.dateTime(event.eventTime),
+        ].join(' · '),
+        style: theme.textTheme.bodyMedium,
+      ),
+      subtitle: Text(
+        event.contentType.toUpperCase(),
+        style: theme.textTheme.labelSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(Spacing.md),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: SelectableText(
+              event.payload,
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontFeatures: Type.figures,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Settings — the tenant's hours and penalty amounts. Anyone may read; only
+// `staff_reports.review` may write.
+// ---------------------------------------------------------------------------
+
+final AutoDisposeFutureProvider<AttendanceSettings>
+_attendanceSettingsProvider = FutureProvider.autoDispose(
+  (ref) => ref.watch(staffSelfServiceProvider).attendanceSettings(),
+);
+
+const _weekdayLabels = <int, String>{
+  1: 'Mon',
+  2: 'Tue',
+  3: 'Wed',
+  4: 'Thu',
+  5: 'Fri',
+  6: 'Sat',
+  7: 'Sun',
+};
+
+class _AttendanceSettingsTab extends ConsumerStatefulWidget {
+  const _AttendanceSettingsTab();
+
+  @override
+  ConsumerState<_AttendanceSettingsTab> createState() =>
+      _AttendanceSettingsTabState();
+}
+
+class _AttendanceSettingsTabState
+    extends ConsumerState<_AttendanceSettingsTab> {
+  bool _seeded = false;
+  TimeOfDay _checkIn = const TimeOfDay(hour: 9, minute: 0);
+  TimeOfDay _checkOut = const TimeOfDay(hour: 17, minute: 0);
+  bool _penaltiesEnabled = false;
+  Set<int> _workingDays = {1, 2, 3, 4, 5};
+  final _absent = TextEditingController();
+  final _late = TextEditingController();
+  final _leftEarly = TextEditingController();
+  final _noCheckout = TextEditingController();
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _absent.dispose();
+    _late.dispose();
+    _leftEarly.dispose();
+    _noCheckout.dispose();
+    super.dispose();
+  }
+
+  void _seed(AttendanceSettings s) {
+    if (_seeded) return;
+    _seeded = true;
+    _checkIn = _parse(s.checkInTime) ?? _checkIn;
+    _checkOut = _parse(s.checkOutTime) ?? _checkOut;
+    _penaltiesEnabled = s.penaltiesEnabled;
+    _workingDays = s.workingDays.toSet();
+    _absent.text = _moneyText(s.penaltyAbsent);
+    _late.text = _moneyText(s.penaltyLate);
+    _leftEarly.text = _moneyText(s.penaltyLeftEarly);
+    _noCheckout.text = _moneyText(s.penaltyNoCheckout);
+  }
+
+  static String _moneyText(double? v) {
+    if (v == null) return '';
+    return v == v.roundToDouble() ? v.toInt().toString() : v.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canEdit =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(StaffSelfPermissions.staffReportsReview) ??
+        false;
+    final settings = ref.watch(_attendanceSettingsProvider);
+
+    return CrmAsyncView(
+      value: settings,
+      errorTitle: 'Could not load attendance settings',
+      onRetry: () => ref.invalidate(_attendanceSettingsProvider),
+      builder: (data) {
+        _seed(data);
+        return RefreshIndicator(
+          onRefresh: () async {
+            ref.invalidate(_attendanceSettingsProvider);
+            await ref.read(_attendanceSettingsProvider.future);
+          },
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(Spacing.md),
+            children: [
+              if (canEdit) ..._buildForm(context) else ..._buildReadOnly(data),
+              const SizedBox(height: Spacing.xl),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  List<Widget> _buildReadOnly(AttendanceSettings data) {
+    final theme = Theme.of(context);
+    return [
+      Card(
+        child: Column(
+          children: [
+            _SettingsRow(label: 'Check-in target', value: data.checkInTime ?? '—'),
+            const Divider(height: 1),
+            _SettingsRow(label: 'Check-out target', value: data.checkOutTime ?? '—'),
+            const Divider(height: 1),
+            _SettingsRow(
+              label: 'Penalties',
+              value: data.penaltiesEnabled ? 'Enabled' : 'Disabled',
+            ),
+            const Divider(height: 1),
+            _SettingsRow(
+              label: 'Working days',
+              value: data.workingDays.isEmpty
+                  ? '—'
+                  : (data.workingDays.toList()..sort())
+                        .map((d) => _weekdayLabels[d] ?? d.toString())
+                        .join(', '),
+            ),
+          ],
+        ),
+      ),
+      if (data.penaltiesEnabled) ...[
+        const SizedBox(height: Spacing.lg),
+        const SectionHeader('Penalty amounts'),
+        const SizedBox(height: Spacing.sm),
+        Card(
+          child: Column(
+            children: [
+              _SettingsRow(
+                label: 'Absent',
+                value: data.penaltyAbsent == null
+                    ? '—'
+                    : Formatting.currency(data.penaltyAbsent),
+              ),
+              const Divider(height: 1),
+              _SettingsRow(
+                label: 'Late',
+                value: data.penaltyLate == null
+                    ? '—'
+                    : Formatting.currency(data.penaltyLate),
+              ),
+              const Divider(height: 1),
+              _SettingsRow(
+                label: 'Left early',
+                value: data.penaltyLeftEarly == null
+                    ? '—'
+                    : Formatting.currency(data.penaltyLeftEarly),
+              ),
+              const Divider(height: 1),
+              _SettingsRow(
+                label: 'No check-out',
+                value: data.penaltyNoCheckout == null
+                    ? '—'
+                    : Formatting.currency(data.penaltyNoCheckout),
+              ),
+            ],
+          ),
+        ),
+      ],
+      const SizedBox(height: Spacing.md),
+      Text(
+        'Only a staff-report reviewer may change these.',
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _buildForm(BuildContext context) {
+    return [
+      Row(
+        children: [
+          Expanded(
+            child: CrmPickerField(
+              label: 'Check-in target',
+              icon: Icons.login_rounded,
+              value: _hhmm(_checkIn),
+              onTap: () => _pickTime(out: false),
+            ),
+          ),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: CrmPickerField(
+              label: 'Check-out target',
+              icon: Icons.logout_rounded,
+              value: _hhmm(_checkOut),
+              onTap: () => _pickTime(out: true),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: Spacing.md),
+      Card(
+        child: SwitchListTile(
+          title: const Text('Deduct pay for attendance faults'),
+          subtitle: const Text('Absence, lateness, leaving early, no check-out'),
+          value: _penaltiesEnabled,
+          onChanged: (v) => setState(() => _penaltiesEnabled = v),
+        ),
+      ),
+      if (_penaltiesEnabled) ...[
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Absent',
+          child: TextField(
+            controller: _absent,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(prefixText: 'TZS '),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Late',
+          child: TextField(
+            controller: _late,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(prefixText: 'TZS '),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Left early',
+          child: TextField(
+            controller: _leftEarly,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(prefixText: 'TZS '),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'No check-out',
+          child: TextField(
+            controller: _noCheckout,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: const InputDecoration(prefixText: 'TZS '),
+          ),
+        ),
+      ],
+      const SizedBox(height: Spacing.md),
+      CrmField(
+        label: 'Working days',
+        child: Wrap(
+          spacing: Spacing.sm,
+          runSpacing: Spacing.xs,
+          children: [
+            for (var day = 1; day <= 7; day++)
+              FilterChip(
+                label: Text(_weekdayLabels[day]!),
+                selected: _workingDays.contains(day),
+                onSelected: (v) => setState(() {
+                  if (v) {
+                    _workingDays.add(day);
+                  } else {
+                    _workingDays.remove(day);
+                  }
+                }),
+              ),
+          ],
+        ),
+      ),
+      const SizedBox(height: Spacing.lg),
+      PrimaryButton(
+        label: _saving ? 'Saving…' : 'Save settings',
+        busy: _saving,
+        onPressed: _saving ? null : _save,
+      ),
+    ];
+  }
+
+  Future<void> _pickTime({required bool out}) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: out ? _checkOut : _checkIn,
+    );
+    if (picked == null) return;
+    setState(() {
+      if (out) {
+        _checkOut = picked;
+      } else {
+        _checkIn = picked;
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _saving = true);
+    try {
+      await ref
+          .read(staffSelfServiceProvider)
+          .updateAttendanceSettings(
+            checkInTime: _hhmm(_checkIn),
+            checkOutTime: _hhmm(_checkOut),
+            penaltiesEnabled: _penaltiesEnabled,
+            penaltyAbsent: _penaltiesEnabled
+                ? double.tryParse(_absent.text.trim())
+                : null,
+            penaltyLate: _penaltiesEnabled
+                ? double.tryParse(_late.text.trim())
+                : null,
+            penaltyLeftEarly: _penaltiesEnabled
+                ? double.tryParse(_leftEarly.text.trim())
+                : null,
+            penaltyNoCheckout: _penaltiesEnabled
+                ? double.tryParse(_noCheckout.text.trim())
+                : null,
+            workingDays: _workingDays.toList()..sort(),
+          );
+      ref
+        ..invalidate(_attendanceSettingsProvider)
+        ..invalidate(myAttendanceProvider);
+      messenger.showSnackBar(const SnackBar(content: Text('Settings saved.')));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+}
+
+class _SettingsRow extends StatelessWidget {
+  const _SettingsRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListTile(
+      dense: true,
+      title: Text(label, style: theme.textTheme.titleSmall),
+      trailing: Text(value, style: theme.textTheme.bodyMedium),
     );
   }
 }

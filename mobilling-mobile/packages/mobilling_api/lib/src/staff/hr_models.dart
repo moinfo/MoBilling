@@ -302,6 +302,9 @@ class Payslip {
     required this.statutoryEmployerBreakdown,
     required this.employerCostTotal,
     this.user,
+    this.tinNumber,
+    this.bankName,
+    this.bankAccountNumber,
     this.runMonthKey,
     this.runStatus,
     this.createdAt,
@@ -326,15 +329,24 @@ class Payslip {
   final double employerCostTotal;
   final NamedUser? user;
 
+  /// From `user.employee_profile` — for the Net Salary Payment List and the
+  /// PAYE line of the Employer Obligations panel. Null for an employee with
+  /// no profile row on file.
+  final String? tinNumber;
+  final String? bankName;
+  final String? bankAccountNumber;
+
   /// Present on `/payslips/mine` (run loaded) — the month this pays.
   final String? runMonthKey;
   final String? runStatus;
   final DateTime? createdAt;
 
   String get userName => user?.name ?? '—';
+  bool get hasBankDetails => bankName != null && bankAccountNumber != null;
 
   factory Payslip.fromJson(Map<String, dynamic> json) {
     final run = json.object('payroll_run');
+    final profile = json.object('user')?.object('employee_profile');
     return Payslip(
       id: json.id(),
       payrollRunId: json.id('payroll_run_id'),
@@ -360,6 +372,9 @@ class Payslip {
       user: json.object('user') == null
           ? null
           : NamedUser.fromJson(json.object('user')!),
+      tinNumber: profile?.str('tin_number'),
+      bankName: profile?.str('bank_name'),
+      bankAccountNumber: profile?.str('bank_account_number'),
       runMonthKey: run?.str('month_key'),
       runStatus: run?.str('status'),
       createdAt: json.date('created_at'),
@@ -510,4 +525,190 @@ class SalaryAdvance {
             ? null
             : NamedUser.fromJson(json.object('user')!),
       );
+}
+
+// ---------------------------------------------------------------------------
+// Payroll catalogs — allowances, deductions, statutory rates, PAYE settings
+// ---------------------------------------------------------------------------
+
+/// One catalog entry from `AllowanceController` or `DeductionController` —
+/// the two share an identical shape, so one model serves both.
+class PayComponent {
+  const PayComponent({
+    required this.id,
+    required this.name,
+    required this.calculationType,
+    required this.defaultAmount,
+    required this.isActive,
+  });
+
+  final String id;
+  final String name;
+
+  /// fixed | percent_of_basic.
+  final String calculationType;
+  final double defaultAmount;
+  final bool isActive;
+
+  bool get isPercent => calculationType == 'percent_of_basic';
+
+  factory PayComponent.fromJson(Map<String, dynamic> json) => PayComponent(
+        id: json.id(),
+        name: json.strOr('name', '—'),
+        calculationType: json.strOr('calculation_type', 'fixed'),
+        defaultAmount: json.money('default_amount'),
+        isActive: json.flag('is_active', fallback: true),
+      );
+}
+
+class StatutoryRate {
+  const StatutoryRate({
+    required this.id,
+    required this.name,
+    required this.employeePercent,
+    required this.employerPercent,
+    required this.reducesTaxableIncome,
+    required this.isActive,
+  });
+
+  final String id;
+  final String name;
+  final double employeePercent;
+  final double employerPercent;
+
+  /// Whether this rate's employee share is deducted before PAYE is computed
+  /// (e.g. NSSF) rather than after (e.g. a plain union due).
+  final bool reducesTaxableIncome;
+  final bool isActive;
+
+  factory StatutoryRate.fromJson(Map<String, dynamic> json) => StatutoryRate(
+        id: json.id(),
+        name: json.strOr('name', '—'),
+        employeePercent: json.money('employee_percent'),
+        employerPercent: json.money('employer_percent'),
+        reducesTaxableIncome: json.flag('reduces_taxable_income'),
+        isActive: json.flag('is_active', fallback: true),
+      );
+}
+
+/// One employee's opt-in to a [PayComponent] or [StatutoryRate] — or, for the
+/// three plain exemption toggles, just the flag itself.
+class PayComponentSubscription {
+  const PayComponentSubscription({
+    required this.isActive,
+    this.id,
+    this.amountOverride,
+    this.referenceNumber,
+  });
+
+  final bool isActive;
+
+  /// Null for the exemption toggles, which have no catalog row of their own.
+  final String? id;
+
+  /// Allowance/deduction only — replaces the catalog's default amount for
+  /// this employee.
+  final double? amountOverride;
+
+  /// Statutory rate only — e.g. an NSSF or HESLB member number.
+  final String? referenceNumber;
+
+  factory PayComponentSubscription.fromJson(Map<String, dynamic> json) =>
+      PayComponentSubscription(
+        isActive: json.flag('is_active'),
+        id: json.str('id'),
+        amountOverride: json['amount_override'] == null
+            ? null
+            : json.money('amount_override'),
+        referenceNumber: json.str('reference_number'),
+      );
+}
+
+/// `GET .../subscriptions` on any allowance, deduction, statutory rate, or
+/// exemption-toggle endpoint — every active employee, plus whichever of them
+/// already has a row.
+class SubscriptionsPage {
+  const SubscriptionsPage({required this.users, required this.subscriptions});
+
+  final List<NamedUser> users;
+
+  /// Keyed by user id. An employee absent from this map has no subscription
+  /// — for the plain exemption toggles that means "not subject".
+  final Map<String, PayComponentSubscription> subscriptions;
+
+  bool isActiveFor(String userId) => subscriptions[userId]?.isActive ?? false;
+
+  factory SubscriptionsPage.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    final raw = data.object('subscriptions') ?? const <String, dynamic>{};
+    return SubscriptionsPage(
+      users: data.list('users', NamedUser.fromJson),
+      subscriptions: {
+        for (final entry in raw.entries)
+          if (entry.value is Map)
+            entry.key: PayComponentSubscription.fromJson(
+              Map<String, dynamic>.from(entry.value as Map),
+            ),
+      },
+    );
+  }
+}
+
+/// One row of the PAYE bracket table (`payroll_settings.paye_brackets`).
+class PayeBracket {
+  const PayeBracket({
+    required this.min,
+    required this.rate,
+    required this.baseDeduction,
+    this.max,
+  });
+
+  final double min;
+
+  /// Null on the top bracket, which is open-ended.
+  final double? max;
+  final double rate;
+  final double baseDeduction;
+
+  factory PayeBracket.fromJson(Map<String, dynamic> json) => PayeBracket(
+        min: json.money('min'),
+        max: json['max'] == null ? null : json.money('max'),
+        rate: json.money('rate'),
+        baseDeduction: json.money('base_deduction'),
+      );
+
+  PayeBracket copyWith({
+    double? min,
+    double? rate,
+    double? baseDeduction,
+    double? max,
+    bool clearMax = false,
+  }) =>
+      PayeBracket(
+        min: min ?? this.min,
+        max: clearMax ? null : (max ?? this.max),
+        rate: rate ?? this.rate,
+        baseDeduction: baseDeduction ?? this.baseDeduction,
+      );
+
+  Map<String, dynamic> toJson() => {
+        'min': min,
+        'max': max,
+        'rate': rate,
+        'base_deduction': baseDeduction,
+      };
+}
+
+/// `GET/PUT /payroll-settings` — one row per tenant.
+class PayrollSettings {
+  const PayrollSettings({required this.payeBrackets});
+
+  final List<PayeBracket> payeBrackets;
+
+  factory PayrollSettings.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return PayrollSettings(
+      payeBrackets: data.list('paye_brackets', PayeBracket.fromJson),
+    );
+  }
 }

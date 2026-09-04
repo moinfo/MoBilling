@@ -523,12 +523,10 @@ class ExpenseCategoriesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final categories = ref.watch(expenseCategoriesProvider);
     final theme = Theme.of(context);
-    final canCreate =
-        ref
-            .watch(sessionControllerProvider)
-            .session
-            ?.can(FinancePermissions.expenseCategoriesCreate) ??
-        false;
+    final auth = ref.watch(sessionControllerProvider).session;
+    final canCreate = auth?.can(FinancePermissions.expenseCategoriesCreate) ?? false;
+    final canUpdate = auth?.can(FinancePermissions.expenseCategoriesUpdate) ?? false;
+    final canDelete = auth?.can(FinancePermissions.expenseCategoriesDelete) ?? false;
 
     return Scaffold(
       appBar: ShellTopBar(
@@ -566,17 +564,62 @@ class ExpenseCategoriesScreen extends ConsumerWidget {
                           ExpansionTile(
                             shape: const Border(),
                             collapsedShape: const Border(),
-                            title: Text(
-                              category.name,
-                              style: theme.textTheme.titleSmall,
+                            title: Row(
+                              children: [
+                                Flexible(
+                                  child: Text(
+                                    category.name,
+                                    style: theme.textTheme.titleSmall?.copyWith(
+                                      color: category.isActive
+                                          ? null
+                                          : theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                                if (!category.isActive) ...[
+                                  const SizedBox(width: Spacing.sm),
+                                  const StatusChip('inactive', dense: true),
+                                ],
+                              ],
                             ),
                             subtitle: _MetaLine(
                               '${Formatting.integer(category.subCategories.length)} '
                               'sub-categor${category.subCategories.length == 1 ? 'y' : 'ies'}',
                             ),
+                            trailing: (canUpdate || canDelete)
+                                ? IconButton(
+                                    icon: const Icon(Icons.more_vert),
+                                    onPressed: () => _actions(
+                                      context,
+                                      ref,
+                                      id: category.id,
+                                      name: category.name,
+                                      isActive: category.isActive,
+                                      parentId: null,
+                                      canUpdate: canUpdate,
+                                      canDelete: canDelete,
+                                    ),
+                                  )
+                                : null,
                             children: [
                               for (final sub in category.subCategories)
-                                _CategoryTile(name: sub.name, nested: true),
+                                _CategoryTile(
+                                  name: sub.name,
+                                  nested: true,
+                                  isActive: sub.isActive,
+                                  onTap: (canUpdate || canDelete)
+                                      ? () => _actions(
+                                          context,
+                                          ref,
+                                          id: sub.id,
+                                          name: sub.name,
+                                          isActive: sub.isActive,
+                                          parentId: category.id,
+                                          canUpdate: canUpdate,
+                                          canDelete: canDelete,
+                                        )
+                                      : null,
+                                ),
                               if (category.subCategories.isEmpty)
                                 Padding(
                                   padding: const EdgeInsets.fromLTRB(
@@ -632,6 +675,199 @@ class ExpenseCategoriesScreen extends ConsumerWidget {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }
+
+  /// Edit / Delete for one row — [parentId] is null for a top-level category
+  /// (which cannot itself have a parent) and set for a sub-category.
+  Future<void> _actions(
+    BuildContext context,
+    WidgetRef ref, {
+    required String id,
+    required String name,
+    required bool isActive,
+    required String? parentId,
+    required bool canUpdate,
+    required bool canDelete,
+  }) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: Spacing.md),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (canUpdate)
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Edit'),
+                  onTap: () => Navigator.pop(sheetContext, 'edit'),
+                ),
+              if (canUpdate)
+                ListTile(
+                  leading: Icon(
+                    isActive
+                        ? Icons.visibility_off_outlined
+                        : Icons.visibility_outlined,
+                  ),
+                  title: Text(isActive ? 'Mark inactive' : 'Mark active'),
+                  onTap: () => Navigator.pop(sheetContext, 'toggle'),
+                ),
+              if (canDelete)
+                ListTile(
+                  leading: Icon(
+                    Icons.delete_outline,
+                    color: Theme.of(sheetContext).colorScheme.error,
+                  ),
+                  title: Text(
+                    'Delete',
+                    style: TextStyle(
+                      color: Theme.of(sheetContext).colorScheme.error,
+                    ),
+                  ),
+                  onTap: () => Navigator.pop(sheetContext, 'delete'),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (!context.mounted || choice == null) return;
+
+    switch (choice) {
+      case 'edit':
+        await _edit(
+          context,
+          ref,
+          id: id,
+          name: name,
+          isActive: isActive,
+          parentId: parentId,
+        );
+      case 'toggle':
+        await _save(
+          context,
+          ref,
+          id: id,
+          name: name,
+          isActive: !isActive,
+          parentId: parentId,
+        );
+      case 'delete':
+        await _delete(context, ref, id: id, name: name);
+    }
+  }
+
+  Future<void> _edit(
+    BuildContext context,
+    WidgetRef ref, {
+    required String id,
+    required String name,
+    required bool isActive,
+    required String? parentId,
+  }) async {
+    final nameController = TextEditingController(text: name);
+    final parents =
+        ref.read(expenseCategoriesProvider).valueOrNull ??
+        const <ExpenseCategory>[];
+    var newParentId = parentId;
+    var active = isActive;
+
+    // A sub-category can move to another parent; a top-level category has
+    // no parent field at all — it would have to become a sub-category of
+    // itself otherwise.
+    final saved = await _CategoryDialog.show(
+      context,
+      title: 'Edit category',
+      name: nameController,
+      parents: parentId == null
+          ? const []
+          : [for (final p in parents) (p.id, p.name)],
+      initialParentId: parentId,
+      onParentChanged: (v) => newParentId = v,
+      initialActive: active,
+      onActiveChanged: (v) => active = v,
+      confirmLabel: 'Save changes',
+    );
+    if (saved != true || !context.mounted) return;
+    await _save(
+      context,
+      ref,
+      id: id,
+      name: nameController.text.trim(),
+      isActive: active,
+      parentId: newParentId,
+    );
+  }
+
+  Future<void> _save(
+    BuildContext context,
+    WidgetRef ref, {
+    required String id,
+    required String name,
+    required bool isActive,
+    required String? parentId,
+  }) async {
+    if (name.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(financeServiceProvider)
+          .updateExpenseCategory(
+            id,
+            name: name,
+            parentId: parentId,
+            isActive: isActive,
+          );
+      ref.invalidate(expenseCategoriesProvider);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  Future<void> _delete(
+    BuildContext context,
+    WidgetRef ref, {
+    required String id,
+    required String name,
+  }) async {
+    final scheme = Theme.of(context).colorScheme;
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Delete "$name"?'),
+        content: const Text(
+          'Refused while any expense, or a sub-category, still points at it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: scheme.error),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final message = await ref
+          .read(financeServiceProvider)
+          .deleteExpenseCategory(id);
+      ref.invalidate(expenseCategoriesProvider);
+      messenger.showSnackBar(
+        SnackBar(content: Text(message ?? '"$name" deleted.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -660,26 +896,41 @@ class _MetaLine extends StatelessWidget {
 
 /// A category row; [nested] indents it under its parent.
 class _CategoryTile extends StatelessWidget {
-  const _CategoryTile({required this.name, this.detail, this.nested = false});
+  const _CategoryTile({
+    required this.name,
+    this.detail,
+    this.nested = false,
+    this.isActive = true,
+    this.onTap,
+  });
 
   final String name;
   final String? detail;
   final bool nested;
+  final bool isActive;
+  final VoidCallback? onTap;
 
   @override
-  Widget build(BuildContext context) => ListTile(
-    dense: nested,
-    contentPadding: nested
-        ? const EdgeInsets.only(left: Spacing.xl, right: Spacing.md)
-        : null,
-    title: Text(
-      name,
-      style: nested
-          ? Theme.of(context).textTheme.bodyMedium
-          : Theme.of(context).textTheme.titleSmall,
-    ),
-    subtitle: detail == null ? null : _MetaLine(detail!),
-  );
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return ListTile(
+      dense: nested,
+      contentPadding: nested
+          ? const EdgeInsets.only(left: Spacing.xl, right: Spacing.md)
+          : null,
+      onTap: onTap,
+      title: Text(
+        name,
+        style:
+            (nested ? theme.textTheme.bodyMedium : theme.textTheme.titleSmall)
+                ?.copyWith(
+              color: isActive ? null : theme.colorScheme.onSurfaceVariant,
+            ),
+      ),
+      subtitle: detail == null ? null : _MetaLine(detail!),
+      trailing: !isActive ? const StatusChip('inactive', dense: true) : null,
+    );
+  }
 }
 
 /// The "new category" dialog shared by bills and expenses: a name and an
@@ -691,9 +942,16 @@ class _CategoryDialog {
     required TextEditingController name,
     required List<(String, String)> parents,
     required ValueChanged<String?> onParentChanged,
+    String? initialParentId,
+    // Null keeps the dialog exactly as the create flow has always looked —
+    // the active toggle only appears when a caller actually needs it.
+    bool? initialActive,
+    ValueChanged<bool>? onActiveChanged,
+    String confirmLabel = 'Create category',
   }) {
     final scheme = Theme.of(context).colorScheme;
-    String? parentId;
+    String? parentId = initialParentId;
+    var active = initialActive ?? true;
 
     return showDialog<bool>(
       context: context,
@@ -733,6 +991,19 @@ class _CategoryDialog {
                   onParentChanged(v);
                 },
               ),
+              if (onActiveChanged != null) ...[
+                const SizedBox(height: Spacing.md),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Active'),
+                  subtitle: const Text('Inactive categories stay on old expenses'),
+                  value: active,
+                  onChanged: (v) {
+                    setDialogState(() => active = v);
+                    onActiveChanged(v);
+                  },
+                ),
+              ],
             ],
           ),
           actions: [
@@ -742,7 +1013,7 @@ class _CategoryDialog {
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Create category'),
+              child: Text(confirmLabel),
             ),
           ],
         ),

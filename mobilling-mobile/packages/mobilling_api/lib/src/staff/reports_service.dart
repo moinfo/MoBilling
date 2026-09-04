@@ -36,6 +36,30 @@ class ReportsService {
     return parser(body);
   }
 
+  /// GET /reports/bank-balance-statement — needs `reports.balance_statement`.
+  /// Not one of the thirteen [fetch]-able reports — see
+  /// [BankBalanceStatement]'s doc comment for why it has its own method.
+  Future<BankBalanceStatement> bankBalanceStatement({
+    required String bankAccountId,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/reports/bank-balance-statement',
+      query: {
+        'bank_account_id': bankAccountId,
+        'start_date': startDate == null ? null : _ymd(startDate),
+        'end_date': endDate == null ? null : _ymd(endDate),
+      },
+    );
+    return BankBalanceStatement.fromJson(body);
+  }
+
+  static String _ymd(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
+
   /// Maps a spec slug to its endpoint and typed parser. Kept in one place so
   /// a new report is a single entry here plus a [ReportSpec].
   (String, ReportResult Function(Map<String, dynamic>)) _endpointFor(

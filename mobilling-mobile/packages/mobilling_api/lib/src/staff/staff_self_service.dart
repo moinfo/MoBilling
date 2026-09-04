@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:dio/dio.dart';
 
 import '../api_client.dart';
@@ -118,6 +120,162 @@ class StaffSelfService {
   Future<String> unwaiveAttendancePenalty(String id) async {
     final body = await _api.post<dynamic>('/attendance/penalties/$id/unwaive');
     return _message(body, 'Deduction reinstated.');
+  }
+
+  /// GET /attendance/report — one staff member's month, day by day. Needs
+  /// `attendance.manage`; the clerk's version of [myAttendanceReport].
+  Future<AttendanceReport> attendanceReport({
+    required String userId,
+    int? month,
+    int? year,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/attendance/report',
+      query: {'user_id': userId, 'month': month, 'year': year},
+    );
+    return AttendanceReport.fromJson(_map(body));
+  }
+
+  /// GET /attendance/report/export — a PDF or CSV file, not JSON. Needs
+  /// `attendance.manage`.
+  Future<Uint8List> attendanceReportExport({
+    required String userId,
+    int? month,
+    int? year,
+    required String format, // pdf | csv
+  }) => _download(
+    '/attendance/report/export',
+    query: {
+      'user_id': userId,
+      'month': month,
+      'year': year,
+      'format': format,
+    },
+  );
+
+  /// GET /attendance/settings — no permission gate; every signed-in user may
+  /// read the tenant's hours.
+  Future<AttendanceSettings> attendanceSettings() async {
+    final body = await _api.get<dynamic>('/attendance/settings');
+    return AttendanceSettings.fromJson(_data(body));
+  }
+
+  /// PUT /attendance/settings — needs `staff_reports.review`, deliberately
+  /// reused rather than a dedicated attendance permission.
+  Future<AttendanceSettings> updateAttendanceSettings({
+    required String checkInTime,
+    required String checkOutTime,
+    bool penaltiesEnabled = true,
+    double? penaltyAbsent,
+    double? penaltyLate,
+    double? penaltyLeftEarly,
+    double? penaltyNoCheckout,
+    List<int>? workingDays,
+  }) async {
+    final body = await _api.put<dynamic>(
+      '/attendance/settings',
+      body: {
+        'check_in_time': checkInTime,
+        'check_out_time': checkOutTime,
+        'penalties_enabled': penaltiesEnabled,
+        'penalty_absent': penaltyAbsent,
+        'penalty_late': penaltyLate,
+        'penalty_left_early': penaltyLeftEarly,
+        'penalty_no_checkout': penaltyNoCheckout,
+        'working_days': ?workingDays,
+      },
+    );
+    return AttendanceSettings.fromJson(_data(body));
+  }
+
+  /// POST /attendance/import/preview — multipart. Needs `attendance.manage`.
+  /// The server best-guesses the column mapping from the header row.
+  Future<AttendanceImportPreview> previewAttendanceImport(
+    String filePath,
+  ) async {
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(filePath),
+    });
+    final body = await _postMultipart('/attendance/import/preview', form);
+    return AttendanceImportPreview.fromJson(body);
+  }
+
+  /// POST /attendance/import/commit — re-uploads the same file with the
+  /// confirmed mapping. Needs `attendance.manage`.
+  Future<AttendanceImportResult> commitAttendanceImport(
+    String filePath, {
+    required String matchBy, // name | employee_no
+    required int identityCol,
+    required String timeMode, // single | inout
+    int? dateCol,
+    int? timeCol,
+    int? inCol,
+    int? outCol,
+    int? employeeNoCol,
+  }) async {
+    final form = FormData.fromMap({
+      'file': await MultipartFile.fromFile(filePath),
+      'match_by': matchBy,
+      'identity_col': identityCol.toString(),
+      'time_mode': timeMode,
+      if (dateCol != null) 'date_col': dateCol.toString(),
+      if (timeCol != null) 'time_col': timeCol.toString(),
+      if (inCol != null) 'in_col': inCol.toString(),
+      if (outCol != null) 'out_col': outCol.toString(),
+      if (employeeNoCol != null) 'employee_no_col': employeeNoCol.toString(),
+    });
+    final body = await _postMultipart('/attendance/import/commit', form);
+    return AttendanceImportResult.fromJson(body);
+  }
+
+  /// GET /attendance/device-config — the tenant's HIKVISION device + webhook
+  /// URL, created on first read. Needs `attendance.manage`.
+  Future<DeviceAttendanceConfig> deviceAttendanceConfig() async {
+    final body = await _api.get<dynamic>('/attendance/device-config');
+    return DeviceAttendanceConfig.fromJson(_map(body));
+  }
+
+  /// POST /attendance/device-regenerate — rotates the webhook token; the old
+  /// URL stops working immediately.
+  Future<String> regenerateDeviceToken() async {
+    final body = await _api.post<dynamic>('/attendance/device-regenerate');
+    return _data(body).strOr('webhook_url', '');
+  }
+
+  /// GET /attendance/device-events — the latest 30 raw webhook deliveries,
+  /// for troubleshooting a device that isn't checking anyone in.
+  Future<List<DeviceEvent>> deviceEvents() async {
+    final body = await _api.get<dynamic>('/attendance/device-events');
+    return Paginated.fromJson(body, DeviceEvent.fromJson).items;
+  }
+
+  /// GET /attendance/device-mappings.
+  Future<DeviceMappings> deviceMappings() async {
+    final body = await _api.get<dynamic>('/attendance/device-mappings');
+    return DeviceMappings.fromJson(_map(body));
+  }
+
+  /// POST /attendance/device-mappings — link (or, with a null
+  /// [deviceEmployeeNo], clear) a staff member's device number, then import
+  /// their pending events. Returns the import result.
+  Future<AttendanceImportResult> saveDeviceMapping({
+    required String userId,
+    String? deviceEmployeeNo,
+  }) async {
+    final body = await _api.post<dynamic>(
+      '/attendance/device-mappings',
+      body: {'user_id': userId, 'device_employee_no': deviceEmployeeNo},
+    );
+    return AttendanceImportResult.fromJson(
+      _map(body).object('import') ?? const {},
+    );
+  }
+
+  /// POST /attendance/device-import — manually re-drain pending device
+  /// events (normally this runs automatically on every webhook delivery).
+  Future<AttendanceImportResult> runDeviceImportNow() async {
+    final body = await _api.post<dynamic>('/attendance/device-import');
+    return AttendanceImportResult.fromJson(_map(body));
   }
 
   // ---------------------------------------------------------------------
@@ -243,15 +401,145 @@ class StaffSelfService {
     body: {'rating': ?rating, 'review_notes': ?reviewNotes},
   );
 
+  /// GET /staff-reports/settings — needs `staff_reports.submit` (i.e. anyone
+  /// who submits reports may see the cadence they're held to).
+  Future<StaffReportSettings> staffReportSettings() async {
+    final body = await _api.get<dynamic>('/staff-reports/settings');
+    return StaffReportSettings.fromJson(_map(body));
+  }
+
+  /// PUT /staff-reports/settings — needs `staff_reports.review`. Every field
+  /// is required server-side (no `sometimes` rules), so this always sends
+  /// the complete settings, not a diff.
+  Future<StaffReportSettings> updateStaffReportSettings({
+    required int dailyTarget,
+    required int weeklyTarget,
+    required int monthlyTarget,
+    required String dailyDeadlineTime,
+    required int weeklyDeadlineDay,
+    required String weeklyDeadlineTime,
+    required int monthlyDeadlineDay,
+    required String monthlyDeadlineTime,
+    bool penaltiesEnabled = true,
+    double? penaltyMissingDaily,
+    double? penaltyLate,
+    double? penaltyMissingWeekly,
+    double? penaltyMissingMonthly,
+    List<int>? workingDays,
+  }) async {
+    final body = await _api.put<dynamic>(
+      '/staff-reports/settings',
+      body: {
+        'daily_target': dailyTarget,
+        'weekly_target': weeklyTarget,
+        'monthly_target': monthlyTarget,
+        'daily_deadline_time': dailyDeadlineTime,
+        'weekly_deadline_day': weeklyDeadlineDay,
+        'weekly_deadline_time': weeklyDeadlineTime,
+        'monthly_deadline_day': monthlyDeadlineDay,
+        'monthly_deadline_time': monthlyDeadlineTime,
+        'penalties_enabled': penaltiesEnabled,
+        'penalty_missing_daily': penaltyMissingDaily,
+        'penalty_late': penaltyLate,
+        'penalty_missing_weekly': penaltyMissingWeekly,
+        'penalty_missing_monthly': penaltyMissingMonthly,
+        'working_days': ?workingDays,
+      },
+    );
+    return StaffReportSettings.fromJson(_map(body));
+  }
+
+  /// GET /staff-reports/holidays — needs `staff_reports.submit`.
+  Future<List<StaffReportHoliday>> staffReportHolidays() async {
+    final body = await _api.get<dynamic>('/staff-reports/holidays');
+    return Paginated.fromJson(body, StaffReportHoliday.fromJson).items;
+  }
+
+  /// POST /staff-reports/holidays — upserts by date. Needs
+  /// `staff_reports.review`. Also retroactively clears same-day
+  /// missing-report deductions.
+  Future<StaffReportHoliday> setStaffReportHoliday({
+    required DateTime date,
+    String? name,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/staff-reports/holidays',
+      body: {'date': _ymd(date), 'name': ?name},
+    );
+    return StaffReportHoliday.fromJson(_data(body));
+  }
+
+  /// DELETE /staff-reports/holidays/{id} — needs `staff_reports.review`.
+  Future<void> deleteStaffReportHoliday(String id) =>
+      _api.delete<dynamic>('/staff-reports/holidays/$id');
+
+  /// GET /staff-reports/supervisors — every active employee and who reviews
+  /// them. Needs `staff_reports.review`.
+  Future<List<SupervisorAssignment>> supervisorAssignments() async {
+    final body = await _api.get<dynamic>('/staff-reports/supervisors');
+    return Paginated.fromJson(body, SupervisorAssignment.fromJson).items;
+  }
+
+  /// PUT /staff-reports/supervisors/{userId} — a null [supervisorId] clears
+  /// it; a user cannot be assigned as their own supervisor (server-checked).
+  Future<SupervisorAssignment> setSupervisor(
+    String userId, {
+    String? supervisorId,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/staff-reports/supervisors/$userId',
+      body: {'supervisor_id': supervisorId},
+    );
+    return SupervisorAssignment.fromJson(_data(body));
+  }
+
+  /// GET /staff-reports/report — one employee's whole month across all three
+  /// cadences, for the printable matrix. Needs `staff_reports.review`.
+  Future<StaffReportMatrix> staffReportMatrix({
+    required String userId,
+    int? month,
+    int? year,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/staff-reports/report',
+      query: {'user_id': userId, 'month': month, 'year': year},
+    );
+    return StaffReportMatrix.fromJson(_map(body));
+  }
+
+  /// GET /staff-reports/report/export — a PDF or CSV file, not JSON.
+  Future<Uint8List> staffReportMatrixExport({
+    required String userId,
+    int? month,
+    int? year,
+    required String format, // pdf | csv
+  }) => _download(
+    '/staff-reports/report/export',
+    query: {
+      'user_id': userId,
+      'month': month,
+      'year': year,
+      'format': format,
+    },
+  );
+
   // ---------------------------------------------------------------------
   // Staff targets
   // ---------------------------------------------------------------------
 
-  /// GET /staff-targets — unpaginated.
-  Future<List<StaffTarget>> staffTargets({String? status}) async {
+  /// GET /staff-targets — unpaginated. [managedOnly] narrows to targets
+  /// where the caller is the `manager_id` team-lead override, not the
+  /// assignee — the "Managed Targets" view.
+  Future<List<StaffTarget>> staffTargets({
+    String? status,
+    bool managedOnly = false,
+  }) async {
     final body = await _api.get<dynamic>(
       '/staff-targets',
-      query: {'status': status},
+      query: {
+        'status': status,
+        if (managedOnly) 'managed_only': true,
+      },
     );
     return Paginated.fromJson(body, StaffTarget.fromJson).items;
   }
@@ -426,11 +714,84 @@ class StaffSelfService {
     return Paginated.fromJson(body, SystemVerificationReport.fromJson).items;
   }
 
+  /// GET /system-verifications — every system registered for verification,
+  /// tenant-wide (not just the caller's own). Needs
+  /// `system_verifications.read`; the roster/assign screen, distinct from
+  /// [systemVerifications], which is the personal "my checks" list.
+  Future<Paginated<SystemVerification>> adminSystemVerifications({
+    String? search,
+    int page = 1,
+    int perPage = 50,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/system-verifications',
+      query: {'search': search, 'page': page, 'per_page': perPage},
+    );
+    return Paginated.fromJson(body, SystemVerification.fromJson);
+  }
+
+  /// POST /system-verifications. Needs `system_verifications.create`.
+  Future<SystemVerification> createSystemVerification({
+    required String name,
+    String? domainName,
+    String? clientId,
+    String? assignedUserId,
+    bool isActive = true,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/system-verifications',
+      body: {
+        'name': name,
+        'domain_name': ?domainName,
+        'client_id': ?clientId,
+        'assigned_user_id': ?assignedUserId,
+        'is_active': isActive,
+      },
+    );
+    return SystemVerification.fromJson(_data(body));
+  }
+
+  /// PUT /system-verifications/{id}. Needs `system_verifications.update`.
+  /// Every field is re-validated fresh (the request has no `sometimes`
+  /// rules), so unlike most updates here this always sends the complete
+  /// record, not a diff.
+  Future<SystemVerification> updateSystemVerification(
+    String id, {
+    required String name,
+    String? domainName,
+    String? clientId,
+    String? assignedUserId,
+    bool isActive = true,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/system-verifications/$id',
+      body: {
+        'name': name,
+        'domain_name': ?domainName,
+        'client_id': ?clientId,
+        'assigned_user_id': ?assignedUserId,
+        'is_active': isActive,
+      },
+    );
+    return SystemVerification.fromJson(_data(body));
+  }
+
+  /// DELETE /system-verifications/{id}. Needs `system_verifications.delete`.
+  /// Takes every check-in report on it with it — no soft delete here.
+  Future<String?> deleteSystemVerification(String id) async {
+    final body = await _api.delete<dynamic>('/system-verifications/$id');
+    return _message(body, 'Verification system removed.');
+  }
+
   /// GET /system-records — paginated.
   Future<Paginated<SystemRecord>> systemRecords({
     String? systemId,
     String? systemPropertyId,
+    String? bankAccountId,
+    String? type,
     String? search,
+    DateTime? dateFrom,
+    DateTime? dateTo,
     int page = 1,
     int perPage = 20,
   }) async {
@@ -439,7 +800,11 @@ class StaffSelfService {
       query: {
         'system_id': systemId,
         'system_property_id': systemPropertyId,
+        'bank_account_id': bankAccountId,
+        'type': type,
         'search': search,
+        'date_from': dateFrom == null ? null : _ymd(dateFrom),
+        'date_to': dateTo == null ? null : _ymd(dateTo),
         'page': page,
         'per_page': perPage,
       },
@@ -471,6 +836,7 @@ class StaffSelfService {
   Future<void> createSystemRecord({
     required String systemId,
     required String systemPropertyId,
+    required String type,
     required DateTime recordDate,
     required double amount,
     required String receiptPath,
@@ -480,6 +846,7 @@ class StaffSelfService {
     '/system-records',
     systemId: systemId,
     systemPropertyId: systemPropertyId,
+    type: type,
     recordDate: recordDate,
     amount: amount,
     bankAccountId: bankAccountId,
@@ -496,6 +863,7 @@ class StaffSelfService {
     String id, {
     required String systemId,
     required String systemPropertyId,
+    required String type,
     required DateTime recordDate,
     required double amount,
     String? bankAccountId,
@@ -505,6 +873,7 @@ class StaffSelfService {
     '/system-records/$id',
     systemId: systemId,
     systemPropertyId: systemPropertyId,
+    type: type,
     recordDate: recordDate,
     amount: amount,
     bankAccountId: bankAccountId,
@@ -522,6 +891,7 @@ class StaffSelfService {
     String path, {
     required String systemId,
     required String systemPropertyId,
+    required String type,
     required DateTime recordDate,
     required double amount,
     String? bankAccountId,
@@ -536,6 +906,7 @@ class StaffSelfService {
       '_method': ?methodOverride,
       'system_id': systemId,
       'system_property_id': systemPropertyId,
+      'type': type,
       'bank_account_id': ?bankAccountId,
       'record_date': _ymd(recordDate),
       'amount': amount.toString(),
@@ -549,6 +920,36 @@ class StaffSelfService {
 
     try {
       await _api.raw.post<dynamic>(path, data: form);
+    } on DioException catch (e) {
+      final error = e.error;
+      throw error is ApiException ? error : ApiException.fromDio(e);
+    }
+  }
+
+  /// Posts multipart form data and returns the decoded JSON body — the
+  /// import endpoints' equivalent of [_sendSystemRecord] when the caller
+  /// needs what comes back, not just success/failure.
+  Future<Map<String, dynamic>> _postMultipart(
+    String path,
+    FormData form,
+  ) async {
+    try {
+      final response = await _api.raw.post<dynamic>(path, data: form);
+      return _map(response.data);
+    } on DioException catch (e) {
+      final error = e.error;
+      throw error is ApiException ? error : ApiException.fromDio(e);
+    }
+  }
+
+  Future<Uint8List> _download(String path, {Map<String, dynamic>? query}) async {
+    try {
+      final response = await _api.raw.get<List<int>>(
+        path,
+        queryParameters: query,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data ?? const []);
     } on DioException catch (e) {
       final error = e.error;
       throw error is ApiException ? error : ApiException.fromDio(e);
@@ -590,5 +991,8 @@ abstract final class StaffSelfPermissions {
   static const systemRecordsUpdate = 'system_records.update';
   static const systemRecordsDelete = 'system_records.delete';
   static const systemVerificationsRead = 'system_verifications.read';
+  static const systemVerificationsCreate = 'system_verifications.create';
+  static const systemVerificationsUpdate = 'system_verifications.update';
+  static const systemVerificationsDelete = 'system_verifications.delete';
   static const verificationSubmit = 'system_verification_reports.submit';
 }

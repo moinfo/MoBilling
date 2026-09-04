@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
@@ -9,9 +10,13 @@ import '../crm/crm_ui.dart'
         CrmAsyncView,
         CrmCardList,
         CrmDetailRow,
+        CrmField,
         CrmMetaLine,
+        CrmSheet,
         CrmStatusLine,
-        FilterStrip;
+        FilterStrip,
+        showCrmMessage,
+        showCrmSheet;
 import 'platform_providers.dart';
 import 'platform_shell.dart';
 import 'role_template_editor_sheet.dart';
@@ -137,6 +142,12 @@ class SmsPackagesScreen extends ConsumerWidget {
       onRetry: () => ref.invalidate(smsPackagesProvider),
       emptyIcon: Icons.sell_outlined,
       emptyTitle: 'No packages configured',
+      floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'add-sms-package',
+        onPressed: () => _create(context, ref),
+        icon: const Icon(Icons.add),
+        label: const Text('Add package'),
+      ),
       itemBuilder: (context, package) => ListTile(
         title: Text(package.name, style: theme.textTheme.titleSmall),
         subtitle: Padding(
@@ -157,28 +168,255 @@ class SmsPackagesScreen extends ConsumerWidget {
         ),
         // Unit price is the number that actually decides value, and the API
         // doesn't send it — so it's derived here, under the pack price.
-        trailing: Column(
+        trailing: Row(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Money(package.price),
-            const SizedBox(height: 3),
-            Row(
+            Column(
               mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Money(
-                  package.unitPrice,
-                  scale: MoneyScale.dense,
-                  showCode: false,
+                Money(package.price),
+                const SizedBox(height: 3),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Money(
+                      package.unitPrice,
+                      scale: MoneyScale.dense,
+                      showCode: false,
+                    ),
+                    const SizedBox(width: Spacing.xs),
+                    const CrmMetaLine('each'),
+                  ],
                 ),
-                const SizedBox(width: Spacing.xs),
-                const CrmMetaLine('each'),
               ],
+            ),
+            IconButton(
+              icon: Icon(
+                Icons.delete_outline,
+                size: 20,
+                color: theme.colorScheme.error,
+              ),
+              tooltip: 'Delete package',
+              onPressed: () => _delete(context, ref, package),
             ),
           ],
         ),
+        onTap: () => _edit(context, ref, package),
       ),
+    );
+  }
+
+  Future<void> _create(BuildContext context, WidgetRef ref) async {
+    final saved = await showCrmSheet<bool>(
+      context: context,
+      builder: (_) => const _SmsPackageFormSheet(),
+    );
+    if (saved == true) ref.invalidate(smsPackagesProvider);
+  }
+
+  Future<void> _edit(
+    BuildContext context,
+    WidgetRef ref,
+    SmsPackage package,
+  ) async {
+    final saved = await showCrmSheet<bool>(
+      context: context,
+      builder: (_) => _SmsPackageFormSheet(existing: package),
+    );
+    if (saved == true) ref.invalidate(smsPackagesProvider);
+  }
+
+  Future<void> _delete(
+    BuildContext context,
+    WidgetRef ref,
+    SmsPackage package,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final scheme = Theme.of(context).colorScheme;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          'Delete ${package.name}?',
+          style: Type.display(22, color: scheme.onSurface),
+        ),
+        content: const Text(
+          'This is a hard delete with no guard against tenants currently '
+          'subscribed to this package — they keep the credit they already '
+          'hold, but will no longer see this tier when buying more. This '
+          'cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: scheme.error),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      await ref.read(platformServiceProvider).deleteSmsPackage(package.id);
+      ref.invalidate(smsPackagesProvider);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Package deleted.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+}
+
+class _SmsPackageFormSheet extends ConsumerStatefulWidget {
+  const _SmsPackageFormSheet({this.existing});
+
+  final SmsPackage? existing;
+
+  @override
+  ConsumerState<_SmsPackageFormSheet> createState() =>
+      _SmsPackageFormSheetState();
+}
+
+class _SmsPackageFormSheetState extends ConsumerState<_SmsPackageFormSheet> {
+  final _name = TextEditingController();
+  final _smsCount = TextEditingController();
+  final _price = TextEditingController();
+  late bool _isActive;
+
+  bool _submitting = false;
+  String? _error;
+
+  bool get _isEdit => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    final existing = widget.existing;
+    _name.text = existing?.name ?? '';
+    _smsCount.text = existing == null ? '' : '${existing.smsCount}';
+    _price.text = existing == null ? '' : existing.price.toStringAsFixed(0);
+    _isActive = existing?.isActive ?? true;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _smsCount.dispose();
+    _price.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final name = _name.text.trim();
+    final smsCount = int.tryParse(_smsCount.text.trim()) ?? 0;
+    final price = double.tryParse(_price.text.trim());
+
+    if (name.isEmpty) {
+      setState(() => _error = 'Enter a name.');
+      return;
+    }
+    if (smsCount <= 0) {
+      setState(() => _error = 'Enter how many SMS this package includes.');
+      return;
+    }
+    if (price == null || price < 0) {
+      setState(() => _error = 'Enter a price.');
+      return;
+    }
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+
+    try {
+      await ref
+          .read(platformServiceProvider)
+          .saveSmsPackage(
+            id: widget.existing?.id,
+            name: name,
+            smsCount: smsCount,
+            price: price,
+            isActive: _isActive,
+          );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      showCrmMessage(
+        context,
+        _isEdit ? 'Package updated.' : 'Package created.',
+      );
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CrmSheet(
+      title: _isEdit ? 'Edit package' : 'Add package',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        CrmField(
+          label: 'Name',
+          child: TextField(
+            controller: _name,
+            enabled: !_submitting,
+            decoration: const InputDecoration(hintText: 'Starter'),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'SMS count',
+          child: TextField(
+            controller: _smsCount,
+            enabled: !_submitting,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(hintText: '500'),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Price',
+          child: TextField(
+            controller: _price,
+            enabled: !_submitting,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            decoration: InputDecoration(
+              prefixText: '${Formatting.tenantCurrency} ',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.sm),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: Text('Active', style: Theme.of(context).textTheme.titleSmall),
+          value: _isActive,
+          onChanged: _submitting ? null : (v) => setState(() => _isActive = v),
+        ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _submitting ? 'Saving…' : 'Save',
+          busy: _submitting,
+          onPressed: _submitting ? null : _submit,
+        ),
+      ],
     );
   }
 }

@@ -83,7 +83,25 @@ class PettyCashScreen extends ConsumerWidget {
               ],
               if (data.reconciliations.isNotEmpty) ...[
                 const SizedBox(height: Spacing.lg),
-                const SectionHeader('Last count'),
+                SectionHeader(
+                  'Last count',
+                  // The server already caps this list (most recent 20), so
+                  // "more than one" is the only signal a fuller history
+                  // exists worth a dedicated screen for.
+                  trailing: data.reconciliations.length > 1
+                      ? TextButton.icon(
+                          icon: const Icon(Icons.arrow_forward, size: 16),
+                          label: const Text('See all'),
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => _ReconciliationHistoryScreen(
+                                reconciliations: data.reconciliations,
+                              ),
+                            ),
+                          ),
+                        )
+                      : null,
+                ),
                 const SizedBox(height: Spacing.sm),
                 _ReconciliationCard(reconciliation: data.reconciliations.first),
               ],
@@ -476,7 +494,10 @@ class _HistoryTile extends ConsumerWidget {
   }
 }
 
-/// The most recent cash count: what was counted, and whether it balanced.
+/// One cash count: ledger vs. counted, whether it balanced, and what was
+/// decided about the gap. Same card for the "Last count" hero and every row
+/// of the full history — one place to keep it matching PettyCash.tsx's
+/// columns (date, ledger, counted, diff, resolution, by, notes).
 class _ReconciliationCard extends StatelessWidget {
   const _ReconciliationCard({required this.reconciliation});
 
@@ -497,48 +518,46 @@ class _ReconciliationCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'COUNTED',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      const SizedBox(height: Spacing.xs),
-                      Money(
-                        reconciliation.countedAmount,
-                        scale: MoneyScale.headline,
-                      ),
-                    ],
+                  child: _Figure(
+                    label: 'Ledger',
+                    amount: reconciliation.expectedAmount,
                   ),
                 ),
                 const SizedBox(width: Spacing.md),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    _ToneTag(
-                      balanced
-                          ? 'Balanced'
-                          : variance > 0
-                          ? 'Over'
-                          : 'Short',
-                      color: balanced ? status.settled : status.overdue,
-                    ),
-                    if (!balanced) ...[
-                      const SizedBox(height: Spacing.xs),
-                      Money(
-                        variance.abs(),
-                        scale: MoneyScale.dense,
-                        color: status.overdue,
-                      ),
-                    ],
-                  ],
+                Expanded(
+                  child: _Figure(
+                    label: 'Counted',
+                    amount: reconciliation.countedAmount,
+                  ),
                 ),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            Row(
+              children: [
+                _ToneTag(
+                  balanced
+                      ? 'Balanced'
+                      : variance > 0
+                      ? 'Over'
+                      : 'Short',
+                  color: balanced ? status.settled : status.overdue,
+                ),
+                // Resolution is a decision about the gap, distinct from the
+                // balanced/over/short fact above it, so it gets its own tag.
+                if (reconciliation.resolution != null) ...[
+                  const SizedBox(width: Spacing.sm),
+                  StatusChip(reconciliation.resolution, dense: true),
+                ],
+                const Spacer(),
+                if (!balanced)
+                  Money(
+                    variance.abs(),
+                    scale: MoneyScale.dense,
+                    color: status.overdue,
+                  ),
               ],
             ),
             const SizedBox(height: Spacing.sm),
@@ -563,6 +582,28 @@ class _ReconciliationCard extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Every cash count the server keeps (most recent 20), for when "Last count"
+/// on the main screen is not enough. A dedicated screen rather than a longer
+/// list inline — the main screen is already dense with balance, actions and
+/// the transaction ledger.
+class _ReconciliationHistoryScreen extends StatelessWidget {
+  const _ReconciliationHistoryScreen({required this.reconciliations});
+
+  final List<PettyCashReconciliation> reconciliations;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: const ShellTopBar(eyebrow: 'Petty cash', title: 'Reconciliations'),
+    body: ListView.separated(
+      padding: const EdgeInsets.all(Spacing.md),
+      itemCount: reconciliations.length,
+      separatorBuilder: (_, _) => const SizedBox(height: Spacing.sm),
+      itemBuilder: (_, i) =>
+          _ReconciliationCard(reconciliation: reconciliations[i]),
+    ),
+  );
 }
 
 /// A [StatusChip]-shaped tag for a state the status enum has no word for

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../providers.dart';
 import '../common/pickers.dart';
@@ -20,14 +21,13 @@ import '../crm/crm_ui.dart'
         CrmStatusLine,
         showCrmSheet;
 import 'hr_providers.dart';
+import 'payroll_catalog_screens.dart';
+import 'payroll_settings_screen.dart';
 
-/// Payroll on a phone: the monthly runs, who earns what, loans and
-/// advances, and every employee's own payslips.
-///
-/// Deliberately web-only: the allowance / deduction / statutory-rate
-/// catalogs and their per-employee assignment matrices, and PAYE bracket
-/// editing. Those are grids, and a grid is not a phone screen. Everything
-/// that is a list or a form is here.
+/// Payroll on a phone: the monthly runs, who earns what, the allowance,
+/// deduction and statutory-rate catalogs and who is assigned to each, PAYE
+/// bracket and exemption settings, loans and advances, and every employee's
+/// own payslips.
 class PayrollScreen extends ConsumerWidget {
   const PayrollScreen({super.key});
 
@@ -41,6 +41,25 @@ class PayrollScreen extends ConsumerWidget {
     final tabs = <(String, Widget)>[
       if (canView) ('Runs', const _RunsTab()),
       if (canManage) ('Salaries', const _SalariesTab()),
+      if (canView)
+        (
+          'Allowances',
+          PayComponentCatalogTab(
+            kind: PayComponentKind.allowance,
+            canManage: canManage,
+          ),
+        ),
+      if (canView)
+        (
+          'Deductions',
+          PayComponentCatalogTab(
+            kind: PayComponentKind.deduction,
+            canManage: canManage,
+          ),
+        ),
+      if (canView)
+        ('Statutory rates', StatutoryRateCatalogTab(canManage: canManage)),
+      if (canView) ('Settings', PayrollSettingsTab(canManage: canManage)),
       if (canManage) ('Loans', const _LoansTab()),
       ('My payslips', const _MyPayslipsTab()),
     ];
@@ -394,12 +413,64 @@ class PayrollRunScreen extends ConsumerWidget {
                       ),
                   ],
                 ),
+              if (data.payslips.isNotEmpty) ...[
+                const SizedBox(height: Spacing.lg),
+                const SectionHeader('Employer obligations'),
+                const SizedBox(height: Spacing.sm),
+                _EmployerObligationsCard(payslips: data.payslips),
+                const SizedBox(height: Spacing.lg),
+                SectionHeader(
+                  'Net salary payment list',
+                  trailing: IconButton(
+                    icon: const Icon(Icons.ios_share_rounded, size: 18),
+                    tooltip: 'Share as text',
+                    onPressed: () => _shareNetSalaryList(data),
+                  ),
+                ),
+                const SizedBox(height: Spacing.sm),
+                CrmCardList(
+                  children: [
+                    for (final slip in data.payslips)
+                      ListTile(
+                        dense: true,
+                        title: Text(
+                          slip.userName,
+                          style: theme.textTheme.titleSmall,
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: CrmMetaLine(
+                            slip.hasBankDetails
+                                ? '${slip.bankName} · ${slip.bankAccountNumber}'
+                                : 'No bank details on file',
+                          ),
+                        ),
+                        trailing: Money(slip.netPay, showCode: false),
+                      ),
+                  ],
+                ),
+              ],
               const SizedBox(height: Spacing.xl),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// Plain-text rows a bank's bulk-payment tool can be fed — name, bank,
+  /// account, amount — one employee per line.
+  void _shareNetSalaryList(PayrollRun run) {
+    final lines = [
+      'Net salary payment list — ${_monthLabel(run.monthKey)}',
+      '',
+      for (final slip in run.payslips)
+        '${slip.userName}\t'
+            '${slip.bankName ?? 'No bank on file'}\t'
+            '${slip.bankAccountNumber ?? '—'}\t'
+            '${Formatting.currency(slip.netPay)}',
+    ];
+    Share.share(lines.join('\n'));
   }
 
   /// The draft-only actions, as a sheet rather than an overflow menu — the
@@ -606,6 +677,79 @@ class _RunTotalsCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// What the tenant owes on top of net pay: each statutory rate's employer
+/// share, grouped by name across every payslip in the run, plus the PAYE
+/// total due to the tax authority.
+class _EmployerObligationsCard extends StatelessWidget {
+  const _EmployerObligationsCard({required this.payslips});
+
+  final List<Payslip> payslips;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final byName = <String, double>{};
+    for (final slip in payslips) {
+      for (final line in slip.statutoryEmployerBreakdown) {
+        byName[line.name] = (byName[line.name] ?? 0) + line.amount;
+      }
+    }
+    final payeTotal = payslips.fold<double>(0, (sum, s) => sum + s.payeAmount);
+    final employerTotal = payslips.fold<double>(
+      0,
+      (sum, s) => sum + s.statutoryEmployerTotal,
+    );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.lg),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final entry in byName.entries) ...[
+              _ObligationRow(label: '${entry.key} (employer)', amount: entry.value),
+              const SizedBox(height: Spacing.sm),
+            ],
+            _ObligationRow(label: 'PAYE to remit', amount: payeTotal),
+            const Divider(height: Spacing.lg + Spacing.sm),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'TOTAL EMPLOYER OBLIGATIONS',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                Money(employerTotal + payeTotal, showCode: false),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ObligationRow extends StatelessWidget {
+  const _ObligationRow({required this.label, required this.amount});
+
+  final String label;
+  final double amount;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
+        Money(amount, showCode: false, scale: MoneyScale.dense),
+      ],
     );
   }
 }
@@ -1326,7 +1470,7 @@ class _LoansTab extends ConsumerWidget {
                           ],
                         ),
                 ),
-                if (loan.isActive) ...[
+                if (loan.isActive && loan.balance == loan.principal) ...[
                   const SizedBox(height: Spacing.lg),
                   OutlinedButton.icon(
                     icon: const Icon(Icons.cancel_outlined, size: 18),

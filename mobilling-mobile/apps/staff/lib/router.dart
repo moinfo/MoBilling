@@ -71,6 +71,7 @@ import 'navigation/shell.dart';
 import 'features/reports/reports_screens.dart';
 import 'features/staff_self/attendance_screen.dart';
 import 'features/staff_self/staff_reports_screen.dart';
+import 'features/staff_self/system_verifications_admin_screen.dart';
 import 'features/staff_self/targets_and_systems_screens.dart';
 import 'features/support_admin/announcements_screen.dart';
 import 'features/support_admin/canned_replies_screen.dart';
@@ -454,6 +455,14 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/system-records',
         builder: (context, state) => const SystemRecordsScreen(),
+      ),
+      GoRoute(
+        path: '/bank-balance-statement',
+        builder: (context, state) => const BankBalanceStatementScreen(),
+      ),
+      GoRoute(
+        path: '/system-verifications',
+        builder: (context, state) => const SystemVerificationsAdminScreen(),
       ),
 
       // Outgoing money

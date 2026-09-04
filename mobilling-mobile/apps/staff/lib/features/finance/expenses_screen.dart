@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -28,6 +29,20 @@ const _receiptExtensions = <String>[
 ];
 const _voucherExtensions = <String>['pdf', 'jpg', 'jpeg', 'png'];
 
+/// How many expenses are waiting on a decision, for the approver banner.
+///
+/// A dedicated stats endpoint doesn't exist, so this asks for the pending
+/// page at `perPage: 1` and reads the paginator's `total` — one row over the
+/// wire instead of walking every page just to count them.
+final _pendingExpenseCountProvider = FutureProvider.autoDispose<int>((
+  ref,
+) async {
+  final page = await ref
+      .watch(financeServiceProvider)
+      .expenses(approvalStatus: 'pending', perPage: 1);
+  return page.total;
+});
+
 /// Expenses, with the petty-cash approval flow.
 ///
 /// A petty-cash expense sits `pending` until an administrator approves it —
@@ -45,6 +60,7 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
   final _search = TextEditingController();
   Timer? _debounce;
   String? _status;
+  DateTimeRange? _range;
 
   static const _filters = <(String?, String)>[
     (null, 'All'),
@@ -52,6 +68,9 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     ('approved', 'Approved'),
     ('rejected', 'Rejected'),
   ];
+
+  // The API wants a plain calendar date, not the localized display format.
+  static final _ymd = DateFormat('yyyy-MM-dd');
 
   @override
   void dispose() {
@@ -70,8 +89,34 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
 
   void _reload() {
     _listKey.currentState?.reload();
-    // Approving an expense changes the petty-cash verified balance.
+    // Approving an expense changes the petty-cash verified balance and the
+    // pending count both.
     ref.invalidate(pettyCashProvider);
+    ref.invalidate(_pendingExpenseCountProvider);
+  }
+
+  Future<void> _pickDateRange() async {
+    final now = DateTime.now();
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDateRange: _range,
+    );
+    if (picked == null) return;
+    setState(() => _range = picked);
+    _listKey.currentState?.reload();
+  }
+
+  void _clearDateRange() {
+    setState(() => _range = null);
+    _listKey.currentState?.reload();
+  }
+
+  /// The pending banner's shortcut: jump straight to the pending filter.
+  void _showPending() {
+    setState(() => _status = 'pending');
+    _listKey.currentState?.reload();
   }
 
   @override
@@ -81,6 +126,10 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
     final canApprove = auth?.can(FinancePermissions.expensesApprove) ?? false;
     final canUpdate = auth?.can(FinancePermissions.expensesUpdate) ?? false;
     final canDelete = auth?.can(FinancePermissions.expensesDelete) ?? false;
+    // Only worth fetching for someone who can actually act on the queue.
+    final pendingCount = canApprove
+        ? ref.watch(_pendingExpenseCountProvider).valueOrNull
+        : null;
 
     return Scaffold(
       appBar: ShellTopBar(
@@ -101,7 +150,9 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
       ),
       body: Column(
         children: [
-          // Approval state, as a quiet row of chips under the masthead.
+          // Approval state, as a quiet row of chips under the masthead — the
+          // date range rides along as one more chip rather than a second row,
+          // since it is filtered the same way status is.
           SizedBox(
             height: 48,
             child: ListView.separated(
@@ -110,10 +161,26 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                 horizontal: Spacing.md,
                 vertical: Spacing.sm,
               ),
-              itemCount: _filters.length,
+              itemCount: _filters.length + 1,
               separatorBuilder: (context, index) =>
                   const SizedBox(width: Spacing.sm),
               itemBuilder: (context, index) {
+                if (index == _filters.length) {
+                  return InputChip(
+                    avatar: const Icon(Icons.calendar_month_outlined, size: 18),
+                    label: Text(
+                      (_range == null
+                              ? 'DATE RANGE'
+                              : '${Formatting.date(_range!.start)} – '
+                                    '${Formatting.date(_range!.end)}')
+                          .toUpperCase(),
+                    ),
+                    selected: _range != null,
+                    showCheckmark: false,
+                    onPressed: _pickDateRange,
+                    onDeleted: _range == null ? null : _clearDateRange,
+                  );
+                }
                 final (value, label) = _filters[index];
                 return ChoiceChip(
                   label: Text(label.toUpperCase()),
@@ -127,6 +194,16 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
               },
             ),
           ),
+          if (canApprove && pendingCount != null && pendingCount > 0)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                0,
+                Spacing.md,
+                Spacing.sm,
+              ),
+              child: _PendingBanner(count: pendingCount, onTap: _showPending),
+            ),
           Expanded(
             child: PagedListView(
               key: _listKey,
@@ -143,11 +220,18 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
                     search: _search.text.trim().isEmpty
                         ? null
                         : _search.text.trim(),
+                    dateFrom: _range == null
+                        ? null
+                        : _ymd.format(_range!.start),
+                    dateTo: _range == null ? null : _ymd.format(_range!.end),
                     page: page,
                   ),
               itemBuilder: (context, expense) => _ExpenseCard(
                 expense: expense,
                 canApprove: canApprove,
+                isOwnExpense:
+                    expense.recordedById != null &&
+                    expense.recordedById == auth?.user.id,
                 canUpdate: canUpdate,
                 canDelete: canDelete,
                 onChanged: _reload,
@@ -176,6 +260,56 @@ class _ExpensesScreenState extends ConsumerState<ExpensesScreen> {
   }
 }
 
+/// A prominent, tappable nudge for whoever can clear the approval queue.
+///
+/// Shown only to approvers, and only while something is actually waiting —
+/// otherwise it would be a permanent fixture nobody reads.
+class _PendingBanner extends StatelessWidget {
+  const _PendingBanner({required this.count, required this.onTap});
+
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final tone = context.statusColors.attention;
+
+    return Card(
+      margin: EdgeInsets.zero,
+      color: Color.alphaBlend(
+        tone.withValues(alpha: 0.08),
+        theme.cardTheme.color ?? scheme.surface,
+      ),
+      child: InkWell(
+        borderRadius: Radii.card,
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.md),
+          child: Row(
+            children: [
+              Icon(Icons.pending_actions_outlined, color: tone),
+              const SizedBox(width: Spacing.sm),
+              Expanded(
+                child: Text(
+                  count == 1
+                      ? '1 expense is awaiting approval'
+                      : '$count expenses are awaiting approval',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurface,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// One expense: description and amount on the first line, the chip and the
 /// mono metadata line under it, and the approval decision — when there is
 /// one to make — as a full row of its own at the bottom.
@@ -183,6 +317,7 @@ class _ExpenseCard extends ConsumerWidget {
   const _ExpenseCard({
     required this.expense,
     required this.canApprove,
+    required this.isOwnExpense,
     required this.canUpdate,
     required this.canDelete,
     required this.onChanged,
@@ -190,6 +325,11 @@ class _ExpenseCard extends ConsumerWidget {
 
   final Expense expense;
   final bool canApprove;
+
+  /// The server refuses to let whoever recorded an expense also decide it —
+  /// separation of duties — so the button is withheld here too, rather than
+  /// showing one that always ends in a 403.
+  final bool isOwnExpense;
   final bool canUpdate;
   final bool canDelete;
   final VoidCallback onChanged;
@@ -292,7 +432,16 @@ class _ExpenseCard extends ConsumerWidget {
                   ),
                 ),
               ],
-              if (canApprove && expense.isPending) ...[
+              if (canApprove && expense.isPending && isOwnExpense) ...[
+                const SizedBox(height: Spacing.md),
+                Text(
+                  'You recorded this — someone else has to review it.',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+              if (canApprove && expense.isPending && !isOwnExpense) ...[
                 const SizedBox(height: Spacing.md),
                 Row(
                   children: [

@@ -73,3 +73,25 @@ final AutoDisposeFutureProvider<List<SalaryAdvance>> salaryAdvancesProvider =
     FutureProvider.autoDispose<List<SalaryAdvance>>(
       (ref) => ref.watch(hrServiceProvider).salaryAdvances(),
     );
+
+// ── Payroll catalogs & settings ─────────────────────────────────────────
+
+final AutoDisposeFutureProvider<List<PayComponent>> allowancesProvider =
+    FutureProvider.autoDispose<List<PayComponent>>(
+      (ref) => ref.watch(hrServiceProvider).allowances(),
+    );
+
+final AutoDisposeFutureProvider<List<PayComponent>> deductionsProvider =
+    FutureProvider.autoDispose<List<PayComponent>>(
+      (ref) => ref.watch(hrServiceProvider).deductions(),
+    );
+
+final AutoDisposeFutureProvider<List<StatutoryRate>> statutoryRatesProvider =
+    FutureProvider.autoDispose<List<StatutoryRate>>(
+      (ref) => ref.watch(hrServiceProvider).statutoryRates(),
+    );
+
+final AutoDisposeFutureProvider<PayrollSettings> payrollSettingsProvider =
+    FutureProvider.autoDispose<PayrollSettings>(
+      (ref) => ref.watch(hrServiceProvider).payrollSettings(),
+    );

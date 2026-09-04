@@ -1,4 +1,9 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../api_client.dart';
+import '../api_exception.dart';
 import '../json.dart';
 import '../paginated.dart';
 import 'comms_models.dart';
@@ -83,6 +88,15 @@ class CommsService {
     return body['message']?.toString() ?? 'Request sent.';
   }
 
+  /// GET /sms/purchases/{id}/receipt — a PDF, only once the purchase has
+  /// completed (422 otherwise).
+  Future<Uint8List> smsReceiptPdf(String purchaseId) =>
+      _download('/sms/purchases/$purchaseId/receipt');
+
+  /// GET /sms/purchases/{id}/invoice — a PDF, available at any status.
+  Future<Uint8List> smsInvoicePdf(String purchaseId) =>
+      _download('/sms/purchases/$purchaseId/invoice');
+
   // ─── Broadcasts ───────────────────────────────────────────────────────────
 
   /// GET /broadcasts — needs menu.broadcast. Paginated, newest first.
@@ -99,19 +113,20 @@ class CommsService {
 
   /// POST /broadcasts — needs menu.broadcast.
   ///
-  /// Sending is synchronous server-side (a foreach over the recipients), so the
-  /// returned tally is final and the call can take a while on a large client
-  /// list.
+  /// The send always runs in the background (`SendBroadcastJob`), so the 202
+  /// response carries only [BroadcastSendResult.totalRecipients], never a
+  /// delivery tally — poll [broadcasts] and watch `in_progress` for that.
   ///
   /// [subject] and [body] are required for email and both; [smsBody] for sms
-  /// and both, capped at 160 characters. Omitting [clientIds] sends to **every**
-  /// client with a usable address on the chosen channel — callers should
-  /// confirm that with the user first.
-  Future<BroadcastResult> sendBroadcast({
+  /// and both, capped at 160 characters; [whatsappBody] for whatsapp alone.
+  /// Omitting [clientIds] sends to **every** client with a usable address on
+  /// the chosen channel — callers should confirm that with the user first.
+  Future<BroadcastSendResult> sendBroadcast({
     required BroadcastChannel channel,
     String? subject,
     String? body,
     String? smsBody,
+    String? whatsappBody,
     List<String>? clientIds,
   }) async {
     final response = await _api.post<Map<String, dynamic>>(
@@ -123,10 +138,32 @@ class CommsService {
         if (channel.includesEmail) 'subject': subject,
         if (channel.includesEmail) 'body': body,
         if (channel.includesSms) 'sms_body': smsBody,
+        if (channel.includesWhatsapp) 'whatsapp_body': whatsappBody,
         if (clientIds != null && clientIds.isNotEmpty) 'client_ids': clientIds,
       },
     );
-    return BroadcastResult.fromJson(response);
+    return BroadcastSendResult.fromJson(response);
+  }
+
+  /// GET /broadcasts/{id}/recipients?status= — who did or didn't get it.
+  Future<List<BroadcastRecipient>> broadcastRecipients(
+    String broadcastId, {
+    required bool sent,
+  }) async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/broadcasts/$broadcastId/recipients',
+      query: {'status': sent ? 'sent' : 'failed'},
+    );
+    return Paginated.fromJson(_data(body), BroadcastRecipient.fromJson).items;
+  }
+
+  /// POST /broadcasts/{id}/resend-failed — a fresh broadcast to only last
+  /// time's failures. 422s with no recipients if there weren't any.
+  Future<BroadcastSendResult> resendFailedBroadcast(String broadcastId) async {
+    final response = await _api.post<Map<String, dynamic>>(
+      '/broadcasts/$broadcastId/resend-failed',
+    );
+    return BroadcastSendResult.fromJson(response);
   }
 
   // ─── WhatsApp pipeline ────────────────────────────────────────────────────
@@ -721,6 +758,19 @@ class CommsService {
   static Map<String, dynamic> _data(Map<String, dynamic> body) {
     final data = body['data'];
     return data is Map ? Map<String, dynamic>.from(data) : body;
+  }
+
+  Future<Uint8List> _download(String path) async {
+    try {
+      final response = await _api.raw.get<List<int>>(
+        path,
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data ?? const []);
+    } on DioException catch (e) {
+      final error = e.error;
+      throw error is ApiException ? error : ApiException.fromDio(e);
+    }
   }
 
   /// `Y-m-d`. Laravel's `date` rule accepts ISO-8601 too, but a bare day avoids

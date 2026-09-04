@@ -122,6 +122,11 @@ class StatusColors extends ThemeExtension<StatusColors> {
     'awaiting_payment' ||
     'not_imported' => attention,
     'overdue' || 'rejected' || 'suspended' || 'failed' || 'expired' => overdue,
+    // System-record types (Sep 2026): money in, money out, a fee taken —
+    // same three-way split and colours `mobilling-ui`'s own report page uses.
+    'deposit' => settled,
+    'withdraw' => overdue,
+    'charge' => attention,
     _ => inactive,
   };
 
