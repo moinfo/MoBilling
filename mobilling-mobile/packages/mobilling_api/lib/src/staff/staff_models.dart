@@ -35,6 +35,7 @@ class StaffDashboard {
     required this.upcomingBills,
     required this.upcomingRenewals,
     required this.urgentObligations,
+    required this.calendar,
   });
 
   final double? totalReceivable;
@@ -64,6 +65,10 @@ class StaffDashboard {
   final List<UpcomingBill> upcomingBills;
   final List<UpcomingRenewal> upcomingRenewals;
   final List<UrgentObligation> urgentObligations;
+
+  /// One entry per date that has at least one activity, current month ± 1
+  /// (`dashboard.activity_calendar`) — empty, not null, when withheld.
+  final List<CalendarDay> calendar;
 
   factory StaffDashboard.fromJson(Map<String, dynamic> json) => StaffDashboard(
     totalReceivable: json['total_receivable'] == null
@@ -132,7 +137,71 @@ class StaffDashboard {
       'urgent_obligations',
       UrgentObligation.fromJson,
     ),
+    calendar: json.list('calendar', CalendarDay.fromJson),
   );
+}
+
+/// One calendar day carrying at least one activity — followups, satisfaction
+/// calls, client visits, invoice/bill/statutory due dates, WhatsApp and field
+/// follow-ups all land here, current month ± 1.
+class CalendarDay {
+  const CalendarDay({required this.dateKey, required this.items});
+
+  /// `Y-m-d`, as the API sends it — used as the lookup key, not parsed to a
+  /// [DateTime] here since the grid builds its own dates and only needs to
+  /// match this string back.
+  final String dateKey;
+  final List<CalendarItem> items;
+
+  factory CalendarDay.fromJson(Map<String, dynamic> json) => CalendarDay(
+    dateKey: json.strOr('date', ''),
+    items: json.list('items', CalendarItem.fromJson),
+  );
+}
+
+/// One activity on a [CalendarDay].
+class CalendarItem {
+  const CalendarItem({required this.type, required this.label, this.detail});
+
+  /// followup | satisfaction | appointment | invoice | bill | statutory |
+  /// whatsapp | field_followup.
+  final String type;
+  final String label;
+  final String? detail;
+
+  factory CalendarItem.fromJson(Map<String, dynamic> json) => CalendarItem(
+    type: json.strOr('type', 'followup'),
+    label: json.strOr('label', '—'),
+    detail: json.str('detail'),
+  );
+}
+
+/// Display metadata for [CalendarItem.type], mirroring the web dashboard's
+/// `typeConfig` map so both clients group and label activities alike.
+abstract final class CalendarItemTypes {
+  static const order = [
+    'followup',
+    'satisfaction',
+    'appointment',
+    'invoice',
+    'bill',
+    'statutory',
+    'whatsapp',
+    'field_followup',
+  ];
+
+  static const labels = <String, String>{
+    'followup': 'Follow-up',
+    'satisfaction': 'Satisfaction call',
+    'appointment': 'Client visit',
+    'invoice': 'Invoice due',
+    'bill': 'Bill due',
+    'statutory': 'Statutory',
+    'whatsapp': 'WhatsApp follow-up',
+    'field_followup': 'Field follow-up',
+  };
+
+  static String label(String type) => labels[type] ?? type;
 }
 
 /// Hosting accounts and domains, with the counts the web dashboard shows.

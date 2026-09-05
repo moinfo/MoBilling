@@ -105,10 +105,19 @@ final Provider<StaffService> staffServiceProvider = Provider<StaffService>(
   (ref) => StaffService(ref.watch(apiClientProvider)),
 );
 
-final AutoDisposeFutureProvider<StaffDashboard> dashboardProvider =
-    FutureProvider.autoDispose<StaffDashboard>(
-  (ref) => ref.watch(staffServiceProvider).dashboard(),
-);
+/// Keyed by (month, year) — both null means "this month", which the backend
+/// itself defaults to, letting `dashboard.month_filter` holders look back at
+/// a past month the same way web's picker does.
+final AutoDisposeFutureProviderFamily<
+  StaffDashboard,
+  ({int? month, int? year})
+>
+dashboardProvider = FutureProvider.autoDispose
+    .family<StaffDashboard, ({int? month, int? year})>(
+      (ref, query) => ref
+          .watch(staffServiceProvider)
+          .dashboard(month: query.month, year: query.year),
+    );
 
 /// Ticket queue, keyed by status filter (null = all) and search text (null
 /// or empty = unfiltered).

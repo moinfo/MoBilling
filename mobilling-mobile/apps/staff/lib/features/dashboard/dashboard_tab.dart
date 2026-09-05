@@ -6,19 +6,54 @@ import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
 import '../../providers.dart';
+import '../hr/hr_providers.dart';
+import '../hr/payroll_screen.dart' show showPayslipSheet;
 import '../staff_self/staff_self_providers.dart';
 
 /// Staff dashboard: this month's money, counts, recent invoices.
 ///
 /// Null metrics mean the backend withheld them (per-field dashboard.*
 /// permissions) — those cards are simply not rendered.
-class DashboardTab extends ConsumerWidget {
+class DashboardTab extends ConsumerStatefulWidget {
   const DashboardTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final dashboard = ref.watch(dashboardProvider);
+  ConsumerState<DashboardTab> createState() => _DashboardTabState();
+}
+
+class _DashboardTabState extends ConsumerState<DashboardTab> {
+  /// Null means "this month" — the backend's own default, and what
+  /// [_query] reports until the picker below is used.
+  DateTime? _month;
+
+  ({int? month, int? year}) get _query =>
+      (month: _month?.month, year: _month?.year);
+
+  Future<void> _pickMonth(BuildContext context) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _month ?? now,
+      firstDate: DateTime(now.year - 5),
+      lastDate: now,
+      initialDatePickerMode: DatePickerMode.year,
+      helpText: 'Pick a month',
+    );
+    if (picked != null) {
+      setState(() => _month = DateTime(picked.year, picked.month));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _query;
+    final dashboard = ref.watch(dashboardProvider(query));
     final status = context.statusColors;
+    final canFilterMonth =
+        ref.watch(sessionControllerProvider).session?.can(
+              'dashboard.month_filter',
+            ) ??
+        false;
 
     return dashboard.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -27,7 +62,7 @@ class DashboardTab extends ConsumerWidget {
         title: 'Could not load the dashboard',
         message: error is ApiException ? error.message : null,
         actionLabel: 'Retry',
-        onAction: () => ref.invalidate(dashboardProvider),
+        onAction: () => ref.invalidate(dashboardProvider(query)),
       ),
       data: (d) {
         // The API scopes these three to the selected month, and scopes the
@@ -100,7 +135,7 @@ class DashboardTab extends ConsumerWidget {
         final overlap = hero != null;
 
         return RefreshIndicator(
-          onRefresh: () => ref.refresh(dashboardProvider.future),
+          onRefresh: () => ref.refresh(dashboardProvider(query).future),
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: EdgeInsets.only(
@@ -111,6 +146,8 @@ class DashboardTab extends ConsumerWidget {
                 _MoneyPanel(
                   label: hero.label,
                   amount: hero.amount,
+                  month: _month ?? DateTime.now(),
+                  onPickMonth: canFilterMonth ? () => _pickMonth(context) : null,
                   strip: [
                     for (final m in money.skip(1))
                       (
@@ -169,6 +206,11 @@ class DashboardTab extends ConsumerWidget {
                         const SizedBox(height: Spacing.sm),
                         _DeductionsCard(penalties: d.penalties!),
                       ],
+                      // Self-service, no permission required — same as web's
+                      // placement right after the personal attendance band,
+                      // ahead of the company-wide sections below.
+                      const SizedBox(height: Spacing.md),
+                      const _MyPayrollCard(),
                       if (d.hosting != null) ...[
                         const SizedBox(height: Spacing.md),
                         const SectionHeader('Hosting & domains'),
@@ -248,6 +290,24 @@ class DashboardTab extends ConsumerWidget {
                             child: _RevenueBars(points: d.monthlyRevenue),
                           ),
                         ),
+                      ],
+                      if (d.calendar.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Activity calendar'),
+                        const SizedBox(height: Spacing.sm),
+                        _ActivityCalendar(days: d.calendar),
+                      ],
+                      if (d.invoiceStatusBreakdown.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Invoice status'),
+                        const SizedBox(height: Spacing.sm),
+                        _StatusBreakdown(items: d.invoiceStatusBreakdown),
+                      ],
+                      if (d.paymentMethodBreakdown.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Payment methods'),
+                        const SizedBox(height: Spacing.sm),
+                        _MethodBreakdown(items: d.paymentMethodBreakdown),
                       ],
                       if (d.recentInvoices.isNotEmpty) ...[
                         const SizedBox(height: Spacing.lg),
@@ -372,18 +432,30 @@ class _MoneyPanel extends StatelessWidget {
     required this.label,
     required this.amount,
     required this.strip,
+    required this.month,
+    this.onPickMonth,
   });
 
   final String label;
   final Object? amount;
   final List<_StripFigure> strip;
 
+  /// The period these figures are scoped to — the selected month, or the
+  /// current one when nothing's been picked.
+  final DateTime month;
+
+  /// Null hides the calendar action — `dashboard.month_filter` withheld.
+  final VoidCallback? onPickMonth;
+
   /// How far the first paper card rides up over the panel's bottom edge.
   static const double overlap = 28;
 
   @override
   Widget build(BuildContext context) {
-    final month = DateFormat('MMMM yyyy').format(DateTime.now());
+    final monthLabel = DateFormat('MMMM yyyy').format(month);
+    final isCurrent =
+        month.year == DateTime.now().year &&
+        month.month == DateTime.now().month;
 
     return InkPanel(
       rule: false,
@@ -397,7 +469,31 @@ class _MoneyPanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Reveal(child: EyebrowPill('This month · $month')),
+          Reveal(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                EyebrowPill(
+                  isCurrent ? 'This month · $monthLabel' : monthLabel,
+                ),
+                if (onPickMonth != null) ...[
+                  const SizedBox(width: Spacing.sm),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(20),
+                    onTap: onPickMonth,
+                    child: const Padding(
+                      padding: EdgeInsets.all(4),
+                      child: Icon(
+                        Icons.calendar_month_outlined,
+                        size: 16,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
           const SizedBox(height: Spacing.md),
           Reveal(
             delay: const Duration(milliseconds: 80),
@@ -1282,6 +1378,406 @@ class _MonthStrip extends StatelessWidget {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// The signed-in staff member's most recent payslip — self-service, no
+/// permission required. Kept deliberately separate from the attendance band
+/// above it (a running period) since this describes a CLOSED one (last
+/// month's pay), same distinction web's own layout draws. Renders nothing
+/// while loading, on error, or with no payslips yet — this is a secondary
+/// widget, not worth an error state of its own on the one screen every
+/// session opens to.
+class _MyPayrollCard extends ConsumerWidget {
+  const _MyPayrollCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final payslips = ref.watch(myPayslipsProvider);
+    return payslips.maybeWhen(
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        final slip = list.first;
+        final finalized = slip.runStatus == 'finalized';
+        final theme = Theme.of(context);
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SectionHeader(finalized ? 'Your last payslip' : 'Payslip in progress'),
+            const SizedBox(height: Spacing.sm),
+            Card(
+              child: ListTile(
+                title: Text(
+                  _monthLabel(slip.runMonthKey),
+                  style: theme.textTheme.titleSmall,
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Row(
+                    children: [
+                      StatusChip(finalized ? 'active' : 'pending', dense: true),
+                      const SizedBox(width: Spacing.sm),
+                      Flexible(
+                        child: Text(
+                          'Gross ${Formatting.currency(slip.grossPay)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                trailing: Money(slip.netPay, showCode: false),
+                onTap: () => showPayslipSheet(
+                  context,
+                  slip,
+                  monthKey: slip.runMonthKey ?? '—',
+                  finalized: finalized,
+                  fetchPdf: () => ref.read(hrServiceProvider).myPayslipPdf(slip.id),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+/// "2026-08" is a database key, not something to show a person.
+String _monthLabel(String? key) {
+  if (key == null || !RegExp(r'^\d{4}-\d{2}$').hasMatch(key)) {
+    return key ?? 'this period';
+  }
+  final parts = key.split('-');
+  final date = DateTime(int.parse(parts[0]), int.parse(parts[1]));
+  return DateFormat('MMMM yyyy').format(date);
+}
+
+/// Invoice counts by status — `dashboard.invoice_status_chart` on web, a
+/// pie there; a phone reads a ranked list just as fast and without a
+/// charting dependency.
+class _StatusBreakdown extends StatelessWidget {
+  const _StatusBreakdown({required this.items});
+
+  final List<StatusCount> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final sorted = [...items]..sort((a, b) => b.count.compareTo(a.count));
+
+    return Card(
+      child: Column(
+        children: [
+          for (final (i, s) in sorted.indexed) ...[
+            if (i > 0) const Divider(height: 1),
+            ListTile(
+              dense: true,
+              title: StatusChip(s.status, dense: true),
+              trailing: Text(
+                Formatting.integer(s.count),
+                style: theme.textTheme.titleSmall,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Payments received by method — `dashboard.payment_method_chart` on web.
+class _MethodBreakdown extends StatelessWidget {
+  const _MethodBreakdown({required this.items});
+
+  final List<MethodTotal> items;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final sorted = [...items]..sort((a, b) => b.amount.compareTo(a.amount));
+
+    return Card(
+      child: Column(
+        children: [
+          for (final (i, m) in sorted.indexed) ...[
+            if (i > 0) const Divider(height: 1),
+            ListTile(
+              dense: true,
+              title: Text(
+                m.method.replaceAll('_', ' '),
+                style: theme.textTheme.bodyMedium,
+              ),
+              trailing: Money(m.amount, showCode: false),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A month grid of everything due or booked — followups, satisfaction calls,
+/// client visits, invoice/bill/statutory due dates, WhatsApp and field
+/// follow-ups — with a tap-to-see-detail day panel underneath. Mirrors web's
+/// `ActivityCalendar`, current month ± 1 is all the API sends either way.
+class _ActivityCalendar extends StatefulWidget {
+  const _ActivityCalendar({required this.days});
+
+  final List<CalendarDay> days;
+
+  @override
+  State<_ActivityCalendar> createState() => _ActivityCalendarState();
+}
+
+class _ActivityCalendarState extends State<_ActivityCalendar> {
+  late DateTime _month = DateTime(DateTime.now().year, DateTime.now().month);
+  String? _selected = _todayKey();
+
+  static String _todayKey() {
+    final now = DateTime.now();
+    return _dateKey(now);
+  }
+
+  static String _dateKey(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
+
+  static const _typeColors = <String, Color>{
+    'followup': Colors.blue,
+    'satisfaction': Colors.teal,
+    'appointment': Colors.orange,
+    'invoice': Colors.red,
+    'bill': Colors.amber,
+    'statutory': Colors.purple,
+    'whatsapp': Colors.green,
+    'field_followup': Colors.deepOrange,
+  };
+
+  void _shiftMonth(int delta) {
+    setState(() => _month = DateTime(_month.year, _month.month + delta));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    final byDate = {for (final d in widget.days) d.dateKey: d};
+    final firstOfMonth = DateTime(_month.year, _month.month);
+    final daysInMonth = DateTime(_month.year, _month.month + 1, 0).day;
+    // Dart's weekday is 1=Monday..7=Sunday; the header below reads Su-Sa, so
+    // this rotates Sunday to the front to match it.
+    final leadingBlanks = firstOfMonth.weekday % 7;
+    final todayKey = _todayKey();
+
+    final selectedDay = _selected == null ? null : byDate[_selected];
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.chevron_left_rounded),
+                  onPressed: () => _shiftMonth(-1),
+                ),
+                Expanded(
+                  child: Text(
+                    DateFormat('MMMM yyyy').format(_month),
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleSmall,
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.chevron_right_rounded),
+                  onPressed: () => _shiftMonth(1),
+                ),
+              ],
+            ),
+            Row(
+              children: [
+                for (final label in const ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'])
+                  Expanded(
+                    child: Text(
+                      label,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: Spacing.xs),
+            GridView.count(
+              crossAxisCount: 7,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              childAspectRatio: 1,
+              children: [
+                for (int i = 0; i < leadingBlanks; i++) const SizedBox.shrink(),
+                for (int day = 1; day <= daysInMonth; day++)
+                  Builder(
+                    builder: (context) {
+                      final key = _dateKey(
+                        DateTime(_month.year, _month.month, day),
+                      );
+                      final entry = byDate[key];
+                      final isToday = key == todayKey;
+                      final isSelected = key == _selected;
+                      final types = {
+                        for (final item in entry?.items ?? const <CalendarItem>[])
+                          item.type,
+                      }.take(3);
+
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(Radii.sm),
+                        onTap: () => setState(() => _selected = key),
+                        child: Container(
+                          margin: const EdgeInsets.all(1),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(Radii.sm),
+                            color: isSelected
+                                ? scheme.primary.withValues(alpha: 0.12)
+                                : null,
+                            border: Border.all(
+                              color: isSelected
+                                  ? scheme.primary
+                                  : isToday
+                                  ? scheme.primary.withValues(alpha: 0.4)
+                                  : Colors.transparent,
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '$day',
+                                style: theme.textTheme.bodySmall?.copyWith(
+                                  fontWeight: isToday || isSelected
+                                      ? FontWeight.w700
+                                      : FontWeight.w400,
+                                  color: entry == null && !isToday
+                                      ? scheme.onSurfaceVariant
+                                      : null,
+                                ),
+                              ),
+                              if (types.isNotEmpty) ...[
+                                const SizedBox(height: 2),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    for (final t in types)
+                                      Container(
+                                        width: 4,
+                                        height: 4,
+                                        margin: const EdgeInsets.symmetric(
+                                          horizontal: 1,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: _typeColors[t] ?? scheme.outline,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+              ],
+            ),
+            const Divider(height: Spacing.lg + Spacing.sm),
+            if (selectedDay == null || selectedDay.items.isEmpty)
+              Text(
+                'No activities',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontStyle: FontStyle.italic,
+                ),
+              )
+            else
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (final type in CalendarItemTypes.order)
+                    if (selectedDay.items.any((i) => i.type == type)) ...[
+                      Padding(
+                        padding: const EdgeInsets.only(
+                          top: Spacing.sm,
+                          bottom: Spacing.xs,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 8,
+                              height: 8,
+                              decoration: BoxDecoration(
+                                color: _typeColors[type] ?? scheme.outline,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                            const SizedBox(width: Spacing.xs),
+                            Text(
+                              CalendarItemTypes.label(type).toUpperCase(),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: _typeColors[type],
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      for (final item in selectedDay.items.where(
+                        (i) => i.type == type,
+                      ))
+                        Padding(
+                          padding: const EdgeInsets.only(
+                            left: Spacing.md,
+                            bottom: 2,
+                          ),
+                          child: Text.rich(
+                            TextSpan(
+                              children: [
+                                TextSpan(
+                                  text: item.label,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                                if (item.detail != null)
+                                  TextSpan(
+                                    text: '  ${item.detail}',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                ],
+              ),
+          ],
+        ),
+      ),
     );
   }
 }
