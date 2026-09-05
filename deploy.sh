@@ -46,8 +46,13 @@ detect_changes() {
         API_CHANGED=true
         UI_CHANGED=true
     else
-        echo "$changes" | grep -q "^unganisha-api/" && API_CHANGED=true
-        echo "$changes" | grep -q "^mobilling-ui/" && UI_CHANGED=true
+        # Under `set -e`, a bare `grep -q ... && VAR=true` aborts the whole
+        # script the moment one side has zero matching changes (grep exits 1,
+        # and this list's overall status is that failure since VAR=true never
+        # runs) — silently skipping the entire deploy with no error logged.
+        # `|| true` keeps a no-match from being fatal.
+        echo "$changes" | grep -q "^unganisha-api/" && API_CHANGED=true || true
+        echo "$changes" | grep -q "^mobilling-ui/" && UI_CHANGED=true || true
     fi
 }
 
