@@ -59,6 +59,8 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     final canMyAttendance = session?.can('dashboard.my_attendance') ?? false;
     final canMyReportDeductions =
         session?.can('dashboard.my_report_deductions') ?? false;
+    final canMyTotalDeductions =
+        session?.can('dashboard.my_total_deductions') ?? false;
 
     return dashboard.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -206,13 +208,21 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                         StatRail(items: counts),
                       ],
                       // Personal, not company-wide: the one block about the reader.
-                      if (canMyReportDeductions &&
-                          d.penalties != null &&
-                          d.penalties!.countThisMonth > 0) ...[
+                      if (canMyTotalDeductions || canMyReportDeductions) ...[
                         const SizedBox(height: Spacing.md),
                         const SectionHeader('My deductions'),
                         const SizedBox(height: Spacing.sm),
-                        _DeductionsCard(penalties: d.penalties!),
+                        if (canMyTotalDeductions) ...[
+                          _DeductedLedgerCard(month: _month ?? DateTime.now()),
+                          if (canMyReportDeductions &&
+                              d.penalties != null &&
+                              d.penalties!.countThisMonth > 0)
+                            const SizedBox(height: Spacing.sm),
+                        ],
+                        if (canMyReportDeductions &&
+                            d.penalties != null &&
+                            d.penalties!.countThisMonth > 0)
+                          _DeductionsCard(penalties: d.penalties!),
                       ],
                       // Self-service, no permission required — same as web's
                       // placement right after the personal attendance band,
@@ -715,6 +725,112 @@ class _RevenueBars extends StatelessWidget {
   );
 }
 
+/// What the month has cost, total — attendance losses plus report penalties
+/// summed into one figure, mirroring web's `MyMonth` "Deducted" pane.
+///
+/// The dashboard summary's own `d.penalties` is always the *current* month
+/// (see `DashboardController::index`'s `staff_penalties` block), so this
+/// fetches [myAttendanceReportProvider] and [myPenaltiesProvider] directly
+/// for whichever month the picker above has selected instead — the same
+/// split web makes between its instant current-month fallback and its
+/// dedicated `getMyAttendanceReport`/`getMyPenalties` calls.
+class _DeductedLedgerCard extends ConsumerWidget {
+  const _DeductedLedgerCard({required this.month});
+
+  final DateTime month;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final key = monthKeyOf(month);
+    final report = ref.watch(myAttendanceReportProvider(key));
+    final penalties = ref.watch(myPenaltiesProvider(key));
+
+    // A supplementary ledger, not the reason someone opened the dashboard —
+    // no loading spinner or retry block, it simply waits for both to land.
+    final attendanceLost = report.asData?.value.totals.deductionTotal;
+    final reportsLost = penalties.asData?.value.monthTotal;
+    if (attendanceLost == null || reportsLost == null) {
+      return const SizedBox.shrink();
+    }
+
+    final theme = Theme.of(context);
+    final status = context.statusColors;
+    final lost = attendanceLost + reportsLost;
+    final now = DateTime.now();
+    final isCurrentMonth = month.year == now.year && month.month == now.month;
+    final monthLabel = DateFormat('MMM yyyy').format(month);
+
+    Widget line(String label, double amount, {bool total = false}) {
+      final style = total ? theme.textTheme.titleSmall : theme.textTheme.bodyMedium;
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: style),
+            amount > 0
+                ? Money(
+                    amount,
+                    scale: MoneyScale.dense,
+                    showCode: false,
+                    color: status.overdue,
+                  )
+                : Text(
+                    total ? Formatting.currency(0) : '—',
+                    style: style?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+          ],
+        ),
+      );
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(Spacing.md),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Deducted', style: theme.textTheme.labelLarge),
+                Text(
+                  monthLabel,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: Spacing.sm),
+            line('Attendance', attendanceLost),
+            line('Reports', reportsLost),
+            const Divider(height: Spacing.md),
+            line('Total', lost, total: true),
+            const SizedBox(height: Spacing.xs),
+            Text(
+              lost > 0
+                  ? (isCurrentMonth
+                        ? 'Comes off your next payslip.'
+                        : 'Came off your $monthLabel pay.')
+                  : (isCurrentMonth
+                        ? 'Nothing lost so far this month. Check in on time '
+                              'and file each report before its deadline to '
+                              'keep it that way.'
+                        : 'Nothing was deducted in $monthLabel.'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// This month's report deductions, broken down by report type.
 class _DeductionsCard extends StatelessWidget {
   const _DeductionsCard({required this.penalties});
@@ -1149,9 +1265,10 @@ class _NamedTotals extends StatelessWidget {
 
 /// Today's check-in state and the month at a glance.
 ///
-/// Fed by /attendance/mine, which carries no permission gate — every staff
-/// member checks themselves in — so this is the one card on the dashboard
-/// that is always about the reader rather than the business.
+/// Fed by /attendance/mine, which carries no permission gate of its own —
+/// every staff member checks themselves in — so it's the caller's job to
+/// gate this on `dashboard.my_attendance` before including it, the same way
+/// web's `MyMonth` decides `showAttendance` before rendering.
 ///
 /// It renders nothing while loading or on error: a supplementary card has no
 /// business putting a retry block above the figures people came for, and the

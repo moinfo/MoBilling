@@ -6,6 +6,7 @@ import '../api_client.dart';
 import '../api_exception.dart';
 import '../json.dart';
 import '../paginated.dart';
+import 'staff_models.dart' show StaffPenalties;
 import 'staff_self_models.dart';
 
 /// The signed-in staff member's own working life: attendance, reports,
@@ -348,6 +349,18 @@ class StaffSelfService {
   Future<StaffReportsDashboard> staffReportsDashboard() async {
     final body = await _api.get<dynamic>('/staff-reports/dashboard');
     return StaffReportsDashboard.fromJson(_map(body));
+  }
+
+  /// GET /staff-reports/my-penalties — your own late-report charges for a
+  /// month. Needs `staff_reports.submit` (same gate as filing a report at
+  /// all). Mirrors the dashboard's `staff_penalties` field, which is always
+  /// the current month — this is the one to call for any other month.
+  Future<StaffPenalties> myPenalties({int? month, int? year}) async {
+    final body = await _api.get<dynamic>(
+      '/staff-reports/my-penalties',
+      query: {'month': month, 'year': year},
+    );
+    return StaffPenalties.fromJson(_map(body));
   }
 
   /// GET /staff-reports/penalties — late-report charges for a month, scoped
