@@ -7,6 +7,7 @@ import '../../providers.dart';
 import '../common/attach_file.dart';
 import '../common/share_pdf.dart';
 import '../crm/crm_ui.dart' show CrmMetaLine, CrmSheet;
+import '../support_admin/canned_replies_screen.dart' show CannedReplyPickerSheet;
 import 'tickets_tab.dart' show ticketStatsProvider;
 
 /// The staff accounts a ticket can be assigned to.
@@ -89,6 +90,26 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
       _attachments.add(picked);
       _sendError = null;
     });
+  }
+
+  /// Insert a saved answer into the reply, at the cursor if there's a
+  /// selection to honour, otherwise appended (a blank line ahead of it when
+  /// the field isn't empty, so it doesn't run into what's already typed).
+  Future<void> _insertCannedReply() async {
+    final body = await CannedReplyPickerSheet.show(context);
+    if (body == null || !mounted) return;
+
+    final text = _message.text;
+    final selection = _message.selection;
+    final start = selection.start >= 0 ? selection.start : text.length;
+    final end = selection.end >= 0 ? selection.end : text.length;
+    final needsSeparator = start > 0 && text[start - 1] != '\n';
+    final insertion = needsSeparator ? '\n$body' : body;
+
+    _message.value = TextEditingValue(
+      text: text.replaceRange(start, end, insertion),
+      selection: TextSelection.collapsed(offset: start + insertion.length),
+    );
   }
 
   Future<void> _send() async {
@@ -389,6 +410,12 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
                           _sending || _attachments.length >= _maxAttachments
                           ? null
                           : _attach,
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.quickreply_outlined),
+                      tooltip: 'Insert canned reply',
+                      color: scheme.onSurfaceVariant,
+                      onPressed: _sending ? null : _insertCannedReply,
                     ),
                     Expanded(
                       child: TextField(

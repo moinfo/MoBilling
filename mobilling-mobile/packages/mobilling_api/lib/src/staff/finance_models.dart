@@ -379,8 +379,11 @@ class Statutory {
     required this.progressPercent,
     required this.isActive,
     this.categoryName,
+    this.categoryId,
     this.cycle,
+    this.issueDate,
     this.nextDueDate,
+    this.remindDaysBefore,
     this.notes,
     this.currentBillId,
   });
@@ -399,8 +402,11 @@ class Statutory {
   final double progressPercent;
   final bool isActive;
   final String? categoryName;
+  final String? categoryId;
   final String? cycle;
+  final DateTime? issueDate;
   final DateTime? nextDueDate;
+  final int? remindDaysBefore;
   final String? notes;
 
   /// The bill a payment-out should be recorded against.
@@ -428,8 +434,13 @@ class Statutory {
               category.str('parent_name'),
               category.str('name'),
             ].whereType<String>().join(' › '),
+      categoryId: json.str('bill_category_id') ?? category?.str('id'),
       cycle: json.str('cycle'),
+      issueDate: json.date('issue_date'),
       nextDueDate: json.date('next_due_date'),
+      remindDaysBefore: json['remind_days_before'] == null
+          ? null
+          : json.count('remind_days_before'),
       notes: json.str('notes'),
       currentBillId: currentBill?.str('id'),
     );

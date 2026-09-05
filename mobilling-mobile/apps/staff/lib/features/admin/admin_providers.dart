@@ -31,9 +31,19 @@ automationSummaryProvider = FutureProvider.autoDispose
           ref.watch(adminServiceProvider).automationSummary(date: date),
     );
 
-final AutoDisposeFutureProvider<List<CronLogEntry>> cronLogsProvider =
-    FutureProvider.autoDispose<List<CronLogEntry>>(
-      (ref) => ref.watch(adminServiceProvider).cronLogs(),
+/// Cron logs for one day (null = every run on file).
+final AutoDisposeFutureProviderFamily<Paginated<CronLogEntry>, String?>
+cronLogsProvider = FutureProvider.autoDispose
+    .family<Paginated<CronLogEntry>, String?>(
+      (ref, date) => ref.watch(adminServiceProvider).cronLogs(date: date),
+    );
+
+/// The forecast window (days ahead) for Upcoming Reminders.
+final AutoDisposeFutureProviderFamily<List<ReminderForecastEvent>, int>
+upcomingRemindersProvider = FutureProvider.autoDispose
+    .family<List<ReminderForecastEvent>, int>(
+      (ref, days) =>
+          ref.watch(adminServiceProvider).upcomingReminders(days: days),
     );
 
 final AutoDisposeFutureProvider<List<StaffRole>> rolesProvider =
@@ -63,6 +73,31 @@ final AutoDisposeFutureProvider<List<BankAccount>> bankAccountsProvider =
     FutureProvider.autoDispose<List<BankAccount>>(
       (ref) async =>
           (await ref.watch(adminServiceProvider).bankAccounts()).items,
+    );
+
+/// GET/PUT /settings/reminders — needs `settings.reminders`.
+final AutoDisposeFutureProvider<ReminderSettings> reminderSettingsProvider =
+    FutureProvider.autoDispose<ReminderSettings>(
+      (ref) => ref.watch(adminServiceProvider).reminderSettings(),
+    );
+
+/// GET/PUT /settings/templates — needs `settings.templates`.
+final AutoDisposeFutureProvider<MessageTemplates> messageTemplatesProvider =
+    FutureProvider.autoDispose<MessageTemplates>(
+      (ref) => ref.watch(adminServiceProvider).templates(),
+    );
+
+/// GET/PUT /settings/payment-methods — needs `settings.payment_methods`.
+final AutoDisposeFutureProvider<PaymentMethodsSettings>
+paymentMethodsSettingsProvider = FutureProvider.autoDispose<PaymentMethodsSettings>(
+  (ref) => ref.watch(adminServiceProvider).paymentMethods(),
+);
+
+/// GET/PUT /settings/late-fee — gated on `settings.reminders`, not its own
+/// permission (a confirmed backend quirk).
+final AutoDisposeFutureProvider<LateFeeSettings> lateFeeSettingsProvider =
+    FutureProvider.autoDispose<LateFeeSettings>(
+      (ref) => ref.watch(adminServiceProvider).lateFeeSettings(),
     );
 
 /// One staff member's HR profile, keyed by user id.

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -28,6 +30,9 @@ class TicketsTab extends ConsumerStatefulWidget {
 
 class _TicketsTabState extends ConsumerState<TicketsTab> {
   String? _status;
+  String? _search;
+  final _searchController = TextEditingController();
+  Timer? _debounce;
 
   static const _filters = <(String?, String)>[
     (null, 'All'),
@@ -38,8 +43,26 @@ class _TicketsTabState extends ConsumerState<TicketsTab> {
   ];
 
   @override
+  void dispose() {
+    _debounce?.cancel();
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 400), () {
+      final trimmed = value.trim();
+      setState(() => _search = trimmed.isEmpty ? null : trimmed);
+    });
+  }
+
+  ({String? status, String? search}) get _query =>
+      (status: _status, search: _search);
+
+  @override
   Widget build(BuildContext context) {
-    final tickets = ref.watch(ticketsProvider(_status));
+    final tickets = ref.watch(ticketsProvider(_query));
     final stats = ref.watch(ticketStatsProvider).valueOrNull;
     final statusColors = context.statusColors;
 
@@ -75,6 +98,26 @@ class _TicketsTabState extends ConsumerState<TicketsTab> {
               ],
             ),
           ),
+        // Search sits above the status chips — subject, ticket number or
+        // client name, debounced so a fast typist doesn't fire a request
+        // per keystroke.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.sm,
+            Spacing.md,
+            0,
+          ),
+          child: TextField(
+            controller: _searchController,
+            onChanged: _onSearchChanged,
+            textInputAction: TextInputAction.search,
+            decoration: const InputDecoration(
+              hintText: 'Search subject, number or client',
+              prefixIcon: Icon(Icons.search, size: 20),
+            ),
+          ),
+        ),
         // One quiet row of choices under the masthead.
         SizedBox(
           height: 56,
@@ -106,24 +149,35 @@ class _TicketsTabState extends ConsumerState<TicketsTab> {
               title: 'Could not load tickets',
               message: error is ApiException ? error.message : null,
               actionLabel: 'Try again',
-              onAction: () => ref.invalidate(ticketsProvider(_status)),
+              onAction: () => ref.invalidate(ticketsProvider(_query)),
             ),
             data: (items) => items.isEmpty
                 ? StateMessage(
                     icon: Icons.support_agent_outlined,
                     title: 'Queue is clear',
-                    message: _status == null
+                    message: _status == null && _search == null
                         ? 'New tickets from clients land here.'
+                        : _search != null
+                        ? 'No tickets match "$_search".'
                         : 'Nothing with this status right now.',
-                    actionLabel: _status == null ? null : 'Show all tickets',
-                    onAction: _status == null
+                    actionLabel: _status == null && _search == null
                         ? null
-                        : () => setState(() => _status = null),
+                        : 'Show all tickets',
+                    onAction: _status == null && _search == null
+                        ? null
+                        : () {
+                            _debounce?.cancel();
+                            _searchController.clear();
+                            setState(() {
+                              _status = null;
+                              _search = null;
+                            });
+                          },
                   )
                 : RefreshIndicator(
                     onRefresh: () {
                       ref.invalidate(ticketStatsProvider);
-                      return ref.refresh(ticketsProvider(_status).future);
+                      return ref.refresh(ticketsProvider(_query).future);
                     },
                     child: ListView(
                       physics: const AlwaysScrollableScrollPhysics(),

@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart'
-    show CatalogProduct, DocumentType, StaffClient, UnpaidInvoice;
+    show CatalogProduct, DocumentType, StaffBill, StaffClient, UnpaidInvoice;
 import 'package:mobilling_auth/mobilling_auth.dart';
 
 import 'config/debug_hooks.dart';
@@ -361,7 +361,8 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/payments-out/new',
-        builder: (context, state) => const PayBillScreen(),
+        builder: (context, state) =>
+            PayBillScreen(initialBill: state.extra as StaffBill?),
       ),
       GoRoute(
         path: '/next-bills',

@@ -14,14 +14,18 @@ import 'payment_method_field.dart';
 /// rejects already-settled bills outright), and a caught 422 is a worse
 /// experience than a disabled row.
 class PayBillScreen extends ConsumerStatefulWidget {
-  const PayBillScreen({super.key});
+  const PayBillScreen({super.key, this.initialBill});
+
+  /// Skips the picker straight to the payment form — the Statutory Bills
+  /// screen's own "Mark paid" action already knows which bill it means.
+  final StaffBill? initialBill;
 
   @override
   ConsumerState<PayBillScreen> createState() => _PayBillScreenState();
 }
 
 class _PayBillScreenState extends ConsumerState<PayBillScreen> {
-  StaffBill? _selected;
+  late StaffBill? _selected = widget.initialBill;
   List<StaffBill>? _bills;
   bool _loading = true;
   String? _loadError;
@@ -29,6 +33,8 @@ class _PayBillScreenState extends ConsumerState<PayBillScreen> {
   @override
   void initState() {
     super.initState();
+    // Still loaded even when a bill is preselected, so "change bill" (from
+    // the payment form) has a list to fall back to.
     _loadBills();
   }
 

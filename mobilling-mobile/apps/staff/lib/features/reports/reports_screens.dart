@@ -52,7 +52,12 @@ class ReportsHubScreen extends ConsumerWidget {
     final scheme = theme.colorScheme;
 
     final available = ReportSpec.all
-        .where((spec) => auth?.can(spec.permission) ?? false)
+        .where(
+          (spec) =>
+              (auth?.can(spec.permission) ?? false) &&
+              (spec.alsoRequires == null ||
+                  (auth?.can(spec.alsoRequires!) ?? false)),
+        )
         .toList(growable: false);
 
     return Scaffold(

@@ -827,6 +827,57 @@ class StaffSelfService {
     return Paginated.fromJson(body, SystemOption.fromJson).items;
   }
 
+  /// POST /systems — needs `systems.create`.
+  Future<SystemOption> createSystem(String name) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/systems',
+      body: {'name': name},
+    );
+    return SystemOption.fromJson(_data(body));
+  }
+
+  /// PUT /systems/{id} — needs `systems.update`.
+  Future<SystemOption> updateSystem(
+    String id, {
+    required String name,
+    bool isActive = true,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/systems/$id',
+      body: {'name': name, 'is_active': isActive},
+    );
+    return SystemOption.fromJson(_data(body));
+  }
+
+  /// DELETE /systems/{id} — needs `systems.delete`.
+  Future<void> deleteSystem(String id) => _api.delete<dynamic>('/systems/$id');
+
+  /// POST /system-properties — needs `system_properties.create`.
+  Future<SystemOption> createSystemProperty(String name) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/system-properties',
+      body: {'name': name},
+    );
+    return SystemOption.fromJson(_data(body));
+  }
+
+  /// PUT /system-properties/{id} — needs `system_properties.update`.
+  Future<SystemOption> updateSystemProperty(
+    String id, {
+    required String name,
+    bool isActive = true,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/system-properties/$id',
+      body: {'name': name, 'is_active': isActive},
+    );
+    return SystemOption.fromJson(_data(body));
+  }
+
+  /// DELETE /system-properties/{id} — needs `system_properties.delete`.
+  Future<void> deleteSystemProperty(String id) =>
+      _api.delete<dynamic>('/system-properties/$id');
+
   /// POST /system-records — log a figure against a system property. Needs
   /// `system_records.create`.
   ///
@@ -995,4 +1046,15 @@ abstract final class StaffSelfPermissions {
   static const systemVerificationsUpdate = 'system_verifications.update';
   static const systemVerificationsDelete = 'system_verifications.delete';
   static const verificationSubmit = 'system_verification_reports.submit';
+
+  /// The catalog of systems/properties a System Record can be logged
+  /// against — plain flat entities managed under Settings.
+  static const systemsRead = 'systems.read';
+  static const systemsCreate = 'systems.create';
+  static const systemsUpdate = 'systems.update';
+  static const systemsDelete = 'systems.delete';
+  static const systemPropertiesRead = 'system_properties.read';
+  static const systemPropertiesCreate = 'system_properties.create';
+  static const systemPropertiesUpdate = 'system_properties.update';
+  static const systemPropertiesDelete = 'system_properties.delete';
 }

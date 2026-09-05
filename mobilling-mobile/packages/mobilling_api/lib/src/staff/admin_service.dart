@@ -1,4 +1,9 @@
+import 'dart:typed_data';
+
+import 'package:dio/dio.dart';
+
 import '../api_client.dart';
+import '../api_exception.dart';
 import '../paginated.dart';
 import 'admin_models.dart';
 
@@ -50,6 +55,45 @@ class AdminService {
     return inner['redirect_url']?.toString() ?? inner['url']?.toString();
   }
 
+  /// GET /subscription/{id}/invoice — a PDF, generated on demand, for any
+  /// subscription record regardless of status.
+  Future<Uint8List> subscriptionInvoicePdf(String tenantSubscriptionId) async {
+    try {
+      final response = await _api.raw.get<List<int>>(
+        '/subscription/$tenantSubscriptionId/invoice',
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data ?? const []);
+    } on DioException catch (e) {
+      final error = e.error;
+      throw error is ApiException ? error : ApiException.fromDio(e);
+    }
+  }
+
+  /// POST /subscription/{id}/proof — attach proof of a manual/bank-transfer
+  /// payment. Only valid while that subscription is still `pending`; 422s
+  /// otherwise. Returns the stored file's path.
+  Future<String?> uploadSubscriptionProof(
+    String tenantSubscriptionId,
+    String filePath,
+  ) async {
+    final form = FormData.fromMap({
+      'proof': await MultipartFile.fromFile(filePath),
+    });
+    try {
+      final response = await _api.raw.post<dynamic>(
+        '/subscription/$tenantSubscriptionId/proof',
+        data: form,
+      );
+      final body = response.data;
+      final data = body is Map ? body['data'] : null;
+      return data is Map ? data['payment_proof_path']?.toString() : null;
+    } on DioException catch (e) {
+      final error = e.error;
+      throw error is ApiException ? error : ApiException.fromDio(e);
+    }
+  }
+
   // ---------------------------------------------------------------------
   // Automation
   // ---------------------------------------------------------------------
@@ -64,10 +108,80 @@ class AdminService {
     return AutomationSummary.fromJson(body);
   }
 
-  /// GET /automation/cron-logs — recent scheduled-job runs.
-  Future<List<CronLogEntry>> cronLogs() async {
-    final body = await _api.get<dynamic>('/automation/cron-logs');
-    return Paginated.fromJson(body, CronLogEntry.fromJson).items;
+  /// GET /automation/cron-logs — scheduled-job runs, newest first.
+  /// [date] (Y-m-d) narrows to that day; omitted, every run is returned.
+  Future<Paginated<CronLogEntry>> cronLogs({
+    String? date,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/automation/cron-logs',
+      query: {'date': date, 'page': page, 'per_page': perPage},
+    );
+    return Paginated.fromJson(body, CronLogEntry.fromJson);
+  }
+
+  /// GET /automation/communication-logs.
+  ///
+  /// [search] (recipient or client name) overrides [date] server-side —
+  /// looking someone up means their whole history, not just today's.
+  Future<Paginated<CommunicationLogEntry>> communicationLogs({
+    String? search,
+    String? date,
+    bool clientOnly = false,
+    String? channel,
+    String? type,
+    String? status,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/automation/communication-logs',
+      query: {
+        'search': search,
+        'date': date,
+        if (clientOnly) 'client_only': true,
+        'channel': channel,
+        'type': type,
+        'status': status,
+        'page': page,
+        'per_page': perPage,
+      },
+    );
+    return Paginated.fromJson(body, CommunicationLogEntry.fromJson);
+  }
+
+  /// GET /automation/upcoming-reminders — what the reminder crons will send
+  /// over the next [days] (1-60, server defaults to 14).
+  Future<List<ReminderForecastEvent>> upcomingReminders({int? days}) async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/automation/upcoming-reminders',
+      query: {'days': days},
+    );
+    return Paginated.fromJson(
+      body,
+      ReminderForecastEvent.fromJson,
+    ).items;
+  }
+
+  /// GET /automation/upcoming-reminders/export — a PDF or CSV file, not
+  /// JSON.
+  Future<Uint8List> exportUpcomingReminders({
+    int? days,
+    required String format, // pdf | csv
+  }) async {
+    try {
+      final response = await _api.raw.get<List<int>>(
+        '/automation/upcoming-reminders/export',
+        queryParameters: {'days': days, 'format': format},
+        options: Options(responseType: ResponseType.bytes),
+      );
+      return Uint8List.fromList(response.data ?? const []);
+    } on DioException catch (e) {
+      final error = e.error;
+      throw error is ApiException ? error : ApiException.fromDio(e);
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -133,6 +247,15 @@ class AdminService {
   /// deleting the account's history.
   Future<void> toggleUserActive(String id) =>
       _api.patch<dynamic>('/users/$id/toggle-active');
+
+  /// POST /users/{id}/impersonate — sign in as one of this tenant's own
+  /// staff members. Needs `settings.users`; 422s on an inactive user or on
+  /// yourself. Returns the raw response (`{user, token,
+  /// subscription_status, days_remaining}`, no `user_type`) — building the
+  /// session from it is the caller's job, same as the platform's tenant
+  /// impersonation in `PlatformService.impersonateTenant`.
+  Future<Map<String, dynamic>> impersonateUser(String id) =>
+      _api.post<Map<String, dynamic>>('/users/$id/impersonate');
 
   /// GET /roles — with user counts and the permissions each grants.
   Future<List<StaffRole>> roles() async {
@@ -273,23 +396,202 @@ class AdminService {
     },
   );
 
-  /// PUT /settings/profile — the signed-in user's own name/phone.
-  Future<void> updateProfile({String? name, String? phone}) =>
-      _api.put<dynamic>(
-        '/settings/profile',
-        body: {'name': ?name, 'phone': ?phone},
-      );
+  /// PUT /settings/profile — the signed-in user's own account. No
+  /// permission gate — self-service for whoever is signed in.
+  /// [currentPassword] is required by the server whenever [password] is
+  /// sent; omitted otherwise.
+  Future<void> updateProfile({
+    String? name,
+    String? email,
+    String? phone,
+    String? currentPassword,
+    String? password,
+  }) => _api.put<dynamic>(
+    '/settings/profile',
+    body: {
+      'name': ?name,
+      'email': ?email,
+      'phone': ?phone,
+      'current_password': ?currentPassword,
+      'password': ?password,
+    },
+  );
 
   /// GET /bank-accounts — needs `bank_accounts.read`.
   Future<Paginated<BankAccount>> bankAccounts({
+    String? search,
     int page = 1,
     int perPage = 50,
   }) async {
     final body = await _api.get<dynamic>(
       '/bank-accounts',
-      query: {'page': page, 'per_page': perPage},
+      query: {'search': search, 'page': page, 'per_page': perPage},
     );
     return Paginated.fromJson(body, BankAccount.fromJson);
+  }
+
+  /// POST /bank-accounts — needs `bank_accounts.create`.
+  Future<BankAccount> createBankAccount({
+    required String bankName,
+    required String accountNumber,
+    double? openingBalance,
+    bool isActive = true,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/bank-accounts',
+      body: {
+        'bank_name': bankName,
+        'account_number': accountNumber,
+        'opening_balance': ?openingBalance,
+        'is_active': isActive,
+      },
+    );
+    return BankAccount.fromJson(_data(body));
+  }
+
+  /// PUT /bank-accounts/{id} — needs `bank_accounts.update`.
+  Future<BankAccount> updateBankAccount(
+    String id, {
+    required String bankName,
+    required String accountNumber,
+    double? openingBalance,
+    bool isActive = true,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/bank-accounts/$id',
+      body: {
+        'bank_name': bankName,
+        'account_number': accountNumber,
+        'opening_balance': ?openingBalance,
+        'is_active': isActive,
+      },
+    );
+    return BankAccount.fromJson(_data(body));
+  }
+
+  /// DELETE /bank-accounts/{id} — needs `bank_accounts.delete`.
+  Future<void> deleteBankAccount(String id) =>
+      _api.delete<dynamic>('/bank-accounts/$id');
+
+  // ---------------------------------------------------------------------
+  // Settings: reminders, templates, payment methods, late fee
+  // ---------------------------------------------------------------------
+
+  /// GET/PUT /settings/reminders — needs `settings.reminders`.
+  Future<ReminderSettings> reminderSettings() async {
+    final body = await _api.get<Map<String, dynamic>>('/settings/reminders');
+    return ReminderSettings.fromJson(body);
+  }
+
+  Future<ReminderSettings> updateReminderSettings({
+    required bool emailEnabled,
+    required bool smsEnabled,
+    required bool reminderSmsEnabled,
+    required bool reminderEmailEnabled,
+    required bool whatsappEnabled,
+    required bool reminderWhatsappEnabled,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/settings/reminders',
+      body: {
+        'email_enabled': emailEnabled,
+        'sms_enabled': smsEnabled,
+        'reminder_sms_enabled': reminderSmsEnabled,
+        'reminder_email_enabled': reminderEmailEnabled,
+        'whatsapp_enabled': whatsappEnabled,
+        'reminder_whatsapp_enabled': reminderWhatsappEnabled,
+      },
+    );
+    return ReminderSettings.fromJson(body);
+  }
+
+  /// GET/PUT /settings/templates — needs `settings.templates`.
+  Future<MessageTemplates> templates() async {
+    final body = await _api.get<Map<String, dynamic>>('/settings/templates');
+    return MessageTemplates.fromJson(body);
+  }
+
+  Future<MessageTemplates> updateTemplates(MessageTemplates templates) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/settings/templates',
+      body: {
+        'reminder_email_subject': templates.reminderEmailSubject,
+        'reminder_email_body': templates.reminderEmailBody,
+        'overdue_email_subject': templates.overdueEmailSubject,
+        'overdue_email_body': templates.overdueEmailBody,
+        'reminder_sms_body': templates.reminderSmsBody,
+        'overdue_sms_body': templates.overdueSmsBody,
+        'invoice_email_subject': templates.invoiceEmailSubject,
+        'invoice_email_body': templates.invoiceEmailBody,
+        'email_footer_text': templates.emailFooterText,
+      },
+    );
+    return MessageTemplates.fromJson(body);
+  }
+
+  /// GET/PUT /settings/payment-methods — needs `settings.payment_methods`.
+  /// The whole list replaces what's on file; at least one method required.
+  Future<PaymentMethodsSettings> paymentMethods() async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/settings/payment-methods',
+    );
+    return PaymentMethodsSettings.fromJson(body);
+  }
+
+  Future<PaymentMethodsSettings> updatePaymentMethods(
+    List<PaymentMethodEntry> methods,
+  ) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/settings/payment-methods',
+      body: {'payment_methods': [for (final m in methods) m.toJson()]},
+    );
+    return PaymentMethodsSettings.fromJson(body);
+  }
+
+  /// GET/PUT /settings/late-fee — needs `settings.reminders` (not its own
+  /// permission — a real quirk of the backend, confirmed).
+  Future<LateFeeSettings> lateFeeSettings() async {
+    final body = await _api.get<Map<String, dynamic>>('/settings/late-fee');
+    return LateFeeSettings.fromJson(body);
+  }
+
+  Future<LateFeeSettings> updateLateFeeSettings({
+    required bool enabled,
+    required double percent,
+    required int days,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/settings/late-fee',
+      body: {
+        'late_fee_enabled': enabled,
+        'late_fee_percent': percent,
+        'late_fee_days': days,
+      },
+    );
+    return LateFeeSettings.fromJson(body);
+  }
+
+  /// GET /settings/late-fee/count — how many invoices a revert would touch,
+  /// shown before the irreversible bulk action below.
+  Future<int> lateFeeAffectedCount() async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/settings/late-fee/count',
+    );
+    final data = body['data'];
+    return (data is Map ? data['count'] : body['count']) is num
+        ? ((data is Map ? data['count'] : body['count']) as num).toInt()
+        : 0;
+  }
+
+  /// POST /settings/late-fee/revert — strips already-applied late fees.
+  /// [updateTotals] also recalculates each invoice's stored total, not just
+  /// the fee line.
+  Future<String?> revertLateFee({required bool updateTotals}) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/settings/late-fee/revert',
+      body: {'update_totals': updateTotals},
+    );
+    return body['message']?.toString();
   }
 
   // ---------------------------------------------------------------------
@@ -382,6 +684,13 @@ class AdminService {
       '${date.year.toString().padLeft(4, '0')}-'
       '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
+
+  /// Unwrap `{data: {...}}`, tolerating the endpoints that return the
+  /// object at the top level instead.
+  static Map<String, dynamic> _data(Map<String, dynamic> body) {
+    final data = body['data'];
+    return data is Map ? Map<String, dynamic>.from(data) : body;
+  }
 }
 
 /// Permission names these screens gate on, verbatim from routes/api.php.
@@ -398,10 +707,17 @@ abstract final class AdminPermissions {
   static const subscription = 'menu.subscription';
   static const automation = 'menu.automation';
   static const bankAccountsRead = 'bank_accounts.read';
+  static const bankAccountsCreate = 'bank_accounts.create';
+  static const bankAccountsUpdate = 'bank_accounts.update';
+  static const bankAccountsDelete = 'bank_accounts.delete';
 
   /// `EmployeeProfileController::show`/`index` — viewing HR details.
   static const employeesRead = 'employees.read';
 
   /// `EmployeeProfileController::update` — editing them.
   static const employeesUpdate = 'employees.update';
+
+  static const settingsReminders = 'settings.reminders';
+  static const settingsTemplates = 'settings.templates';
+  static const settingsPaymentMethods = 'settings.payment_methods';
 }

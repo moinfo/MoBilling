@@ -441,6 +441,9 @@ const List<MenuNode> staffMenu = [
         icon: Icons.account_balance_outlined,
         path: '/bank-balance-statement',
         permission: 'reports.balance_statement',
+        // The web sidebar gates this entry's own visibility on the nav
+        // permission too, separately from the data permission.
+        alsoRequires: 'menu.report_balance_statement',
         ready: true,
       ),
       MenuEntry(

@@ -460,6 +460,16 @@ class _OverviewTab extends ConsumerWidget {
     final summary = profile.summary;
     final session = ref.watch(sessionControllerProvider).session;
     final canUpdate = session?.can(Permissions.clientsUpdate) ?? false;
+    final canSeeInvoiced =
+        session?.can(Permissions.clientProfileTotalInvoiced) ?? false;
+    final canSeePaid =
+        session?.can(Permissions.clientProfileTotalPaid) ?? false;
+    final canSeeBalanceDue =
+        session?.can(Permissions.clientProfileBalanceDue) ?? false;
+    final canSeeActiveSubscriptions =
+        session?.can(Permissions.clientProfileActiveSubscriptions) ?? false;
+    final canSeeSubscriptionValue =
+        session?.can(Permissions.clientProfileSubscriptionValue) ?? false;
 
     return RefreshIndicator(
       onRefresh: () => ref.refresh(clientProfileProvider(client.id).future),
@@ -472,18 +482,25 @@ class _OverviewTab extends ConsumerWidget {
           Spacing.xl,
         ),
         children: [
-          _BalanceCard(profile: profile),
+          _BalanceCard(
+            profile: profile,
+            showBalance: canSeeBalanceDue,
+            showInvoiced: canSeeInvoiced,
+            showPaid: canSeePaid,
+          ),
           const SizedBox(height: Spacing.md),
           StatRail(
             items: [
-              StatRailItem(
-                label: 'Services',
-                value: Formatting.integer(summary.activeSubscriptions),
-              ),
-              StatRailItem(
-                label: 'Monthly',
-                value: Formatting.compact(summary.totalSubscriptionValue),
-              ),
+              if (canSeeActiveSubscriptions)
+                StatRailItem(
+                  label: 'Services',
+                  value: Formatting.integer(summary.activeSubscriptions),
+                ),
+              if (canSeeSubscriptionValue)
+                StatRailItem(
+                  label: 'Monthly',
+                  value: Formatting.compact(summary.totalSubscriptionValue),
+                ),
               StatRailItem(
                 label: 'Invoices',
                 value: Formatting.integer(profile.invoices.length),
@@ -746,9 +763,21 @@ class _OverviewTab extends ConsumerWidget {
 /// matters: display face, on its own, with the two numbers it is the
 /// difference of underneath.
 class _BalanceCard extends StatelessWidget {
-  const _BalanceCard({required this.profile});
+  const _BalanceCard({
+    required this.profile,
+    this.showBalance = true,
+    this.showInvoiced = true,
+    this.showPaid = true,
+  });
 
   final ClientProfile profile;
+
+  /// Per-field gates mirroring web's `client_profile.*` permissions — the
+  /// backend doesn't withhold this data, so these only match web's own
+  /// (cosmetic) display behaviour rather than closing a real leak.
+  final bool showBalance;
+  final bool showInvoiced;
+  final bool showPaid;
 
   @override
   Widget build(BuildContext context) {
@@ -768,7 +797,7 @@ class _BalanceCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    owed ? 'OUTSTANDING' : 'SETTLED',
+                    showBalance ? (owed ? 'OUTSTANDING' : 'SETTLED') : 'STATUS',
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -781,22 +810,25 @@ class _BalanceCard extends StatelessWidget {
                 ],
               ],
             ),
-            const SizedBox(height: Spacing.sm),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Money(
-                summary.balance,
-                scale: MoneyScale.display,
-                display: true,
-                color: owed ? status.overdue : status.settled,
+            if (showBalance) ...[
+              const SizedBox(height: Spacing.sm),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Money(
+                  summary.balance,
+                  scale: MoneyScale.display,
+                  display: true,
+                  color: owed ? status.overdue : status.settled,
+                ),
               ),
-            ),
+            ],
             const SizedBox(height: Spacing.md),
             Divider(height: 1, color: scheme.outlineVariant),
             const SizedBox(height: Spacing.sm),
-            _Figure(label: 'Invoiced', amount: summary.totalInvoiced),
-            _Figure(label: 'Paid', amount: summary.totalPaid),
+            if (showInvoiced)
+              _Figure(label: 'Invoiced', amount: summary.totalInvoiced),
+            if (showPaid) _Figure(label: 'Paid', amount: summary.totalPaid),
             _Figure(
               label: 'Wallet',
               amount: profile.creditBalance,

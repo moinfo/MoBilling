@@ -110,12 +110,19 @@ final AutoDisposeFutureProvider<StaffDashboard> dashboardProvider =
   (ref) => ref.watch(staffServiceProvider).dashboard(),
 );
 
-/// Ticket queue, keyed by status filter (null = all).
-final AutoDisposeFutureProviderFamily<List<StaffTicket>, String?>
-    ticketsProvider =
-    FutureProvider.autoDispose.family<List<StaffTicket>, String?>(
-  (ref, status) => ref.watch(staffServiceProvider).tickets(status: status),
-);
+/// Ticket queue, keyed by status filter (null = all) and search text (null
+/// or empty = unfiltered).
+final AutoDisposeFutureProviderFamily<
+  List<StaffTicket>,
+  ({String? status, String? search})
+>
+ticketsProvider =
+    FutureProvider.autoDispose
+        .family<List<StaffTicket>, ({String? status, String? search})>(
+          (ref, query) => ref
+              .watch(staffServiceProvider)
+              .tickets(status: query.status, search: query.search),
+        );
 
 final AutoDisposeFutureProviderFamily<StaffTicket, String> ticketProvider =
     FutureProvider.autoDispose.family<StaffTicket, String>(

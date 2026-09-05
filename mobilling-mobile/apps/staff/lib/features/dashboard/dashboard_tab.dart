@@ -325,6 +325,22 @@ class DashboardTab extends ConsumerWidget {
                           total: d.systemRecords!.total,
                         ),
                       ],
+                      // Independently gated server-side from the system
+                      // breakdown above (`dashboard.bank_account_breakdown`
+                      // vs `dashboard.system_records_breakdown`) — a role
+                      // with only this one still gets `by_bank` even when
+                      // `systems` comes back empty, so this can't be nested
+                      // under the block above.
+                      if (d.systemRecords != null &&
+                          d.systemRecords!.byBank.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('By bank account'),
+                        const SizedBox(height: Spacing.sm),
+                        _NamedTotals(
+                          items: d.systemRecords!.byBank,
+                          total: d.systemRecords!.total,
+                        ),
+                      ],
                     ],
                   ),
                 ),

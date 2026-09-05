@@ -336,6 +336,68 @@ class FinanceService {
     return StatutorySchedule.fromJson(body);
   }
 
+  /// POST /statutories — needs `statutories.create`. The server computes
+  /// `next_due_date` from [issueDate]/[cycle] and generates the first
+  /// [StaffBill] itself; there is nothing else to send for that.
+  Future<Statutory> createStatutory({
+    required String name,
+    required double amount,
+    required String cycle, // once | monthly | quarterly | half_yearly | yearly
+    required DateTime issueDate,
+    String? billCategoryId,
+    int? remindDaysBefore,
+    bool isActive = true,
+    String? notes,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/statutories',
+      body: {
+        'name': name,
+        'amount': amount,
+        'cycle': cycle,
+        'issue_date': _ymd(issueDate),
+        'bill_category_id': ?billCategoryId,
+        'remind_days_before': ?remindDaysBefore,
+        'is_active': isActive,
+        'notes': ?notes,
+      },
+    );
+    return Statutory.fromJson(_data(body));
+  }
+
+  /// PUT /statutories/{id} — needs `statutories.update`. Changing
+  /// [issueDate]/[cycle] recomputes `next_due_date` server-side.
+  Future<Statutory> updateStatutory(
+    String id, {
+    required String name,
+    required double amount,
+    required String cycle,
+    required DateTime issueDate,
+    String? billCategoryId,
+    int? remindDaysBefore,
+    bool isActive = true,
+    String? notes,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/statutories/$id',
+      body: {
+        'name': name,
+        'amount': amount,
+        'cycle': cycle,
+        'issue_date': _ymd(issueDate),
+        'bill_category_id': ?billCategoryId,
+        'remind_days_before': ?remindDaysBefore,
+        'is_active': isActive,
+        'notes': ?notes,
+      },
+    );
+    return Statutory.fromJson(_data(body));
+  }
+
+  /// DELETE /statutories/{id} — needs `statutories.delete`.
+  Future<void> deleteStatutory(String id) =>
+      _api.delete<dynamic>('/statutories/$id');
+
   // ---------------------------------------------------------------------
   // Bills
   // ---------------------------------------------------------------------
@@ -353,6 +415,74 @@ class FinanceService {
     );
     return Paginated.fromJson(body, StaffBill.fromJson);
   }
+
+  /// POST /bills — needs `bills.create`. Unlike a statutory obligation, a
+  /// plain bill has no auto-generated recurrence — this creates exactly one
+  /// row.
+  Future<StaffBill> createBill({
+    required String name,
+    required double amount,
+    required String cycle,
+    required DateTime dueDate,
+    String? category,
+    String? billCategoryId,
+    DateTime? issueDate,
+    int? remindDaysBefore,
+    bool isActive = true,
+    String? notes,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/bills',
+      body: {
+        'name': name,
+        'amount': amount,
+        'cycle': cycle,
+        'due_date': _ymd(dueDate),
+        'category': ?category,
+        'bill_category_id': ?billCategoryId,
+        if (issueDate != null) 'issue_date': _ymd(issueDate),
+        'remind_days_before': ?remindDaysBefore,
+        'is_active': isActive,
+        'notes': ?notes,
+      },
+    );
+    return StaffBill.fromJson(_data(body));
+  }
+
+  /// PUT /bills/{id} — needs `bills.update`.
+  Future<StaffBill> updateBill(
+    String id, {
+    required String name,
+    required double amount,
+    required String cycle,
+    required DateTime dueDate,
+    String? category,
+    String? billCategoryId,
+    DateTime? issueDate,
+    int? remindDaysBefore,
+    bool isActive = true,
+    String? notes,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/bills/$id',
+      body: {
+        'name': name,
+        'amount': amount,
+        'cycle': cycle,
+        'due_date': _ymd(dueDate),
+        'category': ?category,
+        'bill_category_id': ?billCategoryId,
+        if (issueDate != null) 'issue_date': _ymd(issueDate),
+        'remind_days_before': ?remindDaysBefore,
+        'is_active': isActive,
+        'notes': ?notes,
+      },
+    );
+    return StaffBill.fromJson(_data(body));
+  }
+
+  /// DELETE /bills/{id} — needs `bills.delete`.
+  Future<void> deleteBill(String id) => _api.delete<dynamic>('/bills/$id');
 
   /// GET /bill-categories — nested one level.
   Future<List<BillCategory>> billCategories() async {
@@ -494,6 +624,13 @@ class FinanceService {
       '${date.year.toString().padLeft(4, '0')}-'
       '${date.month.toString().padLeft(2, '0')}-'
       '${date.day.toString().padLeft(2, '0')}';
+
+  /// Unwrap `{data: {...}}`, tolerating the endpoints that return the
+  /// object at the top level instead.
+  static Map<String, dynamic> _data(Map<String, dynamic> body) {
+    final data = body['data'];
+    return data is Map ? Map<String, dynamic>.from(data) : body;
+  }
 }
 
 /// Permission names these screens gate on, verbatim from routes/api.php.
@@ -512,6 +649,14 @@ abstract final class FinancePermissions {
   static const pettyCashReconcile = 'petty_cash.reconcile';
   static const pettyCashDelete = 'petty_cash.delete';
   static const statutoriesRead = 'statutories.read';
+
+  /// Web's own UI never checks these (its page is gated only by
+  /// `menu.statutories`), but the backend genuinely enforces them —
+  /// gating create/edit/delete client-side here avoids showing a button
+  /// that would just 403.
+  static const statutoriesCreate = 'statutories.create';
+  static const statutoriesUpdate = 'statutories.update';
+  static const statutoriesDelete = 'statutories.delete';
   static const billsRead = 'bills.read';
   static const billsCreate = 'bills.create';
   static const billsUpdate = 'bills.update';

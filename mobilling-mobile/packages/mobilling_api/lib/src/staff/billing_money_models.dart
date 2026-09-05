@@ -239,9 +239,11 @@ class StaffBill {
     required this.isActive,
     this.category,
     this.categoryName,
+    this.billCategoryId,
     this.cycle,
     this.issueDate,
     this.dueDate,
+    this.remindDaysBefore,
     this.paidAt,
     this.notes,
   });
@@ -254,11 +256,16 @@ class StaffBill {
   final double paidTotal;
   final bool isOverdue;
   final bool isActive;
+
+  /// Free-text label — distinct from [billCategoryId], the structured
+  /// `bill_categories` link.
   final String? category;
   final String? categoryName;
+  final String? billCategoryId;
   final String? cycle;
   final DateTime? issueDate;
   final DateTime? dueDate;
+  final int? remindDaysBefore;
   final DateTime? paidAt;
   final String? notes;
 
@@ -295,9 +302,13 @@ class StaffBill {
               category.str('parent_name'),
               category.str('name'),
             ].whereType<String>().join(' › '),
+      billCategoryId: json.str('bill_category_id') ?? category?.str('id'),
       cycle: json.str('cycle'),
       issueDate: json.date('issue_date'),
       dueDate: json.date('due_date'),
+      remindDaysBefore: json['remind_days_before'] == null
+          ? null
+          : json.count('remind_days_before'),
       paidAt: json.date('paid_at'),
       notes: json.str('notes'),
     );

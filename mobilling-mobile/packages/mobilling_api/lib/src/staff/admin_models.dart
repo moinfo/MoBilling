@@ -227,6 +227,107 @@ class CronLogEntry {
   );
 }
 
+/// One row of `GET /automation/communication-logs` — a single message the
+/// tenant sent (or tried to), across every channel.
+class CommunicationLogEntry {
+  const CommunicationLogEntry({
+    required this.id,
+    required this.channel,
+    required this.type,
+    required this.recipient,
+    required this.status,
+    this.subject,
+    this.message,
+    this.error,
+    this.clientId,
+    this.clientName,
+    this.createdAt,
+  });
+
+  final String id;
+
+  /// email | sms | whatsapp.
+  final String channel;
+
+  /// What triggered it, e.g. invoice_reminder, broadcast, welcome.
+  final String type;
+  final String recipient;
+
+  /// sent | failed | pending.
+  final String status;
+  final String? subject;
+  final String? message;
+  final String? error;
+  final String? clientId;
+  final String? clientName;
+  final DateTime? createdAt;
+
+  bool get failed => status == 'failed';
+
+  factory CommunicationLogEntry.fromJson(Map<String, dynamic> json) {
+    final client = json.object('client');
+    return CommunicationLogEntry(
+      id: json.id(),
+      channel: json.strOr('channel', '—'),
+      type: json.strOr('type', '—'),
+      recipient: json.strOr('recipient', '—'),
+      status: json.strOr('status', 'pending'),
+      subject: json.str('subject'),
+      message: json.str('message'),
+      error: json.str('error'),
+      clientId: json.str('client_id') ?? client?.str('id'),
+      clientName: client?.str('name'),
+      createdAt: json.date('created_at'),
+    );
+  }
+}
+
+/// One row of `GET /automation/upcoming-reminders` — a reminder the
+/// scheduled jobs will send in the forecast window, one row per client per
+/// event.
+class ReminderForecastEvent {
+  const ReminderForecastEvent({
+    required this.date,
+    required this.clientName,
+    required this.category,
+    required this.label,
+    required this.channels,
+    this.clientId,
+    this.reference,
+    this.recipientEmail,
+    this.recipientPhone,
+    this.documentId,
+  });
+
+  final DateTime? date;
+  final String clientName;
+
+  /// e.g. invoice_overdue_reminder, invoice_termination_warning,
+  /// subscription_expiring.
+  final String category;
+  final String label;
+  final List<String> channels;
+  final String? clientId;
+  final String? reference;
+  final String? recipientEmail;
+  final String? recipientPhone;
+  final String? documentId;
+
+  factory ReminderForecastEvent.fromJson(Map<String, dynamic> json) =>
+      ReminderForecastEvent(
+        date: json.date('date'),
+        clientId: json.str('client_id'),
+        clientName: json.strOr('client_name', '—'),
+        category: json.strOr('category', '—'),
+        label: json.strOr('label', '—'),
+        reference: json.str('reference'),
+        channels: json.strings('channels'),
+        recipientEmail: json.str('recipient_email'),
+        recipientPhone: json.str('recipient_phone'),
+        documentId: json.str('document_id'),
+      );
+}
+
 // ---------------------------------------------------------------------------
 // Team & roles
 // ---------------------------------------------------------------------------
@@ -564,26 +665,183 @@ class BankAccount {
     required this.id,
     required this.bankName,
     required this.isActive,
-    this.accountName,
     this.accountNumber,
+    this.openingBalance,
+    this.accountName,
     this.branch,
   });
 
   final String id;
   final String bankName;
   final bool isActive;
-  final String? accountName;
   final String? accountNumber;
+  final double? openingBalance;
+
+  /// The `bank_accounts` table has no `account_name`/`branch` columns —
+  /// these are always null. Kept only so old call sites that read them
+  /// don't need touching; the form doesn't collect them.
+  final String? accountName;
   final String? branch;
 
   factory BankAccount.fromJson(Map<String, dynamic> json) => BankAccount(
     id: json.id(),
     bankName: json.strOr('bank_name', '—'),
     isActive: json.flag('is_active', fallback: true),
-    accountName: json.str('account_name'),
     accountNumber: json.str('account_number'),
+    openingBalance: json['opening_balance'] == null
+        ? null
+        : json.money('opening_balance'),
+    accountName: json.str('account_name'),
     branch: json.str('branch'),
   );
+}
+
+/// `GET/PUT /settings/reminders` — which channels reminders may use at all.
+class ReminderSettings {
+  const ReminderSettings({
+    required this.emailEnabled,
+    required this.smsEnabled,
+    required this.reminderSmsEnabled,
+    required this.reminderEmailEnabled,
+    required this.whatsappEnabled,
+    required this.reminderWhatsappEnabled,
+  });
+
+  final bool emailEnabled;
+  final bool smsEnabled;
+  final bool reminderSmsEnabled;
+  final bool reminderEmailEnabled;
+  final bool whatsappEnabled;
+  final bool reminderWhatsappEnabled;
+
+  factory ReminderSettings.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return ReminderSettings(
+      emailEnabled: data.flag('email_enabled'),
+      smsEnabled: data.flag('sms_enabled'),
+      reminderSmsEnabled: data.flag('reminder_sms_enabled'),
+      reminderEmailEnabled: data.flag('reminder_email_enabled'),
+      whatsappEnabled: data.flag('whatsapp_enabled'),
+      reminderWhatsappEnabled: data.flag('reminder_whatsapp_enabled'),
+    );
+  }
+}
+
+/// `GET/PUT /settings/templates` — the message bodies reminders/invoices
+/// send. Every field is a free-text placeholder-laden template, not
+/// something to validate beyond "not too long".
+class MessageTemplates {
+  const MessageTemplates({
+    this.reminderEmailSubject,
+    this.reminderEmailBody,
+    this.overdueEmailSubject,
+    this.overdueEmailBody,
+    this.reminderSmsBody,
+    this.overdueSmsBody,
+    this.invoiceEmailSubject,
+    this.invoiceEmailBody,
+    this.emailFooterText,
+  });
+
+  final String? reminderEmailSubject;
+  final String? reminderEmailBody;
+  final String? overdueEmailSubject;
+  final String? overdueEmailBody;
+  final String? reminderSmsBody;
+  final String? overdueSmsBody;
+  final String? invoiceEmailSubject;
+  final String? invoiceEmailBody;
+  final String? emailFooterText;
+
+  factory MessageTemplates.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return MessageTemplates(
+      reminderEmailSubject: data.str('reminder_email_subject'),
+      reminderEmailBody: data.str('reminder_email_body'),
+      overdueEmailSubject: data.str('overdue_email_subject'),
+      overdueEmailBody: data.str('overdue_email_body'),
+      reminderSmsBody: data.str('reminder_sms_body'),
+      overdueSmsBody: data.str('overdue_sms_body'),
+      invoiceEmailSubject: data.str('invoice_email_subject'),
+      invoiceEmailBody: data.str('invoice_email_body'),
+      emailFooterText: data.str('email_footer_text'),
+    );
+  }
+}
+
+/// One accepted payment method, shown to clients on an invoice/checkout —
+/// "M-Pesa" with a paybill number, "Bank transfer" with account details, etc.
+class PaymentMethodEntry {
+  const PaymentMethodEntry({
+    required this.value,
+    required this.label,
+    this.details = const [],
+  });
+
+  final String value;
+  final String label;
+
+  /// Free-form key/value rows, e.g. `Paybill` → `123456`.
+  final List<(String, String)> details;
+
+  factory PaymentMethodEntry.fromJson(Map<String, dynamic> json) =>
+      PaymentMethodEntry(
+        value: json.strOr('value', ''),
+        label: json.strOr('label', ''),
+        details: [
+          for (final row in (json['details'] as List? ?? const []))
+            if (row is Map)
+              (
+                Map<String, dynamic>.from(row).strOr('key', ''),
+                Map<String, dynamic>.from(row).strOr('value', ''),
+              ),
+        ],
+      );
+
+  Map<String, dynamic> toJson() => {
+    'value': value,
+    'label': label,
+    'details': [
+      for (final (key, value) in details) {'key': key, 'value': value},
+    ],
+  };
+}
+
+/// `GET/PUT /settings/payment-methods` — the whole list is replaced on save.
+class PaymentMethodsSettings {
+  const PaymentMethodsSettings({required this.methods});
+
+  final List<PaymentMethodEntry> methods;
+
+  factory PaymentMethodsSettings.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return PaymentMethodsSettings(
+      methods: data.list('payment_methods', PaymentMethodEntry.fromJson),
+    );
+  }
+}
+
+/// `GET/PUT /settings/late-fee` — a percentage charged after invoices sit
+/// unpaid past their due date for [lateFeeDays].
+class LateFeeSettings {
+  const LateFeeSettings({
+    required this.enabled,
+    required this.percent,
+    required this.days,
+  });
+
+  final bool enabled;
+  final double percent;
+  final int days;
+
+  factory LateFeeSettings.fromJson(Map<String, dynamic> json) {
+    final data = json.object('data') ?? json;
+    return LateFeeSettings(
+      enabled: data.flag('late_fee_enabled'),
+      percent: data.money('late_fee_percent'),
+      days: data.count('late_fee_days'),
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

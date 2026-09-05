@@ -356,10 +356,14 @@ class StaffService {
   /// most lists (`{data: {data: [...], current_page, ...}}`), so unwrap
   /// before parsing — handing the outer body to [Paginated] yields an empty
   /// queue regardless of data.
-  Future<List<StaffTicket>> tickets({String? status, int perPage = 100}) async {
+  Future<List<StaffTicket>> tickets({
+    String? status,
+    String? search,
+    int perPage = 100,
+  }) async {
     final body = await _api.get<dynamic>(
       '/tickets',
-      query: {'status': status, 'per_page': perPage},
+      query: {'status': status, 'search': search, 'per_page': perPage},
     );
     final inner = body is Map ? body['data'] : null;
     return Paginated.fromJson(
@@ -564,6 +568,19 @@ abstract final class Permissions {
   /// only needs [clientsRead]; without this the value fields arrive absent.
   static const clientProfileSubscriptionValue =
       'client_profile.subscription_value';
+
+  /// The other five client-detail figures the web profile page gates
+  /// per-field. Unlike [clientProfileSubscriptionValue], the backend
+  /// doesn't actually withhold this data for any of the five — the API
+  /// returns it regardless — so these only control the mobile UI's own
+  /// display, matching web's own (cosmetic, not authorization) behaviour.
+  static const clientProfileTotalInvoiced = 'client_profile.total_invoiced';
+  static const clientProfileTotalPaid = 'client_profile.total_paid';
+  static const clientProfileBalanceDue = 'client_profile.balance_due';
+  static const clientProfileActiveSubscriptions =
+      'client_profile.active_subscriptions';
+  static const clientProfileSubscriptionPrice =
+      'client_profile.subscription_price';
 
   static const documentsRead = 'documents.read';
   static const paymentsRead = 'payments_in.read';

@@ -709,6 +709,7 @@ class ReportSpec {
     required this.title,
     required this.description,
     required this.permission,
+    this.alsoRequires,
     this.needsDateRange = true,
     this.needsClient = false,
   });
@@ -717,6 +718,12 @@ class ReportSpec {
   final String title;
   final String description;
   final String permission;
+
+  /// A second permission that must ALSO hold — the web sidebar gates
+  /// System Records/System Verifications' report entries on a `menu.*` nav
+  /// permission separately from the `reports.*` data permission this
+  /// [permission] field checks.
+  final String? alsoRequires;
 
   /// Aging, statutory compliance and the subscription report are
   /// point-in-time — the endpoints take no parameters.
@@ -801,12 +808,14 @@ class ReportSpec {
       title: 'System records report',
       description: 'Recorded amounts by system',
       permission: 'reports.system_records',
+      alsoRequires: 'menu.report_system_records',
     ),
     ReportSpec(
       slug: 'system-verifications',
       title: 'System verifications report',
       description: 'Daily checks and issues raised',
       permission: 'reports.system_verifications',
+      alsoRequires: 'menu.report_system_verifications',
     ),
   ];
 

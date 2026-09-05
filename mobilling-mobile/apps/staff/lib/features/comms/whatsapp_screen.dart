@@ -54,6 +54,12 @@ class _WhatsappScreenState extends ConsumerState<WhatsappScreen> {
   @override
   Widget build(BuildContext context) {
     final onCampaigns = _section == _WaSection.campaigns;
+    final canSeeContacts = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappContactsRead),
+    );
+    final canSeeCampaigns = ref.watch(
+      commsPermissionProvider(CommsPermissions.whatsappCampaignsRead),
+    );
     final canAddContact = ref.watch(
       commsPermissionProvider(CommsPermissions.whatsappContactsCreate),
     );
@@ -108,26 +114,38 @@ class _WhatsappScreenState extends ConsumerState<WhatsappScreen> {
           ],
         ),
       ),
-      body: Column(
-        children: [
-          SectionSelector<_WaSection>(
-            sections: const [
-              (_WaSection.contacts, 'Contacts'),
-              (_WaSection.due, 'Due'),
-              (_WaSection.campaigns, 'Campaigns'),
-            ],
-            selected: _section,
-            onSelected: (value) => setState(() => _section = value),
-          ),
-          Expanded(
-            child: switch (_section) {
-              _WaSection.contacts => const _ContactsView(dueOnly: false),
-              _WaSection.due => const _ContactsView(dueOnly: true),
-              _WaSection.campaigns => const _CampaignsView(),
-            },
-          ),
-        ],
-      ),
+      body: !(canSeeContacts || canSeeCampaigns)
+          ? const StateMessage(
+              icon: Icons.lock_outline,
+              title: 'Viewing only',
+              message: 'Your role cannot view WhatsApp contacts or campaigns.',
+            )
+          : Column(
+              children: [
+                SectionSelector<_WaSection>(
+                  sections: [
+                    if (canSeeContacts) (_WaSection.contacts, 'Contacts'),
+                    if (canSeeContacts) (_WaSection.due, 'Due'),
+                    if (canSeeCampaigns) (_WaSection.campaigns, 'Campaigns'),
+                  ],
+                  selected: canSeeContacts || _section == _WaSection.campaigns
+                      ? _section
+                      : _WaSection.campaigns,
+                  onSelected: (value) => setState(() => _section = value),
+                ),
+                Expanded(
+                  child: switch (_section) {
+                    _WaSection.contacts when canSeeContacts =>
+                      const _ContactsView(dueOnly: false),
+                    _WaSection.due when canSeeContacts =>
+                      const _ContactsView(dueOnly: true),
+                    _WaSection.campaigns when canSeeCampaigns =>
+                      const _CampaignsView(),
+                    _ => const SizedBox.shrink(),
+                  },
+                ),
+              ],
+            ),
     );
   }
 

@@ -62,6 +62,20 @@ class FieldMarketingScreen extends ConsumerStatefulWidget {
 // Stats, All Visits, Services.
 enum _Section { sessions, targets, stats, visits, services }
 
+/// Shown in place of a tab's content when the caller lacks its `.read`
+/// permission — mirrors web hiding the tab entirely, without this screen's
+/// custom `TabController` needing a variable tab count.
+class _NoReadAccess extends StatelessWidget {
+  const _NoReadAccess();
+
+  @override
+  Widget build(BuildContext context) => const StateMessage(
+    icon: Icons.lock_outline,
+    title: 'Viewing only',
+    message: 'Your role cannot view this tab.',
+  );
+}
+
 class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
     with SingleTickerProviderStateMixin {
   late final TabController _tabs = TabController(length: 5, vsync: this)
@@ -99,6 +113,10 @@ class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
   @override
   Widget build(BuildContext context) {
     final session = ref.watch(sessionControllerProvider).session;
+    final canSeeSessions =
+        session?.can(CrmPermissions.fieldSessionsRead) ?? false;
+    final canSeeTargets =
+        session?.can(CrmPermissions.fieldTargetsRead) ?? false;
     final canCreateSession =
         session?.can(CrmPermissions.fieldSessionsCreate) ?? false;
     // Setting a target means choosing an officer, and the officer list is
@@ -142,6 +160,10 @@ class _FieldMarketingScreenState extends ConsumerState<FieldMarketingScreen>
             ),
           Expanded(
             child: switch (_section) {
+              _Section.sessions when !canSeeSessions => const _NoReadAccess(),
+              _Section.stats when !canSeeSessions => const _NoReadAccess(),
+              _Section.visits when !canSeeSessions => const _NoReadAccess(),
+              _Section.targets when !canSeeTargets => const _NoReadAccess(),
               _Section.sessions => _SessionsList(month: _month),
               _Section.targets => _TargetsList(month: _month),
               _Section.stats => _StatsList(month: _month),
