@@ -321,6 +321,18 @@ class PortalDomainController extends Controller
             report($e);
         }
 
+        try {
+            $staff = \App\Models\User::withPermission($request->user()->tenant_id, 'domains.renew');
+            if ($staff->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send(
+                    $staff,
+                    new \App\Notifications\DomainRenewalRequestedNotification($domain, $data['years'], $document),
+                );
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
         return response()->json([
             'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
             'message' => "Renewal invoice {$document->document_number} created — pay it to renew instantly.",
@@ -440,6 +452,21 @@ class PortalDomainController extends Controller
             $document->loadMissing('client');
             if ($document->client && ($document->client->phone || $document->client->email)) {
                 $document->client->notifyNow(new \App\Notifications\InvoiceSentNotification($document));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+
+        try {
+            $staff = \App\Models\User::withPermission($tenantId, 'orders.create');
+            if ($staff->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send(
+                    $staff,
+                    new \App\Notifications\OrderPlacedNotification(
+                        $document,
+                        ucfirst($data['action']) . " domain {$name} ({$data['years']} year(s))",
+                    ),
+                );
             }
         } catch (\Throwable $e) {
             report($e);

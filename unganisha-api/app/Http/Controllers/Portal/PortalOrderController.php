@@ -644,6 +644,22 @@ class PortalOrderController extends Controller
             report($e);
         }
 
+        // Only when the CLIENT placed this themselves — a staff member
+        // ordering on a client's behalf already knows about it.
+        if (!$isStaff) {
+            try {
+                $staff = \App\Models\User::withPermission($tenantId, 'orders.create');
+                if ($staff->isNotEmpty()) {
+                    \Illuminate\Support\Facades\Notification::send(
+                        $staff,
+                        new \App\Notifications\OrderPlacedNotification($document, $product->name),
+                    );
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         return response()->json([
             'data'    => [
                 'subscription_id' => $subscription->id,

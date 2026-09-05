@@ -1,3 +1,4 @@
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart'
@@ -35,6 +36,7 @@ import 'features/crm/satisfaction_calls_screen.dart';
 import 'features/crm/served_customers_screen.dart';
 import 'features/documents/documents_tab.dart' show UnpaidInvoicesScreen;
 import 'features/home/home_screen.dart';
+import 'features/notifications/notifications_screen.dart';
 import 'features/hr/leave_screen.dart';
 import 'features/hr/payroll_screen.dart';
 import 'features/ops/add_order_screen.dart';
@@ -92,6 +94,19 @@ abstract final class Routes {
   static String ticketPath(String id) => '/tickets/$id';
 }
 
+/// The key for go_router's own page Navigator.
+///
+/// `AppChrome` (installed via `MaterialApp.builder`) sits *outside* this
+/// Navigator in the widget tree — the builder's `child` parameter, which
+/// contains go_router's Router (and the Navigator it manages), is rendered
+/// as a *descendant* of `AppChrome`'s own position, not an ancestor of it.
+/// So `Navigator.of(appChromeContext, rootNavigator: true)` can never find
+/// it: `Navigator.of` only walks up the tree, and this Navigator lives
+/// below, not above. Holding an explicit key here lets `AppChrome` reach
+/// the real page Navigator directly, e.g. to dismiss a bottom sheet before
+/// switching tabs.
+final rootNavigatorKey = GlobalKey<NavigatorState>();
+
 final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   // `.notifier`, not the provider itself: watching a ChangeNotifierProvider
   // rebuilds this provider on every notifyListeners(), which replaced the
@@ -103,6 +118,7 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
   final session = ref.watch(sessionControllerProvider.notifier);
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: Routes.splash,
     refreshListenable: session,
     redirect: (context, state) {
@@ -160,6 +176,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.home,
         builder: (context, state) => const HomeScreen(),
+      ),
+      GoRoute(
+        path: '/notifications',
+        builder: (context, state) => const NotificationsScreen(),
       ),
 
       // ── Platform super-admin shell ─────────────────────────────────────

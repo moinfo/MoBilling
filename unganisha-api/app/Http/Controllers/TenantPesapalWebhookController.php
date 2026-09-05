@@ -144,6 +144,20 @@ class TenantPesapalWebhookController extends Controller
             Log::warning('Tenant Pesapal: receipt notification failed', ['error' => $e->getMessage()]);
         }
 
+        // No staff member did anything here — an online gateway payment
+        // landing with nobody watching is exactly the case worth alerting on.
+        try {
+            $staff = \App\Models\User::withPermission($doc->tenant_id, 'payments_in.read');
+            if ($staff->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send(
+                    $staff,
+                    new \App\Notifications\PaymentReceivedNotification($paymentIn, $doc),
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Tenant Pesapal: staff payment notification failed', ['error' => $e->getMessage()]);
+        }
+
         Log::info('Tenant Pesapal: invoice payment completed', [
             'document_id' => $doc->id,
             'amount' => $payment->amount,

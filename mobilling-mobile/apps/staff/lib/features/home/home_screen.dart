@@ -7,6 +7,7 @@ import '../../navigation/tabs.dart';
 import '../../providers.dart';
 import '../auth/account_sheet.dart';
 import '../auth/session_expired_sheet.dart';
+import '../notifications/notification_bell.dart';
 import 'app_drawer.dart';
 
 /// The staff shell. Tabs are filtered by the signed-in user's role
@@ -76,9 +77,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         edge: tab != 0,
         trailing: user == null
             ? null
-            : InkAvatar(
-                name: user.name,
-                onTap: () => AccountSheet.show(context),
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const NotificationBellButton(),
+                  const SizedBox(width: Spacing.sm),
+                  InkAvatar(
+                    name: user.name,
+                    onTap: () => AccountSheet.show(context),
+                  ),
+                ],
               ),
       ),
       body: IndexedStack(

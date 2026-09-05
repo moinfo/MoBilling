@@ -22,6 +22,9 @@ class SmsPurchaseController extends Controller
         ]);
     }
 
+    /** Below this, staff gets pinged (at most once a day) to top up. */
+    private const LOW_BALANCE_THRESHOLD = 50;
+
     public function balance()
     {
         $tenant = auth()->user()->tenant;
@@ -35,16 +38,49 @@ class SmsPurchaseController extends Controller
         try {
             $reseller = new ResellerService();
             $result = $reseller->getBalance($tenant);
+            $balance = $result['data']['sms_balance'] ?? $result['sms_balance'] ?? 0;
+
+            $this->maybeAlertLowBalance($tenant, (int) $balance);
 
             return response()->json([
                 'data' => [
-                    'sms_balance' => $result['data']['sms_balance'] ?? $result['sms_balance'] ?? 0,
+                    'sms_balance' => $balance,
                 ],
             ]);
         } catch (\Throwable $e) {
             return response()->json([
                 'data' => ['sms_balance' => null, 'error' => $e->getMessage()],
             ]);
+        }
+    }
+
+    /**
+     * `Cache::add` only succeeds the first time the key is set, so this
+     * fires the alert on the first low-balance check of the day and is a
+     * no-op on every check after that — a page that polls this endpoint
+     * repeatedly can't spam staff.
+     */
+    private function maybeAlertLowBalance(\App\Models\Tenant $tenant, int $balance): void
+    {
+        if ($balance >= self::LOW_BALANCE_THRESHOLD) {
+            return;
+        }
+
+        $key = "sms_low_balance_alert:{$tenant->id}";
+        if (!\Illuminate\Support\Facades\Cache::add($key, true, now()->addDay())) {
+            return;
+        }
+
+        try {
+            $staff = User::withPermission($tenant->id, 'menu.sms');
+            if ($staff->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send(
+                    $staff,
+                    new \App\Notifications\SmsLowBalanceNotification($tenant, $balance),
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::warning('SMS low balance notification failed', ['error' => $e->getMessage()]);
         }
     }
 
@@ -113,6 +149,18 @@ class SmsPurchaseController extends Controller
             ]);
 
             $purchase->update(['status' => 'failed']);
+
+            try {
+                $staff = User::withPermission(auth()->user()->tenant_id, 'menu.sms');
+                if ($staff->isNotEmpty()) {
+                    \Illuminate\Support\Facades\Notification::send(
+                        $staff,
+                        new \App\Notifications\SmsPurchaseFailedNotification($purchase),
+                    );
+                }
+            } catch (\Throwable $notifyError) {
+                Log::warning('SMS purchase-failed notification failed', ['error' => $notifyError->getMessage()]);
+            }
 
             return response()->json([
                 'message' => 'Failed to initiate Pesapal payment. Please try again.',

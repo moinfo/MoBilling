@@ -70,15 +70,22 @@ class AppChrome extends ConsumerWidget {
           selectedIndex: index.clamp(0, tabs.length - 1),
           onSelected: (i) {
             onSelect(i);
-            // A sheet or dialog is pushed imperatively onto this same
-            // Navigator, outside GoRouter's declarative page list — so
-            // `router.go` below swaps the page underneath it without ever
-            // closing it. Left open, it keeps covering the new page and
-            // swallowing every tap, including this one on a second press.
-            Navigator.of(
-              context,
-              rootNavigator: true,
-            ).popUntil((route) => route is! PopupRoute);
+            // A sheet or dialog is pushed imperatively onto GoRouter's page
+            // Navigator, outside its declarative page list — so `router.go`
+            // below swaps the page underneath it without ever closing it.
+            // Left open, it keeps covering the new page and swallowing every
+            // tap, including this one on a second press.
+            //
+            // This must go through `rootNavigatorKey`, not
+            // `Navigator.of(context, rootNavigator: true)`: `context` here
+            // is `AppChrome`'s own — installed via `MaterialApp.builder`, it
+            // sits *outside* go_router's Navigator (which is rendered inside
+            // the `child` this widget was handed, i.e. below this context in
+            // the tree, not above it). `Navigator.of` only searches
+            // ancestors, so from here it can never find that Navigator.
+            rootNavigatorKey.currentState?.popUntil(
+              (route) => route is! PopupRoute,
+            );
             // From a pushed screen this is also the way back: switching
             // section should land on that section, not stack it on top of
             // whatever the user was reading.

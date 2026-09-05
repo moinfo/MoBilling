@@ -55,6 +55,22 @@ class User extends Authenticatable implements CanResetPasswordContract
         return $this->belongsTo(Role::class);
     }
 
+    /**
+     * Active staff in [tenantId] whose role grants [permission] — the "who
+     * should hear about this" resolver for business-event notifications that
+     * have no single obvious recipient (an assignee, a supervisor). Mirrors
+     * the query TicketController::staffToNotify already used ad hoc, pulled
+     * out here so new notification call sites don't each reinvent it.
+     */
+    public static function withPermission(string $tenantId, string $permission)
+    {
+        return static::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->whereHas('role.permissions', fn ($q) => $q->where('name', $permission))
+            ->get();
+    }
+
     public function supervisor()
     {
         return $this->belongsTo(User::class, 'supervisor_id');

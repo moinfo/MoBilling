@@ -209,6 +209,8 @@ class PortalHostingController extends Controller
         if ($charge <= 0) {
             $svc->apply($sub, $new);
 
+            $this->notifyStaffOfUpgrade($user->tenant_id, $hostingAccount, "Changed to {$new->name} (no charge)");
+
             return response()->json([
                 'message' => "Plan changed to {$new->name} — your hosting package is being updated now.",
             ]);
@@ -261,10 +263,36 @@ class PortalHostingController extends Controller
             return $document;
         });
 
+        $this->notifyStaffOfUpgrade(
+            $user->tenant_id,
+            $hostingAccount,
+            "Upgrade to {$new->name} requested — invoice {$document->document_number}",
+            $document,
+        );
+
         return response()->json([
             'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
             'message' => "Upgrade invoice {$document->document_number} created (Tsh." . number_format($total, 2) . ' prorated) — the upgrade applies automatically when it is paid.',
         ], 201);
+    }
+
+    private function notifyStaffOfUpgrade(
+        string $tenantId,
+        HostingAccount $hostingAccount,
+        string $summary,
+        ?\App\Models\Document $document = null,
+    ): void {
+        try {
+            $staff = \App\Models\User::withPermission($tenantId, 'hosting.change_package');
+            if ($staff->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send(
+                    $staff,
+                    new \App\Notifications\HostingUpgradeRequestedNotification($hostingAccount, $summary, $document),
+                );
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /** Change the cPanel password (portal admins only). */

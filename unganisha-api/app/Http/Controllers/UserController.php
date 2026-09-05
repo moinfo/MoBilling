@@ -137,6 +137,20 @@ class UserController extends Controller
 
         $token = $user->createToken('impersonation')->plainTextToken;
 
+        try {
+            $actor = auth()->user();
+            $others = User::withPermission($actor->tenant_id, 'settings.users')
+                ->reject(fn ($u) => $u->id === $actor->id);
+            if ($others->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send(
+                    $others,
+                    new \App\Notifications\ImpersonationUsedNotification($actor, $user),
+                );
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Impersonation-used notification failed', ['error' => $e->getMessage()]);
+        }
+
         return response()->json([
             'user'                => new UserResource($user->load('role')),
             'token'               => $token,
