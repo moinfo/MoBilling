@@ -64,11 +64,35 @@ class TokenStore {
   Future<void> setBiometricLock(bool enabled) =>
       _storage.write(key: _biometricKey, value: enabled ? '1' : '0');
 
+  static const _pinKey = 'mobilling.auth.pin_lock';
+
+  /// The 4-digit unlock PIN, held in the clear.
+  ///
+  /// This sits in the same keystore-backed store as the bearer token itself
+  /// (Android EncryptedSharedPreferences / iOS Keychain) — a plaintext PIN
+  /// there is no weaker than the plaintext token already is, so hashing it
+  /// would add a dependency for no real gain. It never leaves the device and
+  /// is never sent to the server: this is a *local* unlock, exactly like
+  /// [readBiometricLock], not an alternative sign-in credential.
+  Future<bool> readPinLock() async {
+    final pin = await _storage.read(key: _pinKey);
+    return pin != null && pin.isNotEmpty;
+  }
+
+  /// Set (non-null) or clear (null) the unlock PIN.
+  Future<void> setPin(String? pin) => pin == null
+      ? _storage.delete(key: _pinKey)
+      : _storage.write(key: _pinKey, value: pin);
+
+  Future<bool> verifyPin(String pin) async =>
+      pin.isNotEmpty && await _storage.read(key: _pinKey) == pin;
+
   Future<void> clear() async {
     _cachedToken = null;
     _loaded = true;
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userTypeKey);
     await _storage.delete(key: _biometricKey);
+    await _storage.delete(key: _pinKey);
   }
 }
