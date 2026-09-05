@@ -49,11 +49,16 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
     final query = _query;
     final dashboard = ref.watch(dashboardProvider(query));
     final status = context.statusColors;
-    final canFilterMonth =
-        ref.watch(sessionControllerProvider).session?.can(
-              'dashboard.month_filter',
-            ) ??
-        false;
+    final session = ref.watch(sessionControllerProvider).session;
+    final canFilterMonth = session?.can('dashboard.month_filter') ?? false;
+    // `/attendance/mine` and the dashboard's `staff_penalties` field both
+    // come back unconditionally from the backend — web gates them
+    // client-side (`MyMonth`'s `showAttendance`/`showDeductions` props,
+    // `Dashboard.tsx`'s `can('dashboard.my_report_deductions') ? ... : null`)
+    // rather than the server omitting them, so this app must do the same.
+    final canMyAttendance = session?.can('dashboard.my_attendance') ?? false;
+    final canMyReportDeductions =
+        session?.can('dashboard.my_report_deductions') ?? false;
 
     return dashboard.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -185,12 +190,14 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                     children: [
                       // Riding over the ink, the card needs no eyebrow — it
                       // carries its own TODAY label.
-                      if (overlap)
-                        const _RaisedFirst(child: _AttendanceCard())
-                      else ...[
-                        const SectionHeader('My attendance'),
-                        const SizedBox(height: Spacing.sm),
-                        const _AttendanceCard(),
+                      if (canMyAttendance) ...[
+                        if (overlap)
+                          const _RaisedFirst(child: _AttendanceCard())
+                        else ...[
+                          const SectionHeader('My attendance'),
+                          const SizedBox(height: Spacing.sm),
+                          const _AttendanceCard(),
+                        ],
                       ],
                       if (counts.isNotEmpty) ...[
                         const SizedBox(height: Spacing.lg),
@@ -199,7 +206,8 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                         StatRail(items: counts),
                       ],
                       // Personal, not company-wide: the one block about the reader.
-                      if (d.penalties != null &&
+                      if (canMyReportDeductions &&
+                          d.penalties != null &&
                           d.penalties!.countThisMonth > 0) ...[
                         const SizedBox(height: Spacing.md),
                         const SectionHeader('My deductions'),
