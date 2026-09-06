@@ -38,6 +38,7 @@ export const STOREFRONT: StorefrontCategory[] = [
       { slug: 'professional', product: 'Web Hosting Professional' },
       { slug: 'premier', product: 'Web Hosting Premier' },
       { slug: 'plus', product: 'Web Hosting Plus' },
+      { slug: 'kitonga', product: 'Kitonga Web Hosting' },
     ],
   },
   {
@@ -49,6 +50,7 @@ export const STOREFRONT: StorefrontCategory[] = [
       { slug: 'medium', product: 'Business Email Medium' },
       { slug: 'premier', product: 'Business Email Premier' },
       { slug: 'plus', product: 'Business Email Plus' },
+      { slug: 'kitonga', product: 'Kitonga Business Email' },
     ],
   },
   {
