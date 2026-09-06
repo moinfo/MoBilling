@@ -29,6 +29,17 @@ myAttendanceReportProvider = FutureProvider.autoDispose
           .myAttendanceReport(month: month.month, year: month.year),
     );
 
+/// GET /staff-reports/my-penalties — my own late-report charges, for any
+/// month; the dashboard's own `staff_penalties` field is always the current
+/// month, so the month-filterable "Deducted" ledger fetches this instead.
+final AutoDisposeFutureProviderFamily<StaffPenalties, MonthKey>
+myPenaltiesProvider = FutureProvider.autoDispose
+    .family<StaffPenalties, MonthKey>(
+      (ref, month) => ref
+          .watch(staffSelfServiceProvider)
+          .myPenalties(month: month.month, year: month.year),
+    );
+
 /// GET /attendance/day, keyed by `Y-m-d`. Needs `attendance.manage`.
 final AutoDisposeFutureProviderFamily<AttendanceBoard, String>
 attendanceBoardProvider = FutureProvider.autoDispose

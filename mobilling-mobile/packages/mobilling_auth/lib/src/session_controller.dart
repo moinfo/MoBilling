@@ -93,9 +93,11 @@ class SessionController extends ChangeNotifier {
       return;
     }
 
-    // A biometric-locked session waits for the device to vouch for the
-    // person before the token goes anywhere near the network.
-    if (!unlocked && await _tokens.readBiometricLock()) {
+    // A biometric- or PIN-locked session waits for the device (or the PIN)
+    // to vouch for the person before the token goes anywhere near the
+    // network.
+    if (!unlocked &&
+        (await _tokens.readBiometricLock() || await _tokens.readPinLock())) {
       _setStatus(SessionStatus.locked);
       return;
     }
@@ -144,6 +146,20 @@ class SessionController extends ChangeNotifier {
       _tokens.setBiometricLock(enabled);
 
   Future<bool> biometricLockEnabled() => _tokens.readBiometricLock();
+
+  /// Require (or stop requiring) a 4-digit PIN before the stored token is
+  /// used on the next launch. Pass null to turn the PIN lock off.
+  Future<void> setPinLock(String? pin) => _tokens.setPin(pin);
+
+  Future<bool> pinLockEnabled() => _tokens.readPinLock();
+
+  /// Check [pin] against the stored one and, if it matches, use the locked
+  /// token. False on a wrong PIN — the caller stays on the lock screen.
+  Future<bool> unlockWithPin(String pin) async {
+    if (!await _tokens.verifyPin(pin)) return false;
+    await unlock();
+    return true;
+  }
 
   Future<LoginOutcome> login({
     required String identifier,

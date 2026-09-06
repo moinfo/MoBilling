@@ -11,6 +11,7 @@ import '../../providers.dart';
 import '../portal/portal_routes.dart';
 import 'biometrics.dart';
 import 'forgot_password_screen.dart';
+import 'pin_lock.dart';
 import 'two_factor_login_sheet.dart';
 
 /// The single sign-in for all three audiences.
@@ -47,10 +48,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _unlocking = false;
   bool _autoPrompted = false;
 
+  /// Whether this device has a PIN lock set up — decides whether the
+  /// "Unlock with PIN" control appears at all.
+  bool _pinLockEnabled = false;
+
+  bool get _sessionLocked =>
+      ref.read(sessionControllerProvider).status == SessionStatus.locked;
+
   @override
   void initState() {
     super.initState();
     _probeBiometrics();
+    _probePinLock();
   }
 
   Future<void> _probeBiometrics() async {
@@ -64,12 +73,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
     // A locked session opens straight onto the system prompt — the button
     // stays for a retry after a cancel.
-    if (available &&
-        !_autoPrompted &&
-        ref.read(sessionControllerProvider).status == SessionStatus.locked) {
+    if (available && !_autoPrompted && _sessionLocked) {
       _autoPrompted = true;
       await _unlockWithBiometrics();
     }
+  }
+
+  Future<void> _probePinLock() async {
+    final enabled = await ref.read(sessionControllerProvider).pinLockEnabled();
+    if (!mounted) return;
+    setState(() => _pinLockEnabled = enabled);
+  }
+
+  Future<void> _pinUnlockTap() async {
+    if (!_pinLockEnabled) return;
+    await showPinUnlockSheet(context, ref.read(sessionControllerProvider));
   }
 
   Future<void> _unlockWithBiometrics() async {
@@ -145,6 +163,52 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (enable ?? false) await session.setBiometricLock(true);
   }
 
+  /// Once, after a password sign-in: offer the best quick-unlock this
+  /// device can do. Biometrics first where available — a fingerprint or
+  /// Face ID tap beats typing a PIN — and a 4-digit PIN otherwise, so a
+  /// device with no sensor enrolled still gets a faster path than the full
+  /// password every time.
+  Future<void> _offerQuickUnlock() async {
+    if (_biometricsAvailable) {
+      await _offerBiometrics();
+      return;
+    }
+    await _offerPinSetup();
+  }
+
+  Future<void> _offerPinSetup() async {
+    final session = ref.read(sessionControllerProvider);
+    if (await session.pinLockEnabled()) return;
+    if (!mounted) return;
+    final enable = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.pin_outlined),
+        title: const Text('Set a PIN for quick access?'),
+        content: const Text(
+          'You stay signed in, and a 4-digit PIN opens MoBilling next time '
+          'instead of your password.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Set PIN'),
+          ),
+        ],
+      ),
+    );
+    if (!(enable ?? false) || !mounted) return;
+    final pin = await showPinSetupSheet(context);
+    if (pin != null) {
+      await session.setPinLock(pin);
+      if (mounted) setState(() => _pinLockEnabled = true);
+    }
+  }
+
   /// Recovery carries whatever identifier is already typed, so the first
   /// step is usually already filled in.
   void _forgotPassword() {
@@ -191,7 +255,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         case LoginSucceeded():
           // No navigation here — the router redirects off the session, and
           // picks the shell from user_type + role.
-          await _offerBiometrics();
+          await _offerQuickUnlock();
         case LoginNeedsTwoFactor(:final challengeId, :final message):
           // The password was right; the session does not exist until the
           // second factor is accepted, so nothing is adopted until then.
@@ -200,7 +264,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             challengeId: challengeId,
             message: message,
           );
-          if (signedIn && mounted) await _offerBiometrics();
+          if (signedIn && mounted) await _offerQuickUnlock();
         case LoginNeedsOtp(:final challenge):
           // 449: a known client without a portal login. The code is already
           // sent, so go straight to the code step.
@@ -315,6 +379,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         busy: _unlocking,
                         onPressed: _biometricTap,
                       ),
+                      // Unlike the fingerprint button, this only makes sense
+                      // once there is something to unlock — PIN setup itself
+                      // happens right after a password sign-in, not from a
+                      // button here.
+                      onPinUnlock: _sessionLocked && _pinLockEnabled
+                          ? _pinUnlockTap
+                          : null,
                     ),
                   ),
                 ),
@@ -400,10 +471,14 @@ class _FormCard extends StatelessWidget {
     required this.onEdited,
     required this.onForgotPassword,
     this.biometric,
+    this.onPinUnlock,
   });
 
   /// Present only while a biometric-locked session is waiting.
   final _BiometricAction? biometric;
+
+  /// Present only while a PIN-locked session is waiting for its PIN.
+  final VoidCallback? onPinUnlock;
 
   final GlobalKey<FormState> formKey;
   final TextEditingController identifier;
@@ -514,7 +589,7 @@ class _FormCard extends StatelessWidget {
                 busy: submitting,
                 onPressed: submitting ? null : onSubmit,
               ),
-              if (biometric != null) ...[
+              if (biometric != null || onPinUnlock != null) ...[
                 const SizedBox(height: Spacing.md),
                 Row(
                   children: [
@@ -532,7 +607,34 @@ class _FormCard extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: Spacing.md),
-                _FingerprintButton(action: biometric!),
+                if (biometric != null) _FingerprintButton(action: biometric!),
+                if (biometric != null && onPinUnlock != null)
+                  const SizedBox(height: Spacing.sm),
+                if (onPinUnlock != null)
+                  SizedBox(
+                    height: 50,
+                    child: OutlinedButton.icon(
+                      onPressed: onPinUnlock,
+                      style: OutlinedButton.styleFrom(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(Radii.md),
+                        ),
+                        side: BorderSide(color: scheme.outline),
+                      ),
+                      icon: const Icon(
+                        Icons.pin_outlined,
+                        size: 22,
+                        color: Brand.settled,
+                      ),
+                      label: Text(
+                        'Unlock with PIN',
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ],
           ),
