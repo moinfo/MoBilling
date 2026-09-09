@@ -123,6 +123,12 @@ Route::post('/pay/{document}/checkout', [InvoicePaymentController::class, 'check
 Route::get('/pay/{document}/status/{payment}', [InvoicePaymentController::class, 'status']);
 Route::get('/pay/status/by-tracking', [InvoicePaymentController::class, 'statusByTracking']);
 
+// Public WiFi hotspot voucher checkout (walk-in buyer, no account, no auth)
+Route::get('/public/wifi/{router}', [\App\Http\Controllers\Public\WifiCheckoutController::class, 'show']);
+Route::post('/public/wifi/{router}/checkout', [\App\Http\Controllers\Public\WifiCheckoutController::class, 'checkout'])
+    ->middleware('throttle:10,1');
+Route::get('/public/wifi/purchases/{purchase}', [\App\Http\Controllers\Public\WifiCheckoutController::class, 'status']);
+
 // Self-hosted license check-in (no auth — called by an external install, not a logged-in browser)
 Route::post('/license/validate', [\App\Http\Controllers\LicenseValidationController::class, 'validate'])
     ->middleware('throttle:30,1');
@@ -423,6 +429,22 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:system_records.create')->post('/system-records', [SystemRecordController::class, 'store']);
     Route::middleware('permission:system_records.update')->put('/system-records/{system_record}', [SystemRecordController::class, 'update']);
     Route::middleware('permission:system_records.delete')->delete('/system-records/{system_record}', [SystemRecordController::class, 'destroy']);
+
+    Route::middleware('permission:wifi_routers.read')->get('/mikrotik-routers', [\App\Http\Controllers\MikrotikRouterController::class, 'index']);
+    Route::middleware('permission:wifi_routers.read')->get('/mikrotik-routers/{mikrotik_router}', [\App\Http\Controllers\MikrotikRouterController::class, 'show']);
+    Route::middleware('permission:wifi_routers.create')->post('/mikrotik-routers', [\App\Http\Controllers\MikrotikRouterController::class, 'store']);
+    Route::middleware('permission:wifi_routers.update')->put('/mikrotik-routers/{mikrotik_router}', [\App\Http\Controllers\MikrotikRouterController::class, 'update']);
+    Route::middleware('permission:wifi_routers.delete')->delete('/mikrotik-routers/{mikrotik_router}', [\App\Http\Controllers\MikrotikRouterController::class, 'destroy']);
+    Route::middleware('permission:wifi_routers.update')->post('/mikrotik-routers/{mikrotik_router}/test', [\App\Http\Controllers\MikrotikRouterController::class, 'test']);
+
+    Route::middleware('permission:wifi_plans.read')->get('/wifi-plans', [\App\Http\Controllers\WifiPlanController::class, 'index']);
+    Route::middleware('permission:wifi_plans.read')->get('/wifi-plans/{wifi_plan}', [\App\Http\Controllers\WifiPlanController::class, 'show']);
+    Route::middleware('permission:wifi_plans.create')->post('/wifi-plans', [\App\Http\Controllers\WifiPlanController::class, 'store']);
+    Route::middleware('permission:wifi_plans.update')->put('/wifi-plans/{wifi_plan}', [\App\Http\Controllers\WifiPlanController::class, 'update']);
+    Route::middleware('permission:wifi_plans.delete')->delete('/wifi-plans/{wifi_plan}', [\App\Http\Controllers\WifiPlanController::class, 'destroy']);
+
+    Route::middleware('permission:wifi_purchases.read')->get('/wifi-voucher-purchases', [\App\Http\Controllers\WifiVoucherPurchaseController::class, 'index']);
+    Route::middleware('permission:wifi_purchases.read')->get('/wifi-voucher-purchases/{wifi_voucher_purchase}', [\App\Http\Controllers\WifiVoucherPurchaseController::class, 'show']);
 
     // System Verifications — admin CRUD on registered systems
     Route::middleware('permission:system_verifications.read')->get('/system-verifications', [SystemVerificationController::class, 'index']);

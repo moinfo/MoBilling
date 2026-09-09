@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\Wifi\ProvisionWifiVoucherJob;
 use App\Models\Document;
 use App\Models\PaymentIn;
 use App\Models\PesapalInvoicePayment;
+use App\Models\WifiVoucherPurchase;
 use App\Services\SubscriptionActivationService;
 use App\Services\TenantPesapalService;
 use Illuminate\Http\Request;
@@ -35,6 +37,13 @@ class TenantPesapalWebhookController extends Controller
             ->first();
 
         if (!$payment) {
+            // Not an invoice payment — maybe a WiFi voucher sale instead
+            // (a separate, no-Document/no-Client walk-in purchase).
+            $voucherPurchase = WifiVoucherPurchase::where('order_tracking_id', $orderTrackingId)->first();
+            if ($voucherPurchase) {
+                return $this->handleWifiVoucherIpn($voucherPurchase);
+            }
+
             Log::warning('Tenant Pesapal IPN: payment not found', compact('orderTrackingId', 'orderMerchantReference'));
             return response()->json(['status' => 'error', 'message' => 'Payment not found'], 404);
         }
@@ -162,6 +171,70 @@ class TenantPesapalWebhookController extends Controller
             'document_id' => $doc->id,
             'amount' => $payment->amount,
             'new_status' => $doc->status,
+        ]);
+    }
+
+    /**
+     * IPN handling for a WifiVoucherPurchase — same verify-then-complete
+     * shape as the invoice-payment path above, but there's no Document,
+     * no Client, and completion means provisioning a hotspot user rather
+     * than recording a PaymentIn.
+     */
+    private function handleWifiVoucherIpn(WifiVoucherPurchase $purchase)
+    {
+        if ($purchase->status !== 'pending') {
+            return response()->json(['status' => 'ok']);
+        }
+
+        $tenant = $purchase->tenant()->withoutGlobalScopes()->first();
+        if (!$tenant || !$tenant->pesapal_consumer_key) {
+            Log::error('Tenant Pesapal IPN: tenant credentials missing for wifi voucher', ['purchase_id' => $purchase->id]);
+            return response()->json(['status' => 'error'], 500);
+        }
+
+        try {
+            $pesapal = new TenantPesapalService($tenant);
+            $status = $pesapal->getTransactionStatus($purchase->order_tracking_id);
+        } catch (\Throwable $e) {
+            Log::error('Tenant Pesapal IPN: wifi voucher status check failed', [
+                'purchase_id' => $purchase->id,
+                'error'       => $e->getMessage(),
+            ]);
+            return response()->json(['status' => 'error'], 500);
+        }
+
+        $statusCode = $status['status_code'] ?? null;
+        $description = $status['payment_status_description'] ?? null;
+
+        $purchase->update([
+            'payment_status_description' => $description,
+            'payment_method_used'        => $status['payment_method'] ?? null,
+            'confirmation_code'          => $status['confirmation_code'] ?? null,
+            'gateway_response'           => $status,
+        ]);
+
+        if ($statusCode == 1 && strtolower($description ?? '') === 'completed') {
+            $this->processWifiVoucherCompleted($purchase);
+        } elseif (in_array($statusCode, [2, 3])) {
+            $purchase->update(['status' => 'failed']);
+        }
+
+        return response()->json(['status' => 'ok']);
+    }
+
+    private function processWifiVoucherCompleted(WifiVoucherPurchase $purchase): void
+    {
+        if ($purchase->status !== 'pending') {
+            return;
+        }
+
+        $purchase->update(['status' => 'completed', 'completed_at' => now()]);
+
+        ProvisionWifiVoucherJob::dispatch($purchase);
+
+        Log::info('Tenant Pesapal: wifi voucher purchase completed', [
+            'purchase_id' => $purchase->id,
+            'amount'      => $purchase->amount,
         ]);
     }
 }

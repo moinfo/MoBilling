@@ -60,6 +60,9 @@ import TemplatesAdmin from './pages/admin/Templates';
 import ExpenseCategories from './pages/ExpenseCategories';
 import Expenses from './pages/Expenses';
 import SystemRecords from './pages/SystemRecords';
+import WifiRouters from './pages/WifiRouters';
+import WifiPlans from './pages/WifiPlans';
+import WifiVoucherPurchases from './pages/WifiVoucherPurchases';
 // SystemVerifications is now mounted as a tab inside Settings.tsx — no standalone route.
 import MyVerifications from './pages/MyVerifications';
 // Systems, Bank Accounts, System Properties are now accessed via the
@@ -140,6 +143,7 @@ import SubscriptionExpired from './pages/SubscriptionExpired';
 import LicenseInactive from './pages/LicenseInactive';
 import PesapalCallback from './pages/PesapalCallback';
 import PayInvoice from './pages/PayInvoice';
+import WifiCheckout from './pages/public/WifiCheckout';
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -174,6 +178,8 @@ export default function App() {
                 <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/pesapal/callback" element={<PesapalCallback />} />
                 <Route path="/pay/:id" element={<PayInvoice />} />
+                <Route path="/wifi/:routerId" element={<WifiCheckout />} />
+                <Route path="/wifi/:routerId/status/:purchaseId" element={<WifiCheckout />} />
 
                 {/* Subscription expired (standalone, no sidebar) */}
                 <Route
@@ -255,6 +261,9 @@ export default function App() {
                   <Route path="/expenses" element={<Expenses />} />
                   <Route path="/petty-cash" element={<PettyCash />} />
                   <Route path="/system-records" element={<SystemRecords />} />
+                  <Route path="/wifi-routers" element={<WifiRouters />} />
+                  <Route path="/wifi-plans" element={<WifiPlans />} />
+                  <Route path="/wifi-voucher-purchases" element={<WifiVoucherPurchases />} />
                   <Route path="/my-verifications" element={<MyVerifications />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/users/:userId/profile" element={<UserProfile />} />

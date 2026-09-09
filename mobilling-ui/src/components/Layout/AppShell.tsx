@@ -12,7 +12,7 @@ import {
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
-  IconDatabase, IconShoppingCart, IconDeviceLaptop, IconBuildingBank,
+  IconDatabase, IconShoppingCart, IconDeviceLaptop, IconBuildingBank, IconWifi, IconRouter, IconTicket,
   IconCalendarTime, IconMoneybag, IconUserCog,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -99,6 +99,7 @@ export default function AppLayout() {
   const showSupport = canAny(['menu.tickets', 'menu.announcements']);
   const showEngagement = canAny(['menu.satisfaction_calls', 'menu.whatsapp', 'menu.field_marketing', 'menu.social_media', 'menu.served_customers']);
   const showRecords = canAny(['menu.system_records', 'menu.my_verifications', 'menu.report_balance_statement']);
+  const showWifi = can('menu.wifi_hotspot');
   const showComms = canAny(['menu.sms', 'menu.broadcast', 'menu.announcements']);
   const showAccount = canAny(['menu.subscription', 'menu.users', 'menu.roles', 'settings.users', 'menu.settings']);
 
@@ -394,6 +395,24 @@ export default function AppLayout() {
               {/* System Verifications (admin CRUD) lives inside Settings → tab.
                   See pages/Settings.tsx — it's gated by menu.system_verifications
                   which is admin-only after 2026_06_10_100003. */}
+            </NavLink>
+          )}
+
+          {showWifi && (
+            <NavLink label="WiFi Hotspot" leftSection={<IconWifi size={18} />}
+              opened={openSection === 'wifi'} onChange={() => toggleSection('wifi')}>
+              {can('wifi_routers.read') && (
+                <NavLink label="Routers" leftSection={<IconRouter size={16} />}
+                  active={isActive('/wifi-routers')} onClick={() => navigateAndClose('/wifi-routers')} />
+              )}
+              {can('wifi_plans.read') && (
+                <NavLink label="Plans" leftSection={<IconWifi size={16} />}
+                  active={isActive('/wifi-plans')} onClick={() => navigateAndClose('/wifi-plans')} />
+              )}
+              {can('wifi_purchases.read') && (
+                <NavLink label="Voucher Sales" leftSection={<IconTicket size={16} />}
+                  active={isActive('/wifi-voucher-purchases')} onClick={() => navigateAndClose('/wifi-voucher-purchases')} />
+              )}
             </NavLink>
           )}
 
