@@ -445,13 +445,13 @@ function NameserversSection({ domainId, isPortalAdmin }: { domainId: string; isP
         <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">Fetching live from the registry…</Text></Group>
       ) : isError ? (
         <Alert color="orange" variant="light">Could not reach the registry — please try again shortly.</Alert>
-      ) : !ns || ns.nameservers.length === 0 ? (
+      ) : !editing && (!ns || ns.nameservers.length === 0) ? (
         <Alert color="blue" variant="light">
           No nameservers are recorded for this domain — please contact us if your website is not working.
         </Alert>
       ) : !editing ? (
         <Stack gap={6}>
-          {ns.nameservers.map((n, i) => (
+          {ns!.nameservers.map((n, i) => (
             <Group key={n} gap="xs">
               <Text size="sm" c="dimmed" w={40}>NS{i + 1}</Text>
               <Code fz="sm">{n}</Code>
