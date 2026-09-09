@@ -111,7 +111,11 @@ export default function PortalDomainDetails() {
       <Group gap="xs">
         <IconWorld size={22} />
         <Title order={3}>{d.name}</Title>
-        <Badge color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
+        {d.awaiting_manual_registration ? (
+          <Badge color="orange" variant="light">Setting Up</Badge>
+        ) : (
+          <Badge color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
+        )}
       </Group>
 
       <Grid gutter="md">
@@ -184,7 +188,11 @@ export default function PortalDomainDetails() {
                       <Field label="Registration Date:">{fmtFull(d.registered_at)}</Field>
                       <Field label="Next Due Date:">{fmtFull(d.expires_at)}</Field>
                       <Field label="Status:">
-                        <Badge color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
+                        {d.awaiting_manual_registration ? (
+                          <Badge color="orange" variant="light">Setting Up</Badge>
+                        ) : (
+                          <Badge color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
+                        )}
                       </Field>
                     </Stack>
                   </Grid.Col>

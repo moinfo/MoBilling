@@ -38,6 +38,7 @@ class PortalDomainController extends Controller
                 'auto_renew'     => $d->auto_renew || (bool) ($d->meta['manual_auto_renew_requested'] ?? false),
                 'expiring_soon'  => $d->status === 'active' && $d->expires_at && $d->expires_at->lte($soonCutoff),
                 'unmanaged'      => (bool) ($d->meta['unmanaged'] ?? false),
+                'awaiting_manual_registration' => (bool) ($d->meta['awaiting_manual_registration'] ?? false),
                 'ssl_valid'      => $d->meta['ssl_valid'] ?? null,
                 'ssl_expires_at' => $d->meta['ssl_expires_at'] ?? null,
             ])->values(),
@@ -86,6 +87,7 @@ class PortalDomainController extends Controller
             'expires_at'     => $domain->expires_at?->toDateString(),
             'auto_renew'     => $domain->auto_renew || (bool) ($meta['manual_auto_renew_requested'] ?? false),
             'unmanaged'      => (bool) ($meta['unmanaged'] ?? false),
+            'awaiting_manual_registration' => (bool) ($meta['awaiting_manual_registration'] ?? false),
             'billing'        => [
                 'first_payment'  => $firstPayment !== null ? (float) $firstPayment : null,
                 'recurring'      => $recurring !== null ? (float) $recurring : null,

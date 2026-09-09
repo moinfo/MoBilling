@@ -248,6 +248,7 @@ export interface PortalDomain {
   auto_renew: boolean;
   expiring_soon: boolean;
   unmanaged: boolean;
+  awaiting_manual_registration: boolean;
   ssl_valid: boolean | null;
   ssl_expires_at: string | null;
 }
@@ -273,6 +274,7 @@ export interface PortalDomainDetail {
   expires_at: string | null;
   auto_renew: boolean;
   unmanaged: boolean;
+  awaiting_manual_registration: boolean;
   billing: {
     first_payment: number | null;
     recurring: number | null;

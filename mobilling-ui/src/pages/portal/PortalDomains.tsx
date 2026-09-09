@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Group, Text,
-  SimpleGrid, Modal, TextInput, NumberInput, Alert, Tooltip, Menu, Switch, Anchor,
+  SimpleGrid, Modal, TextInput, NumberInput, Alert, Tooltip, Menu, Switch,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -148,7 +148,7 @@ export default function PortalDomains() {
                       <div>
                         <Text size="sm" fw={600}>{d.name}</Text>
                         <Group gap={6}>
-                          {isPortalAdmin && !d.unmanaged && ['active', 'expired'].includes(d.status) ? (
+                          {isPortalAdmin && ['active', 'expired'].includes(d.status) ? (
                             <Tooltip multiline w={260}
                               label="When ON, we renew this domain automatically before it expires and charge your account credit — keep enough balance in your wallet.">
                               <Switch size="xs" label="Auto Renew" checked={d.auto_renew}
@@ -178,24 +178,21 @@ export default function PortalDomains() {
                     </Text>
                   </Table.Td>
                   <Table.Td>
-                    <Badge size="sm" color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
+                    {d.awaiting_manual_registration ? (
+                      <Tooltip label="Your order is paid — we're setting this domain up now.">
+                        <Badge size="sm" color="orange" variant="light">Setting Up</Badge>
+                      </Tooltip>
+                    ) : (
+                      <Badge size="sm" color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
+                    )}
                   </Table.Td>
                   <Table.Td ta="center">
-                    {!d.unmanaged && ['active', 'expired'].includes(d.status) && (
+                    {['active', 'expired'].includes(d.status) && (
                       <Button size="xs" variant="light" color={d.expiring_soon || d.status === 'expired' ? 'orange' : 'blue'}
                         leftSection={<IconRefresh size={13} />}
                         onClick={(e) => { e.stopPropagation(); setRenewFor(d); }}>
                         Renew
                       </Button>
-                    )}
-                    {d.unmanaged && (
-                      <Anchor size="xs" c="dimmed" underline="always"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/portal/tickets/new?service=${encodeURIComponent(`Domain: ${d.name}`)}&subject=${encodeURIComponent(`Renewal request for ${d.name}`)}`);
-                        }}>
-                        contact us to renew
-                      </Anchor>
                     )}
                   </Table.Td>
                 </Table.Tr>
