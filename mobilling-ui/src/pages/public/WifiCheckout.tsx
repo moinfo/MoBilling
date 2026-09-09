@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   Box, Paper, Title, Text, Group, Stack, Button, SimpleGrid, TextInput,
-  LoadingOverlay, Alert, Badge, Code, Divider, CopyButton, ActionIcon,
+  LoadingOverlay, Alert, Badge, Code, Divider, CopyButton, ActionIcon, List,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useParams } from 'react-router-dom';
@@ -68,6 +68,16 @@ function CheckoutForm({ routerId }: { routerId: string }) {
         <Alert color="red" icon={<IconAlertTriangle size={18} />}>{error}</Alert>
       ) : info && (
         <Stack>
+          <Paper withBorder p="md" radius="md" bg="var(--mantine-color-blue-0)">
+            <Text fw={600} size="sm" mb={6}>Jinsi ya Kuunganisha</Text>
+            <List size="sm" spacing={4} type="ordered">
+              <List.Item>Chagua kifurushi unachohitaji hapa chini</List.Item>
+              <List.Item>Weka namba yako ya simu</List.Item>
+              <List.Item>Lipia kwa M-Pesa, Tigo Pesa, Airtel Money au kadi</List.Item>
+              <List.Item>Utaunganishwa kwenye WiFi moja kwa moja — au weka code utakayopewa kwenye ukurasa wa WiFi ikibidi</List.Item>
+            </List>
+          </Paper>
+
           <SimpleGrid cols={{ base: 1, xs: 2 }}>
             {info.plans.map((p) => (
               <Paper key={p.id} withBorder p="md" radius="md"
