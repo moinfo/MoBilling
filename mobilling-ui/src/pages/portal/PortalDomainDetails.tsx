@@ -279,22 +279,11 @@ export default function PortalDomainDetails() {
                 </Text>
                 {isPortalAdmin ? (
                   <Switch size="md" checked={d.auto_renew}
-                    disabled={autoRenewMutation.isPending || (d.unmanaged && !d.auto_renew)}
+                    disabled={autoRenewMutation.isPending}
                     label={d.auto_renew ? 'Auto renew is ON' : 'Auto renew is OFF'}
                     onChange={(e) => autoRenewMutation.mutate(e.currentTarget.checked)} />
                 ) : (
                   <Alert color="gray" variant="light">Only portal administrators can change auto-renew.</Alert>
-                )}
-                {d.unmanaged && (
-                  <Alert color="orange" variant="light">
-                    <Group justify="space-between" wrap="wrap">
-                      This domain is renewed manually — please contact us.
-                      <Button size="compact-xs" variant="light" color="orange"
-                        onClick={() => navigate(`/portal/tickets/new?service=${encodeURIComponent(`Domain: ${d.name}`)}&subject=${encodeURIComponent(`Renewal request for ${d.name}`)}`)}>
-                        Contact Us
-                      </Button>
-                    </Group>
-                  </Alert>
                 )}
                 <Button variant="light" w="fit-content" onClick={() => navigate('/portal/dashboard')}>
                   Add Funds to Wallet

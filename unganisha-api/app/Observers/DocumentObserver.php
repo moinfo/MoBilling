@@ -142,13 +142,44 @@ class DocumentObserver
             // clears once staff records the real registration.
             if ($domain->meta['unmanaged'] ?? false) {
                 $meta = $domain->meta ?? [];
+                $pendingAction = $meta['pending_action'] ?? null;
                 unset($meta['pending_action'], $meta['pending_years']);
-                $meta['awaiting_manual_registration'] = true;
-                $domain->update(['meta' => $meta]);
 
-                \Illuminate\Support\Facades\Log::info(
-                    "Domain order paid but unmanaged (manual fulfilment needed): {$domain->name}"
-                );
+                if ($pendingAction === 'renew') {
+                    // Already registered — this is a renewal invoice, not a
+                    // registration. Flag it distinctly so staff know to renew
+                    // it by hand at the actual registrar, and don't clobber
+                    // registered_at/status the way a fresh registration would.
+                    $meta['pending_manual_renewal'] = true;
+                    $domain->update(['meta' => $meta]);
+
+                    \App\Models\DomainLog::create([
+                        'tenant_id' => $domain->tenant_id,
+                        'domain_id' => $domain->id,
+                        'action'    => 'renewal_paid_manual_action_needed',
+                        'request'   => ['document_id' => $document->id],
+                        'status'    => 'success',
+                    ]);
+
+                    try {
+                        $staff = \App\Models\User::withPermission($domain->tenant_id, 'domains.renew');
+                        if ($staff->isNotEmpty()) {
+                            \Illuminate\Support\Facades\Notification::send(
+                                $staff,
+                                new \App\Notifications\DomainManualRenewalPaidNotification($domain, $document),
+                            );
+                        }
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                } else {
+                    $meta['awaiting_manual_registration'] = true;
+                    $domain->update(['meta' => $meta]);
+
+                    \Illuminate\Support\Facades\Log::info(
+                        "Domain order paid but unmanaged (manual fulfilment needed): {$domain->name}"
+                    );
+                }
                 continue;
             }
 

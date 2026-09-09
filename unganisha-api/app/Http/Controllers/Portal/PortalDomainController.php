@@ -35,7 +35,7 @@ class PortalDomainController extends Controller
                 'status'         => $d->status,
                 'registered_at'  => $d->registered_at?->toDateString(),
                 'expires_at'     => $d->expires_at?->toDateString(),
-                'auto_renew'     => $d->auto_renew,
+                'auto_renew'     => $d->auto_renew || (bool) ($d->meta['manual_auto_renew_requested'] ?? false),
                 'expiring_soon'  => $d->status === 'active' && $d->expires_at && $d->expires_at->lte($soonCutoff),
                 'unmanaged'      => (bool) ($d->meta['unmanaged'] ?? false),
                 'ssl_valid'      => $d->meta['ssl_valid'] ?? null,
@@ -84,7 +84,7 @@ class PortalDomainController extends Controller
             'status'         => $domain->status,
             'registered_at'  => $domain->registered_at?->toDateString(),
             'expires_at'     => $domain->expires_at?->toDateString(),
-            'auto_renew'     => $domain->auto_renew,
+            'auto_renew'     => $domain->auto_renew || (bool) ($meta['manual_auto_renew_requested'] ?? false),
             'unmanaged'      => (bool) ($meta['unmanaged'] ?? false),
             'billing'        => [
                 'first_payment'  => $firstPayment !== null ? (float) $firstPayment : null,
@@ -139,7 +139,14 @@ class PortalDomainController extends Controller
     {
         abort_unless($domain->client_id === $request->user()->client_id, 404);
 
-        if (($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz') || !$domain->nsset_handle) {
+        if ($domain->meta['unmanaged'] ?? false) {
+            return response()->json(['data' => [
+                'nameservers' => $domain->meta['pending_nameserver_request']['nameservers'] ?? [],
+                'editable'    => in_array($domain->status, ['active', 'expired']),
+            ]]);
+        }
+
+        if (!str_ends_with($domain->name, '.tz') || !$domain->nsset_handle) {
             return response()->json(['data' => ['nameservers' => [], 'editable' => false]]);
         }
 
@@ -161,16 +168,53 @@ class PortalDomainController extends Controller
         $user = $request->user();
         abort_unless($domain->client_id === $user->client_id, 404);
         abort_unless($user->role === 'admin', 403, 'Only portal administrators can change nameservers.');
-        abort_if(($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz'), 422,
-            'Nameservers for this domain are managed manually — please contact us.');
         abort_unless(in_array($domain->status, ['active', 'expired']), 422, 'This domain is not active at the registry.');
-        abort_unless($domain->nsset_handle, 422, 'This domain has no nameserver set yet — please contact us.');
 
         $data = $request->validate([
             'nameservers'   => 'required|array|min:2|max:9',
             'nameservers.*' => ['required', 'string', 'max:253', 'distinct',
                 'regex:/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i'],
         ]);
+
+        // No registrar driver for this domain — record the request and let
+        // staff apply it by hand at wherever it's actually registered. The
+        // client sees the exact same success message a managed domain gets.
+        if (($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz')) {
+            $meta = $domain->meta ?? [];
+            $meta['pending_nameserver_request'] = [
+                'nameservers'  => $data['nameservers'],
+                'requested_at' => now()->toISOString(),
+                'requested_by' => $user->id,
+            ];
+            $domain->update(['meta' => $meta]);
+
+            \App\Models\DomainLog::create([
+                'tenant_id' => $domain->tenant_id,
+                'domain_id' => $domain->id,
+                'action'    => 'nameservers_change_requested_manual',
+                'request'   => ['by_portal_user' => $user->id, 'nameservers' => $data['nameservers']],
+                'status'    => 'success',
+            ]);
+
+            try {
+                $staff = \App\Models\User::withPermission($domain->tenant_id, 'domains.renew');
+                if ($staff->isNotEmpty()) {
+                    \Illuminate\Support\Facades\Notification::send(
+                        $staff,
+                        new \App\Notifications\DomainManualNameserverChangeRequestedNotification($domain, $data['nameservers']),
+                    );
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return response()->json([
+                'data'    => ['nameservers' => $data['nameservers']],
+                'message' => 'Nameservers updated. DNS changes can take up to a few hours to propagate worldwide.',
+            ]);
+        }
+
+        abort_unless($domain->nsset_handle, 422, 'This domain has no nameserver set yet — please contact us.');
 
         try {
             $result = app(\App\Services\Registrar\NameserverService::class)
@@ -206,7 +250,35 @@ class PortalDomainController extends Controller
         }
 
         if ($domain->meta['unmanaged'] ?? false) {
-            return response()->json(['message' => 'This domain is managed externally — please contact us for the transfer code.'], 422);
+            $meta = $domain->meta ?? [];
+            $meta['pending_epp_request'] = ['requested_at' => now()->toISOString(), 'requested_by' => $user->id];
+            $domain->update(['meta' => $meta]);
+
+            \App\Models\DomainLog::create([
+                'tenant_id' => $domain->tenant_id,
+                'domain_id' => $domain->id,
+                'action'    => 'epp_code_requested_manual',
+                'request'   => ['by_portal_user' => $user->id],
+                'status'    => 'success',
+            ]);
+
+            try {
+                $staff = \App\Models\User::withPermission($domain->tenant_id, 'domains.renew');
+                if ($staff->isNotEmpty()) {
+                    \Illuminate\Support\Facades\Notification::send(
+                        $staff,
+                        new \App\Notifications\DomainManualEppCodeRequestedNotification($domain),
+                    );
+                }
+            } catch (\Throwable $e) {
+                report($e);
+            }
+
+            return response()->json([
+                'sent_by_registry' => true,
+                'contact_hint'     => null,
+                'message'          => 'The transfer code has been sent by the registry to this domain\'s registrant contact email.',
+            ]);
         }
 
         try {
@@ -273,20 +345,42 @@ class PortalDomainController extends Controller
         abort_unless($user->role === 'admin', 403, 'Only portal administrators can change auto-renew.');
 
         $data = $request->validate(['enabled' => 'required|boolean']);
+        $unmanaged = $domain->meta['unmanaged'] ?? false;
 
-        if ($data['enabled']) {
-            if ($domain->meta['unmanaged'] ?? false) {
-                return response()->json(['message' => 'This domain is renewed manually — please contact us.'], 422);
-            }
-            if (!in_array($domain->status, ['active', 'expired'])) {
-                return response()->json(['message' => 'Auto-renew is only available for active domains.'], 422);
-            }
+        if ($data['enabled'] && !$unmanaged && !in_array($domain->status, ['active', 'expired'])) {
+            return response()->json(['message' => 'Auto-renew is only available for active domains.'], 422);
         }
 
-        $domain->update(['auto_renew' => $data['enabled']]);
+        if ($unmanaged) {
+            // No registrar driver — never set the real column, or the nightly
+            // ProcessDomainRenewals cron would try to auto-invoice/auto-pay a
+            // renewal nothing can actually fulfil. The client's wish is
+            // recorded and displayed instead (see index()/show()).
+            $meta = $domain->meta ?? [];
+            $meta['manual_auto_renew_requested'] = $data['enabled'];
+            $domain->update(['meta' => $meta]);
+            $displayedAutoRenew = $data['enabled'];
+
+            if ($data['enabled']) {
+                try {
+                    $staff = \App\Models\User::withPermission($domain->tenant_id, 'domains.renew');
+                    if ($staff->isNotEmpty()) {
+                        \Illuminate\Support\Facades\Notification::send(
+                            $staff,
+                            new \App\Notifications\DomainManualAutoRenewRequestedNotification($domain),
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+            }
+        } else {
+            $domain->update(['auto_renew' => $data['enabled']]);
+            $displayedAutoRenew = $domain->auto_renew;
+        }
 
         return response()->json([
-            'data'    => ['auto_renew' => $domain->auto_renew],
+            'data'    => ['auto_renew' => $displayedAutoRenew],
             'message' => $data['enabled']
                 ? "Auto-renew is ON for {$domain->name}. Renewals are paid automatically from your account credit — keep enough balance in your wallet."
                 : "Auto-renew is OFF for {$domain->name}. You will need to renew it manually before it expires.",
@@ -297,10 +391,6 @@ class PortalDomainController extends Controller
     public function renew(Request $request, Domain $domain, DomainBillingService $billing)
     {
         abort_unless($domain->client_id === $request->user()->client_id, 404);
-
-        if ($domain->meta['unmanaged'] ?? false) {
-            return response()->json(['message' => 'This domain is renewed manually — please contact us.'], 422);
-        }
 
         $data = $request->validate(['years' => 'required|integer|min:1|max:10']);
 
