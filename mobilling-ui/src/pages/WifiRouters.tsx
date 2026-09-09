@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, NumberInput, Switch, Stack, Tooltip } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Switch, Stack, Tooltip } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
@@ -11,6 +11,11 @@ import {
   MikrotikRouter,
 } from '../api/mikrotikRouters';
 import { usePermissions } from '../hooks/usePermissions';
+
+const PAYMENT_MODE_OPTIONS = [
+  { value: 'self_managed', label: 'Self-managed (your own Pesapal collects it)' },
+  { value: 'platform_collected', label: 'Platform-collected (MoBilling settles with you)' },
+];
 
 export default function WifiRouters() {
   const queryClient = useQueryClient();
@@ -35,7 +40,10 @@ export default function WifiRouters() {
   const meta = data?.data?.meta;
 
   const form = useForm({
-    initialValues: { name: '', host: '', api_port: 8728, username: '', password: '', use_tls: false, is_active: true },
+    initialValues: {
+      name: '', host: '', api_port: 8728, username: '', password: '', use_tls: false,
+      payment_mode: 'self_managed', is_active: true,
+    },
     validate: {
       name: (v) => (v.trim().length > 0 ? null : 'Required'),
       host: (v) => (v.trim().length > 0 ? null : 'Required'),
@@ -47,12 +55,12 @@ export default function WifiRouters() {
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ name: '', host: '', api_port: 8728, username: '', password: '', use_tls: false, is_active: true });
+    form.setValues({ name: '', host: '', api_port: 8728, username: '', password: '', use_tls: false, payment_mode: 'self_managed', is_active: true });
     setFormOpen(true);
   };
   const openEdit = (r: MikrotikRouter) => {
     setEditing(r);
-    form.setValues({ name: r.name, host: r.host, api_port: r.api_port, username: r.username, password: '', use_tls: r.use_tls, is_active: r.is_active });
+    form.setValues({ name: r.name, host: r.host, api_port: r.api_port, username: r.username, password: '', use_tls: r.use_tls, payment_mode: r.payment_mode, is_active: r.is_active });
     setFormOpen(true);
   };
 
@@ -127,6 +135,7 @@ export default function WifiRouters() {
             <Table.Tr>
               <Table.Th>Name</Table.Th>
               <Table.Th>Host</Table.Th>
+              <Table.Th>Payment</Table.Th>
               <Table.Th>Last Test</Table.Th>
               <Table.Th>Status</Table.Th>
               <Table.Th w={140}>Actions</Table.Th>
@@ -137,6 +146,11 @@ export default function WifiRouters() {
               <Table.Tr key={r.id}>
                 <Table.Td fw={500}>{r.name}</Table.Td>
                 <Table.Td>{r.host}:{r.api_port}</Table.Td>
+                <Table.Td>
+                  <Badge size="sm" variant="light" color={r.payment_mode === 'platform_collected' ? 'violet' : 'gray'}>
+                    {r.payment_mode === 'platform_collected' ? 'Platform-collected' : 'Self-managed'}
+                  </Badge>
+                </Table.Td>
                 <Table.Td>
                   {r.last_test_status ? (
                     <Tooltip label={r.last_test_message ?? ''}>
@@ -187,6 +201,7 @@ export default function WifiRouters() {
               placeholder={editing ? 'Leave blank to keep current password' : undefined}
               {...form.getInputProps('password')} />
             <Switch label="Use TLS (API-SSL, port 8729)" {...form.getInputProps('use_tls', { type: 'checkbox' })} />
+            <Select label="Payment Mode" data={PAYMENT_MODE_OPTIONS} {...form.getInputProps('payment_mode')} />
             <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
             <Group justify="flex-end">
               <Button variant="default" onClick={closeForm}>Cancel</Button>

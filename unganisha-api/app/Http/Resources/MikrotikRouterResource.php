@@ -16,6 +16,7 @@ class MikrotikRouterResource extends JsonResource
             'api_port'          => $this->api_port,
             'username'          => $this->username,
             'use_tls'           => (bool) $this->use_tls,
+            'payment_mode'      => $this->payment_mode,
             'is_active'         => (bool) $this->is_active,
             'last_tested_at'    => $this->last_tested_at,
             'last_test_status'  => $this->last_test_status,

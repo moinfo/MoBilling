@@ -44,6 +44,7 @@ class PlatformSettingsController extends Controller
             'new_tenant_email_body' => 'nullable|string|max:5000',
             'sms_activation_email_subject' => 'nullable|string|max:255',
             'sms_activation_email_body' => 'nullable|string|max:5000',
+            'wifi_commission_percent' => 'nullable|numeric|min:0|max:100',
         ]);
 
         $allowedKeys = [
@@ -61,6 +62,7 @@ class PlatformSettingsController extends Controller
             'new_tenant_email_body',
             'sms_activation_email_subject',
             'sms_activation_email_body',
+            'wifi_commission_percent',
         ];
 
         foreach ($allowedKeys as $key) {

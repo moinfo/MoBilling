@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Public;
 use App\Http\Controllers\Controller;
 use App\Models\MikrotikRouter;
 use App\Models\WifiVoucherPurchase;
+use App\Services\PesapalService;
 use App\Services\TenantPesapalService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -64,7 +65,9 @@ class WifiCheckoutController extends Controller
 
         $router->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
         $tenant = $router->tenant;
-        if (!$tenant || !$tenant->pesapal_consumer_key) {
+        $platformCollected = $router->payment_mode === 'platform_collected';
+
+        if (!$tenant || (!$platformCollected && !$tenant->pesapal_consumer_key)) {
             return response()->json(['message' => 'This hotspot is not accepting payments right now — please try again later.'], 422);
         }
 
@@ -79,7 +82,11 @@ class WifiCheckoutController extends Controller
         ]);
 
         try {
-            $pesapal = new TenantPesapalService($tenant);
+            // platform_collected: MoBilling's own Pesapal account collects
+            // the money; the tenant is settled manually later (see
+            // Admin\WifiSettlementController). self_managed: unchanged —
+            // the tenant's own Pesapal account collects it directly.
+            $pesapal = $platformCollected ? new PesapalService() : new TenantPesapalService($tenant);
             $result = $pesapal->submitOrder(
                 'WIFI-' . Str::upper(Str::random(8)),
                 (float) $plan->price,

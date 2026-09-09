@@ -42,6 +42,7 @@ import Sessions from './pages/Sessions';
 import Roles from './pages/Roles';
 import AdminDashboard from './pages/admin/Dashboard';
 import Tenants from './pages/admin/Tenants';
+import WifiSettlements from './pages/admin/WifiSettlements';
 import TenantUsers from './pages/admin/TenantUsers';
 import EmailSettings from './pages/admin/EmailSettings';
 import SmsSettingsAdmin from './pages/admin/SmsSettings';
@@ -211,6 +212,7 @@ export default function App() {
                 >
                   <Route path="/admin/dashboard" element={<AdminDashboard />} />
                   <Route path="/admin/tenants" element={<Tenants />} />
+                  <Route path="/admin/wifi-settlements" element={<WifiSettlements />} />
                   <Route path="/admin/tenants/:tenantId" element={<TenantProfile />} />
                   <Route path="/admin/tenants/:tenantId/users" element={<TenantUsers />} />
                   <Route path="/admin/email-settings" element={<EmailSettings />} />

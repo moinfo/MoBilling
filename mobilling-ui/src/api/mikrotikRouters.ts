@@ -1,5 +1,7 @@
 import api from './axios';
 
+export type WifiPaymentMode = 'self_managed' | 'platform_collected';
+
 export interface MikrotikRouter {
   id: string;
   name: string;
@@ -7,6 +9,7 @@ export interface MikrotikRouter {
   api_port: number;
   username: string;
   use_tls: boolean;
+  payment_mode: WifiPaymentMode;
   is_active: boolean;
   last_tested_at: string | null;
   last_test_status: string | null;
@@ -21,6 +24,7 @@ export interface MikrotikRouterPayload {
   username: string;
   password?: string;
   use_tls?: boolean;
+  payment_mode?: WifiPaymentMode;
   is_active?: boolean;
 }
 

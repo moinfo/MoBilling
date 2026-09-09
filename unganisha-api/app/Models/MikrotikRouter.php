@@ -14,7 +14,7 @@ class MikrotikRouter extends Model
 
     protected $fillable = [
         'tenant_id', 'name', 'host', 'api_port', 'username', 'password', 'use_tls',
-        'is_active', 'last_tested_at', 'last_test_status', 'last_test_message',
+        'payment_mode', 'is_active', 'last_tested_at', 'last_test_status', 'last_test_message',
     ];
 
     protected $hidden = ['password'];
@@ -23,9 +23,10 @@ class MikrotikRouter extends Model
     // them here too so a freshly create()'d instance already has real
     // values (bit us once: RouterOsService got use_tls=null, not false).
     protected $attributes = [
-        'api_port'  => 8728,
-        'use_tls'   => false,
-        'is_active' => true,
+        'api_port'     => 8728,
+        'use_tls'      => false,
+        'payment_mode' => 'self_managed',
+        'is_active'    => true,
     ];
 
     protected $casts = [

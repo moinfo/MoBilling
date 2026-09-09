@@ -546,6 +546,7 @@ export interface PlatformSettings {
   new_tenant_email_body: string;
   sms_activation_email_subject: string;
   sms_activation_email_body: string;
+  wifi_commission_percent: string;
 }
 
 export const getPlatformSettings = () =>
@@ -553,3 +554,38 @@ export const getPlatformSettings = () =>
 
 export const updatePlatformSettings = (data: Partial<PlatformSettings>) =>
   api.put<{ message: string; data: PlatformSettings }>('/admin/platform-settings', data);
+
+// ─── WiFi voucher settlement ledger (platform_collected purchases) ────
+
+export interface WifiSettlementRow {
+  id: string;
+  tenant_id: string;
+  tenant_name: string;
+  router: { id: string; name: string } | null;
+  plan: { id: string; name: string } | null;
+  customer_phone: string;
+  amount: string;
+  commission_amount: string;
+  net_amount: string;
+  completed_at: string | null;
+  settled_at: string | null;
+  settlement_method: string | null;
+  settlement_reference: string | null;
+  settlement_notes: string | null;
+}
+
+export interface WifiSettlementSummaryRow {
+  tenant_id: string;
+  tenant_name: string;
+  count: number;
+  total_owed: number;
+}
+
+export const getWifiSettlements = (params?: { tenant_id?: string; settled?: boolean; page?: number; per_page?: number }) =>
+  api.get('/admin/wifi-settlements', { params });
+
+export const getWifiSettlementsSummary = () =>
+  api.get<{ data: WifiSettlementSummaryRow[] }>('/admin/wifi-settlements/summary');
+
+export const settleWifiVoucherPurchase = (id: string, data: { method: string; reference?: string; notes?: string }) =>
+  api.post(`/admin/wifi-settlements/${id}/settle`, data);

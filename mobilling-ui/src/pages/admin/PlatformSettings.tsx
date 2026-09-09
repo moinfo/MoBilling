@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import {
-  Title, Text, Paper, Stack, TextInput, Textarea, Button, Group, Loader, Center,
+  Title, Text, Paper, Stack, TextInput, Textarea, NumberInput, Button, Group, Loader, Center,
   Divider, Badge, Alert, Tabs,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuildingBank, IconDeviceFloppy, IconTemplate, IconAlertCircle } from '@tabler/icons-react';
+import { IconBuildingBank, IconDeviceFloppy, IconTemplate, IconAlertCircle, IconWifi } from '@tabler/icons-react';
 import { getPlatformSettings, updatePlatformSettings, PlatformSettings as PlatformSettingsType } from '../../api/admin';
 
 export default function PlatformSettings() {
@@ -25,6 +25,8 @@ export default function PlatformSettings() {
     platform_bank_branch: '',
     platform_payment_instructions: '',
   });
+
+  const [wifiForm, setWifiForm] = useState({ wifi_commission_percent: '10' });
 
   const [templateForm, setTemplateForm] = useState({
     welcome_email_subject: '',
@@ -46,6 +48,7 @@ export default function PlatformSettings() {
         platform_bank_branch: settings.platform_bank_branch || '',
         platform_payment_instructions: settings.platform_payment_instructions || '',
       });
+      setWifiForm({ wifi_commission_percent: settings.wifi_commission_percent || '10' });
       setTemplateForm({
         welcome_email_subject: settings.welcome_email_subject || '',
         welcome_email_body: settings.welcome_email_body || '',
@@ -69,6 +72,21 @@ export default function PlatformSettings() {
       notifications.show({
         title: 'Error',
         message: err.response?.data?.message || 'Failed to save settings',
+        color: 'red',
+      });
+    },
+  });
+
+  const saveWifiMutation = useMutation({
+    mutationFn: () => updatePlatformSettings(wifiForm),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['platform-settings'] });
+      notifications.show({ title: 'Saved', message: res.data.message, color: 'green' });
+    },
+    onError: (err: any) => {
+      notifications.show({
+        title: 'Error',
+        message: err.response?.data?.message || 'Failed to save WiFi settings',
         color: 'red',
       });
     },
@@ -121,6 +139,9 @@ export default function PlatformSettings() {
           <Tabs.Tab value="templates" leftSection={<IconTemplate size={16} />}>
             Email Templates
           </Tabs.Tab>
+          <Tabs.Tab value="wifi" leftSection={<IconWifi size={16} />}>
+            WiFi Hotspot
+          </Tabs.Tab>
         </Tabs.List>
 
         <Tabs.Panel value="bank">
@@ -169,6 +190,37 @@ export default function PlatformSettings() {
                   onClick={() => saveBankMutation.mutate()}
                 >
                   Save Bank Details
+                </Button>
+              </Group>
+            </Stack>
+          </Paper>
+        </Tabs.Panel>
+
+        <Tabs.Panel value="wifi">
+          <Paper withBorder p="lg" radius="md" maw={500}>
+            <Text size="sm" c="dimmed" mb="md">
+              Applies only to routers set to "Platform-collected" — the cut MoBilling
+              keeps before settling the rest with the hotspot owner. Self-managed
+              routers are unaffected; their own Pesapal account collects the full amount.
+            </Text>
+
+            <Stack gap="md">
+              <NumberInput
+                label="WiFi Commission %"
+                min={0}
+                max={100}
+                decimalScale={2}
+                value={Number(wifiForm.wifi_commission_percent)}
+                onChange={(v) => setWifiForm({ wifi_commission_percent: String(v) })}
+              />
+
+              <Group justify="flex-end">
+                <Button
+                  leftSection={<IconDeviceFloppy size={16} />}
+                  loading={saveWifiMutation.isPending}
+                  onClick={() => saveWifiMutation.mutate()}
+                >
+                  Save
                 </Button>
               </Group>
             </Stack>

@@ -236,6 +236,11 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
     Route::get('/platform-settings', [PlatformSettingsController::class, 'index']);
     Route::put('/platform-settings', [PlatformSettingsController::class, 'update']);
 
+    // WiFi voucher settlement ledger — platform_collected purchases (super admin)
+    Route::get('/wifi-settlements', [\App\Http\Controllers\Admin\WifiSettlementController::class, 'index']);
+    Route::get('/wifi-settlements/summary', [\App\Http\Controllers\Admin\WifiSettlementController::class, 'summary']);
+    Route::post('/wifi-settlements/{id}/settle', [\App\Http\Controllers\Admin\WifiSettlementController::class, 'settle']);
+
     // Role templates (super admin)
     Route::get('/role-templates', [RoleTemplateController::class, 'index']);
     Route::get('/role-templates/{type}', [RoleTemplateController::class, 'show']);

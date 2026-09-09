@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\Wifi\ProvisionWifiVoucherJob;
 use App\Models\License;
 use App\Models\LicensePurchase;
+use App\Models\PlatformSetting;
 use App\Models\SmsPurchase;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
+use App\Models\WifiVoucherPurchase;
 use App\Services\PesapalService;
 use App\Services\ResellerService;
 use App\Services\SubscriptionService;
@@ -54,7 +57,13 @@ class PesapalWebhookController extends Controller
             $licensePurchase = LicensePurchase::where('order_tracking_id', $orderTrackingId)->first();
         }
 
+        $wifiPurchase = null;
         if (!$purchase && !$subscription && !$licensePurchase) {
+            $wifiPurchase = WifiVoucherPurchase::withoutGlobalScopes()
+                ->where('order_tracking_id', $orderTrackingId)->first();
+        }
+
+        if (!$purchase && !$subscription && !$licensePurchase && !$wifiPurchase) {
             Log::warning('Pesapal IPN: no matching record', ['order_tracking_id' => $orderTrackingId]);
             return response()->json([
                 'orderNotificationType' => $orderNotificationType,
@@ -118,6 +127,24 @@ class PesapalWebhookController extends Controller
                 $this->processLicensePurchaseCompleted($licensePurchase);
             } elseif (in_array($statusCode, [0, 2, 3])) {
                 $this->processLicensePurchaseFailed($licensePurchase);
+            }
+        } elseif ($wifiPurchase) {
+            $wifiPurchase->update([
+                'payment_status_description' => $description,
+                'confirmation_code' => $status['confirmation_code'] ?? null,
+                'payment_method_used' => $status['payment_method'] ?? null,
+                'gateway_response' => $status,
+            ]);
+
+            Log::info('Pesapal IPN: wifi voucher purchase status', [
+                'purchase_id' => $wifiPurchase->id,
+                'status_code' => $statusCode,
+            ]);
+
+            if ($statusCode === 1 && $description === 'Completed') {
+                $this->processWifiVoucherCompleted($wifiPurchase);
+            } elseif (in_array($statusCode, [0, 2, 3])) {
+                $wifiPurchase->update(['status' => 'failed']);
             }
         } else {
             $subscription->update([
@@ -326,5 +353,41 @@ class PesapalWebhookController extends Controller
         $purchase->update(['status' => 'failed']);
 
         Log::info('Pesapal: license purchase failed/reversed', ['purchase_id' => $purchase->id]);
+    }
+
+    /**
+     * MoBilling's own Pesapal account collected this (payment_mode =
+     * platform_collected on the router) — snapshot the commission split
+     * at today's rate so a later rate change never rewrites this row,
+     * then provision the hotspot user exactly like the self-managed path
+     * does (the job itself doesn't care which account paid for it). The
+     * tenant is settled manually later via Admin\WifiSettlementController.
+     */
+    private function processWifiVoucherCompleted(WifiVoucherPurchase $purchase): void
+    {
+        if ($purchase->status !== 'pending') {
+            Log::info('Pesapal: wifi voucher purchase already processed, skipping', ['purchase_id' => $purchase->id]);
+            return;
+        }
+
+        $rate = (float) PlatformSetting::get('wifi_commission_percent', '10');
+        $commission = round((float) $purchase->amount * $rate / 100, 2);
+        $net = round((float) $purchase->amount - $commission, 2);
+
+        $purchase->update([
+            'status'            => 'completed',
+            'completed_at'      => now(),
+            'commission_amount' => $commission,
+            'net_amount'        => $net,
+        ]);
+
+        ProvisionWifiVoucherJob::dispatch($purchase);
+
+        Log::info('Pesapal: wifi voucher purchase completed (platform-collected)', [
+            'purchase_id' => $purchase->id,
+            'amount'      => $purchase->amount,
+            'commission'  => $commission,
+            'net'         => $net,
+        ]);
     }
 }

@@ -22,8 +22,9 @@ class StoreMikrotikRouterRequest extends FormRequest
             'username'  => 'required|string|max:255',
             // Required on create; optional on update (leave blank to keep the current password).
             'password'  => [$isUpdate ? 'nullable' : 'required', 'string', 'max:255'],
-            'use_tls'   => 'sometimes|boolean',
-            'is_active' => 'sometimes|boolean',
+            'use_tls'      => 'sometimes|boolean',
+            'payment_mode' => 'sometimes|in:self_managed,platform_collected',
+            'is_active'    => 'sometimes|boolean',
         ];
     }
 }

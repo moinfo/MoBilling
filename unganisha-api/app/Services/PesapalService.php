@@ -49,14 +49,14 @@ class PesapalService
         return $response->json();
     }
 
-    public function submitOrder(string $merchantRef, float $amount, string $description, array $billing): array
+    public function submitOrder(string $merchantRef, float $amount, string $description, array $billing, ?string $callbackUrl = null): array
     {
         $payload = [
             'id' => $merchantRef,
             'currency' => config('pesapal.currency', 'TZS'),
             'amount' => $amount,
             'description' => $description,
-            'callback_url' => config('pesapal.callback_url'),
+            'callback_url' => $callbackUrl ?? config('pesapal.callback_url'),
             'notification_id' => config('pesapal.ipn_id'),
             'billing_address' => [
                 'email_address' => $billing['email'] ?? '',

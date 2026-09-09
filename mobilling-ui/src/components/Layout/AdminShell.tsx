@@ -1,6 +1,6 @@
 import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, ScrollArea } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
-import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconTemplate, IconMessage, IconPackage, IconReceipt, IconCreditCard, IconCoin, IconBuildingBank, IconShieldLock, IconShieldCheck, IconKey, IconRocket } from '@tabler/icons-react';
+import { IconDashboard, IconBuilding, IconLogout, IconSun, IconMoon, IconMail, IconTemplate, IconMessage, IconPackage, IconReceipt, IconCreditCard, IconCoin, IconBuildingBank, IconShieldLock, IconShieldCheck, IconKey, IconRocket, IconWifi } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import NotificationBell from './NotificationBell';
@@ -75,6 +75,12 @@ export default function AdminShell() {
             leftSection={<IconBuilding size={18} />}
             active={location.pathname === '/admin/tenants'}
             onClick={() => navigateAndClose('/admin/tenants')}
+          />
+          <NavLink
+            label="WiFi Settlements"
+            leftSection={<IconWifi size={18} />}
+            active={location.pathname === '/admin/wifi-settlements'}
+            onClick={() => navigateAndClose('/admin/wifi-settlements')}
           />
           <NavLink
             label="Permissions"
