@@ -5,12 +5,13 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconPlugConnected } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconPlugConnected, IconBook2 } from '@tabler/icons-react';
 import {
   getMikrotikRouters, createMikrotikRouter, updateMikrotikRouter, deleteMikrotikRouter, testMikrotikRouter,
   MikrotikRouter,
 } from '../api/mikrotikRouters';
 import { usePermissions } from '../hooks/usePermissions';
+import WifiRouterSetupGuide from '../components/WifiRouterSetupGuide';
 
 const PAYMENT_MODE_OPTIONS = [
   { value: 'self_managed', label: 'Self-managed (your own Pesapal collects it)' },
@@ -30,6 +31,7 @@ export default function WifiRouters() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<MikrotikRouter | null>(null);
   const [testingId, setTestingId] = useState<string | null>(null);
+  const [guideOpen, setGuideOpen] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['mikrotik-routers', page, debouncedSearch],
@@ -121,6 +123,7 @@ export default function WifiRouters() {
         <Group>
           <TextInput placeholder="Search..." leftSection={<IconSearch size={16} />}
             value={search} onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }} maw={250} />
+          <Button variant="default" leftSection={<IconBook2 size={16} />} onClick={() => setGuideOpen(true)}>Setup Guide</Button>
           {canCreate && (
             <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add Router</Button>
           )}
@@ -215,6 +218,8 @@ export default function WifiRouters() {
           </Stack>
         </form>
       </Modal>
+
+      <WifiRouterSetupGuide opened={guideOpen} onClose={() => setGuideOpen(false)} />
     </>
   );
 }
