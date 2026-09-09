@@ -20,6 +20,7 @@ export interface PublicWifiPurchaseStatus {
   hotspot_username: string | null;
   hotspot_password: string | null;
   voucher_expires_at: string | null;
+  local_login_host: string | null;
 }
 
 export const getPublicWifiCheckoutInfo = (routerId: string) =>

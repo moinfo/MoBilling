@@ -13,6 +13,7 @@ class MikrotikRouterResource extends JsonResource
             'id'                => $this->id,
             'name'              => $this->name,
             'host'              => $this->host,
+            'local_login_host'  => $this->local_login_host,
             'api_port'          => $this->api_port,
             'username'          => $this->username,
             'use_tls'           => (bool) $this->use_tls,

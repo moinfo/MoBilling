@@ -106,8 +106,12 @@ function CheckoutForm({ routerId }: { routerId: string }) {
   );
 }
 
+const hotspotLoginUrl = (localLoginHost: string, code: string) =>
+  `http://${localLoginHost}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(code)}`;
+
 function VoucherStatus({ purchaseId }: { purchaseId: string }) {
   const [status, setStatus] = useState<PublicWifiPurchaseStatus | null>(null);
+  const [autoTried, setAutoTried] = useState(false);
 
   useEffect(() => {
     let stopped = false;
@@ -126,6 +130,20 @@ function VoucherStatus({ purchaseId }: { purchaseId: string }) {
 
     return () => { stopped = true; clearTimeout(timer); };
   }, [purchaseId]);
+
+  // Give the customer a couple seconds to see their code, then try to
+  // connect them automatically by sending their own browser (still on the
+  // hotspot's WiFi) straight to the router's local login endpoint. If it's
+  // unreachable (they've left the WiFi, or the owner hasn't set a local
+  // login IP) the code above is still on screen as a fallback.
+  useEffect(() => {
+    if (status?.status !== 'completed' || !status.local_login_host || !status.hotspot_username || autoTried) return;
+    const timer = setTimeout(() => {
+      setAutoTried(true);
+      window.location.href = hotspotLoginUrl(status.local_login_host!, status.hotspot_username!);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, [status, autoTried]);
 
   return (
     <Box maw={480} mx="auto" mt="xl" px="md">
@@ -162,6 +180,20 @@ function VoucherStatus({ purchaseId }: { purchaseId: string }) {
               <Badge variant="light" color="blue">
                 Valid until {new Date(status.voucher_expires_at).toLocaleString()}
               </Badge>
+            )}
+            {status.local_login_host && status.hotspot_username && (
+              <>
+                <Text size="sm" c="dimmed" ta="center">
+                  {autoTried ? "Didn't connect automatically? Tap below." : 'Connecting you to WiFi automatically…'}
+                </Text>
+                <Button
+                  fullWidth
+                  leftSection={<IconWifi size={16} />}
+                  onClick={() => { window.location.href = hotspotLoginUrl(status.local_login_host!, status.hotspot_username!); }}
+                >
+                  Connect Now
+                </Button>
+              </>
             )}
             <Divider w="100%" my="xs" />
             <Text size="xs" c="dimmed" ta="center">

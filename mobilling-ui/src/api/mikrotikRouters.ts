@@ -6,6 +6,7 @@ export interface MikrotikRouter {
   id: string;
   name: string;
   host: string;
+  local_login_host: string | null;
   api_port: number;
   username: string;
   use_tls: boolean;
@@ -20,6 +21,7 @@ export interface MikrotikRouter {
 export interface MikrotikRouterPayload {
   name: string;
   host: string;
+  local_login_host?: string;
   api_port?: number;
   username: string;
   password?: string;

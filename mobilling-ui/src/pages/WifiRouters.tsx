@@ -41,7 +41,7 @@ export default function WifiRouters() {
 
   const form = useForm({
     initialValues: {
-      name: '', host: '', api_port: 8728, username: '', password: '', use_tls: false,
+      name: '', host: '', local_login_host: '', api_port: 8728, username: '', password: '', use_tls: false,
       payment_mode: 'self_managed', is_active: true,
     },
     validate: {
@@ -55,12 +55,12 @@ export default function WifiRouters() {
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ name: '', host: '', api_port: 8728, username: '', password: '', use_tls: false, payment_mode: 'self_managed', is_active: true });
+    form.setValues({ name: '', host: '', local_login_host: '', api_port: 8728, username: '', password: '', use_tls: false, payment_mode: 'self_managed', is_active: true });
     setFormOpen(true);
   };
   const openEdit = (r: MikrotikRouter) => {
     setEditing(r);
-    form.setValues({ name: r.name, host: r.host, api_port: r.api_port, username: r.username, password: '', use_tls: r.use_tls, payment_mode: r.payment_mode, is_active: r.is_active });
+    form.setValues({ name: r.name, host: r.host, local_login_host: r.local_login_host ?? '', api_port: r.api_port, username: r.username, password: '', use_tls: r.use_tls, payment_mode: r.payment_mode, is_active: r.is_active });
     setFormOpen(true);
   };
 
@@ -195,6 +195,9 @@ export default function WifiRouters() {
           <Stack>
             <TextInput label="Name" required placeholder="e.g. Home WiFi" {...form.getInputProps('name')} />
             <TextInput label="Host / IP Address" required placeholder="e.g. 41.xxx.xxx.xxx" {...form.getInputProps('host')} />
+            <TextInput label="Local Hotspot IP (optional)" placeholder="e.g. 192.168.88.1"
+              description="The address customer devices see on the WiFi itself — lets us auto-connect them after payment instead of making them type the voucher code."
+              {...form.getInputProps('local_login_host')} />
             <NumberInput label="API Port" min={1} max={65535} {...form.getInputProps('api_port')} />
             <TextInput label="Username" required {...form.getInputProps('username')} />
             <TextInput label="Password" type="password" required={!editing}

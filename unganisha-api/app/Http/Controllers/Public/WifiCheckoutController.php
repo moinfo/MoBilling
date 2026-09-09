@@ -116,12 +116,18 @@ class WifiCheckoutController extends Controller
 
     public function status(WifiVoucherPurchase $purchase)
     {
+        $purchase->loadMissing('router');
+
         return response()->json(['data' => [
             'id'                 => $purchase->id,
             'status'             => $purchase->status,
             'hotspot_username'   => $purchase->status === 'completed' ? $purchase->hotspot_username : null,
             'hotspot_password'   => $purchase->status === 'completed' ? $purchase->hotspot_password : null,
             'voucher_expires_at' => $purchase->voucher_expires_at?->toISOString(),
+            // Lets the browser auto-login by navigating straight to the
+            // router's own hotspot login endpoint — only present when the
+            // router owner has configured its LAN-side address.
+            'local_login_host'   => $purchase->status === 'completed' ? $purchase->router?->local_login_host : null,
         ]]);
     }
 }
