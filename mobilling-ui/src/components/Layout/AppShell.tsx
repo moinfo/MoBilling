@@ -413,6 +413,10 @@ export default function AppLayout() {
                 <NavLink label="Voucher Sales" leftSection={<IconTicket size={16} />}
                   active={isActive('/wifi-voucher-purchases')} onClick={() => navigateAndClose('/wifi-voucher-purchases')} />
               )}
+              {can('wifi_purchases.read') && (
+                <NavLink label="My Earnings" leftSection={<IconBuildingBank size={16} />}
+                  active={isActive('/wifi-earnings')} onClick={() => navigateAndClose('/wifi-earnings')} />
+              )}
             </NavLink>
           )}
 

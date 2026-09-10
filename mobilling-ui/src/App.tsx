@@ -64,6 +64,7 @@ import SystemRecords from './pages/SystemRecords';
 import WifiRouters from './pages/WifiRouters';
 import WifiPlans from './pages/WifiPlans';
 import WifiVoucherPurchases from './pages/WifiVoucherPurchases';
+import WifiEarnings from './pages/WifiEarnings';
 // SystemVerifications is now mounted as a tab inside Settings.tsx — no standalone route.
 import MyVerifications from './pages/MyVerifications';
 // Systems, Bank Accounts, System Properties are now accessed via the
@@ -268,6 +269,7 @@ export default function App() {
                   <Route path="/wifi-routers" element={<WifiRouters />} />
                   <Route path="/wifi-plans" element={<WifiPlans />} />
                   <Route path="/wifi-voucher-purchases" element={<WifiVoucherPurchases />} />
+                  <Route path="/wifi-earnings" element={<WifiEarnings />} />
                   <Route path="/my-verifications" element={<MyVerifications />} />
                   <Route path="/users" element={<Users />} />
                   <Route path="/users/:userId/profile" element={<UserProfile />} />

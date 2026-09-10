@@ -38,7 +38,12 @@ class WifiSettlementController extends Controller
     {
         return WifiVoucherPurchase::withoutGlobalScopes()
             ->whereHas('router', fn ($q) => $q->where('payment_mode', 'platform_collected'))
-            ->whereNotNull('completed_at');
+            ->whereNotNull('completed_at')
+            // Excludes manual/cash sales (WifiVoucherPurchaseController::store()):
+            // those never set order_tracking_id since no Pesapal order was
+            // ever placed, so MoBilling collected nothing for them —
+            // there's nothing owed back to the tenant.
+            ->whereNotNull('order_tracking_id');
     }
 
     public function index(Request $request)
