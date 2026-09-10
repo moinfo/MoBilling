@@ -7,6 +7,7 @@ use App\Jobs\Wifi\ProvisionWifiVoucherJob;
 use App\Models\MikrotikRouter;
 use App\Models\WifiPlan;
 use App\Models\WifiVoucherPurchase;
+use App\Services\Mikrotik\RouterOsService;
 use Illuminate\Http\Request;
 
 class WifiVoucherPurchaseController extends Controller
@@ -84,5 +85,54 @@ class WifiVoucherPurchaseController extends Controller
         }
 
         return response()->json(['data' => $wifi_voucher_purchase->liveUsage()]);
+    }
+
+    /**
+     * Immediately revokes a misbehaving customer's access: disables future
+     * logins on the router AND kicks any session connected right now (see
+     * RouterOsService::disableHotspotUser). The voucher itself isn't
+     * deleted/refunded — this is a conduct action, not a payment reversal.
+     */
+    public function block(Request $request, WifiVoucherPurchase $wifi_voucher_purchase)
+    {
+        abort_unless($wifi_voucher_purchase->hotspot_username, 422, 'This voucher has not been provisioned yet.');
+        abort_if($wifi_voucher_purchase->blocked_at, 422, 'This voucher is already blocked.');
+
+        $data = $request->validate(['reason' => 'nullable|string|max:500']);
+
+        $router = $wifi_voucher_purchase->router;
+        abort_unless($router, 404, 'Router not found.');
+
+        try {
+            (new RouterOsService($router))->disableHotspotUser($wifi_voucher_purchase->hotspot_username);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Could not reach the router to block this voucher: ' . $e->getMessage()], 502);
+        }
+
+        $wifi_voucher_purchase->update([
+            'blocked_at'     => now(),
+            'blocked_reason' => $data['reason'] ?? null,
+            'blocked_by'     => auth()->id(),
+        ]);
+
+        return new WifiVoucherPurchaseResource($wifi_voucher_purchase->fresh()->load(['router:id,name', 'plan:id,name']));
+    }
+
+    public function unblock(WifiVoucherPurchase $wifi_voucher_purchase)
+    {
+        abort_unless($wifi_voucher_purchase->blocked_at, 422, 'This voucher is not blocked.');
+
+        $router = $wifi_voucher_purchase->router;
+        abort_unless($router, 404, 'Router not found.');
+
+        try {
+            (new RouterOsService($router))->enableHotspotUser($wifi_voucher_purchase->hotspot_username);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => 'Could not reach the router to unblock this voucher: ' . $e->getMessage()], 502);
+        }
+
+        $wifi_voucher_purchase->update(['blocked_at' => null, 'blocked_reason' => null, 'blocked_by' => null]);
+
+        return new WifiVoucherPurchaseResource($wifi_voucher_purchase->fresh()->load(['router:id,name', 'plan:id,name']));
     }
 }

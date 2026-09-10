@@ -454,6 +454,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:wifi_purchases.create')->post('/wifi-voucher-purchases', [\App\Http\Controllers\WifiVoucherPurchaseController::class, 'store']);
     Route::middleware('permission:wifi_purchases.read')->get('/wifi-voucher-purchases/{wifi_voucher_purchase}', [\App\Http\Controllers\WifiVoucherPurchaseController::class, 'show']);
     Route::middleware('permission:wifi_purchases.read')->get('/wifi-voucher-purchases/{wifi_voucher_purchase}/usage', [\App\Http\Controllers\WifiVoucherPurchaseController::class, 'usage']);
+    Route::middleware('permission:wifi_purchases.update')->post('/wifi-voucher-purchases/{wifi_voucher_purchase}/block', [\App\Http\Controllers\WifiVoucherPurchaseController::class, 'block']);
+    Route::middleware('permission:wifi_purchases.update')->post('/wifi-voucher-purchases/{wifi_voucher_purchase}/unblock', [\App\Http\Controllers\WifiVoucherPurchaseController::class, 'unblock']);
 
     Route::middleware('permission:wifi_purchases.read')->get('/wifi-earnings/summary', [\App\Http\Controllers\WifiEarningsController::class, 'summary']);
     Route::middleware('permission:wifi_purchases.read')->get('/wifi-earnings', [\App\Http\Controllers\WifiEarningsController::class, 'index']);

@@ -40,15 +40,29 @@ class RouterOsService
         ]);
     }
 
-    /** @return array<int, array<string, mixed>> */
+    /**
+     * $equals words become `=key=value` (RouterOS's syntax for add/set
+     * attribute assignment) for every command EXCEPT /print, which needs
+     * `?key=value` query words to filter instead — using `=` there doesn't
+     * filter at all and RouterOS silently returns an error-shaped reply
+     * ("unknown parameter name") that this library doesn't surface as an
+     * exception, so a caller filtering /print by, say, `name` got back a
+     * single bogus non-array "row" instead of a real match or a clean
+     * empty result. Every /print call in this class filters by some field
+     * (hotspot_user_print by name, hotspot_active_print by user), so this
+     * matters everywhere, not just one call site.
+     *
+     * @return array<int, array<string, mixed>>
+     */
     private function call(string $action, string $path, array $equals = [], array $sensitiveKeys = []): array
     {
         $logParams = collect($equals)->except($sensitiveKeys)->all();
+        $isPrint = str_ends_with($path, '/print');
 
         try {
             $query = new Query($path);
             foreach ($equals as $key => $value) {
-                $query->equal($key, (string) $value);
+                $isPrint ? $query->where($key, (string) $value) : $query->equal($key, (string) $value);
             }
 
             $result = $this->client()->query($query)->read();
@@ -137,6 +151,40 @@ class RouterOsService
         }
 
         $this->call('hotspot_user_remove', '/ip/hotspot/user/remove', ['.id' => $id]);
+    }
+
+    /**
+     * Blocks a voucher immediately — disables future logins AND kicks any
+     * session that's connected right now (disabling the user alone doesn't
+     * drop an already-authenticated session). Keeps the user record intact
+     * (vs. removeHotspotUser) so it can be un-blocked later without losing
+     * its usage history/limits.
+     */
+    public function disableHotspotUser(string $username): void
+    {
+        $rows = $this->call('hotspot_user_print', '/ip/hotspot/user/print', ['name' => $username]);
+        $id = $rows[0]['.id'] ?? null;
+        if ($id) {
+            $this->call('hotspot_user_disable', '/ip/hotspot/user/set', ['.id' => $id, 'disabled' => 'yes']);
+        }
+
+        $active = $this->call('hotspot_active_print', '/ip/hotspot/active/print', ['user' => $username]);
+        foreach ($active as $session) {
+            if (!empty($session['.id'])) {
+                $this->call('hotspot_active_remove', '/ip/hotspot/active/remove', ['.id' => $session['.id']]);
+            }
+        }
+    }
+
+    public function enableHotspotUser(string $username): void
+    {
+        $rows = $this->call('hotspot_user_print', '/ip/hotspot/user/print', ['name' => $username]);
+        $id = $rows[0]['.id'] ?? null;
+        if (!$id) {
+            return;
+        }
+
+        $this->call('hotspot_user_enable', '/ip/hotspot/user/set', ['.id' => $id, 'disabled' => 'no']);
     }
 
     private function formatDuration(int $seconds): string

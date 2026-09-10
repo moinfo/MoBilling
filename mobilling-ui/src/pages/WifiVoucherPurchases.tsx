@@ -4,8 +4,12 @@ import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconSearch, IconPlus, IconCheck, IconGauge } from '@tabler/icons-react';
-import { getWifiVoucherPurchases, createManualWifiVoucherSale, getWifiVoucherPurchaseUsage, WifiVoucherPurchase } from '../api/wifiVoucherPurchases';
+import { modals } from '@mantine/modals';
+import { IconSearch, IconPlus, IconCheck, IconGauge, IconBan, IconLockOpen } from '@tabler/icons-react';
+import {
+  getWifiVoucherPurchases, createManualWifiVoucherSale, getWifiVoucherPurchaseUsage,
+  blockWifiVoucherPurchase, unblockWifiVoucherPurchase, WifiVoucherPurchase,
+} from '../api/wifiVoucherPurchases';
 import { getMikrotikRouters, MikrotikRouter } from '../api/mikrotikRouters';
 import { getWifiPlans, WifiPlan } from '../api/wifiPlans';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -31,6 +35,7 @@ export default function WifiVoucherPurchases() {
   const queryClient = useQueryClient();
   const { can } = usePermissions();
   const canSell = can('wifi_purchases.create');
+  const canBlock = can('wifi_purchases.update');
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -58,6 +63,44 @@ export default function WifiVoucherPurchases() {
   });
   const items: WifiVoucherPurchase[] = data?.data?.data || [];
   const meta = data?.data?.meta;
+
+  const blockMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => blockWifiVoucherPurchase(id, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wifi-voucher-purchases'] });
+      notifications.show({ title: 'Blocked', message: 'Voucher access has been revoked.', color: 'orange' });
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to block voucher', color: 'red' }),
+  });
+
+  const unblockMutation = useMutation({
+    mutationFn: (id: string) => unblockWifiVoucherPurchase(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['wifi-voucher-purchases'] });
+      notifications.show({ title: 'Unblocked', message: 'Voucher access restored.', color: 'green' });
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to unblock voucher', color: 'red' }),
+  });
+
+  const handleBlock = (p: WifiVoucherPurchase) => {
+    let reason = '';
+    modals.open({
+      title: `Block ${p.hotspot_username}?`,
+      children: (
+        <Stack>
+          <Text size="sm">This immediately disconnects and locks out this customer. They'll no longer be able to use this voucher.</Text>
+          <TextInput label="Reason (optional)" placeholder="e.g. abusing bandwidth, sharing outside premises"
+            onChange={(e) => { reason = e.currentTarget.value; }} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => modals.closeAll()}>Cancel</Button>
+            <Button color="red" onClick={() => { blockMutation.mutate({ id: p.id, reason: reason || undefined }); modals.closeAll(); }}>
+              Block
+            </Button>
+          </Group>
+        </Stack>
+      ),
+    });
+  };
 
   return (
     <>
@@ -92,7 +135,7 @@ export default function WifiVoucherPurchases() {
                 <Table.Th>Expires</Table.Th>
                 <Table.Th>Method</Table.Th>
                 <Table.Th>Status</Table.Th>
-                <Table.Th w={60} />
+                <Table.Th w={90} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -113,18 +156,43 @@ export default function WifiVoucherPurchases() {
                     )}
                   </Table.Td>
                   <Table.Td>
-                    <Badge size="sm" variant="light" color={STATUS_COLOR[p.status] ?? 'gray'} tt="capitalize">
-                      {p.status}
-                    </Badge>
+                    <Group gap={4}>
+                      <Badge size="sm" variant="light" color={STATUS_COLOR[p.status] ?? 'gray'} tt="capitalize">
+                        {p.status}
+                      </Badge>
+                      {p.blocked_at && (
+                        <Tooltip label={p.blocked_reason || 'Blocked'}>
+                          <Badge size="sm" variant="filled" color="red">Blocked</Badge>
+                        </Tooltip>
+                      )}
+                    </Group>
                   </Table.Td>
                   <Table.Td>
-                    {p.hotspot_username && (
-                      <Tooltip label="View data/time usage">
-                        <ActionIcon variant="light" onClick={() => setUsageFor(p)}>
-                          <IconGauge size={16} />
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
+                    <Group gap="xs">
+                      {p.hotspot_username && (
+                        <Tooltip label="View data/time usage">
+                          <ActionIcon variant="light" onClick={() => setUsageFor(p)}>
+                            <IconGauge size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
+                      {canBlock && p.hotspot_username && (
+                        p.blocked_at ? (
+                          <Tooltip label="Unblock">
+                            <ActionIcon variant="light" color="green" loading={unblockMutation.isPending}
+                              onClick={() => unblockMutation.mutate(p.id)}>
+                              <IconLockOpen size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip label="Block this voucher">
+                            <ActionIcon variant="light" color="red" onClick={() => handleBlock(p)}>
+                              <IconBan size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        )
+                      )}
+                    </Group>
                   </Table.Td>
                 </Table.Tr>
               ))}

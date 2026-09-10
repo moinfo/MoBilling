@@ -21,6 +21,7 @@ class WifiVoucherPurchase extends Model
         'gateway_response', 'completed_at', 'hotspot_username', 'hotspot_password',
         'voucher_expires_at', 'meta',
         'settled_at', 'settlement_method', 'settlement_reference', 'settlement_notes', 'settled_by',
+        'blocked_at', 'blocked_reason', 'blocked_by',
     ];
 
     protected $casts = [
@@ -32,6 +33,7 @@ class WifiVoucherPurchase extends Model
         'completed_at'        => 'datetime',
         'voucher_expires_at'  => 'datetime',
         'settled_at'          => 'datetime',
+        'blocked_at'          => 'datetime',
     ];
 
     public function router()

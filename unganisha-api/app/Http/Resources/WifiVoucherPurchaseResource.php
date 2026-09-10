@@ -26,6 +26,8 @@ class WifiVoucherPurchaseResource extends JsonResource
             'hotspot_password'   => $this->hotspot_password,
             'voucher_expires_at' => $this->voucher_expires_at,
             'completed_at'       => $this->completed_at,
+            'blocked_at'         => $this->blocked_at,
+            'blocked_reason'     => $this->blocked_reason,
             'created_at'         => $this->created_at,
         ];
     }

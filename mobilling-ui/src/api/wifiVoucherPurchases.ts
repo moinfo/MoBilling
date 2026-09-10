@@ -13,6 +13,8 @@ export interface WifiVoucherPurchase {
   hotspot_password: string | null;
   voucher_expires_at: string | null;
   completed_at: string | null;
+  blocked_at: string | null;
+  blocked_reason: string | null;
   created_at: string;
 }
 
@@ -47,3 +49,9 @@ export interface WifiVoucherUsage {
 
 export const getWifiVoucherPurchaseUsage = (id: string) =>
   api.get<{ data: WifiVoucherUsage }>(`/wifi-voucher-purchases/${id}/usage`);
+
+export const blockWifiVoucherPurchase = (id: string, reason?: string) =>
+  api.post<{ data: WifiVoucherPurchase }>(`/wifi-voucher-purchases/${id}/block`, { reason });
+
+export const unblockWifiVoucherPurchase = (id: string) =>
+  api.post<{ data: WifiVoucherPurchase }>(`/wifi-voucher-purchases/${id}/unblock`);
