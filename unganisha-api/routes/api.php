@@ -676,6 +676,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/domains',                  [\App\Http\Controllers\DomainController::class, 'index']);
         Route::get('/domains/{domain}',         [\App\Http\Controllers\DomainController::class, 'show']);
         Route::get('/domains/{domain}/logs',    [\App\Http\Controllers\DomainController::class, 'logs']);
+        Route::post('/domains/{domain}/sync',   [\App\Http\Controllers\DomainController::class, 'sync']);
     });
     Route::middleware('permission:domains.create')->post('/domains/order', [\App\Http\Controllers\DomainController::class, 'order']);
     Route::middleware('permission:domains.create')->post('/domains/add-existing', [\App\Http\Controllers\DomainController::class, 'addExisting']);

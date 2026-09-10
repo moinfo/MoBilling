@@ -293,6 +293,60 @@ class DomainController extends Controller
     }
 
     /**
+     * On-demand version of the domains:sync command's per-domain logic, for
+     * just one domain — e.g. one added via addExisting() that's missing
+     * expiry/nameserver data until the nightly sync catches up (see
+     * SyncDomains::handle(), which this mirrors).
+     */
+    public function sync(Domain $domain)
+    {
+        abort_if($domain->meta['unmanaged'] ?? false, 422, 'This domain is managed at its external registrar — nothing to sync here.');
+        abort_unless(str_ends_with($domain->name, '.tz'), 422, 'Only .tz domains can be synced from the registry.');
+
+        try {
+            $info = $this->registrar->driverFor($domain->tenant_id, $domain->id)->info($domain->name);
+
+            $expires = substr((string) ($info['ex_date'] ?? ''), 0, 10) ?: null;
+            $status = $domain->status;
+            if ($expires) {
+                $status = \Carbon\Carbon::parse($expires)->isPast() ? 'expired' : 'active';
+            }
+
+            $domain->update([
+                'status'            => $status,
+                'registered_at'     => substr((string) ($info['cr_date'] ?? ''), 0, 10) ?: $domain->registered_at,
+                'expires_at'        => $expires ?? $domain->expires_at,
+                'registrant_handle' => $info['registrant'] ?? $domain->registrant_handle,
+                'nsset_handle'      => $info['nsset'] ?? $domain->nsset_handle,
+                'keyset_handle'     => $info['keyset'] ?? $domain->keyset_handle,
+                'meta'              => array_merge($domain->meta ?? [], [
+                    'last_synced_at'       => now()->toIso8601String(),
+                    'sponsoring_registrar' => $info['cl_id'] ?? ($domain->meta['sponsoring_registrar'] ?? null),
+                ], \App\Services\SslProbe::probe($domain->name)),
+            ]);
+        } catch (\Throwable $e) {
+            // EPP 2303 = object does not exist: the registry purged it.
+            if (str_contains($e->getMessage(), '2303')) {
+                $domain->update([
+                    'status' => 'cancelled',
+                    'meta'   => array_merge($domain->meta ?? [], [
+                        'registry_missing'  => true,
+                        'closed_by_sync_at' => now()->toIso8601String(),
+                    ]),
+                ]);
+                return response()->json(['message' => 'This domain no longer exists at the registry — marked cancelled.'], 422);
+            }
+
+            return response()->json(['message' => 'Sync failed: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data'    => $domain->fresh(),
+            'message' => 'Synced from the registry.',
+        ]);
+    }
+
+    /**
      * Record a domain that's already registered (elsewhere, or at TZNIC under
      * some other sponsor/import we never billed) — pure bookkeeping so it
      * shows up under a client for renewal tracking. No invoice, no EPP call;

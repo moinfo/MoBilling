@@ -9,10 +9,10 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconWorld, IconRefresh, IconKey, IconCopy, IconLock, IconLockOpen,
-  IconShieldCheck, IconArrowLeft, IconHistory, IconServer, IconRotateClockwise, IconWorldCheck,
+  IconShieldCheck, IconArrowLeft, IconHistory, IconServer, IconRotateClockwise, IconWorldCheck, IconCloudDownload,
 } from '@tabler/icons-react';
 import {
-  getDomain, getDomainLogs, renewDomain, retryDomain, confirmManualRegistration, getDomainAuthInfo, setDomainAutoRenew,
+  getDomain, getDomainLogs, renewDomain, retryDomain, syncDomain, confirmManualRegistration, getDomainAuthInfo, setDomainAutoRenew,
   getDomainNameservers, updateDomainNameservers, describeDomainAction,
   DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
@@ -79,6 +79,17 @@ export default function DomainDetails() {
     onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not retry.', color: 'red' }),
   });
 
+  const syncMutation = useMutation({
+    mutationFn: () => syncDomain(id!),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domain', id] });
+      qc.invalidateQueries({ queryKey: ['domains'] });
+      qc.invalidateQueries({ queryKey: ['domain-stats'] });
+      notifications.show({ message: res.data.message, color: 'teal' });
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Sync failed.', color: 'red' }),
+  });
+
   const revealAuth = async () => {
     setAuthLoading(true);
     try {
@@ -126,6 +137,14 @@ export default function DomainDetails() {
           )}
         </Group>
         <Group gap="xs">
+          {can('domains.read') && (
+            <Tooltip label="Re-pull status, expiry and nameservers from the registry">
+              <Button size="xs" variant="light" color="grape" leftSection={<IconCloudDownload size={14} />}
+                loading={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
+                Sync from Registry
+              </Button>
+            </Tooltip>
+          )}
           {can('domains.renew') && ['active', 'expired'].includes(d.status) && (
             <Button size="xs" variant="light" color="green" leftSection={<IconRefresh size={14} />}
               onClick={() => setRenewOpen(true)}>
