@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, Badge, TextInput, Select, Code, Button, Modal, Stack, Alert } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, TextInput, Select, Code, Button, Modal, Stack, Alert, ActionIcon, Tooltip, Progress, Loader } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconSearch, IconPlus, IconCheck } from '@tabler/icons-react';
-import { getWifiVoucherPurchases, createManualWifiVoucherSale, WifiVoucherPurchase } from '../api/wifiVoucherPurchases';
+import { IconSearch, IconPlus, IconCheck, IconGauge } from '@tabler/icons-react';
+import { getWifiVoucherPurchases, createManualWifiVoucherSale, getWifiVoucherPurchaseUsage, WifiVoucherPurchase } from '../api/wifiVoucherPurchases';
 import { getMikrotikRouters, MikrotikRouter } from '../api/mikrotikRouters';
 import { getWifiPlans, WifiPlan } from '../api/wifiPlans';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -38,6 +38,7 @@ export default function WifiVoucherPurchases() {
   const [filterRouter, setFilterRouter] = useState<string | null>(null);
   const [filterStatus, setFilterStatus] = useState<string | null>(null);
   const [sellOpen, setSellOpen] = useState(false);
+  const [usageFor, setUsageFor] = useState<WifiVoucherPurchase | null>(null);
 
   const { data: routersData } = useQuery({
     queryKey: ['mikrotik-routers-all'],
@@ -91,6 +92,7 @@ export default function WifiVoucherPurchases() {
                 <Table.Th>Expires</Table.Th>
                 <Table.Th>Method</Table.Th>
                 <Table.Th>Status</Table.Th>
+                <Table.Th w={60} />
               </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
@@ -115,6 +117,15 @@ export default function WifiVoucherPurchases() {
                       {p.status}
                     </Badge>
                   </Table.Td>
+                  <Table.Td>
+                    {p.hotspot_username && (
+                      <Tooltip label="View data/time usage">
+                        <ActionIcon variant="light" onClick={() => setUsageFor(p)}>
+                          <IconGauge size={16} />
+                        </ActionIcon>
+                      </Tooltip>
+                    )}
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -137,7 +148,86 @@ export default function WifiVoucherPurchases() {
           }}
         />
       </Modal>
+
+      <Modal opened={!!usageFor} onClose={() => setUsageFor(null)} title={`Usage — ${usageFor?.hotspot_username ?? ''}`} size="sm">
+        {usageFor && <UsageDetails purchaseId={usageFor.id} />}
+      </Modal>
     </>
+  );
+}
+
+const formatSeconds = (seconds: number) => {
+  const d = Math.floor(seconds / 86400);
+  const h = Math.floor((seconds % 86400) / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const parts = [];
+  if (d) parts.push(`${d}d`);
+  if (h) parts.push(`${h}h`);
+  if (m || parts.length === 0) parts.push(`${m}m`);
+  return parts.join(' ');
+};
+
+function UsageDetails({ purchaseId }: { purchaseId: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['wifi-voucher-usage', purchaseId],
+    queryFn: () => getWifiVoucherPurchaseUsage(purchaseId),
+  });
+  const usage = data?.data?.data;
+
+  if (isLoading) {
+    return <Group justify="center" py="lg"><Loader size="sm" /></Group>;
+  }
+  if (!usage) {
+    return <Text c="dimmed" size="sm">Could not load usage.</Text>;
+  }
+
+  const dataPercent = usage.data_cap_mb && usage.data_used_mb != null
+    ? Math.min(100, (usage.data_used_mb / usage.data_cap_mb) * 100) : null;
+  const timePercent = usage.duration_seconds && usage.time_used_seconds != null
+    ? Math.min(100, (usage.time_used_seconds / usage.duration_seconds) * 100) : null;
+
+  return (
+    <Stack gap="sm">
+      {!usage.router_reachable && (
+        <Alert color="yellow" variant="light">Router is not reachable right now — figures may be stale.</Alert>
+      )}
+
+      {usage.data_cap_mb ? (
+        <div>
+          <Group justify="space-between" mb={4}>
+            <Text size="sm" c="dimmed">Data</Text>
+            <Text size="sm" fw={600}>
+              {usage.data_used_mb != null ? `${(usage.data_used_mb / 1024).toFixed(2)}GB used / ${(usage.data_cap_mb / 1024).toFixed(2)}GB` : 'Unknown'}
+            </Text>
+          </Group>
+          {dataPercent != null && <Progress value={dataPercent} color={dataPercent > 90 ? 'red' : 'blue'} />}
+        </div>
+      ) : (
+        <Group justify="space-between">
+          <Text size="sm" c="dimmed">Data</Text>
+          <Text size="sm">Unlimited</Text>
+        </Group>
+      )}
+
+      {usage.duration_seconds ? (
+        <div>
+          <Group justify="space-between" mb={4}>
+            <Text size="sm" c="dimmed">Time</Text>
+            <Text size="sm" fw={600}>
+              {usage.time_used_seconds
+                ? `${formatSeconds(usage.time_used_seconds)} used / ${formatSeconds(usage.duration_seconds)}`
+                : 'Not started yet'}
+            </Text>
+          </Group>
+          {timePercent != null && usage.time_used_seconds ? <Progress value={timePercent} color={timePercent > 90 ? 'red' : 'blue'} /> : null}
+        </div>
+      ) : (
+        <Group justify="space-between">
+          <Text size="sm" c="dimmed">Time</Text>
+          <Text size="sm">Unlimited</Text>
+        </Group>
+      )}
+    </Stack>
   );
 }
 

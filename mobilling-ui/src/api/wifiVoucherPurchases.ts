@@ -34,3 +34,16 @@ export const getWifiVoucherPurchases = (params?: {
 
 export const createManualWifiVoucherSale = (data: ManualWifiVoucherSalePayload) =>
   api.post<{ data: WifiVoucherPurchase }>('/wifi-voucher-purchases', data);
+
+export interface WifiVoucherUsage {
+  data_cap_mb: number | null;
+  data_used_mb: number | null;
+  data_remaining_mb: number | null;
+  duration_seconds: number | null;
+  time_used_seconds: number | null;
+  time_remaining_seconds: number | null;
+  router_reachable: boolean;
+}
+
+export const getWifiVoucherPurchaseUsage = (id: string) =>
+  api.get<{ data: WifiVoucherUsage }>(`/wifi-voucher-purchases/${id}/usage`);

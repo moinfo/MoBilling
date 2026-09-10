@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Public;
 use App\Http\Controllers\Controller;
 use App\Models\MikrotikRouter;
 use App\Models\WifiVoucherPurchase;
-use App\Services\Mikrotik\RouterOsService;
 use App\Services\PesapalService;
 use App\Services\TenantPesapalService;
 use Illuminate\Http\Request;
@@ -158,7 +157,6 @@ class WifiCheckoutController extends Controller
         $purchase = WifiVoucherPurchase::where('mikrotik_router_id', $router->id)
             ->where('hotspot_username', strtoupper(trim($data['code'])))
             ->where('status', 'completed')
-            ->with('plan')
             ->latest()
             ->first();
 
@@ -166,34 +164,9 @@ class WifiCheckoutController extends Controller
             return response()->json(['message' => 'Voucher not found. Check the code and try again.'], 404);
         }
 
-        $usage = null;
-        try {
-            $usage = (new RouterOsService($router))->getHotspotUserUsage($purchase->hotspot_username);
-        } catch (\Throwable $e) {
-            Log::warning('WiFi balance check: router query failed', [
-                'purchase_id' => $purchase->id,
-                'error'       => $e->getMessage(),
-            ]);
-        }
-
-        $usedBytes = $usage ? $usage['bytes_in'] + $usage['bytes_out'] : null;
-        $dataCapMb = $purchase->plan?->data_cap_mb;
-        $durationSeconds = $purchase->plan?->durationSeconds();
-        $usedSeconds = $usage['uptime_seconds'] ?? null;
-
-        return response()->json(['data' => [
-            'hotspot_username'      => $purchase->hotspot_username,
-            'data_cap_mb'           => $dataCapMb,
-            'data_used_mb'          => $usedBytes !== null ? round($usedBytes / 1048576, 1) : null,
-            'data_remaining_mb'     => ($dataCapMb && $usedBytes !== null)
-                ? max(0, round($dataCapMb - $usedBytes / 1048576, 1))
-                : null,
-            'duration_seconds'      => $durationSeconds,
-            'time_used_seconds'     => $usedSeconds,
-            'time_remaining_seconds' => ($durationSeconds !== null && $usedSeconds !== null)
-                ? max(0, $durationSeconds - $usedSeconds)
-                : null,
-            'router_reachable' => $usage !== null,
-        ]]);
+        return response()->json(['data' => array_merge(
+            ['hotspot_username' => $purchase->hotspot_username],
+            $purchase->liveUsage(),
+        )]);
     }
 }

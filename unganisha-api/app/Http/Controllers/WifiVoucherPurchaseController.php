@@ -75,4 +75,14 @@ class WifiVoucherPurchaseController extends Controller
     {
         return new WifiVoucherPurchaseResource($wifi_voucher_purchase->load(['router:id,name', 'plan:id,name']));
     }
+
+    /** Live data/time usage so far — queried straight from the router, on demand (staff asking "how much has this customer used?"). */
+    public function usage(WifiVoucherPurchase $wifi_voucher_purchase)
+    {
+        if (!$wifi_voucher_purchase->hotspot_username) {
+            return response()->json(['message' => 'This voucher has not been provisioned yet.'], 422);
+        }
+
+        return response()->json(['data' => $wifi_voucher_purchase->liveUsage()]);
+    }
 }
