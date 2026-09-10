@@ -48,8 +48,29 @@ class WifiVoucherIssuedNotification extends Notification implements ShouldQueue
     private function message(): string
     {
         $p = $this->purchase;
-        $expires = $p->voucher_expires_at?->format('d M Y, H:i');
 
-        return "Your WiFi voucher is ready!\nUsername: {$p->hotspot_username}\nPassword: {$p->hotspot_password}\nValid until: {$expires}\nEnter these on the WiFi login page to connect.";
+        return "Your WiFi voucher is ready!\nUsername: {$p->hotspot_username}\nPassword: {$p->hotspot_password}\nIncludes: {$this->limitsDescription()}\nEnter these on the WiFi login page to connect.";
+    }
+
+    /**
+     * Describes the plan's limit(s) instead of a fixed expiry date — the
+     * router's own time limit only starts counting from first login (see
+     * ProvisionWifiVoucherJob), so there's no single "valid until" date to
+     * quote at issuance time.
+     */
+    private function limitsDescription(): string
+    {
+        $plan = $this->purchase->plan;
+        $parts = [];
+
+        if ($plan?->duration_value && $plan?->duration_unit) {
+            $parts[] = "{$plan->duration_value} {$plan->duration_unit} of connected use, starting from your first login";
+        }
+        if ($plan?->data_cap_mb) {
+            $gb = rtrim(rtrim(number_format($plan->data_cap_mb / 1024, 1), '0'), '.');
+            $parts[] = "{$gb}GB of data";
+        }
+
+        return $parts ? implode(' + ', $parts) : 'unlimited access';
     }
 }

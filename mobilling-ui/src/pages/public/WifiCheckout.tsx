@@ -4,7 +4,7 @@ import {
   LoadingOverlay, Alert, Badge, Code, Divider, CopyButton, ActionIcon, List,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { IconWifi, IconCheck, IconCopy, IconAlertTriangle, IconClock } from '@tabler/icons-react';
 import {
   getPublicWifiCheckoutInfo, submitPublicWifiCheckout, getPublicWifiPurchaseStatus,
@@ -12,13 +12,21 @@ import {
 } from '../../api/publicWifi';
 
 const fmt = (n: number, currency = 'TZS') => `${currency} ${n.toLocaleString()}`;
-const durationLabel = (p: PublicWifiPlan) => `${p.duration_value} ${p.duration_unit}`;
+
+const gbLabel = (mb: number) => `${(mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1)}GB`;
+
+const planLimitsLabel = (p: { duration_value: number | null; duration_unit: string | null; data_cap_mb: number | null }) => {
+  const parts: string[] = [];
+  if (p.duration_value && p.duration_unit) parts.push(`${p.duration_value} ${p.duration_unit}`);
+  if (p.data_cap_mb) parts.push(gbLabel(p.data_cap_mb));
+  return parts.length ? parts.join(' + ') : 'Unlimited';
+};
 
 export default function WifiCheckout() {
   const { routerId, purchaseId } = useParams<{ routerId: string; purchaseId?: string }>();
 
   if (purchaseId) {
-    return <VoucherStatus purchaseId={purchaseId} />;
+    return <VoucherStatus purchaseId={purchaseId} routerId={routerId!} />;
   }
   return <CheckoutForm routerId={routerId!} />;
 }
@@ -78,6 +86,10 @@ function CheckoutForm({ routerId }: { routerId: string }) {
             </List>
           </Paper>
 
+          <Text size="xs" ta="center">
+            Tayari una code? <Link to={`/wifi/${routerId}/balance`}>Angalia salio lako</Link>
+          </Text>
+
           <SimpleGrid cols={{ base: 1, xs: 2 }}>
             {info.plans.map((p) => (
               <Paper key={p.id} withBorder p="md" radius="md"
@@ -89,7 +101,7 @@ function CheckoutForm({ routerId }: { routerId: string }) {
                 onClick={() => setSelected(p)}>
                 <Text fw={600}>{p.name}</Text>
                 <Text size="xl" fw={800} c="blue">{fmt(p.price, info.tenant.currency)}</Text>
-                <Text size="xs" c="dimmed">{durationLabel(p)} of access</Text>
+                <Text size="xs" c="dimmed">{planLimitsLabel(p)} of access</Text>
               </Paper>
             ))}
           </SimpleGrid>
@@ -119,7 +131,7 @@ function CheckoutForm({ routerId }: { routerId: string }) {
 const hotspotLoginUrl = (localLoginHost: string, code: string) =>
   `http://${localLoginHost}/login?username=${encodeURIComponent(code)}&password=${encodeURIComponent(code)}`;
 
-function VoucherStatus({ purchaseId }: { purchaseId: string }) {
+function VoucherStatus({ purchaseId, routerId }: { purchaseId: string; routerId: string }) {
   const [status, setStatus] = useState<PublicWifiPurchaseStatus | null>(null);
   const [autoTried, setAutoTried] = useState(false);
 
@@ -186,10 +198,15 @@ function VoucherStatus({ purchaseId }: { purchaseId: string }) {
               </CopyButton>
             </Group>
             <Text size="xs" c="dimmed">Username and password are the same code.</Text>
-            {status.voucher_expires_at && (
+            {status.plan && (
               <Badge variant="light" color="blue">
-                Valid until {new Date(status.voucher_expires_at).toLocaleString()}
+                Includes {planLimitsLabel(status.plan)}
               </Badge>
+            )}
+            {status.plan?.duration_value && status.plan?.duration_unit && (
+              <Text size="xs" c="dimmed" ta="center">
+                Your {status.plan.duration_value} {status.plan.duration_unit} only starts counting once you connect — buy now, use anytime.
+              </Text>
             )}
             {status.local_login_host && status.hotspot_username && (
               <>
@@ -208,6 +225,9 @@ function VoucherStatus({ purchaseId }: { purchaseId: string }) {
             <Divider w="100%" my="xs" />
             <Text size="xs" c="dimmed" ta="center">
               A copy has also been sent to your phone.
+            </Text>
+            <Text size="xs" ta="center">
+              <Link to={`/wifi/${routerId}/balance`}>Angalia salio lako baadaye</Link>
             </Text>
           </Stack>
         )}

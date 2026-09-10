@@ -19,6 +19,7 @@ class WifiPlanResource extends JsonResource
             'name'            => $this->name,
             'duration_value'  => $this->duration_value,
             'duration_unit'   => $this->duration_unit,
+            'data_cap_mb'     => $this->data_cap_mb,
             'price'           => $this->price,
             'hotspot_profile' => $this->hotspot_profile,
             'is_active'       => (bool) $this->is_active,

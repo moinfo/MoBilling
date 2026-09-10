@@ -128,6 +128,8 @@ Route::get('/public/wifi/{router}', [\App\Http\Controllers\Public\WifiCheckoutCo
 Route::post('/public/wifi/{router}/checkout', [\App\Http\Controllers\Public\WifiCheckoutController::class, 'checkout'])
     ->middleware('throttle:10,1');
 Route::get('/public/wifi/purchases/{purchase}', [\App\Http\Controllers\Public\WifiCheckoutController::class, 'status']);
+Route::get('/public/wifi/{router}/balance', [\App\Http\Controllers\Public\WifiCheckoutController::class, 'balance'])
+    ->middleware('throttle:20,1');
 
 // Self-hosted license check-in (no auth — called by an external install, not a logged-in browser)
 Route::post('/license/validate', [\App\Http\Controllers\LicenseValidationController::class, 'validate'])

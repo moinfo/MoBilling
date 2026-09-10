@@ -33,13 +33,18 @@ class ProvisionWifiVoucherJob extends BaseWifiJob
 
         $this->guard($purchase, function () use ($purchase, $router, $plan, $code) {
             (new RouterOsService($router))->createHotspotUser(
-                $code, $code, $plan->hotspot_profile, $plan->durationSeconds()
+                $code, $code, $plan->hotspot_profile, $plan->durationSeconds(), $plan->dataCapBytes()
             );
 
+            // No voucher_expires_at here: RouterOS's own limit-uptime is
+            // connected-time, not wall-clock, so a fixed deadline computed
+            // at purchase time would be wrong for anyone who buys now and
+            // starts using it later. Time/data remaining is instead
+            // queried live from the router — see
+            // WifiCheckoutController::balance().
             $purchase->update([
-                'hotspot_username'   => $code,
-                'hotspot_password'   => $code,
-                'voucher_expires_at' => now()->addSeconds($plan->durationSeconds()),
+                'hotspot_username' => $code,
+                'hotspot_password' => $code,
             ]);
 
             try {

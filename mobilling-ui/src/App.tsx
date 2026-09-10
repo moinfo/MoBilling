@@ -145,6 +145,7 @@ import LicenseInactive from './pages/LicenseInactive';
 import PesapalCallback from './pages/PesapalCallback';
 import PayInvoice from './pages/PayInvoice';
 import WifiCheckout from './pages/public/WifiCheckout';
+import WifiBalanceCheck from './pages/public/WifiBalanceCheck';
 
 import '@mantine/core/styles.css';
 import '@mantine/dates/styles.css';
@@ -181,6 +182,7 @@ export default function App() {
                 <Route path="/pay/:id" element={<PayInvoice />} />
                 <Route path="/wifi/:routerId" element={<WifiCheckout />} />
                 <Route path="/wifi/:routerId/status/:purchaseId" element={<WifiCheckout />} />
+                <Route path="/wifi/:routerId/balance" element={<WifiBalanceCheck />} />
 
                 {/* Subscription expired (standalone, no sidebar) */}
                 <Route

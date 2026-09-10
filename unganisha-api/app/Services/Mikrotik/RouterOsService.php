@@ -87,19 +87,45 @@ class RouterOsService
     }
 
     /**
-     * Create a hotspot user with a time-limited profile. $limitUptimeSeconds
-     * is written as RouterOS's own "1d2h3m4s" duration syntax on the
-     * "limit-uptime" field — the router itself disables the user once that
-     * much time has elapsed, no MoBilling-side timer needed.
+     * Create a hotspot user. $limitUptimeSeconds is written as RouterOS's
+     * own "1d2h3m4s" duration syntax on the "limit-uptime" field — the
+     * router itself disables the user once that much *connected* time has
+     * elapsed (not wall-clock time — buying in advance for later use costs
+     * nothing), no MoBilling-side timer needed. Null means no time limit
+     * (a pure data-cap voucher, good until $limitBytesTotal runs out).
      */
-    public function createHotspotUser(string $username, string $password, ?string $profile, int $limitUptimeSeconds): void
+    public function createHotspotUser(string $username, string $password, ?string $profile, ?int $limitUptimeSeconds, ?int $limitBytesTotal = null): void
     {
         $this->call('hotspot_user_add', '/ip/hotspot/user/add', array_filter([
-            'name'          => $username,
-            'password'      => $password,
-            'profile'       => $profile,
-            'limit-uptime'  => $this->formatDuration($limitUptimeSeconds),
+            'name'              => $username,
+            'password'          => $password,
+            'profile'           => $profile,
+            'limit-uptime'      => $limitUptimeSeconds !== null ? $this->formatDuration($limitUptimeSeconds) : null,
+            'limit-bytes-total' => $limitBytesTotal,
         ]), sensitiveKeys: ['password']);
+    }
+
+    /**
+     * Cumulative usage so far for a hotspot user — persists across
+     * reconnects, since it lives on the `/ip hotspot user` record itself,
+     * not a per-session counter. `uptime_seconds` in particular is
+     * connected-*time*, not wall-clock time since purchase: a "1 day" quota
+     * only starts running down once the customer actually logs in, so
+     * buying in advance for later use costs them nothing. Null if the user
+     * no longer exists on the router (e.g. manually removed).
+     */
+    public function getHotspotUserUsage(string $username): ?array
+    {
+        $rows = $this->call('hotspot_user_print', '/ip/hotspot/user/print', ['name' => $username]);
+        if (empty($rows)) {
+            return null;
+        }
+
+        return [
+            'bytes_in'       => (int) ($rows[0]['bytes-in'] ?? 0),
+            'bytes_out'      => (int) ($rows[0]['bytes-out'] ?? 0),
+            'uptime_seconds' => $this->parseDuration($rows[0]['uptime'] ?? ''),
+        ];
     }
 
     public function removeHotspotUser(string $username): void
@@ -123,5 +149,30 @@ class RouterOsService
         $seconds %= 60;
 
         return "{$days}d{$hours}h{$minutes}m{$seconds}s";
+    }
+
+    /**
+     * Inverse of formatDuration(), tolerant of both RouterOS duration
+     * formats seen in the wild: letter-delimited ("1d2h3m4s", any subset)
+     * and colon-delimited ("3d05:14:32" / "05:14:32"). Unparseable or
+     * empty input (e.g. a user who's never connected, so RouterOS omits
+     * the field) returns 0.
+     */
+    private function parseDuration(string $value): int
+    {
+        $value = trim($value);
+        if ($value === '') {
+            return 0;
+        }
+
+        if (preg_match('/^(?:(\d+)d)?(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/', $value, $m) && array_sum(array_map('intval', array_slice($m, 1))) > 0) {
+            return ((int) ($m[1] ?? 0) * 86400) + ((int) ($m[2] ?? 0) * 3600) + ((int) ($m[3] ?? 0) * 60) + (int) ($m[4] ?? 0);
+        }
+
+        if (preg_match('/^(?:(\d+)d)?(\d{1,2}):(\d{2}):(\d{2})$/', $value, $m)) {
+            return ((int) ($m[1] ?? 0) * 86400) + ((int) $m[2] * 3600) + ((int) $m[3] * 60) + (int) $m[4];
+        }
+
+        return 0;
     }
 }

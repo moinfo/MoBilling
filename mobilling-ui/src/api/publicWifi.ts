@@ -3,8 +3,9 @@ import api from './axios';
 export interface PublicWifiPlan {
   id: string;
   name: string;
-  duration_value: number;
-  duration_unit: 'hours' | 'days' | 'weeks';
+  duration_value: number | null;
+  duration_unit: 'hours' | 'days' | 'weeks' | null;
+  data_cap_mb: number | null;
   price: number;
 }
 
@@ -19,7 +20,7 @@ export interface PublicWifiPurchaseStatus {
   status: 'pending' | 'completed' | 'failed';
   hotspot_username: string | null;
   hotspot_password: string | null;
-  voucher_expires_at: string | null;
+  plan: { duration_value: number | null; duration_unit: 'hours' | 'days' | 'weeks' | null; data_cap_mb: number | null } | null;
   local_login_host: string | null;
 }
 
@@ -31,3 +32,17 @@ export const submitPublicWifiCheckout = (routerId: string, data: { phone: string
 
 export const getPublicWifiPurchaseStatus = (purchaseId: string) =>
   api.get<{ data: PublicWifiPurchaseStatus }>(`/public/wifi/purchases/${purchaseId}`);
+
+export interface PublicWifiBalance {
+  hotspot_username: string;
+  data_cap_mb: number | null;
+  data_used_mb: number | null;
+  data_remaining_mb: number | null;
+  duration_seconds: number | null;
+  time_used_seconds: number | null;
+  time_remaining_seconds: number | null;
+  router_reachable: boolean;
+}
+
+export const getPublicWifiBalance = (routerId: string, code: string) =>
+  api.get<{ data: PublicWifiBalance }>(`/public/wifi/${routerId}/balance`, { params: { code } });

@@ -7,8 +7,9 @@ export interface WifiPlan {
   mikrotik_router_id: string;
   router?: { id: string; name: string };
   name: string;
-  duration_value: number;
-  duration_unit: WifiDurationUnit;
+  duration_value: number | null;
+  duration_unit: WifiDurationUnit | null;
+  data_cap_mb: number | null;
   price: string;
   hotspot_profile: string | null;
   is_active: boolean;
@@ -18,8 +19,9 @@ export interface WifiPlan {
 export interface WifiPlanPayload {
   mikrotik_router_id: string;
   name: string;
-  duration_value: number;
-  duration_unit: WifiDurationUnit;
+  duration_value?: number;
+  duration_unit?: WifiDurationUnit;
+  data_cap_mb?: number;
   price: number;
   hotspot_profile?: string | null;
   is_active?: boolean;

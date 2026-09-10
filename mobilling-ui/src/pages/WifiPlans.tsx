@@ -44,13 +44,16 @@ export default function WifiPlans() {
 
   const form = useForm({
     initialValues: {
-      mikrotik_router_id: '', name: '', duration_value: 1, duration_unit: 'days' as WifiDurationUnit,
+      mikrotik_router_id: '', name: '', time_limited: true,
+      duration_value: 1, duration_unit: 'days' as WifiDurationUnit,
+      data_cap_mb: undefined as number | undefined,
       price: 0, hotspot_profile: '', is_active: true,
     },
     validate: {
       mikrotik_router_id: (v) => (v ? null : 'Required'),
       name: (v) => (v.trim().length > 0 ? null : 'Required'),
-      duration_value: (v) => (v >= 1 ? null : 'Must be at least 1'),
+      duration_value: (v, values) => (!values.time_limited || v >= 1 ? null : 'Must be at least 1'),
+      data_cap_mb: (v, values) => (values.time_limited || v ? null : 'Set a data cap — a plan needs at least one limit'),
       price: (v) => (v >= 0 ? null : 'Must be 0 or greater'),
     },
   });
@@ -58,20 +61,24 @@ export default function WifiPlans() {
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ mikrotik_router_id: filterRouter || '', name: '', duration_value: 1, duration_unit: 'days', price: 0, hotspot_profile: '', is_active: true });
+    form.setValues({ mikrotik_router_id: filterRouter || '', name: '', time_limited: true, duration_value: 1, duration_unit: 'days', data_cap_mb: undefined, price: 0, hotspot_profile: '', is_active: true });
     setFormOpen(true);
   };
   const openEdit = (p: WifiPlan) => {
     setEditing(p);
     form.setValues({
-      mikrotik_router_id: p.mikrotik_router_id, name: p.name, duration_value: p.duration_value,
-      duration_unit: p.duration_unit, price: parseFloat(p.price) || 0, hotspot_profile: p.hotspot_profile || '', is_active: p.is_active,
+      mikrotik_router_id: p.mikrotik_router_id, name: p.name, time_limited: !!p.duration_unit,
+      duration_value: p.duration_value ?? 1, duration_unit: p.duration_unit ?? 'days', data_cap_mb: p.data_cap_mb ?? undefined,
+      price: parseFloat(p.price) || 0, hotspot_profile: p.hotspot_profile || '', is_active: p.is_active,
     });
     setFormOpen(true);
   };
 
   const buildPayload = (v: typeof form.values) => ({
     ...v,
+    duration_value: v.time_limited ? v.duration_value : undefined,
+    duration_unit: v.time_limited ? v.duration_unit : undefined,
+    data_cap_mb: v.data_cap_mb || undefined,
     hotspot_profile: v.hotspot_profile || undefined,
   });
 
@@ -134,6 +141,7 @@ export default function WifiPlans() {
               <Table.Th>Name</Table.Th>
               <Table.Th>Router</Table.Th>
               <Table.Th>Duration</Table.Th>
+              <Table.Th>Data Cap</Table.Th>
               <Table.Th style={{ textAlign: 'right' }}>Price</Table.Th>
               <Table.Th>Status</Table.Th>
               {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
@@ -144,7 +152,8 @@ export default function WifiPlans() {
               <Table.Tr key={p.id}>
                 <Table.Td fw={500}>{p.name}</Table.Td>
                 <Table.Td>{p.router?.name || '—'}</Table.Td>
-                <Table.Td>{p.duration_value} {p.duration_unit}</Table.Td>
+                <Table.Td>{p.duration_value && p.duration_unit ? `${p.duration_value} ${p.duration_unit}` : 'No time limit'}</Table.Td>
+                <Table.Td>{p.data_cap_mb ? `${(p.data_cap_mb / 1024).toFixed(1).replace(/\.0$/, '')}GB` : 'Unlimited'}</Table.Td>
                 <Table.Td style={{ textAlign: 'right' }}>{formatCurrency(p.price)}</Table.Td>
                 <Table.Td>
                   <Badge color={p.is_active ? 'green' : 'gray'} variant="light">
@@ -176,10 +185,17 @@ export default function WifiPlans() {
           <Stack>
             <Select label="Router" required data={routerOptions} searchable {...form.getInputProps('mikrotik_router_id')} />
             <TextInput label="Name" required placeholder="e.g. 1 Day Unlimited" {...form.getInputProps('name')} />
-            <Group grow>
-              <NumberInput label="Duration" required min={1} {...form.getInputProps('duration_value')} />
-              <Select label="Unit" required data={UNIT_OPTIONS} {...form.getInputProps('duration_unit')} />
-            </Group>
+            <Switch label="Time-limited" description="Off = no time limit at all — good until the data runs out (requires a data cap below)"
+              {...form.getInputProps('time_limited', { type: 'checkbox' })} />
+            {form.values.time_limited && (
+              <Group grow>
+                <NumberInput label="Duration" required min={1} {...form.getInputProps('duration_value')} />
+                <Select label="Unit" required data={UNIT_OPTIONS} {...form.getInputProps('duration_unit')} />
+              </Group>
+            )}
+            <NumberInput label={`Data Cap (MB${form.values.time_limited ? ', optional' : ''})`} min={1} placeholder="Unlimited"
+              description="e.g. 2048 for a 2GB cap — with a time limit set too, the session ends when either limit is hit first"
+              {...form.getInputProps('data_cap_mb')} />
             <NumberInput label="Price" required min={0} decimalScale={2} {...form.getInputProps('price')} />
             <TextInput label="Hotspot Profile (optional)"
               description="RouterOS user profile to assign (e.g. a speed-limit profile) — leave blank for the router's default"
