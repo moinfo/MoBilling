@@ -21,6 +21,7 @@ class WifiVoucherPurchaseResource extends JsonResource
             'customer_name'      => $this->customer_name,
             'amount'             => $this->amount,
             'status'             => $this->status,
+            'payment_method_used' => $this->payment_method_used,
             'hotspot_username'   => $this->hotspot_username,
             'hotspot_password'   => $this->hotspot_password,
             'voucher_expires_at' => $this->voucher_expires_at,
