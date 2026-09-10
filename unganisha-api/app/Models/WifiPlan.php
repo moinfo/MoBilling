@@ -13,13 +13,14 @@ class WifiPlan extends Model
     use HasFactory, HasUuids, SoftDeletes, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'mikrotik_router_id', 'name', 'duration_value', 'duration_unit', 'data_cap_mb',
+        'tenant_id', 'mikrotik_router_id', 'name', 'duration_value', 'duration_unit', 'data_cap_mb', 'speed_limit_mbps',
         'price', 'hotspot_profile', 'is_active',
     ];
 
     protected $casts = [
-        'price'      => 'decimal:2',
-        'is_active'  => 'boolean',
+        'price'            => 'decimal:2',
+        'speed_limit_mbps' => 'decimal:2',
+        'is_active'        => 'boolean',
     ];
 
     public function router()
@@ -52,5 +53,21 @@ class WifiPlan extends Model
     public function dataCapBytes(): ?int
     {
         return $this->data_cap_mb ? $this->data_cap_mb * 1024 * 1024 : null;
+    }
+
+    /**
+     * RouterOS hotspot user "rate-limit" string (e.g. "2M/2M") — symmetric
+     * up/down. Mainly a sharing deterrent: tethering this to several people
+     * splits a capped pipe, so it gets noticeably slow fast rather than
+     * silently working fine for everyone. Null = unlimited.
+     */
+    public function rateLimitString(): ?string
+    {
+        if (!$this->speed_limit_mbps) {
+            return null;
+        }
+
+        $mbps = rtrim(rtrim((string) $this->speed_limit_mbps, '0'), '.');
+        return "{$mbps}M/{$mbps}M";
     }
 }

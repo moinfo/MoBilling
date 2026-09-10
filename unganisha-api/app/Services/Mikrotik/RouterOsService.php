@@ -120,6 +120,31 @@ class RouterOsService
     }
 
     /**
+     * `rate-limit` isn't a valid field on the hotspot *user* itself — it
+     * lives on the user *profile* (confirmed live: RouterOS rejects it on
+     * /ip/hotspot/user/add with "unknown parameter rate-limit"). So a
+     * speed-limited plan needs its own profile; this finds-or-creates one
+     * by a deterministic name derived from the rate so repeated calls for
+     * the same Mbps value reuse it instead of piling up duplicates.
+     */
+    public function ensureRateLimitProfile(string $rateLimit): string
+    {
+        $name = 'mobilling-rl-' . str_replace('/', '-', $rateLimit);
+
+        $existing = $this->call('hotspot_profile_print', '/ip/hotspot/user/profile/print', ['name' => $name]);
+        if (!empty($existing)) {
+            return $name;
+        }
+
+        $this->call('hotspot_profile_add', '/ip/hotspot/user/profile/add', [
+            'name'       => $name,
+            'rate-limit' => $rateLimit,
+        ]);
+
+        return $name;
+    }
+
+    /**
      * Cumulative usage so far for a hotspot user — persists across
      * reconnects, since it lives on the `/ip hotspot user` record itself,
      * not a per-session counter. `uptime_seconds` in particular is

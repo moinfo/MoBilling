@@ -10,6 +10,7 @@ export interface WifiPlan {
   duration_value: number | null;
   duration_unit: WifiDurationUnit | null;
   data_cap_mb: number | null;
+  speed_limit_mbps: string | null;
   price: string;
   hotspot_profile: string | null;
   is_active: boolean;
@@ -22,6 +23,7 @@ export interface WifiPlanPayload {
   duration_value?: number;
   duration_unit?: WifiDurationUnit;
   data_cap_mb?: number;
+  speed_limit_mbps?: number;
   price: number;
   hotspot_profile?: string | null;
   is_active?: boolean;

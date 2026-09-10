@@ -32,8 +32,18 @@ class ProvisionWifiVoucherJob extends BaseWifiJob
         $code = strtoupper(Str::random(8));
 
         $this->guard($purchase, function () use ($purchase, $router, $plan, $code) {
-            (new RouterOsService($router))->createHotspotUser(
-                $code, $code, $plan->hotspot_profile, $plan->durationSeconds(), $plan->dataCapBytes()
+            $service = new RouterOsService($router);
+
+            // An explicit hotspot_profile always wins (the admin configured
+            // it deliberately, maybe for reasons beyond just speed). Only
+            // auto-provision a rate-limit profile when they haven't set one.
+            $profile = $plan->hotspot_profile;
+            if (!$profile && $rateLimit = $plan->rateLimitString()) {
+                $profile = $service->ensureRateLimitProfile($rateLimit);
+            }
+
+            $service->createHotspotUser(
+                $code, $code, $profile, $plan->durationSeconds(), $plan->dataCapBytes()
             );
 
             // No voucher_expires_at here: RouterOS's own limit-uptime is

@@ -28,6 +28,7 @@ class StoreWifiPlanRequest extends FormRequest
             'duration_value'  => 'nullable|required_without:data_cap_mb|integer|min:1',
             'duration_unit'   => 'nullable|required_without:data_cap_mb|in:hours,days,weeks',
             'data_cap_mb'     => 'nullable|required_without:duration_value|integer|min:1',
+            'speed_limit_mbps' => 'nullable|numeric|min:0.1|max:9999',
             'price'           => 'required|numeric|min:0',
             'hotspot_profile' => 'nullable|string|max:255',
             'is_active'       => 'sometimes|boolean',

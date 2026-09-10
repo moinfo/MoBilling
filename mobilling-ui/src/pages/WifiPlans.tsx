@@ -47,6 +47,7 @@ export default function WifiPlans() {
       mikrotik_router_id: '', name: '', time_limited: true,
       duration_value: 1, duration_unit: 'days' as WifiDurationUnit,
       data_cap_mb: undefined as number | undefined,
+      speed_limit_mbps: undefined as number | undefined,
       price: 0, hotspot_profile: '', is_active: true,
     },
     validate: {
@@ -61,7 +62,7 @@ export default function WifiPlans() {
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ mikrotik_router_id: filterRouter || '', name: '', time_limited: true, duration_value: 1, duration_unit: 'days', data_cap_mb: undefined, price: 0, hotspot_profile: '', is_active: true });
+    form.setValues({ mikrotik_router_id: filterRouter || '', name: '', time_limited: true, duration_value: 1, duration_unit: 'days', data_cap_mb: undefined, speed_limit_mbps: undefined, price: 0, hotspot_profile: '', is_active: true });
     setFormOpen(true);
   };
   const openEdit = (p: WifiPlan) => {
@@ -69,6 +70,7 @@ export default function WifiPlans() {
     form.setValues({
       mikrotik_router_id: p.mikrotik_router_id, name: p.name, time_limited: !!p.duration_unit,
       duration_value: p.duration_value ?? 1, duration_unit: p.duration_unit ?? 'days', data_cap_mb: p.data_cap_mb ?? undefined,
+      speed_limit_mbps: p.speed_limit_mbps ? parseFloat(p.speed_limit_mbps) : undefined,
       price: parseFloat(p.price) || 0, hotspot_profile: p.hotspot_profile || '', is_active: p.is_active,
     });
     setFormOpen(true);
@@ -79,6 +81,7 @@ export default function WifiPlans() {
     duration_value: v.time_limited ? v.duration_value : undefined,
     duration_unit: v.time_limited ? v.duration_unit : undefined,
     data_cap_mb: v.data_cap_mb || undefined,
+    speed_limit_mbps: v.speed_limit_mbps || undefined,
     hotspot_profile: v.hotspot_profile || undefined,
   });
 
@@ -142,6 +145,7 @@ export default function WifiPlans() {
               <Table.Th>Router</Table.Th>
               <Table.Th>Duration</Table.Th>
               <Table.Th>Data Cap</Table.Th>
+              <Table.Th>Speed</Table.Th>
               <Table.Th style={{ textAlign: 'right' }}>Price</Table.Th>
               <Table.Th>Status</Table.Th>
               {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
@@ -154,6 +158,7 @@ export default function WifiPlans() {
                 <Table.Td>{p.router?.name || '—'}</Table.Td>
                 <Table.Td>{p.duration_value && p.duration_unit ? `${p.duration_value} ${p.duration_unit}` : 'No time limit'}</Table.Td>
                 <Table.Td>{p.data_cap_mb ? `${(p.data_cap_mb / 1024).toFixed(1).replace(/\.0$/, '')}GB` : 'Unlimited'}</Table.Td>
+                <Table.Td>{p.speed_limit_mbps ? `${parseFloat(p.speed_limit_mbps)}Mbps` : 'Unlimited'}</Table.Td>
                 <Table.Td style={{ textAlign: 'right' }}>{formatCurrency(p.price)}</Table.Td>
                 <Table.Td>
                   <Badge color={p.is_active ? 'green' : 'gray'} variant="light">
@@ -196,9 +201,12 @@ export default function WifiPlans() {
             <NumberInput label={`Data Cap (MB${form.values.time_limited ? ', optional' : ''})`} min={1} placeholder="Unlimited"
               description="e.g. 2048 for a 2GB cap — with a time limit set too, the session ends when either limit is hit first"
               {...form.getInputProps('data_cap_mb')} />
+            <NumberInput label="Speed Limit (Mbps, optional)" min={0.1} decimalScale={1} placeholder="Unlimited"
+              description="Caps how fast this voucher can go, up and down — a good deterrent against sharing the code, since everyone behind it splits the same capped speed"
+              {...form.getInputProps('speed_limit_mbps')} />
             <NumberInput label="Price" required min={0} decimalScale={2} {...form.getInputProps('price')} />
             <TextInput label="Hotspot Profile (optional)"
-              description="RouterOS user profile to assign (e.g. a speed-limit profile) — leave blank for the router's default"
+              description="Advanced: a specific RouterOS profile to use instead — leave blank to use the router's default, or to let MoBilling auto-manage a profile for the Speed Limit above"
               {...form.getInputProps('hotspot_profile')} />
             <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
             <Group justify="flex-end">
