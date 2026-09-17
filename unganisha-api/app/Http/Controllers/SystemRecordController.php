@@ -11,6 +11,10 @@ use Illuminate\Support\Facades\Storage;
 
 class SystemRecordController extends Controller
 {
+    private const RELATIONS = [
+        'system', 'systemProperty', 'bankAccount', 'createdBy', 'smsConfirmedBy', 'statementConfirmedBy',
+    ];
+
     public function index(Request $request)
     {
         $query = SystemRecord::with([
@@ -18,6 +22,8 @@ class SystemRecordController extends Controller
             'systemProperty:id,name',
             'bankAccount:id,bank_name,account_number',
             'createdBy:id,name',
+            'smsConfirmedBy:id,name',
+            'statementConfirmedBy:id,name',
         ]);
 
         if ($request->filled('system_id')) {
@@ -80,12 +86,12 @@ class SystemRecordController extends Controller
             throw $e;
         }
 
-        return new SystemRecordResource($record->load('system', 'systemProperty', 'bankAccount', 'createdBy'));
+        return new SystemRecordResource($record->load(self::RELATIONS));
     }
 
     public function show(SystemRecord $system_record)
     {
-        return new SystemRecordResource($system_record->load('system', 'systemProperty', 'bankAccount', 'createdBy'));
+        return new SystemRecordResource($system_record->load(self::RELATIONS));
     }
 
     public function update(StoreSystemRecordRequest $request, SystemRecord $system_record)
@@ -122,7 +128,7 @@ class SystemRecordController extends Controller
             Storage::disk('public')->delete($oldPath);
         }
 
-        return new SystemRecordResource($system_record->load('system', 'systemProperty', 'bankAccount', 'createdBy'));
+        return new SystemRecordResource($system_record->load(self::RELATIONS));
     }
 
     public function destroy(SystemRecord $system_record)
@@ -132,5 +138,42 @@ class SystemRecordController extends Controller
         // if the record is ever restored.
         $system_record->delete();
         return response()->json(['message' => 'System record deleted']);
+    }
+
+    /**
+     * Dual-control reconciliation: the person watching for the bank SMS and
+     * the person checking the bank statement are normally different staff —
+     * each toggles their own check independently. A record only counts as
+     * reconciled once both are set (see SystemRecordResource::reconciled).
+     */
+    public function toggleSmsConfirmation(SystemRecord $system_record)
+    {
+        // Direct attribute assignment (not update([...])) deliberately
+        // bypasses $fillable — these two columns aren't mass-assignable
+        // through the general edit form, only through this toggle.
+        if ($system_record->sms_confirmed_at) {
+            $system_record->sms_confirmed_at = null;
+            $system_record->sms_confirmed_by = null;
+        } else {
+            $system_record->sms_confirmed_at = now();
+            $system_record->sms_confirmed_by = auth()->id();
+        }
+        $system_record->save();
+
+        return new SystemRecordResource($system_record->load(self::RELATIONS));
+    }
+
+    public function toggleStatementConfirmation(SystemRecord $system_record)
+    {
+        if ($system_record->statement_confirmed_at) {
+            $system_record->statement_confirmed_at = null;
+            $system_record->statement_confirmed_by = null;
+        } else {
+            $system_record->statement_confirmed_at = now();
+            $system_record->statement_confirmed_by = auth()->id();
+        }
+        $system_record->save();
+
+        return new SystemRecordResource($system_record->load(self::RELATIONS));
     }
 }

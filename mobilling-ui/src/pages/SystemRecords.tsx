@@ -1,14 +1,17 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Stack, Textarea, FileInput, Anchor, Badge } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Stack, Textarea, FileInput, Anchor, Badge, Tooltip } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconUpload, IconDownload } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconUpload, IconDownload, IconMessage, IconFileSpreadsheet } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import { getSystemRecords, createSystemRecord, updateSystemRecord, deleteSystemRecord, SystemRecord, SystemRecordType } from '../api/systemRecords';
+import {
+  getSystemRecords, createSystemRecord, updateSystemRecord, deleteSystemRecord,
+  toggleSmsConfirmation, toggleStatementConfirmation, SystemRecord, SystemRecordType,
+} from '../api/systemRecords';
 import { getSystems, System } from '../api/systems';
 import { getSystemProperties, SystemProperty } from '../api/systemProperties';
 import { getBankAccounts, BankAccount } from '../api/bankAccounts';
@@ -183,6 +186,17 @@ export default function SystemRecords() {
     onConfirm: () => deleteMutation.mutate(r.id),
   });
 
+  const smsToggleMutation = useMutation({
+    mutationFn: toggleSmsConfirmation,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['system-records'] }),
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to update', color: 'red' }),
+  });
+  const statementToggleMutation = useMutation({
+    mutationFn: toggleStatementConfirmation,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['system-records'] }),
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to update', color: 'red' }),
+  });
+
   return (
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
@@ -228,6 +242,7 @@ export default function SystemRecords() {
                 <Table.Th style={{ textAlign: 'right' }}>Amount</Table.Th>
                 <Table.Th>Transaction Ref</Table.Th>
                 <Table.Th>Receipt</Table.Th>
+                <Table.Th>Reconciliation</Table.Th>
                 <Table.Th>Notes</Table.Th>
                 {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
               </Table.Tr>
@@ -263,6 +278,39 @@ export default function SystemRecords() {
                     ) : (
                       <Text size="xs" c="dimmed">—</Text>
                     )}
+                  </Table.Td>
+                  <Table.Td>
+                    <Group gap={6} wrap="nowrap">
+                      <Tooltip label={r.sms_confirmed_at
+                        ? `SMS confirmed by ${r.sms_confirmed_by?.name ?? '—'} on ${formatDate(r.sms_confirmed_at)}`
+                        : 'Confirm bank SMS received'}>
+                        <ActionIcon
+                          variant={r.sms_confirmed_at ? 'filled' : 'outline'}
+                          color={r.sms_confirmed_at ? 'green' : 'gray'}
+                          size="sm"
+                          disabled={!canUpdate}
+                          loading={smsToggleMutation.isPending && smsToggleMutation.variables === r.id}
+                          onClick={() => smsToggleMutation.mutate(r.id)}
+                        >
+                          <IconMessage size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Tooltip label={r.statement_confirmed_at
+                        ? `Statement confirmed by ${r.statement_confirmed_by?.name ?? '—'} on ${formatDate(r.statement_confirmed_at)}`
+                        : 'Confirm seen on bank statement'}>
+                        <ActionIcon
+                          variant={r.statement_confirmed_at ? 'filled' : 'outline'}
+                          color={r.statement_confirmed_at ? 'green' : 'gray'}
+                          size="sm"
+                          disabled={!canUpdate}
+                          loading={statementToggleMutation.isPending && statementToggleMutation.variables === r.id}
+                          onClick={() => statementToggleMutation.mutate(r.id)}
+                        >
+                          <IconFileSpreadsheet size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                      {r.reconciled && <Badge size="xs" color="green" variant="light">Reconciled</Badge>}
+                    </Group>
                   </Table.Td>
                   <Table.Td>
                     <Text size="sm" c="dimmed" lineClamp={2}>{r.notes || '—'}</Text>

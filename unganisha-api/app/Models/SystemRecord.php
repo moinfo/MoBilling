@@ -20,6 +20,8 @@ class SystemRecord extends Model
     protected $casts = [
         'record_date' => 'date',
         'amount' => 'decimal:2',
+        'sms_confirmed_at' => 'datetime',
+        'statement_confirmed_at' => 'datetime',
     ];
 
     public function system()
@@ -40,5 +42,15 @@ class SystemRecord extends Model
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function smsConfirmedBy()
+    {
+        return $this->belongsTo(User::class, 'sms_confirmed_by');
+    }
+
+    public function statementConfirmedBy()
+    {
+        return $this->belongsTo(User::class, 'statement_confirmed_by');
     }
 }

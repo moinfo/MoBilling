@@ -39,6 +39,17 @@ class SystemRecordResource extends JsonResource
                 'id' => $this->createdBy->id,
                 'name' => $this->createdBy->name,
             ]),
+            'sms_confirmed_at' => $this->sms_confirmed_at,
+            'sms_confirmed_by' => $this->when($this->relationLoaded('smsConfirmedBy') && $this->smsConfirmedBy, fn () => [
+                'id' => $this->smsConfirmedBy->id,
+                'name' => $this->smsConfirmedBy->name,
+            ]),
+            'statement_confirmed_at' => $this->statement_confirmed_at,
+            'statement_confirmed_by' => $this->when($this->relationLoaded('statementConfirmedBy') && $this->statementConfirmedBy, fn () => [
+                'id' => $this->statementConfirmedBy->id,
+                'name' => $this->statementConfirmedBy->name,
+            ]),
+            'reconciled' => (bool) ($this->sms_confirmed_at && $this->statement_confirmed_at),
             'created_at' => $this->created_at,
         ];
     }

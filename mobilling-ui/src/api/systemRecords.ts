@@ -17,6 +17,11 @@ export interface SystemRecord {
   notes: string | null;
   receipt_attachment_url: string | null;
   created_by?: { id: string; name: string } | null;
+  sms_confirmed_at: string | null;
+  sms_confirmed_by?: { id: string; name: string } | null;
+  statement_confirmed_at: string | null;
+  statement_confirmed_by?: { id: string; name: string } | null;
+  reconciled: boolean;
   created_at: string;
 }
 
@@ -72,3 +77,9 @@ export const updateSystemRecord = (id: string, data: SystemRecordPayload) =>
 
 export const deleteSystemRecord = (id: string) =>
   api.delete(`/system-records/${id}`);
+
+export const toggleSmsConfirmation = (id: string) =>
+  api.post<{ data: SystemRecord }>(`/system-records/${id}/toggle-sms-confirmation`);
+
+export const toggleStatementConfirmation = (id: string) =>
+  api.post<{ data: SystemRecord }>(`/system-records/${id}/toggle-statement-confirmation`);
