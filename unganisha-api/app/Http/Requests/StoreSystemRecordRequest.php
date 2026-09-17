@@ -17,9 +17,12 @@ class StoreSystemRecordRequest extends FormRequest
         $tenantId = auth()->user()?->tenant_id;
 
         // Required on create, nullable on update — the existing record
-        // already has a receipt on file from when it was created.
+        // already has a receipt on file from when it was created. A
+        // "charge" (e.g. a system-generated fee/deduction) has no physical
+        // slip to attach, unlike deposit/withdraw, so it's always optional.
         $isUpdate = $this->route('system_record') !== null;
-        $receiptRule = [$isUpdate ? 'nullable' : 'required', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'];
+        $receiptRequired = !$isUpdate && $this->input('type') !== 'charge';
+        $receiptRule = [$receiptRequired ? 'required' : 'nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'];
 
         return [
             // Tenant-scoped exists checks so a UUID from another tenant

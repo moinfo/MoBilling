@@ -103,9 +103,10 @@ export default function SystemRecords() {
       // The browser-level required attribute handles the create case but
       // we double-check at form-validate time too in case JS-only paths
       // (e.g. drag-drop replacement) bypass the native control.
-      receipt: (v) => {
-        // When editing, receipt is optional (one's already attached).
-        if (editing) return null;
+      receipt: (v, values) => {
+        // When editing, receipt is optional (one's already attached). A
+        // "charge" has no physical slip to attach, unlike deposit/withdraw.
+        if (editing || values.type === 'charge') return null;
         return v ? null : 'Receipt is required';
       },
     },
@@ -307,8 +308,8 @@ export default function SystemRecords() {
             <DateInput label="Date" required {...form.getInputProps('record_date')} />
             <NumberInput label="Amount" required min={0} decimalScale={2} {...form.getInputProps('amount')} />
             <FileInput
-              label={editing ? 'Replace receipt (optional)' : 'Receipt'}
-              required={!editing}
+              label={editing ? 'Replace receipt (optional)' : form.values.type === 'charge' ? 'Receipt (optional)' : 'Receipt'}
+              required={!editing && form.values.type !== 'charge'}
               placeholder={editing ? 'Upload a new receipt to replace the current one' : 'Upload receipt (PDF, image)'}
               leftSection={<IconUpload size={16} />}
               accept="image/*,.pdf"
