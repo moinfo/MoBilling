@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreWorkLocationRequest;
 use App\Http\Resources\WorkLocationResource;
+use App\Models\User;
 use App\Models\WorkLocation;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 /**
  * Offices/sites staff self-check-in is geofenced against — see
@@ -58,5 +60,49 @@ class WorkLocationController extends Controller
 
         $work_location->delete();
         return response()->json(['message' => 'Work location deleted']);
+    }
+
+    /** All active tenant staff + their current work location — for the assignment table. */
+    public function staffAssignments()
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $users = User::with('workLocation:id,name')
+            ->where('tenant_id', $tenantId)
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->get(['id', 'name', 'work_location_id']);
+
+        return response()->json([
+            'data' => $users->map(fn ($u) => $this->formatStaffAssignment($u)),
+        ]);
+    }
+
+    /** Assigns (or clears, when null) one staff member's work location. */
+    public function assignStaff(Request $request, string $userId)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $user = User::where('tenant_id', $tenantId)->findOrFail($userId);
+
+        $data = $request->validate([
+            'work_location_id' => [
+                'nullable', 'uuid',
+                Rule::exists('work_locations', 'id')->where('tenant_id', $tenantId),
+            ],
+        ]);
+
+        $user->update(['work_location_id' => $data['work_location_id'] ?? null]);
+        $user->load('workLocation:id,name');
+
+        return response()->json(['data' => $this->formatStaffAssignment($user)]);
+    }
+
+    private function formatStaffAssignment(User $u): array
+    {
+        return [
+            'id' => $u->id,
+            'name' => $u->name,
+            'work_location' => $u->workLocation ? ['id' => $u->workLocation->id, 'name' => $u->workLocation->name] : null,
+        ];
     }
 }

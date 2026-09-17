@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, NumberInput, Stack, Anchor } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, NumberInput, Stack, Anchor, Paper, Avatar, Select, Center, Loader } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconMapPin } from '@tabler/icons-react';
-import { getWorkLocations, createWorkLocation, updateWorkLocation, deleteWorkLocation, WorkLocation } from '../api/workLocations';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconMapPin, IconUsers } from '@tabler/icons-react';
+import {
+  getWorkLocations, createWorkLocation, updateWorkLocation, deleteWorkLocation, WorkLocation,
+  getWorkLocationStaffAssignments, assignStaffWorkLocation, StaffWorkLocation,
+} from '../api/workLocations';
 import { usePermissions } from '../hooks/usePermissions';
 
 export default function WorkLocations() {
@@ -174,6 +177,82 @@ export default function WorkLocations() {
           </Stack>
         </form>
       </Modal>
+
+      {canUpdate && <StaffAssignments locationOptions={items.map((l) => ({ value: l.id, label: l.name }))} />}
     </>
+  );
+}
+
+// ── Staff Assignments ────────────────────────────────────────────────────────
+
+function StaffAssignments({ locationOptions }: { locationOptions: { value: string; label: string }[] }) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['work-locations-staff'],
+    queryFn: getWorkLocationStaffAssignments,
+  });
+  const staff: StaffWorkLocation[] = data?.data?.data ?? [];
+
+  const mutation = useMutation({
+    mutationFn: ({ userId, workLocationId }: { userId: string; workLocationId: string | null }) =>
+      assignStaffWorkLocation(userId, workLocationId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['work-locations-staff'] });
+      queryClient.invalidateQueries({ queryKey: ['work-locations'] });
+      notifications.show({ title: 'Assigned', message: 'Work location updated', color: 'green' });
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to assign', color: 'red' }),
+  });
+
+  return (
+    <Stack mt="xl">
+      <Group gap="xs">
+        <IconUsers size={18} />
+        <Title order={4}>Staff Assignments</Title>
+      </Group>
+      <Text c="dimmed" size="sm">
+        Assign each staff member to the work location they check in from. Leave unassigned staff blank until
+        they're placed — they can't self-check-in without one.
+      </Text>
+
+      {isLoading ? (
+        <Center py="md"><Loader size="sm" /></Center>
+      ) : (
+        <Paper withBorder radius="md" style={{ overflow: 'hidden' }}>
+          <Stack gap={0}>
+            {staff.map((member, i) => (
+              <Group
+                key={member.id}
+                justify="space-between"
+                p="sm"
+                style={{ borderBottom: i < staff.length - 1 ? '1px solid var(--mantine-color-default-border)' : undefined }}
+              >
+                <Group gap="xs">
+                  <Avatar size="sm" radius="xl" color="blue">{member.name[0]}</Avatar>
+                  <Text size="sm" fw={500}>{member.name}</Text>
+                </Group>
+                <Select
+                  size="xs"
+                  placeholder="No location assigned"
+                  clearable
+                  searchable
+                  data={locationOptions}
+                  value={member.work_location?.id ?? null}
+                  onChange={(v) => mutation.mutate({ userId: member.id, workLocationId: v ?? null })}
+                  style={{ width: 220 }}
+                  disabled={mutation.isPending}
+                />
+              </Group>
+            ))}
+            {staff.length === 0 && (
+              <Center py="md">
+                <Text c="dimmed" size="sm">No staff members found.</Text>
+              </Center>
+            )}
+          </Stack>
+        </Paper>
+      )}
+    </Stack>
   );
 }

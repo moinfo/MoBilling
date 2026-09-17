@@ -30,3 +30,15 @@ export const updateWorkLocation = (id: string, data: WorkLocationPayload) =>
 
 export const deleteWorkLocation = (id: string) =>
   api.delete(`/work-locations/${id}`);
+
+export interface StaffWorkLocation {
+  id: string;
+  name: string;
+  work_location: { id: string; name: string } | null;
+}
+
+export const getWorkLocationStaffAssignments = () =>
+  api.get<{ data: StaffWorkLocation[] }>('/work-locations-staff');
+
+export const assignStaffWorkLocation = (userId: string, workLocationId: string | null) =>
+  api.put<{ data: StaffWorkLocation }>(`/work-locations-staff/${userId}`, { work_location_id: workLocationId });

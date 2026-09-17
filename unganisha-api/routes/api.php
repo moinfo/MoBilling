@@ -885,6 +885,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:work_locations.create')->post('/work-locations', [\App\Http\Controllers\WorkLocationController::class, 'store']);
     Route::middleware('permission:work_locations.update')->put('/work-locations/{work_location}', [\App\Http\Controllers\WorkLocationController::class, 'update']);
     Route::middleware('permission:work_locations.delete')->delete('/work-locations/{work_location}', [\App\Http\Controllers\WorkLocationController::class, 'destroy']);
+    Route::middleware('permission:work_locations.update')->get('/work-locations-staff', [\App\Http\Controllers\WorkLocationController::class, 'staffAssignments']);
+    Route::middleware('permission:work_locations.update')->put('/work-locations-staff/{userId}', [\App\Http\Controllers\WorkLocationController::class, 'assignStaff']);
 
     // ── Staff Targets & Commission ────────────────────────────────────────────
     Route::get('/staff-targets/summary',                          [\App\Http\Controllers\StaffTargetsController::class, 'summary']);
