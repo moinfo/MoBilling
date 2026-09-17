@@ -29,6 +29,7 @@ import UpcomingRenewals from '../components/Dashboard/UpcomingRenewals';
 import ActivityCalendar from '../components/Dashboard/ActivityCalendar';
 import SystemRecordsBreakdown from '../components/Dashboard/SystemRecordsBreakdown';
 import BankAccountBreakdown from '../components/Dashboard/BankAccountBreakdown';
+import BankBalances from '../components/Dashboard/BankBalances';
 
 export default function Dashboard() {
   const { can } = usePermissions();
@@ -156,9 +157,10 @@ export default function Dashboard() {
             </SimpleGrid>
           )}
 
-          {(can('dashboard.system_records_breakdown') || can('dashboard.bank_account_breakdown')) && summary.system_records && (
+          {((can('dashboard.system_records_breakdown') || can('dashboard.bank_account_breakdown')) && summary.system_records)
+            || (can('dashboard.bank_balances') && summary.bank_balances) ? (
             <SectionLabel>Records</SectionLabel>
-          )}
+          ) : null}
 
           {(can('dashboard.system_records_breakdown') || can('dashboard.bank_account_breakdown')) && summary.system_records && (
             <SimpleGrid cols={{ base: 1, md: 2 }}>
@@ -172,6 +174,12 @@ export default function Dashboard() {
                   periodLabel={periodLabel}
                 />
               )}
+            </SimpleGrid>
+          )}
+
+          {can('dashboard.bank_balances') && summary.bank_balances && (
+            <SimpleGrid cols={{ base: 1, md: 2 }}>
+              <BankBalances data={summary.bank_balances} />
             </SimpleGrid>
           )}
         </>

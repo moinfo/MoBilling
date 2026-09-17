@@ -492,6 +492,11 @@ class StatTile extends StatelessWidget {
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
+                    // `overflow: ellipsis` alone doesn't stop a long label
+                    // wrapping to a second line first — that extra line's
+                    // height is exactly what overflowed a tightly-packed
+                    // stat grid (e.g. "Withdrawals + charges").
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),

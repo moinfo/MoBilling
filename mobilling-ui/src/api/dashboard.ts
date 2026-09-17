@@ -86,6 +86,14 @@ export interface SystemRecordsBreakdown {
   by_bank: SystemRecordBankTotal[];
 }
 
+/** Current running balance per account — not `by_bank` above, which is only this period's deposits. */
+export interface BankAccountBalance {
+  id: string;
+  bank_name: string;
+  account_number: string | null;
+  balance: number;
+}
+
 export interface ExpiringDomain {
   id: string;
   name: string;
@@ -164,6 +172,7 @@ export interface DashboardSummary {
   urgent_obligations: UrgentObligation[];
   calendar: CalendarDay[];
   system_records: SystemRecordsBreakdown;
+  bank_balances?: BankAccountBalance[] | null;
 }
 
 export const getDashboardSummary = (month: number, year: number) =>

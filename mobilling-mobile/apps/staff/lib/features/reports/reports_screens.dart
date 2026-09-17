@@ -900,7 +900,11 @@ class _StatementBody extends ConsumerWidget {
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: Spacing.sm,
             crossAxisSpacing: Spacing.sm,
-            childAspectRatio: 2.4,
+            // 2.4 (too short for this card's content — label row + amount
+            // overflowed by a few pixels on real devices) — matched to the
+            // ratio the report hub's own money-tile grid already uses
+            // without issue.
+            childAspectRatio: 1.9,
             children: [
               StatTile.money(label: 'Opening balance', amount: r.openingBalance),
               StatTile.money(

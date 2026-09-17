@@ -27,6 +27,7 @@ class StaffDashboard {
     this.subscriptions,
     this.penalties,
     this.systemRecords,
+    this.bankBalances,
     required this.recentInvoices,
     required this.monthlyRevenue,
     required this.invoiceStatusBreakdown,
@@ -56,6 +57,12 @@ class StaffDashboard {
   final SubscriptionStats? subscriptions;
   final StaffPenalties? penalties;
   final SystemRecordsStats? systemRecords;
+
+  /// Current running balance per active bank account (opening_balance plus
+  /// every deposit, minus every withdraw/charge, through today) —
+  /// deliberately not part of [systemRecords], which is this display
+  /// period's movement only. Null means withheld (`dashboard.bank_balances`).
+  final List<BankAccountBalance>? bankBalances;
 
   final List<StaffInvoiceRow> recentInvoices;
   final List<MonthlyRevenuePoint> monthlyRevenue;
@@ -122,6 +129,9 @@ class StaffDashboard {
       final o? => SystemRecordsStats.fromJson(o),
       _ => null,
     },
+    bankBalances: json['bank_balances'] == null
+        ? null
+        : json.list('bank_balances', BankAccountBalance.fromJson),
     invoiceStatusBreakdown: json.list(
       'invoice_status_breakdown',
       StatusCount.fromJson,
@@ -403,9 +413,14 @@ class NamedTotal {
   final double total;
   final String? detail;
 
+  /// The backend's `systemRecordsBreakdown` map (`DashboardController::
+  /// summary`) puts each system's amount under `subtotal` — `total` only
+  /// exists on the nested `properties` rows this flattens past, not at this
+  /// level. Reading `total` here silently read a key that was never there
+  /// and fell back to 0 on every row.
   factory NamedTotal.fromSystem(Map<String, dynamic> json) => NamedTotal(
     name: json.strOr('name', '—'),
-    total: json.money('total'),
+    total: json.money('subtotal'),
     detail: json.str('detail'),
   );
 
@@ -414,6 +429,29 @@ class NamedTotal {
     total: json.money('total'),
     detail: json.str('account_number'),
   );
+}
+
+/// One row of `bank_balances` — see `StaffDashboard.bankBalances`.
+class BankAccountBalance {
+  const BankAccountBalance({
+    required this.id,
+    required this.bankName,
+    required this.balance,
+    this.accountNumber,
+  });
+
+  final String id;
+  final String bankName;
+  final String? accountNumber;
+  final double balance;
+
+  factory BankAccountBalance.fromJson(Map<String, dynamic> json) =>
+      BankAccountBalance(
+        id: json.id(),
+        bankName: json.strOr('bank_name', '—'),
+        accountNumber: json.str('account_number'),
+        balance: json.money('balance'),
+      );
 }
 
 class MethodTotal {

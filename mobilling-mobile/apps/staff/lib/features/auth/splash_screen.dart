@@ -21,7 +21,20 @@ class _SplashScreenState extends ConsumerState<SplashScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(sessionControllerProvider).restore();
+      final controller = ref.read(sessionControllerProvider);
+      // The router sends every one of `unknown`, `restoring` and `offline`
+      // here — not just the true cold start. A fingerprint/PIN unlock
+      // itself starts by setting status to `restoring` (see
+      // `SessionController.restore()`), which mounts this screen mid-flight.
+      // Firing another unconditional restore() here raced that in-flight
+      // one: this second call reads `readBiometricLock()` again — still
+      // true, since unlocking doesn't clear the preference — and
+      // overwrites the real result with `locked` again, bouncing back to
+      // the login screen forever. Only kick off a restore when one isn't
+      // already running.
+      if (controller.status != SessionStatus.restoring) {
+        controller.restore();
+      }
     });
   }
 

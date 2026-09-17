@@ -2270,14 +2270,34 @@ class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
                       Money(record.amount),
-                      if (record.reconciled) ...[
-                        const SizedBox(height: 2),
-                        Icon(
-                          Icons.check_circle,
-                          size: 14,
-                          color: theme.colorScheme.primary,
-                        ),
-                      ],
+                      const SizedBox(height: 2),
+                      // Visible to everyone who can see the record at all —
+                      // only the ability to toggle these is gated on
+                      // `system_records.reconcile` (in the detail sheet).
+                      // Two icons rather than one badge: "reconciled"
+                      // collapses SMS-only and statement-only into the same
+                      // blank state, which is exactly the gap the other
+                      // person doing the other half needs to see filled in.
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.sms_outlined,
+                            size: 14,
+                            color: record.smsConfirmedAt != null
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.outlineVariant,
+                          ),
+                          const SizedBox(width: 3),
+                          Icon(
+                            Icons.receipt_long_outlined,
+                            size: 14,
+                            color: record.statementConfirmedAt != null
+                                ? theme.colorScheme.primary
+                                : theme.colorScheme.outlineVariant,
+                          ),
+                        ],
+                      ),
                     ],
                   ),
                 ),
@@ -2907,6 +2927,16 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
               enabled: !_submitting,
               decoration: const InputDecoration(
                 hintText: 'e.g. M-Pesa code or bank slip number',
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(top: Spacing.xs),
+            child: Text(
+              'Required for deposits — prevents the same slip being '
+              'recorded twice.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
           ),

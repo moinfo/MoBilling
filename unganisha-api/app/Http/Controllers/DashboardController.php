@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BankAccount;
 use App\Models\Bill;
 use App\Models\Client;
 use App\Models\ClientSubscription;
@@ -536,6 +537,52 @@ class DashboardController extends Controller
             ];
         }
 
+        // ── Bank account balances — current, not the period's movement ──
+        // `by_bank` above is this month's deposits only; a manager asking
+        // "how much is actually in the account right now" needs the same
+        // running-balance math the Bank Balance Statement report does
+        // (opening_balance + every deposit, minus every withdraw/charge,
+        // from opening_balance_date if set — see ReportController::
+        // bankBalanceStatement), just evaluated through today for every
+        // account at once instead of one account through a chosen period end.
+        $bankBalances = null;
+        if ($can('dashboard.bank_balances')) {
+            $bankBalances = BankAccount::where('tenant_id', $tenantId)
+                ->where('is_active', true)
+                ->get()
+                ->map(function ($account) {
+                    $sums = DB::table('system_records')
+                        ->where('bank_account_id', $account->id)
+                        ->whereNull('deleted_at')
+                        ->when(
+                            $account->opening_balance_date,
+                            fn ($q) => $q->where(
+                                'record_date',
+                                '>=',
+                                $account->opening_balance_date->toDateString()
+                            )
+                        )
+                        ->selectRaw("
+                            COALESCE(SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END), 0) AS additions,
+                            COALESCE(SUM(CASE WHEN type IN ('withdraw', 'charge') THEN amount ELSE 0 END), 0) AS subtractions
+                        ")
+                        ->first();
+
+                    return [
+                        'id' => $account->id,
+                        'bank_name' => $account->bank_name,
+                        'account_number' => $account->account_number,
+                        'balance' => round(
+                            (float) $account->opening_balance
+                                + (float) $sums->additions
+                                - (float) $sums->subtractions,
+                            2
+                        ),
+                    ];
+                })
+                ->values();
+        }
+
         // ── Hosting & Domains (permission-gated; only compute what's shown) ──
         $canHosting = $can('dashboard.hosting');
         $canDomains = $can('dashboard.domains');
@@ -684,6 +731,7 @@ class DashboardController extends Controller
             'urgent_obligations' => $urgentObligations,
             'calendar' => $calendarData,
             'system_records' => $systemRecords,
+            'bank_balances' => $bankBalances,
         ]);
     }
 }

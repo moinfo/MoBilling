@@ -419,6 +419,29 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
                           total: d.systemRecords!.total,
                         ),
                       ],
+                      // Current running balance (opening_balance + every
+                      // movement to date) — not this period's movement,
+                      // which is what "By bank account" above shows.
+                      if (d.bankBalances != null &&
+                          d.bankBalances!.isNotEmpty) ...[
+                        const SizedBox(height: Spacing.lg),
+                        const SectionHeader('Bank balances'),
+                        const SizedBox(height: Spacing.sm),
+                        _NamedTotals(
+                          items: [
+                            for (final b in d.bankBalances!)
+                              NamedTotal(
+                                name: b.bankName,
+                                total: b.balance,
+                                detail: b.accountNumber,
+                              ),
+                          ],
+                          total: d.bankBalances!.fold(
+                            0.0,
+                            (sum, b) => sum + b.balance,
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
