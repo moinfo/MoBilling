@@ -45,3 +45,5 @@ export 'src/staff/staff_self_service.dart';
 export 'src/staff/staff_service.dart';
 export 'src/staff/support_admin_models.dart';
 export 'src/staff/support_admin_service.dart';
+export 'src/staff/wifi_hotspot_models.dart';
+export 'src/staff/wifi_hotspot_service.dart';

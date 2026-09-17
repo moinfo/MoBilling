@@ -894,18 +894,20 @@ class StaffSelfService {
   /// POST /system-records — log a figure against a system property. Needs
   /// `system_records.create`.
   ///
-  /// Multipart, and the receipt is **required** on create: the validator's
-  /// rule is `required|file|max:10240|mimes:pdf,jpg,jpeg,png`. The record date
-  /// cannot be in the future.
+  /// Multipart, and the receipt is required on create for deposit/withdraw
+  /// (`charge` has no physical slip): the validator's rule is
+  /// `required_unless:type,charge|file|max:10240|mimes:pdf,jpg,jpeg,png`.
+  /// The record date cannot be in the future.
   Future<void> createSystemRecord({
     required String systemId,
     required String systemPropertyId,
     required String type,
     required DateTime recordDate,
     required double amount,
-    required String receiptPath,
+    String? receiptPath,
     String? bankAccountId,
     String? notes,
+    String? transactionReference,
   }) => _sendSystemRecord(
     '/system-records',
     systemId: systemId,
@@ -916,6 +918,7 @@ class StaffSelfService {
     bankAccountId: bankAccountId,
     notes: notes,
     receiptPath: receiptPath,
+    transactionReference: transactionReference,
   );
 
   /// PUT /system-records/{id} — needs `system_records.update`.
@@ -933,6 +936,7 @@ class StaffSelfService {
     String? bankAccountId,
     String? notes,
     String? receiptPath,
+    String? transactionReference,
   }) => _sendSystemRecord(
     '/system-records/$id',
     systemId: systemId,
@@ -943,6 +947,7 @@ class StaffSelfService {
     bankAccountId: bankAccountId,
     notes: notes,
     receiptPath: receiptPath,
+    transactionReference: transactionReference,
     methodOverride: 'PUT',
   );
 
@@ -950,6 +955,136 @@ class StaffSelfService {
   /// so the receipt file stays on disk.
   Future<void> deleteSystemRecord(String id) =>
       _api.delete<dynamic>('/system-records/$id');
+
+  /// POST /system-records/{id}/toggle-sms-confirmation — needs
+  /// `system_records.reconcile`. Toggles the caller's own confirmation that
+  /// the bank SMS for this record was received; a second tap by anyone
+  /// undoes it (see the backend's dual-control doc comment).
+  Future<SystemRecord> toggleSmsConfirmation(String id) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/system-records/$id/toggle-sms-confirmation',
+    );
+    return SystemRecord.fromJson(_data(body));
+  }
+
+  /// POST /system-records/{id}/toggle-statement-confirmation — needs
+  /// `system_records.reconcile`.
+  Future<SystemRecord> toggleStatementConfirmation(String id) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/system-records/$id/toggle-statement-confirmation',
+    );
+    return SystemRecord.fromJson(_data(body));
+  }
+
+  /// POST /system-records/{id}/reconciliation-note — needs
+  /// `system_records.reconcile`. A blank/null note clears it.
+  Future<SystemRecord> updateReconciliationNote(
+    String id, {
+    String? note,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/system-records/$id/reconciliation-note',
+      body: {'reconciliation_note': ?note},
+    );
+    return SystemRecord.fromJson(_data(body));
+  }
+
+  // ---------------------------------------------------------------------
+  // Withdraw usage (SystemRecordExpense) — what a `withdraw`-type system
+  // record was actually spent on
+  // ---------------------------------------------------------------------
+
+  /// GET /system-record-expenses — needs `system_record_expenses.read`.
+  Future<Paginated<SystemRecordExpense>> systemRecordExpenses({
+    String? systemRecordId,
+    String? search,
+    DateTime? dateFrom,
+    DateTime? dateTo,
+    int page = 1,
+    int perPage = 25,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/system-record-expenses',
+      query: {
+        'system_record_id': systemRecordId,
+        'search': search,
+        'date_from': dateFrom == null ? null : _ymd(dateFrom),
+        'date_to': dateTo == null ? null : _ymd(dateTo),
+        'page': page,
+        'per_page': perPage,
+      },
+    );
+    return Paginated.fromJson(body, SystemRecordExpense.fromJson);
+  }
+
+  /// POST /system-record-expenses — needs `system_record_expenses.create`.
+  /// [systemRecordId] must point at a `withdraw`-type record; the
+  /// attachment is optional, unlike a deposit slip.
+  Future<SystemRecordExpense> createSystemRecordExpense({
+    required String systemRecordId,
+    required double amount,
+    required DateTime expenseDate,
+    required String description,
+    String? attachmentPath,
+  }) => _sendSystemRecordExpense(
+    '/system-record-expenses',
+    systemRecordId: systemRecordId,
+    amount: amount,
+    expenseDate: expenseDate,
+    description: description,
+    attachmentPath: attachmentPath,
+  );
+
+  /// PUT /system-record-expenses/{id} — needs
+  /// `system_record_expenses.update`. A null [attachmentPath] keeps the
+  /// attachment already on file.
+  Future<SystemRecordExpense> updateSystemRecordExpense(
+    String id, {
+    required String systemRecordId,
+    required double amount,
+    required DateTime expenseDate,
+    required String description,
+    String? attachmentPath,
+  }) => _sendSystemRecordExpense(
+    '/system-record-expenses/$id',
+    systemRecordId: systemRecordId,
+    amount: amount,
+    expenseDate: expenseDate,
+    description: description,
+    attachmentPath: attachmentPath,
+    methodOverride: 'PUT',
+  );
+
+  /// DELETE /system-record-expenses/{id} — needs
+  /// `system_record_expenses.delete`. Soft delete, so the attachment stays
+  /// on disk.
+  Future<void> deleteSystemRecordExpense(String id) =>
+      _api.delete<dynamic>('/system-record-expenses/$id');
+
+  Future<SystemRecordExpense> _sendSystemRecordExpense(
+    String path, {
+    required String systemRecordId,
+    required double amount,
+    required DateTime expenseDate,
+    required String description,
+    String? attachmentPath,
+    String? methodOverride,
+  }) async {
+    final form = FormData.fromMap({
+      '_method': ?methodOverride,
+      'system_record_id': systemRecordId,
+      'amount': amount.toString(),
+      'expense_date': _ymd(expenseDate),
+      'description': description,
+    });
+    if (attachmentPath != null && attachmentPath.isNotEmpty) {
+      form.files.add(
+        MapEntry('attachment', await MultipartFile.fromFile(attachmentPath)),
+      );
+    }
+    final body = await _postMultipart(path, form);
+    return SystemRecordExpense.fromJson(_data(body));
+  }
 
   Future<void> _sendSystemRecord(
     String path, {
@@ -961,6 +1096,7 @@ class StaffSelfService {
     String? bankAccountId,
     String? notes,
     String? receiptPath,
+    String? transactionReference,
     String? methodOverride,
   }) async {
     // Every value goes up as a string: multipart has no other type, and
@@ -972,6 +1108,7 @@ class StaffSelfService {
       'system_property_id': systemPropertyId,
       'type': type,
       'bank_account_id': ?bankAccountId,
+      'transaction_reference': ?transactionReference,
       'record_date': _ymd(recordDate),
       'amount': amount.toString(),
       'notes': ?notes,
@@ -1054,6 +1191,11 @@ abstract final class StaffSelfPermissions {
   static const systemRecordsCreate = 'system_records.create';
   static const systemRecordsUpdate = 'system_records.update';
   static const systemRecordsDelete = 'system_records.delete';
+  static const systemRecordsReconcile = 'system_records.reconcile';
+  static const systemRecordExpensesRead = 'system_record_expenses.read';
+  static const systemRecordExpensesCreate = 'system_record_expenses.create';
+  static const systemRecordExpensesUpdate = 'system_record_expenses.update';
+  static const systemRecordExpensesDelete = 'system_record_expenses.delete';
   static const systemVerificationsRead = 'system_verifications.read';
   static const systemVerificationsCreate = 'system_verifications.create';
   static const systemVerificationsUpdate = 'system_verifications.update';

@@ -13,6 +13,7 @@ abstract final class AdminRoutes {
   static const currencies = '/admin/currencies';
   static const smsPackages = '/admin/sms-packages';
   static const smsPurchases = '/admin/sms-purchases';
+  static const wifiSettlements = '/admin/wifi-settlements';
   static const licenses = '/admin/licenses';
   static const licensePlans = '/admin/license-plans';
   static const releases = '/admin/releases';
@@ -61,6 +62,12 @@ const List<AdminMenuEntry> adminMenu = [
     icon: Icons.apartment_outlined,
     path: AdminRoutes.tenants,
     subtitle: 'Accounts, users, subscriptions, email & SMS',
+  ),
+  AdminMenuEntry(
+    label: 'WiFi Settlements',
+    icon: Icons.wifi_outlined,
+    path: AdminRoutes.wifiSettlements,
+    subtitle: 'What MoBilling owes hotspot owners',
   ),
   AdminMenuEntry(
     label: 'Subscription Plans',

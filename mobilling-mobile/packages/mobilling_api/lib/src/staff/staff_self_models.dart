@@ -1757,6 +1757,15 @@ class SystemRecord {
     this.notes,
     this.createdByName,
     this.receiptUrl,
+    this.transactionReference,
+    this.smsConfirmedAt,
+    this.smsConfirmedByName,
+    this.statementConfirmedAt,
+    this.statementConfirmedByName,
+    this.reconciliationNote,
+    this.reconciled = false,
+    this.totalExpensed,
+    this.remainingAmount,
   });
 
   final String id;
@@ -1775,8 +1784,31 @@ class SystemRecord {
   final String? notes;
   final String? createdByName;
 
-  /// Absolute URL to the receipt every record is required to carry.
+  /// Absolute URL to the receipt every record is required to carry (deposit
+  /// and withdraw; optional for `charge`).
   final String? receiptUrl;
+
+  /// Deposit slip / transaction ID — required for deposits, prevents the
+  /// same slip being entered twice.
+  final String? transactionReference;
+
+  /// Dual-control reconciliation: the person watching for the bank SMS and
+  /// the person checking the bank statement are normally different staff —
+  /// each toggles their own check independently via
+  /// `StaffSelfService.toggleSmsConfirmation`/`toggleStatementConfirmation`.
+  /// [reconciled] is true only once both are set.
+  final DateTime? smsConfirmedAt;
+  final String? smsConfirmedByName;
+  final DateTime? statementConfirmedAt;
+  final String? statementConfirmedByName;
+  final String? reconciliationNote;
+  final bool reconciled;
+
+  /// Withdraw-only: how much of the cash pulled out has a recorded expense
+  /// against it (`system-record-expenses`), and what's left unaccounted
+  /// for. Null for deposit/charge, or when the list endpoint didn't load it.
+  final double? totalExpensed;
+  final double? remainingAmount;
 
   factory SystemRecord.fromJson(Map<String, dynamic> json) {
     final bank = json.object('bank_account');
@@ -1799,6 +1831,21 @@ class SystemRecord {
       notes: json.str('notes'),
       createdByName: json.object('created_by')?.str('name'),
       receiptUrl: json.str('receipt_attachment_url'),
+      transactionReference: json.str('transaction_reference'),
+      smsConfirmedAt: json.date('sms_confirmed_at'),
+      smsConfirmedByName: json.object('sms_confirmed_by')?.str('name'),
+      statementConfirmedAt: json.date('statement_confirmed_at'),
+      statementConfirmedByName: json
+          .object('statement_confirmed_by')
+          ?.str('name'),
+      reconciliationNote: json.str('reconciliation_note'),
+      reconciled: json.flag('reconciled'),
+      totalExpensed: json['total_expensed'] == null
+          ? null
+          : json.money('total_expensed'),
+      remainingAmount: json['remaining_amount'] == null
+          ? null
+          : json.money('remaining_amount'),
     );
   }
 }
@@ -1806,14 +1853,71 @@ class SystemRecord {
 /// `type` values `StoreSystemRecordRequest` accepts, with the labels
 /// `mobilling-ui/src/pages/SystemRecords.tsx` uses.
 abstract final class SystemRecordTypes {
+  static const deposit = 'deposit';
+  static const withdraw = 'withdraw';
+  static const charge = 'charge';
+
   static const values = <(String, String)>[
-    ('deposit', 'Deposit'),
-    ('withdraw', 'Withdraw'),
-    ('charge', 'Charge'),
+    (deposit, 'Deposit'),
+    (withdraw, 'Withdraw'),
+    (charge, 'Charge'),
   ];
 
   static String label(String? value) =>
       values.firstWhere((v) => v.$1 == value, orElse: () => (value ?? '', value ?? '—')).$2;
+}
+
+/// What one System Records withdrawal was actually spent on ("Withdraw
+/// Usage") — several of these can exist against a single `withdraw`-type
+/// [SystemRecord], which is why that record separately reports
+/// `totalExpensed`/`remainingAmount`.
+class SystemRecordExpense {
+  const SystemRecordExpense({
+    required this.id,
+    required this.systemRecordId,
+    required this.amount,
+    this.systemRecordAmount,
+    this.systemRecordDate,
+    this.systemName,
+    this.propertyName,
+    this.expenseDate,
+    this.description,
+    this.attachmentUrl,
+    this.createdByName,
+  });
+
+  final String id;
+  final String systemRecordId;
+  final double amount;
+
+  /// The withdrawal this was spent from — its own amount/date/system, so a
+  /// row can show "spent 20,000 of the 100,000 withdrawn on 3 Sep for
+  /// Generator / Fuel" without a second fetch.
+  final double? systemRecordAmount;
+  final DateTime? systemRecordDate;
+  final String? systemName;
+  final String? propertyName;
+  final DateTime? expenseDate;
+  final String? description;
+  final String? attachmentUrl;
+  final String? createdByName;
+
+  factory SystemRecordExpense.fromJson(Map<String, dynamic> json) {
+    final record = json.object('system_record');
+    return SystemRecordExpense(
+      id: json.id(),
+      systemRecordId: json.strOr('system_record_id', ''),
+      amount: json.money('amount'),
+      systemRecordAmount: record?.money('amount'),
+      systemRecordDate: record?.date('record_date'),
+      systemName: record?.object('system')?.str('name'),
+      propertyName: record?.object('system_property')?.str('name'),
+      expenseDate: json.date('expense_date'),
+      description: json.str('description'),
+      attachmentUrl: json.str('attachment_url'),
+      createdByName: json.object('created_by')?.str('name'),
+    );
+  }
 }
 
 /// A named row a system record points at — a system or a system property.

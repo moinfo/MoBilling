@@ -653,6 +653,67 @@ class PlatformService {
   Future<String?> deleteRelease(String id) =>
       _message(() => _api.delete<dynamic>('/admin/releases/$id'));
 
+  // ---------------------------------------------------------------------
+  // WiFi settlements
+  // ---------------------------------------------------------------------
+
+  /// GET /admin/wifi-settlements.
+  Future<Paginated<WifiSettlementRow>> wifiSettlements({
+    String? tenantId,
+    bool? settled,
+    int page = 1,
+    int perPage = 25,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/admin/wifi-settlements',
+      query: {
+        'tenant_id': tenantId,
+        'settled': settled?.toString(),
+        'page': page,
+        'per_page': perPage,
+      },
+    );
+    return Paginated.fromJson(_unwrapPage(body), WifiSettlementRow.fromJson);
+  }
+
+  /// GET /admin/wifi-settlements/summary — total unsettled owed, per tenant.
+  Future<List<WifiSettlementSummaryRow>> wifiSettlementsSummary() async {
+    final body = await _api.get<Map<String, dynamic>>(
+      '/admin/wifi-settlements/summary',
+    );
+    final rows = body['data'];
+    return rows is List
+        ? rows
+              .whereType<Map>()
+              .map(
+                (e) => WifiSettlementSummaryRow.fromJson(
+                  Map<String, dynamic>.from(e),
+                ),
+              )
+              .toList()
+        : const [];
+  }
+
+  /// POST /admin/wifi-settlements/{id}/settle — records that a payout was
+  /// made outside the app (mobile money, bank transfer, cash); there is no
+  /// disbursement API, so this can't move money itself.
+  Future<String> settleWifiVoucherPurchase(
+    String id, {
+    required String method,
+    String? reference,
+    String? notes,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/admin/wifi-settlements/$id/settle',
+      body: {
+        'method': method,
+        'reference': ?reference,
+        'notes': ?notes,
+      },
+    );
+    return body['message']?.toString() ?? 'Marked as settled.';
+  }
+
   /// The `message` from an endpoint that answers flat rather than wrapped in
   /// `data` — every destroy route does — so the screen can show what the
   /// server actually said.

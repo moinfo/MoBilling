@@ -667,6 +667,7 @@ class BankAccount {
     required this.isActive,
     this.accountNumber,
     this.openingBalance,
+    this.openingBalanceDate,
     this.accountName,
     this.branch,
   });
@@ -676,6 +677,12 @@ class BankAccount {
   final bool isActive;
   final String? accountNumber;
   final double? openingBalance;
+
+  /// When set, records dated before this are excluded from the balance
+  /// statement — otherwise they'd be counted both in the opening balance
+  /// and again as their own entries. Null means "the opening balance is
+  /// the balance before any records at all."
+  final DateTime? openingBalanceDate;
 
   /// The `bank_accounts` table has no `account_name`/`branch` columns —
   /// these are always null. Kept only so old call sites that read them
@@ -691,6 +698,7 @@ class BankAccount {
     openingBalance: json['opening_balance'] == null
         ? null
         : json.money('opening_balance'),
+    openingBalanceDate: json.date('opening_balance_date'),
     accountName: json.str('account_name'),
     branch: json.str('branch'),
   );

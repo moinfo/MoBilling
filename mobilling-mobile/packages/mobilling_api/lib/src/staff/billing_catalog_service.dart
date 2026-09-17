@@ -786,6 +786,28 @@ class BillingCatalogService {
   Future<void> deleteSubscription(String id) =>
       _api.delete<dynamic>('/client-subscriptions/$id');
 
+  /// GET /client-subscriptions-retainers — fixed-calendar-day retainer
+  /// contracts, deliberately separate from [subscriptions] (see the
+  /// backend's own `ClientSubscriptionController::retainers` doc comment).
+  /// Same permission as [subscriptions] (`client_subscriptions.read`).
+  Future<Paginated<RetainerBilling>> retainerBillings({
+    String? status,
+    String? search,
+    int page = 1,
+    int perPage = 20,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/client-subscriptions-retainers',
+      query: {
+        'status': status,
+        'search': search,
+        'page': page,
+        'per_page': perPage,
+      },
+    );
+    return Paginated.fromJson(body, RetainerBilling.fromJson);
+  }
+
   /// Binary GET through the same bearer-token channel as everything else, so
   /// no URL ever has to carry a token. Mirrors `HrService._download`.
   Future<Uint8List> _download(String path) async {

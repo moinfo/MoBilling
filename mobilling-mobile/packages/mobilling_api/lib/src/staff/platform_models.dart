@@ -747,3 +747,101 @@ class RoleTemplateDetail {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// WiFi settlements — cross-tenant ledger for platform_collected WiFi
+// vouchers (MoBilling's own Pesapal account did the collecting; see
+// Admin\WifiSettlementController's own doc comment). Not a real money
+// transfer — an audit record of a payout done by hand.
+// ---------------------------------------------------------------------------
+
+class WifiSettlementRow {
+  const WifiSettlementRow({
+    required this.id,
+    required this.tenantId,
+    required this.customerPhone,
+    required this.amount,
+    this.tenantName,
+    this.routerName,
+    this.planName,
+    this.commissionAmount,
+    this.netAmount,
+    this.completedAt,
+    this.settledAt,
+    this.settlementMethod,
+    this.settlementReference,
+    this.settlementNotes,
+  });
+
+  final String id;
+  final String tenantId;
+  final String? tenantName;
+  final String? routerName;
+  final String? planName;
+  final String customerPhone;
+  final double amount;
+  final double? commissionAmount;
+  final double? netAmount;
+  final DateTime? completedAt;
+  final DateTime? settledAt;
+  final String? settlementMethod;
+  final String? settlementReference;
+  final String? settlementNotes;
+
+  bool get isSettled => settledAt != null;
+
+  factory WifiSettlementRow.fromJson(Map<String, dynamic> json) =>
+      WifiSettlementRow(
+        id: json.id(),
+        tenantId: json.strOr('tenant_id', ''),
+        tenantName: json.str('tenant_name'),
+        routerName: json.object('router')?.str('name'),
+        planName: json.object('plan')?.str('name'),
+        customerPhone: json.strOr('customer_phone', ''),
+        amount: json.money('amount'),
+        commissionAmount: json['commission_amount'] == null
+            ? null
+            : json.money('commission_amount'),
+        netAmount: json['net_amount'] == null
+            ? null
+            : json.money('net_amount'),
+        completedAt: json.date('completed_at'),
+        settledAt: json.date('settled_at'),
+        settlementMethod: json.str('settlement_method'),
+        settlementReference: json.str('settlement_reference'),
+        settlementNotes: json.str('settlement_notes'),
+      );
+}
+
+/// `GET /admin/wifi-settlements/summary` — total unsettled owed, per tenant.
+class WifiSettlementSummaryRow {
+  const WifiSettlementSummaryRow({
+    required this.tenantId,
+    required this.tenantName,
+    required this.count,
+    required this.totalOwed,
+  });
+
+  final String tenantId;
+  final String tenantName;
+  final int count;
+  final double totalOwed;
+
+  factory WifiSettlementSummaryRow.fromJson(Map<String, dynamic> json) =>
+      WifiSettlementSummaryRow(
+        tenantId: json.strOr('tenant_id', ''),
+        tenantName: json.strOr('tenant_name', 'Unknown'),
+        count: json.count('count'),
+        totalOwed: json.money('total_owed'),
+      );
+}
+
+abstract final class WifiSettlementMethods {
+  static const values = <(String, String)>[
+    ('mpesa', 'M-Pesa / Mobile Money'),
+    ('bank', 'Bank Transfer'),
+    ('cash', 'Cash'),
+    ('pesapal', 'Pesapal'),
+    ('other', 'Other'),
+  ];
+}

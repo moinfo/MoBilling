@@ -435,6 +435,7 @@ class AdminService {
     required String bankName,
     required String accountNumber,
     double? openingBalance,
+    DateTime? openingBalanceDate,
     bool isActive = true,
   }) async {
     final body = await _api.post<Map<String, dynamic>>(
@@ -443,18 +444,25 @@ class AdminService {
         'bank_name': bankName,
         'account_number': accountNumber,
         'opening_balance': ?openingBalance,
+        'opening_balance_date': openingBalanceDate == null
+            ? null
+            : _ymd(openingBalanceDate),
         'is_active': isActive,
       },
     );
     return BankAccount.fromJson(_data(body));
   }
 
-  /// PUT /bank-accounts/{id} — needs `bank_accounts.update`.
+  /// PUT /bank-accounts/{id} — needs `bank_accounts.update`. Pass
+  /// [clearOpeningBalanceDate] to explicitly null it out; leaving both date
+  /// arguments unset keeps whatever the account already has.
   Future<BankAccount> updateBankAccount(
     String id, {
     required String bankName,
     required String accountNumber,
     double? openingBalance,
+    DateTime? openingBalanceDate,
+    bool clearOpeningBalanceDate = false,
     bool isActive = true,
   }) async {
     final body = await _api.put<Map<String, dynamic>>(
@@ -463,6 +471,10 @@ class AdminService {
         'bank_name': bankName,
         'account_number': accountNumber,
         'opening_balance': ?openingBalance,
+        if (openingBalanceDate != null)
+          'opening_balance_date': _ymd(openingBalanceDate)
+        else if (clearOpeningBalanceDate)
+          'opening_balance_date': null,
         'is_active': isActive,
       },
     );

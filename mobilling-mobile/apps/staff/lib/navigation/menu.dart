@@ -342,6 +342,13 @@ const List<MenuNode> staffMenu = [
         ready: true,
       ),
       MenuEntry(
+        label: 'Client Billed',
+        icon: Icons.calendar_month_outlined,
+        path: '/client-billed',
+        permission: 'menu.client_subscriptions',
+        ready: true,
+      ),
+      MenuEntry(
         label: 'Next Bills',
         icon: Icons.event_repeat_outlined,
         path: '/next-bills',
@@ -430,6 +437,13 @@ const List<MenuNode> staffMenu = [
         ready: true,
       ),
       MenuEntry(
+        label: 'Withdraw Usage',
+        icon: Icons.receipt_long_outlined,
+        path: '/system-record-expenses',
+        permission: 'menu.system_record_expenses',
+        ready: true,
+      ),
+      MenuEntry(
         label: 'My Verifications',
         icon: Icons.verified_user_outlined,
         path: '/my-verifications',
@@ -451,6 +465,49 @@ const List<MenuNode> staffMenu = [
         icon: Icons.shield_outlined,
         path: '/system-verifications',
         permission: 'system_verifications.read',
+        ready: true,
+      ),
+    ],
+  )),
+  MenuGroup(MenuSection(
+    label: 'WiFi Hotspot',
+    icon: Icons.wifi_outlined,
+    children: [
+      // Web gates the whole section on `menu.wifi_hotspot` *as well as*
+      // each item's own permission (`showWifi = can('menu.wifi_hotspot')`
+      // wraps the block; each NavLink inside is separately gated) — the
+      // same double-gate pattern as Bank Balance Statement's `alsoRequires`
+      // above, not the usual "any child visible" convention.
+      MenuEntry(
+        label: 'Routers',
+        icon: Icons.router_outlined,
+        path: '/wifi-routers',
+        permission: 'wifi_routers.read',
+        alsoRequires: 'menu.wifi_hotspot',
+        ready: true,
+      ),
+      MenuEntry(
+        label: 'Plans',
+        icon: Icons.sell_outlined,
+        path: '/wifi-plans',
+        permission: 'wifi_plans.read',
+        alsoRequires: 'menu.wifi_hotspot',
+        ready: true,
+      ),
+      MenuEntry(
+        label: 'Voucher Sales',
+        icon: Icons.confirmation_number_outlined,
+        path: '/wifi-voucher-purchases',
+        permission: 'wifi_purchases.read',
+        alsoRequires: 'menu.wifi_hotspot',
+        ready: true,
+      ),
+      MenuEntry(
+        label: 'My Earnings',
+        icon: Icons.account_balance_wallet_outlined,
+        path: '/wifi-earnings',
+        permission: 'wifi_purchases.read',
+        alsoRequires: 'menu.wifi_hotspot',
         ready: true,
       ),
     ],

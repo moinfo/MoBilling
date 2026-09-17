@@ -2540,6 +2540,9 @@ class _BankAccountsTab extends ConsumerWidget {
                                   if (account.openingBalance != null)
                                     'Opening '
                                         '${Formatting.currency(account.openingBalance)}',
+                                  if (account.openingBalanceDate != null)
+                                    'as of '
+                                        '${Formatting.date(account.openingBalanceDate)}',
                                 ].join(' · '),
                               ),
                             ),
@@ -2694,6 +2697,7 @@ class _BankAccountFormSheetState extends ConsumerState<_BankAccountFormSheet> {
   late final TextEditingController _accountNumber;
   late final TextEditingController _openingBalance;
   late bool _isActive;
+  DateTime? _openingBalanceDate;
   bool _busy = false;
   String? _error;
 
@@ -2708,7 +2712,19 @@ class _BankAccountFormSheetState extends ConsumerState<_BankAccountFormSheet> {
     _openingBalance = TextEditingController(
       text: a?.openingBalance == null ? '' : Formatting.amount(a!.openingBalance),
     );
+    _openingBalanceDate = a?.openingBalanceDate;
     _isActive = a?.isActive ?? true;
+  }
+
+  Future<void> _pickOpeningBalanceDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _openingBalanceDate ?? now,
+      firstDate: DateTime(now.year - 10),
+      lastDate: now,
+    );
+    if (picked != null) setState(() => _openingBalanceDate = picked);
   }
 
   @override
@@ -2755,6 +2771,8 @@ class _BankAccountFormSheetState extends ConsumerState<_BankAccountFormSheet> {
           bankName: bankName,
           accountNumber: accountNumber,
           openingBalance: openingBalance,
+          openingBalanceDate: _openingBalanceDate,
+          clearOpeningBalanceDate: _openingBalanceDate == null,
           isActive: _isActive,
         );
       } else {
@@ -2762,6 +2780,7 @@ class _BankAccountFormSheetState extends ConsumerState<_BankAccountFormSheet> {
           bankName: bankName,
           accountNumber: accountNumber,
           openingBalance: openingBalance,
+          openingBalanceDate: _openingBalanceDate,
           isActive: _isActive,
         );
       }
@@ -2815,6 +2834,30 @@ class _BankAccountFormSheetState extends ConsumerState<_BankAccountFormSheet> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(hintText: 'Optional'),
           ),
+        ),
+        const SizedBox(height: Spacing.md),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Expanded(
+              child: CrmPickerField(
+                label: 'Opening balance date (optional)',
+                value: _openingBalanceDate == null
+                    ? 'Balance before any records at all'
+                    : Formatting.date(_openingBalanceDate),
+                placeholder: _openingBalanceDate == null,
+                onTap: _busy ? null : _pickOpeningBalanceDate,
+              ),
+            ),
+            if (_openingBalanceDate != null)
+              IconButton(
+                tooltip: 'Clear date',
+                icon: const Icon(Icons.close, size: 18),
+                onPressed: _busy
+                    ? null
+                    : () => setState(() => _openingBalanceDate = null),
+              ),
+          ],
         ),
         const SizedBox(height: Spacing.sm),
         SwitchListTile(

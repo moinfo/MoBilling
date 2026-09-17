@@ -68,12 +68,14 @@ import 'features/platform/platform_screens.dart';
 import 'features/platform/releases_screen.dart';
 import 'features/platform/platform_shell.dart';
 import 'features/platform/tenants_screens.dart';
+import 'features/platform/wifi_settlements_screen.dart';
 import 'navigation/admin_menu.dart';
 import 'navigation/shell.dart';
 import 'features/reports/reports_screens.dart';
 import 'features/staff_self/attendance_screen.dart';
 import 'features/staff_self/staff_reports_screen.dart';
 import 'features/staff_self/system_verifications_admin_screen.dart';
+import 'features/staff_self/system_record_expenses_screen.dart';
 import 'features/staff_self/targets_and_systems_screens.dart';
 import 'features/support_admin/announcements_screen.dart';
 import 'features/support_admin/canned_replies_screen.dart';
@@ -82,6 +84,10 @@ import 'features/support_admin/servers_screen.dart';
 import 'features/support_admin/knowledgebase_screen.dart';
 import 'features/support_admin/manage_services_screen.dart';
 import 'features/support_admin/staff_domains_screen.dart';
+import 'features/wifi_hotspot/wifi_earnings_screen.dart';
+import 'features/wifi_hotspot/wifi_plans_screen.dart';
+import 'features/wifi_hotspot/wifi_routers_screen.dart';
+import 'features/wifi_hotspot/wifi_voucher_purchases_screen.dart';
 import 'features/tickets/ticket_detail_screen.dart';
 import 'providers.dart';
 
@@ -190,6 +196,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AdminRoutes.tenants,
         builder: (context, state) => const TenantsScreen(),
+      ),
+      GoRoute(
+        path: AdminRoutes.wifiSettlements,
+        builder: (context, state) => const WifiSettlementsScreen(),
       ),
       // Static admin paths precede '/admin/tenants/:id' below.
       GoRoute(
@@ -478,8 +488,30 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const SystemRecordsScreen(),
       ),
       GoRoute(
+        path: '/system-record-expenses',
+        builder: (context, state) => const SystemRecordExpensesScreen(),
+      ),
+      GoRoute(
         path: '/bank-balance-statement',
         builder: (context, state) => const BankBalanceStatementScreen(),
+      ),
+
+      // WiFi Hotspot
+      GoRoute(
+        path: '/wifi-routers',
+        builder: (context, state) => const WifiRoutersScreen(),
+      ),
+      GoRoute(
+        path: '/wifi-plans',
+        builder: (context, state) => const WifiPlansScreen(),
+      ),
+      GoRoute(
+        path: '/wifi-voucher-purchases',
+        builder: (context, state) => const WifiVoucherPurchasesScreen(),
+      ),
+      GoRoute(
+        path: '/wifi-earnings',
+        builder: (context, state) => const WifiEarningsScreen(),
       ),
       GoRoute(
         path: '/system-verifications',
@@ -573,6 +605,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/subscriptions',
         builder: (context, state) => const StaffSubscriptionsScreen(),
+      ),
+      GoRoute(
+        path: '/client-billed',
+        builder: (context, state) => const ClientBilledScreen(),
       ),
 
       // Support content + service administration

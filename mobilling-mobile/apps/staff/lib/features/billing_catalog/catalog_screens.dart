@@ -3654,3 +3654,158 @@ class _SubscriptionEditFormState extends ConsumerState<_SubscriptionEditForm> {
     );
   }
 }
+
+// ---------------------------------------------------------------------------
+// Client Billed (Retainer Fees) — fde1a19..c61ec5d web parity
+// ---------------------------------------------------------------------------
+
+/// Read-only: contracts invoiced automatically on a fixed calendar day each
+/// month (a service's "Fixed Invoice Day of Month"), e.g. maintenance and
+/// development retainers. There is no per-row action here — unlike
+/// [StaffSubscriptionsScreen] this list has no "Bill now": a retainer's
+/// invoice is cut by the scheduled `RecurringInvoiceService` job on its own
+/// day, not on demand.
+class ClientBilledScreen extends ConsumerStatefulWidget {
+  const ClientBilledScreen({super.key});
+
+  @override
+  ConsumerState<ClientBilledScreen> createState() =>
+      _ClientBilledScreenState();
+}
+
+class _ClientBilledScreenState extends ConsumerState<ClientBilledScreen> {
+  final _listKey = GlobalKey<PagedListViewState>();
+  final _search = TextEditingController();
+  Timer? _debounce;
+  String? _status;
+
+  static const _filters = <(String?, String)>[
+    (null, 'All'),
+    ('active', 'Active'),
+    ('suspended', 'Suspended'),
+    ('cancelled', 'Cancelled'),
+  ];
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _search.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String _) {
+    _debounce?.cancel();
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () => _listKey.currentState?.reload(),
+    );
+  }
+
+  void _reload() => _listKey.currentState?.reload();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: ShellTopBar(
+        eyebrow: 'Billing',
+        title: 'Client Billed',
+        bottom: InkSearchField(
+          controller: _search,
+          hint: 'Search client or service',
+          onChanged: _onSearchChanged,
+          onClear: () {
+            _search.clear();
+            _reload();
+          },
+        ),
+      ),
+      body: Column(
+        children: [
+          FilterStrip(
+            options: _filters,
+            selected: _status,
+            onSelect: (value) {
+              setState(() => _status = value);
+              _reload();
+            },
+          ),
+          Expanded(
+            child: PagedListView(
+              key: _listKey,
+              fetch: (page) => ref
+                  .read(billingCatalogServiceProvider)
+                  .retainerBillings(
+                    status: _status,
+                    search: _search.text.trim().isEmpty
+                        ? null
+                        : _search.text.trim(),
+                    page: page,
+                  ),
+              padding: const EdgeInsets.fromLTRB(
+                Spacing.md,
+                Spacing.xs,
+                Spacing.md,
+                Spacing.xl,
+              ),
+              itemBuilder: (context, r) => _RetainerCard(retainer: r),
+              emptyIcon: Icons.calendar_month_outlined,
+              emptyTitle: 'No retainer contracts yet',
+              emptyMessage:
+                  'Set a fixed invoice day on a service (Products & '
+                  'Services) and assign it to a client (Subscriptions).',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RetainerCard extends StatelessWidget {
+  const _RetainerCard({required this.retainer});
+
+  final RetainerBilling retainer;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final r = retainer;
+
+    return Card(
+      child: ListTile(
+        title: Text(
+          r.clientName ?? '—',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 2),
+            Text(
+              r.productServiceName ?? 'Service',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: Spacing.xs),
+            CrmStatusLine(
+              status: r.status,
+              meta: [
+                if (r.invoiceDayOfMonth != null) 'Day ${r.invoiceDayOfMonth}',
+                if (r.lastInvoicedAt != null)
+                  'last ${Formatting.date(r.lastInvoicedAt)}'
+                else
+                  'not yet invoiced',
+                if (r.lastInvoiceStatus != null) r.lastInvoiceStatus!,
+              ].join(' · '),
+            ),
+          ],
+        ),
+        trailing: r.price == null ? null : Money(r.price),
+      ),
+    );
+  }
+}

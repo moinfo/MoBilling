@@ -2197,7 +2197,7 @@ class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
               decoration: const InputDecoration(
                 isDense: true,
                 prefixIcon: Icon(Icons.search, size: 18),
-                hintText: 'Search notes',
+                hintText: 'Search notes or transaction ref',
               ),
             ),
           ),
@@ -2265,7 +2265,21 @@ class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
                       ),
                     ),
                   ),
-                  trailing: Money(record.amount),
+                  trailing: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Money(record.amount),
+                      if (record.reconciled) ...[
+                        const SizedBox(height: 2),
+                        Icon(
+                          Icons.check_circle,
+                          size: 14,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
               emptyIcon: Icons.dns_outlined,
@@ -2299,9 +2313,17 @@ class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
         record: record,
         canUpdate: canUpdate,
         canDelete: canDelete,
+        canReconcile:
+            ref.read(sessionControllerProvider).session?.can(
+                  StaffSelfPermissions.systemRecordsReconcile,
+                ) ??
+            false,
       ),
     );
-    if (!mounted || action == null) return;
+    // Reconciliation toggles happen inside the sheet without closing it, so
+    // the list is stale on any close, not just edit/delete.
+    if (!mounted) return;
+    _reload();
     if (action == 'edit') {
       await _openForm(record: record);
     } else if (action == 'delete') {
@@ -2349,22 +2371,119 @@ class _SystemRecordsScreenState extends ConsumerState<SystemRecordsScreen> {
   }
 }
 
-/// The row's actions, one tap from the row itself.
-class _SystemRecordDetailSheet extends StatelessWidget {
+/// The row's actions, one tap from the row itself. Also where dual-control
+/// reconciliation happens (the SMS/statement toggles and the discrepancy
+/// note) — those calls update [_record] in place rather than closing the
+/// sheet, since a reconciler often checks both boxes in the same visit.
+class _SystemRecordDetailSheet extends ConsumerStatefulWidget {
   const _SystemRecordDetailSheet({
     required this.record,
     required this.canUpdate,
     required this.canDelete,
+    required this.canReconcile,
   });
 
   final SystemRecord record;
   final bool canUpdate;
   final bool canDelete;
+  final bool canReconcile;
+
+  @override
+  ConsumerState<_SystemRecordDetailSheet> createState() =>
+      _SystemRecordDetailSheetState();
+}
+
+class _SystemRecordDetailSheetState
+    extends ConsumerState<_SystemRecordDetailSheet> {
+  late SystemRecord _record;
+  bool _togglingSms = false;
+  bool _togglingStatement = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _record = widget.record;
+  }
+
+  Future<void> _toggleSms() async {
+    if (_togglingSms) return;
+    setState(() => _togglingSms = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final updated = await ref
+          .read(staffSelfServiceProvider)
+          .toggleSmsConfirmation(_record.id);
+      if (mounted) setState(() => _record = updated);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _togglingSms = false);
+    }
+  }
+
+  Future<void> _toggleStatement() async {
+    if (_togglingStatement) return;
+    setState(() => _togglingStatement = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final updated = await ref
+          .read(staffSelfServiceProvider)
+          .toggleStatementConfirmation(_record.id);
+      if (mounted) setState(() => _record = updated);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _togglingStatement = false);
+    }
+  }
+
+  Future<void> _editNote() async {
+    final controller = TextEditingController(
+      text: _record.reconciliationNote ?? '',
+    );
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Reconciliation note'),
+        content: TextField(
+          controller: controller,
+          maxLines: 3,
+          decoration: const InputDecoration(
+            hintText:
+                'Describe the issue, e.g. "not seen on statement yet" '
+                '(leave blank to clear)',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (saved != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final note = controller.text.trim();
+      final updated = await ref
+          .read(staffSelfServiceProvider)
+          .updateReconciliationNote(_record.id, note: note.isEmpty ? null : note);
+      if (mounted) setState(() => _record = updated);
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final record = _record;
 
     return CrmSheet(
       eyebrow: Formatting.date(record.recordDate),
@@ -2381,6 +2500,8 @@ class _SystemRecordDetailSheet extends StatelessWidget {
         if (record.propertyName != null)
           CrmDetailRow('Property', record.propertyName!),
         if (record.bankName != null) CrmDetailRow('Bank', record.bankName!),
+        if (record.transactionReference != null)
+          CrmDetailRow('Transaction ref', record.transactionReference!),
         if (record.createdByName != null)
           CrmDetailRow('Entered by', record.createdByName!),
         if (record.receiptUrl == null)
@@ -2393,15 +2514,75 @@ class _SystemRecordDetailSheet extends StatelessWidget {
             ),
             child: const CrmDetailRow('Receipt', 'View receipt →'),
           ),
+        if (record.type == SystemRecordTypes.withdraw &&
+            record.totalExpensed != null) ...[
+          CrmDetailRow('Expensed', Formatting.currency(record.totalExpensed)),
+          CrmDetailRow(
+            'Remaining',
+            Formatting.currency(record.remainingAmount),
+          ),
+        ],
         if (record.notes != null) CrmDetailRow('Notes', record.notes!),
+        const SizedBox(height: Spacing.md),
+        Row(
+          children: [
+            Text('Reconciliation', style: theme.textTheme.labelLarge),
+            const SizedBox(width: Spacing.sm),
+            if (record.reconciled)
+              const StatusChip('reconciled', dense: true),
+          ],
+        ),
+        const SizedBox(height: Spacing.sm),
+        _ReconcileToggleRow(
+          icon: Icons.sms_outlined,
+          label: 'Bank SMS received',
+          confirmedAt: record.smsConfirmedAt,
+          confirmedByName: record.smsConfirmedByName,
+          enabled: widget.canReconcile,
+          busy: _togglingSms,
+          onTap: _toggleSms,
+        ),
+        const SizedBox(height: Spacing.xs),
+        _ReconcileToggleRow(
+          icon: Icons.receipt_long_outlined,
+          label: 'Seen on bank statement',
+          confirmedAt: record.statementConfirmedAt,
+          confirmedByName: record.statementConfirmedByName,
+          enabled: widget.canReconcile,
+          busy: _togglingStatement,
+          onTap: _toggleStatement,
+        ),
+        if (widget.canReconcile) ...[
+          const SizedBox(height: Spacing.sm),
+          OutlinedButton.icon(
+            icon: Icon(
+              record.reconciliationNote == null
+                  ? Icons.note_add_outlined
+                  : Icons.warning_amber_outlined,
+              size: 16,
+              color: record.reconciliationNote == null
+                  ? null
+                  : scheme.error,
+            ),
+            label: Text(
+              record.reconciliationNote ?? 'Flag a discrepancy (optional)',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: record.reconciliationNote == null
+                  ? null
+                  : TextStyle(color: scheme.error),
+            ),
+            onPressed: _editNote,
+          ),
+        ],
         const SizedBox(height: Spacing.lg),
-        if (canUpdate)
+        if (widget.canUpdate)
           PrimaryButton(
             label: 'Edit this record',
             icon: Icons.edit_outlined,
             onPressed: () => Navigator.of(context).pop('edit'),
           ),
-        if (canDelete) ...[
+        if (widget.canDelete) ...[
           const SizedBox(height: Spacing.sm),
           OutlinedButton.icon(
             icon: Icon(Icons.delete_outline, size: 18, color: scheme.error),
@@ -2409,7 +2590,7 @@ class _SystemRecordDetailSheet extends StatelessWidget {
             onPressed: () => Navigator.of(context).pop('delete'),
           ),
         ],
-        if (!canUpdate && !canDelete)
+        if (!widget.canUpdate && !widget.canDelete)
           Text(
             'You can view records but not change them.',
             style: theme.textTheme.bodySmall?.copyWith(
@@ -2418,6 +2599,84 @@ class _SystemRecordDetailSheet extends StatelessWidget {
             textAlign: TextAlign.center,
           ),
       ],
+    );
+  }
+}
+
+/// One half of the dual-control check: who confirmed it and when, or an
+/// invitation to confirm it now.
+class _ReconcileToggleRow extends StatelessWidget {
+  const _ReconcileToggleRow({
+    required this.icon,
+    required this.label,
+    required this.confirmedAt,
+    required this.confirmedByName,
+    required this.enabled,
+    required this.busy,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final DateTime? confirmedAt;
+  final String? confirmedByName;
+  final bool enabled;
+  final bool busy;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final confirmed = confirmedAt != null;
+
+    return Material(
+      color: confirmed
+          ? scheme.primaryContainer.withValues(alpha: 0.35)
+          : scheme.surfaceContainerHighest,
+      borderRadius: BorderRadius.circular(Radii.md),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(Radii.md),
+        onTap: enabled && !busy ? onTap : null,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: Spacing.sm,
+            vertical: Spacing.sm,
+          ),
+          child: Row(
+            children: [
+              busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      confirmed ? Icons.check_circle : icon,
+                      size: 18,
+                      color: confirmed ? scheme.primary : scheme.onSurfaceVariant,
+                    ),
+              const SizedBox(width: Spacing.sm),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label, style: theme.textTheme.bodyMedium),
+                    if (confirmed)
+                      Text(
+                        '${confirmedByName ?? '—'} · '
+                        '${Formatting.date(confirmedAt)}',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -2436,6 +2695,7 @@ class _SystemRecordSheet extends ConsumerStatefulWidget {
 class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
   final _amount = TextEditingController();
   final _notes = TextEditingController();
+  final _transactionReference = TextEditingController();
 
   String? _systemId;
   String? _propertyId;
@@ -2465,6 +2725,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
     _type = r.type;
     _amount.text = Formatting.amount(r.amount);
     _notes.text = r.notes ?? '';
+    _transactionReference.text = r.transactionReference ?? '';
     _date = r.recordDate ?? DateTime.now();
   }
 
@@ -2472,6 +2733,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
   void dispose() {
     _amount.dispose();
     _notes.dispose();
+    _transactionReference.dispose();
     super.dispose();
   }
 
@@ -2507,6 +2769,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
 
   Future<void> _submit() async {
     final amount = double.tryParse(_amount.text.trim().replaceAll(',', ''));
+    final transactionReference = _transactionReference.text.trim();
     if (_systemId == null || _propertyId == null) {
       setState(() => _error = 'Choose a system and a property.');
       return;
@@ -2515,8 +2778,16 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
       setState(() => _error = 'Enter the amount.');
       return;
     }
-    if (!_editing && _receipt?.path == null) {
+    // A "charge" has no physical slip to attach, unlike deposit/withdraw.
+    if (!_editing && _type != SystemRecordTypes.charge && _receipt?.path == null) {
       setState(() => _error = 'A receipt is required.');
+      return;
+    }
+    if (_type == SystemRecordTypes.deposit && transactionReference.isEmpty) {
+      setState(
+        () => _error =
+            'A transaction ID or slip reference is required for deposits.',
+      );
       return;
     }
 
@@ -2527,6 +2798,9 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
     try {
       final service = ref.read(staffSelfServiceProvider);
       final notes = _notes.text.trim().isEmpty ? null : _notes.text.trim();
+      final reference = transactionReference.isEmpty
+          ? null
+          : transactionReference;
       if (_editing) {
         await service.updateSystemRecord(
           widget.record!.id,
@@ -2538,6 +2812,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
           bankAccountId: _bankId,
           notes: notes,
           receiptPath: _receipt?.path,
+          transactionReference: reference,
         );
       } else {
         await service.createSystemRecord(
@@ -2548,7 +2823,8 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
           amount: amount,
           bankAccountId: _bankId,
           notes: notes,
-          receiptPath: _receipt!.path!,
+          receiptPath: _receipt?.path,
+          transactionReference: reference,
         );
       }
       if (!mounted) return;
@@ -2561,6 +2837,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
       setState(
         () => _error =
             e.errorFor('receipt') ??
+            e.errorFor('transaction_reference') ??
             e.errorFor('record_date') ??
             e.errorFor('amount') ??
             e.message,
@@ -2621,6 +2898,19 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
             showSelectedIcon: false,
           ),
         ),
+        if (_type == SystemRecordTypes.deposit) ...[
+          const SizedBox(height: Spacing.md),
+          CrmField(
+            label: 'Transaction ID / slip reference',
+            child: TextField(
+              controller: _transactionReference,
+              enabled: !_submitting,
+              decoration: const InputDecoration(
+                hintText: 'e.g. M-Pesa code or bank slip number',
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: Spacing.md),
         CrmPickerField(
           label: 'Date',
@@ -2642,7 +2932,11 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
         ),
         const SizedBox(height: Spacing.md),
         CrmField(
-          label: _editing ? 'Replace receipt (optional)' : 'Receipt',
+          label: _editing
+              ? 'Replace receipt (optional)'
+              : _type == SystemRecordTypes.charge
+              ? 'Receipt (optional)'
+              : 'Receipt',
           child: OutlinedButton.icon(
             icon: const Icon(Icons.attach_file, size: 18),
             label: Text(

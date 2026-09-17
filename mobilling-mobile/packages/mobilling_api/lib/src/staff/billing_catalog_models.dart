@@ -1047,3 +1047,60 @@ class SubscriptionLineInput {
     'discount_value': ?discountValue,
   };
 }
+
+/// One row of `GET /client-subscriptions-retainers` — a fixed-calendar-day
+/// retainer contract (`ProductService.invoice_day_of_month`), already flat
+/// (client/product names and the last invoice's outcome folded in server
+/// side), unlike [StaffSubscription]'s own endpoint.
+class RetainerBilling {
+  const RetainerBilling({
+    required this.id,
+    required this.status,
+    this.clientId,
+    this.clientName,
+    this.productServiceId,
+    this.productServiceName,
+    this.price,
+    this.invoiceDayOfMonth,
+    this.startDate,
+    this.lastInvoicedAt,
+    this.lastInvoiceStatus,
+    this.lastInvoiceDueDate,
+    this.lastInvoiceTotal,
+  });
+
+  final String id;
+  final String status;
+  final String? clientId;
+  final String? clientName;
+  final String? productServiceId;
+  final String? productServiceName;
+  final double? price;
+  final int? invoiceDayOfMonth;
+  final DateTime? startDate;
+  final DateTime? lastInvoicedAt;
+  final String? lastInvoiceStatus;
+  final String? lastInvoiceDueDate;
+  final double? lastInvoiceTotal;
+
+  factory RetainerBilling.fromJson(Map<String, dynamic> json) =>
+      RetainerBilling(
+        id: json.id(),
+        status: json.strOr('status', 'active'),
+        clientId: json.str('client_id'),
+        clientName: json.str('client_name'),
+        productServiceId: json.str('product_service_id'),
+        productServiceName: json.str('product_service_name'),
+        price: json['price'] == null ? null : json.money('price'),
+        invoiceDayOfMonth: json['invoice_day_of_month'] == null
+            ? null
+            : json.count('invoice_day_of_month'),
+        startDate: json.date('start_date'),
+        lastInvoicedAt: json.date('last_invoiced_at'),
+        lastInvoiceStatus: json.str('last_invoice_status'),
+        lastInvoiceDueDate: json.str('last_invoice_due_date'),
+        lastInvoiceTotal: json['last_invoice_total'] == null
+            ? null
+            : json.money('last_invoice_total'),
+      );
+}
