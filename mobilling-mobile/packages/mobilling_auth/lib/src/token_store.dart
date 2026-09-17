@@ -56,8 +56,11 @@ class TokenStore {
   static const _biometricKey = 'mobilling.auth.biometric_lock';
 
   /// Whether the stored token may only be used after a biometric check.
-  /// Survives sign-out? No — [clear] removes it with the token, because the
-  /// preference is about *this* session's credential, not the device.
+  /// Survives sign-out: [clear] deliberately leaves this alone, because the
+  /// preference is about *this device*, not the credential it happens to be
+  /// guarding right now — sign out, sign back in with the password, and the
+  /// very next token picks the lock back up with no re-prompt. The only way
+  /// off is the explicit toggle in Security settings ([setBiometricLock]).
   Future<bool> readBiometricLock() async =>
       await _storage.read(key: _biometricKey) == '1';
 
@@ -87,12 +90,14 @@ class TokenStore {
   Future<bool> verifyPin(String pin) async =>
       pin.isNotEmpty && await _storage.read(key: _pinKey) == pin;
 
+  /// Drops the credential itself. Deliberately leaves the quick-unlock
+  /// preferences ([_biometricKey], [_pinKey]) in place — see
+  /// [readBiometricLock] — so signing out and back in does not silently
+  /// turn off something the person turned on.
   Future<void> clear() async {
     _cachedToken = null;
     _loaded = true;
     await _storage.delete(key: _tokenKey);
     await _storage.delete(key: _userTypeKey);
-    await _storage.delete(key: _biometricKey);
-    await _storage.delete(key: _pinKey);
   }
 }

@@ -6,6 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
+import '../../providers.dart';
+import '../auth/biometrics.dart';
+import '../auth/pin_lock.dart' show showPinSetupSheet;
 import '../crm/crm_ui.dart'
     show CrmAsyncView, CrmDetailRow, CrmField, CrmSheet, showCrmSheet;
 import 'admin_providers.dart';
@@ -138,6 +141,21 @@ class SecurityScreen extends ConsumerWidget {
               Text(
                 'Recovery codes are the way back in if this phone is lost or '
                 'wiped. Keep them somewhere that is not this phone.',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: Spacing.xl),
+              const SectionHeader('Quick unlock'),
+              const SizedBox(height: Spacing.sm),
+              const _QuickUnlockCard(),
+              const SizedBox(height: Spacing.sm),
+              Text(
+                'Once turned on, this stays on for this phone even after you '
+                'sign out — sign back in with your password and it picks '
+                'straight back up. Turn it off here if this phone stops '
+                'being only yours.',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -614,6 +632,144 @@ class _PasswordSheetState extends State<_PasswordSheet> {
                 : null,
           ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Quick unlock — biometric / PIN, the device-side convenience that now
+// survives sign-out (see TokenStore.clear())
+// ---------------------------------------------------------------------------
+
+/// Turn the phone's own fingerprint/Face ID, or a 4-digit PIN, into what
+/// opens MoBilling instead of typing the password every time. Independent of
+/// [SecurityScreen]'s two-factor section: that gates *signing in*, this
+/// gates *using a session already signed in* on this one phone.
+class _QuickUnlockCard extends ConsumerStatefulWidget {
+  const _QuickUnlockCard();
+
+  @override
+  ConsumerState<_QuickUnlockCard> createState() => _QuickUnlockCardState();
+}
+
+class _QuickUnlockCardState extends ConsumerState<_QuickUnlockCard> {
+  bool _loading = true;
+  bool _biometricsAvailable = false;
+  String _biometricLabel = 'Fingerprint';
+  bool _biometricEnabled = false;
+  bool _pinEnabled = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final bio = ref.read(biometricsProvider);
+    final session = ref.read(sessionControllerProvider);
+    final available = await bio.available;
+    final label = available ? await bio.label : 'Fingerprint';
+    final biometricEnabled = await session.biometricLockEnabled();
+    final pinEnabled = await session.pinLockEnabled();
+    if (!mounted) return;
+    setState(() {
+      _biometricsAvailable = available;
+      _biometricLabel = label == 'Face ID' ? label : 'Fingerprint';
+      _biometricEnabled = biometricEnabled;
+      _pinEnabled = pinEnabled;
+      _loading = false;
+    });
+  }
+
+  Future<void> _toggleBiometric(bool enabled) async {
+    setState(() => _busy = true);
+    await ref.read(sessionControllerProvider).setBiometricLock(enabled);
+    if (mounted) {
+      setState(() {
+        _biometricEnabled = enabled;
+        _busy = false;
+      });
+    }
+  }
+
+  Future<void> _togglePin(bool enabled) async {
+    if (!enabled) {
+      setState(() => _busy = true);
+      await ref.read(sessionControllerProvider).setPinLock(null);
+      if (mounted) {
+        setState(() {
+          _pinEnabled = false;
+          _busy = false;
+        });
+      }
+      return;
+    }
+    final pin = await showPinSetupSheet(context);
+    if (pin == null || !mounted) return;
+    setState(() => _busy = true);
+    await ref.read(sessionControllerProvider).setPinLock(pin);
+    if (mounted) {
+      setState(() {
+        _pinEnabled = true;
+        _busy = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    if (_loading) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(Spacing.lg),
+          child: LinearProgressIndicator(),
+        ),
+      );
+    }
+
+    return Card(
+      child: Column(
+        children: [
+          SwitchListTile(
+            secondary: Icon(
+              _biometricLabel == 'Face ID'
+                  ? Icons.face_outlined
+                  : Icons.fingerprint,
+            ),
+            title: Text(_biometricLabel),
+            subtitle: Text(
+              _biometricsAvailable
+                  ? 'Unlock with $_biometricLabel'
+                  : 'No fingerprint or Face ID enrolled on this phone.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            value: _biometricEnabled,
+            onChanged: (!_biometricsAvailable || _busy)
+                ? null
+                : _toggleBiometric,
+          ),
+          const Divider(height: 1),
+          SwitchListTile(
+            secondary: const Icon(Icons.pin_outlined),
+            title: const Text('4-digit PIN'),
+            subtitle: Text(
+              _pinEnabled ? 'Unlock with your PIN' : 'No PIN set.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+              ),
+            ),
+            value: _pinEnabled,
+            onChanged: _busy ? null : _togglePin,
+          ),
+        ],
+      ),
     );
   }
 }

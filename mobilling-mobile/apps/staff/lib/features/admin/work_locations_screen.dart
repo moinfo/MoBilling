@@ -29,6 +29,7 @@ class WorkLocationsScreen extends ConsumerWidget {
     final canCreate = session?.can(AdminPermissions.workLocationsCreate) ?? false;
     final canUpdate = session?.can(AdminPermissions.workLocationsUpdate) ?? false;
     final canDelete = session?.can(AdminPermissions.workLocationsDelete) ?? false;
+    final canAssignStaff = session?.can(AdminPermissions.users) ?? false;
     final scheme = Theme.of(context).colorScheme;
 
     return Scaffold(
@@ -95,7 +96,7 @@ class WorkLocationsScreen extends ConsumerWidget {
                                   const StatusChip('draft', dense: true),
                                   const SizedBox(width: Spacing.xs),
                                 ],
-                                if (canUpdate || canDelete)
+                                if (canUpdate || canDelete || canAssignStaff)
                                   Icon(
                                     Icons.chevron_right,
                                     size: 18,
@@ -103,7 +104,7 @@ class WorkLocationsScreen extends ConsumerWidget {
                                   ),
                               ],
                             ),
-                            onTap: (canUpdate || canDelete)
+                            onTap: (canUpdate || canDelete || canAssignStaff)
                                 ? () => _openActions(
                                     context,
                                     ref,
@@ -137,6 +138,9 @@ class WorkLocationsScreen extends ConsumerWidget {
     required bool canUpdate,
     required bool canDelete,
   }) async {
+    final canAssignStaff =
+        ref.read(sessionControllerProvider).session?.can(AdminPermissions.users) ??
+        false;
     final action = await showCrmSheet<_ListAction>(
       context: context,
       builder: (sheetContext) {
@@ -147,6 +151,13 @@ class WorkLocationsScreen extends ConsumerWidget {
           children: [
             CrmCardList(
               children: [
+                if (canAssignStaff)
+                  ListTile(
+                    leading: const Icon(Icons.people_outline),
+                    title: const Text('Assign staff'),
+                    onTap: () =>
+                        Navigator.of(sheetContext).pop(_ListAction.assignStaff),
+                  ),
                 if (canUpdate)
                   ListTile(
                     leading: const Icon(Icons.edit_outlined),
@@ -167,6 +178,8 @@ class WorkLocationsScreen extends ConsumerWidget {
     );
     if (!context.mounted) return;
     switch (action) {
+      case _ListAction.assignStaff:
+        await _openAssignStaff(context, ref, location);
       case _ListAction.edit:
         await _openForm(context, ref, location);
       case _ListAction.delete:
@@ -174,6 +187,21 @@ class WorkLocationsScreen extends ConsumerWidget {
       case null:
         break;
     }
+  }
+
+  Future<void> _openAssignStaff(
+    BuildContext context,
+    WidgetRef ref,
+    WorkLocation location,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      shape: const RoundedRectangleBorder(borderRadius: Radii.sheet),
+      builder: (_) => _AssignStaffSheet(location: location),
+    );
+    ref.invalidate(workLocationsProvider);
   }
 
   Future<void> _delete(
@@ -230,7 +258,7 @@ class WorkLocationsScreen extends ConsumerWidget {
   }
 }
 
-enum _ListAction { edit, delete }
+enum _ListAction { assignStaff, edit, delete }
 
 /// Add or edit a work location. "Use my current location" fills the two
 /// coordinate fields from a live GPS read — the same [currentPosition] the
@@ -461,6 +489,198 @@ class _WorkLocationFormSheetState
           onPressed: _busy ? null : _submit,
         ),
       ],
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Assign staff — the other side of the same relationship the Team edit
+// sheet's "Work location" picker sets, reachable from here too now that
+// admins expect to hand out a location's staff from the location itself.
+// ---------------------------------------------------------------------------
+
+/// Every active staff member, with a switch for whether *this* location is
+/// theirs. Flipping a switch calls `PUT /users/{id}` immediately — there is
+/// no separate save step, the same as every other toggle in this app.
+class _AssignStaffSheet extends ConsumerStatefulWidget {
+  const _AssignStaffSheet({required this.location});
+
+  final WorkLocation location;
+
+  @override
+  ConsumerState<_AssignStaffSheet> createState() => _AssignStaffSheetState();
+}
+
+class _AssignStaffSheetState extends ConsumerState<_AssignStaffSheet> {
+  final _search = TextEditingController();
+  List<StaffUser> _results = const [];
+  final Set<String> _busy = {};
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final page = await ref
+          .read(adminServiceProvider)
+          .users(
+            search: _search.text.trim().isEmpty ? null : _search.text.trim(),
+            perPage: 200,
+          );
+      if (mounted) {
+        setState(() => _results = page.items.where((u) => u.isActive).toList());
+      }
+    } on ApiException {
+      if (mounted) setState(() => _results = const []);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _toggle(StaffUser user, bool assign) async {
+    setState(() => _busy.add(user.id));
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref
+          .read(adminServiceProvider)
+          .updateUser(
+            user.id,
+            workLocationId: assign ? widget.location.id : null,
+            clearWorkLocation: !assign,
+          );
+      if (!mounted) return;
+      setState(() {
+        final index = _results.indexOf(user);
+        if (index != -1) {
+          _results[index] = StaffUser(
+            id: user.id,
+            name: user.name,
+            isActive: user.isActive,
+            email: user.email,
+            phone: user.phone,
+            roleName: user.roleName,
+            roleId: user.roleId,
+            lastLoginAt: user.lastLoginAt,
+            workLocationId: assign ? widget.location.id : null,
+            workLocationName: assign ? widget.location.name : null,
+            attendanceDeviceModel: user.attendanceDeviceModel,
+            attendanceDeviceBoundAt: user.attendanceDeviceBoundAt,
+          );
+        }
+      });
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy.remove(user.id));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return Padding(
+      padding: EdgeInsets.only(
+        left: Spacing.lg,
+        right: Spacing.lg,
+        bottom: sheetBottomInset(context) + Spacing.lg,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'WORK LOCATION',
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: Spacing.xs),
+          Text(
+            'Assign staff — ${widget.location.name}',
+            style: Type.display(22, color: scheme.onSurface),
+          ),
+          const SizedBox(height: Spacing.md),
+          TextField(
+            controller: _search,
+            autofocus: false,
+            textInputAction: TextInputAction.search,
+            onSubmitted: (_) => _load(),
+            decoration: InputDecoration(
+              hintText: 'Search by name',
+              prefixIcon: const Icon(Icons.search, size: 20),
+              suffixIcon: IconButton(
+                tooltip: 'Search',
+                icon: const Icon(Icons.arrow_forward, size: 20),
+                onPressed: _load,
+              ),
+            ),
+          ),
+          const SizedBox(height: Spacing.md),
+          if (_loading)
+            const Padding(
+              padding: EdgeInsets.all(Spacing.lg),
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (_results.isEmpty)
+            const StateMessage(
+              icon: Icons.search_off_outlined,
+              title: 'No matches',
+              message: 'Try a different spelling, or fewer words.',
+            )
+          else
+            Flexible(
+              child: Card(
+                clipBehavior: Clip.antiAlias,
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: _results.length,
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final user = _results[index];
+                    final assignedHere = user.workLocationId == widget.location.id;
+                    final elsewhere =
+                        !assignedHere && user.workLocationName != null;
+                    return SwitchListTile(
+                      title: Text(
+                        user.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: elsewhere
+                          ? Text(
+                              'Currently ${user.workLocationName}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            )
+                          : null,
+                      value: assignedHere,
+                      onChanged: _busy.contains(user.id)
+                          ? null
+                          : (v) => _toggle(user, v),
+                    );
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
