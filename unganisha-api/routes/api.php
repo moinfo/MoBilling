@@ -274,6 +274,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
 
     // Client Subscriptions
     Route::middleware('permission:client_subscriptions.read')->get('/client-subscriptions', [ClientSubscriptionController::class, 'index']);
+    Route::middleware('permission:client_subscriptions.read')->get('/client-subscriptions-retainers', [ClientSubscriptionController::class, 'retainers']);
     Route::middleware('permission:client_subscriptions.read')->get('/client-subscriptions/{client_subscription}', [ClientSubscriptionController::class, 'show']);
     Route::middleware('permission:client_subscriptions.create')->post('/client-subscriptions', [ClientSubscriptionController::class, 'store']);
     Route::middleware('permission:client_subscriptions.create')->post('/client-subscriptions/bulk', [ClientSubscriptionController::class, 'bulkStore']);

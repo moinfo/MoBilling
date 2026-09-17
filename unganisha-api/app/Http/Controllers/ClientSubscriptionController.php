@@ -53,6 +53,66 @@ class ClientSubscriptionController extends Controller
         );
     }
 
+    /**
+     * A dedicated view for fixed-calendar-day retainer contracts (see
+     * ProductService.invoice_day_of_month / RecurringInvoiceService::
+     * processDayOfMonthBills) — deliberately separate from index() above,
+     * whose expire_from/expire_to filters default to a date range and
+     * silently exclude these rows (they have no expire_date at all; a
+     * retainer just keeps billing every month until cancelled).
+     */
+    public function retainers(Request $request)
+    {
+        $query = ClientSubscription::with(['client', 'productService'])
+            ->whereHas('productService', fn ($q) => $q->whereNotNull('invoice_day_of_month'));
+
+        if ($request->filled('client_id')) {
+            $query->where('client_id', $request->client_id);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $query->where(fn ($q) => $q
+                ->whereHas('client', fn ($q) => $q->where('name', 'LIKE', "%{$search}%"))
+                ->orWhereHas('productService', fn ($q) => $q->where('name', 'LIKE', "%{$search}%")));
+        }
+
+        $subs = $query->orderBy('created_at', 'desc')->paginate($request->per_page ?? 20);
+
+        $subIds = $subs->getCollection()->pluck('id');
+        $latestLogs = RecurringInvoiceLog::withoutGlobalScopes()
+            ->whereIn('client_subscription_id', $subIds)
+            ->with('document:id,status,due_date,total')
+            ->orderByDesc('invoice_created_at')
+            ->get()
+            ->groupBy('client_subscription_id')
+            ->map(fn ($logs) => $logs->first());
+
+        $subs->getCollection()->transform(function ($sub) use ($latestLogs) {
+            $log = $latestLogs->get($sub->id);
+
+            return [
+                'id'                    => $sub->id,
+                'client_id'             => $sub->client_id,
+                'client_name'           => $sub->client?->name,
+                'product_service_id'    => $sub->product_service_id,
+                'product_service_name'  => $sub->productService?->name,
+                'price'                 => $sub->productService?->price,
+                'invoice_day_of_month'  => $sub->productService?->invoice_day_of_month,
+                'status'                => $sub->status,
+                'start_date'            => $sub->start_date?->format('Y-m-d'),
+                'last_invoiced_at'      => $log?->invoice_created_at?->format('Y-m-d'),
+                'last_invoice_status'   => $log?->document?->status,
+                'last_invoice_due_date' => $log?->document?->due_date,
+                'last_invoice_total'    => $log?->document?->total,
+            ];
+        });
+
+        return response()->json($subs);
+    }
+
     public function store(StoreClientSubscriptionRequest $request)
     {
         return DB::transaction(function () use ($request) {

@@ -139,6 +139,7 @@ export default function AppLayout() {
     { label: 'Credit Notes', path: '/credit-notes', group: 'Billing', visible: can('menu.invoices') },
     { label: 'Payments', path: '/payments-in', group: 'Billing', visible: can('menu.payments_in') },
     { label: 'Subscriptions', path: '/client-subscriptions', group: 'Billing', visible: can('menu.client_subscriptions') },
+    { label: 'Client Billed', path: '/client-billed', group: 'Billing', visible: can('menu.client_subscriptions') },
     { label: 'Next Bills', path: '/next-bills', group: 'Billing', visible: can('menu.next_bills') },
     { label: 'Obligations', path: '/statutories', group: 'Statutory', visible: can('menu.statutories') },
     { label: 'Schedule', path: '/statutory-schedule', group: 'Statutory', visible: can('menu.statutories') },
@@ -455,6 +456,10 @@ export default function AppLayout() {
               {can('menu.client_subscriptions') && (
                 <NavLink label="Subscriptions" leftSection={<IconLink size={16} />}
                   active={isActive('/client-subscriptions')} onClick={() => navigateAndClose('/client-subscriptions')} />
+              )}
+              {can('menu.client_subscriptions') && (
+                <NavLink label="Client Billed" leftSection={<IconCalendarRepeat size={16} />}
+                  active={isActive('/client-billed')} onClick={() => navigateAndClose('/client-billed')} />
               )}
               {can('menu.next_bills') && (
                 <NavLink label="Next Bills" leftSection={<IconCalendarRepeat size={16} />}

@@ -74,5 +74,24 @@ export const deleteClientSubscription = (id: string) =>
 export const updateExpireDate = (id: string, expire_date: string) =>
   api.patch(`/client-subscriptions/${id}/expire-date`, { expire_date });
 
+export interface RetainerBilling {
+  id: string;
+  client_id: string;
+  client_name: string | null;
+  product_service_id: string;
+  product_service_name: string | null;
+  price: string | null;
+  invoice_day_of_month: number;
+  status: 'active' | 'cancelled' | 'suspended';
+  start_date: string;
+  last_invoiced_at: string | null;
+  last_invoice_status: string | null;
+  last_invoice_due_date: string | null;
+  last_invoice_total: string | null;
+}
+
+export const getRetainerBillings = (params?: { search?: string; client_id?: string; status?: string; page?: number; per_page?: number }) =>
+  api.get('/client-subscriptions-retainers', { params });
+
 export const generateInvoiceFromSubscription = (id: string) =>
   api.post<{ message: string; data: { document_id: string; document_number: string } }>(`/client-subscriptions/${id}/generate-invoice`);
