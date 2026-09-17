@@ -39,7 +39,10 @@ class SystemRecordController extends Controller
             $query->where('record_date', '<=', $request->date_to);
         }
         if ($request->filled('search')) {
-            $query->where('notes', 'like', '%' . $request->search . '%');
+            $search = $request->search;
+            $query->where(fn ($q) => $q
+                ->where('notes', 'like', "%{$search}%")
+                ->orWhere('transaction_reference', 'like', "%{$search}%"));
         }
 
         return SystemRecordResource::collection(

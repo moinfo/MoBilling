@@ -11,6 +11,7 @@ export interface SystemRecord {
   bank_account_id: string | null;
   bank_account?: { id: string; bank_name: string; account_number: string };
   type: SystemRecordType;
+  transaction_reference: string | null;
   record_date: string;
   amount: string;
   notes: string | null;
@@ -24,6 +25,7 @@ export interface SystemRecordPayload {
   system_property_id: string;
   bank_account_id?: string | null;
   type: SystemRecordType;
+  transaction_reference?: string;
   record_date: string;
   amount: number;
   notes?: string;
@@ -37,6 +39,7 @@ const buildFormData = (data: SystemRecordPayload, includeMethodOverride = false)
   fd.append('system_property_id', data.system_property_id);
   if (data.bank_account_id) fd.append('bank_account_id', data.bank_account_id);
   fd.append('type', data.type);
+  if (data.transaction_reference) fd.append('transaction_reference', data.transaction_reference);
   fd.append('record_date', data.record_date);
   fd.append('amount', String(data.amount));
   if (data.notes) fd.append('notes', data.notes);

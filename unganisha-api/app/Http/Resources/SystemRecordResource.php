@@ -28,6 +28,7 @@ class SystemRecordResource extends JsonResource
                 'account_number' => $this->bankAccount->account_number,
             ]),
             'type' => $this->type,
+            'transaction_reference' => $this->transaction_reference,
             'record_date' => $this->record_date?->format('Y-m-d'),
             'amount' => $this->amount,
             'notes' => $this->notes,

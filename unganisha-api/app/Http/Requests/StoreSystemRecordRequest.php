@@ -38,6 +38,18 @@ class StoreSystemRecordRequest extends FormRequest
                 Rule::exists('bank_accounts', 'id')->where('tenant_id', $tenantId)->whereNull('deleted_at'),
             ],
             'type' => 'required|in:deposit,withdraw,charge',
+            // Deposit slip / transaction ID — required for deposits so the
+            // same receipt can't be entered twice; whereNull('deleted_at')
+            // lets a soft-deleted (wrongly entered) record's reference be
+            // reused, and ->ignore() lets an update keep its own reference.
+            'transaction_reference' => [
+                $this->input('type') === 'deposit' ? 'required' : 'nullable',
+                'string', 'max:100',
+                Rule::unique('system_records', 'transaction_reference')
+                    ->where('tenant_id', $tenantId)
+                    ->whereNull('deleted_at')
+                    ->ignore($this->route('system_record')),
+            ],
             'record_date' => 'required|date|before_or_equal:today',
             'amount' => 'required|numeric|min:0',
             'notes' => 'nullable|string|max:2000',

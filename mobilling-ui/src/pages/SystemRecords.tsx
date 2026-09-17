@@ -87,6 +87,7 @@ export default function SystemRecords() {
       system_property_id: '',
       bank_account_id: '',
       type: 'deposit' as SystemRecordType,
+      transaction_reference: '',
       record_date: new Date(),
       amount: 0,
       notes: '',
@@ -96,6 +97,8 @@ export default function SystemRecords() {
       system_id: (v) => (v ? null : 'Required'),
       system_property_id: (v) => (v ? null : 'Required'),
       type: (v) => (v ? null : 'Required'),
+      transaction_reference: (v, values) =>
+        (values.type === 'deposit' && !v.trim()) ? 'Required for deposits — prevents the same slip being recorded twice' : null,
       amount: (v) => (v >= 0 ? null : 'Must be 0 or greater'),
       // The browser-level required attribute handles the create case but
       // we double-check at form-validate time too in case JS-only paths
@@ -111,7 +114,7 @@ export default function SystemRecords() {
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
   const openCreate = () => {
     setEditing(null);
-    form.setValues({ system_id: '', system_property_id: '', bank_account_id: '', type: 'deposit', record_date: new Date(), amount: 0, notes: '', receipt: null });
+    form.setValues({ system_id: '', system_property_id: '', bank_account_id: '', type: 'deposit', transaction_reference: '', record_date: new Date(), amount: 0, notes: '', receipt: null });
     setFormOpen(true);
   };
   const openEdit = (r: SystemRecord) => {
@@ -121,6 +124,7 @@ export default function SystemRecords() {
       system_property_id: r.system_property_id,
       bank_account_id: r.bank_account_id || '',
       type: r.type,
+      transaction_reference: r.transaction_reference || '',
       record_date: new Date(r.record_date),
       amount: parseFloat(r.amount) || 0,
       notes: r.notes || '',
@@ -134,6 +138,7 @@ export default function SystemRecords() {
     system_property_id: v.system_property_id,
     bank_account_id: v.bank_account_id || null,
     type: v.type,
+    transaction_reference: v.transaction_reference.trim() || undefined,
     record_date: dayjs(v.record_date).format('YYYY-MM-DD'),
     amount: v.amount,
     notes: v.notes || undefined,
@@ -182,7 +187,7 @@ export default function SystemRecords() {
       <Group justify="space-between" mb="md" wrap="wrap">
         <Title order={2}>System Records</Title>
         <Group wrap="wrap">
-          <TextInput placeholder="Search notes..." leftSection={<IconSearch size={16} />}
+          <TextInput placeholder="Search notes or transaction ref..." leftSection={<IconSearch size={16} />}
             value={search} onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }} maw={220} />
           {canCreate && (
             <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add Record</Button>
@@ -220,6 +225,7 @@ export default function SystemRecords() {
                 <Table.Th>System Property</Table.Th>
                 <Table.Th>Bank Account</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Amount</Table.Th>
+                <Table.Th>Transaction Ref</Table.Th>
                 <Table.Th>Receipt</Table.Th>
                 <Table.Th>Notes</Table.Th>
                 {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
@@ -245,6 +251,9 @@ export default function SystemRecords() {
                     )}
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} fw={600}>{formatCurrency(r.amount)}</Table.Td>
+                  <Table.Td>
+                    {r.transaction_reference ? <Text size="sm">{r.transaction_reference}</Text> : <Text size="xs" c="dimmed">—</Text>}
+                  </Table.Td>
                   <Table.Td>
                     {r.receipt_attachment_url ? (
                       <Anchor href={r.receipt_attachment_url} target="_blank" size="sm">
@@ -289,6 +298,12 @@ export default function SystemRecords() {
               placeholder="Choose a bank account (optional)"
               {...form.getInputProps('bank_account_id')} />
             <Select label="Type" required data={TYPE_OPTIONS} {...form.getInputProps('type')} />
+            {form.values.type === 'deposit' && (
+              <TextInput label="Transaction ID / Slip Reference" required
+                placeholder="e.g. M-Pesa code or bank slip number"
+                description="Prevents the same deposit slip from being recorded twice"
+                {...form.getInputProps('transaction_reference')} />
+            )}
             <DateInput label="Date" required {...form.getInputProps('record_date')} />
             <NumberInput label="Amount" required min={0} decimalScale={2} {...form.getInputProps('amount')} />
             <FileInput
