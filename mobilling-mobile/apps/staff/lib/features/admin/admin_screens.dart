@@ -1554,8 +1554,11 @@ class _UserFormSheetState extends ConsumerState<_UserFormSheet> {
 
   String? _roleId;
   String? _roleName;
+  String? _workLocationId;
+  String? _workLocationName;
   String? _error;
   bool _busy = false;
+  bool _resettingDevice = false;
 
   bool get _isNew => widget.user == null;
 
@@ -1568,6 +1571,8 @@ class _UserFormSheetState extends ConsumerState<_UserFormSheet> {
     _phone = TextEditingController(text: user?.phone ?? '');
     _roleId = user?.roleId;
     _roleName = user?.roleName;
+    _workLocationId = user?.workLocationId;
+    _workLocationName = user?.workLocationName;
   }
 
   @override
@@ -1629,6 +1634,36 @@ class _UserFormSheetState extends ConsumerState<_UserFormSheet> {
           placeholder: _roleId == null,
           onTap: _busy ? null : _pickRole,
         ),
+        const SizedBox(height: Spacing.md),
+        CrmPickerField(
+          label: 'Work location',
+          icon: Icons.location_city_outlined,
+          value: _workLocationName ?? 'None — self check-in is off',
+          placeholder: _workLocationId == null,
+          onTap: _busy ? null : _pickWorkLocation,
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: Spacing.xs),
+          child: Text(
+            'Where a self-check-in from their phone must be within range of.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        if (!_isNew &&
+            widget.user!.attendanceDeviceBoundAt != null &&
+            (ref.watch(sessionControllerProvider).session?.can(
+                  StaffSelfPermissions.attendanceManage,
+                ) ??
+                false)) ...[
+          const SizedBox(height: Spacing.md),
+          _DeviceBindingRow(
+            user: widget.user!,
+            busy: _resettingDevice,
+            onReset: _resetDevice,
+          ),
+        ],
         const SizedBox(height: Spacing.md),
         CrmField(
           label: _isNew ? 'Password' : 'New password',
@@ -1714,6 +1749,108 @@ class _UserFormSheetState extends ConsumerState<_UserFormSheet> {
     });
   }
 
+  Future<void> _pickWorkLocation() async {
+    final locations = await ref.read(workLocationsProvider.future);
+    if (!mounted) return;
+
+    final chosen = await showCrmSheet<WorkLocation?>(
+      context: context,
+      builder: (sheetContext) {
+        final theme = Theme.of(sheetContext);
+        return CrmSheet(
+          eyebrow: 'Team',
+          title: 'Choose a work location',
+          children: [
+            CrmCardList(
+              children: [
+                ListTile(
+                  title: const Text('None'),
+                  subtitle: const Text('Self check-in stays off'),
+                  trailing: _workLocationId == null
+                      ? Icon(
+                          Icons.check,
+                          size: 18,
+                          color: Theme.of(sheetContext).colorScheme.primary,
+                        )
+                      : null,
+                  onTap: () => Navigator.of(sheetContext).pop(),
+                ),
+                for (final location in locations)
+                  ListTile(
+                    title: Text(
+                      location.name,
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: CrmMetaLine('within ${location.radiusMeters}m'),
+                    ),
+                    trailing: location.id == _workLocationId
+                        ? Icon(
+                            Icons.check,
+                            size: 18,
+                            color: Theme.of(sheetContext).colorScheme.primary,
+                          )
+                        : null,
+                    onTap: () => Navigator.of(sheetContext).pop(location),
+                  ),
+              ],
+            ),
+          ],
+        );
+      },
+    );
+    // Popping with no argument (the "None" tile) also lands here as null,
+    // indistinguishable from a dismissed sheet — both mean "clear it", which
+    // is exactly what re-running this picker and choosing None again would
+    // also produce, so there is no wrong outcome to guard against.
+    if (!mounted) return;
+    setState(() {
+      _workLocationId = chosen?.id;
+      _workLocationName = chosen?.name;
+    });
+  }
+
+  Future<void> _resetDevice() async {
+    final user = widget.user;
+    if (user == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text('Reset ${user.name}\'s device?'),
+        content: const Text(
+          'They will be able to check in again from a new phone. Do this '
+          'only once you know the old phone is gone or replaced.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Reset'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    setState(() => _resettingDevice = true);
+    try {
+      final message = await ref
+          .read(adminServiceProvider)
+          .resetAttendanceDevice(user.id);
+      messenger.showSnackBar(
+        SnackBar(content: Text(message ?? 'Device binding cleared.')),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _resettingDevice = false);
+    }
+  }
+
   Future<void> _submit() async {
     final name = _name.text.trim();
     final email = _email.text.trim();
@@ -1764,6 +1901,8 @@ class _UserFormSheetState extends ConsumerState<_UserFormSheet> {
           phone: phone,
           roleId: roleId,
           password: password.isEmpty ? null : password,
+          workLocationId: _workLocationId,
+          clearWorkLocation: _workLocationId == null,
         );
       }
       navigator.pop(true);
@@ -1779,6 +1918,49 @@ class _UserFormSheetState extends ConsumerState<_UserFormSheet> {
         _error = e.message;
       });
     }
+  }
+}
+
+/// The phone bound to this staff member's self-check-in, and the way out
+/// once it's lost or replaced. Shown only once a device has actually bound
+/// (nothing to reset before then) and only to whoever holds
+/// `attendance.manage`, since [AdminService.resetAttendanceDevice] is gated
+/// on the same permission.
+class _DeviceBindingRow extends StatelessWidget {
+  const _DeviceBindingRow({
+    required this.user,
+    required this.busy,
+    required this.onReset,
+  });
+
+  final StaffUser user;
+  final bool busy;
+  final VoidCallback onReset;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return CrmField(
+      label: 'Signed-in device',
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              user.attendanceDeviceModel ?? 'Unknown phone',
+              style: theme.textTheme.bodyMedium,
+            ),
+          ),
+          if (busy)
+            const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            TextButton(onPressed: onReset, child: const Text('Reset')),
+        ],
+      ),
+    );
   }
 }
 

@@ -342,6 +342,10 @@ class StaffUser {
     this.roleName,
     this.roleId,
     this.lastLoginAt,
+    this.workLocationId,
+    this.workLocationName,
+    this.attendanceDeviceModel,
+    this.attendanceDeviceBoundAt,
   });
 
   final String id;
@@ -352,6 +356,18 @@ class StaffUser {
   final String? roleName;
   final String? roleId;
   final DateTime? lastLoginAt;
+
+  /// The work location self-check-in geofences against — null means not
+  /// yet assigned, which blocks their check-in with a clear message rather
+  /// than silently letting it through.
+  final String? workLocationId;
+  final String? workLocationName;
+
+  /// Set on this user's first self-check-in; null means no phone has
+  /// bound to their account yet. Purely informational here — the
+  /// binding itself lives server-side.
+  final String? attendanceDeviceModel;
+  final DateTime? attendanceDeviceBoundAt;
 
   factory StaffUser.fromJson(Map<String, dynamic> json) {
     final role = json.object('role');
@@ -367,6 +383,10 @@ class StaffUser {
           json.str('role_name') ?? role?.str('label') ?? role?.str('name'),
       roleId: json.str('role_id') ?? role?.str('id'),
       lastLoginAt: json.date('last_login_at'),
+      workLocationId: json.str('work_location_id'),
+      workLocationName: json.str('work_location_name'),
+      attendanceDeviceModel: json.str('attendance_device_model'),
+      attendanceDeviceBoundAt: json.date('attendance_device_bound_at'),
     );
   }
 }
@@ -1017,4 +1037,38 @@ abstract final class EmploymentTypes {
     }
     return value ?? '—';
   }
+}
+
+/// An office/site staff self-check-in is geofenced against.
+class WorkLocation {
+  const WorkLocation({
+    required this.id,
+    required this.name,
+    required this.latitude,
+    required this.longitude,
+    required this.radiusMeters,
+    required this.isActive,
+    this.staffCount,
+  });
+
+  final String id;
+  final String name;
+  final double latitude;
+  final double longitude;
+
+  /// Headroom around the pin a check-in is still accepted within — phone
+  /// GPS is rarely accurate to better than 10-20m indoors.
+  final int radiusMeters;
+  final bool isActive;
+  final int? staffCount;
+
+  factory WorkLocation.fromJson(Map<String, dynamic> json) => WorkLocation(
+    id: json.id(),
+    name: json.strOr('name', '—'),
+    latitude: json.money('latitude'),
+    longitude: json.money('longitude'),
+    radiusMeters: json.count('radius_meters', fallback: 150),
+    isActive: json.flag('is_active', fallback: true),
+    staffCount: json['staff_count'] == null ? null : json.count('staff_count'),
+  );
 }

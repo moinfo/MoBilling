@@ -70,6 +70,48 @@ class StaffSelfService {
     return AttendanceDay.fromJson(_data(body));
   }
 
+  /// POST /attendance/check-in — the self-service, geofenced equivalent of
+  /// [recordAttendance]. No permission needed, but the backend rejects it
+  /// (422) if [latitude]/[longitude] fall outside the caller's assigned
+  /// work location, and (403, `DEVICE_NOT_REGISTERED`) if [deviceId] doesn't
+  /// match the phone already bound to their account — the first-ever
+  /// check-in binds it. See [ApiException.body] for `code`/`distance_meters`
+  /// on a 422/403 to show a specific message rather than just [message].
+  Future<AttendanceDay> checkIn({
+    required double latitude,
+    required double longitude,
+    required String deviceId,
+    String? deviceModel,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/attendance/check-in',
+      body: {
+        'latitude': latitude,
+        'longitude': longitude,
+        'device_id': deviceId,
+        'device_model': ?deviceModel,
+      },
+    );
+    return AttendanceDay.fromJson(_data(body));
+  }
+
+  /// POST /attendance/check-out — same device/location checks as [checkIn].
+  Future<AttendanceDay> checkOut({
+    required double latitude,
+    required double longitude,
+    required String deviceId,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/attendance/check-out',
+      body: {
+        'latitude': latitude,
+        'longitude': longitude,
+        'device_id': deviceId,
+      },
+    );
+    return AttendanceDay.fromJson(_data(body));
+  }
+
   /// GET /attendance/my-report — the signed-in user's own month, day by day.
   /// Open to everyone; [month] is 1-12.
   Future<AttendanceReport> myAttendanceReport({int? month, int? year}) async {

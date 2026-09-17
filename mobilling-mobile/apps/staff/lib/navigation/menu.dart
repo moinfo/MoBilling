@@ -570,6 +570,13 @@ const List<MenuNode> staffMenu = [
         ready: true,
       ),
       MenuEntry(
+        label: 'Work Locations',
+        icon: Icons.location_city_outlined,
+        path: '/work-locations',
+        permission: 'menu.work_locations',
+        ready: true,
+      ),
+      MenuEntry(
         label: 'Staff Targets',
         icon: Icons.flag_outlined,
         path: '/staff-targets',

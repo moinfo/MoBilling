@@ -8,6 +8,10 @@
          without this declared here, FirebaseMessaging's runtime request is a
          silent no-op and pushes never show. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Geofenced self-check-in: a one-off "where am I right now" read when
+         staff tap check-in/out, never background tracking. -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
     <application
         android:label="MoBilling"
         android:name="${applicationName}"

@@ -872,6 +872,20 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'showSettings']);
     Route::put('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'updateSettings']);
 
+    // Geofenced self-check-in — no vendor device, no clerk; the phone's own
+    // GPS + a device binding stand in for both.
+    Route::post('/attendance/check-in',   [\App\Http\Controllers\AttendanceController::class, 'checkIn']);
+    Route::post('/attendance/check-out',  [\App\Http\Controllers\AttendanceController::class, 'checkOut']);
+    Route::middleware('permission:attendance.manage')
+        ->post('/users/{user}/reset-attendance-device', [\App\Http\Controllers\AttendanceController::class, 'resetDevice']);
+
+    // ── Work locations (offices/sites self-check-in is geofenced against) ──────
+    Route::middleware('permission:work_locations.read')->get('/work-locations', [\App\Http\Controllers\WorkLocationController::class, 'index']);
+    Route::middleware('permission:work_locations.read')->get('/work-locations/{work_location}', [\App\Http\Controllers\WorkLocationController::class, 'show']);
+    Route::middleware('permission:work_locations.create')->post('/work-locations', [\App\Http\Controllers\WorkLocationController::class, 'store']);
+    Route::middleware('permission:work_locations.update')->put('/work-locations/{work_location}', [\App\Http\Controllers\WorkLocationController::class, 'update']);
+    Route::middleware('permission:work_locations.delete')->delete('/work-locations/{work_location}', [\App\Http\Controllers\WorkLocationController::class, 'destroy']);
+
     // ── Staff Targets & Commission ────────────────────────────────────────────
     Route::get('/staff-targets/summary',                          [\App\Http\Controllers\StaffTargetsController::class, 'summary']);
     Route::get('/staff-targets',                                  [\App\Http\Controllers\StaffTargetsController::class, 'index']);

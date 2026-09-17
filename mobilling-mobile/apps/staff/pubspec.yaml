@@ -1,7 +1,7 @@
 name: staff
 description: "MoBilling staff — dashboard, clients, invoices, payments and tickets on the go."
 publish_to: 'none'
-version: 1.2.0+3
+version: 1.2.1+5
 resolution: workspace
 
 environment:
@@ -36,6 +36,13 @@ dependencies:
   # Push notifications (Android first; APNs/iOS deferred).
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.6
+  # Geofenced self-check-in: GPS for the location check, a stable per-device
+  # id (generated once, kept here) for the device-binding check, and the
+  # phone's make/model purely so an admin resetting a binding knows whose
+  # phone they're looking at.
+  geolocator: ^13.0.2
+  flutter_secure_storage: ^9.2.2
+  device_info_plus: ^11.2.0
 
 dev_dependencies:
   flutter_test:

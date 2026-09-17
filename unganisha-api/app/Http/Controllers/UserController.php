@@ -26,7 +26,7 @@ class UserController extends Controller
         }
 
         return UserResource::collection(
-            $query->with('role')->orderBy('name')->paginate($request->per_page ?? 20)
+            $query->with(['role', 'workLocation'])->orderBy('name')->paginate($request->per_page ?? 20)
         );
     }
 
@@ -69,7 +69,7 @@ class UserController extends Controller
 
         $user = User::create($validated);
 
-        return new UserResource($user->load('role'));
+        return new UserResource($user->load(['role', 'workLocation']));
     }
 
     public function update(Request $request, User $user)
@@ -86,6 +86,10 @@ class UserController extends Controller
             'password' => 'nullable|string|min:8',
             'phone' => 'nullable|string|max:20',
             'role_id' => ['required', 'uuid', Rule::exists('roles', 'id')->where('tenant_id', auth()->user()->tenant_id)],
+            'work_location_id' => [
+                'nullable', 'uuid',
+                Rule::exists('work_locations', 'id')->where('tenant_id', auth()->user()->tenant_id),
+            ],
         ]);
 
         if (empty($validated['password'])) {
@@ -98,7 +102,7 @@ class UserController extends Controller
 
         $user->update($validated);
 
-        return new UserResource($user->load('role'));
+        return new UserResource($user->load(['role', 'workLocation']));
     }
 
     public function toggleActive(User $user)
@@ -116,7 +120,7 @@ class UserController extends Controller
 
         $user->update(['is_active' => !$user->is_active]);
 
-        return new UserResource($user->load('role'));
+        return new UserResource($user->load(['role', 'workLocation']));
     }
 
     public function impersonate(User $user)
@@ -152,7 +156,7 @@ class UserController extends Controller
         }
 
         return response()->json([
-            'user'                => new UserResource($user->load('role')),
+            'user'                => new UserResource($user->load(['role', 'workLocation'])),
             'token'               => $token,
             'subscription_status' => null,
             'days_remaining'      => null,

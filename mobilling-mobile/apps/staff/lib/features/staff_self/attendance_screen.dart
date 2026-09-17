@@ -11,9 +11,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../providers.dart';
+import '../auth/biometrics.dart';
+import '../auth/device_binding.dart';
 import '../common/pickers.dart' show StaffUserPickerSheet;
 import '../crm/crm_ui.dart'
     show CrmAsyncView, CrmField, CrmPickerField, CrmSheet, showCrmSheet;
+import 'attendance_location.dart';
 import 'staff_self_providers.dart';
 
 /// Attendance: my month, and — for whoever holds `attendance.manage` — the
@@ -23,11 +26,16 @@ import 'staff_self_providers.dart';
 /// the tenant's configured hours, and excused days (leave/sick/field) suppress
 /// every flag — so this screen only renders what the API decided.
 ///
-/// The one thing to know about the clock: `POST /attendance/record` is gated
-/// on `attendance.manage`, so the check-in / check-out buttons only appear for
-/// the attendance clerk. Everyone else is marked by the fingerprint device or
-/// an iVMS import, and their card says so rather than offering a button the
-/// API would refuse.
+/// Two different clocks live on this one card:
+///   * `POST /attendance/record` (`_ClockActions`) is gated on
+///     `attendance.manage` — the clerk instantly stamping their own time,
+///     no checks beyond holding the permission.
+///   * `POST /attendance/check-in`/`check-out` (`_GeofencedClockActions`)
+///     is open to everyone with no vendor device — a phone GPS read against
+///     their assigned work location, plus a device-binding check, stand in
+///     for both the fingerprint reader and the "is this really them" it
+///     would otherwise provide. Shown to whoever does *not* hold
+///     `attendance.manage`, since a clerk already has the plain version.
 class AttendanceScreen extends ConsumerWidget {
   const AttendanceScreen({super.key});
 
@@ -125,12 +133,14 @@ class _MeTabState extends ConsumerState<_MeTab> {
                   ),
                 ),
               ] else ...[
-                const SizedBox(height: Spacing.sm),
-                Text(
-                  'Recorded by the fingerprint device — see the attendance '
-                  'clerk if a day is wrong.',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                const SizedBox(height: Spacing.md),
+                Reveal(
+                  delay: const Duration(milliseconds: 60),
+                  child: _GeofencedClockActions(
+                    today: today,
+                    busy: _busy,
+                    onCheckIn: () => _selfStamp(checkOut: false),
+                    onCheckOut: () => _selfStamp(checkOut: true),
                   ),
                 ),
               ],
@@ -227,6 +237,67 @@ class _MeTabState extends ConsumerState<_MeTab> {
       checkOut: checkOut ? now : day?.checkOutAt,
       message: checkOut ? 'Checked out at $now.' : 'Checked in at $now.',
     );
+  }
+
+  /// The self-service clock: a fingerprint confirmation (when the phone has
+  /// one), a GPS read against the assigned work location, and the device
+  /// binding — together standing in for the vendor reader and the "is this
+  /// really them" it provides. Every failure mode (no biometric enrolled,
+  /// out of range, unregistered phone) already carries a full message from
+  /// [currentPosition]/the API, so there is nothing to special-case here.
+  Future<void> _selfStamp({required bool checkOut}) async {
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _busy = true);
+    try {
+      final biometrics = ref.read(biometricsProvider);
+      if (await biometrics.available) {
+        final confirmed = await biometrics.authenticate(
+          checkOut
+              ? "Confirm it's you to check out"
+              : "Confirm it's you to check in",
+        );
+        if (!confirmed) {
+          messenger.showSnackBar(
+            const SnackBar(content: Text('Confirmation cancelled.')),
+          );
+          return;
+        }
+      }
+
+      final position = await currentPosition();
+      final binding = ref.read(deviceBindingProvider);
+      final deviceId = await binding.deviceId();
+      final service = ref.read(staffSelfServiceProvider);
+      final day = checkOut
+          ? await service.checkOut(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              deviceId: deviceId,
+            )
+          : await service.checkIn(
+              latitude: position.latitude,
+              longitude: position.longitude,
+              deviceId: deviceId,
+              deviceModel: await binding.deviceModel(),
+            );
+      if (!mounted) return;
+      setState(() => _justRecorded = day);
+      ref
+        ..invalidate(myAttendanceProvider)
+        ..invalidate(myAttendanceReportProvider)
+        ..invalidate(dashboardProvider)
+        ..invalidate(attendanceOverviewProvider)
+        ..invalidate(attendanceBoardProvider);
+      messenger.showSnackBar(
+        SnackBar(content: Text(checkOut ? 'Checked out.' : 'Checked in.')),
+      );
+    } on LocationUnavailable catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
   Future<void> _editToday(MyAttendance data, AttendanceDay? day) async {
@@ -458,6 +529,72 @@ class _ClockActions extends StatelessWidget {
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+}
+
+/// The clock for staff with no vendor fingerprint reader: a single button
+/// that checks in or out, backed by a phone-side biometric prompt, a GPS
+/// read against the assigned work location, and the device binding — no
+/// "edit today" here, since only the attendance clerk can correct a day.
+class _GeofencedClockActions extends StatelessWidget {
+  const _GeofencedClockActions({
+    required this.today,
+    required this.busy,
+    required this.onCheckIn,
+    required this.onCheckOut,
+  });
+
+  final AttendanceDay? today;
+  final bool busy;
+  final VoidCallback onCheckIn;
+  final VoidCallback onCheckOut;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final checkedIn = today?.checkInAt != null && today!.checkInAt!.isNotEmpty;
+    final checkedOut =
+        today?.checkOutAt != null && today!.checkOutAt!.isNotEmpty;
+    final excused = today?.isExcused ?? false;
+
+    String? note;
+    if (excused) {
+      note = 'Today is excused — nothing to check in for.';
+    } else if (checkedIn && checkedOut) {
+      note = 'Checked in and out for today.';
+    }
+
+    if (note != null) {
+      return Text(
+        note,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: scheme.onSurfaceVariant,
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        PrimaryButton(
+          label: busy
+              ? 'Checking…'
+              : (checkedIn ? 'Check out now' : 'Check in now'),
+          icon: checkedIn ? Icons.logout_rounded : Icons.login_rounded,
+          busy: busy,
+          onPressed: busy ? null : (checkedIn ? onCheckOut : onCheckIn),
+        ),
+        const SizedBox(height: Spacing.xs),
+        Text(
+          'Confirms you are at your work location, from your registered '
+          'phone.',
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
         ),
       ],
     );

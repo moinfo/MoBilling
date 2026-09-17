@@ -20,6 +20,10 @@ class UserResource extends JsonResource
             'role_id' => $this->role_id,
             'role_name' => $roleRelation?->label,
             'is_active' => $this->is_active,
+            'work_location_id' => $this->work_location_id,
+            'work_location_name' => $this->getRelationValue('workLocation')?->name,
+            'attendance_device_model' => $this->attendance_device_model,
+            'attendance_device_bound_at' => $this->attendance_device_bound_at,
             'created_at' => $this->created_at,
         ];
     }

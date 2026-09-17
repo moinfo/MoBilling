@@ -75,6 +75,16 @@ final AutoDisposeFutureProvider<List<BankAccount>> bankAccountsProvider =
           (await ref.watch(adminServiceProvider).bankAccounts()).items,
     );
 
+/// The geofences self-check-in is measured against — a handful per tenant,
+/// so fetched in one page rather than through `PagedListView`.
+final AutoDisposeFutureProvider<List<WorkLocation>> workLocationsProvider =
+    FutureProvider.autoDispose<List<WorkLocation>>(
+      (ref) async => (await ref
+              .watch(adminServiceProvider)
+              .workLocations(perPage: 200))
+          .items,
+    );
+
 /// GET/PUT /settings/reminders — needs `settings.reminders`.
 final AutoDisposeFutureProvider<ReminderSettings> reminderSettingsProvider =
     FutureProvider.autoDispose<ReminderSettings>(

@@ -11,6 +11,7 @@ import 'features/auth/login_screen.dart';
 import 'features/auth/splash_screen.dart';
 import 'features/admin/admin_screens.dart';
 import 'features/admin/security_screen.dart';
+import 'features/admin/work_locations_screen.dart';
 import 'features/billing_catalog/catalog_screens.dart';
 import 'features/billing_catalog/document_detail_screen.dart';
 import 'features/billing_catalog/document_form_screen.dart';
@@ -470,6 +471,10 @@ final Provider<GoRouter> routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/attendance',
         builder: (context, state) => const AttendanceScreen(),
+      ),
+      GoRoute(
+        path: '/work-locations',
+        builder: (context, state) => const WorkLocationsScreen(),
       ),
       GoRoute(
         path: '/staff-reports',

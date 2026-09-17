@@ -232,6 +232,8 @@ class AdminService {
     String? phone,
     String? roleId,
     String? password,
+    String? workLocationId,
+    bool clearWorkLocation = false,
   }) => _api.put<dynamic>(
     '/users/$id',
     body: {
@@ -240,6 +242,10 @@ class AdminService {
       'phone': ?phone,
       'role_id': ?roleId,
       'password': ?password,
+      if (workLocationId != null)
+        'work_location_id': workLocationId
+      else if (clearWorkLocation)
+        'work_location_id': null,
     },
   );
 
@@ -247,6 +253,15 @@ class AdminService {
   /// deleting the account's history.
   Future<void> toggleUserActive(String id) =>
       _api.patch<dynamic>('/users/$id/toggle-active');
+
+  /// POST /users/{id}/reset-attendance-device — needs `attendance.manage`.
+  /// Clears their bound phone so they can self-check-in from a new one.
+  Future<String?> resetAttendanceDevice(String userId) async {
+    final body = await _api.post<dynamic>(
+      '/users/$userId/reset-attendance-device',
+    );
+    return body is Map ? body['message'] as String? : null;
+  }
 
   /// POST /users/{id}/impersonate — sign in as one of this tenant's own
   /// staff members. Needs `settings.users`; 422s on an inactive user or on
@@ -486,6 +501,71 @@ class AdminService {
       _api.delete<dynamic>('/bank-accounts/$id');
 
   // ---------------------------------------------------------------------
+  // Work locations — geofences self-check-in is measured against
+  // ---------------------------------------------------------------------
+
+  /// GET /work-locations — needs `work_locations.read`.
+  Future<Paginated<WorkLocation>> workLocations({
+    String? search,
+    int page = 1,
+    int perPage = 50,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/work-locations',
+      query: {'search': search, 'page': page, 'per_page': perPage},
+    );
+    return Paginated.fromJson(body, WorkLocation.fromJson);
+  }
+
+  /// POST /work-locations — needs `work_locations.create`.
+  Future<WorkLocation> createWorkLocation({
+    required String name,
+    required double latitude,
+    required double longitude,
+    int radiusMeters = 150,
+    bool isActive = true,
+  }) async {
+    final body = await _api.post<Map<String, dynamic>>(
+      '/work-locations',
+      body: {
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'radius_meters': radiusMeters,
+        'is_active': isActive,
+      },
+    );
+    return WorkLocation.fromJson(_data(body));
+  }
+
+  /// PUT /work-locations/{id} — needs `work_locations.update`.
+  Future<WorkLocation> updateWorkLocation(
+    String id, {
+    required String name,
+    required double latitude,
+    required double longitude,
+    int radiusMeters = 150,
+    bool isActive = true,
+  }) async {
+    final body = await _api.put<Map<String, dynamic>>(
+      '/work-locations/$id',
+      body: {
+        'name': name,
+        'latitude': latitude,
+        'longitude': longitude,
+        'radius_meters': radiusMeters,
+        'is_active': isActive,
+      },
+    );
+    return WorkLocation.fromJson(_data(body));
+  }
+
+  /// DELETE /work-locations/{id} — needs `work_locations.delete`. The
+  /// backend itself refuses while staff are still assigned.
+  Future<void> deleteWorkLocation(String id) =>
+      _api.delete<dynamic>('/work-locations/$id');
+
+  // ---------------------------------------------------------------------
   // Settings: reminders, templates, payment methods, late fee
   // ---------------------------------------------------------------------
 
@@ -722,6 +802,11 @@ abstract final class AdminPermissions {
   static const bankAccountsCreate = 'bank_accounts.create';
   static const bankAccountsUpdate = 'bank_accounts.update';
   static const bankAccountsDelete = 'bank_accounts.delete';
+  static const workLocationsMenu = 'menu.work_locations';
+  static const workLocationsRead = 'work_locations.read';
+  static const workLocationsCreate = 'work_locations.create';
+  static const workLocationsUpdate = 'work_locations.update';
+  static const workLocationsDelete = 'work_locations.delete';
 
   /// `EmployeeProfileController::show`/`index` — viewing HR details.
   static const employeesRead = 'employees.read';

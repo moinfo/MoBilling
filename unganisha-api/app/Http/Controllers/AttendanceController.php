@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Attendance;
 use App\Models\AttendancePenalty;
 use App\Models\User;
+use App\Models\WorkLocation;
 use App\Services\AttendanceService;
 use App\Traits\AuthorizesPermissions;
 use Carbon\Carbon;
@@ -431,6 +432,162 @@ class AttendanceController extends Controller
         $s = $this->attendanceService->settings();
         $s->update($data);
         return response()->json(['data' => $s]);
+    }
+
+    // ---------------------------------------------------------------------
+    // Self-service geofenced check-in/out — no vendor device, no clerk.
+    // Needs no permission beyond being signed in: every staff member checks
+    // themselves in, same spirit as mine() above.
+    // ---------------------------------------------------------------------
+
+    /**
+     * A staff member's own check-in from the app: confirms they're within
+     * their assigned work location's radius, and that the phone doing the
+     * check-in is the one already bound to their account (the first
+     * check-in ever binds it; see resetDevice() for what happens when they
+     * get a new phone).
+     */
+    public function checkIn(Request $request)
+    {
+        $data = $request->validate([
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'device_id' => 'required|string|max:255',
+            'device_model' => 'nullable|string|max:255',
+        ]);
+
+        $user = auth()->user();
+
+        $deviceError = $this->checkDevice($user, $data['device_id'], $data['device_model'] ?? null);
+        if ($deviceError) {
+            return $deviceError;
+        }
+
+        $locationError = $this->checkWithinWorkLocation($user, $data['latitude'], $data['longitude']);
+        if ($locationError) {
+            return $locationError;
+        }
+
+        $today = now()->toDateString();
+        $att = Attendance::firstOrNew(['user_id' => $user->id, 'date' => $today]);
+        if ($att->exists && $att->check_in_at) {
+            return response()->json(['message' => 'You have already checked in today.'], 422);
+        }
+
+        $att->tenant_id ??= $user->tenant_id;
+        $att->check_in_at = now();
+        $att->save();
+
+        $f = $this->attendanceService->formatDay($att, $this->attendanceService->settings());
+        return response()->json(['data' => $f]);
+    }
+
+    /** The other half of checkIn() — same device/location checks. */
+    public function checkOut(Request $request)
+    {
+        $data = $request->validate([
+            'latitude' => 'required|numeric|between:-90,90',
+            'longitude' => 'required|numeric|between:-180,180',
+            'device_id' => 'required|string|max:255',
+        ]);
+
+        $user = auth()->user();
+
+        $deviceError = $this->checkDevice($user, $data['device_id'], null, allowBinding: false);
+        if ($deviceError) {
+            return $deviceError;
+        }
+
+        $locationError = $this->checkWithinWorkLocation($user, $data['latitude'], $data['longitude']);
+        if ($locationError) {
+            return $locationError;
+        }
+
+        $today = now()->toDateString();
+        $att = Attendance::where('user_id', $user->id)->whereDate('date', $today)->first();
+        if (!$att || !$att->check_in_at) {
+            return response()->json(['message' => 'You have not checked in today yet.'], 422);
+        }
+        if ($att->check_out_at) {
+            return response()->json(['message' => 'You have already checked out today.'], 422);
+        }
+
+        $att->check_out_at = now();
+        $att->save();
+
+        $f = $this->attendanceService->formatDay($att, $this->attendanceService->settings());
+        return response()->json(['data' => $f]);
+    }
+
+    /**
+     * An admin clearing a staff member's device binding — the only way
+     * back in once they've lost or replaced the phone that was bound.
+     * Needs `attendance.manage`, same gate as every other clerk action here.
+     */
+    public function resetDevice(User $user)
+    {
+        $this->authorizePermission('attendance.manage');
+
+        $user->attendance_device_id = null;
+        $user->attendance_device_model = null;
+        $user->attendance_device_bound_at = null;
+        $user->save();
+
+        return response()->json(['message' => 'Device binding cleared. They can check in again from a new phone.']);
+    }
+
+    /**
+     * First check-in ever binds the phone; every one after must match it.
+     * [$allowBinding] is false on checkout — a device that never checked in
+     * has no business checking out either way.
+     */
+    private function checkDevice(User $user, string $deviceId, ?string $deviceModel, bool $allowBinding = true)
+    {
+        if ($user->attendance_device_id === null) {
+            if (!$allowBinding) {
+                return response()->json(['message' => 'You have not checked in today yet.'], 422);
+            }
+            $user->attendance_device_id = $deviceId;
+            $user->attendance_device_model = $deviceModel;
+            $user->attendance_device_bound_at = now();
+            $user->save();
+            return null;
+        }
+
+        if ($user->attendance_device_id !== $deviceId) {
+            return response()->json([
+                'message' => 'This device is not registered to your account. Ask an administrator to reset your device to sign in from a new phone.',
+                'code' => 'DEVICE_NOT_REGISTERED',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    private function checkWithinWorkLocation(User $user, float $latitude, float $longitude)
+    {
+        $location = $user->work_location_id ? WorkLocation::find($user->work_location_id) : null;
+        if (!$location || !$location->is_active) {
+            return response()->json([
+                'message' => 'You are not assigned an active work location. Contact your administrator.',
+            ], 422);
+        }
+
+        $distance = $location->distanceMetersTo($latitude, $longitude);
+        if ($distance > $location->radius_meters) {
+            return response()->json([
+                'message' => sprintf(
+                    'You are %dm away from %s — you must be within %dm to check in/out.',
+                    round($distance),
+                    $location->name,
+                    $location->radius_meters
+                ),
+                'code' => 'OUTSIDE_WORK_LOCATION',
+                'distance_meters' => round($distance),
+            ], 422);
+        }
+
+        return null;
     }
 
     // formatDay()/settings() moved to AttendanceService — shared with
