@@ -127,7 +127,22 @@ class _DashboardTabState extends ConsumerState<DashboardTab> {
             ),
         ];
 
-        if (money.isEmpty && counts.isEmpty) {
+        // money/counts cover the two biggest sections, but a role scoped
+        // to only bank-side permissions (e.g. dashboard.bank_balances,
+        // dashboard.system_records_breakdown, dashboard.bank_account_
+        // breakdown — "Banker" roles have exactly this) has real content
+        // further down the tree while both of those stay empty. Checking
+        // only money/counts sent such a user straight to the empty state
+        // even though their sections render fine once reached.
+        final hasBankBalances = (d.bankBalances?.isNotEmpty ?? false);
+        final hasSystemRecords =
+            (d.systemRecords?.systems.isNotEmpty ?? false) ||
+            (d.systemRecords?.byBank.isNotEmpty ?? false);
+
+        if (money.isEmpty &&
+            counts.isEmpty &&
+            !hasBankBalances &&
+            !hasSystemRecords) {
           return const StateMessage(
             icon: Icons.lock_outline,
             title: 'No dashboard metrics available',
