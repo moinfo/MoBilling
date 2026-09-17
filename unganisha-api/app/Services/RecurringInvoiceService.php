@@ -30,11 +30,12 @@ class RecurringInvoiceService
     public function processAll(): array
     {
         $invoices = $this->processUpcomingBills();
+        $dayOfMonth = $this->processDayOfMonthBills();
         $reminders = $this->processReminders();
 
         return [
-            'invoices_created' => $invoices['created'],
-            'invoices_failed' => $invoices['failed'],
+            'invoices_created' => $invoices['created'] + $dayOfMonth['created'],
+            'invoices_failed' => $invoices['failed'] + $dayOfMonth['failed'],
             'reminders_sent' => $reminders['sent'],
             'reminders_failed' => $reminders['failed'],
         ];
@@ -62,6 +63,9 @@ class RecurringInvoiceService
                 ->where('is_active', true)
                 ->whereNotNull('billing_cycle')
                 ->where('billing_cycle', '!=', 'once')
+                // Day-of-month products are billed by processDayOfMonthBills()
+                // instead — excluded here so they're never invoiced twice.
+                ->whereNull('invoice_day_of_month')
             )
             ->get();
 
@@ -146,6 +150,102 @@ class RecurringInvoiceService
             } catch (\Throwable $e) {
                 $failed++;
                 Log::error('RecurringInvoice: failed to create invoice', [
+                    'tenant_id' => $firstSub->tenant_id,
+                    'client_id' => $firstSub->client_id,
+                    'exception' => $e,
+                ]);
+            }
+        }
+
+        return ['created' => $count, 'failed' => $failed];
+    }
+
+    /**
+     * A second billing model alongside cycle-based subscriptions
+     * (processUpcomingBills): some contracts (e.g. a monthly retainer) need
+     * a FIXED calendar issue date every month — e.g. always invoice on the
+     * 25th — rather than "N days before the renewal date". Opt-in via
+     * ProductService.invoice_day_of_month; due_date is always the last day
+     * of the invoicing month, so it lands the day before the 1st
+     * regardless of the month's length (28-31 days) — no manual date math
+     * needed per month. Runs only on the matching day, one invoice per
+     * client per calendar month (RecurringInvoiceLog keyed on that due
+     * date is the idempotency guard against a double run).
+     */
+    private function processDayOfMonthBills(): array
+    {
+        $today = Carbon::today();
+        $count = 0;
+        $failed = 0;
+
+        $subscriptions = ClientSubscription::withoutGlobalScopes()
+            ->where('status', 'active')
+            ->when(config('whmcs.parallel_mode'), fn ($q) => $q->whereNull('legacy_id'))
+            ->with('productService')
+            ->whereHas('productService', fn ($q) => $q
+                ->where('is_active', true)
+                ->where('invoice_day_of_month', $today->day)
+            )
+            ->get();
+
+        if ($subscriptions->isEmpty()) {
+            return ['created' => 0, 'failed' => 0];
+        }
+
+        $dueDate = $today->copy()->endOfMonth();
+        $periodStart = $today->copy()->startOfMonth();
+
+        $grouped = $subscriptions->groupBy(fn ($sub) => $sub->tenant_id . '|' . $sub->client_id);
+
+        foreach ($grouped as $subsForClient) {
+            $firstSub = $subsForClient->first();
+
+            $alreadyInvoiced = RecurringInvoiceLog::withoutGlobalScopes()
+                ->where('tenant_id', $firstSub->tenant_id)
+                ->where('client_id', $firstSub->client_id)
+                ->whereIn('product_service_id', $subsForClient->pluck('product_service_id'))
+                ->where('next_bill_date', $dueDate->format('Y-m-d'))
+                ->exists();
+            if ($alreadyInvoiced) {
+                continue;
+            }
+
+            try {
+                $tenant = Tenant::find($firstSub->tenant_id);
+                if (!$tenant || !$tenant->hasAccess()) {
+                    continue;
+                }
+
+                $client = Client::withoutGlobalScopes()->find($firstSub->client_id);
+                if (!$client) {
+                    continue;
+                }
+
+                $billItems = $subsForClient->map(fn ($sub) => [
+                    'subscription' => $sub,
+                    'service_from' => $periodStart->copy(),
+                    'service_to'   => $dueDate->copy(),
+                ])->all();
+
+                $document = $this->createInvoice($tenant, $client, $billItems, $dueDate);
+
+                foreach ($subsForClient as $sub) {
+                    RecurringInvoiceLog::withoutGlobalScopes()->create([
+                        'tenant_id'              => $tenant->id,
+                        'client_id'              => $client->id,
+                        'product_service_id'     => $sub->product_service_id,
+                        'client_subscription_id' => $sub->id,
+                        'document_id'            => $document->id,
+                        'next_bill_date'         => $dueDate,
+                        'invoice_created_at'     => now(),
+                        'reminders_sent'         => [],
+                    ]);
+                }
+
+                $count++;
+            } catch (\Throwable $e) {
+                $failed++;
+                Log::error('RecurringInvoice (day-of-month): failed to create invoice', [
                     'tenant_id' => $firstSub->tenant_id,
                     'client_id' => $firstSub->client_id,
                     'exception' => $e,

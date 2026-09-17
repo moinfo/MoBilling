@@ -11,6 +11,7 @@ export interface ProductService {
   unit: string;
   category: string | null;
   billing_cycle: string | null;
+  invoice_day_of_month: number | null;
   is_active: boolean;
   provisioning_type: 'none' | 'whm_cpanel';
   server_id: string | null;
@@ -30,6 +31,7 @@ export interface ProductServiceFormData {
   unit: string;
   category: string;
   billing_cycle: string;
+  invoice_day_of_month?: number | null;
   is_active: boolean;
   provisioning_type?: 'none' | 'whm_cpanel';
   server_id?: string | null;

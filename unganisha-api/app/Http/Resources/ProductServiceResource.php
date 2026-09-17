@@ -20,6 +20,7 @@ class ProductServiceResource extends JsonResource
             'unit' => $this->unit,
             'category' => $this->category,
             'billing_cycle' => $this->billing_cycle,
+            'invoice_day_of_month' => $this->invoice_day_of_month,
             'is_active' => $this->is_active,
             'created_at' => $this->created_at,
         ];

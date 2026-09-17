@@ -73,6 +73,7 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
       unit: 'pcs',
       category: '',
       billing_cycle: '',
+      invoice_day_of_month: null,
       is_active: true,
       portal_visible: true,
       provisioning_type: 'none',
@@ -150,6 +151,14 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
           clearable
           {...form.getInputProps('billing_cycle')}
         />
+        {form.values.billing_cycle === 'monthly' && (
+          <NumberInput
+            label="Fixed Invoice Day of Month (optional)"
+            description="e.g. 25 — invoice every subscriber on this exact calendar day each month, due the last day of that month (the day before the 1st). Leave blank for the default: invoice ~30 days before each subscription's own renewal date."
+            min={1} max={28} placeholder="Default behavior"
+            {...form.getInputProps('invoice_day_of_month')}
+          />
+        )}
         {showProvisioning && (
           <>
             <Divider label="Hosting Provisioning" labelPosition="left" />

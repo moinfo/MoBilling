@@ -24,6 +24,10 @@ class StoreProductServiceRequest extends FormRequest
             'unit' => 'nullable|string|max:20',
             'category' => 'nullable|string|max:100',
             'billing_cycle' => 'nullable|in:once,monthly,quarterly,half_yearly,yearly',
+            // Fixed calendar issue day (e.g. 25) instead of "N days before
+            // the cycle renewal date" — see RecurringInvoiceService::processDayOfMonthBills().
+            // Capped at 28 so it's valid in every month including February.
+            'invoice_day_of_month' => 'nullable|integer|min:1|max:28',
             'is_active' => 'nullable|boolean',
             // WHM/cPanel provisioning (tenant-scoped server check — never bare exists)
             'provisioning_type' => 'nullable|in:none,whm_cpanel',
