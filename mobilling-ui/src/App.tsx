@@ -93,6 +93,7 @@ import SocialMedia from './pages/SocialMedia';
 import ServedCustomers from './pages/ServedCustomers';
 import StaffReports from './pages/StaffReports';
 import Attendance from './pages/Attendance';
+import WorkLocations from './pages/WorkLocations';
 import StaffTargets from './pages/StaffTargets';
 import UserProfile from './pages/UserProfile';
 import Leave from './pages/Leave';
@@ -304,6 +305,7 @@ export default function App() {
                   <Route path="/served-customers" element={<ServedCustomers />} />
                   <Route path="/staff-reports" element={<StaffReports />} />
                   <Route path="/attendance" element={<Attendance />} />
+                  <Route path="/work-locations" element={<WorkLocations />} />
                   <Route path="/staff-targets" element={<StaffTargets />} />
                   <Route path="/reports/revenue" element={<RevenueSummary />} />
                   <Route path="/reports/aging" element={<OutstandingAging />} />

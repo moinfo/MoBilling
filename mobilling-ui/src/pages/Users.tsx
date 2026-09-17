@@ -4,7 +4,8 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconLock } from '@tabler/icons-react';
-import { getUsers, createUser, updateUser, toggleUserActive, TenantUser, UserFormData } from '../api/users';
+import { getUsers, createUser, updateUser, toggleUserActive, resetAttendanceDevice, TenantUser, UserFormData } from '../api/users';
+import { modals } from '@mantine/modals';
 import { impersonateUser, impersonateUserAsTenantAdmin } from '../api/admin';
 import UserTable from '../components/Settings/UserTable';
 import UserForm from '../components/Settings/UserForm';
@@ -63,6 +64,15 @@ export default function Users() {
     },
   });
 
+  const resetDeviceMutation = useMutation({
+    mutationFn: (id: string) => resetAttendanceDevice(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      notifications.show({ title: 'Device cleared', message: 'They can check in again from a new phone.', color: 'green' });
+    },
+    onError: () => notifications.show({ title: 'Error', message: 'Failed to reset device', color: 'red' }),
+  });
+
   const loginAsMutation = useMutation({
     mutationFn: async (user: TenantUser) => {
       // Real super-admin (with own session) uses the admin endpoint.
@@ -101,6 +111,14 @@ export default function Users() {
   const handleToggleActive = (user: TenantUser) => {
     toggleMutation.mutate(user.id);
   };
+
+  const handleResetDevice = (user: TenantUser) => modals.openConfirmModal({
+    title: 'Reset Attendance Device',
+    children: `Clear the phone bound to ${user.name}'s account? Their next check-in will bind whatever device they use then.`,
+    labels: { confirm: 'Reset Device', cancel: 'Cancel' },
+    confirmProps: { color: 'orange' },
+    onConfirm: () => resetDeviceMutation.mutate(user.id),
+  });
 
   const handleSubmit = (values: UserFormData) => {
     // Strip empty password on edit so backend ignores it
@@ -151,6 +169,7 @@ export default function Users() {
         showLoginAs={canManageUsers}
         onLoginAs={handleLoginAs}
         onViewProfile={canViewEmployeeProfiles ? handleViewProfile : undefined}
+        onResetDevice={handleResetDevice}
       />
 
       {meta && meta.last_page > 1 && (
@@ -171,6 +190,7 @@ export default function Users() {
             email: editing.email,
             phone: editing.phone || '',
             role_id: editing.role_id || '',
+            work_location_id: editing.work_location_id,
           } : undefined}
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}

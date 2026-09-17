@@ -36,7 +36,7 @@ export default function AppLayout() {
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
-  const hrPaths = ['/staff-reports', '/attendance', '/staff-targets', '/leave', '/payroll'];
+  const hrPaths = ['/staff-reports', '/attendance', '/work-locations', '/staff-targets', '/leave', '/payroll'];
   const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/domains'];
   const supportPaths = ['/tickets', '/canned-replies', '/knowledgebase'];
   const engagementPaths = ['/satisfaction-calls', '/appointments', '/whatsapp-contacts', '/field-marketing', '/social-media', '/served-customers'];
@@ -92,7 +92,7 @@ export default function AppLayout() {
   // top-level data-entry CRUD (System Records) appears here.
   const showSystemRecords = can('menu.system_records');
   const showReports = can('menu.reports');
-  const showHr = canAny(['menu.staff_reports', 'attendance.manage', 'menu.staff_targets', 'menu.leave', 'menu.payroll']);
+  const showHr = canAny(['menu.staff_reports', 'attendance.manage', 'menu.work_locations', 'menu.staff_targets', 'menu.leave', 'menu.payroll']);
   // Grouped nav parents (Dec 2026 reorg) — each is purely a visual container;
   // every leaf item below still gates on the exact same permission it always did.
   const showWebServices = canAny(['menu.hosting', 'menu.domains']);
@@ -175,6 +175,7 @@ export default function AppLayout() {
     { label: 'Announcements', path: '/announcements', group: 'Communications', visible: can('menu.announcements') },
     { label: 'Staff Reports', path: '/staff-reports', group: 'HR', visible: can('menu.staff_reports') },
     { label: 'Attendance', path: '/attendance', group: 'HR', visible: can('attendance.manage') },
+    { label: 'Work Locations', path: '/work-locations', group: 'HR', visible: can('menu.work_locations') },
     { label: 'Staff Targets', path: '/staff-targets', group: 'HR', visible: can('menu.staff_targets') },
     { label: 'Leave', path: '/leave', group: 'HR', visible: can('menu.leave') },
     { label: 'Payroll', path: '/payroll', group: 'HR', visible: can('menu.payroll') },
@@ -628,6 +629,10 @@ export default function AppLayout() {
               {can('attendance.manage') && (
                 <NavLink label="Attendance" leftSection={<IconClipboardCheck size={16} />}
                   active={isActive('/attendance')} onClick={() => navigateAndClose('/attendance')} />
+              )}
+              {can('menu.work_locations') && (
+                <NavLink label="Work Locations" leftSection={<IconMapPin size={16} />}
+                  active={isActive('/work-locations')} onClick={() => navigateAndClose('/work-locations')} />
               )}
               {can('menu.staff_targets') && (
                 <NavLink label="Staff Targets" leftSection={<IconTargetArrow size={16} />}

@@ -1,5 +1,5 @@
-import { Table, ActionIcon, Group, Text, Badge } from '@mantine/core';
-import { IconEdit, IconLogin, IconUserCheck, IconUserOff, IconId } from '@tabler/icons-react';
+import { Table, ActionIcon, Group, Text, Badge, Tooltip } from '@mantine/core';
+import { IconEdit, IconLogin, IconUserCheck, IconUserOff, IconId, IconDeviceMobileOff } from '@tabler/icons-react';
 import { TenantUser } from '../../api/users';
 
 interface Props {
@@ -11,9 +11,10 @@ interface Props {
   onLoginAs?: (user: TenantUser) => void;
   showLoginAs?: boolean;
   onViewProfile?: (user: TenantUser) => void;
+  onResetDevice?: (user: TenantUser) => void;
 }
 
-export default function UserTable({ users, isAdmin, currentUserId, onEdit, onToggleActive, onLoginAs, showLoginAs, onViewProfile }: Props) {
+export default function UserTable({ users, isAdmin, currentUserId, onEdit, onToggleActive, onLoginAs, showLoginAs, onViewProfile, onResetDevice }: Props) {
   if (users.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No team members found</Text>;
   }
@@ -76,6 +77,13 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
                     >
                       <IconLogin size={16} />
                     </ActionIcon>
+                  )}
+                  {onResetDevice && user.attendance_device_model && (
+                    <Tooltip label={`Bound to ${user.attendance_device_model} — clear so they can check in from a new phone`}>
+                      <ActionIcon variant="light" color="orange" onClick={() => onResetDevice(user)}>
+                        <IconDeviceMobileOff size={16} />
+                      </ActionIcon>
+                    </Tooltip>
                   )}
                 </Group>
               </Table.Td>

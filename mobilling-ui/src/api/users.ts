@@ -9,6 +9,10 @@ export interface TenantUser {
   role_id: string | null;
   role_name: string | null;
   is_active: boolean;
+  work_location_id: string | null;
+  work_location_name: string | null;
+  attendance_device_model: string | null;
+  attendance_device_bound_at: string | null;
   created_at: string;
 }
 
@@ -18,6 +22,7 @@ export interface UserFormData {
   password?: string;
   phone: string;
   role_id: string;
+  work_location_id?: string | null;
 }
 
 export const getUsers = (params?: { search?: string; page?: number; per_page?: number }) =>
@@ -40,3 +45,7 @@ export const updateUser = (id: string, data: UserFormData) =>
 
 export const toggleUserActive = (id: string) =>
   api.patch(`/users/${id}/toggle-active`);
+
+/** Clears a staff member's bound attendance-check-in phone so they can check in from a new device. */
+export const resetAttendanceDevice = (id: string) =>
+  api.post(`/users/${id}/reset-attendance-device`);
