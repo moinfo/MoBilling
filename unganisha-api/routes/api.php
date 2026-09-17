@@ -35,6 +35,7 @@ use App\Http\Controllers\SystemController;
 use App\Http\Controllers\BankAccountController;
 use App\Http\Controllers\SystemPropertyController;
 use App\Http\Controllers\SystemRecordController;
+use App\Http\Controllers\SystemRecordExpenseController;
 use App\Http\Controllers\SystemVerificationController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
@@ -440,6 +441,13 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:system_records.reconcile')->post('/system-records/{system_record}/toggle-statement-confirmation', [SystemRecordController::class, 'toggleStatementConfirmation']);
     Route::middleware('permission:system_records.reconcile')->post('/system-records/{system_record}/reconciliation-note', [SystemRecordController::class, 'updateReconciliationNote']);
     Route::middleware('permission:system_records.delete')->delete('/system-records/{system_record}', [SystemRecordController::class, 'destroy']);
+
+    // Withdraw Usage — expenses recorded against a System Records withdraw
+    Route::middleware('permission:system_record_expenses.read')->get('/system-record-expenses', [SystemRecordExpenseController::class, 'index']);
+    Route::middleware('permission:system_record_expenses.read')->get('/system-record-expenses/{system_record_expense}', [SystemRecordExpenseController::class, 'show']);
+    Route::middleware('permission:system_record_expenses.create')->post('/system-record-expenses', [SystemRecordExpenseController::class, 'store']);
+    Route::middleware('permission:system_record_expenses.update')->put('/system-record-expenses/{system_record_expense}', [SystemRecordExpenseController::class, 'update']);
+    Route::middleware('permission:system_record_expenses.delete')->delete('/system-record-expenses/{system_record_expense}', [SystemRecordExpenseController::class, 'destroy']);
 
     Route::middleware('permission:wifi_routers.read')->get('/mikrotik-routers', [\App\Http\Controllers\MikrotikRouterController::class, 'index']);
     Route::middleware('permission:wifi_routers.read')->get('/mikrotik-routers/{mikrotik_router}', [\App\Http\Controllers\MikrotikRouterController::class, 'show']);

@@ -62,6 +62,7 @@ import TemplatesAdmin from './pages/admin/Templates';
 import ExpenseCategories from './pages/ExpenseCategories';
 import Expenses from './pages/Expenses';
 import SystemRecords from './pages/SystemRecords';
+import SystemRecordExpenses from './pages/SystemRecordExpenses';
 import WifiRouters from './pages/WifiRouters';
 import WifiPlans from './pages/WifiPlans';
 import WifiVoucherPurchases from './pages/WifiVoucherPurchases';
@@ -268,6 +269,7 @@ export default function App() {
                   <Route path="/expenses" element={<Expenses />} />
                   <Route path="/petty-cash" element={<PettyCash />} />
                   <Route path="/system-records" element={<SystemRecords />} />
+                  <Route path="/system-record-expenses" element={<SystemRecordExpenses />} />
                   <Route path="/wifi-routers" element={<WifiRouters />} />
                   <Route path="/wifi-plans" element={<WifiPlans />} />
                   <Route path="/wifi-voucher-purchases" element={<WifiVoucherPurchases />} />

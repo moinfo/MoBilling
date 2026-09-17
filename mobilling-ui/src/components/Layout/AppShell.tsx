@@ -40,7 +40,7 @@ export default function AppLayout() {
   const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/domains'];
   const supportPaths = ['/tickets', '/canned-replies', '/knowledgebase'];
   const engagementPaths = ['/satisfaction-calls', '/appointments', '/whatsapp-contacts', '/field-marketing', '/social-media', '/served-customers'];
-  const recordsPaths = ['/system-records', '/my-verifications'];
+  const recordsPaths = ['/system-records', '/system-record-expenses', '/my-verifications'];
   const commsPaths = ['/sms', '/broadcast', '/announcements'];
   const accountPaths = ['/subscription', '/users', '/roles', '/sessions', '/settings'];
 
@@ -98,7 +98,7 @@ export default function AppLayout() {
   const showWebServices = canAny(['menu.hosting', 'menu.domains']);
   const showSupport = canAny(['menu.tickets', 'menu.announcements']);
   const showEngagement = canAny(['menu.satisfaction_calls', 'menu.whatsapp', 'menu.field_marketing', 'menu.social_media', 'menu.served_customers']);
-  const showRecords = canAny(['menu.system_records', 'menu.my_verifications', 'menu.report_balance_statement']);
+  const showRecords = canAny(['menu.system_records', 'menu.system_record_expenses', 'menu.my_verifications', 'menu.report_balance_statement']);
   const showWifi = can('menu.wifi_hotspot');
   const showComms = canAny(['menu.sms', 'menu.broadcast', 'menu.announcements']);
   const showAccount = canAny(['menu.subscription', 'menu.users', 'menu.roles', 'settings.users', 'menu.settings']);
@@ -150,6 +150,7 @@ export default function AppLayout() {
     { label: 'Expenses', path: '/expenses', group: 'Expenses', visible: can('menu.expenses') },
     { label: 'Petty Cash', path: '/petty-cash', group: 'Expenses', visible: can('menu.petty_cash') },
     { label: 'System Records', path: '/system-records', group: 'Records & Verification', visible: showSystemRecords },
+    { label: 'Withdraw Usage', path: '/system-record-expenses', group: 'Records & Verification', visible: can('menu.system_record_expenses') },
     { label: 'Bank Balance Statement', path: '/reports/bank-balance-statement', group: 'Records & Verification', visible: can('menu.report_balance_statement') },
     { label: 'My Verifications', path: '/my-verifications', group: 'Records & Verification', visible: can('menu.my_verifications') },
     { label: 'WiFi Routers', path: '/wifi-routers', group: 'WiFi Hotspot', visible: can('wifi_routers.read') },
@@ -518,6 +519,10 @@ export default function AppLayout() {
               {showSystemRecords && (
                 <NavLink label="System Records" leftSection={<IconDatabase size={16} />}
                   active={isActive('/system-records')} onClick={() => navigateAndClose('/system-records')} />
+              )}
+              {can('menu.system_record_expenses') && (
+                <NavLink label="Withdraw Usage" leftSection={<IconReceipt2 size={16} />}
+                  active={isActive('/system-record-expenses')} onClick={() => navigateAndClose('/system-record-expenses')} />
               )}
               {can('menu.report_balance_statement') && (
                 <NavLink label="Bank Balance Statement" leftSection={<IconBuildingBank size={16} />}

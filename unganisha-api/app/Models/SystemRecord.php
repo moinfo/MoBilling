@@ -53,4 +53,9 @@ class SystemRecord extends Model
     {
         return $this->belongsTo(User::class, 'statement_confirmed_by');
     }
+
+    public function expenses()
+    {
+        return $this->hasMany(SystemRecordExpense::class);
+    }
 }

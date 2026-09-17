@@ -51,6 +51,14 @@ class SystemRecordResource extends JsonResource
             ]),
             'reconciliation_note' => $this->reconciliation_note,
             'reconciled' => (bool) ($this->sms_confirmed_at && $this->statement_confirmed_at),
+            // Only meaningful for withdraws — how much of the cash pulled
+            // out has a recorded expense against it, and what's left
+            // unaccounted for. expenses_sum_amount comes from a
+            // withSum('expenses', 'amount') eager load; null if not loaded.
+            'total_expensed' => $this->when($this->type === 'withdraw' && $this->expenses_sum_amount !== null,
+                fn () => (float) $this->expenses_sum_amount),
+            'remaining_amount' => $this->when($this->type === 'withdraw' && $this->expenses_sum_amount !== null,
+                fn () => round((float) $this->amount - (float) $this->expenses_sum_amount, 2)),
             'created_at' => $this->created_at,
         ];
     }

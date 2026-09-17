@@ -27,7 +27,7 @@ class SystemRecordController extends Controller
             'createdBy:id,name',
             'smsConfirmedBy:id,name',
             'statementConfirmedBy:id,name',
-        ]);
+        ])->withSum('expenses', 'amount');
 
         if ($request->filled('system_id')) {
             $query->where('system_id', $request->system_id);
@@ -110,12 +110,12 @@ class SystemRecordController extends Controller
             }
         }
 
-        return new SystemRecordResource($record->load(self::RELATIONS));
+        return new SystemRecordResource($record->load(self::RELATIONS)->loadSum('expenses', 'amount'));
     }
 
     public function show(SystemRecord $system_record)
     {
-        return new SystemRecordResource($system_record->load(self::RELATIONS));
+        return new SystemRecordResource($system_record->load(self::RELATIONS)->loadSum('expenses', 'amount'));
     }
 
     public function update(StoreSystemRecordRequest $request, SystemRecord $system_record)
@@ -152,7 +152,7 @@ class SystemRecordController extends Controller
             Storage::disk('public')->delete($oldPath);
         }
 
-        return new SystemRecordResource($system_record->load(self::RELATIONS));
+        return new SystemRecordResource($system_record->load(self::RELATIONS)->loadSum('expenses', 'amount'));
     }
 
     public function destroy(SystemRecord $system_record)
@@ -184,7 +184,7 @@ class SystemRecordController extends Controller
         }
         $system_record->save();
 
-        return new SystemRecordResource($system_record->load(self::RELATIONS));
+        return new SystemRecordResource($system_record->load(self::RELATIONS)->loadSum('expenses', 'amount'));
     }
 
     public function toggleStatementConfirmation(SystemRecord $system_record)
@@ -198,7 +198,7 @@ class SystemRecordController extends Controller
         }
         $system_record->save();
 
-        return new SystemRecordResource($system_record->load(self::RELATIONS));
+        return new SystemRecordResource($system_record->load(self::RELATIONS)->loadSum('expenses', 'amount'));
     }
 
     /** Lets whoever is reconciling flag a discrepancy on this record — e.g. "not seen on statement yet". */
@@ -209,6 +209,6 @@ class SystemRecordController extends Controller
         $system_record->reconciliation_note = $data['reconciliation_note'] ?? null;
         $system_record->save();
 
-        return new SystemRecordResource($system_record->load(self::RELATIONS));
+        return new SystemRecordResource($system_record->load(self::RELATIONS)->loadSum('expenses', 'amount'));
     }
 }

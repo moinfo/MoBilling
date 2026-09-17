@@ -23,6 +23,8 @@ export interface SystemRecord {
   statement_confirmed_by?: { id: string; name: string } | null;
   reconciliation_note: string | null;
   reconciled: boolean;
+  total_expensed?: number;
+  remaining_amount?: number;
   created_at: string;
 }
 
