@@ -1,6 +1,6 @@
-import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button, Badge, Tooltip, Box, ScrollArea } from '@mantine/core';
-import { useDisclosure } from '@mantine/hooks';
-import { useState, useCallback } from 'react';
+import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button, Badge, Tooltip, Box, ScrollArea, Modal, TextInput, Stack, Kbd } from '@mantine/core';
+import { useDisclosure, useHotkeys } from '@mantine/hooks';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   IconDashboard, IconUsers, IconUsersGroup, IconPackages,
   IconFileText, IconFileInvoice, IconReceipt, IconFileDescription, IconFileCheck,
@@ -13,7 +13,7 @@ import {
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
   IconHeartHandshake, IconBrandWhatsapp, IconMapPin, IconBrandInstagram, IconUserCheck,
   IconDatabase, IconShoppingCart, IconDeviceLaptop, IconBuildingBank, IconWifi, IconRouter, IconTicket,
-  IconCalendarTime, IconMoneybag, IconUserCog,
+  IconCalendarTime, IconMoneybag, IconUserCog, IconSearch,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -103,6 +103,105 @@ export default function AppLayout() {
   const showComms = canAny(['menu.sms', 'menu.broadcast', 'menu.announcements']);
   const showAccount = canAny(['menu.subscription', 'menu.users', 'menu.roles', 'settings.users', 'menu.settings']);
 
+  // Flat, searchable mirror of the sidebar tree below — kept as plain data
+  // (not derived from the JSX) so search doesn't need to walk/parse the
+  // render tree. Reuses the exact same can()/show* checks already computed
+  // above, so visibility never drifts from what's actually in the sidebar.
+  // NOTE: when adding a new sidebar item below, add its search entry here too.
+  const navSearchItems = useMemo(() => [
+    { label: 'Dashboard', path: '/dashboard', group: '', visible: can('menu.dashboard') },
+    { label: 'Hosting — Accounts', path: '/hosting', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Manage Services', path: '/hosting/services', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Discover Accounts', path: '/hosting/discover', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Domains', path: '/domains', group: 'Web Services', visible: can('menu.domains') },
+    { label: 'Support Tickets', path: '/tickets', group: 'Support', visible: can('menu.tickets') },
+    { label: 'Canned Replies', path: '/canned-replies', group: 'Support', visible: can('menu.tickets') },
+    { label: 'Knowledgebase', path: '/knowledgebase', group: 'Support', visible: can('menu.announcements') },
+    { label: 'Satisfaction Calls', path: '/satisfaction-calls', group: 'Engagement', visible: can('menu.satisfaction_calls') },
+    { label: 'Appointments', path: '/appointments', group: 'Engagement', visible: can('menu.satisfaction_calls') },
+    { label: 'WhatsApp', path: '/whatsapp-contacts', group: 'Engagement', visible: can('menu.whatsapp') },
+    { label: 'Field Marketing', path: '/field-marketing', group: 'Engagement', visible: can('menu.field_marketing') },
+    { label: 'Social Media', path: '/social-media', group: 'Engagement', visible: can('menu.social_media') },
+    { label: 'Served Customers', path: '/served-customers', group: 'Engagement', visible: can('menu.served_customers') },
+    { label: 'Collection', path: '/collection', group: 'Billing', visible: can('menu.collection') },
+    { label: 'Follow-ups', path: '/followups', group: 'Billing', visible: can('menu.followups') },
+    { label: 'Clients', path: '/clients', group: 'Billing', visible: can('menu.clients') },
+    { label: 'Portal Users', path: '/portal-users', group: 'Billing', visible: can('menu.portal_users') },
+    { label: 'Add Order', path: '/orders', group: 'Billing', visible: can('orders.create') },
+    { label: 'Products & Services', path: '/product-services', group: 'Billing', visible: can('menu.products') },
+    { label: 'Product Add-ons', path: '/product-addons', group: 'Billing', visible: can('menu.product_addons') },
+    { label: 'Configurable Options', path: '/config-options', group: 'Billing', visible: can('menu.config_options') },
+    { label: 'Promotions / Coupons', path: '/coupons', group: 'Billing', visible: can('menu.coupons') },
+    { label: 'Quotations', path: '/quotations', group: 'Billing', visible: can('menu.quotations') },
+    { label: 'Proforma Invoices', path: '/proformas', group: 'Billing', visible: can('menu.proformas') },
+    { label: 'Invoices', path: '/invoices', group: 'Billing', visible: can('menu.invoices') },
+    { label: 'Unpaid Invoices', path: '/invoices?status=unpaid&range=all', group: 'Billing', visible: can('menu.invoices') },
+    { label: 'Credit Notes', path: '/credit-notes', group: 'Billing', visible: can('menu.invoices') },
+    { label: 'Payments', path: '/payments-in', group: 'Billing', visible: can('menu.payments_in') },
+    { label: 'Subscriptions', path: '/client-subscriptions', group: 'Billing', visible: can('menu.client_subscriptions') },
+    { label: 'Next Bills', path: '/next-bills', group: 'Billing', visible: can('menu.next_bills') },
+    { label: 'Obligations', path: '/statutories', group: 'Statutory', visible: can('menu.statutories') },
+    { label: 'Schedule', path: '/statutory-schedule', group: 'Statutory', visible: can('menu.statutories') },
+    { label: 'Bills', path: '/bills', group: 'Statutory', visible: can('menu.statutory_bills') },
+    { label: 'Categories', path: '/bill-categories', group: 'Statutory', visible: can('menu.bill_categories') },
+    { label: 'Payment History', path: '/payments-out', group: 'Statutory', visible: can('menu.payments_out') },
+    { label: 'Expense Categories', path: '/expense-categories', group: 'Expenses', visible: can('menu.expense_categories') },
+    { label: 'Expenses', path: '/expenses', group: 'Expenses', visible: can('menu.expenses') },
+    { label: 'Petty Cash', path: '/petty-cash', group: 'Expenses', visible: can('menu.petty_cash') },
+    { label: 'System Records', path: '/system-records', group: 'Records & Verification', visible: showSystemRecords },
+    { label: 'Bank Balance Statement', path: '/reports/bank-balance-statement', group: 'Records & Verification', visible: can('menu.report_balance_statement') },
+    { label: 'My Verifications', path: '/my-verifications', group: 'Records & Verification', visible: can('menu.my_verifications') },
+    { label: 'WiFi Routers', path: '/wifi-routers', group: 'WiFi Hotspot', visible: can('wifi_routers.read') },
+    { label: 'WiFi Plans', path: '/wifi-plans', group: 'WiFi Hotspot', visible: can('wifi_plans.read') },
+    { label: 'WiFi Voucher Sales', path: '/wifi-voucher-purchases', group: 'WiFi Hotspot', visible: can('wifi_purchases.read') },
+    { label: 'WiFi My Earnings', path: '/wifi-earnings', group: 'WiFi Hotspot', visible: can('wifi_purchases.read') },
+    { label: 'Revenue Summary', path: '/reports/revenue', group: 'Reports', visible: showReports },
+    { label: 'Outstanding & Aging', path: '/reports/aging', group: 'Reports', visible: showReports },
+    { label: 'Client Statement', path: '/reports/client-statement', group: 'Reports', visible: showReports },
+    { label: 'Payment Collection', path: '/reports/payment-collection', group: 'Reports', visible: showReports },
+    { label: 'Expense Report', path: '/reports/expenses', group: 'Reports', visible: showReports },
+    { label: 'System Records Report', path: '/reports/system-records', group: 'Reports', visible: can('menu.report_system_records') },
+    { label: 'System Verifications Report', path: '/reports/system-verifications', group: 'Reports', visible: can('menu.report_system_verifications') },
+    { label: 'Profit & Loss', path: '/reports/profit-loss', group: 'Reports', visible: showReports },
+    { label: 'Statutory Compliance', path: '/reports/statutory', group: 'Reports', visible: showReports },
+    { label: 'Subscriptions Report', path: '/reports/subscriptions', group: 'Reports', visible: showReports },
+    { label: 'Collection Effectiveness', path: '/reports/collection-effectiveness', group: 'Reports', visible: showReports },
+    { label: 'Satisfaction Calls Report', path: '/reports/satisfaction-calls', group: 'Reports', visible: showReports },
+    { label: 'Communication Log', path: '/reports/communication-log', group: 'Reports', visible: showReports },
+    { label: 'SMS', path: '/sms', group: 'Communications', visible: can('menu.sms') },
+    { label: 'Broadcast', path: '/broadcast', group: 'Communications', visible: can('menu.broadcast') },
+    { label: 'Announcements', path: '/announcements', group: 'Communications', visible: can('menu.announcements') },
+    { label: 'Staff Reports', path: '/staff-reports', group: 'HR', visible: can('menu.staff_reports') },
+    { label: 'Attendance', path: '/attendance', group: 'HR', visible: can('attendance.manage') },
+    { label: 'Staff Targets', path: '/staff-targets', group: 'HR', visible: can('menu.staff_targets') },
+    { label: 'Leave', path: '/leave', group: 'HR', visible: can('menu.leave') },
+    { label: 'Payroll', path: '/payroll', group: 'HR', visible: can('menu.payroll') },
+    { label: 'Automation', path: '/automation', group: '', visible: can('menu.automation') },
+    { label: 'Subscription', path: '/subscription', group: 'Account', visible: can('menu.subscription') && !user?.tenant?.is_self_hosted },
+    { label: 'Team', path: '/users', group: 'Account', visible: can('menu.users') && can('settings.users') },
+    { label: 'Roles', path: '/roles', group: 'Account', visible: can('menu.roles') && can('settings.users') },
+    { label: 'Active Sessions', path: '/sessions', group: 'Account', visible: can('settings.users') },
+    { label: 'Settings', path: '/settings', group: 'Account', visible: can('menu.settings') },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  ].filter((i) => i.visible), [can, showSystemRecords, showReports, user?.tenant?.is_self_hosted]);
+
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  useHotkeys([['mod+K', () => setSearchOpen(true)]]);
+  useEffect(() => { if (!searchOpen) setSearchQuery(''); }, [searchOpen]);
+
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return navSearchItems;
+    return navSearchItems.filter((i) => i.label.toLowerCase().includes(q) || i.group.toLowerCase().includes(q));
+  }, [navSearchItems, searchQuery]);
+
+  const goToSearchResult = (path: string) => {
+    navigate(path);
+    setSearchOpen(false);
+    close();
+  };
+
   return (
     <AppShell
       navbar={{ width: 250, breakpoint: 'sm', collapsed: { mobile: !opened } }}
@@ -150,6 +249,11 @@ export default function AppLayout() {
               onClick={() => navigate('/subscription')}
               visibleFrom="sm"
             />
+            <Tooltip label="Search menu (Ctrl+K)" visibleFrom="sm">
+              <ActionIcon variant="default" size="lg" onClick={() => setSearchOpen(true)} aria-label="Search menu">
+                <IconSearch size={18} />
+              </ActionIcon>
+            </Tooltip>
             <NotificationBell />
             <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
               {computedColorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
@@ -542,6 +646,44 @@ export default function AppLayout() {
       <AppShell.Main>
         <Outlet />
       </AppShell.Main>
+
+      <Modal opened={searchOpen} onClose={() => setSearchOpen(false)} title="Search Menu" size="md">
+        <Stack gap="xs">
+          <TextInput
+            placeholder="Type to search menus…"
+            leftSection={<IconSearch size={16} />}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && searchResults.length > 0) {
+                goToSearchResult(searchResults[0].path);
+              }
+            }}
+            autoFocus
+            data-autofocus
+          />
+          <ScrollArea.Autosize mah={400}>
+            <Stack gap={2}>
+              {searchResults.length === 0 ? (
+                <Text size="sm" c="dimmed" ta="center" py="md">No matching menu found</Text>
+              ) : (
+                searchResults.map((item) => (
+                  <NavLink
+                    key={item.path + item.label}
+                    label={item.label}
+                    description={item.group || undefined}
+                    onClick={() => goToSearchResult(item.path)}
+                    style={{ borderRadius: 6 }}
+                  />
+                ))
+              )}
+            </Stack>
+          </ScrollArea.Autosize>
+          <Group justify="flex-end" gap={4}>
+            <Text size="xs" c="dimmed">Tip: <Kbd size="xs">Ctrl</Kbd> + <Kbd size="xs">K</Kbd> to open this anytime</Text>
+          </Group>
+        </Stack>
+      </Modal>
     </AppShell>
   );
 }
