@@ -14,6 +14,7 @@ class BankAccountResource extends JsonResource
             'bank_name' => $this->bank_name,
             'account_number' => $this->account_number,
             'opening_balance' => $this->opening_balance,
+            'opening_balance_date' => $this->opening_balance_date?->format('Y-m-d'),
             'is_active' => (bool) $this->is_active,
             'created_at' => $this->created_at,
         ];

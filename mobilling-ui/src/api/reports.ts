@@ -463,6 +463,7 @@ export interface BankBalanceStatement {
   period_start: string;
   period_end: string;
   opening_balance: number;
+  opening_balance_date: string | null;
   rows: BalanceStatementRow[];
   closing_balance: number;
   total_deposits: number;

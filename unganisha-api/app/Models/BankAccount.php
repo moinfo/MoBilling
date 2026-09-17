@@ -13,11 +13,12 @@ class BankAccount extends Model
     use HasFactory, HasUuids, SoftDeletes, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'bank_name', 'account_number', 'opening_balance', 'is_active',
+        'tenant_id', 'bank_name', 'account_number', 'opening_balance', 'opening_balance_date', 'is_active',
     ];
 
     protected $casts = [
         'opening_balance' => 'decimal:2',
+        'opening_balance_date' => 'date',
         'is_active' => 'boolean',
     ];
 }

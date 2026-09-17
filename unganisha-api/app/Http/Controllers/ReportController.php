@@ -1071,6 +1071,13 @@ class ReportController extends Controller
             ->where('bank_account_id', $bankAccount->id)
             ->whereNull('deleted_at')
             ->where('record_date', '<', $start->toDateString())
+            // opening_balance_date set = opening_balance is already "as of"
+            // that date, so records before it are already baked in — only
+            // count records from that date up to the report's start to
+            // avoid double-counting them. Null = old behavior (treat
+            // opening_balance as before all time, sum everything prior).
+            ->when($bankAccount->opening_balance_date, fn ($q) => $q
+                ->where('record_date', '>=', $bankAccount->opening_balance_date->toDateString()))
             ->selectRaw("
                 COALESCE(SUM(CASE WHEN type = 'deposit' THEN amount ELSE 0 END), 0) AS additions,
                 COALESCE(SUM(CASE WHEN type IN ('withdraw', 'charge') THEN amount ELSE 0 END), 0) AS subtractions
@@ -1128,6 +1135,7 @@ class ReportController extends Controller
             'period_start' => $start->toDateString(),
             'period_end' => $end->toDateString(),
             'opening_balance' => $openingBalance,
+            'opening_balance_date' => $bankAccount->opening_balance_date?->format('Y-m-d'),
             'rows' => $rows,
             'closing_balance' => $running,
             'total_deposits' => round($totalDeposits, 2),

@@ -5,6 +5,7 @@ export interface BankAccount {
   bank_name: string;
   account_number: string;
   opening_balance: string;
+  opening_balance_date: string | null;
   is_active: boolean;
   created_at: string;
 }
@@ -13,6 +14,7 @@ export interface BankAccountPayload {
   bank_name: string;
   account_number: string;
   opening_balance?: number;
+  opening_balance_date?: string | null;
   is_active?: boolean;
 }
 

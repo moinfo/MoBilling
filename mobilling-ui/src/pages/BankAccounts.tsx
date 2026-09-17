@@ -1,14 +1,17 @@
 import { useState } from 'react';
 import { Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, NumberInput, Stack } from '@mantine/core';
+import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconEdit, IconTrash, IconSearch } from '@tabler/icons-react';
+import dayjs from 'dayjs';
 import { getBankAccounts, createBankAccount, updateBankAccount, deleteBankAccount, BankAccount } from '../api/bankAccounts';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
+import { formatDate } from '../utils/formatDate';
 
 export default function BankAccounts() {
   const queryClient = useQueryClient();
@@ -32,7 +35,7 @@ export default function BankAccounts() {
   const meta = data?.data?.meta;
 
   const form = useForm({
-    initialValues: { bank_name: '', account_number: '', opening_balance: 0, is_active: true },
+    initialValues: { bank_name: '', account_number: '', opening_balance: 0, opening_balance_date: null as Date | null, is_active: true },
     validate: {
       bank_name: (v) => (v.trim().length > 0 ? null : 'Required'),
       account_number: (v) => (v.trim().length > 0 ? null : 'Required'),
@@ -40,11 +43,16 @@ export default function BankAccounts() {
   });
 
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
-  const openCreate = () => { setEditing(null); form.setValues({ bank_name: '', account_number: '', opening_balance: 0, is_active: true }); setFormOpen(true); };
-  const openEdit = (b: BankAccount) => { setEditing(b); form.setValues({ bank_name: b.bank_name, account_number: b.account_number, opening_balance: parseFloat(b.opening_balance) || 0, is_active: b.is_active }); setFormOpen(true); };
+  const openCreate = () => { setEditing(null); form.setValues({ bank_name: '', account_number: '', opening_balance: 0, opening_balance_date: null, is_active: true }); setFormOpen(true); };
+  const openEdit = (b: BankAccount) => { setEditing(b); form.setValues({ bank_name: b.bank_name, account_number: b.account_number, opening_balance: parseFloat(b.opening_balance) || 0, opening_balance_date: b.opening_balance_date ? new Date(b.opening_balance_date) : null, is_active: b.is_active }); setFormOpen(true); };
+
+  const buildPayload = (v: typeof form.values) => ({
+    ...v,
+    opening_balance_date: v.opening_balance_date ? dayjs(v.opening_balance_date).format('YYYY-MM-DD') : null,
+  });
 
   const createMutation = useMutation({
-    mutationFn: createBankAccount,
+    mutationFn: (v: typeof form.values) => createBankAccount(buildPayload(v)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
       notifications.show({ title: 'Created', message: 'Bank account added', color: 'green' });
@@ -54,7 +62,7 @@ export default function BankAccounts() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: (values: any) => updateBankAccount(editing!.id, values),
+    mutationFn: (v: typeof form.values) => updateBankAccount(editing!.id, buildPayload(v)),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bank-accounts'] });
       notifications.show({ title: 'Updated', message: 'Bank account updated', color: 'green' });
@@ -102,6 +110,7 @@ export default function BankAccounts() {
               <Table.Th>Bank Name</Table.Th>
               <Table.Th>Account Number</Table.Th>
               <Table.Th style={{ textAlign: 'right' }}>Opening Balance</Table.Th>
+              <Table.Th>As Of</Table.Th>
               <Table.Th>Status</Table.Th>
               {(canUpdate || canDelete) && <Table.Th w={100}>Actions</Table.Th>}
             </Table.Tr>
@@ -112,6 +121,7 @@ export default function BankAccounts() {
                 <Table.Td fw={500}>{b.bank_name}</Table.Td>
                 <Table.Td>{b.account_number}</Table.Td>
                 <Table.Td style={{ textAlign: 'right' }}>{formatCurrency(b.opening_balance)}</Table.Td>
+                <Table.Td>{b.opening_balance_date ? formatDate(b.opening_balance_date) : <Text size="xs" c="dimmed">—</Text>}</Table.Td>
                 <Table.Td>
                   <Badge color={b.is_active ? 'green' : 'gray'} variant="light">
                     {b.is_active ? 'Active' : 'Inactive'}
@@ -145,6 +155,10 @@ export default function BankAccounts() {
             <NumberInput label="Opening Balance" decimalScale={2}
               description="Starting point for this account's balance statement"
               {...form.getInputProps('opening_balance')} />
+            <DateInput label="Opening Balance Date (optional)" clearable
+              placeholder="Leave blank if this is the balance before any records at all"
+              description="If records already exist before this date, they're excluded from the statement so they aren't added on top of the opening balance twice"
+              {...form.getInputProps('opening_balance_date')} />
             <Group justify="flex-end">
               <Button variant="default" onClick={closeForm}>Cancel</Button>
               <Button type="submit" loading={createMutation.isPending || updateMutation.isPending}>

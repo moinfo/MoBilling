@@ -91,6 +91,7 @@ export default function BankBalanceStatementReportPage() {
               value={formatCurrency(r.opening_balance)}
               icon={<IconWallet size={24} />}
               color="gray"
+              subtitle={r.opening_balance_date ? `as of ${dayjs(r.opening_balance_date).format('DD MMM YYYY')}` : undefined}
             />
             <StatCard
               label="Deposits"
