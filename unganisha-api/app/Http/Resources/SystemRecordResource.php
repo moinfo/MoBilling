@@ -49,6 +49,7 @@ class SystemRecordResource extends JsonResource
                 'id' => $this->statementConfirmedBy->id,
                 'name' => $this->statementConfirmedBy->name,
             ]),
+            'reconciliation_note' => $this->reconciliation_note,
             'reconciled' => (bool) ($this->sms_confirmed_at && $this->statement_confirmed_at),
             'created_at' => $this->created_at,
         ];

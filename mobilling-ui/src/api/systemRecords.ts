@@ -21,6 +21,7 @@ export interface SystemRecord {
   sms_confirmed_by?: { id: string; name: string } | null;
   statement_confirmed_at: string | null;
   statement_confirmed_by?: { id: string; name: string } | null;
+  reconciliation_note: string | null;
   reconciled: boolean;
   created_at: string;
 }
@@ -83,3 +84,6 @@ export const toggleSmsConfirmation = (id: string) =>
 
 export const toggleStatementConfirmation = (id: string) =>
   api.post<{ data: SystemRecord }>(`/system-records/${id}/toggle-statement-confirmation`);
+
+export const updateReconciliationNote = (id: string, reconciliation_note: string) =>
+  api.post<{ data: SystemRecord }>(`/system-records/${id}/reconciliation-note`, { reconciliation_note });

@@ -436,8 +436,9 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:system_records.read')->get('/system-records/{system_record}', [SystemRecordController::class, 'show']);
     Route::middleware('permission:system_records.create')->post('/system-records', [SystemRecordController::class, 'store']);
     Route::middleware('permission:system_records.update')->put('/system-records/{system_record}', [SystemRecordController::class, 'update']);
-    Route::middleware('permission:system_records.update')->post('/system-records/{system_record}/toggle-sms-confirmation', [SystemRecordController::class, 'toggleSmsConfirmation']);
-    Route::middleware('permission:system_records.update')->post('/system-records/{system_record}/toggle-statement-confirmation', [SystemRecordController::class, 'toggleStatementConfirmation']);
+    Route::middleware('permission:system_records.reconcile')->post('/system-records/{system_record}/toggle-sms-confirmation', [SystemRecordController::class, 'toggleSmsConfirmation']);
+    Route::middleware('permission:system_records.reconcile')->post('/system-records/{system_record}/toggle-statement-confirmation', [SystemRecordController::class, 'toggleStatementConfirmation']);
+    Route::middleware('permission:system_records.reconcile')->post('/system-records/{system_record}/reconciliation-note', [SystemRecordController::class, 'updateReconciliationNote']);
     Route::middleware('permission:system_records.delete')->delete('/system-records/{system_record}', [SystemRecordController::class, 'destroy']);
 
     Route::middleware('permission:wifi_routers.read')->get('/mikrotik-routers', [\App\Http\Controllers\MikrotikRouterController::class, 'index']);

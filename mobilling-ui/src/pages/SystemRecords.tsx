@@ -6,11 +6,11 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconUpload, IconDownload, IconMessage, IconFileSpreadsheet } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconUpload, IconDownload, IconMessage, IconFileSpreadsheet, IconAlertTriangle, IconNote } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
   getSystemRecords, createSystemRecord, updateSystemRecord, deleteSystemRecord,
-  toggleSmsConfirmation, toggleStatementConfirmation, SystemRecord, SystemRecordType,
+  toggleSmsConfirmation, toggleStatementConfirmation, updateReconciliationNote, SystemRecord, SystemRecordType,
 } from '../api/systemRecords';
 import { getSystems, System } from '../api/systems';
 import { getSystemProperties, SystemProperty } from '../api/systemProperties';
@@ -32,6 +32,7 @@ export default function SystemRecords() {
   const canCreate = can('system_records.create');
   const canUpdate = can('system_records.update');
   const canDelete = can('system_records.delete');
+  const canReconcile = can('system_records.reconcile');
 
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
@@ -197,6 +198,18 @@ export default function SystemRecords() {
     onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to update', color: 'red' }),
   });
 
+  const [noteFor, setNoteFor] = useState<SystemRecord | null>(null);
+  const [noteText, setNoteText] = useState('');
+  const noteMutation = useMutation({
+    mutationFn: () => updateReconciliationNote(noteFor!.id, noteText.trim()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['system-records'] });
+      setNoteFor(null);
+    },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to save note', color: 'red' }),
+  });
+  const openNote = (r: SystemRecord) => { setNoteFor(r); setNoteText(r.reconciliation_note || ''); };
+
   return (
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
@@ -288,7 +301,7 @@ export default function SystemRecords() {
                           variant={r.sms_confirmed_at ? 'filled' : 'outline'}
                           color={r.sms_confirmed_at ? 'green' : 'gray'}
                           size="sm"
-                          disabled={!canUpdate}
+                          disabled={!canReconcile}
                           loading={smsToggleMutation.isPending && smsToggleMutation.variables === r.id}
                           onClick={() => smsToggleMutation.mutate(r.id)}
                         >
@@ -302,13 +315,25 @@ export default function SystemRecords() {
                           variant={r.statement_confirmed_at ? 'filled' : 'outline'}
                           color={r.statement_confirmed_at ? 'green' : 'gray'}
                           size="sm"
-                          disabled={!canUpdate}
+                          disabled={!canReconcile}
                           loading={statementToggleMutation.isPending && statementToggleMutation.variables === r.id}
                           onClick={() => statementToggleMutation.mutate(r.id)}
                         >
                           <IconFileSpreadsheet size={14} />
                         </ActionIcon>
                       </Tooltip>
+                      {canReconcile && (
+                        <Tooltip label={r.reconciliation_note || 'Flag a discrepancy (optional)'}>
+                          <ActionIcon
+                            variant={r.reconciliation_note ? 'filled' : 'subtle'}
+                            color={r.reconciliation_note ? 'red' : 'gray'}
+                            size="sm"
+                            onClick={() => openNote(r)}
+                          >
+                            {r.reconciliation_note ? <IconAlertTriangle size={14} /> : <IconNote size={14} />}
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
                       {r.reconciled && <Badge size="xs" color="green" variant="light">Reconciled</Badge>}
                     </Group>
                   </Table.Td>
@@ -378,6 +403,24 @@ export default function SystemRecords() {
             </Group>
           </Stack>
         </form>
+      </Modal>
+
+      <Modal opened={!!noteFor} onClose={() => setNoteFor(null)} title="Reconciliation Note" size="sm">
+        <Stack>
+          <Text size="sm" c="dimmed">
+            Use this to flag a discrepancy — e.g. "not seen on statement yet" — visible to whoever else is reconciling this record.
+          </Text>
+          <Textarea
+            placeholder="Describe the issue (leave blank to clear)"
+            minRows={3}
+            value={noteText}
+            onChange={(e) => setNoteText(e.currentTarget.value)}
+          />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setNoteFor(null)}>Cancel</Button>
+            <Button loading={noteMutation.isPending} onClick={() => noteMutation.mutate()}>Save</Button>
+          </Group>
+        </Stack>
       </Modal>
     </>
   );

@@ -5,8 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\StoreSystemRecordRequest;
 use App\Http\Resources\SystemRecordResource;
 use App\Models\SystemRecord;
+use App\Models\User;
+use App\Notifications\SystemRecordNeedsReconciliationNotification;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 
 class SystemRecordController extends Controller
@@ -84,6 +87,27 @@ class SystemRecordController extends Controller
                 }
             }
             throw $e;
+        }
+
+        // Deposits are the ones needing SMS+statement reconciliation —
+        // tell whoever can do that a new one is waiting. Never let a
+        // notification failure fail the record creation itself.
+        if ($record->type === 'deposit') {
+            try {
+                $reconcilers = User::withoutGlobalScopes()
+                    ->where('tenant_id', $record->tenant_id)
+                    ->where('is_active', true)
+                    ->get()
+                    ->filter(fn ($u) => $u->hasPermission('system_records.reconcile'));
+
+                if ($reconcilers->isNotEmpty()) {
+                    Notification::send($reconcilers, new SystemRecordNeedsReconciliationNotification($record));
+                }
+            } catch (\Throwable $e) {
+                Log::warning('SystemRecord: reconciliation notification failed', [
+                    'record_id' => $record->id, 'exception' => $e,
+                ]);
+            }
         }
 
         return new SystemRecordResource($record->load(self::RELATIONS));
@@ -172,6 +196,17 @@ class SystemRecordController extends Controller
             $system_record->statement_confirmed_at = now();
             $system_record->statement_confirmed_by = auth()->id();
         }
+        $system_record->save();
+
+        return new SystemRecordResource($system_record->load(self::RELATIONS));
+    }
+
+    /** Lets whoever is reconciling flag a discrepancy on this record — e.g. "not seen on statement yet". */
+    public function updateReconciliationNote(Request $request, SystemRecord $system_record)
+    {
+        $data = $request->validate(['reconciliation_note' => 'nullable|string|max:1000']);
+
+        $system_record->reconciliation_note = $data['reconciliation_note'] ?? null;
         $system_record->save();
 
         return new SystemRecordResource($system_record->load(self::RELATIONS));
