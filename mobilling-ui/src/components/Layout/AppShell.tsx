@@ -1,6 +1,6 @@
-import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button, Badge, Tooltip, Box, ScrollArea, Modal, TextInput, Stack, Kbd } from '@mantine/core';
+import { AppShell, NavLink, Group, Text, Avatar, Menu, UnstyledButton, Burger, ActionIcon, Image, useMantineColorScheme, useComputedColorScheme, Button, Badge, Tooltip, Box, ScrollArea, TextInput, Stack } from '@mantine/core';
 import { useDisclosure, useHotkeys } from '@mantine/hooks';
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import {
   IconDashboard, IconUsers, IconUsersGroup, IconPackages,
   IconFileText, IconFileInvoice, IconReceipt, IconFileDescription, IconFileCheck,
@@ -185,10 +185,9 @@ export default function AppLayout() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   ].filter((i) => i.visible), [can, showSystemRecords, showReports, user?.tenant?.is_self_hosted]);
 
-  const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  useHotkeys([['mod+K', () => setSearchOpen(true)]]);
-  useEffect(() => { if (!searchOpen) setSearchQuery(''); }, [searchOpen]);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  useHotkeys([['mod+K', () => searchInputRef.current?.focus()]]);
 
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -198,7 +197,7 @@ export default function AppLayout() {
 
   const goToSearchResult = (path: string) => {
     navigate(path);
-    setSearchOpen(false);
+    setSearchQuery('');
     close();
   };
 
@@ -249,11 +248,6 @@ export default function AppLayout() {
               onClick={() => navigate('/subscription')}
               visibleFrom="sm"
             />
-            <Tooltip label="Search menu (Ctrl+K)" visibleFrom="sm">
-              <ActionIcon variant="default" size="lg" onClick={() => setSearchOpen(true)} aria-label="Search menu">
-                <IconSearch size={18} />
-              </ActionIcon>
-            </Tooltip>
             <NotificationBell />
             <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
               {computedColorScheme === 'dark' ? <IconSun size={18} /> : <IconMoon size={18} />}
@@ -288,7 +282,39 @@ export default function AppLayout() {
       </AppShell.Header>
 
       <AppShell.Navbar p="xs">
+        <AppShell.Section pb="xs">
+          <TextInput
+            ref={searchInputRef}
+            placeholder="Search menu… (Ctrl+K)"
+            leftSection={<IconSearch size={14} />}
+            size="sm"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && searchResults.length > 0) {
+                goToSearchResult(searchResults[0].path);
+              }
+            }}
+          />
+        </AppShell.Section>
         <AppShell.Section grow component={ScrollArea} type="scroll">
+          {searchQuery.trim() ? (
+            <Stack gap={2}>
+              {searchResults.length === 0 ? (
+                <Text size="sm" c="dimmed" ta="center" py="md">No matching menu found</Text>
+              ) : (
+                searchResults.map((item) => (
+                  <NavLink
+                    key={item.path + item.label}
+                    label={item.label}
+                    description={item.group || undefined}
+                    onClick={() => goToSearchResult(item.path)}
+                  />
+                ))
+              )}
+            </Stack>
+          ) : (
+          <>
           {can('menu.dashboard') && (
             <NavLink label="Dashboard" leftSection={<IconDashboard size={18} />}
               active={isActive('/dashboard')} onClick={() => navigateAndClose('/dashboard')} />
@@ -640,50 +666,14 @@ export default function AppLayout() {
               )}
             </NavLink>
           )}
+          </>
+          )}
         </AppShell.Section>
       </AppShell.Navbar>
 
       <AppShell.Main>
         <Outlet />
       </AppShell.Main>
-
-      <Modal opened={searchOpen} onClose={() => setSearchOpen(false)} title="Search Menu" size="md">
-        <Stack gap="xs">
-          <TextInput
-            placeholder="Type to search menus…"
-            leftSection={<IconSearch size={16} />}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.currentTarget.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && searchResults.length > 0) {
-                goToSearchResult(searchResults[0].path);
-              }
-            }}
-            autoFocus
-            data-autofocus
-          />
-          <ScrollArea.Autosize mah={400}>
-            <Stack gap={2}>
-              {searchResults.length === 0 ? (
-                <Text size="sm" c="dimmed" ta="center" py="md">No matching menu found</Text>
-              ) : (
-                searchResults.map((item) => (
-                  <NavLink
-                    key={item.path + item.label}
-                    label={item.label}
-                    description={item.group || undefined}
-                    onClick={() => goToSearchResult(item.path)}
-                    style={{ borderRadius: 6 }}
-                  />
-                ))
-              )}
-            </Stack>
-          </ScrollArea.Autosize>
-          <Group justify="flex-end" gap={4}>
-            <Text size="xs" c="dimmed">Tip: <Kbd size="xs">Ctrl</Kbd> + <Kbd size="xs">K</Kbd> to open this anytime</Text>
-          </Group>
-        </Stack>
-      </Modal>
     </AppShell>
   );
 }
