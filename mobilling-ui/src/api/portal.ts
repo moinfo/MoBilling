@@ -245,6 +245,17 @@ export interface PortalMysqlDatabase {
 export const getPortalHostingMysqlDatabases = (id: string) =>
   api.get<{ data: PortalMysqlDatabase[] }>(`/portal/hosting/${id}/mysql-databases`);
 
+export interface PortalBackupSettings {
+  has_backup: boolean;
+  daily_retention_days: number;
+  keep_weekly: boolean;
+  keep_monthly: boolean;
+}
+export const getPortalHostingBackupSettings = (id: string) =>
+  api.get<{ data: PortalBackupSettings }>(`/portal/hosting/${id}/backup-settings`);
+export const updatePortalHostingBackupSettings = (id: string, data: { daily_retention_days: number; keep_weekly: boolean; keep_monthly: boolean }) =>
+  api.put<{ data: PortalBackupSettings }>(`/portal/hosting/${id}/backup-settings`, data);
+
 export const refreshPortalHostingUsage = (id: string) =>
   api.post<{ data: { disk_used: string | null; disk_limit: string | null; last_synced_at: string } }>(`/portal/hosting/${id}/refresh-usage`);
 

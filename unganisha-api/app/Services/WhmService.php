@@ -177,6 +177,40 @@ class WhmService
         return $this->cpanelApi($user, 'Backup', 'fullbackup_to_homedir');
     }
 
+    /**
+     * The full-account backup tarballs fullbackup_to_homedir has left in
+     * this account's home directory — `backup-<M.D.Y>_<H-i-s>_<user>.tar.gz`
+     * at the home directory root, confirmed live via Fileman::list_files.
+     * Scoped to that exact suffix so this only ever matches backups this
+     * app (or the account's own WHM backup wizard) generated, never an
+     * unrelated file the client happens to have in their home directory.
+     * Sorted oldest first.
+     */
+    public function homeDirBackupFiles(string $user): array
+    {
+        $files = $this->cpanelApi($user, 'Fileman', 'list_files', ['dir' => '.', 'types' => 'file']);
+        $suffix = "_{$user}.tar.gz";
+
+        $rows = array_values(array_filter($files, function ($f) use ($suffix) {
+            $name = $f['file'] ?? '';
+            return str_starts_with($name, 'backup-') && str_ends_with($name, $suffix);
+        }));
+
+        usort($rows, fn ($a, $b) => ($a['mtime'] ?? 0) <=> ($b['mtime'] ?? 0));
+
+        return array_map(fn ($f) => [
+            'path'  => $f['fullpath'] ?? ($f['path'] . '/' . $f['file']),
+            'mtime' => (int) ($f['mtime'] ?? 0),
+            'bytes' => (int) ($f['size'] ?? 0),
+        ], $rows);
+    }
+
+    /** Deletes one file from the account's filesystem (Fileman::delete_file — confirmed a permanent delete, no trash). */
+    public function deleteFile(string $user, string $path): array
+    {
+        return $this->cpanelApi($user, 'Fileman', 'delete_file', ['path' => $path]);
+    }
+
     private function log(string $action, array $request, ?array $response, bool $ok, ?string $error): void
     {
         try {

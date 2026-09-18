@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Portal;
 use App\Exceptions\WhmApiException;
 use App\Http\Controllers\Controller;
 use App\Models\HostingAccount;
+use App\Models\HostingAccountBackupSetting;
 use App\Services\WhmService;
 use Illuminate\Http\Request;
 
@@ -209,6 +210,65 @@ class PortalHostingController extends Controller
         ], $dbs);
 
         return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * Whether this account has an active "Backup" subscription, matching
+     * hosting:backup-paid-accounts's own eligibility check (subscription's
+     * `label` is the domain name — not linked via client_subscription_id).
+     */
+    private function hasActiveBackupSubscription(HostingAccount $hostingAccount): bool
+    {
+        return \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->where('tenant_id', $hostingAccount->tenant_id)
+            ->where('label', $hostingAccount->domain)
+            ->where('status', 'active')
+            ->whereHas('productService', fn ($q) => $q->where('category', 'Backup'))
+            ->exists();
+    }
+
+    /** This account's backup retention policy — the client's own paid-backup "cron" settings. */
+    public function backupSettings(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        $hasBackup = $this->hasActiveBackupSubscription($hostingAccount);
+        $settings = $hostingAccount->backupSetting;
+
+        return response()->json([
+            'data' => [
+                'has_backup'           => $hasBackup,
+                'daily_retention_days' => $settings->daily_retention_days ?? HostingAccountBackupSetting::DEFAULT_DAILY_RETENTION_DAYS,
+                'keep_weekly'          => $settings->keep_weekly ?? true,
+                'keep_monthly'         => $settings->keep_monthly ?? true,
+            ],
+        ]);
+    }
+
+    public function updateBackupSettings(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+        abort_unless($this->hasActiveBackupSubscription($hostingAccount), 422, 'This account does not have an active Backup subscription.');
+
+        $data = $request->validate([
+            'daily_retention_days' => 'required|integer|min:1|max:30',
+            'keep_weekly'          => 'required|boolean',
+            'keep_monthly'         => 'required|boolean',
+        ]);
+
+        $settings = HostingAccountBackupSetting::withoutGlobalScopes()->updateOrCreate(
+            ['hosting_account_id' => $hostingAccount->id],
+            ['tenant_id' => $hostingAccount->tenant_id, ...$data],
+        );
+
+        return response()->json([
+            'data' => [
+                'has_backup'           => true,
+                'daily_retention_days' => $settings->daily_retention_days,
+                'keep_weekly'          => $settings->keep_weekly,
+                'keep_monthly'         => $settings->keep_monthly,
+            ],
+        ]);
     }
 
     /** One-time cPanel/Webmail login URL. Portal admins only — SSO grants full hosting control. */

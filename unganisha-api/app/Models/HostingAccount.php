@@ -36,4 +36,9 @@ class HostingAccount extends Model
     {
         return $this->hasMany(ProvisioningLog::class)->latest();
     }
+
+    public function backupSetting()
+    {
+        return $this->hasOne(HostingAccountBackupSetting::class);
+    }
 }

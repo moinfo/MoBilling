@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   Badge, Divider, Modal, PasswordInput, Textarea, Radio, RingProgress,
-  SimpleGrid, UnstyledButton, Anchor, Alert, Table,
+  SimpleGrid, UnstyledButton, Anchor, Alert, Table, NumberInput, Switch,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -18,6 +18,7 @@ import {
   changePortalHostingPassword, requestPortalHostingCancellation,
   getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow,
   getPortalHostingSubdomains, getPortalHostingEmailAccounts, getPortalHostingMysqlDatabases,
+  getPortalHostingBackupSettings, updatePortalHostingBackupSettings,
 } from '../../api/portal';
 import { Tooltip } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
@@ -89,6 +90,13 @@ export default function PortalServiceDetails() {
     enabled: !!id && d?.status === 'active',
   });
   const databases = dbsData?.data?.data ?? [];
+
+  const { data: backupData, isLoading: backupLoading } = useQuery({
+    queryKey: ['portal-hosting-backup-settings', id],
+    queryFn: () => getPortalHostingBackupSettings(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const backup = backupData?.data?.data;
 
   const refreshMutation = useMutation({
     mutationFn: () => refreshPortalHostingUsage(id!),
@@ -378,6 +386,11 @@ export default function PortalServiceDetails() {
         </Paper>
       )}
 
+      {/* Backup settings */}
+      {d.status === 'active' && backup?.has_backup && (
+        <BackupSettingsSection id={d.id} settings={backup} loading={backupLoading} canEdit={isPortalAdmin} />
+      )}
+
       {/* Quick shortcuts */}
       {isPortalAdmin && d.status === 'active' && (
         <Paper withBorder radius="md" p="lg">
@@ -412,6 +425,72 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <Text size="sm" c="dimmed">{label}</Text>
       <Text size="sm" fw={600}>{value}</Text>
     </Group>
+  );
+}
+
+function BackupSettingsSection({ id, settings, loading, canEdit }: {
+  id: string;
+  settings: { daily_retention_days: number; keep_weekly: boolean; keep_monthly: boolean };
+  loading: boolean;
+  canEdit: boolean;
+}) {
+  const qc = useQueryClient();
+  const [days, setDays] = useState(settings.daily_retention_days);
+  const [weekly, setWeekly] = useState(settings.keep_weekly);
+  const [monthly, setMonthly] = useState(settings.keep_monthly);
+
+  const mutation = useMutation({
+    mutationFn: () => updatePortalHostingBackupSettings(id, {
+      daily_retention_days: days, keep_weekly: weekly, keep_monthly: monthly,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['portal-hosting-backup-settings', id] });
+      notifications.show({ message: 'Backup schedule saved.', color: 'green' });
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not save the backup schedule.', color: 'red',
+    }),
+  });
+
+  const dirty = days !== settings.daily_retention_days
+    || weekly !== settings.keep_weekly || monthly !== settings.keep_monthly;
+
+  return (
+    <Paper withBorder radius="md" p="lg">
+      <Group justify="space-between" mb="xs">
+        <Text fw={700}>Backup Schedule</Text>
+        <Badge size="sm" variant="light" color="teal" leftSection={<IconArchive size={12} />}>Included</Badge>
+      </Group>
+      <Text size="sm" c="dimmed" mb="md">
+        A full backup of this hosting account runs automatically every day. To keep it from filling up
+        your own disk quota, only recent copies plus one weekly and one monthly snapshot are kept — you
+        can adjust that below.
+      </Text>
+      {loading ? (
+        <Text size="sm" c="dimmed">Loading…</Text>
+      ) : (
+        <Stack gap="sm" maw={420}>
+          <NumberInput
+            label="Keep daily backups for" description="Number of days of daily backups to retain"
+            min={1} max={30} value={days} onChange={(v) => setDays(Number(v) || 1)}
+            disabled={!canEdit} rightSection={<Text size="xs" c="dimmed" pr="xs">days</Text>} rightSectionWidth={44}
+          />
+          <Switch label="Also keep one weekly snapshot beyond that"
+            checked={weekly} onChange={(e) => setWeekly(e.currentTarget.checked)} disabled={!canEdit} />
+          <Switch label="Also keep one monthly snapshot beyond that"
+            checked={monthly} onChange={(e) => setMonthly(e.currentTarget.checked)} disabled={!canEdit} />
+          {canEdit ? (
+            <Group justify="flex-end">
+              <Button size="xs" disabled={!dirty} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+                Save
+              </Button>
+            </Group>
+          ) : (
+            <Text size="xs" c="dimmed">Only a portal administrator can change this.</Text>
+          )}
+        </Stack>
+      )}
+    </Paper>
   );
 }
 
