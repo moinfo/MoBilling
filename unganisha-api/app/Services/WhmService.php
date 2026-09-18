@@ -127,6 +127,17 @@ class WhmService
         return (array) data_get($res, 'data.acct', []);
     }
 
+    /**
+     * Every domain on this server — main, addon, parked, and sub — each
+     * tagged `domain_type` and (for sub/addon) `parent_domain`. No params
+     * needed; this is server-wide, unlike accountSummary/listAccounts.
+     */
+    public function listDomains(): array
+    {
+        $res = $this->call('get_domain_info');
+        return (array) data_get($res, 'data.domains', []);
+    }
+
     // ── Mutations ──────────────────────────────────────────────────────────────
 
     public function createAccount(string $username, string $domain, string $password, string $plan, ?string $contactEmail = null): array

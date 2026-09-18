@@ -657,6 +657,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     });
     Route::middleware('permission:hosting.read')->get('/hosting-accounts', [\App\Http\Controllers\HostingAccountController::class, 'index']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/discover', [\App\Http\Controllers\HostingAccountController::class, 'discover']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/subdomains', [\App\Http\Controllers\HostingAccountController::class, 'subdomains']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);

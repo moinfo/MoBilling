@@ -81,6 +81,7 @@ import Broadcast from './pages/Broadcast';
 import WhatsappContacts from './pages/WhatsappContacts';
 import HostingAccounts from './pages/HostingAccounts';
 import DiscoverHostingAccounts from './pages/DiscoverHostingAccounts';
+import Subdomains from './pages/Subdomains';
 import ServiceManagement from './pages/ServiceManagement';
 import Domains from './pages/Domains';
 import DomainDetails from './pages/DomainDetails';
@@ -293,6 +294,7 @@ export default function App() {
                   <Route path="/whatsapp-contacts" element={<WhatsappContacts />} />
                   <Route path="/hosting" element={<HostingAccounts />} />
                   <Route path="/hosting/discover" element={<DiscoverHostingAccounts />} />
+                  <Route path="/hosting/subdomains" element={<Subdomains />} />
                   <Route path="/hosting/services" element={<ServiceManagement />} />
                   <Route path="/domains" element={<Domains />} />
                   <Route path="/domains/:id" element={<DomainDetails />} />

@@ -116,6 +116,73 @@ class HostingAccountController extends Controller
     }
 
     /**
+     * Every subdomain that exists across the tenant's WHM server(s) —
+     * `get_domain_info` is server-wide and needs no per-account calls,
+     * unlike discover()'s per-account listaccts loop.
+     */
+    public function subdomains(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $domains = (new WhmService($server))->listDomains();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($domains as $d) {
+                if (($d['domain_type'] ?? null) !== 'sub') {
+                    continue;
+                }
+                $username = (string) ($d['user'] ?? '');
+                $local = $username !== '' ? $known->get($server->id . '|' . strtolower($username)) : null;
+
+                $rows[] = [
+                    'server_id'       => $server->id,
+                    'server_name'     => $server->name,
+                    'subdomain'       => $d['domain'] ?? null,
+                    'parent_domain'   => $d['parent_domain'] ?? null,
+                    'cpanel_username' => $username,
+                    'docroot'         => $d['docroot'] ?? null,
+                    'ip'              => $d['ipv4'] ?? null,
+                    'php_version'     => $d['php_version'] ?: null,
+                    'client'          => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                ];
+            }
+        }
+
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower((string) $r['subdomain']), $s)
+                || str_contains(strtolower((string) $r['parent_domain']), $s)
+                || str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+
+        usort($rows, fn ($a, $b) => strcmp((string) $a['subdomain'], (string) $b['subdomain']));
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row
      * pointing at it. No WHM call — the account already exists on the server.

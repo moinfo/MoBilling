@@ -105,6 +105,20 @@ export interface DiscoveredAccount {
 export const discoverHostingAccounts = (params?: { server_id?: string; search?: string; imported?: 0 | 1; suspended?: 0 | 1 }) =>
   api.get<{ data: DiscoveredAccount[]; errors: string[] }>('/hosting-accounts/discover', { params });
 
+export interface Subdomain {
+  server_id: string;
+  server_name: string;
+  subdomain: string | null;
+  parent_domain: string | null;
+  cpanel_username: string;
+  docroot: string | null;
+  ip: string | null;
+  php_version: string | null;
+  client: { id: string; name: string } | null;
+}
+export const getSubdomains = (params?: { server_id?: string; search?: string }) =>
+  api.get<{ data: Subdomain[]; errors: string[] }>('/hosting-accounts/subdomains', { params });
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

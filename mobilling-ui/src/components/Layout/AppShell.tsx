@@ -37,7 +37,7 @@ export default function AppLayout() {
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
   const hrPaths = ['/staff-reports', '/attendance', '/work-locations', '/staff-targets', '/leave', '/payroll'];
-  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/domains'];
+  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/hosting/subdomains', '/domains'];
   const supportPaths = ['/tickets', '/canned-replies', '/knowledgebase'];
   const engagementPaths = ['/satisfaction-calls', '/appointments', '/whatsapp-contacts', '/field-marketing', '/social-media', '/served-customers'];
   const recordsPaths = ['/system-records', '/system-record-expenses', '/my-verifications'];
@@ -113,6 +113,7 @@ export default function AppLayout() {
     { label: 'Hosting — Accounts', path: '/hosting', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Manage Services', path: '/hosting/services', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Discover Accounts', path: '/hosting/discover', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Subdomains', path: '/hosting/subdomains', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Domains', path: '/domains', group: 'Web Services', visible: can('menu.domains') },
     { label: 'Support Tickets', path: '/tickets', group: 'Support', visible: can('menu.tickets') },
     { label: 'Canned Replies', path: '/canned-replies', group: 'Support', visible: can('menu.tickets') },
@@ -335,6 +336,8 @@ export default function AppLayout() {
                     onClick={() => navigateAndClose('/hosting/services')} />
                   <NavLink label="Discover Accounts" active={location.pathname === '/hosting/discover'}
                     onClick={() => navigateAndClose('/hosting/discover')} />
+                  <NavLink label="Subdomains" active={location.pathname === '/hosting/subdomains'}
+                    onClick={() => navigateAndClose('/hosting/subdomains')} />
                 </NavLink>
               )}
               {can('menu.domains') && (
