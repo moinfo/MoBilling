@@ -220,6 +220,18 @@ export interface DnsZoneRecord {
 export const getDnsZone = (params: { server_id: string; domain: string }) =>
   api.get<{ data: DnsZoneRecord[] }>('/hosting-accounts/dns-zone', { params });
 
+export interface AddDnsRecordPayload {
+  server_id: string;
+  domain: string;
+  type: 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX';
+  name: string;
+  ttl: number;
+  value?: string;
+  priority?: number;
+}
+export const addDnsRecord = (data: AddDnsRecordPayload) =>
+  api.post<{ message: string }>('/hosting-accounts/dns-zone', data);
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

@@ -578,6 +578,46 @@ class HostingAccountController extends Controller
     }
 
     /**
+     * Adds one DNS zone record. Add-only, deliberately — see
+     * WhmService::addDnsRecord()'s doc comment for why edit/delete aren't
+     * exposed here (WHM's line-number-based edit/remove calls proved
+     * unreliable during live verification: two real records were
+     * accidentally overwritten/deleted before this was caught and reverted).
+     */
+    public function addDnsRecord(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id' => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'domain'    => 'required|string|max:255',
+            'type'      => ['required', Rule::in(['A', 'AAAA', 'CNAME', 'TXT', 'MX'])],
+            'name'      => 'required|string|max:255',
+            'ttl'       => 'required|integer|min:60|max:2592000',
+            'value'     => 'required_unless:type,MX|nullable|string|max:1024',
+            'priority'  => 'required_if:type,MX|nullable|integer|min:0|max:65535',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+        $name = str_ends_with($data['name'], '.') ? $data['name'] : "{$data['name']}.";
+
+        $fields = match ($data['type']) {
+            'A', 'AAAA' => ['address' => $data['value']],
+            'CNAME' => ['cname' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
+            'TXT' => ['txtdata' => $data['value']],
+            'MX' => ['preference' => $data['priority'], 'exchange' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
+        };
+
+        try {
+            (new WhmService($server))->addDnsRecord($data['domain'], $data['type'], $name, $data['ttl'], $fields);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the record: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'DNS record added.']);
+    }
+
+    /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row
      * pointing at it. No WHM call — the account already exists on the server.

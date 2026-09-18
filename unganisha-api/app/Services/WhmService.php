@@ -263,6 +263,42 @@ class WhmService
         return (array) (data_get($res, 'data.acct.0') ?? []);
     }
 
+    /**
+     * Adds one DNS zone record. `$data` is type-specific — verified live
+     * against a disposable test record for each shape (added, then
+     * removed again):
+     *   - A/AAAA:  ['address' => '1.2.3.4']
+     *   - CNAME:   ['cname' => 'target.example.com.']
+     *   - TXT:     ['txtdata' => '...']
+     *   - MX:      ['preference' => 10, 'exchange' => 'mail.example.com.']
+     * $name should be the FULL hostname (e.g. "sub.example.com."), not
+     * just the label — addzonerecord takes it that way, not relative to
+     * $domain the way a UI might otherwise assume.
+     *
+     * Deliberately no updateDnsRecord()/deleteDnsRecord() here: WHM's
+     * editzonerecord/removezonerecord are line-number-based, and the line
+     * numbers parse_dns_zone reports do NOT match what getzonerecord/
+     * editzonerecord/removezonerecord themselves use for the same zone at
+     * the same moment — confirmed live, twice, the hard way (a real
+     * customer's `_acme-challenge` and `_cpanel-dcv-test-record` TXT
+     * records were each overwritten/deleted by mistake this way, then
+     * restored). The only line-number lookup that proved reliable was a
+     * linear getzonerecord scan immediately before acting, re-verifying
+     * the record's identity on that same line right before mutating it —
+     * too slow and too fragile to expose as a normal UI action. Add-only,
+     * until a safer identify-and-target mechanism is found.
+     */
+    public function addDnsRecord(string $domain, string $type, string $name, int $ttl, array $data): array
+    {
+        return $this->call('addzonerecord', [
+            'domain' => $domain,
+            'name' => $name,
+            'type' => $type,
+            'ttl' => $ttl,
+            'class' => 'IN',
+        ] + $data);
+    }
+
     /** Every cPanel account on this server, per WHM — the server's own truth. */
     public function listAccounts(): array
     {
