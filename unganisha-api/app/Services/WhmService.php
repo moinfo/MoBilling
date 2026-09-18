@@ -114,6 +114,12 @@ class WhmService
         return array_values(array_filter($rows, fn ($r) => ($r['login'] ?? '') !== 'Main Account'));
     }
 
+    /** One account's MySQL databases, each with its disk usage and linked users. */
+    public function mysqlDatabases(string $user): array
+    {
+        return $this->cpanelApi($user, 'Mysql', 'list_databases');
+    }
+
     private function log(string $action, array $request, ?array $response, bool $ok, ?string $error): void
     {
         try {

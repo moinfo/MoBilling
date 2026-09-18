@@ -167,6 +167,14 @@ export interface EmailAccountRow {
 export const getEmailAccounts = (params: { server_id: string; cpanel_username: string }) =>
   api.get<{ data: EmailAccountRow[] }>('/hosting-accounts/email-accounts', { params });
 
+export interface MysqlDatabaseRow {
+  database: string | null;
+  users: string[];
+  disk_usage: number;
+}
+export const getMysqlDatabases = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: MysqlDatabaseRow[] }>('/hosting-accounts/mysql-databases', { params });
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

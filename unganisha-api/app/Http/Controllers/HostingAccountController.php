@@ -443,6 +443,33 @@ class HostingAccountController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /** One account's MySQL databases — same per-account shape as emailAccounts(). */
+    public function mysqlDatabases(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $dbs = (new WhmService($server))->mysqlDatabases($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        $rows = array_map(fn ($d) => [
+            'database'   => $d['database'] ?? null,
+            'users'      => (array) ($d['users'] ?? []),
+            'disk_usage' => (int) ($d['disk_usage'] ?? 0),
+        ], $dbs);
+
+        return response()->json(['data' => $rows]);
+    }
+
     /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row

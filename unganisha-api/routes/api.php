@@ -662,6 +662,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/disk-usage', [\App\Http\Controllers\HostingAccountController::class, 'diskUsage']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/backup-status', [\App\Http\Controllers\HostingAccountController::class, 'backupStatus']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/email-accounts', [\App\Http\Controllers\HostingAccountController::class, 'emailAccounts']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/mysql-databases', [\App\Http\Controllers\HostingAccountController::class, 'mysqlDatabases']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);
