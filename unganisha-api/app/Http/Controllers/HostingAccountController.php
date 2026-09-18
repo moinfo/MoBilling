@@ -412,6 +412,38 @@ class HostingAccountController extends Controller
     }
 
     /**
+     * One account's email addresses — unlike every other report here, WHM
+     * has no bulk call for this (email accounts are cPanel/UAPI-level, one
+     * "cpanel" passthrough call per account), so this deliberately takes a
+     * single account rather than looping the whole server.
+     */
+    public function emailAccounts(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $pops = (new WhmService($server))->emailAccounts($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        $rows = array_map(fn ($p) => [
+            'email'              => $p['email'] ?? null,
+            'suspended_incoming' => (bool) ($p['suspended_incoming'] ?? false),
+            'suspended_login'    => (bool) ($p['suspended_login'] ?? false),
+        ], $pops);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row
      * pointing at it. No WHM call — the account already exists on the server.

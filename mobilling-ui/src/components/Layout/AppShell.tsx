@@ -37,7 +37,7 @@ export default function AppLayout() {
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
   const hrPaths = ['/staff-reports', '/attendance', '/work-locations', '/staff-targets', '/leave', '/payroll'];
-  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/hosting/subdomains', '/hosting/bandwidth', '/hosting/disk-usage', '/hosting/backup-status', '/domains', '/domains/ssl-expiry'];
+  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/hosting/subdomains', '/hosting/bandwidth', '/hosting/disk-usage', '/hosting/backup-status', '/hosting/email-accounts', '/domains', '/domains/ssl-expiry'];
   const supportPaths = ['/tickets', '/canned-replies', '/knowledgebase'];
   const engagementPaths = ['/satisfaction-calls', '/appointments', '/whatsapp-contacts', '/field-marketing', '/social-media', '/served-customers'];
   const recordsPaths = ['/system-records', '/system-record-expenses', '/my-verifications'];
@@ -117,6 +117,7 @@ export default function AppLayout() {
     { label: 'Hosting — Bandwidth Usage', path: '/hosting/bandwidth', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Disk Usage', path: '/hosting/disk-usage', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Backup Status', path: '/hosting/backup-status', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Email Accounts', path: '/hosting/email-accounts', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Domains — SSL Certificates Expiry', path: '/domains/ssl-expiry', group: 'Web Services', visible: can('menu.domains') },
     { label: 'Domains', path: '/domains', group: 'Web Services', visible: can('menu.domains') },
     { label: 'Support Tickets', path: '/tickets', group: 'Support', visible: can('menu.tickets') },
@@ -348,6 +349,8 @@ export default function AppLayout() {
                     onClick={() => navigateAndClose('/hosting/disk-usage')} />
                   <NavLink label="Backup Status" active={location.pathname === '/hosting/backup-status'}
                     onClick={() => navigateAndClose('/hosting/backup-status')} />
+                  <NavLink label="Email Accounts" active={location.pathname === '/hosting/email-accounts'}
+                    onClick={() => navigateAndClose('/hosting/email-accounts')} />
                 </NavLink>
               )}
               {can('menu.domains') && (

@@ -159,6 +159,14 @@ export interface BackupStatusRow {
 export const getBackupStatus = (params?: { server_id?: string; search?: string }) =>
   api.get<{ data: BackupStatusRow[]; errors: string[] }>('/hosting-accounts/backup-status', { params });
 
+export interface EmailAccountRow {
+  email: string | null;
+  suspended_incoming: boolean;
+  suspended_login: boolean;
+}
+export const getEmailAccounts = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: EmailAccountRow[] }>('/hosting-accounts/email-accounts', { params });
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

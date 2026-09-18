@@ -59,6 +59,61 @@ class WhmService
         }
     }
 
+    /**
+     * WHM's "cpanel" passthrough — the only way to reach a cPanel-level
+     * (UAPI/API2) function for one account, e.g. its email accounts. The
+     * response shape is entirely different from every other call here
+     * (`result.status`/`result.data`/`result.errors`, no top-level
+     * `metadata.result`), so this can't share call()'s success check.
+     */
+    private function cpanelApi(string $user, string $module, string $func, array $params = []): array
+    {
+        $request = Http::withHeaders([
+            'Authorization' => "whm {$this->server->username}:{$this->server->api_token}",
+        ])->timeout(30)->connectTimeout(15);
+
+        if (!$this->server->verify_ssl) {
+            $request = $request->withoutVerifying();
+        }
+
+        $url = "https://{$this->server->hostname}:{$this->server->port}/json-api/cpanel";
+        $query = $params + [
+            'api.version' => 1,
+            'cpanel_jsonapi_user' => $user,
+            'cpanel_jsonapi_apiversion' => 3,
+            'cpanel_jsonapi_module' => $module,
+            'cpanel_jsonapi_func' => $func,
+        ];
+
+        try {
+            $response = $request->get($url, $query);
+            $json = $response->json() ?? [];
+
+            $ok = $response->ok() && (int) data_get($json, 'result.status', 0) === 1;
+            $reason = $ok ? 'OK' : (implode('; ', (array) data_get($json, 'result.errors', [])) ?: 'HTTP ' . $response->status());
+
+            $this->log("cpanel:{$module}:{$func}", ['user' => $user] + $params, $ok ? (array) data_get($json, 'result.data', []) : $json, $ok, $ok ? null : $reason);
+
+            if (!$ok) {
+                throw new WhmApiException("{$module}::{$func}", $reason);
+            }
+
+            return (array) data_get($json, 'result.data', []);
+        } catch (WhmApiException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->log("cpanel:{$module}:{$func}", ['user' => $user], null, false, $e->getMessage());
+            throw new WhmApiException("{$module}::{$func}", $e->getMessage());
+        }
+    }
+
+    /** One account's email addresses — "Main Account" is the login itself, not a real mailbox. */
+    public function emailAccounts(string $user): array
+    {
+        $rows = $this->cpanelApi($user, 'Email', 'list_pops');
+        return array_values(array_filter($rows, fn ($r) => ($r['login'] ?? '') !== 'Main Account'));
+    }
+
     private function log(string $action, array $request, ?array $response, bool $ok, ?string $error): void
     {
         try {

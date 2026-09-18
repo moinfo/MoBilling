@@ -85,6 +85,7 @@ import Subdomains from './pages/Subdomains';
 import BandwidthUsage from './pages/BandwidthUsage';
 import DiskUsage from './pages/DiskUsage';
 import BackupStatus from './pages/BackupStatus';
+import EmailAccounts from './pages/EmailAccounts';
 import SslExpiry from './pages/SslExpiry';
 import ServiceManagement from './pages/ServiceManagement';
 import Domains from './pages/Domains';
@@ -302,6 +303,7 @@ export default function App() {
                   <Route path="/hosting/bandwidth" element={<BandwidthUsage />} />
                   <Route path="/hosting/disk-usage" element={<DiskUsage />} />
                   <Route path="/hosting/backup-status" element={<BackupStatus />} />
+                  <Route path="/hosting/email-accounts" element={<EmailAccounts />} />
                   <Route path="/domains/ssl-expiry" element={<SslExpiry />} />
                   <Route path="/hosting/services" element={<ServiceManagement />} />
                   <Route path="/domains" element={<Domains />} />
