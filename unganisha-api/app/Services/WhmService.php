@@ -306,6 +306,32 @@ class WhmService
         return $this->cpanelApi2($user, 'Cron', 'remove_line', ['linekey' => $linekey]);
     }
 
+    /**
+     * One account's domains/subdomains with their current PHP version
+     * (LangPHP::php_get_vhost_versions) — a UAPI-level, per-account call,
+     * unlike the WHM-level php_get_vhost_versions/php_set_vhost_versions
+     * (MultiPHP Manager), which this reseller token can't use at all
+     * ("Permission denied", verified live). Same privilege-bypass pattern
+     * as Backup/Fileman/Cron: acting AS the account sidesteps the
+     * reseller ACL gap entirely.
+     */
+    public function phpVersions(string $user): array
+    {
+        return $this->cpanelApi($user, 'LangPHP', 'php_get_vhost_versions');
+    }
+
+    /** Every PHP version installed on the server (both EasyApache "ea-php*" and CloudLinux "alt-php*" stacks show up here). */
+    public function installedPhpVersions(string $user): array
+    {
+        return (array) data_get($this->cpanelApi($user, 'LangPHP', 'php_get_installed_versions'), 'versions', []);
+    }
+
+    /** Sets one vhost's PHP version — verified live with a no-op (set to its own current version, confirmed unchanged). */
+    public function setPhpVersion(string $user, string $vhost, string $version): array
+    {
+        return $this->cpanelApi($user, 'LangPHP', 'php_set_vhost_versions', ['version' => $version, 'vhost-0' => $vhost]);
+    }
+
     private function log(string $action, array $request, ?array $response, bool $ok, ?string $error): void
     {
         try {

@@ -712,6 +712,57 @@ class HostingAccountController extends Controller
         return response()->json(['message' => 'Cron job deleted.']);
     }
 
+    /** One account's domains/subdomains with their current PHP version, plus what's installed on the server. */
+    public function phpVersions(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+        $whm = new WhmService($server);
+
+        try {
+            $vhosts = $whm->phpVersions($data['cpanel_username']);
+            $installed = $whm->installedPhpVersions($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        $rows = array_map(fn ($v) => [
+            'vhost'       => $v['vhost'] ?? null,
+            'version'     => $v['version'] ?? null,
+            'main_domain' => (bool) ($v['main_domain'] ?? false),
+        ], $vhosts);
+
+        return response()->json(['data' => $rows, 'installed' => $installed]);
+    }
+
+    public function updatePhpVersion(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'vhost'           => 'required|string|max:255',
+            'version'         => 'required|string|max:32',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->setPhpVersion($data['cpanel_username'], $data['vhost'], $data['version']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'PHP version updated.']);
+    }
+
     /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row

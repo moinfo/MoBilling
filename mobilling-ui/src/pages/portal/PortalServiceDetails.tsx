@@ -6,6 +6,7 @@ import {
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconStar, IconTool, IconLogin, IconMail, IconKey, IconBan, IconWorldWww,
@@ -19,9 +20,11 @@ import {
   getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow,
   getPortalHostingSubdomains, getPortalHostingEmailAccounts, getPortalHostingMysqlDatabases,
   getPortalHostingBackupSettings, updatePortalHostingBackupSettings, getPortalHostingBackups,
+  getPortalHostingPhpVersions, updatePortalHostingPhpVersion, PortalPhpVhost,
 } from '../../api/portal';
-import { Tooltip } from '@mantine/core';
+import { Tooltip, Select } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
+import { phpVersionLabel } from '../PhpVersions';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtBytes = (bytes: number) => {
@@ -90,6 +93,14 @@ export default function PortalServiceDetails() {
     enabled: !!id && d?.status === 'active',
   });
   const databases = dbsData?.data?.data ?? [];
+
+  const { data: phpData, isLoading: phpLoading } = useQuery({
+    queryKey: ['portal-hosting-php', id],
+    queryFn: () => getPortalHostingPhpVersions(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const phpVhosts = phpData?.data?.data ?? [];
+  const phpInstalled = phpData?.data?.installed ?? [];
 
   const { data: backupData, isLoading: backupLoading } = useQuery({
     queryKey: ['portal-hosting-backup-settings', id],
@@ -393,6 +404,13 @@ export default function PortalServiceDetails() {
         </Paper>
       )}
 
+      {/* PHP version */}
+      {d.status === 'active' && (
+        <PhpVersionSection
+          id={d.id} vhosts={phpVhosts} installed={phpInstalled} loading={phpLoading} canEdit={isPortalAdmin}
+        />
+      )}
+
       {/* Backup settings */}
       {d.status === 'active' && backup?.has_backup && (
         <BackupSettingsSection
@@ -437,6 +455,89 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <Text size="sm" c="dimmed">{label}</Text>
       <Text size="sm" fw={600}>{value}</Text>
     </Group>
+  );
+}
+
+function PhpVersionSection({ id, vhosts, installed, loading, canEdit }: {
+  id: string;
+  vhosts: PortalPhpVhost[];
+  installed: string[];
+  loading: boolean;
+  canEdit: boolean;
+}) {
+  const qc = useQueryClient();
+
+  const versionOptions = [...installed].sort().reverse().map((v) => ({ value: v, label: phpVersionLabel(v) }));
+
+  const mutation = useMutation({
+    mutationFn: (vars: { vhost: string; version: string }) => updatePortalHostingPhpVersion(id, vars),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ['portal-hosting-php', id] });
+      notifications.show({ message: `${vars.vhost} is now on ${phpVersionLabel(vars.version)}.`, color: 'green' });
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not change the PHP version.', color: 'red',
+    }),
+  });
+
+  const confirmChange = (row: PortalPhpVhost, newVersion: string) => modals.openConfirmModal({
+    title: 'Change PHP version',
+    children: (
+      <Text size="sm">
+        Change <Text span fw={600}>{row.vhost}</Text> from {phpVersionLabel(row.version ?? '')} to{' '}
+        <Text span fw={600}>{phpVersionLabel(newVersion)}</Text>? If your site's code isn't compatible
+        with this version, it may stop working until changed back.
+      </Text>
+    ),
+    labels: { confirm: 'Change it', cancel: 'Cancel' },
+    confirmProps: { color: 'orange' },
+    onConfirm: () => mutation.mutate({ vhost: row.vhost!, version: newVersion }),
+  });
+
+  return (
+    <Paper withBorder radius="md" p="lg">
+      <Text fw={700} mb="xs">PHP Version</Text>
+      <Text size="sm" c="dimmed" mb="md">
+        The PHP version used by each of your domains and subdomains.
+      </Text>
+      {loading ? (
+        <Text size="sm" c="dimmed">Loading…</Text>
+      ) : vhosts.length === 0 ? (
+        <Text size="sm" c="dimmed">No domains found.</Text>
+      ) : (
+        <Table.ScrollContainer minWidth={500}>
+          <Table verticalSpacing="xs" fz="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Domain</Table.Th>
+                <Table.Th>Version</Table.Th>
+                {canEdit && <Table.Th w={200}>Change to</Table.Th>}
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {vhosts.map((v) => (
+                <Table.Tr key={v.vhost}>
+                  <Table.Td>
+                    {v.vhost}
+                    {v.main_domain && <Badge ml={6} size="xs" variant="light" color="blue">Main</Badge>}
+                  </Table.Td>
+                  <Table.Td c="dimmed">{v.version ? phpVersionLabel(v.version) : '—'}</Table.Td>
+                  {canEdit && (
+                    <Table.Td>
+                      <Select
+                        size="xs" data={versionOptions} value={v.version}
+                        disabled={mutation.isPending}
+                        onChange={(val) => val && val !== v.version && confirmChange(v, val)}
+                      />
+                    </Table.Td>
+                  )}
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+    </Paper>
   );
 }
 

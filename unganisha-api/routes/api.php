@@ -676,6 +676,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'storeCronJob']);
     Route::middleware('permission:hosting.change_package')->put('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'updateCronJob']);
     Route::middleware('permission:hosting.change_package')->delete('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'destroyCronJob']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/php-versions', [\App\Http\Controllers\HostingAccountController::class, 'phpVersions']);
+    Route::middleware('permission:hosting.change_package')->put('/hosting-accounts/php-versions', [\App\Http\Controllers\HostingAccountController::class, 'updatePhpVersion']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);
@@ -1046,6 +1048,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/hosting/{hostingAccount}/subdomains', [\App\Http\Controllers\Portal\PortalHostingController::class, 'subdomains']);
     Route::get('/hosting/{hostingAccount}/email-accounts', [\App\Http\Controllers\Portal\PortalHostingController::class, 'emailAccounts']);
     Route::get('/hosting/{hostingAccount}/mysql-databases', [\App\Http\Controllers\Portal\PortalHostingController::class, 'mysqlDatabases']);
+    Route::get('/hosting/{hostingAccount}/php-versions', [\App\Http\Controllers\Portal\PortalHostingController::class, 'phpVersions']);
+    Route::put('/hosting/{hostingAccount}/php-versions', [\App\Http\Controllers\Portal\PortalHostingController::class, 'updatePhpVersion']);
     Route::get('/hosting/{hostingAccount}/backups', [\App\Http\Controllers\Portal\PortalHostingController::class, 'backups']);
     Route::get('/hosting/{hostingAccount}/backup-settings', [\App\Http\Controllers\Portal\PortalHostingController::class, 'backupSettings']);
     Route::put('/hosting/{hostingAccount}/backup-settings', [\App\Http\Controllers\Portal\PortalHostingController::class, 'updateBackupSettings']);

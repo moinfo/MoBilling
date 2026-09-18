@@ -212,6 +212,50 @@ class PortalHostingController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /** This account's domains/subdomains with their current PHP version, plus what's installed on the server. */
+    public function phpVersions(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        $whm = (new WhmService($hostingAccount->server))->forAccount($hostingAccount->id);
+
+        try {
+            $vhosts = $whm->phpVersions($hostingAccount->cpanel_username);
+            $installed = $whm->installedPhpVersions($hostingAccount->cpanel_username);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        $rows = array_map(fn ($v) => [
+            'vhost'       => $v['vhost'] ?? null,
+            'version'     => $v['version'] ?? null,
+            'main_domain' => (bool) ($v['main_domain'] ?? false),
+        ], $vhosts);
+
+        return response()->json(['data' => $rows, 'installed' => $installed]);
+    }
+
+    /** Changing PHP version can break an incompatible site, so this stays admin-only like change-password/cancellation. */
+    public function updatePhpVersion(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate([
+            'vhost'   => 'required|string|max:255',
+            'version' => 'required|string|max:32',
+        ]);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->setPhpVersion($hostingAccount->cpanel_username, $data['vhost'], $data['version']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'PHP version updated.']);
+    }
+
     /**
      * The account's actual backup files (same tarballs the "Backup" quick
      * shortcut's cPanel wizard shows/downloads — WhmService::homeDirBackupFiles).

@@ -263,6 +263,16 @@ export const getPortalHostingBackupSettings = (id: string) =>
 export const updatePortalHostingBackupSettings = (id: string, data: { daily_retention_days: number; keep_weekly: boolean; keep_monthly: boolean }) =>
   api.put<{ data: PortalBackupSettings }>(`/portal/hosting/${id}/backup-settings`, data);
 
+export interface PortalPhpVhost {
+  vhost: string | null;
+  version: string | null;
+  main_domain: boolean;
+}
+export const getPortalHostingPhpVersions = (id: string) =>
+  api.get<{ data: PortalPhpVhost[]; installed: string[] }>(`/portal/hosting/${id}/php-versions`);
+export const updatePortalHostingPhpVersion = (id: string, data: { vhost: string; version: string }) =>
+  api.put<{ message: string }>(`/portal/hosting/${id}/php-versions`, data);
+
 export const refreshPortalHostingUsage = (id: string) =>
   api.post<{ data: { disk_used: string | null; disk_limit: string | null; last_synced_at: string } }>(`/portal/hosting/${id}/refresh-usage`);
 

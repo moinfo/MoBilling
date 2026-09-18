@@ -263,6 +263,17 @@ export const updateCronJob = (data: CronJobPayload & { linekey: number }) =>
 export const deleteCronJob = (data: { server_id: string; cpanel_username: string; linekey: number }) =>
   api.delete<{ message: string }>('/hosting-accounts/cron-jobs', { data });
 
+export interface PhpVhostRow {
+  vhost: string | null;
+  version: string | null;
+  main_domain: boolean;
+}
+export const getPhpVersions = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: PhpVhostRow[]; installed: string[] }>('/hosting-accounts/php-versions', { params });
+
+export const updatePhpVersion = (data: { server_id: string; cpanel_username: string; vhost: string; version: string }) =>
+  api.put<{ message: string }>('/hosting-accounts/php-versions', data);
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;
