@@ -172,6 +172,19 @@ class WhmService
     }
 
     /**
+     * Per-account bandwidth limit override, in megabytes — WHM's own
+     * convention for "unlimited" here is 0, same as a disk quota of 0.
+     * This is exactly what WHM's own suspend reason for a bandwidth-based
+     * auto-suspend tells the admin to do ("Unsuspend by increasing
+     * bandwidth limit") — raising the limit alone doesn't lift the
+     * suspension, so callers should follow up with unsuspend().
+     */
+    public function setBandwidthLimit(string $user, ?int $limitMb = null): array
+    {
+        return $this->call('editbwlimit', ['user' => $user, 'bwlimit' => $limitMb ?? 0]);
+    }
+
+    /**
      * One-time SSO login URL. service: cpaneld (cPanel) or webmaild (Webmail).
      * $goto deep-links to a specific cPanel tool after login.
      */

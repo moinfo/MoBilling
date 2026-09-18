@@ -446,6 +446,34 @@ class HostingServiceController extends Controller
         }
     }
 
+    /**
+     * The fix for a "Bandwidth Limit Exceeded" auto-suspension — WHM's own
+     * suspend reason literally says "Unsuspend by increasing bandwidth
+     * limit", but raising the limit alone doesn't lift the suspension, so
+     * this does both in one action: set the new limit, then unsuspend.
+     */
+    public function clearBandwidthSuspension(Request $request, HostingAccount $hostingAccount)
+    {
+        $data = $request->validate([
+            'unlimited' => 'required|boolean',
+            'limit_mb'  => 'required_if:unlimited,false|nullable|integer|min:1',
+        ]);
+
+        try {
+            $whm = (new WhmService($hostingAccount->server))->forAccount($hostingAccount->id);
+            $whm->setBandwidthLimit($hostingAccount->cpanel_username, $data['unlimited'] ? null : (int) $data['limit_mb']);
+            $whm->unsuspend($hostingAccount->cpanel_username);
+            $hostingAccount->update([
+                'status' => 'active',
+                'meta' => array_merge($hostingAccount->meta ?? [], ['suspend_reason' => null, 'suspend_time' => null]),
+            ]);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Bandwidth limit raised and the account unsuspended.']);
+    }
+
     /** Pull live usage from the server into the account metrics. */
     public function refreshUsage(HostingAccount $hostingAccount)
     {

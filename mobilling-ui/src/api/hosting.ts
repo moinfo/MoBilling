@@ -185,6 +185,9 @@ export const changeHostingPassword = (accountId: string, password: string) =>
 export const changeHostingContactEmail = (accountId: string, email: string) =>
   api.post<{ message: string }>(`/hosting-accounts/${accountId}/contact-email`, { email });
 
+export const clearBandwidthSuspension = (accountId: string, unlimited: boolean, limitMb?: number) =>
+  api.post<{ message: string }>(`/hosting-accounts/${accountId}/clear-bandwidth-suspension`, { unlimited, limit_mb: limitMb });
+
 export const refreshHostingUsage = (accountId: string) =>
   api.post<{ data: ServiceMetric[] }>(`/hosting-accounts/${accountId}/refresh-usage`);
 

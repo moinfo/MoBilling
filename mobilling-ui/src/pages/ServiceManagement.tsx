@@ -19,7 +19,7 @@ import {
 import { getClients, getClientCommunications, ClientCommunicationLog } from '../api/clients';
 import {
   getClientServices, getServiceDetail, updateService, changeHostingPassword, changeHostingContactEmail,
-  refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
+  clearBandwidthSuspension, refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
   getUpgradeOptions, applyUpgrade, resendWelcomeEmail, sendClientMessage, resetPasswordAndWelcome,
   ServiceListItem, ServiceDetail, UpgradePlan,
@@ -141,6 +141,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   const [busy, setBusy] = useState<string | null>(null);
   const [pwModal, setPwModal] = useState(false);
   const [emailModal, setEmailModal] = useState(false);
+  const [bwModal, setBwModal] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [msgOpen, setMsgOpen] = useState(false);
   const [resetPw, setResetPw] = useState<string | null>(null);
@@ -335,8 +336,16 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       {ha?.status === 'suspended' && (ha.suspend_reason || ha.suspend_time) && (
         <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />}
           p="xs" m="sm" title="Account Suspended">
-          {ha.suspend_reason && <Text size="xs">Reason: {ha.suspend_reason}</Text>}
-          {ha.suspend_time && <Text size="xs">Suspended: {new Date(ha.suspend_time).toLocaleString('en-GB')}</Text>}
+          <Stack gap={4}>
+            {ha.suspend_reason && <Text size="xs">Reason: {ha.suspend_reason}</Text>}
+            {ha.suspend_time && <Text size="xs">Suspended: {new Date(ha.suspend_time).toLocaleString('en-GB')}</Text>}
+            {/bandwidth/i.test(ha.suspend_reason ?? '') && (
+              <Button size="compact-xs" variant="light" color="orange" mt={4}
+                style={{ alignSelf: 'flex-start' }} onClick={() => setBwModal(true)}>
+                Fix Bandwidth Suspension
+              </Button>
+            )}
+          </Stack>
         </Alert>
       )}
 
@@ -513,6 +522,8 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       <ChangePasswordModal opened={pwModal} onClose={() => setPwModal(false)} accountId={ha?.id ?? null} />
       <ChangeContactEmailModal opened={emailModal} onClose={() => setEmailModal(false)} accountId={ha?.id ?? null}
         onChanged={() => qc.invalidateQueries({ queryKey: ['service-detail', subId] })} />
+      <BandwidthFixModal opened={bwModal} onClose={() => setBwModal(false)} accountId={ha?.id ?? null}
+        onFixed={() => qc.invalidateQueries({ queryKey: ['service-detail', subId] })} />
       <UpgradeModal opened={upgradeOpen} onClose={() => setUpgradeOpen(false)} subId={subId}
         navigate={navigate} onApplied={() => { qc.invalidateQueries({ queryKey: ['service-detail', subId] }); qc.invalidateQueries({ queryKey: ['client-services'] }); }} />
       <SendMessageModal opened={msgOpen} onClose={() => setMsgOpen(false)} subId={subId} clientId={d.client.id} clientName={d.client.name} />
@@ -830,6 +841,41 @@ function ChangeContactEmailModal({ opened, onClose, accountId, onChanged }: {
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button color="orange" disabled={!valid} loading={mutation.isPending} onClick={() => mutation.mutate()}>
             Change Email
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function BandwidthFixModal({ opened, onClose, accountId, onFixed }: {
+  opened: boolean; onClose: () => void; accountId: string | null; onFixed: () => void;
+}) {
+  const [mode, setMode] = useState<'unlimited' | 'custom'>('unlimited');
+  const [limitMb, setLimitMb] = useState<number | ''>('');
+  const mutation = useMutation({
+    mutationFn: () => clearBandwidthSuspension(accountId!, mode === 'unlimited', mode === 'custom' ? Number(limitMb) : undefined),
+    onSuccess: (res) => { notifications.show({ message: res.data.message, color: 'green' }); onFixed(); onClose(); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Could not fix the suspension.', color: 'red' }),
+  });
+  const valid = mode === 'unlimited' || (typeof limitMb === 'number' && limitMb > 0);
+  return (
+    <Modal opened={opened} onClose={onClose} title="Fix Bandwidth Suspension" centered size="sm">
+      <Stack>
+        <Text size="sm" c="dimmed">
+          Raises the account's bandwidth limit on the server (WHM's own fix for this exact suspend
+          reason), then unsuspends it. Does not touch the product/package's own plan.
+        </Text>
+        <SegmentedControl value={mode} onChange={(v) => setMode(v as typeof mode)}
+          data={[{ label: 'Unlimited', value: 'unlimited' }, { label: 'Custom limit', value: 'custom' }]} />
+        {mode === 'custom' && (
+          <NumberInput label="New bandwidth limit (MB)" min={1} value={limitMb}
+            onChange={(v) => setLimitMb(v === '' ? '' : Number(v))} />
+        )}
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button color="orange" disabled={!valid} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Fix &amp; Unsuspend
           </Button>
         </Group>
       </Stack>
