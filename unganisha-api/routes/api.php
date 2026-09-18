@@ -672,6 +672,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/mysql-databases', [\App\Http\Controllers\HostingAccountController::class, 'mysqlDatabases']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/dns-zone', [\App\Http\Controllers\HostingAccountController::class, 'dnsZone']);
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/dns-zone', [\App\Http\Controllers\HostingAccountController::class, 'addDnsRecord']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'cronJobs']);
+    Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'storeCronJob']);
+    Route::middleware('permission:hosting.change_package')->put('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'updateCronJob']);
+    Route::middleware('permission:hosting.change_package')->delete('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'destroyCronJob']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);

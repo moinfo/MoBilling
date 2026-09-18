@@ -617,6 +617,101 @@ class HostingAccountController extends Controller
         return response()->json(['message' => 'DNS record added.']);
     }
 
+    /** One account's cron jobs — WhmService::cronJobs() (cPanel API2's Cron::listcron). */
+    public function cronJobs(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $jobs = (new WhmService($server))->cronJobs($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $jobs]);
+    }
+
+    private function cronJobRules(): array
+    {
+        return [
+            'minute'  => 'required|string|max:100',
+            'hour'    => 'required|string|max:100',
+            'day'     => 'required|string|max:100',
+            'month'   => 'required|string|max:100',
+            'weekday' => 'required|string|max:100',
+            'command' => 'required|string|max:2000',
+        ];
+    }
+
+    public function storeCronJob(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ] + $this->cronJobRules());
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->addCronJob($data['cpanel_username'], collect($data)->only(['minute', 'hour', 'day', 'month', 'weekday', 'command'])->all());
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the cron job: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Cron job added.']);
+    }
+
+    public function updateCronJob(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'linekey'         => 'required|integer',
+        ] + $this->cronJobRules());
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->updateCronJob($data['cpanel_username'], $data['linekey'], collect($data)->only(['minute', 'hour', 'day', 'month', 'weekday', 'command'])->all());
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Cron job updated.']);
+    }
+
+    public function destroyCronJob(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'linekey'         => 'required|integer',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->deleteCronJob($data['cpanel_username'], $data['linekey']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the delete: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Cron job deleted.']);
+    }
+
     /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row

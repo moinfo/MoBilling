@@ -232,6 +232,37 @@ export interface AddDnsRecordPayload {
 export const addDnsRecord = (data: AddDnsRecordPayload) =>
   api.post<{ message: string }>('/hosting-accounts/dns-zone', data);
 
+export interface CronJobRow {
+  linekey: number;
+  minute: string;
+  hour: string;
+  day: string;
+  month: string;
+  weekday: string;
+  command: string;
+}
+export const getCronJobs = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: CronJobRow[] }>('/hosting-accounts/cron-jobs', { params });
+
+export interface CronJobPayload {
+  server_id: string;
+  cpanel_username: string;
+  minute: string;
+  hour: string;
+  day: string;
+  month: string;
+  weekday: string;
+  command: string;
+}
+export const addCronJob = (data: CronJobPayload) =>
+  api.post<{ message: string }>('/hosting-accounts/cron-jobs', data);
+
+export const updateCronJob = (data: CronJobPayload & { linekey: number }) =>
+  api.put<{ message: string }>('/hosting-accounts/cron-jobs', data);
+
+export const deleteCronJob = (data: { server_id: string; cpanel_username: string; linekey: number }) =>
+  api.delete<{ message: string }>('/hosting-accounts/cron-jobs', { data });
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

@@ -109,6 +109,64 @@ class WhmService
     }
 
     /**
+     * Same idea as cpanelApi(), but for cPanel API *2* — needed for the
+     * Cron module, which isn't installed as a UAPI (v3) module on this
+     * server ("Failed to load module Cpanel::API::Cron", verified live),
+     * only the older API2 one. Response shape differs again:
+     * `cpanelresult.event.result` for whether the *call* succeeded, but a
+     * mutation (add_line/edit_line/remove_line) can report event.result=1
+     * while still failing the actual operation via `data.0.status` (e.g.
+     * remove_line on a linekey that's already gone returns "Cron job not
+     * found in the crontab." this way) — verified live, so both are
+     * checked. A `list`-type call's rows have no `status` key, so that
+     * check is a no-op for them.
+     */
+    private function cpanelApi2(string $user, string $module, string $func, array $params = [], array $sensitiveKeys = []): array
+    {
+        $request = Http::withHeaders([
+            'Authorization' => "whm {$this->server->username}:{$this->server->api_token}",
+        ])->timeout(30)->connectTimeout(15);
+
+        if (!$this->server->verify_ssl) {
+            $request = $request->withoutVerifying();
+        }
+
+        $url = "https://{$this->server->hostname}:{$this->server->port}/json-api/cpanel";
+        $query = $params + [
+            'api.version' => 1,
+            'cpanel_jsonapi_user' => $user,
+            'cpanel_jsonapi_apiversion' => 2,
+            'cpanel_jsonapi_module' => $module,
+            'cpanel_jsonapi_func' => $func,
+        ];
+        $logParams = ['user' => $user] + collect($params)->except($sensitiveKeys)->all();
+
+        try {
+            $response = $request->get($url, $query);
+            $json = $response->json() ?? [];
+            $data = (array) data_get($json, 'cpanelresult.data', []);
+
+            $eventOk = $response->ok() && (int) data_get($json, 'cpanelresult.event.result', 0) === 1;
+            $itemStatus = data_get($data, '0.status');
+            $ok = $eventOk && ($itemStatus === null || (int) $itemStatus === 1);
+            $reason = $ok ? 'OK' : (data_get($data, '0.statusmsg') ?? data_get($json, 'cpanelresult.error') ?? ('HTTP ' . $response->status()));
+
+            $this->log("cpanel2:{$module}:{$func}", $logParams, $ok ? $data : $json, $ok, $ok ? null : $reason);
+
+            if (!$ok) {
+                throw new WhmApiException("{$module}::{$func}", $reason);
+            }
+
+            return $data;
+        } catch (WhmApiException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->log("cpanel2:{$module}:{$func}", $logParams, null, false, $e->getMessage());
+            throw new WhmApiException("{$module}::{$func}", $e->getMessage());
+        }
+    }
+
+    /**
      * One account's email addresses with disk usage — "Main Account" is the
      * login itself, not a real mailbox. list_pops_with_disk's usage/quota
      * fields (`_diskused`, `_diskquota`) are bytes; `_diskquota` is `0` (int)
@@ -209,6 +267,43 @@ class WhmService
     public function deleteFile(string $user, string $path): array
     {
         return $this->cpanelApi($user, 'Fileman', 'delete_file', ['path' => $path]);
+    }
+
+    /**
+     * One account's cron jobs — Cron::listcron (API2), which unlike
+     * fetchcron excludes the SHELL/MAILTO environment lines and gives a
+     * clean row per command. Verified live.
+     */
+    public function cronJobs(string $user): array
+    {
+        return $this->cpanelApi2($user, 'Cron', 'listcron');
+    }
+
+    /**
+     * @param array{minute:string,hour:string,day:string,month:string,weekday:string,command:string} $job
+     * Returns ['linekey' => int] for the new line — verified live.
+     */
+    public function addCronJob(string $user, array $job): array
+    {
+        return ['linekey' => (int) data_get($this->cpanelApi2($user, 'Cron', 'add_line', $job), '0.linekey')];
+    }
+
+    /**
+     * edit_line does not keep the same linekey — it reports a NEW one in
+     * its response (verified live: editing a job returns a different
+     * linekey than the one you passed in), so the caller must use this
+     * returned value for any further action on the job, not the one it
+     * started with.
+     */
+    public function updateCronJob(string $user, int $linekey, array $job): array
+    {
+        $result = $this->cpanelApi2($user, 'Cron', 'edit_line', ['linekey' => $linekey] + $job);
+        return ['linekey' => (int) (data_get($result, '0.linekey') ?: $linekey)];
+    }
+
+    public function deleteCronJob(string $user, int $linekey): array
+    {
+        return $this->cpanelApi2($user, 'Cron', 'remove_line', ['linekey' => $linekey]);
     }
 
     private function log(string $action, array $request, ?array $response, bool $ok, ?string $error): void
