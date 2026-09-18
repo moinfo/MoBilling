@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, TextInput, Select,
   ActionIcon, Center, Loader, Tooltip, Modal, Button, Alert, SegmentedControl,
+  SimpleGrid,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
@@ -10,12 +11,14 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate } from 'react-router-dom';
 import {
   IconServerBolt, IconSearch, IconExternalLink, IconAlertTriangle, IconPlus,
+  IconServer2, IconCircleCheck, IconCircleDashed, IconAlertOctagon,
 } from '@tabler/icons-react';
 import {
   discoverHostingAccounts, importHostingAccount, getServers, DiscoveredAccount,
 } from '../api/hosting';
 import { getClients } from '../api/clients';
 import { getProductServices } from '../api/productServices';
+import StatCard from '../components/Reports/StatCard';
 
 /**
  * Cross-checks every cPanel account that actually exists on the WHM
@@ -44,6 +47,21 @@ export default function DiscoverHostingAccounts() {
     staleTime: 60_000,
   });
 
+  // Independent of the table's own filter, so the counts stay accurate no
+  // matter which slice ("Not imported" / "Imported") the table is showing.
+  const { data: allData, isLoading: statsLoading } = useQuery({
+    queryKey: ['discover-hosting', 'stats', serverId],
+    queryFn: () => discoverHostingAccounts({ server_id: serverId || undefined }),
+    staleTime: 60_000,
+  });
+  const allRows = allData?.data?.data ?? [];
+  const stats = {
+    total: allRows.length,
+    imported: allRows.filter((r) => r.imported).length,
+    unimported: allRows.filter((r) => !r.imported).length,
+    suspended: allRows.filter((r) => r.suspended).length,
+  };
+
   const rows = data?.data?.data ?? [];
   const errors = data?.data?.errors ?? [];
   const filtered = debouncedSearch
@@ -53,25 +71,27 @@ export default function DiscoverHostingAccounts() {
         || (r.client?.name ?? '').toLowerCase().includes(debouncedSearch.toLowerCase()))
     : rows;
 
-  const unimportedCount = rows.filter((r) => !r.imported).length;
-
   return (
     <Stack gap="md">
-      <Group justify="space-between">
-        <Title order={3}>
-          <Group gap="xs"><IconServerBolt size={22} /> Discover cPanel Accounts</Group>
-        </Title>
-        {!isLoading && (
-          <Badge size="lg" color={unimportedCount > 0 ? 'orange' : 'teal'} variant="light">
-            {unimportedCount} not imported
-          </Badge>
-        )}
-      </Group>
+      <Title order={3}>
+        <Group gap="xs"><IconServerBolt size={22} /> Discover cPanel Accounts</Group>
+      </Title>
 
       <Text size="sm" c="dimmed">
         Every account WHM actually has, matched against what's tracked here — so accounts created
         directly on the server, or missed during import, don't go unbilled.
       </Text>
+
+      <SimpleGrid cols={{ base: 2, sm: 4 }}>
+        <StatCard label="Total Accounts" value={statsLoading ? '—' : stats.total}
+          icon={<IconServer2 size={20} />} color="blue" />
+        <StatCard label="Imported" value={statsLoading ? '—' : stats.imported}
+          icon={<IconCircleCheck size={20} />} color="teal" />
+        <StatCard label="Not Imported" value={statsLoading ? '—' : stats.unimported}
+          icon={<IconCircleDashed size={20} />} color="orange" />
+        <StatCard label="Suspended" value={statsLoading ? '—' : stats.suspended}
+          icon={<IconAlertOctagon size={20} />} color="red" />
+      </SimpleGrid>
 
       {errors.length > 0 && (
         <Alert color="red" variant="light" icon={<IconAlertTriangle size={16} />}>
@@ -109,6 +129,7 @@ export default function DiscoverHostingAccounts() {
             <Table striped highlightOnHover verticalSpacing="xs">
               <Table.Thead>
                 <Table.Tr>
+                  <Table.Th w={48}>#</Table.Th>
                   <Table.Th>cPanel User</Table.Th>
                   <Table.Th>Domain</Table.Th>
                   <Table.Th>Plan</Table.Th>
@@ -119,8 +140,9 @@ export default function DiscoverHostingAccounts() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {filtered.map((r) => (
+                {filtered.map((r, i) => (
                   <Table.Tr key={`${r.server_id}-${r.cpanel_username}`}>
+                    <Table.Td c="dimmed">{i + 1}</Table.Td>
                     <Table.Td fw={500}>{r.cpanel_username}</Table.Td>
                     <Table.Td>{r.domain ?? '—'}</Table.Td>
                     <Table.Td fz="sm" c="dimmed">{r.plan ?? '—'}</Table.Td>
