@@ -197,6 +197,21 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
 
   const ha = d?.hosting_account;
 
+  // A suspended account's reason/date only exist in the server's own
+  // account summary — not something listing the account locally ever
+  // captures. Pull it in automatically the moment we see a suspended
+  // account with nothing cached yet, so staff aren't left needing to know
+  // to press "Refresh usage" before the reason (or the bandwidth-fix
+  // button it gates) shows up at all.
+  useEffect(() => {
+    if (ha && ha.status === 'suspended' && !ha.suspend_reason && !ha.suspend_time) {
+      refreshHostingUsage(ha.id)
+        .then(() => qc.invalidateQueries({ queryKey: ['service-detail', subId] }))
+        .catch(() => {});
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ha?.id, ha?.status]);
+
   // ── module commands ──
   const runModule = async (label: string, fn: () => Promise<any>, confirm = false) => {
     const go = async () => {
