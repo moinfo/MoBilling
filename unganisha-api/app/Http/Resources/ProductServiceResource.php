@@ -22,6 +22,11 @@ class ProductServiceResource extends JsonResource
             'billing_cycle' => $this->billing_cycle,
             'invoice_day_of_month' => $this->invoice_day_of_month,
             'is_active' => $this->is_active,
+            'provisioning_type' => $this->provisioning_type,
+            'server_id' => $this->server_id,
+            'cpanel_package' => $this->cpanel_package,
+            'auto_provision' => $this->auto_provision,
+            'portal_visible' => $this->portal_visible,
             'created_at' => $this->created_at,
         ];
     }

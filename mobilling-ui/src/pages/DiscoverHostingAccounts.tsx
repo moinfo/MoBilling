@@ -269,6 +269,39 @@ function ImportModal({ account, suggestedClient, onClose, onImported }: {
   });
   const products = productsData?.data?.data ?? [];
 
+  // Every product already linked to a WHM package (Product/Service's own
+  // "cPanel Package" field), so this account's WHM plan can be matched the
+  // same deterministic way `auto_provision` picks a package when creating a
+  // NEW account — just run in reverse for an EXISTING one. Unlike the client
+  // match, this can be genuinely ambiguous (several products share one
+  // package name at different legacy prices), so it only pre-selects when
+  // there's exactly one candidate — otherwise it just surfaces them first.
+  const { data: allProductsData } = useQuery({
+    queryKey: ['products-for-plan-match'],
+    queryFn: () => getProductServices({ per_page: 500, active_only: true }),
+    enabled: !!account,
+    staleTime: 60_000,
+  });
+  const planMatches = useMemo(() => {
+    const planKey = account?.plan?.trim().toLowerCase();
+    if (!planKey) return [];
+    return (allProductsData?.data?.data ?? []).filter(
+      (p: any) => (p.cpanel_package ?? '').trim().toLowerCase() === planKey
+    );
+  }, [allProductsData, account]);
+  const productOptions = [
+    ...(planMatches.length > 0 ? [{
+      group: `Matches WHM plan (${account?.plan})`,
+      items: planMatches.map((p: any) => ({ value: p.id, label: `${p.name} — ${p.price}` })),
+    }] : []),
+    {
+      group: planMatches.length > 0 ? 'All products' : 'Products',
+      items: products
+        .filter((p: any) => !planMatches.some((m: any) => m.id === p.id))
+        .map((p: any) => ({ value: p.id, label: `${p.name}${p.price ? ` — ${p.price}` : ''}` })),
+    },
+  ];
+
   const form = useForm({
     initialValues: { client_id: '', product_service_id: '' },
     validate: {
@@ -283,6 +316,16 @@ function ImportModal({ account, suggestedClient, onClose, onImported }: {
     if (account) form.setFieldValue('client_id', suggestedClient?.id ?? '');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [account, suggestedClient]);
+
+  // Same idea for the product/plan — but only when the WHM package name
+  // resolves to exactly one product, since several can share a package at
+  // different legacy prices and guessing wrong there is a billing mistake.
+  useEffect(() => {
+    if (account) {
+      form.setFieldValue('product_service_id', planMatches.length === 1 ? planMatches[0].id : '');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, planMatches.length === 1 ? planMatches[0]?.id : null]);
 
   const mutation = useMutation({
     mutationFn: () => importHostingAccount({
@@ -332,9 +375,21 @@ function ImportModal({ account, suggestedClient, onClose, onImported }: {
               error={form.errors.client_id}
               filter={({ options }) => options}
             />
+            {planMatches.length === 1 && (
+              <Alert color="violet" variant="light" icon={<IconBulb size={16} />}>
+                Matched by WHM package ({account.plan}) to: <strong>{planMatches[0].name} — {planMatches[0].price}</strong>.
+                Pre-selected below — change it if that's wrong.
+              </Alert>
+            )}
+            {planMatches.length > 1 && (
+              <Alert color="yellow" variant="light" icon={<IconBulb size={16} />}>
+                {planMatches.length} products match this WHM package ({account.plan}) at different prices —
+                shown at the top of the list. Pick the one at the right price.
+              </Alert>
+            )}
             <Select
               label="Product / Plan" placeholder="Search products…" required searchable
-              data={products.map((p: any) => ({ value: p.id, label: `${p.name}${p.price ? ` — ${p.price}` : ''}` }))}
+              data={productOptions}
               searchValue={productSearch} onSearchChange={setProductSearch}
               value={form.values.product_service_id} onChange={(v) => form.setFieldValue('product_service_id', v ?? '')}
               error={form.errors.product_service_id}
