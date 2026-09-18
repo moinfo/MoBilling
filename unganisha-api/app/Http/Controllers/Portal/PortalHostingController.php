@@ -130,6 +130,36 @@ class PortalHostingController extends Controller
         }
     }
 
+    /**
+     * This account's own subdomains and addon domains — WHM's
+     * get_domain_info is server-wide (same call the staff Subdomains page
+     * uses), filtered here to just this one cPanel account's rows.
+     */
+    public function subdomains(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $domains = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->listDomains();
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        $rows = collect($domains)
+            ->filter(fn ($d) => in_array($d['domain_type'] ?? null, ['sub', 'addon'], true)
+                && strcasecmp((string) ($d['user'] ?? ''), $hostingAccount->cpanel_username) === 0)
+            ->map(fn ($d) => [
+                'type'          => $d['domain_type'],
+                'domain'        => $d['domain'] ?? null,
+                'parent_domain' => $d['parent_domain'] ?? null,
+            ])
+            ->values();
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** One-time cPanel/Webmail login URL. Portal admins only — SSO grants full hosting control. */
     public function sso(Request $request, HostingAccount $hostingAccount)
     {

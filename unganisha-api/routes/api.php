@@ -1039,6 +1039,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/hosting/{hostingAccount}/sso', [\App\Http\Controllers\Portal\PortalHostingController::class, 'sso']);
     Route::get('/hosting/{hostingAccount}', [\App\Http\Controllers\Portal\PortalHostingController::class, 'show']);
     Route::post('/hosting/{hostingAccount}/refresh-usage', [\App\Http\Controllers\Portal\PortalHostingController::class, 'refreshUsage']);
+    Route::get('/hosting/{hostingAccount}/subdomains', [\App\Http\Controllers\Portal\PortalHostingController::class, 'subdomains']);
     Route::post('/hosting/{hostingAccount}/change-password', [\App\Http\Controllers\Portal\PortalHostingController::class, 'changePassword']);
     Route::post('/hosting/{hostingAccount}/request-cancellation', [\App\Http\Controllers\Portal\PortalHostingController::class, 'requestCancellation']);
     Route::get('/hosting/{hostingAccount}/upgrade-options', [\App\Http\Controllers\Portal\PortalHostingController::class, 'upgradeOptions']);

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   Badge, Divider, Modal, PasswordInput, Textarea, Radio, RingProgress,
-  SimpleGrid, UnstyledButton, Anchor, Alert,
+  SimpleGrid, UnstyledButton, Anchor, Alert, Table,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -17,6 +17,7 @@ import {
   getPortalHostingDetail, portalHostingSso, refreshPortalHostingUsage,
   changePortalHostingPassword, requestPortalHostingCancellation,
   getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow,
+  getPortalHostingSubdomains,
 } from '../../api/portal';
 import { Tooltip } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
@@ -67,6 +68,13 @@ export default function PortalServiceDetails() {
     enabled: !!id,
   });
   const d = data?.data?.data;
+
+  const { data: subdomainsData, isLoading: subdomainsLoading } = useQuery({
+    queryKey: ['portal-hosting-subdomains', id],
+    queryFn: () => getPortalHostingSubdomains(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const subdomains = subdomainsData?.data?.data ?? [];
 
   const refreshMutation = useMutation({
     mutationFn: () => refreshPortalHostingUsage(id!),
@@ -239,6 +247,41 @@ export default function PortalServiceDetails() {
           </Paper>
         </Grid.Col>
       </Grid>
+
+      {/* Subdomains & addon domains */}
+      {d.status === 'active' && (
+        <Paper withBorder radius="md" p="lg">
+          <Text fw={700} mb="md">Subdomains &amp; Addon Domains</Text>
+          {subdomainsLoading ? (
+            <Text size="sm" c="dimmed">Loading…</Text>
+          ) : subdomains.length === 0 ? (
+            <Text size="sm" c="dimmed">No subdomains or addon domains yet.</Text>
+          ) : (
+            <Table.ScrollContainer minWidth={400}>
+              <Table verticalSpacing="xs" fz="sm">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Type</Table.Th>
+                    <Table.Th>Domain</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {subdomains.map((s) => (
+                    <Table.Tr key={s.domain}>
+                      <Table.Td>
+                        <Badge size="sm" variant="light" color={s.type === 'addon' ? 'grape' : 'blue'}>
+                          {s.type === 'addon' ? 'Addon' : 'Sub'}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{s.domain}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+        </Paper>
+      )}
 
       {/* Quick shortcuts */}
       {isPortalAdmin && d.status === 'active' && (

@@ -219,6 +219,14 @@ export interface PortalHostingDetail {
 export const getPortalHostingDetail = (id: string) =>
   api.get<{ data: PortalHostingDetail }>(`/portal/hosting/${id}`);
 
+export interface PortalSubdomain {
+  type: 'sub' | 'addon';
+  domain: string | null;
+  parent_domain: string | null;
+}
+export const getPortalHostingSubdomains = (id: string) =>
+  api.get<{ data: PortalSubdomain[] }>(`/portal/hosting/${id}/subdomains`);
+
 export const refreshPortalHostingUsage = (id: string) =>
   api.post<{ data: { disk_used: string | null; disk_limit: string | null; last_synced_at: string } }>(`/portal/hosting/${id}/refresh-usage`);
 
