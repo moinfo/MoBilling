@@ -274,6 +274,23 @@ export const getPhpVersions = (params: { server_id: string; cpanel_username: str
 export const updatePhpVersion = (data: { server_id: string; cpanel_username: string; vhost: string; version: string }) =>
   api.put<{ message: string }>('/hosting-accounts/php-versions', data);
 
+export interface FtpAccountRow {
+  user: string;
+  homedir: string;
+  type: 'main' | 'sub';
+}
+export const getFtpAccounts = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: FtpAccountRow[] }>('/hosting-accounts/ftp-accounts', { params });
+
+export const addFtpAccount = (data: { server_id: string; cpanel_username: string; user: string; password: string; homedir: string; quota_mb: number }) =>
+  api.post<{ message: string }>('/hosting-accounts/ftp-accounts', data);
+
+export const updateFtpAccountPassword = (data: { server_id: string; cpanel_username: string; user: string; password: string }) =>
+  api.put<{ message: string }>('/hosting-accounts/ftp-accounts/password', data);
+
+export const deleteFtpAccount = (data: { server_id: string; cpanel_username: string; user: string; destroy_files?: boolean }) =>
+  api.delete<{ message: string }>('/hosting-accounts/ftp-accounts', { data });
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

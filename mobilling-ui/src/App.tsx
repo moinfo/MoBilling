@@ -92,6 +92,7 @@ import ServerHealth from './pages/ServerHealth';
 import DnsZone from './pages/DnsZone';
 import CronJobs from './pages/CronJobs';
 import PhpVersions from './pages/PhpVersions';
+import FtpAccounts from './pages/FtpAccounts';
 import SslExpiry from './pages/SslExpiry';
 import ServiceManagement from './pages/ServiceManagement';
 import Domains from './pages/Domains';
@@ -316,6 +317,7 @@ export default function App() {
                   <Route path="/hosting/dns-zone" element={<DnsZone />} />
                   <Route path="/hosting/cron-jobs" element={<CronJobs />} />
                   <Route path="/hosting/php-versions" element={<PhpVersions />} />
+                  <Route path="/hosting/ftp-accounts" element={<FtpAccounts />} />
                   <Route path="/domains/ssl-expiry" element={<SslExpiry />} />
                   <Route path="/hosting/services" element={<ServiceManagement />} />
                   <Route path="/domains" element={<Domains />} />

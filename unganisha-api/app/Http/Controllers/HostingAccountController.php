@@ -763,6 +763,95 @@ class HostingAccountController extends Controller
         return response()->json(['message' => 'PHP version updated.']);
     }
 
+    /** One account's FTP accounts — WhmService::ftpAccounts() (cPanel UAPI's Ftp::list_ftp). */
+    public function ftpAccounts(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $rows = (new WhmService($server))->ftpAccounts($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $rows]);
+    }
+
+    public function storeFtpAccount(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'user'            => 'required|string|max:64|regex:/^[a-zA-Z0-9_.-]+$/',
+            'password'        => 'required|string|min:8|max:255',
+            'homedir'         => 'required|string|max:255',
+            'quota_mb'        => 'required|integer|min:0',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->addFtpAccount($data['cpanel_username'], $data['user'], $data['password'], $data['homedir'], $data['quota_mb']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'FTP account created.']);
+    }
+
+    public function updateFtpAccountPassword(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'user'            => 'required|string|max:255',
+            'password'        => 'required|string|min:8|max:255',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->changeFtpPassword($data['cpanel_username'], $data['user'], $data['password']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'FTP password changed.']);
+    }
+
+    public function destroyFtpAccount(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'user'            => 'required|string|max:255',
+            'destroy_files'   => 'sometimes|boolean',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->deleteFtpAccount($data['cpanel_username'], $data['user'], (bool) ($data['destroy_files'] ?? false));
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the delete: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'FTP account deleted.']);
+    }
+
     /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row

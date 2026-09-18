@@ -678,6 +678,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.change_package')->delete('/hosting-accounts/cron-jobs', [\App\Http\Controllers\HostingAccountController::class, 'destroyCronJob']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/php-versions', [\App\Http\Controllers\HostingAccountController::class, 'phpVersions']);
     Route::middleware('permission:hosting.change_package')->put('/hosting-accounts/php-versions', [\App\Http\Controllers\HostingAccountController::class, 'updatePhpVersion']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/ftp-accounts', [\App\Http\Controllers\HostingAccountController::class, 'ftpAccounts']);
+    Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/ftp-accounts', [\App\Http\Controllers\HostingAccountController::class, 'storeFtpAccount']);
+    Route::middleware('permission:hosting.change_package')->put('/hosting-accounts/ftp-accounts/password', [\App\Http\Controllers\HostingAccountController::class, 'updateFtpAccountPassword']);
+    Route::middleware('permission:hosting.terminate')->delete('/hosting-accounts/ftp-accounts', [\App\Http\Controllers\HostingAccountController::class, 'destroyFtpAccount']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);

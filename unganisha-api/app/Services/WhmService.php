@@ -307,6 +307,45 @@ class WhmService
     }
 
     /**
+     * One account's FTP accounts (Ftp::list_ftp) — excludes the
+     * `logaccess` row list_ftp always includes (an internal domlogs
+     * entry, not a real user-manageable FTP login), verified live.
+     */
+    public function ftpAccounts(string $user): array
+    {
+        $rows = $this->cpanelApi($user, 'Ftp', 'list_ftp');
+        return array_values(array_filter($rows, fn ($r) => ($r['type'] ?? null) !== 'logaccess'));
+    }
+
+    /**
+     * Creates an FTP account. $homedir is relative to the cPanel account's
+     * home directory (e.g. "public_html/uploads"). cPanel enforces its own
+     * password-strength minimum (rejects anything scoring under ~95) —
+     * verified live, surfaces as a normal WhmApiException with that
+     * message. A sub-account's login comes back as "user@domain" (cPanel
+     * appends the primary domain itself) — verified live, so the caller
+     * must re-list rather than assume the plain $user is the final login.
+     */
+    public function addFtpAccount(string $user, string $ftpUser, string $password, string $homedir, int $quotaMb): array
+    {
+        return $this->cpanelApi($user, 'Ftp', 'add_ftp', [
+            'user' => $ftpUser, 'pass' => $password, 'homedir' => $homedir, 'quota' => $quotaMb,
+        ], sensitiveKeys: ['pass']);
+    }
+
+    /** $ftpUser is the full login as list_ftp reports it (e.g. "name@domain.tld" for a sub-account). */
+    public function changeFtpPassword(string $user, string $ftpUser, string $password): array
+    {
+        return $this->cpanelApi($user, 'Ftp', 'passwd', ['user' => $ftpUser, 'pass' => $password], sensitiveKeys: ['pass']);
+    }
+
+    /** $destroy also deletes the account's files, not just its FTP login — off by default. */
+    public function deleteFtpAccount(string $user, string $ftpUser, bool $destroy = false): array
+    {
+        return $this->cpanelApi($user, 'Ftp', 'delete_ftp', ['user' => $ftpUser, 'destroy' => $destroy ? 1 : 0]);
+    }
+
+    /**
      * One account's domains/subdomains with their current PHP version
      * (LangPHP::php_get_vhost_versions) — a UAPI-level, per-account call,
      * unlike the WHM-level php_get_vhost_versions/php_set_vhost_versions
