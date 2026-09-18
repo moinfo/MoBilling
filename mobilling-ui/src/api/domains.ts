@@ -251,3 +251,15 @@ export const updateDomainTld = (id: string, data: Partial<DomainTldRow>) =>
 
 export const deleteDomainTld = (id: string) =>
   api.delete(`/domain-tlds/${id}`);
+
+export interface SslExpiryRow {
+  id: string;
+  name: string;
+  client: { id: string; name: string } | null;
+  ssl_valid: boolean;
+  ssl_expires_at: string | null;
+  ssl_issuer: string | null;
+  days_left: number | null;
+}
+export const getSslExpiry = (params?: { search?: string; invalid_only?: 0 | 1 }) =>
+  api.get<{ data: SslExpiryRow[] }>('/domains/ssl-expiry', { params });

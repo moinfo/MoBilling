@@ -147,6 +147,18 @@ export interface DiskUsageRow {
 export const getDiskUsage = (params?: { server_id?: string; search?: string }) =>
   api.get<{ data: DiskUsageRow[]; errors: string[] }>('/hosting-accounts/disk-usage', { params });
 
+export interface BackupStatusRow {
+  server_id: string;
+  server_name: string;
+  cpanel_username: string;
+  domain: string | null;
+  backup_enabled: boolean;
+  backup_exists: boolean;
+  client: { id: string; name: string } | null;
+}
+export const getBackupStatus = (params?: { server_id?: string; search?: string }) =>
+  api.get<{ data: BackupStatusRow[]; errors: string[] }>('/hosting-accounts/backup-status', { params });
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

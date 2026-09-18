@@ -340,6 +340,78 @@ class HostingAccountController extends Controller
     }
 
     /**
+     * Backup status for every cPanel account — listaccts carries two
+     * distinct flags: `backup` (the setting is turned on) and `has_backup`
+     * (a backup file actually exists). Verified live they genuinely
+     * diverge — some accounts have the setting on with no backup on disk
+     * yet, which is the exact risk this view exists to surface. Sorted
+     * worst-first: no backup and no setting, then setting-on-but-missing,
+     * then everyone else.
+     */
+    public function backupStatus(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $accounts = (new WhmService($server))->listAccounts();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($accounts as $a) {
+                $username = (string) ($a['user'] ?? '');
+                if ($username === '') {
+                    continue;
+                }
+                $local = $known->get($server->id . '|' . strtolower($username));
+
+                $rows[] = [
+                    'server_id'          => $server->id,
+                    'server_name'        => $server->name,
+                    'cpanel_username'    => $username,
+                    'domain'             => $a['domain'] ?? null,
+                    'backup_enabled'     => (bool) ($a['backup'] ?? false),
+                    'backup_exists'      => (bool) ($a['has_backup'] ?? false),
+                    'client'             => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                ];
+            }
+        }
+
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) $r['domain']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+
+        // Worst first: neither enabled nor existing, then missing despite
+        // being enabled, then the rest.
+        $risk = fn ($r) => !$r['backup_enabled'] && !$r['backup_exists'] ? 0
+            : ($r['backup_enabled'] && !$r['backup_exists'] ? 1 : 2);
+        usort($rows, fn ($a, $b) => $risk($a) <=> $risk($b));
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row
      * pointing at it. No WHM call — the account already exists on the server.

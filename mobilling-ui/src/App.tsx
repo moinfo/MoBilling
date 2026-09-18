@@ -84,6 +84,8 @@ import DiscoverHostingAccounts from './pages/DiscoverHostingAccounts';
 import Subdomains from './pages/Subdomains';
 import BandwidthUsage from './pages/BandwidthUsage';
 import DiskUsage from './pages/DiskUsage';
+import BackupStatus from './pages/BackupStatus';
+import SslExpiry from './pages/SslExpiry';
 import ServiceManagement from './pages/ServiceManagement';
 import Domains from './pages/Domains';
 import DomainDetails from './pages/DomainDetails';
@@ -299,6 +301,8 @@ export default function App() {
                   <Route path="/hosting/subdomains" element={<Subdomains />} />
                   <Route path="/hosting/bandwidth" element={<BandwidthUsage />} />
                   <Route path="/hosting/disk-usage" element={<DiskUsage />} />
+                  <Route path="/hosting/backup-status" element={<BackupStatus />} />
+                  <Route path="/domains/ssl-expiry" element={<SslExpiry />} />
                   <Route path="/hosting/services" element={<ServiceManagement />} />
                   <Route path="/domains" element={<Domains />} />
                   <Route path="/domains/:id" element={<DomainDetails />} />

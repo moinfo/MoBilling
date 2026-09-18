@@ -660,6 +660,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/subdomains', [\App\Http\Controllers\HostingAccountController::class, 'subdomains']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/bandwidth-usage', [\App\Http\Controllers\HostingAccountController::class, 'bandwidthUsage']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/disk-usage', [\App\Http\Controllers\HostingAccountController::class, 'diskUsage']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/backup-status', [\App\Http\Controllers\HostingAccountController::class, 'backupStatus']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);
@@ -689,6 +690,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/domains/whois',            [\App\Http\Controllers\DomainController::class, 'whois']);
         Route::get('/domains/stats',            [\App\Http\Controllers\DomainController::class, 'stats']);
         Route::get('/domains/registrar-credit', [\App\Http\Controllers\DomainController::class, 'registrarCredit']);
+        Route::get('/domains/ssl-expiry',       [\App\Http\Controllers\DomainController::class, 'sslExpiry']);
         Route::get('/registrar-credit-transfers', [\App\Http\Controllers\RegistrarCreditTransferController::class, 'index']);
         Route::get('/domains',                  [\App\Http\Controllers\DomainController::class, 'index']);
         Route::get('/domains/{domain}',         [\App\Http\Controllers\DomainController::class, 'show']);
