@@ -33,6 +33,11 @@ class ProductService extends Model
         return $this->belongsTo(Server::class);
     }
 
+    public function subscriptions()
+    {
+        return $this->hasMany(ClientSubscription::class);
+    }
+
     public function addons()
     {
         return $this->belongsToMany(

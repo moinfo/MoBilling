@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreProductServiceRequest;
 use App\Http\Resources\ProductServiceResource;
+use App\Models\ClientSubscription;
 use App\Models\ProductService;
 use Illuminate\Http\Request;
 
@@ -11,7 +12,18 @@ class ProductServiceController extends Controller
 {
     public function index(Request $request)
     {
-        $query = ProductService::query();
+        // Lets staff spot true duplicates (never subscribed) vs. legacy price
+        // variants a real client is still on — see Discover Hosting Accounts'
+        // WHM-package matching, which surfaced how tangled these got in the
+        // WHMCS import.
+        $query = ProductService::query()
+            ->withCount([
+                'subscriptions',
+                'subscriptions as active_subscriptions_count' => fn ($q) => $q->where('status', 'active'),
+            ])
+            ->addSelect(['clients_count' => ClientSubscription::selectRaw('COUNT(DISTINCT client_id)')
+                ->whereColumn('product_service_id', 'product_services.id')
+            ]);
 
         if ($request->has('type')) {
             $query->where('type', $request->type);

@@ -16,6 +16,9 @@ export interface ProductService {
   provisioning_type: 'none' | 'whm_cpanel';
   server_id: string | null;
   cpanel_package: string | null;
+  subscriptions_count?: number;
+  active_subscriptions_count?: number;
+  clients_count?: number;
   auto_provision: boolean;
   portal_visible: boolean;
   created_at: string;

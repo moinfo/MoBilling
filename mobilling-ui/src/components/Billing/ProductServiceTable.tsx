@@ -26,6 +26,7 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
             <Table.Th>Tax %</Table.Th>
             <Table.Th>Unit</Table.Th>
             <Table.Th>WHM</Table.Th>
+            <Table.Th>Used By</Table.Th>
             <Table.Th>Active</Table.Th>
             <Table.Th w={100}>Actions</Table.Th>
           </Table.Tr>
@@ -52,6 +53,17 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
                 </Tooltip>
               ) : (
                 <Text size="xs" c="dimmed">—</Text>
+              )}
+            </Table.Td>
+            <Table.Td>
+              {item.clients_count ? (
+                <Tooltip label={`${item.subscriptions_count} subscription(s) total, ${item.active_subscriptions_count} currently active`}>
+                  <Badge size="sm" variant="light" color={item.active_subscriptions_count ? 'teal' : 'gray'}>
+                    {item.clients_count} client{item.clients_count === 1 ? '' : 's'}
+                  </Badge>
+                </Tooltip>
+              ) : (
+                <Text size="xs" c="dimmed">Unused</Text>
               )}
             </Table.Td>
             <Table.Td><Switch checked={item.is_active} readOnly size="xs" /></Table.Td>
