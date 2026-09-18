@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\ClientSubscription;
 use App\Models\CronLog;
+use App\Models\Domain;
 use App\Models\HostingAccount;
 use App\Models\ProductService;
 use App\Models\Server;
@@ -28,6 +29,12 @@ use Illuminate\Console\Command;
  * "Permission denied" — verified live), so this on-demand trigger is the
  * only lever available, and it's driven by staleness rather than a fixed
  * day so a missed run just catches up next time.
+ *
+ * Backing up a hosting account whose domain has actually lapsed would
+ * just waste disk on a dead site, so a matching `domains` row (by name,
+ * same tenant) is also required to be active/unexpired before triggering
+ * — a subscription's own `active` status isn't enough on its own, since
+ * it's staff-set and can drift from the domain's real registration state.
  */
 class GeneratePaidBackups extends Command
 {
@@ -43,6 +50,7 @@ class GeneratePaidBackups extends Command
         $triggered = 0;
         $skippedFresh = 0;
         $skippedNoAccount = 0;
+        $skippedExpiredDomain = 0;
         $errors = 0;
 
         $productIds = ProductService::withoutGlobalScopes()
@@ -51,7 +59,7 @@ class GeneratePaidBackups extends Command
 
         if ($productIds->isEmpty()) {
             $this->info('No "Backup" category products found.');
-            $this->logResult($startedAt, 0, 0, 0, 0, 'success');
+            $this->logResult($startedAt, 0, 0, 0, 0, 0, 'success');
             return self::SUCCESS;
         }
 
@@ -70,6 +78,19 @@ class GeneratePaidBackups extends Command
 
             if (!$account || $account->status !== 'active' || !$account->cpanel_username) {
                 $skippedNoAccount++;
+                continue;
+            }
+
+            $domain = Domain::withoutGlobalScopes()
+                ->where('tenant_id', $subscription->tenant_id)
+                ->where('name', $subscription->label)
+                ->first();
+
+            $domainExpired = $domain && ($domain->status !== 'active' || ($domain->expires_at && $domain->expires_at->isPast()));
+
+            if ($domainExpired) {
+                $skippedExpiredDomain++;
+                $this->line("Skipped (domain not active/expired): {$account->domain}");
                 continue;
             }
 
@@ -102,19 +123,19 @@ class GeneratePaidBackups extends Command
             }
         }
 
-        $this->info("Done. Triggered: {$triggered}, already fresh: {$skippedFresh}, no account: {$skippedNoAccount}, errors: {$errors}");
-        $this->logResult($startedAt, $triggered, $skippedFresh, $skippedNoAccount, $errors, $errors > 0 ? 'failed' : 'success');
+        $this->info("Done. Triggered: {$triggered}, already fresh: {$skippedFresh}, no account: {$skippedNoAccount}, expired domain: {$skippedExpiredDomain}, errors: {$errors}");
+        $this->logResult($startedAt, $triggered, $skippedFresh, $skippedNoAccount, $skippedExpiredDomain, $errors, $errors > 0 ? 'failed' : 'success');
 
         return self::SUCCESS;
     }
 
-    private function logResult($startedAt, int $triggered, int $skippedFresh, int $skippedNoAccount, int $errors, string $status): void
+    private function logResult($startedAt, int $triggered, int $skippedFresh, int $skippedNoAccount, int $skippedExpiredDomain, int $errors, string $status): void
     {
         CronLog::create([
             'tenant_id' => null,
             'command' => $this->signature,
-            'description' => "Triggered {$triggered} backups, {$skippedFresh} already fresh, {$skippedNoAccount} without a matching account, {$errors} errors",
-            'results' => compact('triggered', 'skippedFresh', 'skippedNoAccount', 'errors'),
+            'description' => "Triggered {$triggered} backups, {$skippedFresh} already fresh, {$skippedNoAccount} without a matching account, {$skippedExpiredDomain} with an expired domain, {$errors} errors",
+            'results' => compact('triggered', 'skippedFresh', 'skippedNoAccount', 'skippedExpiredDomain', 'errors'),
             'status' => $status,
             'started_at' => $startedAt,
             'finished_at' => now(),
