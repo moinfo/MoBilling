@@ -75,6 +75,14 @@ export interface ServerPackageDetails {
 export const getServerPackagesDetailed = (id: string) =>
   api.get<{ data: ServerPackageDetails[] }>(`/servers/${id}/packages-detailed`);
 
+export interface ServerHealth {
+  hostname: string | null;
+  whm_version: string | null;
+  load_avg: { one: number | null; five: number | null; fifteen: number | null };
+}
+export const getServerHealth = (id: string) =>
+  api.get<{ data: ServerHealth }>(`/servers/${id}/health`);
+
 // Hosting accounts
 export const getHostingAccounts = (params?: Record<string, string>) =>
   api.get('/hosting-accounts', { params });

@@ -175,6 +175,29 @@ class WhmService
 
     // ── Read-only ──────────────────────────────────────────────────────────────
 
+    /**
+     * Server-level vitals: hostname, WHM version, and 1/5/15-minute load
+     * average. Three separate WHM calls (no combined endpoint exists) —
+     * `listips` would round this out but the API token here gets
+     * "Permission denied" on it (a reseller-level privilege gap, not a bug),
+     * so it's deliberately left out rather than shown broken.
+     */
+    public function serverHealth(): array
+    {
+        return [
+            'hostname' => data_get($this->call('gethostname'), 'data.hostname'),
+            'whm_version' => data_get($this->call('version'), 'data.version'),
+            'load_avg' => (function () {
+                $d = data_get($this->call('systemloadavg'), 'data', []);
+                return [
+                    'one' => isset($d['one']) ? (float) $d['one'] : null,
+                    'five' => isset($d['five']) ? (float) $d['five'] : null,
+                    'fifteen' => isset($d['fifteen']) ? (float) $d['fifteen'] : null,
+                ];
+            })(),
+        ];
+    }
+
     /** @return string[] package names */
     public function listPackages(): array
     {

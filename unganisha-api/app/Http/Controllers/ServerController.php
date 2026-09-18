@@ -79,6 +79,16 @@ class ServerController extends Controller
         }
     }
 
+    /** GET server vitals: hostname, WHM version, load average. */
+    public function health(Server $server)
+    {
+        try {
+            return response()->json(['data' => (new WhmService($server))->serverHealth()]);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+    }
+
     private function validated(Request $request, bool $updating = false): array
     {
         $required = $updating ? 'sometimes' : 'required';

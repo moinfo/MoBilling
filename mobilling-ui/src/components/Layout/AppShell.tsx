@@ -37,7 +37,7 @@ export default function AppLayout() {
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
   const hrPaths = ['/staff-reports', '/attendance', '/work-locations', '/staff-targets', '/leave', '/payroll'];
-  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/hosting/subdomains', '/hosting/bandwidth', '/hosting/disk-usage', '/hosting/backup-status', '/hosting/email-accounts', '/hosting/mysql-databases', '/hosting/packages', '/domains', '/domains/ssl-expiry'];
+  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/hosting/subdomains', '/hosting/bandwidth', '/hosting/disk-usage', '/hosting/backup-status', '/hosting/email-accounts', '/hosting/mysql-databases', '/hosting/packages', '/hosting/health', '/domains', '/domains/ssl-expiry'];
   const supportPaths = ['/tickets', '/canned-replies', '/knowledgebase'];
   const engagementPaths = ['/satisfaction-calls', '/appointments', '/whatsapp-contacts', '/field-marketing', '/social-media', '/served-customers'];
   const recordsPaths = ['/system-records', '/system-record-expenses', '/my-verifications'];
@@ -120,6 +120,7 @@ export default function AppLayout() {
     { label: 'Hosting — Email Accounts', path: '/hosting/email-accounts', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — MySQL Databases', path: '/hosting/mysql-databases', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Packages', path: '/hosting/packages', group: 'Web Services', visible: can('hosting.settings') },
+    { label: 'Hosting — Server Health', path: '/hosting/health', group: 'Web Services', visible: can('hosting.settings') },
     { label: 'Domains — SSL Certificates Expiry', path: '/domains/ssl-expiry', group: 'Web Services', visible: can('menu.domains') },
     { label: 'Domains', path: '/domains', group: 'Web Services', visible: can('menu.domains') },
     { label: 'Support Tickets', path: '/tickets', group: 'Support', visible: can('menu.tickets') },
@@ -358,6 +359,10 @@ export default function AppLayout() {
                   {can('hosting.settings') && (
                     <NavLink label="Packages" active={location.pathname === '/hosting/packages'}
                       onClick={() => navigateAndClose('/hosting/packages')} />
+                  )}
+                  {can('hosting.settings') && (
+                    <NavLink label="Server Health" active={location.pathname === '/hosting/health'}
+                      onClick={() => navigateAndClose('/hosting/health')} />
                   )}
                 </NavLink>
               )}
