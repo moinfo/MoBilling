@@ -1049,6 +1049,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'renew']);
     Route::post('/domains/{domain}/epp-code', [\App\Http\Controllers\Portal\PortalDomainController::class, 'eppCode']);
     Route::get('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'nameservers']);
+    Route::get('/domains/{domain}/dns-zone', [\App\Http\Controllers\Portal\PortalDomainController::class, 'dnsZone']);
     Route::put('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'updateNameservers']);
     Route::put('/domains/{domain}/auto-renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'setAutoRenew']);
     Route::get('/reseller/status', [\App\Http\Controllers\Portal\PortalResellerController::class, 'status']);

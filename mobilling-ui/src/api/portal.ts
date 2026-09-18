@@ -312,6 +312,15 @@ export const portalGetEppCode = (id: string) =>
 export const getPortalDomainNameservers = (id: string) =>
   api.get<{ data: { nameservers: string[]; editable: boolean } }>(`/portal/domains/${id}/nameservers`);
 
+export interface PortalDnsRecord {
+  type: string;
+  name: string;
+  ttl: number;
+  data: string[];
+}
+export const getPortalDomainDnsZone = (id: string) =>
+  api.get<{ data: PortalDnsRecord[]; hosted_with_us: boolean }>(`/portal/domains/${id}/dns-zone`);
+
 export const updatePortalDomainNameservers = (id: string, nameservers: string[]) =>
   api.put<{ data: { nameservers: string[] }; message: string }>(`/portal/domains/${id}/nameservers`, { nameservers });
 
