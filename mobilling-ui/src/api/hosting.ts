@@ -90,7 +90,13 @@ export interface DiscoveredAccount {
   plan: string | null;
   disk_used: string | null;
   disk_limit: string | null;
+  ip: string | null;
+  setup_date: string | null;
+  partition: string | null;
+  theme: string | null;
+  owner: string | null;
   suspended: boolean;
+  suspend_reason: string | null;
   hosting_account_id: string | null;
   client: { id: string; name: string } | null;
   imported: boolean;

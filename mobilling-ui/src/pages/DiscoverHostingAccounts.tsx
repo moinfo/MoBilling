@@ -125,16 +125,23 @@ export default function DiscoverHostingAccounts() {
         ) : filtered.length === 0 ? (
           <Center py="xl"><Text c="dimmed">{isFetching ? 'Refreshing…' : 'No accounts found.'}</Text></Center>
         ) : (
-          <Table.ScrollContainer minWidth={820}>
+          <Table.ScrollContainer minWidth={1700}>
             <Table striped highlightOnHover verticalSpacing="xs">
               <Table.Thead>
                 <Table.Tr>
                   <Table.Th w={48}>#</Table.Th>
-                  <Table.Th>cPanel User</Table.Th>
                   <Table.Th>Domain</Table.Th>
-                  <Table.Th>Plan</Table.Th>
-                  <Table.Th>Disk</Table.Th>
-                  <Table.Th>Status</Table.Th>
+                  <Table.Th>IP Address</Table.Th>
+                  <Table.Th>Username</Table.Th>
+                  <Table.Th>Contact Email</Table.Th>
+                  <Table.Th>Setup Date</Table.Th>
+                  <Table.Th>Partition</Table.Th>
+                  <Table.Th>Quota</Table.Th>
+                  <Table.Th>Disk Used</Table.Th>
+                  <Table.Th>Package</Table.Th>
+                  <Table.Th>Theme</Table.Th>
+                  <Table.Th>Reseller/Owner</Table.Th>
+                  <Table.Th>Suspended</Table.Th>
                   <Table.Th>Client</Table.Th>
                   <Table.Th>Action</Table.Th>
                 </Table.Tr>
@@ -143,14 +150,25 @@ export default function DiscoverHostingAccounts() {
                 {filtered.map((r, i) => (
                   <Table.Tr key={`${r.server_id}-${r.cpanel_username}`}>
                     <Table.Td c="dimmed">{i + 1}</Table.Td>
-                    <Table.Td fw={500}>{r.cpanel_username}</Table.Td>
-                    <Table.Td>{r.domain ?? '—'}</Table.Td>
+                    <Table.Td fw={500}>{r.domain ?? '—'}</Table.Td>
+                    <Table.Td fz="sm" c="dimmed">{r.ip ?? '—'}</Table.Td>
+                    <Table.Td>{r.cpanel_username}</Table.Td>
+                    <Table.Td fz="sm" c="dimmed">{r.email ?? '—'}</Table.Td>
+                    <Table.Td fz="sm" c="dimmed">{r.setup_date ?? '—'}</Table.Td>
+                    <Table.Td fz="sm" c="dimmed">{r.partition ?? '—'}</Table.Td>
+                    <Table.Td fz="sm" c="dimmed">{r.disk_limit ?? '—'}</Table.Td>
+                    <Table.Td fz="sm" c="dimmed">{r.disk_used ?? '—'}</Table.Td>
                     <Table.Td fz="sm" c="dimmed">{r.plan ?? '—'}</Table.Td>
-                    <Table.Td fz="sm" c="dimmed">{r.disk_used ?? '—'} / {r.disk_limit ?? '—'}</Table.Td>
+                    <Table.Td fz="sm" c="dimmed">{r.theme ?? '—'}</Table.Td>
+                    <Table.Td fz="sm" c="dimmed">{r.owner ?? '—'}</Table.Td>
                     <Table.Td>
-                      <Badge size="sm" variant="light" color={r.suspended ? 'orange' : 'teal'}>
-                        {r.suspended ? 'Suspended' : 'Active'}
-                      </Badge>
+                      {r.suspended ? (
+                        <Badge size="sm" variant="light" color="orange">
+                          {r.suspend_reason || 'Suspended'}
+                        </Badge>
+                      ) : (
+                        <Text size="sm" c="dimmed">—</Text>
+                      )}
                     </Table.Td>
                     <Table.Td>
                       {r.client ? (

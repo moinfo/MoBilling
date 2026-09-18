@@ -57,6 +57,12 @@ class HostingAccountController extends Controller
                 }
                 $local = $known->get($server->id . '|' . strtolower($username));
 
+                $suspended = (bool) ($acct['suspended'] ?? false);
+                $suspendReason = $acct['suspendreason'] ?? null;
+                if ($suspendReason !== null && strcasecmp(trim($suspendReason), 'not suspended') === 0) {
+                    $suspendReason = null;
+                }
+
                 $rows[] = [
                     'server_id'          => $server->id,
                     'server_name'        => $server->name,
@@ -66,7 +72,18 @@ class HostingAccountController extends Controller
                     'plan'               => $acct['plan'] ?? null,
                     'disk_used'          => $acct['diskused'] ?? null,
                     'disk_limit'         => $acct['disklimit'] ?? null,
-                    'suspended'          => (bool) ($acct['suspended'] ?? false),
+                    'ip'                 => $acct['ip'] ?? null,
+                    'setup_date'         => isset($acct['unix_startdate']) && $acct['unix_startdate']
+                        ? \Carbon\Carbon::createFromTimestamp((int) $acct['unix_startdate'])->format('Y-m-d H:i')
+                        : ($acct['startdate'] ?? null),
+                    'partition'          => $acct['partition'] ?? null,
+                    'theme'              => $acct['theme'] ?? null,
+                    'owner'              => $acct['owner'] ?? null,
+                    'suspended'          => $suspended,
+                    // Only meaningful when actually suspended — WHM's own
+                    // "not suspended" sentinel string is normalized to null
+                    // above so the frontend can just check truthiness.
+                    'suspend_reason'     => $suspended ? $suspendReason : null,
                     'hosting_account_id' => $local?->id,
                     'client'             => $local?->subscription?->client
                         ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
