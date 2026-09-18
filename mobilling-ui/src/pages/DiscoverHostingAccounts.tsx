@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, TextInput, Select,
   ActionIcon, Center, Loader, Tooltip, Modal, Button, Alert, SegmentedControl,
@@ -34,7 +34,7 @@ export default function DiscoverHostingAccounts() {
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [serverId, setServerId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'unimported' | 'imported'>('unimported');
+  const [filter, setFilter] = useState<'all' | 'unimported' | 'imported' | 'suspended'>('unimported');
   const [importing, setImporting] = useState<DiscoveredAccount | null>(null);
 
   const { data: serversData } = useQuery({ queryKey: ['servers-for-discover'], queryFn: getServers });
@@ -44,7 +44,8 @@ export default function DiscoverHostingAccounts() {
     queryKey: ['discover-hosting', serverId, filter],
     queryFn: () => discoverHostingAccounts({
       server_id: serverId || undefined,
-      imported: filter === 'all' ? undefined : filter === 'imported' ? 1 : 0,
+      imported: filter === 'imported' ? 1 : filter === 'unimported' ? 0 : undefined,
+      suspended: filter === 'suspended' ? 1 : undefined,
     }),
     staleTime: 60_000,
   });
@@ -103,14 +104,22 @@ export default function DiscoverHostingAccounts() {
       </Text>
 
       <SimpleGrid cols={{ base: 2, sm: 4 }}>
-        <StatCard label="Total Accounts" value={statsLoading ? '—' : stats.total}
-          icon={<IconServer2 size={20} />} color="blue" />
-        <StatCard label="Imported" value={statsLoading ? '—' : stats.imported}
-          icon={<IconCircleCheck size={20} />} color="teal" />
-        <StatCard label="Not Imported" value={statsLoading ? '—' : stats.unimported}
-          icon={<IconCircleDashed size={20} />} color="orange" />
-        <StatCard label="Suspended" value={statsLoading ? '—' : stats.suspended}
-          icon={<IconAlertOctagon size={20} />} color="red" />
+        <ClickableStat active={filter === 'all'} onClick={() => setFilter('all')}>
+          <StatCard label="Total Accounts" value={statsLoading ? '—' : stats.total}
+            icon={<IconServer2 size={20} />} color="blue" />
+        </ClickableStat>
+        <ClickableStat active={filter === 'imported'} onClick={() => setFilter('imported')}>
+          <StatCard label="Imported" value={statsLoading ? '—' : stats.imported}
+            icon={<IconCircleCheck size={20} />} color="teal" />
+        </ClickableStat>
+        <ClickableStat active={filter === 'unimported'} onClick={() => setFilter('unimported')}>
+          <StatCard label="Not Imported" value={statsLoading ? '—' : stats.unimported}
+            icon={<IconCircleDashed size={20} />} color="orange" />
+        </ClickableStat>
+        <ClickableStat active={filter === 'suspended'} onClick={() => setFilter('suspended')}>
+          <StatCard label="Suspended" value={statsLoading ? '—' : stats.suspended}
+            icon={<IconAlertOctagon size={20} />} color="red" />
+        </ClickableStat>
       </SimpleGrid>
 
       {errors.length > 0 && (
@@ -134,6 +143,7 @@ export default function DiscoverHostingAccounts() {
             data={[
               { value: 'unimported', label: 'Not imported' },
               { value: 'imported', label: 'Imported' },
+              { value: 'suspended', label: 'Suspended' },
               { value: 'all', label: 'All' },
             ]} />
         </Group>
@@ -239,6 +249,21 @@ export default function DiscoverHostingAccounts() {
         onImported={() => qc.invalidateQueries({ queryKey: ['discover-hosting'] })}
       />
     </Stack>
+  );
+}
+
+function ClickableStat({ active, onClick, children }: { active: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <div
+      role="button" tabIndex={0} onClick={onClick} onKeyDown={(e) => e.key === 'Enter' && onClick()}
+      style={{
+        cursor: 'pointer', borderRadius: 'var(--mantine-radius-md)',
+        outline: active ? '2px solid var(--mantine-color-blue-5)' : '2px solid transparent',
+        outlineOffset: 2, transition: 'outline-color 100ms ease',
+      }}
+    >
+      {children}
+    </div>
   );
 }
 

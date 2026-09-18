@@ -106,6 +106,10 @@ class HostingAccountController extends Controller
             $want = $request->boolean('imported');
             $rows = array_values(array_filter($rows, fn ($r) => $r['imported'] === $want));
         }
+        if ($request->filled('suspended')) {
+            $want = $request->boolean('suspended');
+            $rows = array_values(array_filter($rows, fn ($r) => $r['suspended'] === $want));
+        }
 
         return response()->json(['data' => $rows, 'errors' => $errors]);
     }

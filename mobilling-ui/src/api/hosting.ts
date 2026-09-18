@@ -101,7 +101,7 @@ export interface DiscoveredAccount {
   client: { id: string; name: string } | null;
   imported: boolean;
 }
-export const discoverHostingAccounts = (params?: { server_id?: string; search?: string; imported?: 0 | 1 }) =>
+export const discoverHostingAccounts = (params?: { server_id?: string; search?: string; imported?: 0 | 1; suspended?: 0 | 1 }) =>
   api.get<{ data: DiscoveredAccount[]; errors: string[] }>('/hosting-accounts/discover', { params });
 
 export const importHostingAccount = (data: {
