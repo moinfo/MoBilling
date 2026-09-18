@@ -26,16 +26,14 @@ import 'staff_self_providers.dart';
 /// the tenant's configured hours, and excused days (leave/sick/field) suppress
 /// every flag — so this screen only renders what the API decided.
 ///
-/// Two different clocks live on this one card:
-///   * `POST /attendance/record` (`_ClockActions`) is gated on
-///     `attendance.manage` — the clerk instantly stamping their own time,
-///     no checks beyond holding the permission.
-///   * `POST /attendance/check-in`/`check-out` (`_GeofencedClockActions`)
-///     is open to everyone with no vendor device — a phone GPS read against
-///     their assigned work location, plus a device-binding check, stand in
-///     for both the fingerprint reader and the "is this really them" it
-///     would otherwise provide. Shown to whoever does *not* hold
-///     `attendance.manage`, since a clerk already has the plain version.
+/// Everyone's own daily clock — including a clerk's — goes through
+/// `POST /attendance/check-in`/`check-out` (`_GeofencedClockActions`): a
+/// phone GPS read against the assigned work location, plus a device-binding
+/// check, stand in for both the fingerprint reader and the "is this really
+/// them" it would otherwise provide. `attendance.manage` does not exempt a
+/// clerk from this for *their own* check-in — that permission is about
+/// correcting *other people's* days (the Team tab, and the "Edit" button
+/// this widget still offers a clerk on their own day for the same reason).
 class AttendanceScreen extends ConsumerWidget {
   const AttendanceScreen({super.key});
 
@@ -120,30 +118,22 @@ class _MeTabState extends ConsumerState<_MeTab> {
               Reveal(
                 child: _TodayCard(settings: data.settings, today: today),
               ),
-              if (widget.canRecord) ...[
-                const SizedBox(height: Spacing.md),
-                Reveal(
-                  delay: const Duration(milliseconds: 60),
-                  child: _ClockActions(
-                    today: today,
-                    busy: _busy,
-                    onCheckIn: () => _stamp(checkOut: false, day: today),
-                    onCheckOut: () => _stamp(checkOut: true, day: today),
-                    onEdit: () => _editToday(data, today),
-                  ),
+              const SizedBox(height: Spacing.md),
+              Reveal(
+                delay: const Duration(milliseconds: 60),
+                child: _GeofencedClockActions(
+                  today: today,
+                  busy: _busy,
+                  onCheckIn: () => _selfStamp(checkOut: false),
+                  onCheckOut: () => _selfStamp(checkOut: true),
+                  // A clerk can still correct *their own* day by hand, same
+                  // as they can anyone else's on the Team tab — but it is no
+                  // longer the default way they check themselves in.
+                  onEdit: widget.canRecord
+                      ? () => _editToday(data, today)
+                      : null,
                 ),
-              ] else ...[
-                const SizedBox(height: Spacing.md),
-                Reveal(
-                  delay: const Duration(milliseconds: 60),
-                  child: _GeofencedClockActions(
-                    today: today,
-                    busy: _busy,
-                    onCheckIn: () => _selfStamp(checkOut: false),
-                    onCheckOut: () => _selfStamp(checkOut: true),
-                  ),
-                ),
-              ],
+              ),
               const SizedBox(height: Spacing.md),
               Reveal(
                 delay: const Duration(milliseconds: 80),
@@ -218,24 +208,6 @@ class _MeTabState extends ConsumerState<_MeTab> {
           ),
         );
       },
-    );
-  }
-
-  /// Stamp the current time onto today. The route replaces both fields on
-  /// every write, so the half we are not stamping is sent back verbatim —
-  /// otherwise checking out would erase the morning's check-in and the day
-  /// would immediately count as absent.
-  Future<void> _stamp({required bool checkOut, AttendanceDay? day}) async {
-    final userId = ref.read(currentUserProvider)?.id;
-    if (userId == null) return;
-    final now = _hhmm(TimeOfDay.now());
-
-    await _write(
-      userId: userId,
-      date: DateTime.now(),
-      checkIn: checkOut ? day?.checkInAt : now,
-      checkOut: checkOut ? now : day?.checkOutAt,
-      message: checkOut ? 'Checked out at $now.' : 'Checked in at $now.',
     );
   }
 
@@ -450,107 +422,29 @@ class _TodayCard extends StatelessWidget {
   }
 }
 
-/// The clock itself. Check-in is the screen's one primary action until it is
-/// taken, and then check-out is; the other half stays available as an outline
-/// so a forgotten stamp can still be filled in.
-class _ClockActions extends StatelessWidget {
-  const _ClockActions({
-    required this.today,
-    required this.busy,
-    required this.onCheckIn,
-    required this.onCheckOut,
-    required this.onEdit,
-  });
-
-  final AttendanceDay? today;
-  final bool busy;
-  final VoidCallback onCheckIn;
-  final VoidCallback onCheckOut;
-  final VoidCallback onEdit;
-
-  @override
-  Widget build(BuildContext context) {
-    final checkedIn = today?.checkInAt != null && today!.checkInAt!.isNotEmpty;
-    final checkedOut =
-        today?.checkOutAt != null && today!.checkOutAt!.isNotEmpty;
-    final excused = today?.isExcused ?? false;
-
-    if (excused) {
-      return OutlinedButton.icon(
-        icon: const Icon(Icons.edit_calendar_outlined, size: 18),
-        label: const Text('Change today'),
-        onPressed: busy ? null : onEdit,
-      );
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!checkedIn)
-          PrimaryButton(
-            label: busy ? 'Recording…' : 'Check in now',
-            icon: Icons.login_rounded,
-            busy: busy,
-            onPressed: busy ? null : onCheckIn,
-          )
-        else if (!checkedOut)
-          PrimaryButton(
-            label: busy ? 'Recording…' : 'Check out now',
-            icon: Icons.logout_rounded,
-            busy: busy,
-            onPressed: busy ? null : onCheckOut,
-          ),
-        const SizedBox(height: Spacing.sm),
-        Row(
-          children: [
-            if (checkedIn && !checkedOut)
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.login_rounded, size: 18),
-                  label: const Text('Redo check-in'),
-                  onPressed: busy ? null : onCheckIn,
-                ),
-              )
-            else if (!checkedIn)
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.logout_rounded, size: 18),
-                  label: const Text('Check out'),
-                  onPressed: busy ? null : onCheckOut,
-                ),
-              ),
-            if (!checkedIn || (checkedIn && !checkedOut))
-              const SizedBox(width: Spacing.sm),
-            Expanded(
-              child: OutlinedButton.icon(
-                icon: const Icon(Icons.edit_calendar_outlined, size: 18),
-                label: const Text('Edit today'),
-                onPressed: busy ? null : onEdit,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// The clock for staff with no vendor fingerprint reader: a single button
-/// that checks in or out, backed by a phone-side biometric prompt, a GPS
-/// read against the assigned work location, and the device binding — no
-/// "edit today" here, since only the attendance clerk can correct a day.
+/// The clock: a single button that checks in or out, backed by a phone-side
+/// biometric prompt, a GPS read against the assigned work location, and the
+/// device binding — the fingerprint reader and the "is this really them" a
+/// vendor device would otherwise provide.
+///
+/// [onEdit], when given, lets a clerk (`attendance.manage`) correct *their
+/// own* day by hand instead — the same override they already have over
+/// everyone else's on the Team tab — without making it the default way
+/// they check themselves in.
 class _GeofencedClockActions extends StatelessWidget {
   const _GeofencedClockActions({
     required this.today,
     required this.busy,
     required this.onCheckIn,
     required this.onCheckOut,
+    this.onEdit,
   });
 
   final AttendanceDay? today;
   final bool busy;
   final VoidCallback onCheckIn;
   final VoidCallback onCheckOut;
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -561,16 +455,25 @@ class _GeofencedClockActions extends StatelessWidget {
         today?.checkOutAt != null && today!.checkOutAt!.isNotEmpty;
     final excused = today?.isExcused ?? false;
 
-    String? note;
     if (excused) {
-      note = 'Today is excused — nothing to check in for.';
-    } else if (checkedIn && checkedOut) {
-      note = 'Checked in and out for today.';
+      if (onEdit == null) {
+        return Text(
+          'Today is excused — nothing to check in for.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        );
+      }
+      return OutlinedButton.icon(
+        icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+        label: const Text('Change today'),
+        onPressed: busy ? null : onEdit,
+      );
     }
 
-    if (note != null) {
+    if (checkedIn && checkedOut && onEdit == null) {
       return Text(
-        note,
+        'Checked in and out for today.',
         style: theme.textTheme.bodySmall?.copyWith(
           color: scheme.onSurfaceVariant,
         ),
@@ -580,14 +483,23 @@ class _GeofencedClockActions extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        PrimaryButton(
-          label: busy
-              ? 'Checking…'
-              : (checkedIn ? 'Check out now' : 'Check in now'),
-          icon: checkedIn ? Icons.logout_rounded : Icons.login_rounded,
-          busy: busy,
-          onPressed: busy ? null : (checkedIn ? onCheckOut : onCheckIn),
-        ),
+        if (!(checkedIn && checkedOut))
+          PrimaryButton(
+            label: busy
+                ? 'Checking…'
+                : (checkedIn ? 'Check out now' : 'Check in now'),
+            icon: checkedIn ? Icons.logout_rounded : Icons.login_rounded,
+            busy: busy,
+            onPressed: busy ? null : (checkedIn ? onCheckOut : onCheckIn),
+          ),
+        if (onEdit != null) ...[
+          const SizedBox(height: Spacing.sm),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.edit_calendar_outlined, size: 18),
+            label: const Text('Edit today'),
+            onPressed: busy ? null : onEdit,
+          ),
+        ],
         const SizedBox(height: Spacing.xs),
         Text(
           'Confirms you are at your work location, from your registered '
