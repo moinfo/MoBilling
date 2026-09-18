@@ -181,7 +181,7 @@ class WhmService
      */
     public function setBandwidthLimit(string $user, ?int $limitMb = null): array
     {
-        return $this->call('editbwlimit', ['user' => $user, 'bwlimit' => $limitMb ?? 0]);
+        return $this->call('limitbw', ['user' => $user, 'bwlimit' => $limitMb ?? 0]);
     }
 
     /**
