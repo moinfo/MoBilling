@@ -489,6 +489,24 @@ class PortalDomainController extends Controller
         ]);
     }
 
+    /**
+     * WHOIS lookup for a .tz domain, straight from the TZNIC registry (port
+     * 43) — same data/service as the staff Domains page's lookup
+     * (TznicWhoisService), minus the "is this registered through us"
+     * internal flag, which isn't the client's business.
+     */
+    public function whois(Request $request, \App\Services\TznicWhoisService $whois)
+    {
+        $data = $request->validate(['name' => 'required|string|max:255']);
+        $domain = $whois->normalise($data['name']);
+
+        if (!str_ends_with($domain, '.tz') || substr_count($domain, '.') < 1) {
+            return response()->json(['message' => 'Enter a .tz domain, e.g. example.co.tz.'], 422);
+        }
+
+        return response()->json(['data' => $whois->lookup($domain)]);
+    }
+
     /** Self-service order (register or transfer-in) for the client's own account. */
     public function order(Request $request, DomainRegistrarManager $registrar)
     {

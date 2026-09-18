@@ -386,6 +386,23 @@ export const portalSetAutoRenew = (id: string, enabled: boolean) =>
 export const portalCheckDomain = (name: string) =>
   api.get('/portal/domains/check', { params: { name } });
 
+export interface PortalWhoisResult {
+  domain: string;
+  found: boolean;
+  raw: string;
+  registrar: string | null;
+  registrant: string | null;
+  statuses: string[];
+  admins: string[];
+  nsset: string | null;
+  nameservers: string[];
+  registered: string | null;
+  changed: string | null;
+  expire: string | null;
+}
+export const portalWhoisDomain = (name: string) =>
+  api.get<{ data: PortalWhoisResult }>('/portal/domains/whois', { params: { name } });
+
 export const portalOrderDomain = (data: { name: string; years: number; action: 'register' | 'transfer'; auth_info?: string }) =>
   api.post('/portal/domains/order', data);
 

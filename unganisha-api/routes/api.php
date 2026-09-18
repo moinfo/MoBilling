@@ -1059,6 +1059,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/hosting/{hostingAccount}/upgrade', [\App\Http\Controllers\Portal\PortalHostingController::class, 'upgrade']);
     Route::get('/domains', [\App\Http\Controllers\Portal\PortalDomainController::class, 'index']);
     Route::get('/domains/check', [\App\Http\Controllers\Portal\PortalDomainController::class, 'check']);
+    Route::get('/domains/whois', [\App\Http\Controllers\Portal\PortalDomainController::class, 'whois']);
     Route::post('/domains/order', [\App\Http\Controllers\Portal\PortalDomainController::class, 'order']);
     Route::get('/domains/{domain}', [\App\Http\Controllers\Portal\PortalDomainController::class, 'show']);
     Route::post('/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'renew']);
