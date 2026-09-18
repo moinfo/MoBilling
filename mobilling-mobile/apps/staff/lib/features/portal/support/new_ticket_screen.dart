@@ -1,12 +1,28 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
+import '../../common/attach_file.dart';
 import '../portal_routes.dart';
 import '../portal_providers.dart';
+
+/// Every type the server's own `attachmentMimes` accepts
+/// (`HandlesTicketAttachments`), for the file-browser branch of
+/// [pickAttachment] — its own default is narrower (receipt-only).
+const _ticketAttachmentExtensions = [
+  'pdf',
+  'png',
+  'jpg',
+  'jpeg',
+  'txt',
+  'zip',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+];
 
 /// Open a new support ticket.
 class NewTicketScreen extends ConsumerStatefulWidget {
@@ -20,7 +36,7 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
   final _formKey = GlobalKey<FormState>();
   final _subject = TextEditingController();
   final _message = TextEditingController();
-  final List<PlatformFile> _attachments = [];
+  final List<Attachment> _attachments = [];
 
   // Values from Ticket::DEPARTMENTS / ::PRIORITIES.
   String _department = 'support';
@@ -36,14 +52,13 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
   }
 
   Future<void> _pick() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-    if (result == null) return;
-    setState(() {
-      _attachments.addAll(result.files.where((f) => f.path != null));
-      while (_attachments.length > 5) {
-        _attachments.removeLast();
-      }
-    });
+    if (_attachments.length >= 5) return;
+    final picked = await pickAttachment(
+      context,
+      allowedExtensions: _ticketAttachmentExtensions,
+    );
+    if (picked == null) return;
+    setState(() => _attachments.add(picked));
   }
 
   Future<void> _submit() async {
@@ -64,7 +79,7 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
             department: _department,
             priority: _priority,
             attachmentPaths: _attachments
-                .map((f) => f.path!)
+                .map((f) => f.path)
                 .toList(growable: false),
           );
       ref.invalidate(portalTicketsProvider);
@@ -222,9 +237,11 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
                 Align(
                   alignment: Alignment.centerLeft,
                   child: TextButton.icon(
-                    onPressed: _submitting ? null : _pick,
+                    onPressed: (_submitting || _attachments.length >= 5)
+                        ? null
+                        : _pick,
                     icon: const Icon(Icons.attach_file, size: 18),
-                    label: const Text('Attach files'),
+                    label: const Text('Attach a file'),
                   ),
                 ),
                 const SizedBox(height: Spacing.xs),

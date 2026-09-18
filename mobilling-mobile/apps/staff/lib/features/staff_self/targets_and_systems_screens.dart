@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
@@ -8,6 +7,7 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
+import '../common/attach_file.dart';
 import '../common/paged_list.dart';
 import '../crm/crm_ui.dart'
     show
@@ -2701,8 +2701,10 @@ class _ReconcileToggleRow extends StatelessWidget {
   }
 }
 
-/// Create or correct a record. The receipt is required on create and optional
-/// on edit — the API's own rule, since an existing record already has one.
+/// Create or correct a record. The receipt is required on create for a
+/// deposit and optional everywhere else — the API's own rule, since an
+/// existing record already has one, and a withdrawal's own proof of spend
+/// is collected later via Withdraw Usage rather than up front.
 class _SystemRecordSheet extends ConsumerStatefulWidget {
   const _SystemRecordSheet({this.record});
 
@@ -2725,7 +2727,7 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
   // starting null — 'deposit' matches the web form's own default.
   String _type = SystemRecordTypes.values.first.$1;
   DateTime _date = DateTime.now();
-  PlatformFile? _receipt;
+  Attachment? _receipt;
   bool _submitting = false;
   String? _error;
 
@@ -2758,19 +2760,15 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
   }
 
   Future<void> _pickReceipt() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      // Exactly the API's `mimes:pdf,jpg,jpeg,png`.
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
-    );
-    final file = (result?.files ?? const <PlatformFile>[]).firstOrNull;
-    if (file == null || file.path == null) return;
-    if (file.size > _maxReceiptBytes) {
+    // Exactly the API's `mimes:pdf,jpg,jpeg,png`.
+    final picked = await pickAttachment(context);
+    if (picked == null) return;
+    if (picked.bytes > _maxReceiptBytes) {
       setState(() => _error = 'That receipt is over the 10 MB limit.');
       return;
     }
     setState(() {
-      _receipt = file;
+      _receipt = picked;
       _error = null;
     });
   }
@@ -2798,8 +2796,12 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
       setState(() => _error = 'Enter the amount.');
       return;
     }
-    // A "charge" has no physical slip to attach, unlike deposit/withdraw.
-    if (!_editing && _type != SystemRecordTypes.charge && _receipt?.path == null) {
+    // Only a deposit slip is required up front — a withdrawal's own proof
+    // of what it was spent on comes later via Withdraw Usage, and a
+    // "charge" has no physical slip to attach at all.
+    if (!_editing &&
+        _type == SystemRecordTypes.deposit &&
+        _receipt?.path == null) {
       setState(() => _error = 'A receipt is required.');
       return;
     }
@@ -2964,9 +2966,9 @@ class _SystemRecordSheetState extends ConsumerState<_SystemRecordSheet> {
         CrmField(
           label: _editing
               ? 'Replace receipt (optional)'
-              : _type == SystemRecordTypes.charge
-              ? 'Receipt (optional)'
-              : 'Receipt',
+              : _type == SystemRecordTypes.deposit
+              ? 'Receipt'
+              : 'Receipt (optional)',
           child: OutlinedButton.icon(
             icon: const Icon(Icons.attach_file, size: 18),
             label: Text(

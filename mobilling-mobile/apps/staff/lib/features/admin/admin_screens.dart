@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
@@ -13,6 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/theme_mode.dart';
 import '../../providers.dart';
+import '../common/attach_file.dart';
 import '../common/paged_list.dart';
 import '../common/share_pdf.dart';
 import '../crm/crm_ui.dart'
@@ -240,15 +240,11 @@ class SubscriptionScreen extends ConsumerWidget {
     WidgetRef ref,
     String tenantSubscriptionId,
   ) async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
-    );
-    final file = result?.files.singleOrNull;
-    if (file?.path == null || !context.mounted) return;
+    final file = await pickAttachment(context);
+    if (file == null || !context.mounted) return;
 
     const maxBytes = 5 * 1024 * 1024;
-    if (file!.size > maxBytes) {
+    if (file.bytes > maxBytes) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('That file is over the 5 MB limit.')),
       );
@@ -260,7 +256,7 @@ class SubscriptionScreen extends ConsumerWidget {
     try {
       await ref
           .read(adminServiceProvider)
-          .uploadSubscriptionProof(tenantSubscriptionId, file.path!);
+          .uploadSubscriptionProof(tenantSubscriptionId, file.path);
       messenger.hideCurrentSnackBar();
       messenger.showSnackBar(
         const SnackBar(content: Text('Payment proof uploaded.')),

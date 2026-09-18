@@ -1,11 +1,27 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 
+import '../../common/attach_file.dart';
 import '../../common/share_pdf.dart';
 import '../portal_providers.dart';
+
+/// Every type the server's own `attachmentMimes` accepts
+/// (`HandlesTicketAttachments`), for the file-browser branch of
+/// [pickAttachment] — its own default is narrower (receipt-only).
+const _ticketAttachmentExtensions = [
+  'pdf',
+  'png',
+  'jpg',
+  'jpeg',
+  'txt',
+  'zip',
+  'doc',
+  'docx',
+  'xls',
+  'xlsx',
+];
 
 /// A ticket's reply thread, chat-style, with a composer pinned below.
 ///
@@ -23,7 +39,7 @@ class TicketDetailScreen extends ConsumerStatefulWidget {
 
 class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
   final _message = TextEditingController();
-  final List<PlatformFile> _attachments = [];
+  final List<Attachment> _attachments = [];
   bool _sending = false;
 
   @override
@@ -33,15 +49,14 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
   }
 
   Future<void> _pickAttachments() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
-    if (result == null) return;
-    setState(() {
-      _attachments.addAll(result.files.where((f) => f.path != null));
-      // Backend caps at 5 per message.
-      while (_attachments.length > 5) {
-        _attachments.removeLast();
-      }
-    });
+    // Backend caps at 5 per message.
+    if (_attachments.length >= 5) return;
+    final picked = await pickAttachment(
+      context,
+      allowedExtensions: _ticketAttachmentExtensions,
+    );
+    if (picked == null) return;
+    setState(() => _attachments.add(picked));
   }
 
   Future<void> _send() async {
@@ -56,7 +71,7 @@ class _TicketDetailScreenState extends ConsumerState<TicketDetailScreen> {
             widget.ticketId,
             message: text,
             attachmentPaths: _attachments
-                .map((f) => f.path!)
+                .map((f) => f.path)
                 .toList(growable: false),
           );
       _message.clear();
@@ -239,7 +254,7 @@ class _Composer extends StatelessWidget {
   });
 
   final TextEditingController controller;
-  final List<PlatformFile> attachments;
+  final List<Attachment> attachments;
   final bool sending;
   final VoidCallback onAttach;
   final ValueChanged<int> onRemoveAttachment;
@@ -288,9 +303,11 @@ class _Composer extends StatelessWidget {
                 children: [
                   IconButton(
                     icon: const Icon(Icons.attach_file),
-                    tooltip: 'Attach files',
+                    tooltip: 'Attach a file',
                     color: scheme.onSurfaceVariant,
-                    onPressed: sending ? null : onAttach,
+                    onPressed: (sending || attachments.length >= 5)
+                        ? null
+                        : onAttach,
                   ),
                   Expanded(
                     child: TextField(

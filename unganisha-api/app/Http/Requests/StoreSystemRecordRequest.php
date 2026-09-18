@@ -17,11 +17,14 @@ class StoreSystemRecordRequest extends FormRequest
         $tenantId = auth()->user()?->tenant_id;
 
         // Required on create, nullable on update — the existing record
-        // already has a receipt on file from when it was created. A
-        // "charge" (e.g. a system-generated fee/deduction) has no physical
-        // slip to attach, unlike deposit/withdraw, so it's always optional.
+        // already has a receipt on file from when it was created. Only a
+        // deposit slip is required up front: a "charge" (e.g. a
+        // system-generated fee/deduction) has no physical slip to attach,
+        // and a withdrawal's own proof of what it was spent on is collected
+        // later via "Withdraw Usage" (SystemRecordExpense), not at the
+        // moment the withdrawal itself is recorded.
         $isUpdate = $this->route('system_record') !== null;
-        $receiptRequired = !$isUpdate && $this->input('type') !== 'charge';
+        $receiptRequired = !$isUpdate && $this->input('type') === 'deposit';
         $receiptRule = [$receiptRequired ? 'required' : 'nullable', 'file', 'max:10240', 'mimes:pdf,jpg,jpeg,png'];
 
         return [

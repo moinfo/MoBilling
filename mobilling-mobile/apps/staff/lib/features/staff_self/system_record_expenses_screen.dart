@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobilling_api/mobilling_api.dart';
@@ -8,6 +7,7 @@ import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../providers.dart';
+import '../common/attach_file.dart';
 import '../common/paged_list.dart';
 import 'staff_self_providers.dart';
 import '../crm/crm_ui.dart'
@@ -298,7 +298,7 @@ class _ExpenseFormSheetState extends ConsumerState<_ExpenseFormSheet> {
   final _description = TextEditingController();
   String? _systemRecordId;
   DateTime _date = DateTime.now();
-  PlatformFile? _attachment;
+  Attachment? _attachment;
   bool _submitting = false;
   String? _error;
 
@@ -325,18 +325,14 @@ class _ExpenseFormSheetState extends ConsumerState<_ExpenseFormSheet> {
   }
 
   Future<void> _pickAttachment() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: const ['pdf', 'jpg', 'jpeg', 'png'],
-    );
-    final file = (result?.files ?? const <PlatformFile>[]).firstOrNull;
-    if (file == null || file.path == null) return;
-    if (file.size > _maxAttachmentBytes) {
+    final picked = await pickAttachment(context);
+    if (picked == null) return;
+    if (picked.bytes > _maxAttachmentBytes) {
       setState(() => _error = 'That file is over the 10 MB limit.');
       return;
     }
     setState(() {
-      _attachment = file;
+      _attachment = picked;
       _error = null;
     });
   }
