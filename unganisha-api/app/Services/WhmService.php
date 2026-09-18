@@ -165,6 +165,12 @@ class WhmService
         return $this->call('passwd', ['user' => $user, 'password' => $password], sensitiveKeys: ['password']);
     }
 
+    /** Changes the cPanel account's own contact email — WHM's "modifyacct". */
+    public function changeContactEmail(string $user, string $email): array
+    {
+        return $this->call('modifyacct', ['user' => $user, 'contactemail' => $email]);
+    }
+
     /**
      * One-time SSO login URL. service: cpaneld (cPanel) or webmaild (Webmail).
      * $goto deep-links to a specific cPanel tool after login.

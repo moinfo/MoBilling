@@ -14,11 +14,11 @@ import {
   IconLock, IconLockOpen, IconExternalLink, IconChevronDown,
   IconFileInvoice, IconArrowsUpDown, IconUserShare, IconTrash,
   IconRefresh, IconDeviceFloppy, IconMail, IconMailForward, IconKey, IconCopy,
-  IconMessage, IconBrandWhatsapp, IconEye,
+  IconMessage, IconBrandWhatsapp, IconEye, IconAlertTriangle,
 } from '@tabler/icons-react';
 import { getClients, getClientCommunications, ClientCommunicationLog } from '../api/clients';
 import {
-  getClientServices, getServiceDetail, updateService, changeHostingPassword,
+  getClientServices, getServiceDetail, updateService, changeHostingPassword, changeHostingContactEmail,
   refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
   getUpgradeOptions, applyUpgrade, resendWelcomeEmail, sendClientMessage, resetPasswordAndWelcome,
@@ -140,6 +140,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   const [recalc, setRecalc] = useState('no');
   const [busy, setBusy] = useState<string | null>(null);
   const [pwModal, setPwModal] = useState(false);
+  const [emailModal, setEmailModal] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [msgOpen, setMsgOpen] = useState(false);
   const [resetPw, setResetPw] = useState<string | null>(null);
@@ -331,6 +332,14 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
         </Group>
       </Group>
 
+      {ha?.status === 'suspended' && (ha.suspend_reason || ha.suspend_time) && (
+        <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />}
+          p="xs" m="sm" title="Account Suspended">
+          {ha.suspend_reason && <Text size="xs">Reason: {ha.suspend_reason}</Text>}
+          {ha.suspend_time && <Text size="xs">Suspended: {new Date(ha.suspend_time).toLocaleString('en-GB')}</Text>}
+        </Alert>
+      )}
+
       {/* edit form — two columns */}
       <Grid gutter={0}>
         <Grid.Col span={{ base: 12, md: 6 }} style={{ borderRight: '1px solid var(--mantine-color-gray-2)' }}>
@@ -377,7 +386,15 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
               {ha && <Text size="xs" c="dimmed">Not stored — cPanel doesn't expose the current one. Set a new one to see it.</Text>}
             </Stack>
           </Row>
-          <Row label="Status">
+          <Row label="Contact Email">
+            <Group gap="xs">
+              <Text size="xs">{ha?.contact_email ?? '—'}</Text>
+              <Button size="compact-xs" variant="default" disabled={!ha} onClick={() => setEmailModal(true)}>
+                Change…
+              </Button>
+            </Group>
+          </Row>
+          <Row label="Status" alt>
             <Select size="xs" data={d.options.statuses.map((s) => ({ value: s, label: s }))}
               value={form.status} onChange={(v) => set('status', v as string)} />
           </Row>
@@ -445,6 +462,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
           <Button size="xs" variant="light" loading={busy === 'Change Package'} disabled={!ha || !form.package}
             onClick={() => runModule('Change Package', () => changeHostingPackage(ha!.id, form.package!), true)}>Change Package</Button>
           <Button size="xs" variant="light" disabled={!ha} onClick={() => setPwModal(true)}>Change Password</Button>
+          <Button size="xs" variant="light" disabled={!ha} onClick={() => setEmailModal(true)}>Change Email</Button>
         </Group>
       </Box>
 
@@ -493,6 +511,8 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       </Group>
 
       <ChangePasswordModal opened={pwModal} onClose={() => setPwModal(false)} accountId={ha?.id ?? null} />
+      <ChangeContactEmailModal opened={emailModal} onClose={() => setEmailModal(false)} accountId={ha?.id ?? null}
+        onChanged={() => qc.invalidateQueries({ queryKey: ['service-detail', subId] })} />
       <UpgradeModal opened={upgradeOpen} onClose={() => setUpgradeOpen(false)} subId={subId}
         navigate={navigate} onApplied={() => { qc.invalidateQueries({ queryKey: ['service-detail', subId] }); qc.invalidateQueries({ queryKey: ['client-services'] }); }} />
       <SendMessageModal opened={msgOpen} onClose={() => setMsgOpen(false)} subId={subId} clientId={d.client.id} clientName={d.client.name} />
@@ -784,6 +804,32 @@ function ChangePasswordModal({ opened, onClose, accountId }: { opened: boolean; 
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button color="orange" disabled={pw.length < 8} loading={mutation.isPending} onClick={() => mutation.mutate()}>
             Change Password
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function ChangeContactEmailModal({ opened, onClose, accountId, onChanged }: {
+  opened: boolean; onClose: () => void; accountId: string | null; onChanged: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const mutation = useMutation({
+    mutationFn: () => changeHostingContactEmail(accountId!, email),
+    onSuccess: (res) => { notifications.show({ message: res.data.message, color: 'green' }); setEmail(''); onChanged(); onClose(); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Change failed.', color: 'red' }),
+  });
+  const valid = /^\S+@\S+\.\S+$/.test(email);
+  return (
+    <Modal opened={opened} onClose={onClose} title="Change Contact Email" centered size="sm">
+      <Stack>
+        <TextInput label="New Contact Email" type="email" value={email} onChange={(e) => setEmail(e.currentTarget.value)}
+          description="Pushed to the server immediately (WHM modifyacct) — this is the cPanel account's own contact address, not the client's MoBilling email." />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button color="orange" disabled={!valid} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Change Email
           </Button>
         </Group>
       </Stack>

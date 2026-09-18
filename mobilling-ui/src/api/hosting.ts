@@ -157,6 +157,7 @@ export interface ServiceDetail {
   hosting_account: {
     id: string; status: string; server_id: string | null; server_host: string | null;
     last_synced_at: string | null; not_on_whm: boolean;
+    contact_email: string | null; suspend_reason: string | null; suspend_time: string | null;
   } | null;
   ssl: { valid: boolean | null; issuer: string | null; expires_at: string | null };
   metrics: ServiceMetric[];
@@ -180,6 +181,9 @@ export const updateService = (subscriptionId: string, data: Record<string, unkno
 
 export const changeHostingPassword = (accountId: string, password: string) =>
   api.post<{ message: string }>(`/hosting-accounts/${accountId}/password`, { password });
+
+export const changeHostingContactEmail = (accountId: string, email: string) =>
+  api.post<{ message: string }>(`/hosting-accounts/${accountId}/contact-email`, { email });
 
 export const refreshHostingUsage = (accountId: string) =>
   api.post<{ data: ServiceMetric[] }>(`/hosting-accounts/${accountId}/refresh-usage`);
