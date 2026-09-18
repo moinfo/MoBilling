@@ -47,6 +47,7 @@ export interface BulkSubscriptionFormData {
 export const getClientSubscriptions = (params?: {
   search?: string;
   client_id?: string;
+  product_service_id?: string;
   status?: string;
   sort_by?: string;
   sort_dir?: 'asc' | 'desc';
