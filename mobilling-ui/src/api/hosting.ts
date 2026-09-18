@@ -75,6 +75,23 @@ export interface ServerPackageDetails {
 export const getServerPackagesDetailed = (id: string) =>
   api.get<{ data: ServerPackageDetails[] }>(`/servers/${id}/packages-detailed`);
 
+export interface PackageLimits {
+  quota_mb?: number | null;
+  bandwidth_mb?: number | null;
+  databases?: number | null;
+  email_accounts?: number | null;
+  subdomains?: number | null;
+  ftp_accounts?: number | null;
+  addon_domains?: number | null;
+  parked_domains?: number | null;
+}
+export const createServerPackage = (serverId: string, data: PackageLimits & { name: string }) =>
+  api.post<{ data: ServerPackageDetails }>(`/servers/${serverId}/packages`, data);
+export const updateServerPackage = (serverId: string, packageName: string, data: PackageLimits) =>
+  api.put<{ data: ServerPackageDetails }>(`/servers/${serverId}/packages/${encodeURIComponent(packageName)}`, data);
+export const deleteServerPackage = (serverId: string, packageName: string) =>
+  api.delete<{ message: string }>(`/servers/${serverId}/packages/${encodeURIComponent(packageName)}`);
+
 export interface ServerHealth {
   hostname: string | null;
   whm_version: string | null;

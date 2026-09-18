@@ -270,6 +270,65 @@ class WhmService
 
     // ── Mutations ──────────────────────────────────────────────────────────────
 
+    /**
+     * Shared param shape for addpkg/editpkg. Unlike setBandwidthLimit()'s
+     * `0 = unlimited`, `bwlimit` here rejects both `0` and `"unlimited"`
+     * outright (confirmed live — WHM's real "unlimited" for it is a fixed
+     * huge number it applies itself, 1048576 MB, when the param is left out
+     * entirely). So null in $limits OMITS that param rather than sending a
+     * sentinel: on create that means "let WHM default it"; on edit it means
+     * "leave it exactly as it is" — which is why the caller (the
+     * controller) always sends every field's *current* value on an edit
+     * rather than only the changed one.
+     *
+     * @param array{quota_mb?:?int, bandwidth_mb?:?int, databases?:?int, email_accounts?:?int, subdomains?:?int, ftp_accounts?:?int, addon_domains?:?int, parked_domains?:?int} $limits
+     */
+    private function packageParams(array $limits): array
+    {
+        return array_filter([
+            'quota' => $limits['quota_mb'] ?? null,
+            'bwlimit' => $limits['bandwidth_mb'] ?? null,
+            'maxsql' => $limits['databases'] ?? null,
+            'maxpop' => $limits['email_accounts'] ?? null,
+            'maxsub' => $limits['subdomains'] ?? null,
+            'maxftp' => $limits['ftp_accounts'] ?? null,
+            'maxaddon' => $limits['addon_domains'] ?? null,
+            'maxpark' => $limits['parked_domains'] ?? null,
+        ], fn ($v) => $v !== null);
+    }
+
+    /**
+     * Creates a new WHM package. $limits: see packageParams().
+     *
+     * Confirmed live: WHM silently prefixes the name with this reseller's
+     * own username + "_" (every existing package in this system already
+     * carries that same "moinfote_" prefix) — the name you pass is NOT the
+     * name it ends up with. Callers should use {@see prefixedPackageName()}
+     * to know what to display/store afterward.
+     */
+    public function createPackage(string $name, array $limits): array
+    {
+        return $this->call('addpkg', ['name' => $name] + $this->packageParams($limits));
+    }
+
+    /** The name WHM will actually give a package created with createPackage($name, ...). */
+    public function prefixedPackageName(string $name): string
+    {
+        return str_starts_with($name, "{$this->server->username}_") ? $name : "{$this->server->username}_{$name}";
+    }
+
+    /** Edits an existing WHM package's limits — does not rename it. */
+    public function updatePackage(string $name, array $limits): array
+    {
+        return $this->call('editpkg', ['pkgname' => $name] + $this->packageParams($limits));
+    }
+
+    /** Deletes a WHM package — WHM itself refuses if any account still uses it. */
+    public function deletePackage(string $name): array
+    {
+        return $this->call('killpkg', ['pkgname' => $name]);
+    }
+
     public function createAccount(string $username, string $domain, string $password, string $plan, ?string $contactEmail = null): array
     {
         return $this->call('createacct', array_filter([
