@@ -18,7 +18,7 @@ import {
   changePortalHostingPassword, requestPortalHostingCancellation,
   getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow,
   getPortalHostingSubdomains, getPortalHostingEmailAccounts, getPortalHostingMysqlDatabases,
-  getPortalHostingBackupSettings, updatePortalHostingBackupSettings,
+  getPortalHostingBackupSettings, updatePortalHostingBackupSettings, getPortalHostingBackups,
 } from '../../api/portal';
 import { Tooltip } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
@@ -97,6 +97,13 @@ export default function PortalServiceDetails() {
     enabled: !!id && d?.status === 'active',
   });
   const backup = backupData?.data?.data;
+
+  const { data: backupFilesData, isLoading: backupFilesLoading } = useQuery({
+    queryKey: ['portal-hosting-backup-files', id],
+    queryFn: () => getPortalHostingBackups(id!),
+    enabled: !!id && d?.status === 'active' && !!backup?.has_backup,
+  });
+  const backupFiles = backupFilesData?.data?.data ?? [];
 
   const refreshMutation = useMutation({
     mutationFn: () => refreshPortalHostingUsage(id!),
@@ -388,7 +395,12 @@ export default function PortalServiceDetails() {
 
       {/* Backup settings */}
       {d.status === 'active' && backup?.has_backup && (
-        <BackupSettingsSection id={d.id} settings={backup} loading={backupLoading} canEdit={isPortalAdmin} />
+        <BackupSettingsSection
+          id={d.id} settings={backup} loading={backupLoading} canEdit={isPortalAdmin}
+          files={backupFiles} filesLoading={backupFilesLoading}
+          onManage={isPortalAdmin ? () => openSso({ service: 'cpanel', goto: 'backup' }, 'backup') : undefined}
+          manageBusy={ssoBusy === 'backup'}
+        />
       )}
 
       {/* Quick shortcuts */}
@@ -428,11 +440,15 @@ function InfoRow({ label, value }: { label: string; value: string }) {
   );
 }
 
-function BackupSettingsSection({ id, settings, loading, canEdit }: {
+function BackupSettingsSection({ id, settings, loading, canEdit, files, filesLoading, onManage, manageBusy }: {
   id: string;
   settings: { daily_retention_days: number; keep_weekly: boolean; keep_monthly: boolean };
   loading: boolean;
   canEdit: boolean;
+  files: { date: string; bytes: number }[];
+  filesLoading: boolean;
+  onManage?: () => void;
+  manageBusy: boolean;
 }) {
   const qc = useQueryClient();
   const [days, setDays] = useState(settings.daily_retention_days);
@@ -458,13 +474,50 @@ function BackupSettingsSection({ id, settings, loading, canEdit }: {
   return (
     <Paper withBorder radius="md" p="lg">
       <Group justify="space-between" mb="xs">
-        <Text fw={700}>Backup Schedule</Text>
-        <Badge size="sm" variant="light" color="teal" leftSection={<IconArchive size={12} />}>Included</Badge>
+        <Group gap="xs">
+          <Text fw={700}>Backups</Text>
+          <Badge size="sm" variant="light" color="teal" leftSection={<IconArchive size={12} />}>Included</Badge>
+        </Group>
+        {onManage && (
+          <Button size="xs" variant="light" leftSection={<IconExternalLink size={12} />}
+            loading={manageBusy} onClick={onManage}>
+            Manage in cPanel
+          </Button>
+        )}
       </Group>
-      <Text size="sm" c="dimmed" mb="md">
-        A full backup of this hosting account runs automatically every day. To keep it from filling up
-        your own disk quota, only recent copies plus one weekly and one monthly snapshot are kept — you
-        can adjust that below.
+      <Text size="sm" c="dimmed" mb="sm">
+        A full backup of this hosting account runs automatically every day. "Manage in cPanel" opens
+        cPanel's own Backup tool, where these same backups can be downloaded or restored.
+      </Text>
+
+      {filesLoading ? (
+        <Text size="sm" c="dimmed" mb="md">Loading…</Text>
+      ) : files.length === 0 ? (
+        <Text size="sm" c="dimmed" mb="md">No backup yet — the first one will be created tonight.</Text>
+      ) : (
+        <Table.ScrollContainer minWidth={400} mb="md">
+          <Table verticalSpacing="xs" fz="sm">
+            <Table.Thead>
+              <Table.Tr><Table.Th>Date</Table.Th><Table.Th>Size</Table.Th></Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {files.map((f) => (
+                <Table.Tr key={f.date}>
+                  <Table.Td>{new Date(f.date).toLocaleString()}</Table.Td>
+                  <Table.Td c="dimmed">{fmtBytes(f.bytes)}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+
+      <Divider mb="md" />
+
+      <Text fw={600} size="sm" mb="xs">Retention</Text>
+      <Text size="xs" c="dimmed" mb="sm">
+        To keep backups from filling up your own disk quota, only recent copies plus one weekly and
+        one monthly snapshot are kept — old ones outside this are deleted automatically.
       </Text>
       {loading ? (
         <Text size="sm" c="dimmed">Loading…</Text>

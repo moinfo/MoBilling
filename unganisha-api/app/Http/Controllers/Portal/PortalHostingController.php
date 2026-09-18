@@ -213,6 +213,30 @@ class PortalHostingController extends Controller
     }
 
     /**
+     * The account's actual backup files (same tarballs the "Backup" quick
+     * shortcut's cPanel wizard shows/downloads — WhmService::homeDirBackupFiles).
+     */
+    public function backups(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $files = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->homeDirBackupFiles($hostingAccount->cpanel_username);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        $rows = array_map(fn ($f) => [
+            'date'  => \Carbon\Carbon::createFromTimestamp($f['mtime'])->toIso8601String(),
+            'bytes' => $f['bytes'],
+        ], array_reverse($files));
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
      * Whether this account has an active "Backup" subscription, matching
      * hosting:backup-paid-accounts's own eligibility check (subscription's
      * `label` is the domain name — not linked via client_subscription_id).

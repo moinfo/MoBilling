@@ -245,6 +245,13 @@ export interface PortalMysqlDatabase {
 export const getPortalHostingMysqlDatabases = (id: string) =>
   api.get<{ data: PortalMysqlDatabase[] }>(`/portal/hosting/${id}/mysql-databases`);
 
+export interface PortalBackupFile {
+  date: string;
+  bytes: number;
+}
+export const getPortalHostingBackups = (id: string) =>
+  api.get<{ data: PortalBackupFile[] }>(`/portal/hosting/${id}/backups`);
+
 export interface PortalBackupSettings {
   has_backup: boolean;
   daily_retention_days: number;
