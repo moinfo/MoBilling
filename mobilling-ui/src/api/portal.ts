@@ -227,6 +227,24 @@ export interface PortalSubdomain {
 export const getPortalHostingSubdomains = (id: string) =>
   api.get<{ data: PortalSubdomain[] }>(`/portal/hosting/${id}/subdomains`);
 
+export interface PortalEmailAccount {
+  email: string | null;
+  suspended_incoming: boolean;
+  suspended_login: boolean;
+  used_bytes: number;
+  quota_bytes: number | null;
+}
+export const getPortalHostingEmailAccounts = (id: string) =>
+  api.get<{ data: PortalEmailAccount[] }>(`/portal/hosting/${id}/email-accounts`);
+
+export interface PortalMysqlDatabase {
+  database: string | null;
+  users: string[];
+  disk_usage: number;
+}
+export const getPortalHostingMysqlDatabases = (id: string) =>
+  api.get<{ data: PortalMysqlDatabase[] }>(`/portal/hosting/${id}/mysql-databases`);
+
 export const refreshPortalHostingUsage = (id: string) =>
   api.post<{ data: { disk_used: string | null; disk_limit: string | null; last_synced_at: string } }>(`/portal/hosting/${id}/refresh-usage`);
 

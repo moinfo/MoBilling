@@ -17,7 +17,7 @@ import {
   getPortalHostingDetail, portalHostingSso, refreshPortalHostingUsage,
   changePortalHostingPassword, requestPortalHostingCancellation,
   getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow,
-  getPortalHostingSubdomains,
+  getPortalHostingSubdomains, getPortalHostingEmailAccounts, getPortalHostingMysqlDatabases,
 } from '../../api/portal';
 import { Tooltip } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
@@ -75,6 +75,20 @@ export default function PortalServiceDetails() {
     enabled: !!id && d?.status === 'active',
   });
   const subdomains = subdomainsData?.data?.data ?? [];
+
+  const { data: emailsData, isLoading: emailsLoading } = useQuery({
+    queryKey: ['portal-hosting-emails', id],
+    queryFn: () => getPortalHostingEmailAccounts(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const emails = emailsData?.data?.data ?? [];
+
+  const { data: dbsData, isLoading: dbsLoading } = useQuery({
+    queryKey: ['portal-hosting-dbs', id],
+    queryFn: () => getPortalHostingMysqlDatabases(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const databases = dbsData?.data?.data ?? [];
 
   const refreshMutation = useMutation({
     mutationFn: () => refreshPortalHostingUsage(id!),
@@ -274,6 +288,87 @@ export default function PortalServiceDetails() {
                         </Badge>
                       </Table.Td>
                       <Table.Td>{s.domain}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+        </Paper>
+      )}
+
+      {/* Email accounts */}
+      {d.status === 'active' && (
+        <Paper withBorder radius="md" p="lg">
+          <Text fw={700} mb="md">Email Accounts</Text>
+          {emailsLoading ? (
+            <Text size="sm" c="dimmed">Loading…</Text>
+          ) : emails.length === 0 ? (
+            <Text size="sm" c="dimmed">No email accounts yet.</Text>
+          ) : (
+            <Table.ScrollContainer minWidth={500}>
+              <Table verticalSpacing="xs" fz="sm">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Email</Table.Th>
+                    <Table.Th>Size</Table.Th>
+                    <Table.Th>Status</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {emails.map((e) => {
+                    const suspended = e.suspended_incoming || e.suspended_login;
+                    return (
+                      <Table.Tr key={e.email}>
+                        <Table.Td>{e.email}</Table.Td>
+                        <Table.Td c="dimmed">
+                          {fmtBytes(e.used_bytes)} / {e.quota_bytes ? fmtBytes(e.quota_bytes) : 'Unlimited'}
+                        </Table.Td>
+                        <Table.Td>
+                          {suspended ? (
+                            <Badge size="sm" variant="light" color="orange">Suspended</Badge>
+                          ) : (
+                            <Badge size="sm" variant="light" color="teal">Active</Badge>
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    );
+                  })}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+        </Paper>
+      )}
+
+      {/* MySQL databases */}
+      {d.status === 'active' && (
+        <Paper withBorder radius="md" p="lg">
+          <Text fw={700} mb="md">MySQL® Databases</Text>
+          {dbsLoading ? (
+            <Text size="sm" c="dimmed">Loading…</Text>
+          ) : databases.length === 0 ? (
+            <Text size="sm" c="dimmed">No databases yet.</Text>
+          ) : (
+            <Table.ScrollContainer minWidth={500}>
+              <Table verticalSpacing="xs" fz="sm">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Database</Table.Th>
+                    <Table.Th>Users</Table.Th>
+                    <Table.Th>Size</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {databases.map((db) => (
+                    <Table.Tr key={db.database}>
+                      <Table.Td>{db.database}</Table.Td>
+                      <Table.Td>
+                        <Group gap={4}>
+                          {db.users.map((u) => <Badge key={u} size="sm" variant="light" color="grape">{u}</Badge>)}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td c="dimmed">{fmtBytes(db.disk_usage)}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>

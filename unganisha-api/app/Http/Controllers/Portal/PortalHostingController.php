@@ -160,6 +160,57 @@ class PortalHostingController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /** This account's mailboxes — same WhmService::emailAccounts() the staff page uses. */
+    public function emailAccounts(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $pops = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->emailAccounts($hostingAccount->cpanel_username);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        // list_pops_with_disk's quota is 0 (int) when unlimited, a numeric
+        // byte-count string otherwise — matches the staff endpoint's mapping.
+        $rows = array_map(function ($p) {
+            $quotaBytes = (int) ($p['_diskquota'] ?? 0);
+            return [
+                'email'              => $p['email'] ?? null,
+                'suspended_incoming' => (bool) ($p['suspended_incoming'] ?? false),
+                'suspended_login'    => (bool) ($p['suspended_login'] ?? false),
+                'used_bytes'         => (int) ($p['_diskused'] ?? 0),
+                'quota_bytes'        => $quotaBytes > 0 ? $quotaBytes : null,
+            ];
+        }, $pops);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** This account's MySQL databases — same WhmService::mysqlDatabases() the staff page uses. */
+    public function mysqlDatabases(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $dbs = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->mysqlDatabases($hostingAccount->cpanel_username);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        $rows = array_map(fn ($d) => [
+            'database'   => $d['database'] ?? null,
+            'users'      => (array) ($d['users'] ?? []),
+            'disk_usage' => (int) ($d['disk_usage'] ?? 0),
+        ], $dbs);
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** One-time cPanel/Webmail login URL. Portal admins only — SSO grants full hosting control. */
     public function sso(Request $request, HostingAccount $hostingAccount)
     {
