@@ -154,6 +154,29 @@ class WhmService
         return $this->cpanelApi($user, 'Mysql', 'list_databases');
     }
 
+    /**
+     * Dates (YYYY-MM-DD strings, newest first) of this account's existing
+     * backups. Read-only — verified live via Backup::list_backups.
+     */
+    public function backupDates(string $user): array
+    {
+        return array_values($this->cpanelApi($user, 'Backup', 'list_backups'));
+    }
+
+    /**
+     * Kicks off an on-demand full account backup to the account's own home
+     * directory (Backup::fullbackup_to_homedir, verified live — returns the
+     * backup process's PID). There is no WHM-level API1 function this
+     * reseller token can use to toggle an account's inclusion in the
+     * server's own scheduled backup run (backup_config_get/set and
+     * modifyacct both come back "Permission denied") — this on-demand
+     * trigger is the only backup lever available to the app.
+     */
+    public function triggerFullBackup(string $user): array
+    {
+        return $this->cpanelApi($user, 'Backup', 'fullbackup_to_homedir');
+    }
+
     private function log(string $action, array $request, ?array $response, bool $ok, ?string $error): void
     {
         try {
