@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, TextInput, Select,
   ActionIcon, Center, Loader, Tooltip, Modal, Button, Alert, SegmentedControl,
-  SimpleGrid,
+  SimpleGrid, Anchor,
 } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
@@ -182,7 +182,16 @@ export default function DiscoverHostingAccounts() {
                   return (
                   <Table.Tr key={`${r.server_id}-${r.cpanel_username}`}>
                     <Table.Td c="dimmed">{i + 1}</Table.Td>
-                    <Table.Td fw={500}>{r.domain ?? '—'}</Table.Td>
+                    <Table.Td fw={500}>
+                      {r.imported && r.client?.id && r.client_subscription_id ? (
+                        <Anchor size="sm" fw={600}
+                          onClick={() => navigate(`/hosting/services?client=${r.client!.id}&service=${r.client_subscription_id}`)}>
+                          {r.domain ?? r.cpanel_username}
+                        </Anchor>
+                      ) : (
+                        r.domain ?? '—'
+                      )}
+                    </Table.Td>
                     <Table.Td fz="sm" c="dimmed">{r.ip ?? '—'}</Table.Td>
                     <Table.Td>{r.cpanel_username}</Table.Td>
                     <Table.Td fz="sm" c="dimmed">{r.email ?? '—'}</Table.Td>

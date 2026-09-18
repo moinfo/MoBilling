@@ -98,6 +98,7 @@ export interface DiscoveredAccount {
   suspended: boolean;
   suspend_reason: string | null;
   hosting_account_id: string | null;
+  client_subscription_id: string | null;
   client: { id: string; name: string } | null;
   imported: boolean;
 }

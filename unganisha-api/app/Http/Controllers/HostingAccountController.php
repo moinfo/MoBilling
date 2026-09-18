@@ -85,6 +85,7 @@ class HostingAccountController extends Controller
                     // above so the frontend can just check truthiness.
                     'suspend_reason'     => $suspended ? $suspendReason : null,
                     'hosting_account_id' => $local?->id,
+                    'client_subscription_id' => $local?->client_subscription_id,
                     'client'             => $local?->subscription?->client
                         ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
                         : null,
