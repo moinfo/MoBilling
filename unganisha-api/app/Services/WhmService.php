@@ -138,6 +138,18 @@ class WhmService
         return (array) data_get($res, 'data.domains', []);
     }
 
+    /**
+     * This month's bandwidth usage for every account, in one call — omitting
+     * `user` returns the whole server, not just the caller's own reseller
+     * accounts, unlike its name might suggest. accountsummary/listaccts
+     * never carry usage — this is the only call that actually does.
+     */
+    public function bandwidthUsage(): array
+    {
+        $res = $this->call('showbw');
+        return (array) data_get($res, 'data.acct', []);
+    }
+
     // ── Mutations ──────────────────────────────────────────────────────────────
 
     public function createAccount(string $username, string $domain, string $password, string $plan, ?string $contactEmail = null): array

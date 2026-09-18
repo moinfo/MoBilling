@@ -116,9 +116,12 @@ class HostingAccountController extends Controller
     }
 
     /**
-     * Every subdomain that exists across the tenant's WHM server(s) —
+     * Every subdomain AND addon domain across the tenant's WHM server(s) —
      * `get_domain_info` is server-wide and needs no per-account calls,
-     * unlike discover()'s per-account listaccts loop.
+     * unlike discover()'s per-account listaccts loop. An addon domain is
+     * still backed by a subdomain under the hood, which is why WHM tags
+     * both the same way here (`domain_type`) rather than as unrelated
+     * kinds of record.
      */
     public function subdomains(Request $request)
     {
@@ -146,7 +149,8 @@ class HostingAccountController extends Controller
             }
 
             foreach ($domains as $d) {
-                if (($d['domain_type'] ?? null) !== 'sub') {
+                $type = $d['domain_type'] ?? null;
+                if (!in_array($type, ['sub', 'addon'], true)) {
                     continue;
                 }
                 $username = (string) ($d['user'] ?? '');
@@ -155,6 +159,7 @@ class HostingAccountController extends Controller
                 $rows[] = [
                     'server_id'       => $server->id,
                     'server_name'     => $server->name,
+                    'type'            => $type,
                     'subdomain'       => $d['domain'] ?? null,
                     'parent_domain'   => $d['parent_domain'] ?? null,
                     'cpanel_username' => $username,
@@ -168,6 +173,9 @@ class HostingAccountController extends Controller
             }
         }
 
+        if ($request->filled('type')) {
+            $rows = array_values(array_filter($rows, fn ($r) => $r['type'] === $request->type));
+        }
         if ($request->filled('search')) {
             $s = strtolower($request->search);
             $rows = array_values(array_filter($rows, fn ($r) =>
@@ -178,6 +186,78 @@ class HostingAccountController extends Controller
         }
 
         usort($rows, fn ($a, $b) => strcmp((string) $a['subdomain'], (string) $b['subdomain']));
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
+     * This month's bandwidth usage for every cPanel account across the
+     * tenant's WHM server(s), sorted worst-first — the proactive
+     * counterpart to "Fix Bandwidth Suspension": see who's approaching
+     * their limit before WHM's own cron suspends them for it.
+     */
+    public function bandwidthUsage(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $accounts = (new WhmService($server))->bandwidthUsage();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($accounts as $a) {
+                $username = (string) ($a['user'] ?? '');
+                if ($username === '') {
+                    continue;
+                }
+                $local = $known->get($server->id . '|' . strtolower($username));
+
+                $usedBytes  = (int) ($a['totalbytes'] ?? 0);
+                $limitBytes = (int) ($a['limit'] ?? 0); // 0 = unlimited, WHM's own convention
+                $percent    = $limitBytes > 0 ? round(($usedBytes / $limitBytes) * 100, 1) : null;
+
+                $rows[] = [
+                    'server_id'          => $server->id,
+                    'server_name'        => $server->name,
+                    'cpanel_username'    => $username,
+                    'domain'             => $a['maindomain'] ?? null,
+                    'used_bytes'         => $usedBytes,
+                    'limit_bytes'        => $limitBytes > 0 ? $limitBytes : null,
+                    'percent_used'       => $percent,
+                    'bandwidth_limited'  => (bool) ($a['bwlimited'] ?? false),
+                    'client'             => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                ];
+            }
+        }
+
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) $r['domain']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+
+        // Highest usage first; unlimited accounts (no percent) sort last.
+        usort($rows, fn ($a, $b) => ($b['percent_used'] ?? -1) <=> ($a['percent_used'] ?? -1));
 
         return response()->json(['data' => $rows, 'errors' => $errors]);
     }

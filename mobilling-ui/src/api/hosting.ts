@@ -108,6 +108,7 @@ export const discoverHostingAccounts = (params?: { server_id?: string; search?: 
 export interface Subdomain {
   server_id: string;
   server_name: string;
+  type: 'sub' | 'addon';
   subdomain: string | null;
   parent_domain: string | null;
   cpanel_username: string;
@@ -116,8 +117,22 @@ export interface Subdomain {
   php_version: string | null;
   client: { id: string; name: string } | null;
 }
-export const getSubdomains = (params?: { server_id?: string; search?: string }) =>
+export const getSubdomains = (params?: { server_id?: string; search?: string; type?: 'sub' | 'addon' }) =>
   api.get<{ data: Subdomain[]; errors: string[] }>('/hosting-accounts/subdomains', { params });
+
+export interface BandwidthUsageRow {
+  server_id: string;
+  server_name: string;
+  cpanel_username: string;
+  domain: string | null;
+  used_bytes: number;
+  limit_bytes: number | null;
+  percent_used: number | null;
+  bandwidth_limited: boolean;
+  client: { id: string; name: string } | null;
+}
+export const getBandwidthUsage = (params?: { server_id?: string; search?: string }) =>
+  api.get<{ data: BandwidthUsageRow[]; errors: string[] }>('/hosting-accounts/bandwidth-usage', { params });
 
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
