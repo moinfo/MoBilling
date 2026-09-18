@@ -232,6 +232,31 @@ class WhmService
         ])->values()->all();
     }
 
+    /**
+     * A domain's DNS zone, one row per record — WHM returns every string
+     * field base64-encoded (`dname_b64`, `data_b64[]`), decoded here so
+     * callers never touch raw base64. Comment/control lines (record_type
+     * absent) are dropped; only real records are returned.
+     *
+     * @return array<int, array{type: string, name: string, ttl: int, data: string[]}>
+     */
+    public function dnsZone(string $domain): array
+    {
+        $res = $this->call('parse_dns_zone', ['zone' => $domain]);
+        $lines = (array) data_get($res, 'data.payload', []);
+
+        return collect($lines)
+            ->filter(fn ($l) => ($l['type'] ?? null) === 'record')
+            ->map(fn ($l) => [
+                'type' => $l['record_type'] ?? '',
+                'name' => isset($l['dname_raw']) ? $l['dname_raw'] : (isset($l['dname_b64']) ? base64_decode($l['dname_b64']) : ''),
+                'ttl' => (int) ($l['ttl'] ?? 0),
+                'data' => collect((array) ($l['data_b64'] ?? []))->map(fn ($d) => base64_decode($d))->all(),
+            ])
+            ->values()
+            ->all();
+    }
+
     public function accountSummary(string $user): array
     {
         $res = $this->call('accountsummary', ['user' => $user]);

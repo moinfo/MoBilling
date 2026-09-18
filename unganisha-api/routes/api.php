@@ -670,6 +670,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.suspend')->post('/hosting-accounts/email-accounts/toggle-suspension', [\App\Http\Controllers\HostingAccountController::class, 'toggleEmailSuspension']);
     Route::middleware('permission:hosting.terminate')->post('/hosting-accounts/email-accounts/delete', [\App\Http\Controllers\HostingAccountController::class, 'deleteEmailAccount']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/mysql-databases', [\App\Http\Controllers\HostingAccountController::class, 'mysqlDatabases']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/dns-zone', [\App\Http\Controllers\HostingAccountController::class, 'dnsZone']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);

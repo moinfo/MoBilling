@@ -211,6 +211,15 @@ export interface MysqlDatabaseRow {
 export const getMysqlDatabases = (params: { server_id: string; cpanel_username: string }) =>
   api.get<{ data: MysqlDatabaseRow[] }>('/hosting-accounts/mysql-databases', { params });
 
+export interface DnsZoneRecord {
+  type: string;
+  name: string;
+  ttl: number;
+  data: string[];
+}
+export const getDnsZone = (params: { server_id: string; domain: string }) =>
+  api.get<{ data: DnsZoneRecord[] }>('/hosting-accounts/dns-zone', { params });
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

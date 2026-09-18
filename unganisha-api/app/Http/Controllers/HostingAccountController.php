@@ -551,6 +551,33 @@ class HostingAccountController extends Controller
     }
 
     /**
+     * A domain's DNS zone — read-only for now (view only, per explicit
+     * decision, before any edit capability ships). Takes the domain name
+     * directly rather than cpanel_username: WHM's parse_dns_zone is keyed
+     * by zone name, and a subdomain/addon domain has its own zone that
+     * doesn't share the account's cpanel username.
+     */
+    public function dnsZone(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id' => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'domain'    => 'required|string|max:255',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $records = (new WhmService($server))->dnsZone($data['domain']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $records]);
+    }
+
+    /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row
      * pointing at it. No WHM call — the account already exists on the server.

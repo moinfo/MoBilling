@@ -89,6 +89,7 @@ import EmailAccounts from './pages/EmailAccounts';
 import MysqlDatabases from './pages/MysqlDatabases';
 import HostingPackages from './pages/HostingPackages';
 import ServerHealth from './pages/ServerHealth';
+import DnsZone from './pages/DnsZone';
 import SslExpiry from './pages/SslExpiry';
 import ServiceManagement from './pages/ServiceManagement';
 import Domains from './pages/Domains';
@@ -310,6 +311,7 @@ export default function App() {
                   <Route path="/hosting/mysql-databases" element={<MysqlDatabases />} />
                   <Route path="/hosting/packages" element={<HostingPackages />} />
                   <Route path="/hosting/health" element={<ServerHealth />} />
+                  <Route path="/hosting/dns-zone" element={<DnsZone />} />
                   <Route path="/domains/ssl-expiry" element={<SslExpiry />} />
                   <Route path="/hosting/services" element={<ServiceManagement />} />
                   <Route path="/domains" element={<Domains />} />
