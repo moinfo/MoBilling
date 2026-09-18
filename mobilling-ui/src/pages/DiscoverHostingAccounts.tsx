@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, TextInput, Select,
   ActionIcon, Center, Loader, Tooltip, Modal, Button, Alert, SegmentedControl,
@@ -11,14 +11,16 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate } from 'react-router-dom';
 import {
   IconServerBolt, IconSearch, IconExternalLink, IconAlertTriangle, IconPlus,
-  IconServer2, IconCircleCheck, IconCircleDashed, IconAlertOctagon,
+  IconServer2, IconCircleCheck, IconCircleDashed, IconAlertOctagon, IconBulb,
 } from '@tabler/icons-react';
 import {
   discoverHostingAccounts, importHostingAccount, getServers, DiscoveredAccount,
 } from '../api/hosting';
-import { getClients } from '../api/clients';
+import { getClients, Client } from '../api/clients';
 import { getProductServices } from '../api/productServices';
 import StatCard from '../components/Reports/StatCard';
+
+const normEmail = (e: string | null | undefined) => (e ?? '').trim().toLowerCase();
 
 /**
  * Cross-checks every cPanel account that actually exists on the WHM
@@ -70,6 +72,24 @@ export default function DiscoverHostingAccounts() {
         || (r.domain ?? '').toLowerCase().includes(debouncedSearch.toLowerCase())
         || (r.client?.name ?? '').toLowerCase().includes(debouncedSearch.toLowerCase()))
     : rows;
+
+  // Every existing client, so an unimported account's WHM contact email can
+  // be matched against one we already have — without a query per row.
+  const { data: allClientsData } = useQuery({
+    queryKey: ['clients-for-email-match'],
+    queryFn: () => getClients({ per_page: 500 }),
+    staleTime: 60_000,
+  });
+  const clientByEmail = useMemo(() => {
+    const map = new Map<string, Client>();
+    for (const c of allClientsData?.data?.data ?? []) {
+      const email = normEmail(c.email);
+      if (email) map.set(email, c);
+    }
+    return map;
+  }, [allClientsData]);
+  const suggestionFor = (r: DiscoveredAccount) =>
+    !r.imported && r.email ? clientByEmail.get(normEmail(r.email)) : undefined;
 
   return (
     <Stack gap="md">
@@ -147,7 +167,9 @@ export default function DiscoverHostingAccounts() {
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {filtered.map((r, i) => (
+                {filtered.map((r, i) => {
+                  const suggested = suggestionFor(r);
+                  return (
                   <Table.Tr key={`${r.server_id}-${r.cpanel_username}`}>
                     <Table.Td c="dimmed">{i + 1}</Table.Td>
                     <Table.Td fw={500}>{r.domain ?? '—'}</Table.Td>
@@ -178,21 +200,32 @@ export default function DiscoverHostingAccounts() {
                             <IconExternalLink size={12} />
                           </ActionIcon>
                         </Group>
+                      ) : suggested ? (
+                        <Tooltip label={`Matched by contact email (${r.email}) — click to review and link`}>
+                          <Badge
+                            size="sm" variant="light" color="violet" style={{ cursor: 'pointer' }}
+                            leftSection={<IconBulb size={12} />}
+                            onClick={() => setImporting(r)}
+                          >
+                            Suggested: {suggested.name}
+                          </Badge>
+                        </Tooltip>
                       ) : (
                         <Badge size="sm" variant="light" color="gray">Not imported</Badge>
                       )}
                     </Table.Td>
                     <Table.Td>
                       {!r.imported && (
-                        <Tooltip label="Import and link to a client">
-                          <ActionIcon variant="light" color="blue" size="sm" onClick={() => setImporting(r)}>
+                        <Tooltip label={suggested ? `Link to suggested client: ${suggested.name}` : 'Import and link to a client'}>
+                          <ActionIcon variant="light" color={suggested ? 'violet' : 'blue'} size="sm" onClick={() => setImporting(r)}>
                             <IconPlus size={14} />
                           </ActionIcon>
                         </Tooltip>
                       )}
                     </Table.Td>
                   </Table.Tr>
-                ))}
+                  );
+                })}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
@@ -201,6 +234,7 @@ export default function DiscoverHostingAccounts() {
 
       <ImportModal
         account={importing}
+        suggestedClient={importing ? suggestionFor(importing) : undefined}
         onClose={() => setImporting(null)}
         onImported={() => qc.invalidateQueries({ queryKey: ['discover-hosting'] })}
       />
@@ -208,8 +242,8 @@ export default function DiscoverHostingAccounts() {
   );
 }
 
-function ImportModal({ account, onClose, onImported }: {
-  account: DiscoveredAccount | null; onClose: () => void; onImported: () => void;
+function ImportModal({ account, suggestedClient, onClose, onImported }: {
+  account: DiscoveredAccount | null; suggestedClient?: Client; onClose: () => void; onImported: () => void;
 }) {
   const [clientSearch, setClientSearch] = useState('');
   const [debouncedClientSearch] = useDebouncedValue(clientSearch, 300);
@@ -222,6 +256,11 @@ function ImportModal({ account, onClose, onImported }: {
     enabled: !!account,
   });
   const clients = clientsData?.data?.data ?? [];
+  // The suggested match may not be in the first 30 search results, so make
+  // sure it's always a selectable option once one is offered.
+  const clientOptions = suggestedClient && !clients.some((c: Client) => c.id === suggestedClient.id)
+    ? [suggestedClient, ...clients]
+    : clients;
 
   const { data: productsData } = useQuery({
     queryKey: ['products-for-import', debouncedProductSearch],
@@ -237,6 +276,13 @@ function ImportModal({ account, onClose, onImported }: {
       product_service_id: (v) => (v ? null : 'Required'),
     },
   });
+
+  // Pre-select the suggested client each time the modal opens for a new
+  // account — staff can still search and pick someone else instead.
+  useEffect(() => {
+    if (account) form.setFieldValue('client_id', suggestedClient?.id ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [account, suggestedClient]);
 
   const mutation = useMutation({
     mutationFn: () => importHostingAccount({
@@ -272,9 +318,15 @@ function ImportModal({ account, onClose, onImported }: {
               {account.cpanel_username} on {account.server_name}{account.plan ? ` · ${account.plan}` : ''} —
               this creates a subscription and links the account to whoever it belongs to.
             </Text>
+            {suggestedClient && (
+              <Alert color="violet" variant="light" icon={<IconBulb size={16} />}>
+                Matched by contact email ({account.email}) to an existing client:{' '}
+                <strong>{suggestedClient.name}</strong>. Pre-selected below — change it if that's wrong.
+              </Alert>
+            )}
             <Select
               label="Client" placeholder="Search by name or email…" required searchable
-              data={clients.map((c: any) => ({ value: c.id, label: `${c.name}${c.email ? ` (${c.email})` : ''}` }))}
+              data={clientOptions.map((c: any) => ({ value: c.id, label: `${c.name}${c.email ? ` (${c.email})` : ''}` }))}
               searchValue={clientSearch} onSearchChange={setClientSearch}
               value={form.values.client_id} onChange={(v) => form.setFieldValue('client_id', v ?? '')}
               error={form.errors.client_id}
