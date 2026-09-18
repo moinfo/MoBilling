@@ -134,6 +134,19 @@ export interface BandwidthUsageRow {
 export const getBandwidthUsage = (params?: { server_id?: string; search?: string }) =>
   api.get<{ data: BandwidthUsageRow[]; errors: string[] }>('/hosting-accounts/bandwidth-usage', { params });
 
+export interface DiskUsageRow {
+  server_id: string;
+  server_name: string;
+  cpanel_username: string;
+  domain: string | null;
+  used_mb: number;
+  limit_mb: number | null;
+  percent_used: number | null;
+  client: { id: string; name: string } | null;
+}
+export const getDiskUsage = (params?: { server_id?: string; search?: string }) =>
+  api.get<{ data: DiskUsageRow[]; errors: string[] }>('/hosting-accounts/disk-usage', { params });
+
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
   client_id: string; product_service_id: string;

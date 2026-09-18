@@ -263,6 +263,83 @@ class HostingAccountController extends Controller
     }
 
     /**
+     * Disk usage for every cPanel account across the tenant's WHM server(s),
+     * sorted worst-first — same idea as bandwidthUsage(), but disk_used/
+     * disk_limit are already in listaccts (no extra WHM call needed).
+     */
+    public function diskUsage(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        // "563M" -> 563, "unlimited" (or missing) -> null.
+        $toMb = function ($raw) {
+            if (!is_string($raw) || !preg_match('/^(\d+(?:\.\d+)?)M$/i', trim($raw), $m)) {
+                return null;
+            }
+            return (float) $m[1];
+        };
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $accounts = (new WhmService($server))->listAccounts();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($accounts as $a) {
+                $username = (string) ($a['user'] ?? '');
+                if ($username === '') {
+                    continue;
+                }
+                $local = $known->get($server->id . '|' . strtolower($username));
+
+                $usedMb  = $toMb($a['diskused'] ?? null) ?? 0;
+                $limitMb = $toMb($a['disklimit'] ?? null);
+                $percent = $limitMb !== null && $limitMb > 0 ? round(($usedMb / $limitMb) * 100, 1) : null;
+
+                $rows[] = [
+                    'server_id'       => $server->id,
+                    'server_name'     => $server->name,
+                    'cpanel_username' => $username,
+                    'domain'          => $a['domain'] ?? null,
+                    'used_mb'         => $usedMb,
+                    'limit_mb'        => $limitMb,
+                    'percent_used'    => $percent,
+                    'client'          => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                ];
+            }
+        }
+
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) $r['domain']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+
+        usort($rows, fn ($a, $b) => ($b['percent_used'] ?? -1) <=> ($a['percent_used'] ?? -1));
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
      * Link a discovered-but-untracked cPanel account to a client: creates the
      * subscription it never had in MoBilling, then the hosting_accounts row
      * pointing at it. No WHM call — the account already exists on the server.
