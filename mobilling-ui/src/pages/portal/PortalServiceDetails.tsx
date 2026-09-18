@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   Badge, Divider, Modal, PasswordInput, Textarea, Radio, RingProgress,
-  SimpleGrid, UnstyledButton, Center, Anchor, Alert,
+  SimpleGrid, UnstyledButton, Anchor, Alert,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -22,6 +22,11 @@ import { Tooltip } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtBytes = (bytes: number) => {
+  if (bytes <= 0) return '0 MB';
+  const gb = bytes / 1_073_741_824;
+  return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(bytes / 1_048_576).toFixed(0)} MB`;
+};
 
 const cycleLabel: Record<string, string> = {
   once: 'One-time', monthly: 'Monthly', quarterly: 'Quarterly',
@@ -93,6 +98,10 @@ export default function PortalServiceDetails() {
   const diskUsed  = parseFloat(String(d.disk_used ?? '').replace(/[^\d.]/g, '')) || 0;
   const diskLimit = parseFloat(String(d.disk_limit ?? '').replace(/[^\d.]/g, '')) || 0;
   const diskPct   = diskLimit > 0 ? Math.min(100, (diskUsed / diskLimit) * 100) : 0;
+
+  const bwUsed  = d.bw_used_bytes ?? 0;
+  const bwLimit = d.bw_limit_bytes ?? 0;
+  const bwPct   = bwLimit > 0 ? Math.min(100, (bwUsed / bwLimit) * 100) : 0;
 
   return (
     <Stack gap="lg">
@@ -184,10 +193,10 @@ export default function PortalServiceDetails() {
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Paper withBorder radius="md" p="lg">
             <Text fw={700} mb="md">Usage Statistics</Text>
-            <Center>
+            <Group justify="space-around" wrap="wrap">
               <Stack align="center" gap={4}>
                 <RingProgress
-                  size={150} thickness={14} roundCaps
+                  size={130} thickness={12} roundCaps
                   sections={[{ value: diskPct, color: diskPct > 90 ? 'red' : diskPct > 70 ? 'orange' : 'blue' }]}
                   label={
                     <Text ta="center" fw={700} size="sm">
@@ -200,7 +209,22 @@ export default function PortalServiceDetails() {
                   {d.disk_used ?? '0M'} / {d.disk_limit ?? 'Unlimited'}
                 </Text>
               </Stack>
-            </Center>
+              <Stack align="center" gap={4}>
+                <RingProgress
+                  size={130} thickness={12} roundCaps
+                  sections={[{ value: bwPct, color: bwPct > 90 ? 'red' : bwPct > 70 ? 'orange' : 'teal' }]}
+                  label={
+                    <Text ta="center" fw={700} size="sm">
+                      {bwLimit > 0 ? `${Math.round(bwPct)}%` : '—'}
+                    </Text>
+                  }
+                />
+                <Text fw={600} size="sm">Bandwidth</Text>
+                <Text size="xs" c="dimmed">
+                  {fmtBytes(bwUsed)} / {bwLimit > 0 ? fmtBytes(bwLimit) : 'Unlimited'}
+                </Text>
+              </Stack>
+            </Group>
             <Divider my="md" />
             <Group justify="space-between">
               <Text size="xs" c="dimmed">

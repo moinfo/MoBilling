@@ -79,33 +79,50 @@ class PortalHostingController extends Controller
             'next_due'        => $sub?->expire_date?->toDateString(),
             'disk_used'       => $hostingAccount->meta['disk_used'] ?? null,
             'disk_limit'      => $hostingAccount->meta['disk_limit'] ?? null,
+            'bw_used_bytes'   => $hostingAccount->meta['bw_used_bytes'] ?? null,
+            'bw_limit_bytes'  => $hostingAccount->meta['bw_limit_bytes'] ?? null,
             'last_synced_at'  => $hostingAccount->last_synced_at?->toISOString(),
             'shortcuts'       => array_keys(self::GOTO_MAP),
         ]]);
     }
 
-    /** Live usage refresh (read-only accountsummary). */
+    /**
+     * Live usage refresh — disk via accountsummary, bandwidth via showbw.
+     * accountsummary was confirmed (elsewhere this session) to never
+     * actually carry bandwidth fields despite the field names suggesting it
+     * might — showbw is the only WHM call that does, and it's server-wide
+     * (no per-account variant exists), so this pulls the whole server's
+     * figures and picks out this one account's row.
+     */
     public function refreshUsage(Request $request, HostingAccount $hostingAccount)
     {
         $this->guardAccount($request, $hostingAccount, adminOnly: false);
 
         try {
-            $summary = (new WhmService($hostingAccount->server))
-                ->forAccount($hostingAccount->id)
-                ->accountSummary($hostingAccount->cpanel_username);
+            $whm = (new WhmService($hostingAccount->server))->forAccount($hostingAccount->id);
+            $summary = $whm->accountSummary($hostingAccount->cpanel_username);
+
+            $bwRow = collect($whm->bandwidthUsage())
+                ->first(fn ($a) => strcasecmp((string) ($a['user'] ?? ''), $hostingAccount->cpanel_username) === 0);
+            $bwLimitBytes = (int) ($bwRow['limit'] ?? 0); // 0 = unlimited, WHM's own convention
 
             $hostingAccount->update([
                 'last_synced_at' => now(),
                 'meta' => array_merge($hostingAccount->meta ?? [], [
-                    'disk_used'  => $summary['diskused'] ?? null,
-                    'disk_limit' => $summary['disklimit'] ?? null,
-                    'plan'       => $summary['plan'] ?? null,
+                    'disk_used'         => $summary['diskused'] ?? null,
+                    'disk_limit'        => $summary['disklimit'] ?? null,
+                    'plan'              => $summary['plan'] ?? null,
+                    'bw_used_bytes'     => $bwRow ? (int) ($bwRow['totalbytes'] ?? 0) : null,
+                    'bw_limit_bytes'    => $bwRow && $bwLimitBytes > 0 ? $bwLimitBytes : null,
                 ]),
             ]);
 
+            $fresh = $hostingAccount->fresh();
             return response()->json(['data' => [
-                'disk_used'      => $hostingAccount->fresh()->meta['disk_used'] ?? null,
-                'disk_limit'     => $hostingAccount->fresh()->meta['disk_limit'] ?? null,
+                'disk_used'      => $fresh->meta['disk_used'] ?? null,
+                'disk_limit'     => $fresh->meta['disk_limit'] ?? null,
+                'bw_used_bytes'  => $fresh->meta['bw_used_bytes'] ?? null,
+                'bw_limit_bytes' => $fresh->meta['bw_limit_bytes'] ?? null,
                 'last_synced_at' => now()->toISOString(),
             ]]);
         } catch (WhmApiException) {

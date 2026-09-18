@@ -210,6 +210,8 @@ export interface PortalHostingDetail {
   next_due: string | null;
   disk_used: string | null;
   disk_limit: string | null;
+  bw_used_bytes: number | null;
+  bw_limit_bytes: number | null;
   last_synced_at: string | null;
   shortcuts: string[];
 }
