@@ -53,6 +53,7 @@ class GeneratePaidBackups extends Command
         $errors = 0;
 
         $productIds = ProductService::withoutGlobalScopes()
+            ->whereNull('deleted_at')
             ->where('category', 'Backup')
             ->pluck('id');
 
@@ -63,6 +64,7 @@ class GeneratePaidBackups extends Command
         }
 
         $subscriptions = ClientSubscription::withoutGlobalScopes()
+            ->whereNull('deleted_at')
             ->whereIn('product_service_id', $productIds)
             ->active()
             ->get();

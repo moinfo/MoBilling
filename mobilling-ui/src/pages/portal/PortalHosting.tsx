@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import {
-  Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Text, Group, Code,
+  Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Text, Group, Code, Tooltip,
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { IconExternalLink, IconWorld } from '@tabler/icons-react';
-import { getPortalHosting, portalHostingSso, PortalHostingAccount } from '../../api/portal';
+import { IconExternalLink, IconWorld, IconShieldCheck, IconShieldOff, IconClockHour4 } from '@tabler/icons-react';
+import { getPortalHosting, portalHostingSso, subscribePortalHostingBackup, PortalHostingAccount } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
 const fmtDate = (d: string | null) =>
@@ -19,6 +19,7 @@ const statusColor: Record<string, string> = {
 export default function PortalHosting() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const qc = useQueryClient();
   const [openingId, setOpeningId] = useState<string | null>(null);
   const isPortalAdmin = (user as any)?.role === 'admin';
 
@@ -44,6 +45,18 @@ export default function PortalHosting() {
     }
   };
 
+  const subscribeBackup = useMutation({
+    mutationFn: (id: string) => subscribePortalHostingBackup(id),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['portal-hosting'] });
+      notifications.show({ title: 'Invoice created', message: res.data.message, color: 'green', autoClose: 9000 });
+      navigate(`/portal/invoices/${res.data.data.document_id}`);
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not create the backup subscription.', color: 'red',
+    }),
+  });
+
   return (
     <Stack>
       <Group gap="xs">
@@ -66,6 +79,7 @@ export default function PortalHosting() {
                   <Table.Th>Disk</Table.Th>
                   <Table.Th>Renews</Table.Th>
                   <Table.Th>Status</Table.Th>
+                  <Table.Th>Backup</Table.Th>
                   <Table.Th></Table.Th>
                 </Table.Tr>
               </Table.Thead>
@@ -86,6 +100,36 @@ export default function PortalHosting() {
                       <Badge size="sm" color={statusColor[a.status] ?? 'gray'} variant="light">
                         {a.status}
                       </Badge>
+                    </Table.Td>
+                    <Table.Td>
+                      {a.backup_status === 'active' && (
+                        <Tooltip label="Daily automatic backup is on for this account">
+                          <Badge size="sm" color="teal" variant="light" leftSection={<IconShieldCheck size={12} />}>
+                            Backed up
+                          </Badge>
+                        </Tooltip>
+                      )}
+                      {a.backup_status === 'pending' && (
+                        <Button size="compact-xs" variant="light" color="orange"
+                          leftSection={<IconClockHour4 size={12} />}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/portal/invoices/${a.backup_pending_document}`); }}>
+                          Pay to activate
+                        </Button>
+                      )}
+                      {a.backup_status === 'none' && (
+                        isPortalAdmin ? (
+                          <Button size="compact-xs" variant="light" color="gray"
+                            leftSection={<IconShieldOff size={12} />}
+                            loading={subscribeBackup.isPending && subscribeBackup.variables === a.id}
+                            onClick={(e) => { e.stopPropagation(); subscribeBackup.mutate(a.id); }}>
+                            Subscribe to Backup
+                          </Button>
+                        ) : (
+                          <Badge size="sm" color="gray" variant="light" leftSection={<IconShieldOff size={12} />}>
+                            Not subscribed
+                          </Badge>
+                        )
+                      )}
                     </Table.Td>
                     <Table.Td>
                       {isPortalAdmin && a.status === 'active' && (

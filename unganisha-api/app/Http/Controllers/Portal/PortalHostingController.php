@@ -15,23 +15,53 @@ class PortalHostingController extends Controller
     public function index(Request $request)
     {
         $clientId = $request->user()->client_id;
+        $tenantId = $request->user()->tenant_id;
 
         $accounts = HostingAccount::with(['server:id,name,hostname', 'subscription:id,client_id,label,expire_date'])
             ->whereHas('subscription', fn ($q) => $q->where('client_id', $clientId))
             ->whereNotIn('status', ['terminated'])
             ->orderBy('domain')
+            ->get();
+
+        // Backup add-on subscriptions are matched by domain name (label),
+        // same convention as hosting:backup-paid-accounts and
+        // hasActiveBackupSubscription() — not linked via client_subscription_id.
+        $domains = $accounts->pluck('domain')->filter()->values()->all();
+        $backupSubs = \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->where('tenant_id', $tenantId)->where('client_id', $clientId)
+            ->whereIn('label', $domains)
+            ->whereIn('status', ['active', 'pending'])
+            ->whereHas('productService', fn ($q) => $q->where('category', 'Backup'))
             ->get()
-            ->map(fn ($a) => [
-                'id'              => $a->id,
-                'domain'          => $a->domain,
-                'cpanel_username' => $a->cpanel_username,
-                'package'         => $a->meta['plan'] ?? $a->package,
-                'status'          => $a->status,
-                'disk_used'       => $a->meta['disk_used'] ?? null,
-                'disk_limit'      => $a->meta['disk_limit'] ?? null,
-                'server_hostname' => $a->server?->hostname,
-                'expires_at'      => $a->subscription?->expire_date?->toDateString(),
-            ]);
+            ->keyBy('label');
+
+        // Ascending, so keyBy() below keeps the NEWEST log per subscription
+        // (later items in the collection overwrite earlier ones).
+        $pendingLogsBySubscription = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()
+            ->whereIn('client_subscription_id', $backupSubs->where('status', 'pending')->pluck('id'))
+            ->orderBy('invoice_created_at')
+            ->get()
+            ->keyBy('client_subscription_id');
+
+        $accounts = $accounts->map(function ($a) use ($backupSubs, $pendingLogsBySubscription) {
+            $backupSub = $backupSubs->get($a->domain);
+            $pendingLog = $backupSub?->status === 'pending' ? $pendingLogsBySubscription->get($backupSub->id) : null;
+
+            return [
+                'id'                       => $a->id,
+                'domain'                   => $a->domain,
+                'cpanel_username'          => $a->cpanel_username,
+                'package'                  => $a->meta['plan'] ?? $a->package,
+                'status'                   => $a->status,
+                'disk_used'                => $a->meta['disk_used'] ?? null,
+                'disk_limit'               => $a->meta['disk_limit'] ?? null,
+                'server_hostname'          => $a->server?->hostname,
+                'expires_at'               => $a->subscription?->expire_date?->toDateString(),
+                'backup_status'            => $backupSub?->status ?? 'none',
+                'backup_pending_document'  => $pendingLog?->document_id,
+            ];
+        });
 
         return response()->json(['data' => $accounts]);
     }
@@ -288,11 +318,131 @@ class PortalHostingController extends Controller
     private function hasActiveBackupSubscription(HostingAccount $hostingAccount): bool
     {
         return \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->whereNull('deleted_at')
             ->where('tenant_id', $hostingAccount->tenant_id)
             ->where('label', $hostingAccount->domain)
             ->where('status', 'active')
             ->whereHas('productService', fn ($q) => $q->where('category', 'Backup'))
             ->exists();
+    }
+
+    /**
+     * Self-service: subscribe this hosting account to the "Backup" add-on
+     * and create its invoice — pay it any way (Pesapal, bank transfer, or
+     * wallet credit) and hosting:backup-paid-accounts picks it up the next
+     * time it runs (SubscriptionActivationService, already wired into
+     * every payment path, flips the subscription to active the moment the
+     * invoice is paid). Mirrors PortalResellerController::subscribe()'s
+     * exact idempotency pattern: a lock per (client, domain) plus reusing
+     * an already-pending invoice, so a double-click or slow retry can't
+     * spawn two subscriptions for the same domain.
+     */
+    public function subscribeBackup(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+        $tenantId = $hostingAccount->tenant_id;
+        $clientId = $hostingAccount->subscription->client_id;
+
+        if ($this->hasActiveBackupSubscription($hostingAccount)) {
+            return response()->json(['message' => 'This account already has an active Backup subscription.'], 422);
+        }
+
+        $product = \App\Models\ProductService::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->where('tenant_id', $tenantId)->where('category', 'Backup')->where('is_active', true)
+            ->first();
+        if (!$product) {
+            return response()->json(['message' => 'Backup is not available right now — please contact us.'], 422);
+        }
+
+        $lock = \Illuminate\Support\Facades\Cache::lock("backup-subscribe:{$clientId}:{$hostingAccount->domain}", 10);
+
+        try {
+            return $lock->block(5, function () use ($hostingAccount, $product, $tenantId, $clientId) {
+                $pendingSubscription = \App\Models\ClientSubscription::withoutGlobalScopes()
+                    ->whereNull('deleted_at')
+                    ->where('tenant_id', $tenantId)->where('client_id', $clientId)
+                    ->where('product_service_id', $product->id)->where('label', $hostingAccount->domain)
+                    ->where('status', 'pending')
+                    ->latest('created_at')->first();
+
+                if ($pendingSubscription) {
+                    $pendingLog = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()
+                        ->where('client_subscription_id', $pendingSubscription->id)
+                        ->latest('invoice_created_at')->first();
+                    $document = $pendingLog
+                        ? \App\Models\Document::withoutGlobalScopes()->whereIn('status', ['sent', 'partial', 'overdue'])->find($pendingLog->document_id)
+                        : null;
+                    if ($document) {
+                        return response()->json([
+                            'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+                            'message' => "Invoice {$document->document_number} is awaiting payment — pay it to activate backup for {$hostingAccount->domain}.",
+                        ]);
+                    }
+                }
+
+                $document = \Illuminate\Support\Facades\DB::transaction(function () use ($hostingAccount, $product, $tenantId, $clientId) {
+                    $start = now()->startOfDay();
+
+                    $subscription = \App\Models\ClientSubscription::create([
+                        'tenant_id'          => $tenantId,
+                        'client_id'          => $clientId,
+                        'product_service_id' => $product->id,
+                        'label'              => $hostingAccount->domain,
+                        'quantity'           => 1,
+                        'start_date'         => $start,
+                        'status'             => 'pending',
+                        'recurring_amount'   => $product->price,
+                    ]);
+
+                    $document = \App\Models\Document::withoutGlobalScopes()->create([
+                        'tenant_id'       => $tenantId,
+                        'client_id'       => $clientId,
+                        'type'            => 'invoice',
+                        'document_number' => app(\App\Services\DocumentNumberService::class)->generate('invoice', $tenantId),
+                        'date'            => now()->toDateString(),
+                        'due_date'        => now()->addDays(7)->toDateString(),
+                        'subtotal'        => $product->price,
+                        'discount_amount' => 0,
+                        'tax_amount'      => 0,
+                        'total'           => $product->price,
+                        'status'          => 'sent',
+                        'notes'           => "Web Hosting Backup — {$hostingAccount->domain} (self-service, portal)",
+                    ]);
+
+                    $document->items()->create([
+                        'product_service_id' => $product->id,
+                        'item_type'          => 'service',
+                        'description'        => "Web Hosting Backup — {$hostingAccount->domain}",
+                        'quantity'           => 1,
+                        'price'              => $product->price,
+                        'tax_percent'        => 0,
+                        'tax_amount'         => 0,
+                        'total'              => $product->price,
+                    ]);
+
+                    \App\Models\RecurringInvoiceLog::withoutGlobalScopes()->create([
+                        'tenant_id'              => $tenantId,
+                        'client_id'              => $clientId,
+                        'product_service_id'     => $product->id,
+                        'next_bill_date'         => $start->toDateString(),
+                        'client_subscription_id' => $subscription->id,
+                        'document_id'            => $document->id,
+                        'invoice_created_at'     => now(),
+                        'reminders_sent'         => [],
+                    ]);
+
+                    return $document;
+                });
+
+                return response()->json([
+                    'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+                    'message' => "Invoice {$document->document_number} created — pay it any way you like to activate backup for {$hostingAccount->domain}.",
+                ], 201);
+            });
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            return response()->json(['message' => 'Still processing your previous request — please wait a moment and try again.'], 429);
+        }
     }
 
     /** This account's backup retention policy — the client's own paid-backup "cron" settings. */

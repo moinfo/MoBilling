@@ -1051,6 +1051,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/hosting/{hostingAccount}/php-versions', [\App\Http\Controllers\Portal\PortalHostingController::class, 'phpVersions']);
     Route::put('/hosting/{hostingAccount}/php-versions', [\App\Http\Controllers\Portal\PortalHostingController::class, 'updatePhpVersion']);
     Route::get('/hosting/{hostingAccount}/backups', [\App\Http\Controllers\Portal\PortalHostingController::class, 'backups']);
+    Route::post('/hosting/{hostingAccount}/subscribe-backup', [\App\Http\Controllers\Portal\PortalHostingController::class, 'subscribeBackup']);
     Route::get('/hosting/{hostingAccount}/backup-settings', [\App\Http\Controllers\Portal\PortalHostingController::class, 'backupSettings']);
     Route::put('/hosting/{hostingAccount}/backup-settings', [\App\Http\Controllers\Portal\PortalHostingController::class, 'updateBackupSettings']);
     Route::post('/hosting/{hostingAccount}/change-password', [\App\Http\Controllers\Portal\PortalHostingController::class, 'changePassword']);

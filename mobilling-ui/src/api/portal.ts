@@ -188,10 +188,15 @@ export interface PortalHostingAccount {
   disk_limit: string | null;
   server_hostname: string | null;
   expires_at: string | null;
+  backup_status: 'none' | 'pending' | 'active';
+  backup_pending_document: string | null;
 }
 
 export const getPortalHosting = () =>
   api.get<{ data: PortalHostingAccount[] }>('/portal/hosting');
+
+export const subscribePortalHostingBackup = (id: string) =>
+  api.post<{ data: { document_id: string; document_number: string; total: number }; message: string }>(`/portal/hosting/${id}/subscribe-backup`);
 
 export const portalHostingSso = (id: string, opts?: { service?: 'cpanel' | 'webmail'; goto?: string }) =>
   api.post<{ url: string }>(`/portal/hosting/${id}/sso`, opts ?? {});
