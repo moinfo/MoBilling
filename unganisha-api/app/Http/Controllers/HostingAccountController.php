@@ -434,13 +434,93 @@ class HostingAccountController extends Controller
             return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
         }
 
-        $rows = array_map(fn ($p) => [
-            'email'              => $p['email'] ?? null,
-            'suspended_incoming' => (bool) ($p['suspended_incoming'] ?? false),
-            'suspended_login'    => (bool) ($p['suspended_login'] ?? false),
-        ], $pops);
+        // list_pops_with_disk's quota is 0 (int) when unlimited, a numeric
+        // byte-count string otherwise — verified live.
+        $rows = array_map(function ($p) {
+            $quotaRaw = $p['_diskquota'] ?? 0;
+            $quotaBytes = (int) $quotaRaw;
+            return [
+                'email'              => $p['email'] ?? null,
+                'suspended_incoming' => (bool) ($p['suspended_incoming'] ?? false),
+                'suspended_login'    => (bool) ($p['suspended_login'] ?? false),
+                'used_bytes'         => (int) ($p['_diskused'] ?? 0),
+                'quota_bytes'        => $quotaBytes > 0 ? $quotaBytes : null,
+            ];
+        }, $pops);
 
         return response()->json(['data' => $rows]);
+    }
+
+    /** Module command: set one mailbox's password. */
+    public function changeEmailPassword(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'email'           => 'required|email|max:255',
+            'password'        => 'required|string|min:8|max:255',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->changeEmailPassword($data['cpanel_username'], $data['email'], $data['password']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Mailbox password changed.']);
+    }
+
+    /** Module command: suspend or unsuspend one mailbox's login (webmail/IMAP/POP). */
+    public function toggleEmailSuspension(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'email'           => 'required|email|max:255',
+            'suspend'         => 'required|boolean',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+        $whm = new WhmService($server);
+
+        try {
+            $data['suspend']
+                ? $whm->suspendEmailLogin($data['cpanel_username'], $data['email'])
+                : $whm->unsuspendEmailLogin($data['cpanel_username'], $data['email']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => $data['suspend'] ? 'Mailbox login suspended.' : 'Mailbox login unsuspended.']);
+    }
+
+    /** Deletes one mailbox permanently — cPanel takes its mail store with it. */
+    public function deleteEmailAccount(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'email'           => 'required|email|max:255',
+            'domain'          => 'required|string|max:255',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->deleteEmailAccount($data['cpanel_username'], $data['email'], $data['domain']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the delete: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Mailbox deleted.']);
     }
 
     /** One account's MySQL databases — same per-account shape as emailAccounts(). */

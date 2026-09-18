@@ -662,6 +662,9 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/disk-usage', [\App\Http\Controllers\HostingAccountController::class, 'diskUsage']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/backup-status', [\App\Http\Controllers\HostingAccountController::class, 'backupStatus']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/email-accounts', [\App\Http\Controllers\HostingAccountController::class, 'emailAccounts']);
+    Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/email-accounts/password', [\App\Http\Controllers\HostingAccountController::class, 'changeEmailPassword']);
+    Route::middleware('permission:hosting.suspend')->post('/hosting-accounts/email-accounts/toggle-suspension', [\App\Http\Controllers\HostingAccountController::class, 'toggleEmailSuspension']);
+    Route::middleware('permission:hosting.terminate')->post('/hosting-accounts/email-accounts/delete', [\App\Http\Controllers\HostingAccountController::class, 'deleteEmailAccount']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/mysql-databases', [\App\Http\Controllers\HostingAccountController::class, 'mysqlDatabases']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);

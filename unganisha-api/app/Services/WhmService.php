@@ -66,7 +66,7 @@ class WhmService
      * (`result.status`/`result.data`/`result.errors`, no top-level
      * `metadata.result`), so this can't share call()'s success check.
      */
-    private function cpanelApi(string $user, string $module, string $func, array $params = []): array
+    private function cpanelApi(string $user, string $module, string $func, array $params = [], array $sensitiveKeys = []): array
     {
         $request = Http::withHeaders([
             'Authorization' => "whm {$this->server->username}:{$this->server->api_token}",
@@ -84,6 +84,7 @@ class WhmService
             'cpanel_jsonapi_module' => $module,
             'cpanel_jsonapi_func' => $func,
         ];
+        $logParams = ['user' => $user] + collect($params)->except($sensitiveKeys)->all();
 
         try {
             $response = $request->get($url, $query);
@@ -92,7 +93,7 @@ class WhmService
             $ok = $response->ok() && (int) data_get($json, 'result.status', 0) === 1;
             $reason = $ok ? 'OK' : (implode('; ', (array) data_get($json, 'result.errors', [])) ?: 'HTTP ' . $response->status());
 
-            $this->log("cpanel:{$module}:{$func}", ['user' => $user] + $params, $ok ? (array) data_get($json, 'result.data', []) : $json, $ok, $ok ? null : $reason);
+            $this->log("cpanel:{$module}:{$func}", $logParams, $ok ? (array) data_get($json, 'result.data', []) : $json, $ok, $ok ? null : $reason);
 
             if (!$ok) {
                 throw new WhmApiException("{$module}::{$func}", $reason);
@@ -102,16 +103,49 @@ class WhmService
         } catch (WhmApiException $e) {
             throw $e;
         } catch (\Throwable $e) {
-            $this->log("cpanel:{$module}:{$func}", ['user' => $user], null, false, $e->getMessage());
+            $this->log("cpanel:{$module}:{$func}", $logParams, null, false, $e->getMessage());
             throw new WhmApiException("{$module}::{$func}", $e->getMessage());
         }
     }
 
-    /** One account's email addresses — "Main Account" is the login itself, not a real mailbox. */
+    /**
+     * One account's email addresses with disk usage — "Main Account" is the
+     * login itself, not a real mailbox. list_pops_with_disk's usage/quota
+     * fields (`_diskused`, `_diskquota`) are bytes; `_diskquota` is `0` (int)
+     * when unlimited, a numeric string otherwise — verified live.
+     */
     public function emailAccounts(string $user): array
     {
-        $rows = $this->cpanelApi($user, 'Email', 'list_pops');
+        $rows = $this->cpanelApi($user, 'Email', 'list_pops_with_disk');
         return array_values(array_filter($rows, fn ($r) => ($r['login'] ?? '') !== 'Main Account'));
+    }
+
+    /**
+     * $cpanelUser is the cPanel *account* owning the mailbox (same one
+     * emailAccounts() was called with) — not derivable from $email alone,
+     * since an addon domain's mailboxes don't share the account username.
+     */
+
+    /** Sets one mailbox's password — cPanel enforces its own strength check. */
+    public function changeEmailPassword(string $cpanelUser, string $email, string $password): array
+    {
+        return $this->cpanelApi($cpanelUser, 'Email', 'passwd_pop', ['email' => $email, 'password' => $password], sensitiveKeys: ['password']);
+    }
+
+    public function suspendEmailLogin(string $cpanelUser, string $email): array
+    {
+        return $this->cpanelApi($cpanelUser, 'Email', 'suspend_login', ['email' => $email]);
+    }
+
+    public function unsuspendEmailLogin(string $cpanelUser, string $email): array
+    {
+        return $this->cpanelApi($cpanelUser, 'Email', 'unsuspend_login', ['email' => $email]);
+    }
+
+    /** Deletes a mailbox permanently — cPanel takes its mail store with it. */
+    public function deleteEmailAccount(string $cpanelUser, string $email, string $domain): array
+    {
+        return $this->cpanelApi($cpanelUser, 'Email', 'delete_pop', ['email' => $email, 'domain' => $domain]);
     }
 
     /** One account's MySQL databases, each with its disk usage and linked users. */

@@ -163,9 +163,20 @@ export interface EmailAccountRow {
   email: string | null;
   suspended_incoming: boolean;
   suspended_login: boolean;
+  used_bytes: number;
+  quota_bytes: number | null;
 }
 export const getEmailAccounts = (params: { server_id: string; cpanel_username: string }) =>
   api.get<{ data: EmailAccountRow[] }>('/hosting-accounts/email-accounts', { params });
+
+export const changeEmailAccountPassword = (data: { server_id: string; cpanel_username: string; email: string; password: string }) =>
+  api.post<{ message: string }>('/hosting-accounts/email-accounts/password', data);
+
+export const toggleEmailAccountSuspension = (data: { server_id: string; cpanel_username: string; email: string; suspend: boolean }) =>
+  api.post<{ message: string }>('/hosting-accounts/email-accounts/toggle-suspension', data);
+
+export const deleteEmailAccount = (data: { server_id: string; cpanel_username: string; email: string; domain: string }) =>
+  api.post<{ message: string }>('/hosting-accounts/email-accounts/delete', data);
 
 export interface MysqlDatabaseRow {
   database: string | null;
