@@ -25,7 +25,10 @@ Schedule::command('staff-reports:apply-penalties')->dailyAt('00:30')->withoutOve
 Schedule::command('attendance:apply-penalties')->dailyAt('22:30')->withoutOverlapping();
 Schedule::command('attendance:import-device-events')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('wifi:check-router-health')->everyFifteenMinutes()->withoutOverlapping();
-Schedule::command('hosting:backup-paid-accounts')->dailyAt('02:00')->withoutOverlapping();
+// Explicit Africa/Dar_es_Salaam (UTC+3) so this doesn't silently mean
+// 02:00 UTC (05:00 EAT) if APP_TIMEZONE ever changes — same convention as
+// verifications:send-reminders below.
+Schedule::command('hosting:backup-paid-accounts')->dailyAt('05:00')->timezone('Africa/Dar_es_Salaam')->withoutOverlapping();
 
 // Daily system verification reminders. Africa/Dar_es_Salaam = UTC+3 — set
 // explicitly so the schedule isn't sensitive to APP_TIMEZONE drifting.
