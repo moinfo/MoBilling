@@ -474,6 +474,9 @@ export interface BankBalanceStatement {
 export const getBankBalanceStatement = (params: DateRange & { bank_account_id: string }) =>
   api.get<BankBalanceStatement>('/reports/bank-balance-statement', { params });
 
+export const downloadBankBalanceStatementPdf = (params: DateRange & { bank_account_id: string }) =>
+  api.get('/reports/bank-balance-statement/pdf', { params, responseType: 'blob' });
+
 // ─── System Verifications Report ──────────────────────────────
 
 export interface SystemVerificationReportRow {

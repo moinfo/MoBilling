@@ -1060,6 +1060,22 @@ class ReportController extends Controller
      */
     public function bankBalanceStatement(Request $request): JsonResponse
     {
+        return response()->json($this->buildBankBalanceStatement($request));
+    }
+
+    public function bankBalanceStatementPdf(Request $request)
+    {
+        $report = $this->buildBankBalanceStatement($request);
+        $tenant = \App\Models\Tenant::find(auth()->user()->tenant_id);
+
+        $pdf = app(\App\Services\PdfService::class)->generateBankBalanceStatement($tenant, $report);
+
+        $safeBank = preg_replace('/[^A-Za-z0-9]+/', '-', $report['bank_account']['bank_name']);
+        return $pdf->download("bank-balance-statement-{$safeBank}-{$report['period_start']}-to-{$report['period_end']}.pdf");
+    }
+
+    private function buildBankBalanceStatement(Request $request): array
+    {
         $request->validate(['bank_account_id' => 'required|uuid']);
         [$start, $end] = $this->dateRange($request);
         $tenantId = auth()->user()->tenant_id;
@@ -1126,7 +1142,7 @@ class ReportController extends Controller
             ];
         })->values();
 
-        return response()->json([
+        return [
             'bank_account' => [
                 'id' => $bankAccount->id,
                 'bank_name' => $bankAccount->bank_name,
@@ -1141,6 +1157,6 @@ class ReportController extends Controller
             'total_deposits' => round($totalDeposits, 2),
             'total_withdrawals' => round($totalWithdrawals, 2),
             'total_charges' => round($totalCharges, 2),
-        ]);
+        ];
     }
 }

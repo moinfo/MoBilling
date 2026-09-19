@@ -1,9 +1,10 @@
 import { useState, useMemo } from 'react';
-import { Stack, SimpleGrid, Paper, Text, Table, LoadingOverlay, Group, Box, Badge, Select } from '@mantine/core';
+import { Stack, SimpleGrid, Paper, Text, Table, LoadingOverlay, Group, Box, Badge, Select, Button } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { IconWallet, IconArrowDownRight, IconArrowUpRight, IconReceipt2, IconBuildingBank } from '@tabler/icons-react';
+import { notifications } from '@mantine/notifications';
+import { IconWallet, IconArrowDownRight, IconArrowUpRight, IconReceipt2, IconBuildingBank, IconFileTypePdf } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import { getBankBalanceStatement } from '../../api/reports';
+import { getBankBalanceStatement, downloadBankBalanceStatementPdf } from '../../api/reports';
 import { getBankAccounts, BankAccount } from '../../api/bankAccounts';
 import ReportHeader from '../../components/Reports/ReportHeader';
 import StatCard from '../../components/Reports/StatCard';
@@ -19,6 +20,7 @@ export default function BankBalanceStatementReportPage() {
     dayjs().endOf('month').toDate(),
   ]);
   const [bankAccountId, setBankAccountId] = useState<string | null>(null);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   const { data: banksData } = useQuery({
     queryKey: ['bank-accounts-all'],
@@ -57,6 +59,24 @@ export default function BankBalanceStatementReportPage() {
     }));
   }, [r]);
 
+  const handleDownloadPdf = async () => {
+    if (!bankAccountId) return;
+    setDownloadingPdf(true);
+    try {
+      const res = await downloadBankBalanceStatementPdf(params);
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `bank-balance-statement-${params.start_date}-to-${params.end_date}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      notifications.show({ message: 'Failed to generate the PDF.', color: 'red' });
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
   return (
     <Stack gap="lg" pos="relative">
       <LoadingOverlay visible={isLoading || isFetching} />
@@ -67,15 +87,27 @@ export default function BankBalanceStatementReportPage() {
         exportData={exportRows}
         exportFilename="bank-balance-statement"
         extra={
-          <Select
-            placeholder="Choose a bank account"
-            data={bankOptions}
-            value={bankAccountId}
-            onChange={setBankAccountId}
-            searchable
-            w={240}
-            leftSection={<IconBuildingBank size={16} />}
-          />
+          <Group gap="sm" wrap="wrap">
+            <Select
+              placeholder="Choose a bank account"
+              data={bankOptions}
+              value={bankAccountId}
+              onChange={setBankAccountId}
+              searchable
+              w={240}
+              leftSection={<IconBuildingBank size={16} />}
+            />
+            {bankAccountId && r && (
+              <Button
+                variant="light" color="red" size="sm"
+                leftSection={<IconFileTypePdf size={16} />}
+                loading={downloadingPdf}
+                onClick={handleDownloadPdf}
+              >
+                Export PDF
+              </Button>
+            )}
+          </Group>
         }
       />
 
