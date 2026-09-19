@@ -220,6 +220,92 @@ class PortalHostingController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /** Self-service mailbox creation — admin-gated, same sensitivity tier as change-password. */
+    public function storeEmailAccount(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate([
+            'email'    => 'required|string|max:64|regex:/^[a-zA-Z0-9._+-]+$/',
+            'domain'   => 'required|string|max:255',
+            'password' => 'required|string|min:8|max:255',
+            'quota_mb' => 'required|integer|min:0',
+        ]);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->addEmailAccount($hostingAccount->cpanel_username, $data['email'], $data['domain'], $data['password'], $data['quota_mb']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Email account created.']);
+    }
+
+    public function updateEmailPassword(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate([
+            'email'    => 'required|email|max:255',
+            'password' => 'required|string|min:8|max:255',
+        ]);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->changeEmailPassword($hostingAccount->cpanel_username, $data['email'], $data['password']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Mailbox password changed.']);
+    }
+
+    public function toggleEmailSuspension(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate([
+            'email'   => 'required|email|max:255',
+            'suspend' => 'required|boolean',
+        ]);
+
+        $whm = (new WhmService($hostingAccount->server))->forAccount($hostingAccount->id);
+
+        try {
+            $data['suspend']
+                ? $whm->suspendEmailLogin($hostingAccount->cpanel_username, $data['email'])
+                : $whm->unsuspendEmailLogin($hostingAccount->cpanel_username, $data['email']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => $data['suspend'] ? 'Mailbox login suspended.' : 'Mailbox login unsuspended.']);
+    }
+
+    /** Deletes a mailbox permanently — cPanel takes its mail store with it. */
+    public function destroyEmailAccount(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate(['email' => 'required|email|max:255']);
+        // The mailbox's own domain, not necessarily the account's main one
+        // (an addon domain's mailbox needs its own domain here).
+        $domain = substr($data['email'], strrpos($data['email'], '@') + 1);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->deleteEmailAccount($hostingAccount->cpanel_username, $data['email'], $domain);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the delete: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Mailbox deleted.']);
+    }
+
     /** This account's MySQL databases — same WhmService::mysqlDatabases() the staff page uses. */
     public function mysqlDatabases(Request $request, HostingAccount $hostingAccount)
     {

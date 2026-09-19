@@ -194,6 +194,9 @@ export interface EmailAccountRow {
 export const getEmailAccounts = (params: { server_id: string; cpanel_username: string }) =>
   api.get<{ data: EmailAccountRow[] }>('/hosting-accounts/email-accounts', { params });
 
+export const addEmailAccount = (data: { server_id: string; cpanel_username: string; email: string; domain: string; password: string; quota_mb: number }) =>
+  api.post<{ message: string }>('/hosting-accounts/email-accounts', data);
+
 export const changeEmailAccountPassword = (data: { server_id: string; cpanel_username: string; email: string; password: string }) =>
   api.post<{ message: string }>('/hosting-accounts/email-accounts/password', data);
 

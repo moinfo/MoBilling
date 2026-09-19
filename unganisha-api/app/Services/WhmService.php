@@ -179,6 +179,18 @@ class WhmService
     }
 
     /**
+     * Creates a mailbox (Email::add_pop, verified live with a disposable
+     * test mailbox — created, confirmed in emailAccounts(), deleted).
+     * $quotaMb 0 = unlimited, matching every other quota field here.
+     */
+    public function addEmailAccount(string $cpanelUser, string $localPart, string $domain, string $password, int $quotaMb): array
+    {
+        return $this->cpanelApi($cpanelUser, 'Email', 'add_pop', [
+            'email' => $localPart, 'domain' => $domain, 'password' => $password, 'quota' => $quotaMb,
+        ], sensitiveKeys: ['password']);
+    }
+
+    /**
      * $cpanelUser is the cPanel *account* owning the mailbox (same one
      * emailAccounts() was called with) — not derivable from $email alone,
      * since an addon domain's mailboxes don't share the account username.

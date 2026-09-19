@@ -451,6 +451,31 @@ class HostingAccountController extends Controller
         return response()->json(['data' => $rows]);
     }
 
+    /** Creates a mailbox. */
+    public function storeEmailAccount(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'email'           => 'required|string|max:64|regex:/^[a-zA-Z0-9._+-]+$/',
+            'domain'          => 'required|string|max:255',
+            'password'        => 'required|string|min:8|max:255',
+            'quota_mb'        => 'required|integer|min:0',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->addEmailAccount($data['cpanel_username'], $data['email'], $data['domain'], $data['password'], $data['quota_mb']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Email account created.']);
+    }
+
     /** Module command: set one mailbox's password. */
     public function changeEmailPassword(Request $request)
     {

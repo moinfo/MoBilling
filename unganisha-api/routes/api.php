@@ -666,6 +666,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/disk-usage', [\App\Http\Controllers\HostingAccountController::class, 'diskUsage']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/backup-status', [\App\Http\Controllers\HostingAccountController::class, 'backupStatus']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/email-accounts', [\App\Http\Controllers\HostingAccountController::class, 'emailAccounts']);
+    Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/email-accounts', [\App\Http\Controllers\HostingAccountController::class, 'storeEmailAccount']);
     Route::middleware('permission:hosting.change_package')->post('/hosting-accounts/email-accounts/password', [\App\Http\Controllers\HostingAccountController::class, 'changeEmailPassword']);
     Route::middleware('permission:hosting.suspend')->post('/hosting-accounts/email-accounts/toggle-suspension', [\App\Http\Controllers\HostingAccountController::class, 'toggleEmailSuspension']);
     Route::middleware('permission:hosting.terminate')->post('/hosting-accounts/email-accounts/delete', [\App\Http\Controllers\HostingAccountController::class, 'deleteEmailAccount']);
@@ -1051,6 +1052,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/hosting/{hostingAccount}/refresh-usage', [\App\Http\Controllers\Portal\PortalHostingController::class, 'refreshUsage']);
     Route::get('/hosting/{hostingAccount}/subdomains', [\App\Http\Controllers\Portal\PortalHostingController::class, 'subdomains']);
     Route::get('/hosting/{hostingAccount}/email-accounts', [\App\Http\Controllers\Portal\PortalHostingController::class, 'emailAccounts']);
+    Route::post('/hosting/{hostingAccount}/email-accounts', [\App\Http\Controllers\Portal\PortalHostingController::class, 'storeEmailAccount']);
+    Route::put('/hosting/{hostingAccount}/email-accounts/password', [\App\Http\Controllers\Portal\PortalHostingController::class, 'updateEmailPassword']);
+    Route::put('/hosting/{hostingAccount}/email-accounts/suspend', [\App\Http\Controllers\Portal\PortalHostingController::class, 'toggleEmailSuspension']);
+    Route::delete('/hosting/{hostingAccount}/email-accounts', [\App\Http\Controllers\Portal\PortalHostingController::class, 'destroyEmailAccount']);
     Route::get('/hosting/{hostingAccount}/mysql-databases', [\App\Http\Controllers\Portal\PortalHostingController::class, 'mysqlDatabases']);
     Route::get('/hosting/{hostingAccount}/php-versions', [\App\Http\Controllers\Portal\PortalHostingController::class, 'phpVersions']);
     Route::put('/hosting/{hostingAccount}/php-versions', [\App\Http\Controllers\Portal\PortalHostingController::class, 'updatePhpVersion']);

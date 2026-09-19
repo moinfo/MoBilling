@@ -1,16 +1,17 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, Select, Center, Loader, Alert,
-  ActionIcon, Tooltip, Modal, PasswordInput, Button,
+  ActionIcon, Tooltip, Modal, PasswordInput, Button, TextInput, NumberInput,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import {
-  IconMailbox, IconAlertTriangle, IconKey, IconLock, IconLockOpen, IconTrash,
+  IconMailbox, IconAlertTriangle, IconKey, IconLock, IconLockOpen, IconTrash, IconPlus,
 } from '@tabler/icons-react';
 import {
-  discoverHostingAccounts, getEmailAccounts, changeEmailAccountPassword,
+  discoverHostingAccounts, getEmailAccounts, addEmailAccount, changeEmailAccountPassword,
   toggleEmailAccountSuspension, deleteEmailAccount, DiscoveredAccount, EmailAccountRow,
 } from '../api/hosting';
 import { usePermissions } from '../hooks/usePermissions';
@@ -32,6 +33,7 @@ export default function EmailAccounts() {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
   const [pwFor, setPwFor] = useState<EmailAccountRow | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const { data: accountsData, isLoading: accountsLoading } = useQuery({
     queryKey: ['discover-hosting', undefined, 'all'],
@@ -85,9 +87,16 @@ export default function EmailAccounts() {
 
   return (
     <Stack gap="md">
-      <Title order={3}>
-        <Group gap="xs"><IconMailbox size={22} /> Email Accounts</Group>
-      </Title>
+      <Group justify="space-between">
+        <Title order={3}>
+          <Group gap="xs"><IconMailbox size={22} /> Email Accounts</Group>
+        </Title>
+        {can('hosting.change_package') && (
+          <Button leftSection={<IconPlus size={16} />} onClick={() => setAddOpen(true)} disabled={!cpanelUsername}>
+            Add Email Account
+          </Button>
+        )}
+      </Group>
 
       <Text size="sm" c="dimmed">
         Pick a hosting account to see its mailboxes — WHM only exposes this one account at a time,
@@ -193,7 +202,72 @@ export default function EmailAccounts() {
         serverId={serverId} cpanelUsername={cpanelUsername}
         onChanged={invalidate}
       />
+
+      <AddEmailAccountModal
+        opened={addOpen} onClose={() => setAddOpen(false)}
+        serverId={serverId} cpanelUsername={cpanelUsername} defaultDomain={selectedAccount?.domain ?? ''}
+        onCreated={invalidate}
+      />
     </Stack>
+  );
+}
+
+function AddEmailAccountModal({ opened, onClose, serverId, cpanelUsername, defaultDomain, onCreated }: {
+  opened: boolean; onClose: () => void;
+  serverId: string | null; cpanelUsername: string | null; defaultDomain: string;
+  onCreated: () => void;
+}) {
+  const form = useForm({
+    initialValues: { email: '', domain: defaultDomain, password: '', quota_mb: 250 },
+    validate: {
+      email: (v) => (/^[a-zA-Z0-9._+-]+$/.test(v.trim()) ? null : 'Letters, numbers, . _ + - only'),
+      domain: (v) => (v.trim() ? null : 'Required'),
+      password: (v) => (v.length >= 8 ? null : 'At least 8 characters'),
+    },
+  });
+
+  useEffect(() => {
+    if (opened) {
+      form.setValues({ email: '', domain: defaultDomain, password: '', quota_mb: 250 });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [opened, defaultDomain]);
+
+  const mutation = useMutation({
+    mutationFn: () => addEmailAccount({
+      server_id: serverId!, cpanel_username: cpanelUsername!,
+      email: form.values.email.trim(), domain: form.values.domain.trim(),
+      password: form.values.password, quota_mb: form.values.quota_mb,
+    }),
+    onSuccess: (res) => {
+      notifications.show({ message: res.data.message, color: 'green' });
+      form.reset();
+      onCreated();
+      onClose();
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Failed to create the mailbox.', color: 'red' }),
+  });
+
+  const handleClose = () => { form.reset(); onClose(); };
+
+  return (
+    <Modal opened={opened} onClose={handleClose} title={`Add Email Account — ${cpanelUsername ?? ''}`} centered size="sm">
+      <form onSubmit={form.onSubmit(() => mutation.mutate())}>
+        <Stack>
+          <Group grow align="flex-start">
+            <TextInput label="Username" required placeholder="info" {...form.getInputProps('email')} />
+            <TextInput label="Domain" required {...form.getInputProps('domain')} />
+          </Group>
+          <PasswordInput label="Password" required description="cPanel enforces its own strength check"
+            {...form.getInputProps('password')} />
+          <NumberInput label="Quota (MB)" description="0 = unlimited" min={0} {...form.getInputProps('quota_mb')} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={handleClose}>Cancel</Button>
+            <Button type="submit" loading={mutation.isPending}>Add Email Account</Button>
+          </Group>
+        </Stack>
+      </form>
+    </Modal>
   );
 }
 

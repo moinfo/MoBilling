@@ -242,6 +242,18 @@ export interface PortalEmailAccount {
 export const getPortalHostingEmailAccounts = (id: string) =>
   api.get<{ data: PortalEmailAccount[] }>(`/portal/hosting/${id}/email-accounts`);
 
+export const addPortalHostingEmailAccount = (id: string, data: { email: string; domain: string; password: string; quota_mb: number }) =>
+  api.post<{ message: string }>(`/portal/hosting/${id}/email-accounts`, data);
+
+export const updatePortalHostingEmailPassword = (id: string, data: { email: string; password: string }) =>
+  api.put<{ message: string }>(`/portal/hosting/${id}/email-accounts/password`, data);
+
+export const togglePortalHostingEmailSuspension = (id: string, data: { email: string; suspend: boolean }) =>
+  api.put<{ message: string }>(`/portal/hosting/${id}/email-accounts/suspend`, data);
+
+export const deletePortalHostingEmailAccount = (id: string, email: string) =>
+  api.delete<{ message: string }>(`/portal/hosting/${id}/email-accounts`, { data: { email } });
+
 export interface PortalMysqlDatabase {
   database: string | null;
   users: string[];

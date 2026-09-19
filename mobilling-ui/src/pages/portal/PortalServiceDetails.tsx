@@ -3,6 +3,7 @@ import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   Badge, Divider, Modal, PasswordInput, Textarea, Radio, RingProgress,
   SimpleGrid, UnstyledButton, Anchor, Alert, Table, NumberInput, Switch,
+  TextInput, ActionIcon,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -12,7 +13,7 @@ import {
   IconStar, IconTool, IconLogin, IconMail, IconKey, IconBan, IconWorldWww,
   IconExternalLink, IconRefresh, IconArrowLeft, IconFolders, IconDatabase,
   IconClock, IconChartBar, IconArrowForward, IconServer, IconArchive,
-  IconArrowUp, IconListDetails,
+  IconArrowUp, IconListDetails, IconPlus, IconTrash, IconLock, IconLockOpen,
 } from '@tabler/icons-react';
 import {
   getPortalHostingDetail, portalHostingSso, refreshPortalHostingUsage,
@@ -21,6 +22,8 @@ import {
   getPortalHostingSubdomains, getPortalHostingEmailAccounts, getPortalHostingMysqlDatabases,
   getPortalHostingBackupSettings, updatePortalHostingBackupSettings, getPortalHostingBackups,
   getPortalHostingPhpVersions, updatePortalHostingPhpVersion, PortalPhpVhost,
+  addPortalHostingEmailAccount, updatePortalHostingEmailPassword,
+  togglePortalHostingEmailSuspension, deletePortalHostingEmailAccount, PortalEmailAccount,
 } from '../../api/portal';
 import { Tooltip, Select } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
@@ -125,6 +128,32 @@ export default function PortalServiceDetails() {
     onError: (e: any) => notifications.show({
       message: e?.response?.data?.message ?? 'Refresh failed.', color: 'red',
     }),
+  });
+
+  const invalidateEmails = () => qc.invalidateQueries({ queryKey: ['portal-hosting-emails', id] });
+
+  const [addEmailOpen, setAddEmailOpen] = useState(false);
+  const [emailPwFor, setEmailPwFor] = useState<PortalEmailAccount | null>(null);
+
+  const suspendEmailMutation = useMutation({
+    mutationFn: (vars: { email: string; suspend: boolean }) => togglePortalHostingEmailSuspension(id!, vars),
+    onSuccess: (res) => { notifications.show({ message: res.data.message, color: 'green' }); invalidateEmails(); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Action failed.', color: 'red' }),
+  });
+
+  const deleteEmailMutation = useMutation({
+    mutationFn: (email: string) => deletePortalHostingEmailAccount(id!, email),
+    onSuccess: (res) => { notifications.show({ message: res.data.message, color: 'gray' }); invalidateEmails(); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Delete failed.', color: 'red' }),
+  });
+
+  const confirmDeleteEmail = (email: string) => modals.openConfirmModal({
+    title: 'Delete mailbox',
+    children: <Text size="sm">This <Text span fw={700} c="red">permanently deletes</Text> the mailbox{' '}
+      <Text span fw={600}>{email}</Text> and everything in it. This cannot be undone.</Text>,
+    labels: { confirm: 'Delete', cancel: 'Cancel' },
+    confirmProps: { color: 'red' },
+    onConfirm: () => deleteEmailMutation.mutate(email),
   });
 
   const openSso = async (opts: { service?: 'cpanel' | 'webmail'; goto?: string }, busyKey: string) => {
@@ -326,7 +355,14 @@ export default function PortalServiceDetails() {
       {/* Email accounts */}
       {d.status === 'active' && (
         <Paper withBorder radius="md" p="lg">
-          <Text fw={700} mb="md">Email Accounts</Text>
+          <Group justify="space-between" mb="md">
+            <Text fw={700}>Email Accounts</Text>
+            {isPortalAdmin && (
+              <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setAddEmailOpen(true)}>
+                Add Email Account
+              </Button>
+            )}
+          </Group>
           {emailsLoading ? (
             <Text size="sm" c="dimmed">Loading…</Text>
           ) : emails.length === 0 ? (
@@ -339,6 +375,7 @@ export default function PortalServiceDetails() {
                     <Table.Th>Email</Table.Th>
                     <Table.Th>Size</Table.Th>
                     <Table.Th>Status</Table.Th>
+                    {isPortalAdmin && <Table.Th w={110}></Table.Th>}
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
@@ -357,6 +394,29 @@ export default function PortalServiceDetails() {
                             <Badge size="sm" variant="light" color="teal">Active</Badge>
                           )}
                         </Table.Td>
+                        {isPortalAdmin && (
+                          <Table.Td>
+                            <Group gap={4} wrap="nowrap">
+                              <Tooltip label="Change password">
+                                <ActionIcon variant="light" size="sm" onClick={() => setEmailPwFor(e)}>
+                                  <IconKey size={14} />
+                                </ActionIcon>
+                              </Tooltip>
+                              <Tooltip label={e.suspended_login ? 'Unsuspend login' : 'Suspend login'}>
+                                <ActionIcon variant="light" size="sm" color={e.suspended_login ? 'green' : 'orange'}
+                                  loading={suspendEmailMutation.isPending}
+                                  onClick={() => suspendEmailMutation.mutate({ email: e.email!, suspend: !e.suspended_login })}>
+                                  {e.suspended_login ? <IconLockOpen size={14} /> : <IconLock size={14} />}
+                                </ActionIcon>
+                              </Tooltip>
+                              <Tooltip label="Delete mailbox">
+                                <ActionIcon variant="light" size="sm" color="red" onClick={() => confirmDeleteEmail(e.email!)}>
+                                  <IconTrash size={14} />
+                                </ActionIcon>
+                              </Tooltip>
+                            </Group>
+                          </Table.Td>
+                        )}
                       </Table.Tr>
                     );
                   })}
@@ -445,7 +505,84 @@ export default function PortalServiceDetails() {
       <UpgradeModal id={d.id} opened={upgradeOpen} onClose={() => setUpgradeOpen(false)}
         onInvoiced={() => navigate('/portal/invoices')} />
       <CancellationModal id={d.id} domain={d.domain} opened={cancelOpen} onClose={() => setCancelOpen(false)} />
+
+      <AddEmailAccountModal id={d.id} domain={d.domain} opened={addEmailOpen}
+        onClose={() => setAddEmailOpen(false)} onCreated={invalidateEmails} />
+      <EmailPasswordModal id={d.id} row={emailPwFor} onClose={() => setEmailPwFor(null)} />
     </Stack>
+  );
+}
+
+function AddEmailAccountModal({ id, domain, opened, onClose, onCreated }: {
+  id: string; domain: string; opened: boolean; onClose: () => void; onCreated: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [quotaMb, setQuotaMb] = useState(250);
+
+  const mutation = useMutation({
+    mutationFn: () => addPortalHostingEmailAccount(id, { email: email.trim(), domain, password, quota_mb: quotaMb }),
+    onSuccess: (res: any) => {
+      notifications.show({ message: res?.data?.message ?? 'Email account created.', color: 'green' });
+      handleClose();
+      onCreated();
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Failed to create the mailbox.', color: 'red',
+    }),
+  });
+
+  const handleClose = () => { setEmail(''); setPassword(''); setQuotaMb(250); onClose(); };
+
+  return (
+    <Modal opened={opened} onClose={handleClose} title="Add Email Account" centered size="sm">
+      <Stack gap="sm">
+        <TextInput label="Username" required placeholder="info" rightSection={<Text size="xs" c="dimmed" pr="xs">@{domain}</Text>}
+          rightSectionWidth={domain.length * 7 + 20}
+          value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+        <PasswordInput label="Password" required description="cPanel enforces its own strength check"
+          value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
+        <NumberInput label="Quota (MB)" description="0 = unlimited" min={0} value={quotaMb} onChange={(v) => setQuotaMb(Number(v) || 0)} />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={handleClose}>Cancel</Button>
+          <Button disabled={!/^[a-zA-Z0-9._+-]+$/.test(email.trim()) || password.length < 8}
+            loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Add Email Account
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function EmailPasswordModal({ id, row, onClose }: { id: string; row: PortalEmailAccount | null; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => updatePortalHostingEmailPassword(id, { email: row!.email!, password }),
+    onSuccess: (res: any) => {
+      notifications.show({ message: res?.data?.message ?? 'Password changed.', color: 'green' });
+      setPassword('');
+      onClose();
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Password change failed.', color: 'red',
+    }),
+  });
+
+  return (
+    <Modal opened={!!row} onClose={onClose} title={`Change Password — ${row?.email ?? ''}`} centered size="sm">
+      <Stack gap="sm">
+        <PasswordInput label="New password" description="cPanel enforces its own strength check"
+          value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button disabled={password.length < 8} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Change Password
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
 
