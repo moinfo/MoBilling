@@ -3,7 +3,7 @@ import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   Badge, Divider, Modal, PasswordInput, Textarea, Radio, RingProgress,
   SimpleGrid, UnstyledButton, Anchor, Alert, Table, NumberInput, Switch,
-  TextInput, ActionIcon,
+  TextInput, ActionIcon, Pagination,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -13,7 +13,7 @@ import {
   IconStar, IconTool, IconLogin, IconMail, IconKey, IconBan, IconWorldWww,
   IconExternalLink, IconRefresh, IconArrowLeft, IconFolders, IconDatabase,
   IconClock, IconChartBar, IconArrowForward, IconServer, IconArchive,
-  IconArrowUp, IconListDetails, IconPlus, IconTrash, IconLock, IconLockOpen,
+  IconArrowUp, IconListDetails, IconPlus, IconLock, IconLockOpen,
 } from '@tabler/icons-react';
 import {
   getPortalHostingDetail, portalHostingSso, refreshPortalHostingUsage,
@@ -23,7 +23,7 @@ import {
   getPortalHostingBackupSettings, updatePortalHostingBackupSettings, getPortalHostingBackups,
   getPortalHostingPhpVersions, updatePortalHostingPhpVersion, PortalPhpVhost,
   addPortalHostingEmailAccount, updatePortalHostingEmailPassword,
-  togglePortalHostingEmailSuspension, deletePortalHostingEmailAccount, PortalEmailAccount,
+  togglePortalHostingEmailSuspension, portalEmailWebmailSso, PortalEmailAccount,
 } from '../../api/portal';
 import { Tooltip, Select } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
@@ -141,20 +141,22 @@ export default function PortalServiceDetails() {
     onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Action failed.', color: 'red' }),
   });
 
-  const deleteEmailMutation = useMutation({
-    mutationFn: (email: string) => deletePortalHostingEmailAccount(id!, email),
-    onSuccess: (res) => { notifications.show({ message: res.data.message, color: 'gray' }); invalidateEmails(); },
-    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Delete failed.', color: 'red' }),
-  });
+  const [emailSsoBusy, setEmailSsoBusy] = useState<string | null>(null);
+  const [emailSearch, setEmailSearch] = useState('');
+  const [emailPage, setEmailPage] = useState(1);
+  const EMAIL_PAGE_SIZE = 10;
 
-  const confirmDeleteEmail = (email: string) => modals.openConfirmModal({
-    title: 'Delete mailbox',
-    children: <Text size="sm">This <Text span fw={700} c="red">permanently deletes</Text> the mailbox{' '}
-      <Text span fw={600}>{email}</Text> and everything in it. This cannot be undone.</Text>,
-    labels: { confirm: 'Delete', cancel: 'Cancel' },
-    confirmProps: { color: 'red' },
-    onConfirm: () => deleteEmailMutation.mutate(email),
-  });
+  const openEmailWebmail = async (email: string) => {
+    setEmailSsoBusy(email);
+    try {
+      const res = await portalEmailWebmailSso(id!, email);
+      window.open(res.data.url, '_blank', 'noopener');
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Could not open webmail.', color: 'red' });
+    } finally {
+      setEmailSsoBusy(null);
+    }
+  };
 
   const openSso = async (opts: { service?: 'cpanel' | 'webmail'; goto?: string }, busyKey: string) => {
     setSsoBusy(busyKey);
@@ -368,61 +370,90 @@ export default function PortalServiceDetails() {
           ) : emails.length === 0 ? (
             <Text size="sm" c="dimmed">No email accounts yet.</Text>
           ) : (
-            <Table.ScrollContainer minWidth={500}>
-              <Table verticalSpacing="xs" fz="sm">
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>Email</Table.Th>
-                    <Table.Th>Size</Table.Th>
-                    <Table.Th>Status</Table.Th>
-                    {isPortalAdmin && <Table.Th w={110}></Table.Th>}
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {emails.map((e) => {
-                    const suspended = e.suspended_incoming || e.suspended_login;
-                    return (
-                      <Table.Tr key={e.email}>
-                        <Table.Td>{e.email}</Table.Td>
-                        <Table.Td c="dimmed">
-                          {fmtBytes(e.used_bytes)} / {e.quota_bytes ? fmtBytes(e.quota_bytes) : 'Unlimited'}
-                        </Table.Td>
-                        <Table.Td>
-                          {suspended ? (
-                            <Badge size="sm" variant="light" color="orange">Suspended</Badge>
-                          ) : (
-                            <Badge size="sm" variant="light" color="teal">Active</Badge>
-                          )}
-                        </Table.Td>
-                        {isPortalAdmin && (
-                          <Table.Td>
-                            <Group gap={4} wrap="nowrap">
-                              <Tooltip label="Change password">
-                                <ActionIcon variant="light" size="sm" onClick={() => setEmailPwFor(e)}>
-                                  <IconKey size={14} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label={e.suspended_login ? 'Unsuspend login' : 'Suspend login'}>
-                                <ActionIcon variant="light" size="sm" color={e.suspended_login ? 'green' : 'orange'}
-                                  loading={suspendEmailMutation.isPending}
-                                  onClick={() => suspendEmailMutation.mutate({ email: e.email!, suspend: !e.suspended_login })}>
-                                  {e.suspended_login ? <IconLockOpen size={14} /> : <IconLock size={14} />}
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Delete mailbox">
-                                <ActionIcon variant="light" size="sm" color="red" onClick={() => confirmDeleteEmail(e.email!)}>
-                                  <IconTrash size={14} />
-                                </ActionIcon>
-                              </Tooltip>
-                            </Group>
-                          </Table.Td>
-                        )}
-                      </Table.Tr>
-                    );
-                  })}
-                </Table.Tbody>
-              </Table>
-            </Table.ScrollContainer>
+            <>
+              {emails.length > EMAIL_PAGE_SIZE && (
+                <TextInput
+                  placeholder="Search by email…" size="xs" mb="sm" maw={280}
+                  value={emailSearch}
+                  onChange={(ev) => { setEmailSearch(ev.currentTarget.value); setEmailPage(1); }}
+                />
+              )}
+              {(() => {
+                const filtered = emails.filter((e) => (e.email ?? '').toLowerCase().includes(emailSearch.trim().toLowerCase()));
+                const totalPages = Math.max(1, Math.ceil(filtered.length / EMAIL_PAGE_SIZE));
+                const page = Math.min(emailPage, totalPages);
+                const pageEmails = filtered.slice((page - 1) * EMAIL_PAGE_SIZE, page * EMAIL_PAGE_SIZE);
+
+                return filtered.length === 0 ? (
+                  <Text size="sm" c="dimmed">No mailbox matches "{emailSearch}".</Text>
+                ) : (
+                  <>
+                    <Table.ScrollContainer minWidth={500}>
+                      <Table verticalSpacing="xs" fz="sm">
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Email</Table.Th>
+                            <Table.Th>Size</Table.Th>
+                            <Table.Th>Status</Table.Th>
+                            {isPortalAdmin && <Table.Th w={130}></Table.Th>}
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {pageEmails.map((e) => {
+                            const suspended = e.suspended_incoming || e.suspended_login;
+                            return (
+                              <Table.Tr key={e.email}>
+                                <Table.Td>{e.email}</Table.Td>
+                                <Table.Td c="dimmed">
+                                  {fmtBytes(e.used_bytes)} / {e.quota_bytes ? fmtBytes(e.quota_bytes) : 'Unlimited'}
+                                </Table.Td>
+                                <Table.Td>
+                                  {suspended ? (
+                                    <Badge size="sm" variant="light" color="orange">Suspended</Badge>
+                                  ) : (
+                                    <Badge size="sm" variant="light" color="teal">Active</Badge>
+                                  )}
+                                </Table.Td>
+                                {isPortalAdmin && (
+                                  <Table.Td>
+                                    <Group gap={4} wrap="nowrap">
+                                      <Tooltip label="Login to webmail">
+                                        <ActionIcon variant="light" size="sm" color="blue"
+                                          loading={emailSsoBusy === e.email}
+                                          onClick={() => openEmailWebmail(e.email!)}>
+                                          <IconLogin size={14} />
+                                        </ActionIcon>
+                                      </Tooltip>
+                                      <Tooltip label="Change password">
+                                        <ActionIcon variant="light" size="sm" onClick={() => setEmailPwFor(e)}>
+                                          <IconKey size={14} />
+                                        </ActionIcon>
+                                      </Tooltip>
+                                      <Tooltip label={e.suspended_login ? 'Unsuspend login' : 'Suspend login'}>
+                                        <ActionIcon variant="light" size="sm" color={e.suspended_login ? 'green' : 'orange'}
+                                          loading={suspendEmailMutation.isPending}
+                                          onClick={() => suspendEmailMutation.mutate({ email: e.email!, suspend: !e.suspended_login })}>
+                                          {e.suspended_login ? <IconLockOpen size={14} /> : <IconLock size={14} />}
+                                        </ActionIcon>
+                                      </Tooltip>
+                                    </Group>
+                                  </Table.Td>
+                                )}
+                              </Table.Tr>
+                            );
+                          })}
+                        </Table.Tbody>
+                      </Table>
+                    </Table.ScrollContainer>
+                    {totalPages > 1 && (
+                      <Group justify="center" mt="sm">
+                        <Pagination size="sm" total={totalPages} value={page} onChange={setEmailPage} />
+                      </Group>
+                    )}
+                  </>
+                );
+              })()}
+            </>
           )}
         </Paper>
       )}

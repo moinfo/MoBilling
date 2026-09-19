@@ -254,6 +254,9 @@ export const togglePortalHostingEmailSuspension = (id: string, data: { email: st
 export const deletePortalHostingEmailAccount = (id: string, email: string) =>
   api.delete<{ message: string }>(`/portal/hosting/${id}/email-accounts`, { data: { email } });
 
+export const portalEmailWebmailSso = (id: string, email: string) =>
+  api.post<{ url: string }>(`/portal/hosting/${id}/email-accounts/sso`, { email });
+
 export interface PortalMysqlDatabase {
   database: string | null;
   users: string[];

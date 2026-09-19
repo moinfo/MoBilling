@@ -1057,6 +1057,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::put('/hosting/{hostingAccount}/email-accounts/password', [\App\Http\Controllers\Portal\PortalHostingController::class, 'updateEmailPassword']);
     Route::put('/hosting/{hostingAccount}/email-accounts/suspend', [\App\Http\Controllers\Portal\PortalHostingController::class, 'toggleEmailSuspension']);
     Route::delete('/hosting/{hostingAccount}/email-accounts', [\App\Http\Controllers\Portal\PortalHostingController::class, 'destroyEmailAccount']);
+    Route::post('/hosting/{hostingAccount}/email-accounts/sso', [\App\Http\Controllers\Portal\PortalHostingController::class, 'emailSso']);
     Route::get('/hosting/{hostingAccount}/mysql-databases', [\App\Http\Controllers\Portal\PortalHostingController::class, 'mysqlDatabases']);
     Route::get('/hosting/{hostingAccount}/php-versions', [\App\Http\Controllers\Portal\PortalHostingController::class, 'phpVersions']);
     Route::put('/hosting/{hostingAccount}/php-versions', [\App\Http\Controllers\Portal\PortalHostingController::class, 'updatePhpVersion']);

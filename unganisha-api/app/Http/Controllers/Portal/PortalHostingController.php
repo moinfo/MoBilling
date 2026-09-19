@@ -306,6 +306,31 @@ class PortalHostingController extends Controller
         return response()->json(['message' => 'Mailbox deleted.']);
     }
 
+    /**
+     * One-time webmail login for a SPECIFIC mailbox — unlike sso()'s
+     * generic 'webmail' service (which logs into the cPanel account's own
+     * webmail entry point), passing the mailbox's own email address as
+     * create_user_session's `user` logs straight into that mailbox's
+     * inbox. Verified live: WHM accepts an email address here and returns
+     * a session keyed to it, not the cPanel account.
+     */
+    public function emailSso(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate(['email' => 'required|email|max:255']);
+
+        try {
+            $url = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->ssoUrl($data['email'], 'webmaild');
+
+            return response()->json(['url' => $url]);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Could not open webmail right now: ' . $e->getMessage()], 422);
+        }
+    }
+
     /** This account's MySQL databases — same WhmService::mysqlDatabases() the staff page uses. */
     public function mysqlDatabases(Request $request, HostingAccount $hostingAccount)
     {
