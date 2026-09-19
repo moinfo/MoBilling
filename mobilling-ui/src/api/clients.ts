@@ -3,6 +3,7 @@ import api from './axios';
 export interface Client {
   id: string;
   name: string;
+  status: 'active' | 'inactive' | string;
   email: string | null;
   phone: string | null;
   address: string | null;
@@ -44,10 +45,13 @@ export const getClients = (params?: {
   per_page?: number;
   sort?: 'name' | 'subscriptions' | 'amount' | 'newest';
   has_subscriptions?: 1 | 0;
+  status?: 'active' | 'inactive' | 'all';
 }) => api.get('/clients', { params });
 
 export interface ClientStats {
   total_clients: number;
+  active_clients: number;
+  inactive_clients: number;
   with_subscriptions: number;
   without_subscriptions: number;
   active_subscriptions: number;
