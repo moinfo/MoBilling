@@ -2013,6 +2013,19 @@ class _VerificationCard extends ConsumerWidget {
 // System records
 // ---------------------------------------------------------------------------
 
+/// A withdrawal's own statement — every usage entry recorded against it
+/// (GET /system-record-expenses?system_record_id=…), shown inline in
+/// [_SystemRecordDetailSheet] rather than making someone cross-reference the
+/// flat Withdraw Usage list by eye.
+final AutoDisposeFutureProviderFamily<List<SystemRecordExpense>, String>
+_recordExpensesProvider = FutureProvider.autoDispose
+    .family<List<SystemRecordExpense>, String>(
+      (ref, systemRecordId) => ref
+          .watch(staffSelfServiceProvider)
+          .systemRecordExpenses(systemRecordId: systemRecordId, perPage: 200)
+          .then((p) => p.items),
+    );
+
 /// The money logged against each system property, and the form that logs it.
 ///
 /// Entering a record is what this module exists for, so the masthead carries
@@ -2542,6 +2555,12 @@ class _SystemRecordDetailSheetState
             Formatting.currency(record.remainingAmount),
           ),
         ],
+        if (record.type == SystemRecordTypes.withdraw) ...[
+          const SizedBox(height: Spacing.md),
+          Text('Usage', style: theme.textTheme.labelLarge),
+          const SizedBox(height: Spacing.sm),
+          _WithdrawUsageStatement(recordId: record.id),
+        ],
         if (record.notes != null) CrmDetailRow('Notes', record.notes!),
         const SizedBox(height: Spacing.md),
         Row(
@@ -2619,6 +2638,70 @@ class _SystemRecordDetailSheetState
             textAlign: TextAlign.center,
           ),
       ],
+    );
+  }
+}
+
+/// The itemized "statement" for one withdrawal: every usage entry recorded
+/// against it, in the same order the flat Withdraw Usage list would show
+/// them, but scoped to just this withdrawal so the Expensed/Remaining
+/// summary above it actually has something to point at.
+class _WithdrawUsageStatement extends ConsumerWidget {
+  const _WithdrawUsageStatement({required this.recordId});
+
+  final String recordId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final entries = ref.watch(_recordExpensesProvider(recordId));
+
+    return entries.when(
+      loading: () => const Padding(
+        padding: EdgeInsets.symmetric(vertical: Spacing.sm),
+        child: Center(
+          child: SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      ),
+      error: (e, _) => Text(
+        e is ApiException ? e.message : 'Could not load usage.',
+        style: theme.textTheme.bodySmall?.copyWith(color: scheme.error),
+      ),
+      data: (items) {
+        if (items.isEmpty) {
+          return Text(
+            'Nothing spent against this withdrawal yet.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          );
+        }
+        return Card(
+          margin: EdgeInsets.zero,
+          child: Column(
+            children: [
+              for (final (i, e) in items.indexed) ...[
+                if (i > 0) const Divider(height: 1),
+                ListTile(
+                  dense: true,
+                  title: Text(
+                    e.description ?? '—',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  subtitle: Text(Formatting.date(e.expenseDate)),
+                  trailing: Money(e.amount, scale: MoneyScale.dense),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

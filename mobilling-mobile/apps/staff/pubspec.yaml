@@ -1,7 +1,7 @@
 name: staff
 description: "MoBilling staff — dashboard, clients, invoices, payments and tickets on the go."
 publish_to: 'none'
-version: 1.3.2+8
+version: 1.3.5+11
 resolution: workspace
 
 environment:

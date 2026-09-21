@@ -12,6 +12,14 @@
 	<string>Attach a receipt or photo you have already taken to an expense, a payment or a support ticket.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Confirm you are at your assigned work location when you check in or out.</string>
+	<!-- The app only ever asks for "when in use" (attendance_location.dart never
+	     requests always-authorization) — this key exists purely because
+	     geolocator's compiled framework references the always-authorization
+	     API, and Apple's App Store Connect binary scan (ITMS-90683) flags that
+	     reference regardless of which permission the app actually requests at
+	     runtime. -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Confirm you are at your assigned work location when you check in or out.</string>
 	<key>CFBundleDisplayName</key>
 	<string>MoBilling</string>
 	<key>CFBundleExecutable</key>
@@ -53,5 +61,12 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Without this, every TestFlight upload sits in "Missing Compliance"
+	     until someone manually answers the encryption question in App Store
+	     Connect, and no tester receives the build until that happens. The app
+	     only uses standard HTTPS/TLS (dio) and the platform keystore/Keychain
+	     (flutter_secure_storage) — both exempt — so this is a flat "no". -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

@@ -1,17 +1,18 @@
 import { useState } from 'react';
-import { Title, Table, Text, Group, Pagination, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Stack, Textarea, FileInput, Anchor, Badge, Tooltip } from '@mantine/core';
+import { Title, Table, Text, Group, Pagination, ActionIcon, Modal, Button, TextInput, NumberInput, Select, Stack, Textarea, FileInput, Anchor, Badge, Tooltip, Divider } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconUpload, IconDownload, IconMessage, IconFileSpreadsheet, IconAlertTriangle, IconNote } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconUpload, IconDownload, IconMessage, IconFileSpreadsheet, IconAlertTriangle, IconNote, IconReceipt } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
   getSystemRecords, createSystemRecord, updateSystemRecord, deleteSystemRecord,
   toggleSmsConfirmation, toggleStatementConfirmation, updateReconciliationNote, SystemRecord, SystemRecordType,
 } from '../api/systemRecords';
+import { getSystemRecordExpenses, SystemRecordExpense } from '../api/systemRecordExpenses';
 import { getSystems, System } from '../api/systems';
 import { getSystemProperties, SystemProperty } from '../api/systemProperties';
 import { getBankAccounts, BankAccount } from '../api/bankAccounts';
@@ -212,6 +213,17 @@ export default function SystemRecords() {
   });
   const openNote = (r: SystemRecord) => { setNoteFor(r); setNoteText(r.reconciliation_note || ''); };
 
+  // The statement: every usage entry recorded against one withdrawal, plus
+  // its running totals — what "hebu tuone matumizi ya withdraw" is asking
+  // for, since the flat Withdraw Usage list mixes every withdrawal together.
+  const [statementFor, setStatementFor] = useState<SystemRecord | null>(null);
+  const { data: statementData, isLoading: statementLoading } = useQuery({
+    queryKey: ['system-record-expenses-statement', statementFor?.id],
+    queryFn: () => getSystemRecordExpenses({ system_record_id: statementFor!.id, per_page: 200 }),
+    enabled: !!statementFor,
+  });
+  const statementItems: SystemRecordExpense[] = statementData?.data?.data || [];
+
   return (
     <>
       <Group justify="space-between" mb="md" wrap="wrap">
@@ -255,6 +267,7 @@ export default function SystemRecords() {
                 <Table.Th>System Property</Table.Th>
                 <Table.Th>Bank Account</Table.Th>
                 <Table.Th style={{ textAlign: 'right' }}>Amount</Table.Th>
+                <Table.Th>Usage</Table.Th>
                 <Table.Th>Transaction Ref</Table.Th>
                 <Table.Th>Receipt</Table.Th>
                 <Table.Th>Reconciliation</Table.Th>
@@ -282,6 +295,24 @@ export default function SystemRecords() {
                     )}
                   </Table.Td>
                   <Table.Td style={{ textAlign: 'right' }} fw={600}>{formatCurrency(r.amount)}</Table.Td>
+                  <Table.Td>
+                    {r.type === 'withdraw' ? (
+                      <Group gap={6} wrap="nowrap">
+                        <Tooltip label={`Expensed ${formatCurrency(r.total_expensed ?? 0)}`}>
+                          <Badge size="sm" variant="light" color={(r.remaining_amount ?? parseFloat(r.amount)) > 0 ? 'orange' : 'gray'}>
+                            {formatCurrency(r.remaining_amount ?? r.amount)} left
+                          </Badge>
+                        </Tooltip>
+                        <Tooltip label="View statement">
+                          <ActionIcon variant="subtle" size="sm" onClick={() => setStatementFor(r)}>
+                            <IconReceipt size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    ) : (
+                      <Text size="xs" c="dimmed">—</Text>
+                    )}
+                  </Table.Td>
                   <Table.Td>
                     {r.transaction_reference ? <Text size="sm">{r.transaction_reference}</Text> : <Text size="xs" c="dimmed">—</Text>}
                   </Table.Td>
@@ -423,6 +454,68 @@ export default function SystemRecords() {
             <Button loading={noteMutation.isPending} onClick={() => noteMutation.mutate()}>Save</Button>
           </Group>
         </Stack>
+      </Modal>
+
+      <Modal opened={!!statementFor} onClose={() => setStatementFor(null)} title="Withdraw Statement" size="lg">
+        {statementFor && (
+          <Stack>
+            <Group justify="space-between" wrap="wrap">
+              <div>
+                <Text fw={600}>{statementFor.system?.name} / {statementFor.system_property?.name}</Text>
+                <Text size="sm" c="dimmed">Withdrawn {formatCurrency(statementFor.amount)} on {formatDate(statementFor.record_date)}</Text>
+              </div>
+              <Group gap="xl">
+                <div>
+                  <Text size="xs" c="dimmed">Expensed</Text>
+                  <Text fw={600}>{formatCurrency(statementFor.total_expensed ?? 0)}</Text>
+                </div>
+                <div>
+                  <Text size="xs" c="dimmed">Remaining</Text>
+                  <Text fw={600} c={(statementFor.remaining_amount ?? parseFloat(statementFor.amount)) > 0 ? 'orange' : undefined}>
+                    {formatCurrency(statementFor.remaining_amount ?? statementFor.amount)}
+                  </Text>
+                </div>
+              </Group>
+            </Group>
+            <Divider />
+            {statementLoading ? (
+              <Text c="dimmed" ta="center" py="md">Loading…</Text>
+            ) : statementItems.length === 0 ? (
+              <Text c="dimmed" ta="center" py="md">Nothing spent against this withdrawal yet.</Text>
+            ) : (
+              <Table.ScrollContainer minWidth={500}>
+                <Table striped>
+                  <Table.Thead>
+                    <Table.Tr>
+                      <Table.Th>Date</Table.Th>
+                      <Table.Th>Description</Table.Th>
+                      <Table.Th style={{ textAlign: 'right' }}>Amount</Table.Th>
+                      <Table.Th>Attachment</Table.Th>
+                    </Table.Tr>
+                  </Table.Thead>
+                  <Table.Tbody>
+                    {statementItems.map((e) => (
+                      <Table.Tr key={e.id}>
+                        <Table.Td>{formatDate(e.expense_date)}</Table.Td>
+                        <Table.Td><Text size="sm" lineClamp={2}>{e.description}</Text></Table.Td>
+                        <Table.Td style={{ textAlign: 'right' }}>{formatCurrency(e.amount)}</Table.Td>
+                        <Table.Td>
+                          {e.attachment_url ? (
+                            <Anchor href={e.attachment_url} target="_blank" size="sm">
+                              <Group gap={4}><IconDownload size={14} /> View</Group>
+                            </Anchor>
+                          ) : (
+                            <Text size="xs" c="dimmed">—</Text>
+                          )}
+                        </Table.Td>
+                      </Table.Tr>
+                    ))}
+                  </Table.Tbody>
+                </Table>
+              </Table.ScrollContainer>
+            )}
+          </Stack>
+        )}
       </Modal>
     </>
   );

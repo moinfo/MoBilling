@@ -206,6 +206,11 @@ class _ExpenseCard extends StatelessWidget {
               Formatting.date(e.expenseDate),
               if (e.systemName != null) e.systemName!,
               if (e.propertyName != null) e.propertyName!,
+              // Which withdrawal this came out of — the flat list otherwise
+              // gives no way to tell entries from different withdrawals apart
+              // without opening each one.
+              if (e.systemRecordAmount != null)
+                'from ${Formatting.currency(e.systemRecordAmount)} withdrawal',
             ].join(' · '),
           ),
         ),
