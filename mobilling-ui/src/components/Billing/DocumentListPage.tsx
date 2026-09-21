@@ -410,7 +410,7 @@ export default function DocumentListPage({ type, title }: Props) {
       <Group mb="md" justify="space-between" wrap="wrap">
         <Group gap="sm" wrap="wrap">
           <TextInput
-            placeholder="Search by number or client..."
+            placeholder="Search by number, client, or description..."
             leftSection={<IconSearch size={16} />}
             value={search}
             onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
