@@ -7,7 +7,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock, IconStack2, IconBuildingBank, IconAdjustments, IconShieldCheck, IconServer, IconWorldWww, IconKey } from '@tabler/icons-react';
+import { IconBuilding, IconUser, IconAlertCircle, IconMail, IconBell, IconTemplate, IconCreditCard, IconPlus, IconTrash, IconBrandCashapp, IconBrandWhatsapp, IconClock, IconStack2, IconBuildingBank, IconAdjustments, IconShieldCheck, IconShieldLock, IconServer, IconWorldWww, IconKey } from '@tabler/icons-react';
 import TwoFactorSetup from '../components/TwoFactorSetup';
 import LateFeeTab from '../components/Settings/LateFeeTab';
 import ServersTab from '../components/Settings/ServersTab';
@@ -66,6 +66,9 @@ export default function Settings() {
           </Tabs.Tab>
           <Tabs.Tab value="profile" leftSection={<IconUser size={16} />}>
             My Profile
+          </Tabs.Tab>
+          <Tabs.Tab value="security" leftSection={<IconShieldLock size={16} />}>
+            Two-Factor Authentication
           </Tabs.Tab>
           <Tabs.Tab value="email" leftSection={<IconMail size={16} />}>
             Email
@@ -136,6 +139,11 @@ export default function Settings() {
         </Tabs.Panel>
         <Tabs.Panel value="profile">
           <ProfileTab user={user} refreshUser={refreshUser} />
+        </Tabs.Panel>
+        <Tabs.Panel value="security">
+          <Stack maw={600}>
+            <TwoFactorSetup />
+          </Stack>
         </Tabs.Panel>
         <Tabs.Panel value="email">
           <EmailTab isAdmin={canEmail} />
@@ -419,8 +427,6 @@ function ProfileTab({ user, refreshUser }: {
           </Stack>
         </form>
       </Paper>
-
-      <TwoFactorSetup />
     </Stack>
   );
 }

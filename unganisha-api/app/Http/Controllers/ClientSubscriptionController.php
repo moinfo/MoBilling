@@ -22,6 +22,10 @@ class ClientSubscriptionController extends Controller
             $query->where('client_id', $request->client_id);
         }
 
+        if ($request->has('product_service_id')) {
+            $query->where('product_service_id', $request->product_service_id);
+        }
+
         if ($request->has('status')) {
             $query->where('status', $request->status);
         }

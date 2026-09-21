@@ -118,6 +118,28 @@ class PlanChangeService
 
         $account = $sub->hostingAccount;
         if (!$account) {
+            // hosting_accounts.client_subscription_id doesn't always point at
+            // THIS subscription — some accounts are linked to a different one
+            // for the same domain (e.g. a Backup add-on subscription, from a
+            // WHMCS-import quirk), which makes the direct relation silently
+            // resolve to null. Confirmed live (mauyaexecutivelodge.com,
+            // 2026-09-21): an upgrade updated billing but never reached WHM,
+            // leaving the account on its old (smaller) package until it hit
+            // the old bandwidth cap and got suspended. Falling back to a
+            // domain-name match (same convention as
+            // GeneratePaidBackups/hasActiveBackupSubscription elsewhere in
+            // the app) catches every one of the 18 other subscriptions found
+            // with this same broken link.
+            $account = \App\Models\HostingAccount::withoutGlobalScopes()
+                ->where('tenant_id', $sub->tenant_id)
+                ->where('domain', $sub->label)
+                ->first();
+        }
+        if (!$account) {
+            \Illuminate\Support\Facades\Log::warning(
+                "PlanChange: {$sub->id} ({$sub->label}) switched to {$new->name} but no hosting account " .
+                'could be matched (checked both client_subscription_id and domain name) — WHM package NOT changed.'
+            );
             return;
         }
         if ($new->provisioning_type === 'whm_cpanel' && $new->cpanel_package && $account->package !== $new->cpanel_package) {

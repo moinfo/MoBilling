@@ -2,17 +2,18 @@ import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Table, Badge, LoadingOverlay, Button, Group, Text,
   SimpleGrid, Modal, TextInput, NumberInput, Alert, Tooltip, Menu, Switch,
+  Collapse, Code,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconWorldWww, IconRefresh, IconPlus, IconArrowRight, IconLock, IconLockOpen,
-  IconCheck, IconX, IconChevronDown,
+  IconCheck, IconX, IconChevronDown, IconSearch,
 } from '@tabler/icons-react';
 import {
   getPortalDomains, portalRenewDomain, portalCheckDomain, portalOrderDomain,
-  portalSetAutoRenew, PortalDomain,
+  portalSetAutoRenew, portalWhoisDomain, PortalDomain, PortalWhoisResult,
 } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
@@ -114,6 +115,8 @@ export default function PortalDomains() {
           You have {stats!.expiring_soon} domain(s) expiring within 45 days — renew them to avoid losing your website and email.
         </Alert>
       )}
+
+      <WhoisLookup onRegister={(name) => { setPrefillName(name); setOrderAction('register'); }} />
 
       <Paper withBorder p="md">
         <Table.ScrollContainer minWidth={720}>
@@ -347,5 +350,82 @@ function OrderModal({ action, prefillName = '', onClose, onDone }: {
         </Group>
       </Stack>
     </Modal>
+  );
+}
+
+function WhoisLine({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
+  return (
+    <Text size="sm"><Text span c="dimmed" size="xs" fw={600}>{label}: </Text>{value}</Text>
+  );
+}
+
+/** .tz WHOIS search — check whether any domain is available, or see who owns one. */
+function WhoisLookup({ onRegister }: { onRegister: (name: string) => void }) {
+  const [name, setName] = useState('');
+  const [showRaw, setShowRaw] = useState(false);
+
+  const lookup = useMutation({
+    mutationFn: (n: string) => portalWhoisDomain(n),
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Lookup failed.', color: 'red',
+    }),
+  });
+  const r: PortalWhoisResult | undefined = lookup.data?.data?.data;
+  const submit = () => { const n = name.trim(); if (n) { setShowRaw(false); lookup.mutate(n); } };
+
+  return (
+    <Paper withBorder radius="md" p="md">
+      <Group gap="xs" mb="xs">
+        <IconSearch size={16} />
+        <Text fw={600} size="sm">Domain lookup — .tz WHOIS</Text>
+      </Group>
+      <Group gap="xs" wrap="nowrap">
+        <TextInput style={{ flex: 1 }} placeholder="example.co.tz" value={name}
+          onChange={(e) => setName(e.currentTarget.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') submit(); }} />
+        <Button leftSection={<IconSearch size={16} />} loading={lookup.isPending} onClick={submit}>Look up</Button>
+      </Group>
+      <Text size="xs" c="dimmed" mt={4}>Check any .tz domain — available to register, or already taken.</Text>
+
+      {r && (!r.found ? (
+        <Alert color="green" variant="light" mt="md" title={`${r.domain} — available`}>
+          <Group gap="sm">
+            <Text size="sm">Not registered at the registry.</Text>
+            <Button size="compact-sm" variant="light" onClick={() => onRegister(r.domain)}>Register it</Button>
+          </Group>
+        </Alert>
+      ) : (
+        <Paper withBorder radius="md" p="sm" mt="md">
+          <Group gap="xs" mb="xs">
+            <IconWorldWww size={16} />
+            <Text fw={700}>{r.domain}</Text>
+            {r.statuses.map((s) => (
+              <Badge key={s} size="sm" variant="light" color={/expired|delete|hold|blocked/i.test(s) ? 'red' : 'gray'}>{s}</Badge>
+            ))}
+          </Group>
+          <SimpleGrid cols={{ base: 1, sm: 2 }} spacing={4}>
+            <WhoisLine label="Registrar" value={r.registrar} />
+            <WhoisLine label="Registered" value={r.registered} />
+            <WhoisLine label="Expires" value={r.expire} />
+            <WhoisLine label="Last changed" value={r.changed} />
+          </SimpleGrid>
+          {r.nameservers.length > 0 && (
+            <div style={{ marginTop: 8 }}>
+              <Text size="xs" c="dimmed" fw={600}>Nameservers</Text>
+              <Group gap={6} mt={2}>
+                {r.nameservers.map((ns) => <Badge key={ns} variant="outline" color="gray" radius="sm">{ns}</Badge>)}
+              </Group>
+            </div>
+          )}
+          <Button size="compact-xs" variant="subtle" color="gray" mt="sm" onClick={() => setShowRaw((v) => !v)}>
+            {showRaw ? 'Hide raw WHOIS' : 'Raw WHOIS'}
+          </Button>
+          <Collapse in={showRaw}>
+            <Code block mt="xs" style={{ fontSize: 12, maxHeight: 320, overflow: 'auto' }}>{r.raw}</Code>
+          </Collapse>
+        </Paper>
+      ))}
+    </Paper>
   );
 }

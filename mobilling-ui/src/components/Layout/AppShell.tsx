@@ -37,7 +37,7 @@ export default function AppLayout() {
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
   const hrPaths = ['/staff-reports', '/attendance', '/work-locations', '/staff-targets', '/leave', '/payroll'];
-  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/domains'];
+  const webServicesPaths = ['/hosting', '/hosting/services', '/hosting/discover', '/hosting/subdomains', '/hosting/bandwidth', '/hosting/disk-usage', '/hosting/backup-status', '/hosting/email-accounts', '/hosting/mysql-databases', '/hosting/packages', '/hosting/health', '/hosting/dns-zone', '/hosting/cron-jobs', '/hosting/php-versions', '/hosting/ftp-accounts', '/domains', '/domains/ssl-expiry'];
   const supportPaths = ['/tickets', '/canned-replies', '/knowledgebase'];
   const engagementPaths = ['/satisfaction-calls', '/appointments', '/whatsapp-contacts', '/field-marketing', '/social-media', '/served-customers'];
   const recordsPaths = ['/system-records', '/system-record-expenses', '/my-verifications'];
@@ -113,6 +113,19 @@ export default function AppLayout() {
     { label: 'Hosting — Accounts', path: '/hosting', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Manage Services', path: '/hosting/services', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Discover Accounts', path: '/hosting/discover', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Subdomains', path: '/hosting/subdomains', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Bandwidth Usage', path: '/hosting/bandwidth', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Disk Usage', path: '/hosting/disk-usage', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Backup Status', path: '/hosting/backup-status', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Email Accounts', path: '/hosting/email-accounts', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — MySQL Databases', path: '/hosting/mysql-databases', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Packages', path: '/hosting/packages', group: 'Web Services', visible: can('hosting.settings') },
+    { label: 'Hosting — Server Health', path: '/hosting/health', group: 'Web Services', visible: can('hosting.settings') },
+    { label: 'Hosting — DNS Zone', path: '/hosting/dns-zone', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — Cron Jobs', path: '/hosting/cron-jobs', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — PHP Version', path: '/hosting/php-versions', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Hosting — FTP Accounts', path: '/hosting/ftp-accounts', group: 'Web Services', visible: can('menu.hosting') },
+    { label: 'Domains — SSL Certificates Expiry', path: '/domains/ssl-expiry', group: 'Web Services', visible: can('menu.domains') },
     { label: 'Domains', path: '/domains', group: 'Web Services', visible: can('menu.domains') },
     { label: 'Support Tickets', path: '/tickets', group: 'Support', visible: can('menu.tickets') },
     { label: 'Canned Replies', path: '/canned-replies', group: 'Support', visible: can('menu.tickets') },
@@ -335,11 +348,44 @@ export default function AppLayout() {
                     onClick={() => navigateAndClose('/hosting/services')} />
                   <NavLink label="Discover Accounts" active={location.pathname === '/hosting/discover'}
                     onClick={() => navigateAndClose('/hosting/discover')} />
+                  <NavLink label="Subdomains" active={location.pathname === '/hosting/subdomains'}
+                    onClick={() => navigateAndClose('/hosting/subdomains')} />
+                  <NavLink label="Bandwidth Usage" active={location.pathname === '/hosting/bandwidth'}
+                    onClick={() => navigateAndClose('/hosting/bandwidth')} />
+                  <NavLink label="Disk Usage" active={location.pathname === '/hosting/disk-usage'}
+                    onClick={() => navigateAndClose('/hosting/disk-usage')} />
+                  <NavLink label="Backup Status" active={location.pathname === '/hosting/backup-status'}
+                    onClick={() => navigateAndClose('/hosting/backup-status')} />
+                  <NavLink label="Email Accounts" active={location.pathname === '/hosting/email-accounts'}
+                    onClick={() => navigateAndClose('/hosting/email-accounts')} />
+                  <NavLink label="MySQL Databases" active={location.pathname === '/hosting/mysql-databases'}
+                    onClick={() => navigateAndClose('/hosting/mysql-databases')} />
+                  {can('hosting.settings') && (
+                    <NavLink label="Packages" active={location.pathname === '/hosting/packages'}
+                      onClick={() => navigateAndClose('/hosting/packages')} />
+                  )}
+                  {can('hosting.settings') && (
+                    <NavLink label="Server Health" active={location.pathname === '/hosting/health'}
+                      onClick={() => navigateAndClose('/hosting/health')} />
+                  )}
+                  <NavLink label="DNS Zone" active={location.pathname === '/hosting/dns-zone'}
+                    onClick={() => navigateAndClose('/hosting/dns-zone')} />
+                  <NavLink label="Cron Jobs" active={location.pathname === '/hosting/cron-jobs'}
+                    onClick={() => navigateAndClose('/hosting/cron-jobs')} />
+                  <NavLink label="PHP Version" active={location.pathname === '/hosting/php-versions'}
+                    onClick={() => navigateAndClose('/hosting/php-versions')} />
+                  <NavLink label="FTP Accounts" active={location.pathname === '/hosting/ftp-accounts'}
+                    onClick={() => navigateAndClose('/hosting/ftp-accounts')} />
                 </NavLink>
               )}
               {can('menu.domains') && (
                 <NavLink label="Domains" leftSection={<IconWorldWww size={16} />}
-                  active={isActive('/domains')} onClick={() => navigateAndClose('/domains')} />
+                  defaultOpened={location.pathname.startsWith('/domains')}>
+                  <NavLink label="All Domains" active={isActive('/domains')}
+                    onClick={() => navigateAndClose('/domains')} />
+                  <NavLink label="SSL Certificates Expiry" active={location.pathname === '/domains/ssl-expiry'}
+                    onClick={() => navigateAndClose('/domains/ssl-expiry')} />
+                </NavLink>
               )}
             </NavLink>
           )}

@@ -10,6 +10,9 @@ use App\Models\DomainTld;
 use App\Services\DocumentNumberService;
 use App\Services\Registrar\DomainBillingService;
 use App\Services\Registrar\DomainRegistrarManager;
+use App\Exceptions\WhmApiException;
+use App\Models\HostingAccount;
+use App\Services\WhmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -162,6 +165,34 @@ class PortalDomainController extends Controller
             'nameservers' => $info['nameservers'],
             'editable'    => in_array($domain->status, ['active', 'expired']),
         ]]);
+    }
+
+    /**
+     * Read-only DNS zone — only when this domain is actually hosted with us
+     * (a hosting_accounts row with a matching domain name); we have no way
+     * to reach a zone that lives on someone else's server.
+     */
+    public function dnsZone(Request $request, Domain $domain)
+    {
+        abort_unless($domain->client_id === $request->user()->client_id, 404);
+
+        $hostingAccount = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $domain->tenant_id)
+            ->where('domain', $domain->name)
+            ->with('server')
+            ->first();
+
+        if (!$hostingAccount || !$hostingAccount->server) {
+            return response()->json(['data' => [], 'hosted_with_us' => false]);
+        }
+
+        try {
+            $records = (new WhmService($hostingAccount->server))->dnsZone($domain->name);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Could not reach the server right now — please try again shortly.'], 422);
+        }
+
+        return response()->json(['data' => $records, 'hosted_with_us' => true]);
     }
 
     /** Change nameservers (portal admins). Safe for shared nssets — this domain only. */
@@ -456,6 +487,24 @@ class PortalDomainController extends Controller
                 'years_max'      => $pricing->years_max,
             ] : null,
         ]);
+    }
+
+    /**
+     * WHOIS lookup for a .tz domain, straight from the TZNIC registry (port
+     * 43) — same data/service as the staff Domains page's lookup
+     * (TznicWhoisService), minus the "is this registered through us"
+     * internal flag, which isn't the client's business.
+     */
+    public function whois(Request $request, \App\Services\TznicWhoisService $whois)
+    {
+        $data = $request->validate(['name' => 'required|string|max:255']);
+        $domain = $whois->normalise($data['name']);
+
+        if (!str_ends_with($domain, '.tz') || substr_count($domain, '.') < 1) {
+            return response()->json(['message' => 'Enter a .tz domain, e.g. example.co.tz.'], 422);
+        }
+
+        return response()->json(['data' => $whois->lookup($domain)]);
     }
 
     /** Self-service order (register or transfer-in) for the client's own account. */

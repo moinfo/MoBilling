@@ -6,6 +6,8 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('license:check')->dailyAt('05:00')->withoutOverlapping();
 Schedule::command('hosting:reconcile')->dailyAt('05:30')->withoutOverlapping();
 Schedule::command('domains:sync')->dailyAt('05:45')->withoutOverlapping();
+// After hosting:reconcile has refreshed disk usage into meta.
+Schedule::command('hosting:send-usage-warnings')->dailyAt('05:50')->withoutOverlapping();
 Schedule::command('domains:process-renewals')->dailyAt('06:30')->withoutOverlapping();
 Schedule::command('domains:send-expiry-reminders')->dailyAt('08:45')->withoutOverlapping();
 Schedule::command('subscriptions:expire')->dailyAt('06:00')->withoutOverlapping();
@@ -23,6 +25,10 @@ Schedule::command('staff-reports:apply-penalties')->dailyAt('00:30')->withoutOve
 Schedule::command('attendance:apply-penalties')->dailyAt('22:30')->withoutOverlapping();
 Schedule::command('attendance:import-device-events')->everyFiveMinutes()->withoutOverlapping();
 Schedule::command('wifi:check-router-health')->everyFifteenMinutes()->withoutOverlapping();
+// Explicit Africa/Dar_es_Salaam (UTC+3) so this doesn't silently mean
+// 02:00 UTC (05:00 EAT) if APP_TIMEZONE ever changes — same convention as
+// verifications:send-reminders below.
+Schedule::command('hosting:backup-paid-accounts')->dailyAt('05:00')->timezone('Africa/Dar_es_Salaam')->withoutOverlapping();
 
 // Daily system verification reminders. Africa/Dar_es_Salaam = UTC+3 — set
 // explicitly so the schedule isn't sensitive to APP_TIMEZONE drifting.

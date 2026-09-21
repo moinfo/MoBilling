@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Title, Group, Button, TextInput, Modal, Pagination, Stack, PasswordInput, Text,
-  Select, SegmentedControl, SimpleGrid, Paper, ThemeIcon,
+  Select, SegmentedControl, SimpleGrid, Paper, ThemeIcon, Switch,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useDebouncedValue } from '@mantine/hooks';
@@ -10,7 +10,7 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconPlus, IconSearch, IconDownload, IconAddressBook, IconUsers, IconUserCheck,
-  IconUserOff, IconRepeat, IconUserPlus, IconCoins,
+  IconUserOff, IconUserX, IconRepeat, IconUserPlus, IconCoins,
 } from '@tabler/icons-react';
 import { getClients, getClientStats, createClient, updateClient, deleteClient, portalLoginAsClient, changePortalPassword, Client, ClientFormData } from '../api/clients';
 import ClientTable from '../components/Billing/ClientTable';
@@ -45,6 +45,7 @@ export default function Clients() {
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<SortKey>('name');
   const [subsFilter, setSubsFilter] = useState<SubsFilter>('all');
+  const [showInactive, setShowInactive] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Client | null>(null);
   const [passwordClient, setPasswordClient] = useState<Client | null>(null);
@@ -53,10 +54,11 @@ export default function Clients() {
     search: debouncedSearch || undefined,
     sort,
     has_subscriptions: subsFilter === 'all' ? undefined : subsFilter === 'with' ? (1 as const) : (0 as const),
+    status: showInactive ? ('all' as const) : ('active' as const),
   };
 
   const { data, isLoading } = useQuery({
-    queryKey: ['clients', debouncedSearch, page, sort, subsFilter],
+    queryKey: ['clients', debouncedSearch, page, sort, subsFilter, showInactive],
     queryFn: () => getClients({ ...listParams, page }),
   });
 
@@ -119,12 +121,12 @@ export default function Clients() {
       const allClients: Client[] = res.data?.data || [];
       const canSeeValue = can('client_profile.subscription_value');
       const esc = (v: string | number | null | undefined) => `"${String(v ?? '').replace(/"/g, '""')}"`;
-      const header = ['Name', 'Email', 'Phone', 'Address', 'TIN', 'Active Subscriptions'];
+      const header = ['Name', 'Status', 'Email', 'Phone', 'Address', 'TIN', 'Active Subscriptions'];
       if (canSeeValue) header.push('Subscription Amount');
       const csvRows = [
         header.join(','),
         ...allClients.map((c) => {
-          const row = [esc(c.name), esc(c.email), esc(c.phone), esc(c.address), esc(c.tax_id), c.active_subscriptions_count ?? 0];
+          const row = [esc(c.name), esc(c.status), esc(c.email), esc(c.phone), esc(c.address), esc(c.tax_id), c.active_subscriptions_count ?? 0];
           if (canSeeValue) row.push(Number(c.subscription_total ?? 0));
           return row.join(',');
         }),
@@ -233,8 +235,10 @@ export default function Clients() {
         </Group>
       </Group>
 
-      <SimpleGrid cols={{ base: 2, sm: 3, lg: stats?.subscription_value !== undefined ? 6 : 5 }} spacing="sm" mb="md">
+      <SimpleGrid cols={{ base: 2, sm: 3, lg: stats?.subscription_value !== undefined ? 8 : 7 }} spacing="sm" mb="md">
         <StatCard icon={<IconUsers size={20} />} color="blue" label="Total Clients" value={stats?.total_clients ?? '—'} />
+        <StatCard icon={<IconUserCheck size={20} />} color="green" label="Active Clients" value={stats?.active_clients ?? '—'} />
+        <StatCard icon={<IconUserX size={20} />} color="red" label="Inactive Clients" value={stats?.inactive_clients ?? '—'} />
         <StatCard icon={<IconUserCheck size={20} />} color="green" label="With Subscriptions" value={stats?.with_subscriptions ?? '—'} />
         <StatCard icon={<IconUserOff size={20} />} color="gray" label="Without Subscriptions" value={stats?.without_subscriptions ?? '—'} />
         <StatCard icon={<IconRepeat size={20} />} color="violet" label="Active Subscriptions" value={stats?.active_subscriptions ?? '—'} />
@@ -251,6 +255,11 @@ export default function Clients() {
           value={search}
           onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }}
           maw={300}
+        />
+        <Switch
+          label="Show inactive too"
+          checked={showInactive}
+          onChange={(e) => { setShowInactive(e.currentTarget.checked); setPage(1); }}
         />
         <SegmentedControl
           size="sm"

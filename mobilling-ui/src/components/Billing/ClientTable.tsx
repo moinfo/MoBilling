@@ -35,6 +35,7 @@ export default function ClientTable({ clients, onEdit, onDelete, onPortalLogin, 
             <Table.Th>Name</Table.Th>
             <Table.Th>Email</Table.Th>
             <Table.Th>Phone</Table.Th>
+            <Table.Th>Status</Table.Th>
             <Table.Th ta="center">Subscriptions</Table.Th>
             {can('client_profile.subscription_value') && <Table.Th ta="right">Sub. Amount</Table.Th>}
             <Table.Th w={180}>Actions</Table.Th>
@@ -53,6 +54,11 @@ export default function ClientTable({ clients, onEdit, onDelete, onPortalLogin, 
               </Table.Td>
               <Table.Td>{client.email || '—'}</Table.Td>
               <Table.Td>{client.phone || '—'}</Table.Td>
+              <Table.Td>
+                <Badge size="sm" variant="light" color={client.status === 'active' ? 'green' : 'gray'} tt="capitalize">
+                  {client.status || 'active'}
+                </Badge>
+              </Table.Td>
               <Table.Td ta="center">
                 {client.active_subscriptions_count ? (
                   <Badge variant="light" color="green" size="sm">{client.active_subscriptions_count}</Badge>

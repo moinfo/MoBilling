@@ -100,6 +100,11 @@ class HostingServiceController extends Controller
                 'server_host'    => $ha->server?->hostname,
                 'last_synced_at' => $ha->last_synced_at?->toISOString(),
                 'not_on_whm'     => (bool) ($sub->metadata['not_on_whm'] ?? false),
+                // Server's own truth, cached at the last "Refresh usage" —
+                // see refreshUsage() below.
+                'contact_email'  => $ha->meta['contact_email'] ?? null,
+                'suspend_reason' => $ha->meta['suspend_reason'] ?? null,
+                'suspend_time'   => $ha->meta['suspend_time'] ?? null,
             ] : null,
             'ssl'  => [
                 'valid'      => $meta['ssl_valid'] ?? null,
@@ -421,6 +426,54 @@ class HostingServiceController extends Controller
         }
     }
 
+    /** Module command: change the cPanel account's own contact email on the server. */
+    public function changeContactEmail(Request $request, HostingAccount $hostingAccount)
+    {
+        $data = $request->validate(['email' => 'required|email|max:255']);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->changeContactEmail($hostingAccount->cpanel_username, $data['email']);
+
+            $hostingAccount->update([
+                'meta' => array_merge($hostingAccount->meta ?? [], ['contact_email' => $data['email']]),
+            ]);
+
+            return response()->json(['message' => 'Contact email changed on the server.']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+    }
+
+    /**
+     * The fix for a "Bandwidth Limit Exceeded" auto-suspension — WHM's own
+     * suspend reason literally says "Unsuspend by increasing bandwidth
+     * limit", but raising the limit alone doesn't lift the suspension, so
+     * this does both in one action: set the new limit, then unsuspend.
+     */
+    public function clearBandwidthSuspension(Request $request, HostingAccount $hostingAccount)
+    {
+        $data = $request->validate([
+            'unlimited' => 'required|boolean',
+            'limit_mb'  => 'required_if:unlimited,false|nullable|integer|min:1',
+        ]);
+
+        try {
+            $whm = (new WhmService($hostingAccount->server))->forAccount($hostingAccount->id);
+            $whm->setBandwidthLimit($hostingAccount->cpanel_username, $data['unlimited'] ? null : (int) $data['limit_mb']);
+            $whm->unsuspend($hostingAccount->cpanel_username);
+            $hostingAccount->update([
+                'status' => 'active',
+                'meta' => array_merge($hostingAccount->meta ?? [], ['suspend_reason' => null, 'suspend_time' => null]),
+            ]);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Bandwidth limit raised and the account unsuspended.']);
+    }
+
     /** Pull live usage from the server into the account metrics. */
     public function refreshUsage(HostingAccount $hostingAccount)
     {
@@ -428,6 +481,15 @@ class HostingServiceController extends Controller
             $summary = (new WhmService($hostingAccount->server))
                 ->forAccount($hostingAccount->id)
                 ->accountSummary($hostingAccount->cpanel_username);
+
+            // WHM's own "not suspended" sentinel string — normalized to null
+            // so the frontend can just check truthiness, same as Discover
+            // Hosting Accounts' equivalent mapping.
+            $suspendReason = $summary['suspendreason'] ?? null;
+            if ($suspendReason !== null && strcasecmp(trim($suspendReason), 'not suspended') === 0) {
+                $suspendReason = null;
+            }
+            $suspendTime = (int) ($summary['suspendtime'] ?? 0);
 
             $hostingAccount->update([
                 'last_synced_at' => now(),
@@ -438,6 +500,9 @@ class HostingServiceController extends Controller
                     'bw_limit'     => $summary['bwlimit']     ?? ($summary['totalbwlimit'] ?? null),
                     'email_count'  => $summary['email_accounts'] ?? null,
                     'plan'         => $summary['plan']        ?? null,
+                    'contact_email'  => $summary['email'] ?? null,
+                    'suspend_reason' => (bool) ($summary['suspended'] ?? false) ? $suspendReason : null,
+                    'suspend_time'   => $suspendTime > 0 ? \Carbon\Carbon::createFromTimestamp($suspendTime)->toISOString() : null,
                     'usage_synced_at' => now()->toISOString(),
                 ]),
             ]);

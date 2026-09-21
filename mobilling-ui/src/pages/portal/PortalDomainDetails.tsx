@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, LoadingOverlay, Button, Grid,
   UnstyledButton, Collapse, Anchor, Switch, Alert, Code, CopyButton, Modal,
-  NumberInput, Divider, Timeline, Center, Loader, TextInput,
+  NumberInput, Divider, Timeline, Center, Loader, TextInput, Table,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -11,11 +11,11 @@ import {
   IconSettings, IconPlus, IconChevronDown, IconChevronUp, IconRefresh, IconWorld,
   IconArrowRight, IconLock, IconLockOpen, IconKey, IconCopy, IconServer, IconMailForward,
   IconAddressBook, IconRepeat, IconLayoutDashboard, IconPuzzle, IconHistory,
-  IconCheck, IconX,
+  IconCheck, IconX, IconListDetails,
 } from '@tabler/icons-react';
 import {
   getPortalDomainDetail, portalRenewDomain, portalSetAutoRenew, portalGetEppCode,
-  getPortalDomainNameservers, updatePortalDomainNameservers, PortalDomainDetail,
+  getPortalDomainNameservers, updatePortalDomainNameservers, getPortalDomainDnsZone, PortalDomainDetail,
 } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 
@@ -28,12 +28,13 @@ const statusColor: Record<string, string> = {
   active: 'green', expired: 'red', pending: 'blue', failed: 'red', cancelled: 'gray',
 };
 
-type Section = 'overview' | 'autorenew' | 'nameservers' | 'addons' | 'contacts' | 'epp';
+type Section = 'overview' | 'autorenew' | 'nameservers' | 'dns' | 'addons' | 'contacts' | 'epp';
 
 const SECTIONS: { key: Section; label: string; icon: React.ReactNode }[] = [
   { key: 'overview',    label: 'Overview',            icon: <IconLayoutDashboard size={16} /> },
   { key: 'autorenew',   label: 'Auto Renew',          icon: <IconRepeat size={16} /> },
   { key: 'nameservers', label: 'Nameservers',         icon: <IconServer size={16} /> },
+  { key: 'dns',         label: 'DNS Records',         icon: <IconListDetails size={16} /> },
   { key: 'addons',      label: 'Addons',              icon: <IconPuzzle size={16} /> },
   { key: 'contacts',    label: 'Contact Information', icon: <IconAddressBook size={16} /> },
   { key: 'epp',         label: 'Get EPP Code',        icon: <IconKey size={16} /> },
@@ -303,6 +304,10 @@ export default function PortalDomainDetails() {
               <NameserversSection domainId={d.id} isPortalAdmin={isPortalAdmin} />
             )}
 
+            {section === 'dns' && (
+              <DnsZoneSection domainId={d.id} domainName={d.name} />
+            )}
+
             {section === 'addons' && (
               <Stack gap="md">
                 <Title order={4}>Addons</Title>
@@ -484,6 +489,66 @@ function NameserversSection({ domainId, isPortalAdmin }: { domainId: string; isP
             </Button>
           </Group>
         </Stack>
+      )}
+    </Stack>
+  );
+}
+
+const dnsTypeColors: Record<string, string> = {
+  A: 'blue', AAAA: 'blue', CNAME: 'grape', MX: 'orange', TXT: 'teal',
+  NS: 'gray', SOA: 'gray', SRV: 'violet',
+};
+
+function DnsZoneSection({ domainId, domainName }: { domainId: string; domainName: string }) {
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ['portal-domain-dns', domainId],
+    queryFn: () => getPortalDomainDnsZone(domainId),
+  });
+  const records = data?.data?.data ?? [];
+  const hostedWithUs = data?.data?.hosted_with_us ?? false;
+
+  return (
+    <Stack gap="md">
+      <Title order={4}>DNS Records</Title>
+      <Text size="sm" c="dimmed">
+        The actual records ({domainName}'s website, email, and other services) — view only. Contact us
+        to request a change.
+      </Text>
+
+      {isLoading ? (
+        <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">Fetching from the server…</Text></Group>
+      ) : isError ? (
+        <Alert color="orange" variant="light">Could not reach the server — please try again shortly.</Alert>
+      ) : !hostedWithUs ? (
+        <Alert color="blue" variant="light">
+          This domain isn't hosted with us, so we can't show its DNS records here — please check with
+          wherever it's hosted.
+        </Alert>
+      ) : records.length === 0 ? (
+        <Alert color="blue" variant="light">No DNS records found.</Alert>
+      ) : (
+        <Table.ScrollContainer minWidth={600}>
+          <Table striped highlightOnHover verticalSpacing="xs" fz="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Type</Table.Th>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>TTL</Table.Th>
+                <Table.Th>Value</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {records.map((r, i) => (
+                <Table.Tr key={i}>
+                  <Table.Td><Badge size="sm" variant="light" color={dnsTypeColors[r.type] ?? 'dark'}>{r.type}</Badge></Table.Td>
+                  <Table.Td>{r.name}</Table.Td>
+                  <Table.Td c="dimmed">{r.ttl}</Table.Td>
+                  <Table.Td style={{ wordBreak: 'break-all' }}>{r.data.join('  ·  ')}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
       )}
     </Stack>
   );

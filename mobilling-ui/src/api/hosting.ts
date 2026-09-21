@@ -75,6 +75,31 @@ export interface ServerPackageDetails {
 export const getServerPackagesDetailed = (id: string) =>
   api.get<{ data: ServerPackageDetails[] }>(`/servers/${id}/packages-detailed`);
 
+export interface PackageLimits {
+  quota_mb?: number | null;
+  bandwidth_mb?: number | null;
+  databases?: number | null;
+  email_accounts?: number | null;
+  subdomains?: number | null;
+  ftp_accounts?: number | null;
+  addon_domains?: number | null;
+  parked_domains?: number | null;
+}
+export const createServerPackage = (serverId: string, data: PackageLimits & { name: string }) =>
+  api.post<{ data: ServerPackageDetails }>(`/servers/${serverId}/packages`, data);
+export const updateServerPackage = (serverId: string, packageName: string, data: PackageLimits) =>
+  api.put<{ data: ServerPackageDetails }>(`/servers/${serverId}/packages/${encodeURIComponent(packageName)}`, data);
+export const deleteServerPackage = (serverId: string, packageName: string) =>
+  api.delete<{ message: string }>(`/servers/${serverId}/packages/${encodeURIComponent(packageName)}`);
+
+export interface ServerHealth {
+  hostname: string | null;
+  whm_version: string | null;
+  load_avg: { one: number | null; five: number | null; fifteen: number | null };
+}
+export const getServerHealth = (id: string) =>
+  api.get<{ data: ServerHealth }>(`/servers/${id}/health`);
+
 // Hosting accounts
 export const getHostingAccounts = (params?: Record<string, string>) =>
   api.get('/hosting-accounts', { params });
@@ -90,13 +115,184 @@ export interface DiscoveredAccount {
   plan: string | null;
   disk_used: string | null;
   disk_limit: string | null;
+  ip: string | null;
+  setup_date: string | null;
+  partition: string | null;
+  theme: string | null;
+  owner: string | null;
   suspended: boolean;
+  suspend_reason: string | null;
   hosting_account_id: string | null;
+  client_subscription_id: string | null;
   client: { id: string; name: string } | null;
   imported: boolean;
 }
-export const discoverHostingAccounts = (params?: { server_id?: string; search?: string; imported?: 0 | 1 }) =>
+export const discoverHostingAccounts = (params?: { server_id?: string; search?: string; imported?: 0 | 1; suspended?: 0 | 1 }) =>
   api.get<{ data: DiscoveredAccount[]; errors: string[] }>('/hosting-accounts/discover', { params });
+
+export interface Subdomain {
+  server_id: string;
+  server_name: string;
+  type: 'sub' | 'addon';
+  subdomain: string | null;
+  parent_domain: string | null;
+  cpanel_username: string;
+  docroot: string | null;
+  ip: string | null;
+  php_version: string | null;
+  client: { id: string; name: string } | null;
+}
+export const getSubdomains = (params?: { server_id?: string; search?: string; type?: 'sub' | 'addon' }) =>
+  api.get<{ data: Subdomain[]; errors: string[] }>('/hosting-accounts/subdomains', { params });
+
+export interface BandwidthUsageRow {
+  server_id: string;
+  server_name: string;
+  cpanel_username: string;
+  domain: string | null;
+  used_bytes: number;
+  limit_bytes: number | null;
+  percent_used: number | null;
+  bandwidth_limited: boolean;
+  client: { id: string; name: string } | null;
+}
+export const getBandwidthUsage = (params?: { server_id?: string; search?: string }) =>
+  api.get<{ data: BandwidthUsageRow[]; errors: string[] }>('/hosting-accounts/bandwidth-usage', { params });
+
+export interface DiskUsageRow {
+  server_id: string;
+  server_name: string;
+  cpanel_username: string;
+  domain: string | null;
+  used_mb: number;
+  limit_mb: number | null;
+  percent_used: number | null;
+  client: { id: string; name: string } | null;
+}
+export const getDiskUsage = (params?: { server_id?: string; search?: string }) =>
+  api.get<{ data: DiskUsageRow[]; errors: string[] }>('/hosting-accounts/disk-usage', { params });
+
+export interface BackupStatusRow {
+  server_id: string;
+  server_name: string;
+  cpanel_username: string;
+  domain: string | null;
+  backup_enabled: boolean;
+  backup_exists: boolean;
+  client: { id: string; name: string } | null;
+}
+export const getBackupStatus = (params?: { server_id?: string; search?: string }) =>
+  api.get<{ data: BackupStatusRow[]; errors: string[] }>('/hosting-accounts/backup-status', { params });
+
+export interface EmailAccountRow {
+  email: string | null;
+  suspended_incoming: boolean;
+  suspended_login: boolean;
+  used_bytes: number;
+  quota_bytes: number | null;
+}
+export const getEmailAccounts = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: EmailAccountRow[] }>('/hosting-accounts/email-accounts', { params });
+
+export const addEmailAccount = (data: { server_id: string; cpanel_username: string; email: string; domain: string; password: string; quota_mb: number }) =>
+  api.post<{ message: string }>('/hosting-accounts/email-accounts', data);
+
+export const changeEmailAccountPassword = (data: { server_id: string; cpanel_username: string; email: string; password: string }) =>
+  api.post<{ message: string }>('/hosting-accounts/email-accounts/password', data);
+
+export const toggleEmailAccountSuspension = (data: { server_id: string; cpanel_username: string; email: string; suspend: boolean }) =>
+  api.post<{ message: string }>('/hosting-accounts/email-accounts/toggle-suspension', data);
+
+export const deleteEmailAccount = (data: { server_id: string; cpanel_username: string; email: string; domain: string }) =>
+  api.post<{ message: string }>('/hosting-accounts/email-accounts/delete', data);
+
+export interface MysqlDatabaseRow {
+  database: string | null;
+  users: string[];
+  disk_usage: number;
+}
+export const getMysqlDatabases = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: MysqlDatabaseRow[] }>('/hosting-accounts/mysql-databases', { params });
+
+export interface DnsZoneRecord {
+  type: string;
+  name: string;
+  ttl: number;
+  data: string[];
+}
+export const getDnsZone = (params: { server_id: string; domain: string }) =>
+  api.get<{ data: DnsZoneRecord[] }>('/hosting-accounts/dns-zone', { params });
+
+export interface AddDnsRecordPayload {
+  server_id: string;
+  domain: string;
+  type: 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX';
+  name: string;
+  ttl: number;
+  value?: string;
+  priority?: number;
+}
+export const addDnsRecord = (data: AddDnsRecordPayload) =>
+  api.post<{ message: string }>('/hosting-accounts/dns-zone', data);
+
+export interface CronJobRow {
+  linekey: number;
+  minute: string;
+  hour: string;
+  day: string;
+  month: string;
+  weekday: string;
+  command: string;
+}
+export const getCronJobs = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: CronJobRow[] }>('/hosting-accounts/cron-jobs', { params });
+
+export interface CronJobPayload {
+  server_id: string;
+  cpanel_username: string;
+  minute: string;
+  hour: string;
+  day: string;
+  month: string;
+  weekday: string;
+  command: string;
+}
+export const addCronJob = (data: CronJobPayload) =>
+  api.post<{ message: string }>('/hosting-accounts/cron-jobs', data);
+
+export const updateCronJob = (data: CronJobPayload & { linekey: number }) =>
+  api.put<{ message: string }>('/hosting-accounts/cron-jobs', data);
+
+export const deleteCronJob = (data: { server_id: string; cpanel_username: string; linekey: number }) =>
+  api.delete<{ message: string }>('/hosting-accounts/cron-jobs', { data });
+
+export interface PhpVhostRow {
+  vhost: string | null;
+  version: string | null;
+  main_domain: boolean;
+}
+export const getPhpVersions = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: PhpVhostRow[]; installed: string[] }>('/hosting-accounts/php-versions', { params });
+
+export const updatePhpVersion = (data: { server_id: string; cpanel_username: string; vhost: string; version: string }) =>
+  api.put<{ message: string }>('/hosting-accounts/php-versions', data);
+
+export interface FtpAccountRow {
+  user: string;
+  homedir: string;
+  type: 'main' | 'sub';
+}
+export const getFtpAccounts = (params: { server_id: string; cpanel_username: string }) =>
+  api.get<{ data: FtpAccountRow[] }>('/hosting-accounts/ftp-accounts', { params });
+
+export const addFtpAccount = (data: { server_id: string; cpanel_username: string; user: string; password: string; homedir: string; quota_mb: number }) =>
+  api.post<{ message: string }>('/hosting-accounts/ftp-accounts', data);
+
+export const updateFtpAccountPassword = (data: { server_id: string; cpanel_username: string; user: string; password: string }) =>
+  api.put<{ message: string }>('/hosting-accounts/ftp-accounts/password', data);
+
+export const deleteFtpAccount = (data: { server_id: string; cpanel_username: string; user: string; destroy_files?: boolean }) =>
+  api.delete<{ message: string }>('/hosting-accounts/ftp-accounts', { data });
 
 export const importHostingAccount = (data: {
   server_id: string; cpanel_username: string; domain: string;
@@ -151,6 +347,7 @@ export interface ServiceDetail {
   hosting_account: {
     id: string; status: string; server_id: string | null; server_host: string | null;
     last_synced_at: string | null; not_on_whm: boolean;
+    contact_email: string | null; suspend_reason: string | null; suspend_time: string | null;
   } | null;
   ssl: { valid: boolean | null; issuer: string | null; expires_at: string | null };
   metrics: ServiceMetric[];
@@ -174,6 +371,12 @@ export const updateService = (subscriptionId: string, data: Record<string, unkno
 
 export const changeHostingPassword = (accountId: string, password: string) =>
   api.post<{ message: string }>(`/hosting-accounts/${accountId}/password`, { password });
+
+export const changeHostingContactEmail = (accountId: string, email: string) =>
+  api.post<{ message: string }>(`/hosting-accounts/${accountId}/contact-email`, { email });
+
+export const clearBandwidthSuspension = (accountId: string, unlimited: boolean, limitMb?: number) =>
+  api.post<{ message: string }>(`/hosting-accounts/${accountId}/clear-bandwidth-suspension`, { unlimited, limit_mb: limitMb });
 
 export const refreshHostingUsage = (accountId: string) =>
   api.post<{ data: ServiceMetric[] }>(`/hosting-accounts/${accountId}/refresh-usage`);

@@ -188,10 +188,15 @@ export interface PortalHostingAccount {
   disk_limit: string | null;
   server_hostname: string | null;
   expires_at: string | null;
+  backup_status: 'none' | 'pending' | 'active';
+  backup_pending_document: string | null;
 }
 
 export const getPortalHosting = () =>
   api.get<{ data: PortalHostingAccount[] }>('/portal/hosting');
+
+export const subscribePortalHostingBackup = (id: string) =>
+  api.post<{ data: { document_id: string; document_number: string; total: number }; message: string }>(`/portal/hosting/${id}/subscribe-backup`);
 
 export const portalHostingSso = (id: string, opts?: { service?: 'cpanel' | 'webmail'; goto?: string }) =>
   api.post<{ url: string }>(`/portal/hosting/${id}/sso`, opts ?? {});
@@ -210,12 +215,83 @@ export interface PortalHostingDetail {
   next_due: string | null;
   disk_used: string | null;
   disk_limit: string | null;
+  bw_used_bytes: number | null;
+  bw_limit_bytes: number | null;
   last_synced_at: string | null;
   shortcuts: string[];
 }
 
 export const getPortalHostingDetail = (id: string) =>
   api.get<{ data: PortalHostingDetail }>(`/portal/hosting/${id}`);
+
+export interface PortalSubdomain {
+  type: 'sub' | 'addon';
+  domain: string | null;
+  parent_domain: string | null;
+}
+export const getPortalHostingSubdomains = (id: string) =>
+  api.get<{ data: PortalSubdomain[] }>(`/portal/hosting/${id}/subdomains`);
+
+export interface PortalEmailAccount {
+  email: string | null;
+  suspended_incoming: boolean;
+  suspended_login: boolean;
+  used_bytes: number;
+  quota_bytes: number | null;
+}
+export const getPortalHostingEmailAccounts = (id: string) =>
+  api.get<{ data: PortalEmailAccount[] }>(`/portal/hosting/${id}/email-accounts`);
+
+export const addPortalHostingEmailAccount = (id: string, data: { email: string; domain: string; password: string; quota_mb: number }) =>
+  api.post<{ message: string }>(`/portal/hosting/${id}/email-accounts`, data);
+
+export const updatePortalHostingEmailPassword = (id: string, data: { email: string; password: string }) =>
+  api.put<{ message: string }>(`/portal/hosting/${id}/email-accounts/password`, data);
+
+export const togglePortalHostingEmailSuspension = (id: string, data: { email: string; suspend: boolean }) =>
+  api.put<{ message: string }>(`/portal/hosting/${id}/email-accounts/suspend`, data);
+
+export const deletePortalHostingEmailAccount = (id: string, email: string) =>
+  api.delete<{ message: string }>(`/portal/hosting/${id}/email-accounts`, { data: { email } });
+
+export const portalEmailWebmailSso = (id: string, email: string) =>
+  api.post<{ url: string }>(`/portal/hosting/${id}/email-accounts/sso`, { email });
+
+export interface PortalMysqlDatabase {
+  database: string | null;
+  users: string[];
+  disk_usage: number;
+}
+export const getPortalHostingMysqlDatabases = (id: string) =>
+  api.get<{ data: PortalMysqlDatabase[] }>(`/portal/hosting/${id}/mysql-databases`);
+
+export interface PortalBackupFile {
+  date: string;
+  bytes: number;
+}
+export const getPortalHostingBackups = (id: string) =>
+  api.get<{ data: PortalBackupFile[] }>(`/portal/hosting/${id}/backups`);
+
+export interface PortalBackupSettings {
+  has_backup: boolean;
+  daily_retention_days: number;
+  keep_weekly: boolean;
+  keep_monthly: boolean;
+}
+export const getPortalHostingBackupSettings = (id: string) =>
+  api.get<{ data: PortalBackupSettings }>(`/portal/hosting/${id}/backup-settings`);
+export const updatePortalHostingBackupSettings = (id: string, data: { daily_retention_days: number; keep_weekly: boolean; keep_monthly: boolean }) =>
+  api.put<{ data: PortalBackupSettings }>(`/portal/hosting/${id}/backup-settings`, data);
+
+export interface PortalPhpVhost {
+  vhost: string | null;
+  version: string | null;
+  main_domain: boolean;
+}
+export const getPortalHostingPhpVersions = (id: string) =>
+  api.get<{ data: PortalPhpVhost[]; installed: string[] }>(`/portal/hosting/${id}/php-versions`);
+export const updatePortalHostingPhpVersion = (id: string, data: { vhost: string; version: string }) =>
+  api.put<{ message: string }>(`/portal/hosting/${id}/php-versions`, data);
 
 export const refreshPortalHostingUsage = (id: string) =>
   api.post<{ data: { disk_used: string | null; disk_limit: string | null; last_synced_at: string } }>(`/portal/hosting/${id}/refresh-usage`);
@@ -312,6 +388,15 @@ export const portalGetEppCode = (id: string) =>
 export const getPortalDomainNameservers = (id: string) =>
   api.get<{ data: { nameservers: string[]; editable: boolean } }>(`/portal/domains/${id}/nameservers`);
 
+export interface PortalDnsRecord {
+  type: string;
+  name: string;
+  ttl: number;
+  data: string[];
+}
+export const getPortalDomainDnsZone = (id: string) =>
+  api.get<{ data: PortalDnsRecord[]; hosted_with_us: boolean }>(`/portal/domains/${id}/dns-zone`);
+
 export const updatePortalDomainNameservers = (id: string, nameservers: string[]) =>
   api.put<{ data: { nameservers: string[] }; message: string }>(`/portal/domains/${id}/nameservers`, { nameservers });
 
@@ -320,6 +405,23 @@ export const portalSetAutoRenew = (id: string, enabled: boolean) =>
 
 export const portalCheckDomain = (name: string) =>
   api.get('/portal/domains/check', { params: { name } });
+
+export interface PortalWhoisResult {
+  domain: string;
+  found: boolean;
+  raw: string;
+  registrar: string | null;
+  registrant: string | null;
+  statuses: string[];
+  admins: string[];
+  nsset: string | null;
+  nameservers: string[];
+  registered: string | null;
+  changed: string | null;
+  expire: string | null;
+}
+export const portalWhoisDomain = (name: string) =>
+  api.get<{ data: PortalWhoisResult }>('/portal/domains/whois', { params: { name } });
 
 export const portalOrderDomain = (data: { name: string; years: number; action: 'register' | 'transfer'; auth_info?: string }) =>
   api.post('/portal/domains/order', data);

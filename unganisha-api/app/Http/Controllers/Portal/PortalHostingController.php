@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Portal;
 use App\Exceptions\WhmApiException;
 use App\Http\Controllers\Controller;
 use App\Models\HostingAccount;
+use App\Models\HostingAccountBackupSetting;
 use App\Services\WhmService;
 use Illuminate\Http\Request;
 
@@ -14,23 +15,53 @@ class PortalHostingController extends Controller
     public function index(Request $request)
     {
         $clientId = $request->user()->client_id;
+        $tenantId = $request->user()->tenant_id;
 
         $accounts = HostingAccount::with(['server:id,name,hostname', 'subscription:id,client_id,label,expire_date'])
             ->whereHas('subscription', fn ($q) => $q->where('client_id', $clientId))
             ->whereNotIn('status', ['terminated'])
             ->orderBy('domain')
+            ->get();
+
+        // Backup add-on subscriptions are matched by domain name (label),
+        // same convention as hosting:backup-paid-accounts and
+        // hasActiveBackupSubscription() — not linked via client_subscription_id.
+        $domains = $accounts->pluck('domain')->filter()->values()->all();
+        $backupSubs = \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->where('tenant_id', $tenantId)->where('client_id', $clientId)
+            ->whereIn('label', $domains)
+            ->whereIn('status', ['active', 'pending'])
+            ->whereHas('productService', fn ($q) => $q->where('category', 'Backup'))
             ->get()
-            ->map(fn ($a) => [
-                'id'              => $a->id,
-                'domain'          => $a->domain,
-                'cpanel_username' => $a->cpanel_username,
-                'package'         => $a->meta['plan'] ?? $a->package,
-                'status'          => $a->status,
-                'disk_used'       => $a->meta['disk_used'] ?? null,
-                'disk_limit'      => $a->meta['disk_limit'] ?? null,
-                'server_hostname' => $a->server?->hostname,
-                'expires_at'      => $a->subscription?->expire_date?->toDateString(),
-            ]);
+            ->keyBy('label');
+
+        // Ascending, so keyBy() below keeps the NEWEST log per subscription
+        // (later items in the collection overwrite earlier ones).
+        $pendingLogsBySubscription = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()
+            ->whereIn('client_subscription_id', $backupSubs->where('status', 'pending')->pluck('id'))
+            ->orderBy('invoice_created_at')
+            ->get()
+            ->keyBy('client_subscription_id');
+
+        $accounts = $accounts->map(function ($a) use ($backupSubs, $pendingLogsBySubscription) {
+            $backupSub = $backupSubs->get($a->domain);
+            $pendingLog = $backupSub?->status === 'pending' ? $pendingLogsBySubscription->get($backupSub->id) : null;
+
+            return [
+                'id'                       => $a->id,
+                'domain'                   => $a->domain,
+                'cpanel_username'          => $a->cpanel_username,
+                'package'                  => $a->meta['plan'] ?? $a->package,
+                'status'                   => $a->status,
+                'disk_used'                => $a->meta['disk_used'] ?? null,
+                'disk_limit'               => $a->meta['disk_limit'] ?? null,
+                'server_hostname'          => $a->server?->hostname,
+                'expires_at'               => $a->subscription?->expire_date?->toDateString(),
+                'backup_status'            => $backupSub?->status ?? 'none',
+                'backup_pending_document'  => $pendingLog?->document_id,
+            ];
+        });
 
         return response()->json(['data' => $accounts]);
     }
@@ -79,38 +110,494 @@ class PortalHostingController extends Controller
             'next_due'        => $sub?->expire_date?->toDateString(),
             'disk_used'       => $hostingAccount->meta['disk_used'] ?? null,
             'disk_limit'      => $hostingAccount->meta['disk_limit'] ?? null,
+            'bw_used_bytes'   => $hostingAccount->meta['bw_used_bytes'] ?? null,
+            'bw_limit_bytes'  => $hostingAccount->meta['bw_limit_bytes'] ?? null,
             'last_synced_at'  => $hostingAccount->last_synced_at?->toISOString(),
             'shortcuts'       => array_keys(self::GOTO_MAP),
         ]]);
     }
 
-    /** Live usage refresh (read-only accountsummary). */
+    /**
+     * Live usage refresh — disk via accountsummary, bandwidth via showbw.
+     * accountsummary was confirmed (elsewhere this session) to never
+     * actually carry bandwidth fields despite the field names suggesting it
+     * might — showbw is the only WHM call that does, and it's server-wide
+     * (no per-account variant exists), so this pulls the whole server's
+     * figures and picks out this one account's row.
+     */
     public function refreshUsage(Request $request, HostingAccount $hostingAccount)
     {
         $this->guardAccount($request, $hostingAccount, adminOnly: false);
 
         try {
-            $summary = (new WhmService($hostingAccount->server))
-                ->forAccount($hostingAccount->id)
-                ->accountSummary($hostingAccount->cpanel_username);
+            $whm = (new WhmService($hostingAccount->server))->forAccount($hostingAccount->id);
+            $summary = $whm->accountSummary($hostingAccount->cpanel_username);
+
+            $bwRow = collect($whm->bandwidthUsage())
+                ->first(fn ($a) => strcasecmp((string) ($a['user'] ?? ''), $hostingAccount->cpanel_username) === 0);
+            $bwLimitBytes = (int) ($bwRow['limit'] ?? 0); // 0 = unlimited, WHM's own convention
 
             $hostingAccount->update([
                 'last_synced_at' => now(),
                 'meta' => array_merge($hostingAccount->meta ?? [], [
-                    'disk_used'  => $summary['diskused'] ?? null,
-                    'disk_limit' => $summary['disklimit'] ?? null,
-                    'plan'       => $summary['plan'] ?? null,
+                    'disk_used'         => $summary['diskused'] ?? null,
+                    'disk_limit'        => $summary['disklimit'] ?? null,
+                    'plan'              => $summary['plan'] ?? null,
+                    'bw_used_bytes'     => $bwRow ? (int) ($bwRow['totalbytes'] ?? 0) : null,
+                    'bw_limit_bytes'    => $bwRow && $bwLimitBytes > 0 ? $bwLimitBytes : null,
                 ]),
             ]);
 
+            $fresh = $hostingAccount->fresh();
             return response()->json(['data' => [
-                'disk_used'      => $hostingAccount->fresh()->meta['disk_used'] ?? null,
-                'disk_limit'     => $hostingAccount->fresh()->meta['disk_limit'] ?? null,
+                'disk_used'      => $fresh->meta['disk_used'] ?? null,
+                'disk_limit'     => $fresh->meta['disk_limit'] ?? null,
+                'bw_used_bytes'  => $fresh->meta['bw_used_bytes'] ?? null,
+                'bw_limit_bytes' => $fresh->meta['bw_limit_bytes'] ?? null,
                 'last_synced_at' => now()->toISOString(),
             ]]);
         } catch (WhmApiException) {
             return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
         }
+    }
+
+    /**
+     * This account's own subdomains and addon domains — WHM's
+     * get_domain_info is server-wide (same call the staff Subdomains page
+     * uses), filtered here to just this one cPanel account's rows.
+     */
+    public function subdomains(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $domains = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->listDomains();
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        $rows = collect($domains)
+            ->filter(fn ($d) => in_array($d['domain_type'] ?? null, ['sub', 'addon'], true)
+                && strcasecmp((string) ($d['user'] ?? ''), $hostingAccount->cpanel_username) === 0)
+            ->map(fn ($d) => [
+                'type'          => $d['domain_type'],
+                'domain'        => $d['domain'] ?? null,
+                'parent_domain' => $d['parent_domain'] ?? null,
+            ])
+            ->values();
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** This account's mailboxes — same WhmService::emailAccounts() the staff page uses. */
+    public function emailAccounts(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $pops = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->emailAccounts($hostingAccount->cpanel_username);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        // list_pops_with_disk's quota is 0 (int) when unlimited, a numeric
+        // byte-count string otherwise — matches the staff endpoint's mapping.
+        $rows = array_map(function ($p) {
+            $quotaBytes = (int) ($p['_diskquota'] ?? 0);
+            return [
+                'email'              => $p['email'] ?? null,
+                'suspended_incoming' => (bool) ($p['suspended_incoming'] ?? false),
+                'suspended_login'    => (bool) ($p['suspended_login'] ?? false),
+                'used_bytes'         => (int) ($p['_diskused'] ?? 0),
+                'quota_bytes'        => $quotaBytes > 0 ? $quotaBytes : null,
+            ];
+        }, $pops);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** Self-service mailbox creation — admin-gated, same sensitivity tier as change-password. */
+    public function storeEmailAccount(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate([
+            'email'    => 'required|string|max:64|regex:/^[a-zA-Z0-9._+-]+$/',
+            'domain'   => 'required|string|max:255',
+            'password' => 'required|string|min:8|max:255',
+            'quota_mb' => 'required|integer|min:0',
+        ]);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->addEmailAccount($hostingAccount->cpanel_username, $data['email'], $data['domain'], $data['password'], $data['quota_mb']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Email account created.']);
+    }
+
+    public function updateEmailPassword(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate([
+            'email'    => 'required|email|max:255',
+            'password' => 'required|string|min:8|max:255',
+        ]);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->changeEmailPassword($hostingAccount->cpanel_username, $data['email'], $data['password']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Mailbox password changed.']);
+    }
+
+    public function toggleEmailSuspension(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate([
+            'email'   => 'required|email|max:255',
+            'suspend' => 'required|boolean',
+        ]);
+
+        $whm = (new WhmService($hostingAccount->server))->forAccount($hostingAccount->id);
+
+        try {
+            $data['suspend']
+                ? $whm->suspendEmailLogin($hostingAccount->cpanel_username, $data['email'])
+                : $whm->unsuspendEmailLogin($hostingAccount->cpanel_username, $data['email']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => $data['suspend'] ? 'Mailbox login suspended.' : 'Mailbox login unsuspended.']);
+    }
+
+    /** Deletes a mailbox permanently — cPanel takes its mail store with it. */
+    public function destroyEmailAccount(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate(['email' => 'required|email|max:255']);
+        // The mailbox's own domain, not necessarily the account's main one
+        // (an addon domain's mailbox needs its own domain here).
+        $domain = substr($data['email'], strrpos($data['email'], '@') + 1);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->deleteEmailAccount($hostingAccount->cpanel_username, $data['email'], $domain);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the delete: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Mailbox deleted.']);
+    }
+
+    /**
+     * One-time webmail login for a SPECIFIC mailbox — unlike sso()'s
+     * generic 'webmail' service (which logs into the cPanel account's own
+     * webmail entry point), passing the mailbox's own email address as
+     * create_user_session's `user` logs straight into that mailbox's
+     * inbox. Verified live: WHM accepts an email address here and returns
+     * a session keyed to it, not the cPanel account.
+     */
+    public function emailSso(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate(['email' => 'required|email|max:255']);
+
+        try {
+            $url = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->ssoUrl($data['email'], 'webmaild');
+
+            return response()->json(['url' => $url]);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Could not open webmail right now: ' . $e->getMessage()], 422);
+        }
+    }
+
+    /** This account's MySQL databases — same WhmService::mysqlDatabases() the staff page uses. */
+    public function mysqlDatabases(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $dbs = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->mysqlDatabases($hostingAccount->cpanel_username);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        $rows = array_map(fn ($d) => [
+            'database'   => $d['database'] ?? null,
+            'users'      => (array) ($d['users'] ?? []),
+            'disk_usage' => (int) ($d['disk_usage'] ?? 0),
+        ], $dbs);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** This account's domains/subdomains with their current PHP version, plus what's installed on the server. */
+    public function phpVersions(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        $whm = (new WhmService($hostingAccount->server))->forAccount($hostingAccount->id);
+
+        try {
+            $vhosts = $whm->phpVersions($hostingAccount->cpanel_username);
+            $installed = $whm->installedPhpVersions($hostingAccount->cpanel_username);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        $rows = array_map(fn ($v) => [
+            'vhost'       => $v['vhost'] ?? null,
+            'version'     => $v['version'] ?? null,
+            'main_domain' => (bool) ($v['main_domain'] ?? false),
+        ], $vhosts);
+
+        return response()->json(['data' => $rows, 'installed' => $installed]);
+    }
+
+    /** Changing PHP version can break an incompatible site, so this stays admin-only like change-password/cancellation. */
+    public function updatePhpVersion(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+
+        $data = $request->validate([
+            'vhost'   => 'required|string|max:255',
+            'version' => 'required|string|max:32',
+        ]);
+
+        try {
+            (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->setPhpVersion($hostingAccount->cpanel_username, $data['vhost'], $data['version']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'PHP version updated.']);
+    }
+
+    /**
+     * The account's actual backup files (same tarballs the "Backup" quick
+     * shortcut's cPanel wizard shows/downloads — WhmService::homeDirBackupFiles).
+     */
+    public function backups(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        try {
+            $files = (new WhmService($hostingAccount->server))
+                ->forAccount($hostingAccount->id)
+                ->homeDirBackupFiles($hostingAccount->cpanel_username);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the hosting server — try again later.'], 422);
+        }
+
+        $rows = array_map(fn ($f) => [
+            'date'  => \Carbon\Carbon::createFromTimestamp($f['mtime'])->toIso8601String(),
+            'bytes' => $f['bytes'],
+        ], array_reverse($files));
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * Whether this account has an active "Backup" subscription, matching
+     * hosting:backup-paid-accounts's own eligibility check (subscription's
+     * `label` is the domain name — not linked via client_subscription_id).
+     */
+    private function hasActiveBackupSubscription(HostingAccount $hostingAccount): bool
+    {
+        return \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->where('tenant_id', $hostingAccount->tenant_id)
+            ->where('label', $hostingAccount->domain)
+            ->where('status', 'active')
+            ->whereHas('productService', fn ($q) => $q->where('category', 'Backup'))
+            ->exists();
+    }
+
+    /**
+     * Self-service: subscribe this hosting account to the "Backup" add-on
+     * and create its invoice — pay it any way (Pesapal, bank transfer, or
+     * wallet credit) and hosting:backup-paid-accounts picks it up the next
+     * time it runs (SubscriptionActivationService, already wired into
+     * every payment path, flips the subscription to active the moment the
+     * invoice is paid). Mirrors PortalResellerController::subscribe()'s
+     * exact idempotency pattern: a lock per (client, domain) plus reusing
+     * an already-pending invoice, so a double-click or slow retry can't
+     * spawn two subscriptions for the same domain.
+     */
+    public function subscribeBackup(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+        $tenantId = $hostingAccount->tenant_id;
+        $clientId = $hostingAccount->subscription->client_id;
+
+        if ($this->hasActiveBackupSubscription($hostingAccount)) {
+            return response()->json(['message' => 'This account already has an active Backup subscription.'], 422);
+        }
+
+        $product = \App\Models\ProductService::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->where('tenant_id', $tenantId)->where('category', 'Backup')->where('is_active', true)
+            ->first();
+        if (!$product) {
+            return response()->json(['message' => 'Backup is not available right now — please contact us.'], 422);
+        }
+
+        $lock = \Illuminate\Support\Facades\Cache::lock("backup-subscribe:{$clientId}:{$hostingAccount->domain}", 10);
+
+        try {
+            return $lock->block(5, function () use ($hostingAccount, $product, $tenantId, $clientId) {
+                $pendingSubscription = \App\Models\ClientSubscription::withoutGlobalScopes()
+                    ->whereNull('deleted_at')
+                    ->where('tenant_id', $tenantId)->where('client_id', $clientId)
+                    ->where('product_service_id', $product->id)->where('label', $hostingAccount->domain)
+                    ->where('status', 'pending')
+                    ->latest('created_at')->first();
+
+                if ($pendingSubscription) {
+                    $pendingLog = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()
+                        ->where('client_subscription_id', $pendingSubscription->id)
+                        ->latest('invoice_created_at')->first();
+                    $document = $pendingLog
+                        ? \App\Models\Document::withoutGlobalScopes()->whereIn('status', ['sent', 'partial', 'overdue'])->find($pendingLog->document_id)
+                        : null;
+                    if ($document) {
+                        return response()->json([
+                            'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+                            'message' => "Invoice {$document->document_number} is awaiting payment — pay it to activate backup for {$hostingAccount->domain}.",
+                        ]);
+                    }
+                }
+
+                $document = \Illuminate\Support\Facades\DB::transaction(function () use ($hostingAccount, $product, $tenantId, $clientId) {
+                    $start = now()->startOfDay();
+
+                    $subscription = \App\Models\ClientSubscription::create([
+                        'tenant_id'          => $tenantId,
+                        'client_id'          => $clientId,
+                        'product_service_id' => $product->id,
+                        'label'              => $hostingAccount->domain,
+                        'quantity'           => 1,
+                        'start_date'         => $start,
+                        'status'             => 'pending',
+                        'recurring_amount'   => $product->price,
+                    ]);
+
+                    $document = \App\Models\Document::withoutGlobalScopes()->create([
+                        'tenant_id'       => $tenantId,
+                        'client_id'       => $clientId,
+                        'type'            => 'invoice',
+                        'document_number' => app(\App\Services\DocumentNumberService::class)->generate('invoice', $tenantId),
+                        'date'            => now()->toDateString(),
+                        'due_date'        => now()->addDays(7)->toDateString(),
+                        'subtotal'        => $product->price,
+                        'discount_amount' => 0,
+                        'tax_amount'      => 0,
+                        'total'           => $product->price,
+                        'status'          => 'sent',
+                        'notes'           => "Web Hosting Backup — {$hostingAccount->domain} (self-service, portal)",
+                    ]);
+
+                    $document->items()->create([
+                        'product_service_id' => $product->id,
+                        'item_type'          => 'service',
+                        'description'        => "Web Hosting Backup — {$hostingAccount->domain}",
+                        'quantity'           => 1,
+                        'price'              => $product->price,
+                        'tax_percent'        => 0,
+                        'tax_amount'         => 0,
+                        'total'              => $product->price,
+                    ]);
+
+                    \App\Models\RecurringInvoiceLog::withoutGlobalScopes()->create([
+                        'tenant_id'              => $tenantId,
+                        'client_id'              => $clientId,
+                        'product_service_id'     => $product->id,
+                        'next_bill_date'         => $start->toDateString(),
+                        'client_subscription_id' => $subscription->id,
+                        'document_id'            => $document->id,
+                        'invoice_created_at'     => now(),
+                        'reminders_sent'         => [],
+                    ]);
+
+                    return $document;
+                });
+
+                return response()->json([
+                    'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+                    'message' => "Invoice {$document->document_number} created — pay it any way you like to activate backup for {$hostingAccount->domain}.",
+                ], 201);
+            });
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException) {
+            return response()->json(['message' => 'Still processing your previous request — please wait a moment and try again.'], 429);
+        }
+    }
+
+    /** This account's backup retention policy — the client's own paid-backup "cron" settings. */
+    public function backupSettings(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount, adminOnly: false);
+
+        $hasBackup = $this->hasActiveBackupSubscription($hostingAccount);
+        $settings = $hostingAccount->backupSetting;
+
+        return response()->json([
+            'data' => [
+                'has_backup'           => $hasBackup,
+                'daily_retention_days' => $settings->daily_retention_days ?? HostingAccountBackupSetting::DEFAULT_DAILY_RETENTION_DAYS,
+                'keep_weekly'          => $settings->keep_weekly ?? true,
+                'keep_monthly'         => $settings->keep_monthly ?? true,
+            ],
+        ]);
+    }
+
+    public function updateBackupSettings(Request $request, HostingAccount $hostingAccount)
+    {
+        $this->guardAccount($request, $hostingAccount);
+        abort_unless($this->hasActiveBackupSubscription($hostingAccount), 422, 'This account does not have an active Backup subscription.');
+
+        $data = $request->validate([
+            'daily_retention_days' => 'required|integer|min:1|max:30',
+            'keep_weekly'          => 'required|boolean',
+            'keep_monthly'         => 'required|boolean',
+        ]);
+
+        $settings = HostingAccountBackupSetting::withoutGlobalScopes()->updateOrCreate(
+            ['hosting_account_id' => $hostingAccount->id],
+            ['tenant_id' => $hostingAccount->tenant_id, ...$data],
+        );
+
+        return response()->json([
+            'data' => [
+                'has_backup'           => true,
+                'daily_retention_days' => $settings->daily_retention_days,
+                'keep_weekly'          => $settings->keep_weekly,
+                'keep_monthly'         => $settings->keep_monthly,
+            ],
+        ]);
     }
 
     /** One-time cPanel/Webmail login URL. Portal admins only — SSO grants full hosting control. */

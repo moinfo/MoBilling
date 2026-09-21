@@ -106,6 +106,14 @@ class PdfService
         ])->setPaper('a5');
     }
 
+    public function generateBankBalanceStatement(\App\Models\Tenant $tenant, array $report)
+    {
+        return Pdf::loadView('pdf.bank-balance-statement', [
+            'tenant' => $tenant,
+            'report' => $report,
+        ])->setPaper('a4');
+    }
+
     public function generatePayslip(Payslip $payslip)
     {
         // A column-constrained eager load ('user:id,name') drops the

@@ -57,6 +57,12 @@ class HostingAccountController extends Controller
                 }
                 $local = $known->get($server->id . '|' . strtolower($username));
 
+                $suspended = (bool) ($acct['suspended'] ?? false);
+                $suspendReason = $acct['suspendreason'] ?? null;
+                if ($suspendReason !== null && strcasecmp(trim($suspendReason), 'not suspended') === 0) {
+                    $suspendReason = null;
+                }
+
                 $rows[] = [
                     'server_id'          => $server->id,
                     'server_name'        => $server->name,
@@ -66,8 +72,20 @@ class HostingAccountController extends Controller
                     'plan'               => $acct['plan'] ?? null,
                     'disk_used'          => $acct['diskused'] ?? null,
                     'disk_limit'         => $acct['disklimit'] ?? null,
-                    'suspended'          => (bool) ($acct['suspended'] ?? false),
+                    'ip'                 => $acct['ip'] ?? null,
+                    'setup_date'         => isset($acct['unix_startdate']) && $acct['unix_startdate']
+                        ? \Carbon\Carbon::createFromTimestamp((int) $acct['unix_startdate'])->format('Y-m-d H:i')
+                        : ($acct['startdate'] ?? null),
+                    'partition'          => $acct['partition'] ?? null,
+                    'theme'              => $acct['theme'] ?? null,
+                    'owner'              => $acct['owner'] ?? null,
+                    'suspended'          => $suspended,
+                    // Only meaningful when actually suspended — WHM's own
+                    // "not suspended" sentinel string is normalized to null
+                    // above so the frontend can just check truthiness.
+                    'suspend_reason'     => $suspended ? $suspendReason : null,
                     'hosting_account_id' => $local?->id,
+                    'client_subscription_id' => $local?->client_subscription_id,
                     'client'             => $local?->subscription?->client
                         ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
                         : null,
@@ -89,8 +107,774 @@ class HostingAccountController extends Controller
             $want = $request->boolean('imported');
             $rows = array_values(array_filter($rows, fn ($r) => $r['imported'] === $want));
         }
+        if ($request->filled('suspended')) {
+            $want = $request->boolean('suspended');
+            $rows = array_values(array_filter($rows, fn ($r) => $r['suspended'] === $want));
+        }
 
         return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
+     * Every subdomain AND addon domain across the tenant's WHM server(s) —
+     * `get_domain_info` is server-wide and needs no per-account calls,
+     * unlike discover()'s per-account listaccts loop. An addon domain is
+     * still backed by a subdomain under the hood, which is why WHM tags
+     * both the same way here (`domain_type`) rather than as unrelated
+     * kinds of record.
+     */
+    public function subdomains(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $domains = (new WhmService($server))->listDomains();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($domains as $d) {
+                $type = $d['domain_type'] ?? null;
+                if (!in_array($type, ['sub', 'addon'], true)) {
+                    continue;
+                }
+                $username = (string) ($d['user'] ?? '');
+                $local = $username !== '' ? $known->get($server->id . '|' . strtolower($username)) : null;
+
+                $rows[] = [
+                    'server_id'       => $server->id,
+                    'server_name'     => $server->name,
+                    'type'            => $type,
+                    'subdomain'       => $d['domain'] ?? null,
+                    'parent_domain'   => $d['parent_domain'] ?? null,
+                    'cpanel_username' => $username,
+                    'docroot'         => $d['docroot'] ?? null,
+                    'ip'              => $d['ipv4'] ?? null,
+                    'php_version'     => $d['php_version'] ?: null,
+                    'client'          => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                ];
+            }
+        }
+
+        if ($request->filled('type')) {
+            $rows = array_values(array_filter($rows, fn ($r) => $r['type'] === $request->type));
+        }
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower((string) $r['subdomain']), $s)
+                || str_contains(strtolower((string) $r['parent_domain']), $s)
+                || str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+
+        usort($rows, fn ($a, $b) => strcmp((string) $a['subdomain'], (string) $b['subdomain']));
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
+     * This month's bandwidth usage for every cPanel account across the
+     * tenant's WHM server(s), sorted worst-first — the proactive
+     * counterpart to "Fix Bandwidth Suspension": see who's approaching
+     * their limit before WHM's own cron suspends them for it.
+     */
+    public function bandwidthUsage(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $accounts = (new WhmService($server))->bandwidthUsage();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($accounts as $a) {
+                $username = (string) ($a['user'] ?? '');
+                if ($username === '') {
+                    continue;
+                }
+                $local = $known->get($server->id . '|' . strtolower($username));
+
+                $usedBytes  = (int) ($a['totalbytes'] ?? 0);
+                $limitBytes = (int) ($a['limit'] ?? 0); // 0 = unlimited, WHM's own convention
+                $percent    = $limitBytes > 0 ? round(($usedBytes / $limitBytes) * 100, 1) : null;
+
+                $rows[] = [
+                    'server_id'          => $server->id,
+                    'server_name'        => $server->name,
+                    'cpanel_username'    => $username,
+                    'domain'             => $a['maindomain'] ?? null,
+                    'used_bytes'         => $usedBytes,
+                    'limit_bytes'        => $limitBytes > 0 ? $limitBytes : null,
+                    'percent_used'       => $percent,
+                    'bandwidth_limited'  => (bool) ($a['bwlimited'] ?? false),
+                    'client'             => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                ];
+            }
+        }
+
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) $r['domain']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+
+        // Highest usage first; unlimited accounts (no percent) sort last.
+        usort($rows, fn ($a, $b) => ($b['percent_used'] ?? -1) <=> ($a['percent_used'] ?? -1));
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
+     * Disk usage for every cPanel account across the tenant's WHM server(s),
+     * sorted worst-first — same idea as bandwidthUsage(), but disk_used/
+     * disk_limit are already in listaccts (no extra WHM call needed).
+     */
+    public function diskUsage(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        // "563M" -> 563, "unlimited" (or missing) -> null.
+        $toMb = function ($raw) {
+            if (!is_string($raw) || !preg_match('/^(\d+(?:\.\d+)?)M$/i', trim($raw), $m)) {
+                return null;
+            }
+            return (float) $m[1];
+        };
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $accounts = (new WhmService($server))->listAccounts();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($accounts as $a) {
+                $username = (string) ($a['user'] ?? '');
+                if ($username === '') {
+                    continue;
+                }
+                $local = $known->get($server->id . '|' . strtolower($username));
+
+                $usedMb  = $toMb($a['diskused'] ?? null) ?? 0;
+                $limitMb = $toMb($a['disklimit'] ?? null);
+                $percent = $limitMb !== null && $limitMb > 0 ? round(($usedMb / $limitMb) * 100, 1) : null;
+
+                $rows[] = [
+                    'server_id'       => $server->id,
+                    'server_name'     => $server->name,
+                    'cpanel_username' => $username,
+                    'domain'          => $a['domain'] ?? null,
+                    'used_mb'         => $usedMb,
+                    'limit_mb'        => $limitMb,
+                    'percent_used'    => $percent,
+                    'client'          => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                ];
+            }
+        }
+
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) $r['domain']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+
+        usort($rows, fn ($a, $b) => ($b['percent_used'] ?? -1) <=> ($a['percent_used'] ?? -1));
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
+     * Backup status for every cPanel account — listaccts carries two
+     * distinct flags: `backup` (the setting is turned on) and `has_backup`
+     * (a backup file actually exists). Verified live they genuinely
+     * diverge — some accounts have the setting on with no backup on disk
+     * yet, which is the exact risk this view exists to surface. Sorted
+     * worst-first: no backup and no setting, then setting-on-but-missing,
+     * then everyone else.
+     */
+    public function backupStatus(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->when($request->filled('server_id'), fn ($q) => $q->where('id', $request->server_id))
+            ->get();
+
+        $known = HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenantId)
+            ->with('subscription.client:id,name')
+            ->get()
+            ->keyBy(fn ($a) => $a->server_id . '|' . strtolower($a->cpanel_username));
+
+        $rows = [];
+        $errors = [];
+
+        foreach ($servers as $server) {
+            try {
+                $accounts = (new WhmService($server))->listAccounts();
+            } catch (WhmApiException $e) {
+                $errors[] = "{$server->name}: {$e->getMessage()}";
+                continue;
+            }
+
+            foreach ($accounts as $a) {
+                $username = (string) ($a['user'] ?? '');
+                if ($username === '') {
+                    continue;
+                }
+                $local = $known->get($server->id . '|' . strtolower($username));
+
+                $rows[] = [
+                    'server_id'          => $server->id,
+                    'server_name'        => $server->name,
+                    'cpanel_username'    => $username,
+                    'domain'             => $a['domain'] ?? null,
+                    'backup_enabled'     => (bool) ($a['backup'] ?? false),
+                    'backup_exists'      => (bool) ($a['has_backup'] ?? false),
+                    'client'             => $local?->subscription?->client
+                        ? ['id' => $local->subscription->client->id, 'name' => $local->subscription->client->name]
+                        : null,
+                ];
+            }
+        }
+
+        if ($request->filled('search')) {
+            $s = strtolower($request->search);
+            $rows = array_values(array_filter($rows, fn ($r) =>
+                str_contains(strtolower($r['cpanel_username']), $s)
+                || str_contains(strtolower((string) $r['domain']), $s)
+                || str_contains(strtolower((string) ($r['client']['name'] ?? '')), $s)));
+        }
+
+        // Worst first: neither enabled nor existing, then missing despite
+        // being enabled, then the rest.
+        $risk = fn ($r) => !$r['backup_enabled'] && !$r['backup_exists'] ? 0
+            : ($r['backup_enabled'] && !$r['backup_exists'] ? 1 : 2);
+        usort($rows, fn ($a, $b) => $risk($a) <=> $risk($b));
+
+        return response()->json(['data' => $rows, 'errors' => $errors]);
+    }
+
+    /**
+     * One account's email addresses — unlike every other report here, WHM
+     * has no bulk call for this (email accounts are cPanel/UAPI-level, one
+     * "cpanel" passthrough call per account), so this deliberately takes a
+     * single account rather than looping the whole server.
+     */
+    public function emailAccounts(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $pops = (new WhmService($server))->emailAccounts($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        // list_pops_with_disk's quota is 0 (int) when unlimited, a numeric
+        // byte-count string otherwise — verified live.
+        $rows = array_map(function ($p) {
+            $quotaRaw = $p['_diskquota'] ?? 0;
+            $quotaBytes = (int) $quotaRaw;
+            return [
+                'email'              => $p['email'] ?? null,
+                'suspended_incoming' => (bool) ($p['suspended_incoming'] ?? false),
+                'suspended_login'    => (bool) ($p['suspended_login'] ?? false),
+                'used_bytes'         => (int) ($p['_diskused'] ?? 0),
+                'quota_bytes'        => $quotaBytes > 0 ? $quotaBytes : null,
+            ];
+        }, $pops);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /** Creates a mailbox. */
+    public function storeEmailAccount(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'email'           => 'required|string|max:64|regex:/^[a-zA-Z0-9._+-]+$/',
+            'domain'          => 'required|string|max:255',
+            'password'        => 'required|string|min:8|max:255',
+            'quota_mb'        => 'required|integer|min:0',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->addEmailAccount($data['cpanel_username'], $data['email'], $data['domain'], $data['password'], $data['quota_mb']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Email account created.']);
+    }
+
+    /** Module command: set one mailbox's password. */
+    public function changeEmailPassword(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'email'           => 'required|email|max:255',
+            'password'        => 'required|string|min:8|max:255',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->changeEmailPassword($data['cpanel_username'], $data['email'], $data['password']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Mailbox password changed.']);
+    }
+
+    /** Module command: suspend or unsuspend one mailbox's login (webmail/IMAP/POP). */
+    public function toggleEmailSuspension(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'email'           => 'required|email|max:255',
+            'suspend'         => 'required|boolean',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+        $whm = new WhmService($server);
+
+        try {
+            $data['suspend']
+                ? $whm->suspendEmailLogin($data['cpanel_username'], $data['email'])
+                : $whm->unsuspendEmailLogin($data['cpanel_username'], $data['email']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => $data['suspend'] ? 'Mailbox login suspended.' : 'Mailbox login unsuspended.']);
+    }
+
+    /** Deletes one mailbox permanently — cPanel takes its mail store with it. */
+    public function deleteEmailAccount(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'email'           => 'required|email|max:255',
+            'domain'          => 'required|string|max:255',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->deleteEmailAccount($data['cpanel_username'], $data['email'], $data['domain']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the delete: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Mailbox deleted.']);
+    }
+
+    /** One account's MySQL databases — same per-account shape as emailAccounts(). */
+    public function mysqlDatabases(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $dbs = (new WhmService($server))->mysqlDatabases($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        $rows = array_map(fn ($d) => [
+            'database'   => $d['database'] ?? null,
+            'users'      => (array) ($d['users'] ?? []),
+            'disk_usage' => (int) ($d['disk_usage'] ?? 0),
+        ], $dbs);
+
+        return response()->json(['data' => $rows]);
+    }
+
+    /**
+     * A domain's DNS zone — read-only for now (view only, per explicit
+     * decision, before any edit capability ships). Takes the domain name
+     * directly rather than cpanel_username: WHM's parse_dns_zone is keyed
+     * by zone name, and a subdomain/addon domain has its own zone that
+     * doesn't share the account's cpanel username.
+     */
+    public function dnsZone(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id' => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'domain'    => 'required|string|max:255',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $records = (new WhmService($server))->dnsZone($data['domain']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $records]);
+    }
+
+    /**
+     * Adds one DNS zone record. Add-only, deliberately — see
+     * WhmService::addDnsRecord()'s doc comment for why edit/delete aren't
+     * exposed here (WHM's line-number-based edit/remove calls proved
+     * unreliable during live verification: two real records were
+     * accidentally overwritten/deleted before this was caught and reverted).
+     */
+    public function addDnsRecord(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id' => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'domain'    => 'required|string|max:255',
+            'type'      => ['required', Rule::in(['A', 'AAAA', 'CNAME', 'TXT', 'MX'])],
+            'name'      => 'required|string|max:255',
+            'ttl'       => 'required|integer|min:60|max:2592000',
+            'value'     => 'required_unless:type,MX|nullable|string|max:1024',
+            'priority'  => 'required_if:type,MX|nullable|integer|min:0|max:65535',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+        $name = str_ends_with($data['name'], '.') ? $data['name'] : "{$data['name']}.";
+
+        $fields = match ($data['type']) {
+            'A', 'AAAA' => ['address' => $data['value']],
+            'CNAME' => ['cname' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
+            'TXT' => ['txtdata' => $data['value']],
+            'MX' => ['preference' => $data['priority'], 'exchange' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
+        };
+
+        try {
+            (new WhmService($server))->addDnsRecord($data['domain'], $data['type'], $name, $data['ttl'], $fields);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the record: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'DNS record added.']);
+    }
+
+    /** One account's cron jobs — WhmService::cronJobs() (cPanel API2's Cron::listcron). */
+    public function cronJobs(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $jobs = (new WhmService($server))->cronJobs($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $jobs]);
+    }
+
+    private function cronJobRules(): array
+    {
+        return [
+            'minute'  => 'required|string|max:100',
+            'hour'    => 'required|string|max:100',
+            'day'     => 'required|string|max:100',
+            'month'   => 'required|string|max:100',
+            'weekday' => 'required|string|max:100',
+            'command' => 'required|string|max:2000',
+        ];
+    }
+
+    public function storeCronJob(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ] + $this->cronJobRules());
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->addCronJob($data['cpanel_username'], collect($data)->only(['minute', 'hour', 'day', 'month', 'weekday', 'command'])->all());
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the cron job: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Cron job added.']);
+    }
+
+    public function updateCronJob(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'linekey'         => 'required|integer',
+        ] + $this->cronJobRules());
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->updateCronJob($data['cpanel_username'], $data['linekey'], collect($data)->only(['minute', 'hour', 'day', 'month', 'weekday', 'command'])->all());
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Cron job updated.']);
+    }
+
+    public function destroyCronJob(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'linekey'         => 'required|integer',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->deleteCronJob($data['cpanel_username'], $data['linekey']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the delete: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Cron job deleted.']);
+    }
+
+    /** One account's domains/subdomains with their current PHP version, plus what's installed on the server. */
+    public function phpVersions(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+        $whm = new WhmService($server);
+
+        try {
+            $vhosts = $whm->phpVersions($data['cpanel_username']);
+            $installed = $whm->installedPhpVersions($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        $rows = array_map(fn ($v) => [
+            'vhost'       => $v['vhost'] ?? null,
+            'version'     => $v['version'] ?? null,
+            'main_domain' => (bool) ($v['main_domain'] ?? false),
+        ], $vhosts);
+
+        return response()->json(['data' => $rows, 'installed' => $installed]);
+    }
+
+    public function updatePhpVersion(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'vhost'           => 'required|string|max:255',
+            'version'         => 'required|string|max:32',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->setPhpVersion($data['cpanel_username'], $data['vhost'], $data['version']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the change: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'PHP version updated.']);
+    }
+
+    /** One account's FTP accounts — WhmService::ftpAccounts() (cPanel UAPI's Ftp::list_ftp). */
+    public function ftpAccounts(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            $rows = (new WhmService($server))->ftpAccounts($data['cpanel_username']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $rows]);
+    }
+
+    public function storeFtpAccount(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'user'            => 'required|string|max:64|regex:/^[a-zA-Z0-9_.-]+$/',
+            'password'        => 'required|string|min:8|max:255',
+            'homedir'         => 'required|string|max:255',
+            'quota_mb'        => 'required|integer|min:0',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->addFtpAccount($data['cpanel_username'], $data['user'], $data['password'], $data['homedir'], $data['quota_mb']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'FTP account created.']);
+    }
+
+    public function updateFtpAccountPassword(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'user'            => 'required|string|max:255',
+            'password'        => 'required|string|min:8|max:255',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->changeFtpPassword($data['cpanel_username'], $data['user'], $data['password']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'FTP password changed.']);
+    }
+
+    public function destroyFtpAccount(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'cpanel_username' => 'required|string|max:64',
+            'user'            => 'required|string|max:255',
+            'destroy_files'   => 'sometimes|boolean',
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+
+        try {
+            (new WhmService($server))->deleteFtpAccount($data['cpanel_username'], $data['user'], (bool) ($data['destroy_files'] ?? false));
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the delete: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'FTP account deleted.']);
     }
 
     /**

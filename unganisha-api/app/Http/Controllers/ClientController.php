@@ -43,6 +43,13 @@ class ClientController extends Controller
             });
         }
 
+        // Default to active clients only — "all" (or an explicit other
+        // status) opts out of the default.
+        $status = $request->get('status', 'active');
+        if ($status !== 'all') {
+            $query->where('status', $status);
+        }
+
         // Filter: only clients with (or without) active subscriptions
         if ($request->filled('has_subscriptions')) {
             $activeSubs = fn ($q) => $q->where('status', 'active');
@@ -68,10 +75,12 @@ class ClientController extends Controller
     {
         $stats = [
             'total_clients'        => Client::count(),
+            'active_clients'       => Client::where('status', 'active')->count(),
             'with_subscriptions'   => Client::whereHas('subscriptions', fn ($q) => $q->where('status', 'active'))->count(),
             'active_subscriptions' => ClientSubscription::where('status', 'active')->count(),
             'new_this_month'       => Client::where('created_at', '>=', now()->startOfMonth())->count(),
         ];
+        $stats['inactive_clients'] = $stats['total_clients'] - $stats['active_clients'];
         $stats['without_subscriptions'] = $stats['total_clients'] - $stats['with_subscriptions'];
 
         if ($request->user()->hasPermission('client_profile.subscription_value')) {

@@ -22,6 +22,7 @@ class ProductService extends Model
 
     protected $casts = [
         'auto_provision' => 'boolean',
+        'portal_visible' => 'boolean',
         'price' => 'decimal:2',
         'tax_percent' => 'decimal:2',
         'is_active' => 'boolean',
@@ -30,6 +31,11 @@ class ProductService extends Model
     public function server()
     {
         return $this->belongsTo(Server::class);
+    }
+
+    public function subscriptions()
+    {
+        return $this->hasMany(ClientSubscription::class);
     }
 
     public function addons()

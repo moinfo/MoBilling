@@ -81,6 +81,19 @@ import Broadcast from './pages/Broadcast';
 import WhatsappContacts from './pages/WhatsappContacts';
 import HostingAccounts from './pages/HostingAccounts';
 import DiscoverHostingAccounts from './pages/DiscoverHostingAccounts';
+import Subdomains from './pages/Subdomains';
+import BandwidthUsage from './pages/BandwidthUsage';
+import DiskUsage from './pages/DiskUsage';
+import BackupStatus from './pages/BackupStatus';
+import EmailAccounts from './pages/EmailAccounts';
+import MysqlDatabases from './pages/MysqlDatabases';
+import HostingPackages from './pages/HostingPackages';
+import ServerHealth from './pages/ServerHealth';
+import DnsZone from './pages/DnsZone';
+import CronJobs from './pages/CronJobs';
+import PhpVersions from './pages/PhpVersions';
+import FtpAccounts from './pages/FtpAccounts';
+import SslExpiry from './pages/SslExpiry';
 import ServiceManagement from './pages/ServiceManagement';
 import Domains from './pages/Domains';
 import DomainDetails from './pages/DomainDetails';
@@ -293,6 +306,19 @@ export default function App() {
                   <Route path="/whatsapp-contacts" element={<WhatsappContacts />} />
                   <Route path="/hosting" element={<HostingAccounts />} />
                   <Route path="/hosting/discover" element={<DiscoverHostingAccounts />} />
+                  <Route path="/hosting/subdomains" element={<Subdomains />} />
+                  <Route path="/hosting/bandwidth" element={<BandwidthUsage />} />
+                  <Route path="/hosting/disk-usage" element={<DiskUsage />} />
+                  <Route path="/hosting/backup-status" element={<BackupStatus />} />
+                  <Route path="/hosting/email-accounts" element={<EmailAccounts />} />
+                  <Route path="/hosting/mysql-databases" element={<MysqlDatabases />} />
+                  <Route path="/hosting/packages" element={<HostingPackages />} />
+                  <Route path="/hosting/health" element={<ServerHealth />} />
+                  <Route path="/hosting/dns-zone" element={<DnsZone />} />
+                  <Route path="/hosting/cron-jobs" element={<CronJobs />} />
+                  <Route path="/hosting/php-versions" element={<PhpVersions />} />
+                  <Route path="/hosting/ftp-accounts" element={<FtpAccounts />} />
+                  <Route path="/domains/ssl-expiry" element={<SslExpiry />} />
                   <Route path="/hosting/services" element={<ServiceManagement />} />
                   <Route path="/domains" element={<Domains />} />
                   <Route path="/domains/:id" element={<DomainDetails />} />

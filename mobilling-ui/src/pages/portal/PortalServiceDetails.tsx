@@ -2,26 +2,39 @@ import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, LoadingOverlay, Grid, Button, NavLink,
   Badge, Divider, Modal, PasswordInput, Textarea, Radio, RingProgress,
-  SimpleGrid, UnstyledButton, Center, Anchor, Alert,
+  SimpleGrid, UnstyledButton, Anchor, Alert, Table, NumberInput, Switch,
+  TextInput, ActionIcon, Pagination,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
+import { modals } from '@mantine/modals';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   IconStar, IconTool, IconLogin, IconMail, IconKey, IconBan, IconWorldWww,
   IconExternalLink, IconRefresh, IconArrowLeft, IconFolders, IconDatabase,
   IconClock, IconChartBar, IconArrowForward, IconServer, IconArchive,
-  IconArrowUp, IconListDetails,
+  IconArrowUp, IconListDetails, IconPlus, IconLock, IconLockOpen,
 } from '@tabler/icons-react';
 import {
   getPortalHostingDetail, portalHostingSso, refreshPortalHostingUsage,
   changePortalHostingPassword, requestPortalHostingCancellation,
   getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow,
+  getPortalHostingSubdomains, getPortalHostingEmailAccounts, getPortalHostingMysqlDatabases,
+  getPortalHostingBackupSettings, updatePortalHostingBackupSettings, getPortalHostingBackups,
+  getPortalHostingPhpVersions, updatePortalHostingPhpVersion, PortalPhpVhost,
+  addPortalHostingEmailAccount, updatePortalHostingEmailPassword,
+  togglePortalHostingEmailSuspension, portalEmailWebmailSso, PortalEmailAccount,
 } from '../../api/portal';
-import { Tooltip } from '@mantine/core';
+import { Tooltip, Select } from '@mantine/core';
 import { useAuth } from '../../context/AuthContext';
+import { phpVersionLabel } from '../PhpVersions';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtBytes = (bytes: number) => {
+  if (bytes <= 0) return '0 MB';
+  const gb = bytes / 1_073_741_824;
+  return gb >= 1 ? `${gb.toFixed(2)} GB` : `${(bytes / 1_048_576).toFixed(0)} MB`;
+};
 
 const cycleLabel: Record<string, string> = {
   once: 'One-time', monthly: 'Monthly', quarterly: 'Quarterly',
@@ -63,6 +76,49 @@ export default function PortalServiceDetails() {
   });
   const d = data?.data?.data;
 
+  const { data: subdomainsData, isLoading: subdomainsLoading } = useQuery({
+    queryKey: ['portal-hosting-subdomains', id],
+    queryFn: () => getPortalHostingSubdomains(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const subdomains = subdomainsData?.data?.data ?? [];
+
+  const { data: emailsData, isLoading: emailsLoading } = useQuery({
+    queryKey: ['portal-hosting-emails', id],
+    queryFn: () => getPortalHostingEmailAccounts(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const emails = emailsData?.data?.data ?? [];
+
+  const { data: dbsData, isLoading: dbsLoading } = useQuery({
+    queryKey: ['portal-hosting-dbs', id],
+    queryFn: () => getPortalHostingMysqlDatabases(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const databases = dbsData?.data?.data ?? [];
+
+  const { data: phpData, isLoading: phpLoading } = useQuery({
+    queryKey: ['portal-hosting-php', id],
+    queryFn: () => getPortalHostingPhpVersions(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const phpVhosts = phpData?.data?.data ?? [];
+  const phpInstalled = phpData?.data?.installed ?? [];
+
+  const { data: backupData, isLoading: backupLoading } = useQuery({
+    queryKey: ['portal-hosting-backup-settings', id],
+    queryFn: () => getPortalHostingBackupSettings(id!),
+    enabled: !!id && d?.status === 'active',
+  });
+  const backup = backupData?.data?.data;
+
+  const { data: backupFilesData, isLoading: backupFilesLoading } = useQuery({
+    queryKey: ['portal-hosting-backup-files', id],
+    queryFn: () => getPortalHostingBackups(id!),
+    enabled: !!id && d?.status === 'active' && !!backup?.has_backup,
+  });
+  const backupFiles = backupFilesData?.data?.data ?? [];
+
   const refreshMutation = useMutation({
     mutationFn: () => refreshPortalHostingUsage(id!),
     onSuccess: () => {
@@ -73,6 +129,34 @@ export default function PortalServiceDetails() {
       message: e?.response?.data?.message ?? 'Refresh failed.', color: 'red',
     }),
   });
+
+  const invalidateEmails = () => qc.invalidateQueries({ queryKey: ['portal-hosting-emails', id] });
+
+  const [addEmailOpen, setAddEmailOpen] = useState(false);
+  const [emailPwFor, setEmailPwFor] = useState<PortalEmailAccount | null>(null);
+
+  const suspendEmailMutation = useMutation({
+    mutationFn: (vars: { email: string; suspend: boolean }) => togglePortalHostingEmailSuspension(id!, vars),
+    onSuccess: (res) => { notifications.show({ message: res.data.message, color: 'green' }); invalidateEmails(); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Action failed.', color: 'red' }),
+  });
+
+  const [emailSsoBusy, setEmailSsoBusy] = useState<string | null>(null);
+  const [emailSearch, setEmailSearch] = useState('');
+  const [emailPage, setEmailPage] = useState(1);
+  const EMAIL_PAGE_SIZE = 10;
+
+  const openEmailWebmail = async (email: string) => {
+    setEmailSsoBusy(email);
+    try {
+      const res = await portalEmailWebmailSso(id!, email);
+      window.open(res.data.url, '_blank', 'noopener');
+    } catch (e: any) {
+      notifications.show({ message: e?.response?.data?.message ?? 'Could not open webmail.', color: 'red' });
+    } finally {
+      setEmailSsoBusy(null);
+    }
+  };
 
   const openSso = async (opts: { service?: 'cpanel' | 'webmail'; goto?: string }, busyKey: string) => {
     setSsoBusy(busyKey);
@@ -93,6 +177,10 @@ export default function PortalServiceDetails() {
   const diskUsed  = parseFloat(String(d.disk_used ?? '').replace(/[^\d.]/g, '')) || 0;
   const diskLimit = parseFloat(String(d.disk_limit ?? '').replace(/[^\d.]/g, '')) || 0;
   const diskPct   = diskLimit > 0 ? Math.min(100, (diskUsed / diskLimit) * 100) : 0;
+
+  const bwUsed  = d.bw_used_bytes ?? 0;
+  const bwLimit = d.bw_limit_bytes ?? 0;
+  const bwPct   = bwLimit > 0 ? Math.min(100, (bwUsed / bwLimit) * 100) : 0;
 
   return (
     <Stack gap="lg">
@@ -184,10 +272,10 @@ export default function PortalServiceDetails() {
         <Grid.Col span={{ base: 12, md: 4 }}>
           <Paper withBorder radius="md" p="lg">
             <Text fw={700} mb="md">Usage Statistics</Text>
-            <Center>
+            <Group justify="space-around" wrap="wrap">
               <Stack align="center" gap={4}>
                 <RingProgress
-                  size={150} thickness={14} roundCaps
+                  size={130} thickness={12} roundCaps
                   sections={[{ value: diskPct, color: diskPct > 90 ? 'red' : diskPct > 70 ? 'orange' : 'blue' }]}
                   label={
                     <Text ta="center" fw={700} size="sm">
@@ -200,7 +288,22 @@ export default function PortalServiceDetails() {
                   {d.disk_used ?? '0M'} / {d.disk_limit ?? 'Unlimited'}
                 </Text>
               </Stack>
-            </Center>
+              <Stack align="center" gap={4}>
+                <RingProgress
+                  size={130} thickness={12} roundCaps
+                  sections={[{ value: bwPct, color: bwPct > 90 ? 'red' : bwPct > 70 ? 'orange' : 'teal' }]}
+                  label={
+                    <Text ta="center" fw={700} size="sm">
+                      {bwLimit > 0 ? `${Math.round(bwPct)}%` : '—'}
+                    </Text>
+                  }
+                />
+                <Text fw={600} size="sm">Bandwidth</Text>
+                <Text size="xs" c="dimmed">
+                  {fmtBytes(bwUsed)} / {bwLimit > 0 ? fmtBytes(bwLimit) : 'Unlimited'}
+                </Text>
+              </Stack>
+            </Group>
             <Divider my="md" />
             <Group justify="space-between">
               <Text size="xs" c="dimmed">
@@ -215,6 +318,199 @@ export default function PortalServiceDetails() {
           </Paper>
         </Grid.Col>
       </Grid>
+
+      {/* Subdomains & addon domains */}
+      {d.status === 'active' && (
+        <Paper withBorder radius="md" p="lg">
+          <Text fw={700} mb="md">Subdomains &amp; Addon Domains</Text>
+          {subdomainsLoading ? (
+            <Text size="sm" c="dimmed">Loading…</Text>
+          ) : subdomains.length === 0 ? (
+            <Text size="sm" c="dimmed">No subdomains or addon domains yet.</Text>
+          ) : (
+            <Table.ScrollContainer minWidth={400}>
+              <Table verticalSpacing="xs" fz="sm">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Type</Table.Th>
+                    <Table.Th>Domain</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {subdomains.map((s) => (
+                    <Table.Tr key={s.domain}>
+                      <Table.Td>
+                        <Badge size="sm" variant="light" color={s.type === 'addon' ? 'grape' : 'blue'}>
+                          {s.type === 'addon' ? 'Addon' : 'Sub'}
+                        </Badge>
+                      </Table.Td>
+                      <Table.Td>{s.domain}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+        </Paper>
+      )}
+
+      {/* Email accounts */}
+      {d.status === 'active' && (
+        <Paper withBorder radius="md" p="lg">
+          <Group justify="space-between" mb="md">
+            <Text fw={700}>Email Accounts</Text>
+            {isPortalAdmin && (
+              <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setAddEmailOpen(true)}>
+                Add Email Account
+              </Button>
+            )}
+          </Group>
+          {emailsLoading ? (
+            <Text size="sm" c="dimmed">Loading…</Text>
+          ) : emails.length === 0 ? (
+            <Text size="sm" c="dimmed">No email accounts yet.</Text>
+          ) : (
+            <>
+              {emails.length > EMAIL_PAGE_SIZE && (
+                <TextInput
+                  placeholder="Search by email…" size="xs" mb="sm" maw={280}
+                  value={emailSearch}
+                  onChange={(ev) => { setEmailSearch(ev.currentTarget.value); setEmailPage(1); }}
+                />
+              )}
+              {(() => {
+                const filtered = emails.filter((e) => (e.email ?? '').toLowerCase().includes(emailSearch.trim().toLowerCase()));
+                const totalPages = Math.max(1, Math.ceil(filtered.length / EMAIL_PAGE_SIZE));
+                const page = Math.min(emailPage, totalPages);
+                const pageEmails = filtered.slice((page - 1) * EMAIL_PAGE_SIZE, page * EMAIL_PAGE_SIZE);
+
+                return filtered.length === 0 ? (
+                  <Text size="sm" c="dimmed">No mailbox matches "{emailSearch}".</Text>
+                ) : (
+                  <>
+                    <Table.ScrollContainer minWidth={500}>
+                      <Table verticalSpacing="xs" fz="sm">
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Email</Table.Th>
+                            <Table.Th>Size</Table.Th>
+                            <Table.Th>Status</Table.Th>
+                            {isPortalAdmin && <Table.Th w={130}></Table.Th>}
+                          </Table.Tr>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {pageEmails.map((e) => {
+                            const suspended = e.suspended_incoming || e.suspended_login;
+                            return (
+                              <Table.Tr key={e.email}>
+                                <Table.Td>{e.email}</Table.Td>
+                                <Table.Td c="dimmed">
+                                  {fmtBytes(e.used_bytes)} / {e.quota_bytes ? fmtBytes(e.quota_bytes) : 'Unlimited'}
+                                </Table.Td>
+                                <Table.Td>
+                                  {suspended ? (
+                                    <Badge size="sm" variant="light" color="orange">Suspended</Badge>
+                                  ) : (
+                                    <Badge size="sm" variant="light" color="teal">Active</Badge>
+                                  )}
+                                </Table.Td>
+                                {isPortalAdmin && (
+                                  <Table.Td>
+                                    <Group gap={4} wrap="nowrap">
+                                      <Tooltip label="Login to webmail">
+                                        <ActionIcon variant="light" size="sm" color="blue"
+                                          loading={emailSsoBusy === e.email}
+                                          onClick={() => openEmailWebmail(e.email!)}>
+                                          <IconLogin size={14} />
+                                        </ActionIcon>
+                                      </Tooltip>
+                                      <Tooltip label="Change password">
+                                        <ActionIcon variant="light" size="sm" onClick={() => setEmailPwFor(e)}>
+                                          <IconKey size={14} />
+                                        </ActionIcon>
+                                      </Tooltip>
+                                      <Tooltip label={e.suspended_login ? 'Unsuspend login' : 'Suspend login'}>
+                                        <ActionIcon variant="light" size="sm" color={e.suspended_login ? 'green' : 'orange'}
+                                          loading={suspendEmailMutation.isPending}
+                                          onClick={() => suspendEmailMutation.mutate({ email: e.email!, suspend: !e.suspended_login })}>
+                                          {e.suspended_login ? <IconLockOpen size={14} /> : <IconLock size={14} />}
+                                        </ActionIcon>
+                                      </Tooltip>
+                                    </Group>
+                                  </Table.Td>
+                                )}
+                              </Table.Tr>
+                            );
+                          })}
+                        </Table.Tbody>
+                      </Table>
+                    </Table.ScrollContainer>
+                    {totalPages > 1 && (
+                      <Group justify="center" mt="sm">
+                        <Pagination size="sm" total={totalPages} value={page} onChange={setEmailPage} />
+                      </Group>
+                    )}
+                  </>
+                );
+              })()}
+            </>
+          )}
+        </Paper>
+      )}
+
+      {/* MySQL databases */}
+      {d.status === 'active' && (
+        <Paper withBorder radius="md" p="lg">
+          <Text fw={700} mb="md">MySQL® Databases</Text>
+          {dbsLoading ? (
+            <Text size="sm" c="dimmed">Loading…</Text>
+          ) : databases.length === 0 ? (
+            <Text size="sm" c="dimmed">No databases yet.</Text>
+          ) : (
+            <Table.ScrollContainer minWidth={500}>
+              <Table verticalSpacing="xs" fz="sm">
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Database</Table.Th>
+                    <Table.Th>Users</Table.Th>
+                    <Table.Th>Size</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {databases.map((db) => (
+                    <Table.Tr key={db.database}>
+                      <Table.Td>{db.database}</Table.Td>
+                      <Table.Td>
+                        <Group gap={4}>
+                          {db.users.map((u) => <Badge key={u} size="sm" variant="light" color="grape">{u}</Badge>)}
+                        </Group>
+                      </Table.Td>
+                      <Table.Td c="dimmed">{fmtBytes(db.disk_usage)}</Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+            </Table.ScrollContainer>
+          )}
+        </Paper>
+      )}
+
+      {/* PHP version */}
+      {d.status === 'active' && (
+        <PhpVersionSection
+          id={d.id} vhosts={phpVhosts} installed={phpInstalled} loading={phpLoading} canEdit={isPortalAdmin}
+        />
+      )}
+
+      {/* Backup settings */}
+      {d.status === 'active' && backup?.has_backup && (
+        <BackupSettingsSection
+          id={d.id} settings={backup} loading={backupLoading} canEdit={isPortalAdmin}
+          files={backupFiles} filesLoading={backupFilesLoading}
+          onManage={isPortalAdmin ? () => openSso({ service: 'cpanel', goto: 'backup' }, 'backup') : undefined}
+          manageBusy={ssoBusy === 'backup'}
+        />
+      )}
 
       {/* Quick shortcuts */}
       {isPortalAdmin && d.status === 'active' && (
@@ -240,7 +536,84 @@ export default function PortalServiceDetails() {
       <UpgradeModal id={d.id} opened={upgradeOpen} onClose={() => setUpgradeOpen(false)}
         onInvoiced={() => navigate('/portal/invoices')} />
       <CancellationModal id={d.id} domain={d.domain} opened={cancelOpen} onClose={() => setCancelOpen(false)} />
+
+      <AddEmailAccountModal id={d.id} domain={d.domain} opened={addEmailOpen}
+        onClose={() => setAddEmailOpen(false)} onCreated={invalidateEmails} />
+      <EmailPasswordModal id={d.id} row={emailPwFor} onClose={() => setEmailPwFor(null)} />
     </Stack>
+  );
+}
+
+function AddEmailAccountModal({ id, domain, opened, onClose, onCreated }: {
+  id: string; domain: string; opened: boolean; onClose: () => void; onCreated: () => void;
+}) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [quotaMb, setQuotaMb] = useState(250);
+
+  const mutation = useMutation({
+    mutationFn: () => addPortalHostingEmailAccount(id, { email: email.trim(), domain, password, quota_mb: quotaMb }),
+    onSuccess: (res: any) => {
+      notifications.show({ message: res?.data?.message ?? 'Email account created.', color: 'green' });
+      handleClose();
+      onCreated();
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Failed to create the mailbox.', color: 'red',
+    }),
+  });
+
+  const handleClose = () => { setEmail(''); setPassword(''); setQuotaMb(250); onClose(); };
+
+  return (
+    <Modal opened={opened} onClose={handleClose} title="Add Email Account" centered size="sm">
+      <Stack gap="sm">
+        <TextInput label="Username" required placeholder="info" rightSection={<Text size="xs" c="dimmed" pr="xs">@{domain}</Text>}
+          rightSectionWidth={domain.length * 7 + 20}
+          value={email} onChange={(e) => setEmail(e.currentTarget.value)} />
+        <PasswordInput label="Password" required description="cPanel enforces its own strength check"
+          value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
+        <NumberInput label="Quota (MB)" description="0 = unlimited" min={0} value={quotaMb} onChange={(v) => setQuotaMb(Number(v) || 0)} />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={handleClose}>Cancel</Button>
+          <Button disabled={!/^[a-zA-Z0-9._+-]+$/.test(email.trim()) || password.length < 8}
+            loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Add Email Account
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function EmailPasswordModal({ id, row, onClose }: { id: string; row: PortalEmailAccount | null; onClose: () => void }) {
+  const [password, setPassword] = useState('');
+
+  const mutation = useMutation({
+    mutationFn: () => updatePortalHostingEmailPassword(id, { email: row!.email!, password }),
+    onSuccess: (res: any) => {
+      notifications.show({ message: res?.data?.message ?? 'Password changed.', color: 'green' });
+      setPassword('');
+      onClose();
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Password change failed.', color: 'red',
+    }),
+  });
+
+  return (
+    <Modal opened={!!row} onClose={onClose} title={`Change Password — ${row?.email ?? ''}`} centered size="sm">
+      <Stack gap="sm">
+        <PasswordInput label="New password" description="cPanel enforces its own strength check"
+          value={password} onChange={(e) => setPassword(e.currentTarget.value)} />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button disabled={password.length < 8} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+            Change Password
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
 
@@ -250,6 +623,196 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <Text size="sm" c="dimmed">{label}</Text>
       <Text size="sm" fw={600}>{value}</Text>
     </Group>
+  );
+}
+
+function PhpVersionSection({ id, vhosts, installed, loading, canEdit }: {
+  id: string;
+  vhosts: PortalPhpVhost[];
+  installed: string[];
+  loading: boolean;
+  canEdit: boolean;
+}) {
+  const qc = useQueryClient();
+
+  const versionOptions = [...installed].sort().reverse().map((v) => ({ value: v, label: phpVersionLabel(v) }));
+
+  const mutation = useMutation({
+    mutationFn: (vars: { vhost: string; version: string }) => updatePortalHostingPhpVersion(id, vars),
+    onSuccess: (_res, vars) => {
+      qc.invalidateQueries({ queryKey: ['portal-hosting-php', id] });
+      notifications.show({ message: `${vars.vhost} is now on ${phpVersionLabel(vars.version)}.`, color: 'green' });
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not change the PHP version.', color: 'red',
+    }),
+  });
+
+  const confirmChange = (row: PortalPhpVhost, newVersion: string) => modals.openConfirmModal({
+    title: 'Change PHP version',
+    children: (
+      <Text size="sm">
+        Change <Text span fw={600}>{row.vhost}</Text> from {phpVersionLabel(row.version ?? '')} to{' '}
+        <Text span fw={600}>{phpVersionLabel(newVersion)}</Text>? If your site's code isn't compatible
+        with this version, it may stop working until changed back.
+      </Text>
+    ),
+    labels: { confirm: 'Change it', cancel: 'Cancel' },
+    confirmProps: { color: 'orange' },
+    onConfirm: () => mutation.mutate({ vhost: row.vhost!, version: newVersion }),
+  });
+
+  return (
+    <Paper withBorder radius="md" p="lg">
+      <Text fw={700} mb="xs">PHP Version</Text>
+      <Text size="sm" c="dimmed" mb="md">
+        The PHP version used by each of your domains and subdomains.
+      </Text>
+      {loading ? (
+        <Text size="sm" c="dimmed">Loading…</Text>
+      ) : vhosts.length === 0 ? (
+        <Text size="sm" c="dimmed">No domains found.</Text>
+      ) : (
+        <Table.ScrollContainer minWidth={500}>
+          <Table verticalSpacing="xs" fz="sm">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th>Domain</Table.Th>
+                <Table.Th>Version</Table.Th>
+                {canEdit && <Table.Th w={200}>Change to</Table.Th>}
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {vhosts.map((v) => (
+                <Table.Tr key={v.vhost}>
+                  <Table.Td>
+                    {v.vhost}
+                    {v.main_domain && <Badge ml={6} size="xs" variant="light" color="blue">Main</Badge>}
+                  </Table.Td>
+                  <Table.Td c="dimmed">{v.version ? phpVersionLabel(v.version) : '—'}</Table.Td>
+                  {canEdit && (
+                    <Table.Td>
+                      <Select
+                        size="xs" data={versionOptions} value={v.version}
+                        disabled={mutation.isPending}
+                        onChange={(val) => val && val !== v.version && confirmChange(v, val)}
+                      />
+                    </Table.Td>
+                  )}
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+    </Paper>
+  );
+}
+
+function BackupSettingsSection({ id, settings, loading, canEdit, files, filesLoading, onManage, manageBusy }: {
+  id: string;
+  settings: { daily_retention_days: number; keep_weekly: boolean; keep_monthly: boolean };
+  loading: boolean;
+  canEdit: boolean;
+  files: { date: string; bytes: number }[];
+  filesLoading: boolean;
+  onManage?: () => void;
+  manageBusy: boolean;
+}) {
+  const qc = useQueryClient();
+  const [days, setDays] = useState(settings.daily_retention_days);
+  const [weekly, setWeekly] = useState(settings.keep_weekly);
+  const [monthly, setMonthly] = useState(settings.keep_monthly);
+
+  const mutation = useMutation({
+    mutationFn: () => updatePortalHostingBackupSettings(id, {
+      daily_retention_days: days, keep_weekly: weekly, keep_monthly: monthly,
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['portal-hosting-backup-settings', id] });
+      notifications.show({ message: 'Backup schedule saved.', color: 'green' });
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not save the backup schedule.', color: 'red',
+    }),
+  });
+
+  const dirty = days !== settings.daily_retention_days
+    || weekly !== settings.keep_weekly || monthly !== settings.keep_monthly;
+
+  return (
+    <Paper withBorder radius="md" p="lg">
+      <Group justify="space-between" mb="xs">
+        <Group gap="xs">
+          <Text fw={700}>Backups</Text>
+          <Badge size="sm" variant="light" color="teal" leftSection={<IconArchive size={12} />}>Included</Badge>
+        </Group>
+        {onManage && (
+          <Button size="xs" variant="light" leftSection={<IconExternalLink size={12} />}
+            loading={manageBusy} onClick={onManage}>
+            Manage in cPanel
+          </Button>
+        )}
+      </Group>
+      <Text size="sm" c="dimmed" mb="sm">
+        A full backup of this hosting account runs automatically every day. "Manage in cPanel" opens
+        cPanel's own Backup tool, where these same backups can be downloaded or restored.
+      </Text>
+
+      {filesLoading ? (
+        <Text size="sm" c="dimmed" mb="md">Loading…</Text>
+      ) : files.length === 0 ? (
+        <Text size="sm" c="dimmed" mb="md">No backup yet — the first one will be created tonight.</Text>
+      ) : (
+        <Table.ScrollContainer minWidth={400} mb="md">
+          <Table verticalSpacing="xs" fz="sm">
+            <Table.Thead>
+              <Table.Tr><Table.Th>Date</Table.Th><Table.Th>Size</Table.Th></Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {files.map((f) => (
+                <Table.Tr key={f.date}>
+                  <Table.Td>{new Date(f.date).toLocaleString()}</Table.Td>
+                  <Table.Td c="dimmed">{fmtBytes(f.bytes)}</Table.Td>
+                </Table.Tr>
+              ))}
+            </Table.Tbody>
+          </Table>
+        </Table.ScrollContainer>
+      )}
+
+      <Divider mb="md" />
+
+      <Text fw={600} size="sm" mb="xs">Retention</Text>
+      <Text size="xs" c="dimmed" mb="sm">
+        To keep backups from filling up your own disk quota, only recent copies plus one weekly and
+        one monthly snapshot are kept — old ones outside this are deleted automatically.
+      </Text>
+      {loading ? (
+        <Text size="sm" c="dimmed">Loading…</Text>
+      ) : (
+        <Stack gap="sm" maw={420}>
+          <NumberInput
+            label="Keep daily backups for" description="Number of days of daily backups to retain"
+            min={1} max={30} value={days} onChange={(v) => setDays(Number(v) || 1)}
+            disabled={!canEdit} rightSection={<Text size="xs" c="dimmed" pr="xs">days</Text>} rightSectionWidth={44}
+          />
+          <Switch label="Also keep one weekly snapshot beyond that"
+            checked={weekly} onChange={(e) => setWeekly(e.currentTarget.checked)} disabled={!canEdit} />
+          <Switch label="Also keep one monthly snapshot beyond that"
+            checked={monthly} onChange={(e) => setMonthly(e.currentTarget.checked)} disabled={!canEdit} />
+          {canEdit ? (
+            <Group justify="flex-end">
+              <Button size="xs" disabled={!dirty} loading={mutation.isPending} onClick={() => mutation.mutate()}>
+                Save
+              </Button>
+            </Group>
+          ) : (
+            <Text size="xs" c="dimmed">Only a portal administrator can change this.</Text>
+          )}
+        </Stack>
+      )}
+    </Paper>
   );
 }
 

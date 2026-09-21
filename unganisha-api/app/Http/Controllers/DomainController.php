@@ -106,6 +106,43 @@ class DomainController extends Controller
         return response()->json(['data' => $query->paginate($request->get('per_page', 20))]);
     }
 
+    /**
+     * Every domain with an SSL check on file (SyncDomains' nightly SslProbe,
+     * cached in meta), soonest-expiring first — no live probing here, this
+     * just reads what the nightly sync already found.
+     */
+    public function sslExpiry(Request $request)
+    {
+        $query = Domain::with('client:id,name')
+            ->where('meta->ssl_expires_at', '!=', null)
+            ->whereIn('status', ['active', 'pending']);
+
+        if ($request->filled('search')) {
+            $s = $request->search;
+            $query->where(fn ($q) => $q->where('name', 'like', "%{$s}%")
+                ->orWhereHas('client', fn ($q2) => $q2->where('name', 'like', "%{$s}%")));
+        }
+        if ($request->boolean('invalid_only')) {
+            $query->where('meta->ssl_valid', false);
+        }
+
+        $domains = $query->get();
+
+        $rows = $domains->map(fn ($d) => [
+            'id'             => $d->id,
+            'name'           => $d->name,
+            'client'         => $d->client ? ['id' => $d->client->id, 'name' => $d->client->name] : null,
+            'ssl_valid'      => (bool) ($d->meta['ssl_valid'] ?? false),
+            'ssl_expires_at' => $d->meta['ssl_expires_at'] ?? null,
+            'ssl_issuer'     => $d->meta['ssl_issuer'] ?? null,
+            'days_left'      => isset($d->meta['ssl_expires_at'])
+                ? now()->startOfDay()->diffInDays(\Carbon\Carbon::parse($d->meta['ssl_expires_at'])->startOfDay(), false)
+                : null,
+        ])->sortBy('days_left')->values();
+
+        return response()->json(['data' => $rows]);
+    }
+
     /** Staff toggle: same policy as the portal — wallet-funded when ON. */
     public function setAutoRenew(Request $request, Domain $domain)
     {
