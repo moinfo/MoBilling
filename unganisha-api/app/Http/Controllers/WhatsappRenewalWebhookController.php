@@ -14,6 +14,7 @@ use App\Models\MosmsAccount;
 use App\Models\PesapalInvoicePayment;
 use App\Models\ProductService;
 use App\Models\Tenant;
+use App\Models\User;
 use App\Models\WhatsappRenewalSession;
 use App\Services\CouponService;
 use App\Services\DocumentNumberService;
@@ -23,6 +24,7 @@ use App\Services\TenantPesapalService;
 use App\Services\TznicWhoisService;
 use App\Services\WhatsAppService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -112,6 +114,19 @@ class WhatsappRenewalWebhookController extends Controller
             ->where('phone', $phone)
             ->first();
 
+        // Staff-assist: a staff member's OWN phone helping a client, not the client's own
+        // self-service. Checked before anything else — STAFF always wins over whatever this
+        // phone's session state happens to be, same as MoSMS's cold-start keywords.
+        if ($session && !$session->isExpired() && in_array($session->flow, ['staff_pin', 'staff_search'], true)) {
+            $this->handleStaffAssistStep($tenant, $phone, $session, $text);
+            return response('OK', 200);
+        }
+
+        if (preg_match('/^\s*(staff|wafanyakazi)\s*$/i', $text)) {
+            $this->startStaffAssist($tenant, $phone);
+            return response('OK', 200);
+        }
+
         if ($session && !$session->isExpired() && $session->flow === 'language_select') {
             $this->handleLanguageStep($tenant, $phone, $session, $text);
             return response('OK', 200);
@@ -166,6 +181,174 @@ class WhatsappRenewalWebhookController extends Controller
         $this->startLanguageSelect($tenant, $phone, $clientMatch);
 
         return response('OK', 200);
+    }
+
+    // ── Staff assist (own phone, helping a client) ──────────────────────
+    // Reuses WhatsappRenewalSession entirely — once a client is picked, the session looks
+    // exactly like that client's own confirmed session (client_id set, confirmed_at set),
+    // just with assisted_by_user_id also set, so every downstream flow (order, pay, DNS,
+    // WHOIS...) already works unchanged. Phone-match against User.phone has no second factor
+    // on its own — same gap already fixed for client and MoSMS self-service — so a PIN gates
+    // it, mirroring MoSMS's own PIN gate exactly.
+
+    private const MAX_STAFF_PIN_ATTEMPTS = 3;
+
+    private function startStaffAssist(Tenant $tenant, string $phone): void
+    {
+        $staffMatch = User::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('is_active', true);
+        $staff = PhoneHelper::wherePhone($staffMatch, 'phone', $phone)->first();
+
+        if (!$staff) {
+            $this->reply($tenant, $phone, 'Namba hii haijasajiliwa kama mfanyakazi wa ' . $tenant->name . '. Wasiliana na msimamizi wako.');
+            return;
+        }
+
+        $step = $staff->whatsapp_pin_hash ? 'enter_pin' : 'set_pin_1';
+
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => null, 'assisted_by_user_id' => $staff->id, 'flow' => 'staff_pin', 'language' => null,
+                'state' => ['step' => $step, 'staff_id' => $staff->id, 'attempts' => 0], 'items' => null,
+                'confirmed_at' => null, 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $step === 'enter_pin'
+            ? "Habari {$staff->name}! Kwa usalama, andika PIN yako ya namba 4."
+            : "Habari {$staff->name}! Kwa usalama wa hali ya 'staff assist', tengeneza PIN ya namba 4 (mfano: 1234). Andika PIN mpya.");
+    }
+
+    private function handleStaffAssistStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
+    {
+        $state = $session->state ?? [];
+        $staff = User::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['staff_id'] ?? null);
+        if (!$staff) {
+            $session->delete();
+            $this->reply($tenant, $phone, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.');
+            return;
+        }
+
+        $step = $state['step'] ?? null;
+
+        if ($session->flow === 'staff_pin') {
+            if ($step === 'set_pin_1') {
+                if (!preg_match('/^\d{4}$/', trim($text))) {
+                    $this->reply($tenant, $phone, 'PIN lazima iwe namba 4 (mfano: 1234). Jaribu tena.');
+                    return;
+                }
+                $session->update(['state' => array_merge($state, ['step' => 'set_pin_2', 'pin1' => trim($text)])]);
+                $this->reply($tenant, $phone, 'Rudia PIN hiyo hiyo kuthibitisha.');
+                return;
+            }
+
+            if ($step === 'set_pin_2') {
+                if (trim($text) !== ($state['pin1'] ?? null)) {
+                    $session->update(['state' => array_merge($state, ['step' => 'set_pin_1'])]);
+                    $this->reply($tenant, $phone, 'PIN hazifanani. Andika PIN mpya ya namba 4.');
+                    return;
+                }
+                $staff->update(['whatsapp_pin_hash' => Hash::make(trim($text))]);
+                $this->reply($tenant, $phone, 'PIN imewekwa!');
+                $this->startStaffClientSearch($tenant, $phone, $session, $staff);
+                return;
+            }
+
+            if ($step === 'enter_pin') {
+                if (!Hash::check(trim($text), $staff->whatsapp_pin_hash)) {
+                    $attempts = ((int) ($state['attempts'] ?? 0)) + 1;
+                    if ($attempts >= self::MAX_STAFF_PIN_ATTEMPTS) {
+                        $session->delete();
+                        $this->reply($tenant, $phone, 'PIN si sahihi mara kadhaa. Kwa usalama, jaribu tena baadaye (andika STAFF).');
+                        return;
+                    }
+                    $session->update(['state' => array_merge($state, ['attempts' => $attempts])]);
+                    $this->reply($tenant, $phone, "PIN si sahihi. Jaribu tena ({$attempts}/" . self::MAX_STAFF_PIN_ATTEMPTS . ').');
+                    return;
+                }
+                $this->startStaffClientSearch($tenant, $phone, $session, $staff);
+                return;
+            }
+        }
+
+        if ($session->flow === 'staff_search') {
+            if (($state['step'] ?? null) === 'pick_client' && preg_match('/^\s*([1-9])\s*$/', $text, $m) && !empty($state['match_ids'][$m[1] - 1])) {
+                $client = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id)->find($state['match_ids'][$m[1] - 1]);
+                if (!$client) {
+                    $this->reply($tenant, $phone, 'Samahani, mteja huyo hapatikani tena. Andika jina/email/namba upya.');
+                    $session->update(['state' => array_merge($state, ['step' => 'search'])]);
+                    return;
+                }
+                $this->confirmStaffAssist($tenant, $phone, $session, $staff, $client);
+                return;
+            }
+
+            $query = trim($text);
+            if ($query === '') {
+                $this->reply($tenant, $phone, 'Andika jina, email, au namba ya simu ya mteja.');
+                return;
+            }
+
+            $matches = $this->searchClientsForStaff($tenant, $query);
+
+            if ($matches->isEmpty()) {
+                $this->reply($tenant, $phone, "Hakuna mteja aliyepatikana kwa \"{$query}\". Jaribu jina, email, au namba nyingine.");
+                return;
+            }
+
+            if ($matches->count() === 1) {
+                $this->confirmStaffAssist($tenant, $phone, $session, $staff, $matches->first());
+                return;
+            }
+
+            $lines = ["Wateja " . $matches->count() . " wamepatikana kwa \"{$query}\":"];
+            $ids = [];
+            foreach ($matches->take(9) as $i => $c) {
+                $ids[] = $c->id;
+                $lines[] = ($i + 1) . ") {$c->name}" . ($c->phone ? " — {$c->phone}" : '');
+            }
+            $session->update(['state' => array_merge($state, ['step' => 'pick_client', 'match_ids' => $ids])]);
+            $lines[] = "\nJibu na namba kumchagua.";
+            $this->reply($tenant, $phone, implode("\n", $lines));
+            return;
+        }
+    }
+
+    private function startStaffClientSearch(Tenant $tenant, string $phone, WhatsappRenewalSession $session, User $staff): void
+    {
+        $session->update(['flow' => 'staff_search', 'state' => ['step' => 'search', 'staff_id' => $staff->id]]);
+        $this->reply($tenant, $phone, 'Andika jina, email, au namba ya simu ya mteja unayemsaidia.');
+    }
+
+    /** @return \Illuminate\Support\Collection<int, Client> */
+    private function searchClientsForStaff(Tenant $tenant, string $query): \Illuminate\Support\Collection
+    {
+        $base = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
+
+        if (preg_match('/^\+?\d[\d\s-]{6,}$/', $query)) {
+            return PhoneHelper::wherePhone((clone $base), 'phone', $query)->limit(10)->get();
+        }
+
+        return $base->where(fn ($q) => $q
+            ->where('name', 'like', "%{$query}%")
+            ->orWhere('email', 'like', "%{$query}%"))
+            ->limit(10)->get();
+    }
+
+    private function confirmStaffAssist(Tenant $tenant, string $phone, WhatsappRenewalSession $session, User $staff, Client $client): void
+    {
+        Log::info('WhatsApp staff-assist session started', [
+            'tenant_id' => $tenant->id, 'staff_id' => $staff->id, 'staff_name' => $staff->name,
+            'client_id' => $client->id, 'client_name' => $client->name,
+        ]);
+
+        $lang = 'sw';
+        $session->update([
+            'client_id' => $client->id, 'assisted_by_user_id' => $staff->id,
+            'flow' => null, 'state' => null, 'language' => $lang, 'items' => null,
+            'confirmed_at' => now(), 'expires_at' => now()->addHours(2),
+        ]);
+
+        $this->reply($tenant, $phone, "👤 Umeunganishwa na *{$client->name}*. Unamsaidia sasa.");
+        $this->sendRootMenu($tenant, $client, $phone, $lang);
     }
 
     // ── Language ─────────────────────────────────────────────────────────
@@ -432,12 +615,24 @@ class WhatsappRenewalWebhookController extends Controller
      */
     private function sendRootMenu(Tenant $tenant, Client $client, string $phone, string $lang): void
     {
+        // Staff-assist sessions carry a short TTL and an on-screen banner instead of the
+        // normal 30-day "stay logged in" window — this is a staff member temporarily acting
+        // on a client's behalf, not the client's own persistent login.
+        $existing = WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('phone', $phone)->first();
+        $assistedBy = $existing?->assisted_by_user_id;
+
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => null, 'state' => null, 'items' => null, 'language' => $lang, 'confirmed_at' => now(), 'expires_at' => now()->addDays(30)],
+            ['client_id' => $client->id, 'assisted_by_user_id' => $assistedBy, 'flow' => null, 'state' => null, 'items' => null, 'language' => $lang, 'confirmed_at' => now(), 'expires_at' => $assistedBy ? now()->addHours(2) : now()->addDays(30)],
         );
 
-        $this->reply($tenant, $phone, $this->t($lang,
+        $banner = '';
+        if ($assistedBy) {
+            $staff = User::withoutGlobalScopes()->find($assistedBy);
+            $banner = $this->t($lang, "👤 Unamsaidia {$client->name} (staff: " . ($staff?->name ?? '?') . ")\n\n", "👤 Assisting {$client->name} (staff: " . ($staff?->name ?? '?') . ")\n\n");
+        }
+
+        $this->reply($tenant, $phone, $banner . $this->t($lang,
             "Habari {$client->name}! Chagua huduma: "
                 . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
                 . '4) Business Email Hosting · 5) Angalia na Lipa Invoice · '

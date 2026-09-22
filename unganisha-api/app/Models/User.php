@@ -20,7 +20,7 @@ class User extends Authenticatable implements CanResetPasswordContract
     protected $fillable = [
         'tenant_id', 'name', 'email', 'password',
         'phone', 'role', 'role_id', 'is_active', 'supervisor_id', 'device_employee_no',
-        'work_location_id',
+        'work_location_id', 'whatsapp_pin_hash',
     ];
 
     protected $hidden = [
@@ -28,6 +28,7 @@ class User extends Authenticatable implements CanResetPasswordContract
         'remember_token',
         'two_factor_secret',
         'two_factor_recovery_codes',
+        'whatsapp_pin_hash',
     ];
 
     protected function casts(): array
