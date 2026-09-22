@@ -1120,10 +1120,48 @@ class HostingAccountController extends Controller
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
+        $this->markDomainRenewalPending($document, $billable);
+
         return response()->json([
             'data'    => ['id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
             'message' => "Invoice {$document->document_number} created.",
         ], 201);
+    }
+
+    /**
+     * A domain-registration subscription in the bundle doesn't, by itself,
+     * make the paid invoice actually renew the domain at the registry —
+     * that only happens via DocumentObserver, which looks for a Domain row
+     * carrying meta->renewal_document_id + pending_action, exactly as
+     * DomainBillingService::createRenewalInvoice stamps it. This bundle
+     * path bills a ClientSubscription, not a Domain, so without this the
+     * client pays and the domain silently stays expired at the registry
+     * (found live on manya.co.tz: invoice paid, subscription "renewed",
+     * registry never touched).
+     */
+    private function markDomainRenewalPending(\App\Models\Document $document, array $billable): void
+    {
+        foreach ($billable as $sub) {
+            if ($sub->productService?->category !== 'Domain') {
+                continue;
+            }
+
+            $domain = Domain::withoutGlobalScopes()
+                ->where('tenant_id', $sub->tenant_id)
+                ->where('client_id', $sub->client_id)
+                ->where('name', $sub->label)
+                ->first();
+
+            if (!$domain) {
+                continue;
+            }
+
+            $domain->update(['meta' => array_merge($domain->meta ?? [], [
+                'pending_action'      => 'renew',
+                'pending_years'       => max(1, (int) $sub->quantity),
+                'renewal_document_id' => $document->id,
+            ])]);
+        }
     }
 
     public function suspend(HostingAccount $hostingAccount)
