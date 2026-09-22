@@ -202,20 +202,15 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
-        $next = $session->state['next'] ?? 'register';
-        $session->update(['language' => $lang]);
-
-        $client = $next === 'surname' ? Client::withoutGlobalScopes()->find($session->client_id) : null;
-
-        if (!$client) {
-            $this->startRegistration($tenant, $phone, $lang);
-            return;
-        }
-
-        $session->update(['flow' => null, 'state' => null]);
+        // Ask explicitly rather than silently deciding from the phone match alone —
+        // the match is still used as a cross-check once they answer (see
+        // handleSurnameStep's 'has_account'/'want_account' steps), never as the
+        // sole decider, so someone can always say "no account" honestly and be
+        // routed correctly either way.
+        $session->update(['language' => $lang, 'flow' => null, 'state' => ['step' => 'has_account']]);
         $this->reply($tenant, $phone, $this->t($lang,
-            'Karibu MoBilling! Kwa uthibitisho, tafadhali jibu kwa jina lako la ukoo (surname) lililosajiliwa.',
-            'Welcome to MoBilling! For verification, please reply with the surname registered with your account.'
+            'Je, una akaunti ya MoBilling? Jibu 1) Ndiyo 2) Hapana',
+            'Do you have a MoBilling account? Reply 1) Yes 2) No'
         ));
     }
 
@@ -277,6 +272,61 @@ class WhatsappRenewalWebhookController extends Controller
         $lang = $session->language ?? 'sw';
         $client = Client::withoutGlobalScopes()->find($session->client_id);
         $state = $session->state ?? [];
+
+        if (($state['step'] ?? 'surname') === 'has_account') {
+            if (preg_match('/^\s*1\s*$/', $text) || preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+                if ($client) {
+                    $session->update(['state' => ['step' => 'surname']]);
+                    $this->reply($tenant, $phone, $this->t($lang,
+                        'Karibu MoBilling! Kwa uthibitisho, tafadhali jibu kwa jina lako la ukoo (surname) lililosajiliwa.',
+                        'Welcome to MoBilling! For verification, please reply with the surname registered with your account.'
+                    ));
+                    return;
+                }
+
+                $session->update(['state' => ['step' => 'want_account']]);
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, hatujaweza kupata akaunti yenye namba hii ya simu. Je, ungependa tukutengenezee akaunti mpya ya MoBilling? Jibu 1) Ndiyo 2) Hapana',
+                    "Sorry, we couldn't find an account with this phone number. Would you like us to create a new MoBilling account for you? Reply 1) Yes 2) No"
+                ));
+                return;
+            }
+
+            $session->update(['state' => ['step' => 'want_account']]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Je, ungependa tukutengenezee akaunti ya MoBilling? Jibu 1) Ndiyo 2) Hapana',
+                'Would you like us to create a MoBilling account for you? Reply 1) Yes 2) No'
+            ));
+            return;
+        }
+
+        if (($state['step'] ?? '') === 'want_account') {
+            if (!preg_match('/^\s*1\s*$/', $text) && !preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+                $session->delete();
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Sawa, tukihitaji tutakujulisha. Asante!',
+                    "Okay, we'll reach out if we need to. Thanks!"
+                ));
+                return;
+            }
+
+            // Re-check by phone right before creating anything — closes the loop
+            // even if they mistakenly said "no account" earlier despite having one.
+            $existing = Client::withoutGlobalScopes()->where('tenant_id', $tenant->id);
+            $existing = PhoneHelper::wherePhone($existing, 'phone', $phone)->first();
+
+            if ($existing) {
+                $session->update(['client_id' => $existing->id, 'state' => ['step' => 'surname']]);
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Kumbe una akaunti tayari! Tuthibitishe — jibu kwa jina lako la ukoo (surname) lililosajiliwa.',
+                    "Turns out you already have an account! Let's verify it — please reply with your registered surname."
+                ));
+                return;
+            }
+
+            $this->startRegistration($tenant, $phone, $lang);
+            return;
+        }
 
         if (($state['step'] ?? 'surname') === 'email') {
             if ($client && $client->email && mb_strtolower(trim($text)) === mb_strtolower(trim($client->email))) {
