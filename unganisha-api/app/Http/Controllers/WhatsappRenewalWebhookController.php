@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\CouponUnavailableException;
 use App\Helpers\PhoneHelper;
 use App\Models\Client;
+use App\Models\Coupon;
 use App\Models\Document;
 use App\Models\Domain;
 use App\Models\DomainTld;
@@ -13,6 +15,7 @@ use App\Models\PesapalInvoicePayment;
 use App\Models\ProductService;
 use App\Models\Tenant;
 use App\Models\WhatsappRenewalSession;
+use App\Services\CouponService;
 use App\Services\DocumentNumberService;
 use App\Services\Hosting\RenewalBundleService;
 use App\Services\Registrar\DomainRegistrarManager;
@@ -903,12 +906,12 @@ class WhatsappRenewalWebhookController extends Controller
                     }
 
                     // Already have a domain (continuing straight from a domain order) —
-                    // skip straight to confirming instead of asking for it again.
+                    // skip straight to the promo-code step instead of asking for it again.
                     if (!empty($state['domain'])) {
-                        $session->update(['state' => array_merge($state, ['step' => 'confirm', 'product_service_id' => $plan->id])]);
+                        $session->update(['state' => array_merge($state, ['step' => 'ask_promo', 'product_service_id' => $plan->id])]);
                         $this->reply($tenant, $phone, $this->t($lang,
-                            "Thibitisha: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$state['domain']}. Jibu NDIYO kuagiza.",
-                            "Confirm: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$state['domain']}. Reply YES to order."
+                            'Una promo code? Andika code, au jibu HAPANA kama huna.',
+                            'Have a promo code? Reply with the code, or reply NO if you don\'t have one.'
                         ));
                         return;
                     }
@@ -1086,10 +1089,48 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
-            $session->update(['state' => array_merge($state, ['step' => 'confirm', 'domain' => $name])]);
+            $session->update(['state' => array_merge($state, ['step' => 'ask_promo', 'domain' => $name])]);
             $this->reply($tenant, $phone, $this->t($lang,
-                "Thibitisha: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$name}. Jibu NDIYO kuagiza.",
-                "Confirm: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$name}. Reply YES to order."
+                'Una promo code? Andika code, au jibu HAPANA kama huna.',
+                'Have a promo code? Reply with the code, or reply NO if you don\'t have one.'
+            ));
+            return;
+        }
+
+        if ($step === 'ask_promo') {
+            $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['product_service_id'] ?? null);
+            $domain = $state['domain'] ?? null;
+            if (!$plan || !$domain) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
+                return;
+            }
+
+            if (preg_match('/^\s*(hapana|no|hakuna|skip)\s*$/i', $text)) {
+                $session->update(['state' => array_merge($state, ['step' => 'confirm', 'coupon_id' => null])]);
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Thibitisha: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$domain}. Jibu NDIYO kuagiza.",
+                    "Confirm: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$domain}. Reply YES to order."
+                ));
+                return;
+            }
+
+            $result = app(CouponService::class)->validateForOrder(trim($text), $tenant->id, $plan, (float) $plan->price, $client->id);
+            if ($result['error']) {
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Samahani: {$result['error']} Jaribu code nyingine, au jibu HAPANA kuendelea bila punguzo.",
+                    "Sorry: {$result['error']} Try another code, or reply NO to continue without a discount."
+                ));
+                return;
+            }
+
+            $coupon = $result['coupon'];
+            $discount = (float) $result['discount'];
+            $total = max(round((float) $plan->price - $discount, 2), 0);
+
+            $session->update(['state' => array_merge($state, ['step' => 'confirm', 'coupon_id' => $coupon->id])]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Promo {$coupon->code} imekubalika! Punguzo: TZS " . number_format($discount) . ". Thibitisha: {$plan->name} — TZS " . number_format($total) . "/{$plan->billing_cycle}, domain: {$domain}. Jibu NDIYO kuagiza.",
+                "Promo {$coupon->code} applied! Discount: TZS " . number_format($discount) . ". Confirm: {$plan->name} — TZS " . number_format($total) . "/{$plan->billing_cycle}, domain: {$domain}. Reply YES to order."
             ));
             return;
         }
@@ -1102,6 +1143,7 @@ class WhatsappRenewalWebhookController extends Controller
 
             $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['product_service_id'] ?? null);
             $domain = $state['domain'] ?? null;
+            $coupon = !empty($state['coupon_id']) ? Coupon::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['coupon_id']) : null;
 
             if (!$plan || !$domain) {
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
@@ -1109,7 +1151,13 @@ class WhatsappRenewalWebhookController extends Controller
             }
 
             try {
-                $document = $this->createHostingOrder($tenant, $client, $plan, $domain);
+                $document = $this->createHostingOrder($tenant, $client, $plan, $domain, $coupon);
+            } catch (CouponUnavailableException) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                    'Samahani, promo code hiyo imefikia kikomo chake sasa hivi. Tafadhali jaribu tena bila code, au tumia nyingine.',
+                    "Sorry, that promo code just reached its usage limit. Please try again without it, or use a different one."
+                ), $lang);
+                return;
             } catch (\Throwable $e) {
                 Log::error('WhatsApp order_hosting order creation failed', ['plan_id' => $plan->id, 'domain' => $domain, 'error' => $e->getMessage()]);
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
@@ -1125,12 +1173,18 @@ class WhatsappRenewalWebhookController extends Controller
 
     /**
      * Mirrors PortalOrderController::store()'s core sequence for a whm_cpanel
-     * product on an existing domain (domain_mode='existing') — no coupons,
-     * add-ons or config options, not exposed in this chat flow.
+     * product on an existing domain (domain_mode='existing') — no add-ons or
+     * config options, not exposed in this chat flow. Coupon discount mirrors
+     * that same controller's handling (recomputed server-side here too, never
+     * trusting whatever was shown to the client earlier in the conversation).
      */
-    private function createHostingOrder(Tenant $tenant, Client $client, ProductService $plan, string $domain): Document
+    private function createHostingOrder(Tenant $tenant, Client $client, ProductService $plan, string $domain, ?Coupon $coupon = null): Document
     {
-        return DB::transaction(function () use ($tenant, $client, $plan, $domain) {
+        return DB::transaction(function () use ($tenant, $client, $plan, $domain, $coupon) {
+            $lineBase = round((float) $plan->price, 2);
+            $discount = $coupon ? round(min($coupon->discountFor($lineBase, $plan), $lineBase), 2) : 0.0;
+            $total = round($lineBase - $discount, 2);
+
             $subscription = \App\Models\ClientSubscription::withoutGlobalScopes()->create([
                 'tenant_id' => $tenant->id,
                 'client_id' => $client->id,
@@ -1139,10 +1193,18 @@ class WhatsappRenewalWebhookController extends Controller
                 'quantity' => 1,
                 'status' => 'pending',
                 'start_date' => now()->toDateString(),
-                'metadata' => ['domain' => $domain, 'whatsapp_order' => true],
+                'promo_code' => $coupon?->code,
+                'metadata' => array_filter([
+                    'domain' => $domain,
+                    'whatsapp_order' => true,
+                    'applied_coupon' => $coupon ? [
+                        'coupon_id' => $coupon->id,
+                        'code' => $coupon->code,
+                        'discount' => $discount,
+                        'recurring' => (bool) $coupon->recurring,
+                    ] : null,
+                ]),
             ]);
-
-            $total = round((float) $plan->price, 2);
 
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id' => $tenant->id,
@@ -1151,19 +1213,21 @@ class WhatsappRenewalWebhookController extends Controller
                 'document_number' => app(DocumentNumberService::class)->generate('invoice', $tenant->id),
                 'date' => now()->toDateString(),
                 'due_date' => now()->addDays(7)->toDateString(),
-                'subtotal' => $total,
-                'discount_amount' => 0,
+                'subtotal' => $lineBase,
+                'discount_amount' => $discount,
                 'tax_amount' => 0,
                 'total' => $total,
                 'status' => 'sent',
-                'notes' => "{$plan->name} (WhatsApp order): {$domain}",
+                'notes' => "{$plan->name} (WhatsApp order): {$domain}" . ($coupon ? " (promo {$coupon->code})" : ''),
             ]);
 
             $document->items()->create([
                 'item_type' => 'service',
-                'description' => "{$plan->name} — {$domain}",
+                'description' => "{$plan->name} — {$domain}" . ($discount > 0 ? " (promo {$coupon->code})" : ''),
                 'quantity' => 1,
                 'price' => $plan->price,
+                'discount_type' => $coupon ? $coupon->type : 'percent',
+                'discount_value' => $coupon ? (float) $coupon->value : 0,
                 'tax_percent' => 0,
                 'tax_amount' => 0,
                 'total' => $total,
@@ -1177,6 +1241,16 @@ class WhatsappRenewalWebhookController extends Controller
                 'document_id' => $document->id,
                 'next_bill_date' => now()->toDateString(),
             ]);
+
+            // Consume one coupon use atomically — if a concurrent order just raced past
+            // max_uses, abort the whole order rather than honor a discount the coupon
+            // can no longer back (same guard as PortalOrderController::store()).
+            if ($coupon && $discount > 0) {
+                $ok = app(CouponService::class)->redeem($coupon, $client->id, $document->id, $discount);
+                if (!$ok) {
+                    throw new CouponUnavailableException();
+                }
+            }
 
             return $document;
         });
