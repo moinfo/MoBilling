@@ -65,8 +65,16 @@ class RenewalBundleService
             ->first();
     }
 
-    /** @return array{candidates: ClientSubscription[], billable: ClientSubscription[]} */
-    public function billableSubscriptions(HostingAccount $hostingAccount): array
+    /**
+     * @param  bool  $selfService  Extra caution for the unattended WhatsApp self-service
+     *                             flow: excludes anything not currently 'active'/'expired'
+     *                             (e.g. 'suspended', which needs a human's judgement on
+     *                             whether it's genuinely due or was suspended for some
+     *                             other reason) — staff using the manual "Generate Invoice"
+     *                             button retain full judgement, so this defaults off.
+     * @return array{candidates: ClientSubscription[], billable: ClientSubscription[]}
+     */
+    public function billableSubscriptions(HostingAccount $hostingAccount, bool $selfService = false): array
     {
         $candidates = array_values(array_filter([
             $this->hostingPlanSubscription($hostingAccount),
@@ -76,9 +84,27 @@ class RenewalBundleService
         // Never re-bundle a subscription that already has a real invoice —
         // hosting and domain are invoiced independently, so one having a
         // current invoice must not block (or duplicate-charge) the other.
-        $billable = array_values(array_filter($candidates, fn ($sub) => !$this->hasCurrentInvoice($sub)));
+        // AND never bill one that isn't actually due soon — billableSubscriptions()
+        // has no other signal for "due" (RecurringInvoiceService's own automatic
+        // cron independently pre-filters to a 30-day window before it ever reaches
+        // this kind of billing math — this path had no equivalent guard at all,
+        // which meant a domain paid a year in advance could be billed again
+        // immediately just for lacking a currently-open invoice. Found live: several
+        // real clients' domains 9-12 months from expiry were showing as "billable").
+        $billable = array_values(array_filter(
+            $candidates,
+            fn ($sub) => !$this->hasCurrentInvoice($sub)
+                && $this->isDueSoon($sub)
+                && (!$selfService || in_array($sub->status, ['active', 'expired'], true))
+        ));
 
         return compact('candidates', 'billable');
+    }
+
+    /** Due within the next 45 days, or already past due — never further out. */
+    private function isDueSoon(ClientSubscription $sub): bool
+    {
+        return $sub->expire_date && $sub->expire_date->lte(now()->addDays(45));
     }
 
     /** Whether $sub already has an invoice that represents a real charge (not draft/cancelled). */
@@ -91,9 +117,9 @@ class RenewalBundleService
     }
 
     /** Price preview for a manual "generate invoice" action — computes, doesn't create anything. */
-    public function preview(HostingAccount $hostingAccount): array
+    public function preview(HostingAccount $hostingAccount, bool $selfService = false): array
     {
-        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount);
+        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount, $selfService);
         if (empty($candidates)) {
             throw new \RuntimeException('No hosting-plan or domain subscription found for this domain.');
         }
@@ -110,9 +136,9 @@ class RenewalBundleService
     }
 
     /** Generates the renewal invoice this domain is missing — bundles the domain renewal in too, if it has one. */
-    public function generate(HostingAccount $hostingAccount): Document
+    public function generate(HostingAccount $hostingAccount, bool $selfService = false): Document
     {
-        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount);
+        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount, $selfService);
         if (empty($candidates)) {
             throw new \RuntimeException('No hosting-plan or domain subscription found for this domain.');
         }

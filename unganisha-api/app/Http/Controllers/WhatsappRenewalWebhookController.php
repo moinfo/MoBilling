@@ -212,7 +212,7 @@ class WhatsappRenewalWebhookController extends Controller
                 ['billable' => $billable] = $bundler->billableSubscriptions($hostingAccount ?? new HostingAccount([
                     'tenant_id' => $tenant->id,
                     'domain' => $domain->name,
-                ]));
+                ]), selfService: true);
             } catch (\Throwable $e) {
                 continue;
             }
@@ -273,7 +273,7 @@ class WhatsappRenewalWebhookController extends Controller
             $document = $bundler->generate($hostingAccount ?? new HostingAccount([
                 'tenant_id' => $tenant->id,
                 'domain' => $domain->name,
-            ]));
+            ]), selfService: true);
         } catch (\Throwable $e) {
             $this->reply($tenant, $phone, "Samahani, {$e->getMessage()}");
             return;
