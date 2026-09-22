@@ -39,7 +39,17 @@ class ClientController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
                   ->orWhere('email', 'LIKE', "%{$search}%")
-                  ->orWhere('phone', 'LIKE', "%{$search}%");
+                  ->orWhere('phone', 'LIKE', "%{$search}%")
+                  // A client's own email/phone isn't the only one staff
+                  // might search by — a portal login (e.g. an accountant's
+                  // own address) or a secondary contact often differs from
+                  // the client's own record entirely.
+                  ->orWhereHas('portalUsers', fn ($pq) => $pq
+                      ->where('email', 'LIKE', "%{$search}%")
+                      ->orWhere('phone', 'LIKE', "%{$search}%"))
+                  ->orWhereHas('contacts', fn ($cq) => $cq
+                      ->where('email', 'LIKE', "%{$search}%")
+                      ->orWhere('phone', 'LIKE', "%{$search}%"));
             });
         }
 

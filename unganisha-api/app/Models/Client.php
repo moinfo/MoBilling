@@ -35,6 +35,12 @@ class Client extends Model
         return $this->hasMany(ClientContact::class);
     }
 
+    /** Portal login users — often a different email than the client's own (e.g. an accountant's address). */
+    public function portalUsers()
+    {
+        return $this->hasMany(ClientUser::class);
+    }
+
     /**
      * Reseller status is never a stored flag — it's derived live from an
      * active subscription to the "Reseller Membership" product, so the
