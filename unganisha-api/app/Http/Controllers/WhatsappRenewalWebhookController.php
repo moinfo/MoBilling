@@ -189,7 +189,11 @@ class WhatsappRenewalWebhookController extends Controller
         return [$tenant, $account];
     }
 
-    /** Builds and sends the numbered list of domains this client can currently self-serve on. */
+    /**
+     * Lists every domain the client has — status and expiry — numbering only the
+     * ones actually due (billable) so a reply digit stays unambiguous; the rest are
+     * shown for information only (matches "show what I have, even if nothing's due").
+     */
     private function sendMenu(Tenant $tenant, Client $client, string $phone, RenewalBundleService $bundler): void
     {
         $domains = Domain::withoutGlobalScopes()
@@ -214,25 +218,27 @@ class WhatsappRenewalWebhookController extends Controller
                     'domain' => $domain->name,
                 ]), selfService: true);
             } catch (\Throwable $e) {
-                continue;
+                $billable = [];
             }
 
-            if (empty($billable)) {
-                continue;
-            }
-
-            $items[] = $domain->id;
-            $what = implode(' + ', array_unique(array_map(fn ($s) => $s->productService->category, $billable)));
-            $lines[] = count($items) . ". {$domain->name} — {$what} renewal";
-
-            if (count($items) >= 9) {
-                break;
+            if (!empty($billable) && count($items) < 9) {
+                $items[] = $domain->id;
+                $what = implode(' + ', array_unique(array_map(fn ($s) => $s->productService->category, $billable)));
+                // The subscription's own due date (why it's flagged), not the domain
+                // registry's expiry — the two frequently disagree (WHMCS-import
+                // artifacts), and showing the domain's date here has read as a
+                // contradiction ("needs payment" next to an expiry a year out).
+                $dueDate = collect($billable)->pluck('expire_date')->filter()->min()?->format('d M Y') ?? '—';
+                $lines[] = count($items) . ". {$domain->name} — {$what} inahitaji malipo (deadline {$dueDate})";
+            } else {
+                $expires = $domain->expires_at?->format('d M Y') ?? '—';
+                $lines[] = "• {$domain->name} — inaisha {$expires}, hakuna malipo yanayohitajika sasa";
             }
         }
 
-        if (empty($items)) {
+        if ($domains->isEmpty()) {
             WhatsappRenewalSession::where('tenant_id', $tenant->id)->where('phone', $phone)->delete();
-            $this->reply($tenant, $phone, "Habari {$client->name}, kwa sasa huna huduma inayohitaji malipo. Asante!");
+            $this->reply($tenant, $phone, "Habari {$client->name}, huna huduma yoyote iliyosajiliwa kwa sasa. Asante!");
             return;
         }
 
@@ -242,9 +248,9 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone,
-            "Habari {$client->name}, huduma unazoweza kujihudumia: "
+            "Habari {$client->name}, huduma zako: "
             . implode(' · ', $lines)
-            . '. Jibu na namba kuchagua.');
+            . (!empty($items) ? '. Jibu na namba kulipia huduma inayohitaji malipo.' : '.'));
     }
 
     /** Picks items[$position-1] out of $session and bills it, or replies with why it can't. */
