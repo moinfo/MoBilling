@@ -134,6 +134,7 @@ class WhatsappRenewalWebhookController extends Controller
                 'pay_invoice' => $this->handlePayInvoiceStep($tenant, $client, $phone, $session, $text, $lang),
                 'whois' => $this->handleWhoisStep($tenant, $client, $phone, $session, $text, $lang),
                 'check_availability' => $this->handleCheckAvailabilityStep($tenant, $client, $phone, $session, $text, $lang),
+                'change_dns' => $this->handleChangeDnsStep($tenant, $client, $phone, $session, $text, $lang),
                 default => $this->handleRootStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
             };
 
@@ -347,11 +348,13 @@ class WhatsappRenewalWebhookController extends Controller
                 . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
                 . '4) Business Email Hosting · 5) Angalia na Lipa Invoice · '
                 . '6) WHOIS ya Domain · 7) Angalia kama Domain Inapatikana · '
+                . '8) Badilisha Nameservers (DNS) · '
                 . '0) Toka (Logout). Jibu na namba.',
             "Hi {$client->name}! Choose a service: "
                 . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
                 . '4) Business Email Hosting · 5) View and Pay Invoices · '
                 . '6) Domain WHOIS · 7) Check Domain Availability · '
+                . '8) Change Nameservers (DNS) · '
                 . '0) Logout. Reply with a number.'
         ));
     }
@@ -394,6 +397,7 @@ class WhatsappRenewalWebhookController extends Controller
             (bool) preg_match('/^\s*5\s*$/', $text) => $this->startPayInvoice($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*6\s*$/', $text) => $this->startWhois($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*7\s*$/', $text) => $this->startCheckAvailability($tenant, $client, $phone, $lang),
+            (bool) preg_match('/^\s*8\s*$/', $text) => $this->startChangeDns($tenant, $client, $phone, $lang),
             default => $this->sendRootMenu($tenant, $client, $phone, $lang),
         };
     }
@@ -1079,7 +1083,10 @@ class WhatsappRenewalWebhookController extends Controller
             return $this->t($lang, 'Tafadhali wasiliana nasi kwa maelezo ya kulipa.', 'Please contact us for payment details.');
         }
 
-        return $this->t($lang, "Lipa kupitia: {$bank}", "Pay via: {$bank}");
+        return $this->t($lang,
+            "Lipa kupitia: {$bank}. Baada ya kulipa, tuma risiti/screenshot kwetu — malipo yataidhinishwa na wafanyakazi wetu, si moja kwa moja.",
+            "Pay via: {$bank}. After paying, please send us the receipt/screenshot — this payment needs to be approved by our staff, it isn't confirmed automatically."
+        );
     }
 
     // ── WHOIS lookup ─────────────────────────────────────────────────────
@@ -1183,6 +1190,169 @@ class WhatsappRenewalWebhookController extends Controller
         } else {
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, "Domain {$name} tayari limesajiliwa — halipatikani.", "Domain {$name} is already registered — not available."), $lang);
         }
+    }
+
+    // ── Nameserver / DNS change ─────────────────────────────────────────
+
+    private function startChangeDns(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $domains = Domain::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('client_id', $client->id)
+            ->whereIn('status', ['active', 'expired'])
+            ->orderBy('name')
+            ->limit(9)
+            ->get();
+
+        if ($domains->isEmpty()) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Huna domain iliyosajiliwa kwa sasa.', "You don't have any registered domains right now."), $lang);
+            return;
+        }
+
+        $domainIds = $domains->pluck('id')->all();
+        $lines = $domains->values()->map(fn ($d, $i) => ($i + 1) . ". {$d->name}")->implode(' · ');
+
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'change_dns', 'state' => ['step' => 'pick_domain', 'domain_ids' => $domainIds], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Chagua domain unayotaka kubadilisha nameservers: {$lines}. Jibu na namba.",
+            "Choose the domain to change nameservers for: {$lines}. Reply with a number."
+        ));
+    }
+
+    private function handleChangeDnsStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        $state = $session->state ?? [];
+        $step = $state['step'] ?? 'pick_domain';
+
+        if ($step === 'pick_domain') {
+            if (!preg_match('/^\s*([1-9])\s*$/', $text, $m) || empty($state['domain_ids'][$m[1] - 1])) {
+                $this->reply($tenant, $phone, $this->t($lang, 'Samahani, chagua namba sahihi kutoka kwenye orodha.', 'Sorry, please choose a valid number from the list.'));
+                return;
+            }
+
+            $domain = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['domain_ids'][$m[1] - 1]);
+            if (!$domain) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, domain hiyo haipatikani tena. Tafadhali jaribu tena.', 'Sorry, that domain is no longer available. Please try again.'), $lang);
+                return;
+            }
+
+            $session->update(['state' => ['step' => 'ask_nameservers', 'domain_id' => $domain->id]]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Andika nameservers mbili au zaidi za {$domain->name}, zikitenganishwa na koma. Mfano: ns1.example.com, ns2.example.com",
+                "Please reply with two or more nameservers for {$domain->name}, separated by commas. Example: ns1.example.com, ns2.example.com"
+            ));
+            return;
+        }
+
+        if ($step === 'ask_nameservers') {
+            $nameservers = array_values(array_filter(array_map('trim', preg_split('/[,\s]+/', strtolower($text)))));
+
+            if (count($nameservers) < 2 || count($nameservers) > 9 || count($nameservers) !== count(array_unique($nameservers))) {
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, andika nameservers 2 hadi 9, zisizofanana, zikitenganishwa na koma.',
+                    'Sorry, please reply with 2 to 9 distinct nameservers, separated by commas.'
+                ));
+                return;
+            }
+
+            foreach ($nameservers as $ns) {
+                if (!preg_match('/^(?=.{4,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i', $ns)) {
+                    $this->reply($tenant, $phone, $this->t($lang,
+                        "Samahani, \"{$ns}\" halionekani kama jina sahihi la nameserver. Jaribu tena.",
+                        "Sorry, \"{$ns}\" doesn't look like a valid nameserver hostname. Please try again."
+                    ));
+                    return;
+                }
+            }
+
+            $session->update(['state' => array_merge($state, ['step' => 'confirm', 'nameservers' => $nameservers])]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Thibitisha: ' . implode(', ', $nameservers) . '. Jibu NDIYO kubadilisha.',
+                'Confirm: ' . implode(', ', $nameservers) . '. Reply YES to change.'
+            ));
+            return;
+        }
+
+        if ($step === 'confirm') {
+            if (!preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Sawa, imesitishwa.', 'Okay, cancelled.'), $lang);
+                return;
+            }
+
+            $domain = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['domain_id'] ?? null);
+            $nameservers = $state['nameservers'] ?? [];
+
+            if (!$domain || count($nameservers) < 2) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
+                return;
+            }
+
+            if (!in_array($domain->status, ['active', 'expired'], true)) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, domain hii haiko active kwenye registry kwa sasa. Wasiliana nasi.', 'Sorry, this domain is not active at the registry right now. Please contact us.'), $lang);
+                return;
+            }
+
+            // Mirrors PortalDomainController::updateNameservers() exactly — unmanaged
+            // domains (or no registrar driver) get a manual staff request instead of
+            // a live registry call, managed .tz ones go straight through the driver.
+            if (($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz')) {
+                $meta = $domain->meta ?? [];
+                $meta['pending_nameserver_request'] = [
+                    'nameservers' => $nameservers,
+                    'requested_at' => now()->toISOString(),
+                    'requested_by_whatsapp' => $client->id,
+                ];
+                $domain->update(['meta' => $meta]);
+
+                \App\Models\DomainLog::create([
+                    'tenant_id' => $tenant->id,
+                    'domain_id' => $domain->id,
+                    'action' => 'nameservers_change_requested_manual',
+                    'request' => ['by_whatsapp_client_id' => $client->id, 'nameservers' => $nameservers],
+                    'status' => 'success',
+                ]);
+
+                try {
+                    $staff = \App\Models\User::withPermission($tenant->id, 'domains.renew');
+                    if ($staff->isNotEmpty()) {
+                        \Illuminate\Support\Facades\Notification::send($staff, new \App\Notifications\DomainManualNameserverChangeRequestedNotification($domain, $nameservers));
+                    }
+                } catch (\Throwable $e) {
+                    report($e);
+                }
+
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                    'Ombi limepokelewa. Wafanyakazi wetu watabadilisha kwa mkono — inaweza kuchukua muda.',
+                    "Request received. Our staff will apply this change manually — it may take some time."
+                ), $lang);
+                return;
+            }
+
+            if (!$domain->nsset_handle) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Domain hii haina nameserver set bado — wasiliana nasi.', 'This domain has no nameserver set yet — please contact us.'), $lang);
+                return;
+            }
+
+            try {
+                app(\App\Services\Registrar\NameserverService::class)->update($domain, $nameservers, ['by_whatsapp_client_id' => $client->id]);
+            } catch (\Throwable $e) {
+                Log::warning('WhatsApp change_dns nameserver update failed', ['domain' => $domain->name, 'error' => $e->getMessage()]);
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, registry imekataa mabadiliko — angalia majina au wasiliana nasi.', 'Sorry, the registry rejected the change — please check the hostnames or contact us.'), $lang);
+                return;
+            }
+
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Nameservers zimebadilishwa. Mabadiliko ya DNS yanaweza kuchukua hadi masaa kadhaa kusambaa duniani kote.',
+                'Nameservers updated. DNS changes can take up to a few hours to propagate worldwide.'
+            ), $lang);
+            return;
+        }
+
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
     }
 
     // ── Payment ──────────────────────────────────────────────────────────
