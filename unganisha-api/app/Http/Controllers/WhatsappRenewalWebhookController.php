@@ -443,13 +443,15 @@ class WhatsappRenewalWebhookController extends Controller
                 . '4) Business Email Hosting · 5) Angalia na Lipa Invoice · '
                 . '6) WHOIS ya Domain · 7) Angalia kama Domain Inapatikana · '
                 . '8) Badilisha Nameservers (DNS) · '
-                . '0) Toka (Logout). Jibu na namba.',
+                . "0) Toka (Logout). Jibu na namba.\n\n"
+                . 'Andika MOSMS kwa huduma za akaunti yako ya SMS/WhatsApp bulk.',
             "Hi {$client->name}! Choose a service: "
                 . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
                 . '4) Business Email Hosting · 5) View and Pay Invoices · '
                 . '6) Domain WHOIS · 7) Check Domain Availability · '
                 . '8) Change Nameservers (DNS) · '
-                . '0) Logout. Reply with a number.'
+                . "0) Logout. Reply with a number.\n\n"
+                . 'Reply MOSMS for your bulk SMS/WhatsApp account.'
         ));
     }
 
