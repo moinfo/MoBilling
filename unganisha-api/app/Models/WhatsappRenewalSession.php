@@ -11,11 +11,12 @@ class WhatsappRenewalSession extends Model
     use HasUuids, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'client_id', 'items', 'confirmed_at', 'attempts', 'phone', 'expires_at',
+        'tenant_id', 'client_id', 'items', 'flow', 'state', 'confirmed_at', 'attempts', 'phone', 'expires_at',
     ];
 
     protected $casts = [
         'items' => 'array',
+        'state' => 'array',
         'confirmed_at' => 'datetime',
         'expires_at' => 'datetime',
     ];
