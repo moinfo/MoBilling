@@ -73,24 +73,26 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
         $due = $this->document->due_date?->format('d M Y') ?? '—';
         $payable = $tenant->pesapal_enabled && $this->document->balance_due > 0;
 
-        $items = $this->document->items->map(fn ($item) => "• {$item->description} — "
+        // Semicolon-joined, not one bullet per line: this string can be sent either as free-form
+        // text (real \n survives, WhatsApp renders it multi-line) OR as a template parameter —
+        // and Meta's template API silently strips any \n from parameters (error #132018),
+        // flattening a bulleted list into a single run-on-looking line. Semicolons degrade to a
+        // clean single-line summary either way, instead of stray "•" characters mid-sentence.
+        $items = $this->document->items->map(fn ($item) => "{$item->description} ("
             . number_format((float) $item->quantity, 2) . ' x ' . number_format((float) $item->price, 2)
-            . ' = ' . number_format((float) $item->total, 2))->implode("\n");
+            . ' = ' . number_format((float) $item->total, 2) . ')')->implode('; ');
 
         $lines = array_filter([
             "📄 *{$typeName} {$this->document->document_number}*",
             $tenant->name,
-            '',
-            $items !== '' ? "*Vitu:*\n{$items}" : null,
-            '',
-            "*Jumla: {$amount}*",
-            $due !== '—' ? "Malipo: {$due}" : null,
+            $items !== '' ? "Vitu: {$items}" : null,
+            "*Jumla: {$amount}*" . ($due !== '—' ? " (malipo: {$due})" : ''),
         ], fn ($line) => $line !== null);
 
         if ($payable) {
-            $lines[] = "\n👇 Bonyeza kulipa: " . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}");
+            $lines[] = 'Bonyeza kulipa: ' . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}");
         } else {
-            $lines[] = "\n" . $this->offlinePaymentMethodsText($tenant);
+            $lines[] = $this->offlinePaymentMethodsText($tenant);
         }
 
         return implode("\n", $lines);
@@ -108,7 +110,7 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             ->filter();
 
         if ($methods->isNotEmpty()) {
-            return "*Njia za kulipa:*\n" . $methods->map(fn ($m) => "• {$m}")->implode("\n");
+            return 'Njia za kulipa: ' . $methods->implode('; ');
         }
 
         $bank = trim(implode(', ', array_filter([
