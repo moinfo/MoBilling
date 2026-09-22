@@ -506,6 +506,25 @@ class WhatsappRenewalWebhookController extends Controller
             }
 
             $this->replyWithInvoice($tenant, $phone, $document);
+
+            // Continue straight into ordering hosting for the same domain, per request
+            // ("agiza domain mpya mpaka ku-provision hosting") — a separate invoice
+            // (domain registration and hosting are billed independently throughout this
+            // app), but one unbroken conversation. Actual provisioning still only fires
+            // once each invoice is actually paid (DocumentObserver / ClientSubscriptionObserver
+            // → ProvisionHostingAccount), unchanged — this just removes the need to
+            // start a second conversation to get there.
+            $session->update(['state' => ['step' => 'offer_hosting', 'domain' => $domain]]);
+            $this->reply($tenant, $phone, "Je, unataka pia Website Hosting kwenye {$domain}? Jibu NDIYO kuendelea, au namba nyingine kuruka.");
+            return;
+        }
+
+        if ($step === 'offer_hosting') {
+            if (preg_match('/^\s*ndiyo\s*$/i', $text)) {
+                $this->startOrderHosting($tenant, $client, $phone, 'Web Hosting', $state['domain'] ?? null);
+                return;
+            }
+
             $this->sendRootMenu($tenant, $client, $phone);
             return;
         }
@@ -581,7 +600,8 @@ class WhatsappRenewalWebhookController extends Controller
 
     // ── New hosting / business email orders ─────────────────────────────
 
-    private function startOrderHosting(Tenant $tenant, Client $client, string $phone, string $category): void
+    /** $prefilledDomain: set when continuing straight from a just-placed domain order — skips ask_domain. */
+    private function startOrderHosting(Tenant $tenant, Client $client, string $phone, string $category, ?string $prefilledDomain = null): void
     {
         $plans = ProductService::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
@@ -594,7 +614,7 @@ class WhatsappRenewalWebhookController extends Controller
             ->get();
 
         if ($plans->isEmpty()) {
-            $this->reply($tenant, $phone, 'Samahani, hakuna vifurushi vinavyopatikana kwa sasa. Tafadhali wasiliana nasi.');
+            $this->finishFlow($tenant, $client, $phone, 'Samahani, hakuna vifurushi vinavyopatikana kwa sasa. Tafadhali wasiliana nasi.');
             return;
         }
 
@@ -607,7 +627,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'order_hosting', 'state' => ['step' => 'pick_plan', 'category' => $category, 'plan_ids' => $planIds], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'order_hosting', 'state' => ['step' => 'pick_plan', 'category' => $category, 'plan_ids' => $planIds, 'domain' => $prefilledDomain], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
         );
 
         $this->reply($tenant, $phone, 'Chagua kifurushi: ' . implode(' · ', $lines) . '. Jibu na namba.');
@@ -630,7 +650,16 @@ class WhatsappRenewalWebhookController extends Controller
                         return;
                     }
 
-                    $session->update(['state' => ['step' => 'ask_domain', 'category' => $state['category'], 'plan_ids' => $state['plan_ids'], 'product_service_id' => $plan->id]]);
+                    // Already have a domain (continuing straight from a domain order) —
+                    // skip straight to confirming instead of asking for it again.
+                    if (!empty($state['domain'])) {
+                        $session->update(['state' => array_merge($state, ['step' => 'confirm', 'product_service_id' => $plan->id])]);
+                        $this->reply($tenant, $phone,
+                            "Thibitisha: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$state['domain']}. Jibu NDIYO kuagiza.");
+                        return;
+                    }
+
+                    $session->update(['state' => array_merge($state, ['step' => 'ask_domain', 'product_service_id' => $plan->id])]);
                     $this->reply($tenant, $phone, "Umechagua {$plan->name}. Andika jina la domain la huduma hii (lililopo tayari).");
                     return;
                 }
@@ -646,7 +675,7 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
-            $session->update(['state' => ['step' => 'plan_details', 'category' => $state['category'], 'plan_ids' => $state['plan_ids'], 'product_service_id' => $plan->id]]);
+            $session->update(['state' => array_merge($state, ['step' => 'plan_details', 'product_service_id' => $plan->id])]);
 
             $specs = trim((string) $plan->description) !== '' ? str_replace(["\r\n", "\n"], ' · ', trim($plan->description)) : null;
             $this->reply($tenant, $phone,
