@@ -213,7 +213,7 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $step === 'enter_pin'
-            ? "Habari {$staff->name}! Kwa usalama, andika PIN yako ya namba 4."
+            ? "Habari {$staff->name}! Kwa usalama, andika PIN yako ya namba 4 (au andika BADILISHA kuibadilisha)."
             : "Habari {$staff->name}! Kwa usalama wa hali ya 'staff assist', tengeneza PIN ya namba 4 (mfano: 1234). Andika PIN mpya.");
     }
 
@@ -253,6 +253,12 @@ class WhatsappRenewalWebhookController extends Controller
             }
 
             if ($step === 'enter_pin') {
+                if (preg_match('/^\s*(badilisha|change)\s*$/i', $text)) {
+                    $session->update(['state' => array_merge($state, ['step' => 'change_verify_old'])]);
+                    $this->reply($tenant, $phone, 'Andika PIN yako ya SASA kuthibitisha.');
+                    return;
+                }
+
                 if (!Hash::check(trim($text), $staff->whatsapp_pin_hash)) {
                     $attempts = ((int) ($state['attempts'] ?? 0)) + 1;
                     if ($attempts >= self::MAX_STAFF_PIN_ATTEMPTS) {
@@ -265,6 +271,26 @@ class WhatsappRenewalWebhookController extends Controller
                     return;
                 }
                 $this->startStaffClientSearch($tenant, $phone, $session, $staff);
+                return;
+            }
+
+            // Re-verify the OLD PIN before allowing a change, then fall straight into the
+            // existing set_pin_1/set_pin_2 steps to collect the new one — no separate logic
+            // needed, they already hash+save+continue to client search on success.
+            if ($step === 'change_verify_old') {
+                if (!Hash::check(trim($text), $staff->whatsapp_pin_hash)) {
+                    $attempts = ((int) ($state['attempts'] ?? 0)) + 1;
+                    if ($attempts >= self::MAX_STAFF_PIN_ATTEMPTS) {
+                        $session->delete();
+                        $this->reply($tenant, $phone, 'PIN si sahihi mara kadhaa. Kwa usalama, jaribu tena baadaye (andika STAFF).');
+                        return;
+                    }
+                    $session->update(['state' => array_merge($state, ['attempts' => $attempts])]);
+                    $this->reply($tenant, $phone, "PIN si sahihi. Jaribu tena ({$attempts}/" . self::MAX_STAFF_PIN_ATTEMPTS . ').');
+                    return;
+                }
+                $session->update(['state' => array_merge($state, ['step' => 'set_pin_1'])]);
+                $this->reply($tenant, $phone, 'Andika PIN mpya ya namba 4.');
                 return;
             }
         }
