@@ -32,8 +32,14 @@ use Illuminate\Support\Str;
  *    (whatsapp_renewal_sessions written by SendDomainExpiryReminders).
  *  - menu(): any other message from a phone MoSMS's shared number most
  *    recently sent something to on Moinfotech's behalf — the general
- *    self-service catch-all (root menu: renewals, new domain/hosting
- *    orders, unpaid invoices, WHOIS, availability check).
+ *    self-service catch-all (language select, root menu: renewals, new
+ *    domain/hosting orders, unpaid invoices, WHOIS, availability check).
+ *
+ * Every message is bilingual (en/sw) — see t(). A client picks a language
+ * once, at the very start of a conversation, via startLanguageSelect();
+ * it's remembered on the session (like the surname-verified identity) for
+ * as long as that session lives, and re-asked only after a fresh contact
+ * or an explicit logout.
  *
  * Public, no Laravel auth — guarded by a shared secret, mirroring MoSMS's
  * own mopos debt-confirmation callback.
@@ -62,11 +68,15 @@ class WhatsappRenewalWebhookController extends Controller
             ->first();
 
         if (!$session || $session->isExpired() || empty($session->items)) {
-            $this->reply($tenant, $phone, 'Samahani, muda wa kujibu umepita. Tafadhali wasiliana nasi au ingia kwenye client portal kufanya renewal.');
+            $lang = $session->language ?? 'sw';
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, muda wa kujibu umepita. Tafadhali wasiliana nasi au ingia kwenye client portal kufanya renewal.',
+                'Sorry, the reply window has passed. Please contact us or log in to the client portal to renew.'
+            ));
             return response('OK', 200);
         }
 
-        $this->pickAndGenerate($tenant, null, $phone, $session, 1, $bundler);
+        $this->pickAndGenerate($tenant, null, $phone, $session, 1, $bundler, $session->language ?? 'sw');
 
         return response('OK', 200);
     }
@@ -99,26 +109,32 @@ class WhatsappRenewalWebhookController extends Controller
             ->where('phone', $phone)
             ->first();
 
+        if ($session && !$session->isExpired() && $session->flow === 'language_select') {
+            $this->handleLanguageStep($tenant, $phone, $session, $text);
+            return response('OK', 200);
+        }
+
         if ($session && !$session->isExpired() && $session->flow === 'register') {
             $this->handleRegistrationStep($tenant, $phone, $session, $text);
             return response('OK', 200);
         }
 
         if ($session && !$session->isExpired() && $session->confirmed_at) {
+            $lang = $session->language ?? 'sw';
             $client = Client::withoutGlobalScopes()->find($session->client_id);
             if (!$client) {
                 $session->delete();
-                $this->reply($tenant, $phone, 'Samahani, kuna hitilafu. Tafadhali wasiliana nasi.');
+                $this->reply($tenant, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali wasiliana nasi.', 'Sorry, something went wrong. Please contact us.'));
                 return response('OK', 200);
             }
 
             match ($session->flow) {
-                'order_domain' => $this->handleOrderDomainStep($tenant, $client, $phone, $session, $text),
-                'order_hosting' => $this->handleOrderHostingStep($tenant, $client, $phone, $session, $text),
-                'pay_invoice' => $this->handlePayInvoiceStep($tenant, $client, $phone, $session, $text),
-                'whois' => $this->handleWhoisStep($tenant, $client, $phone, $session, $text),
-                'check_availability' => $this->handleCheckAvailabilityStep($tenant, $client, $phone, $session, $text),
-                default => $this->handleRootStep($tenant, $client, $phone, $session, $text, $bundler),
+                'order_domain' => $this->handleOrderDomainStep($tenant, $client, $phone, $session, $text, $lang),
+                'order_hosting' => $this->handleOrderHostingStep($tenant, $client, $phone, $session, $text, $lang),
+                'pay_invoice' => $this->handlePayInvoiceStep($tenant, $client, $phone, $session, $text, $lang),
+                'whois' => $this->handleWhoisStep($tenant, $client, $phone, $session, $text, $lang),
+                'check_availability' => $this->handleCheckAvailabilityStep($tenant, $client, $phone, $session, $text, $lang),
+                default => $this->handleRootStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
             };
 
             return response('OK', 200);
@@ -129,50 +145,96 @@ class WhatsappRenewalWebhookController extends Controller
             return response('OK', 200);
         }
 
-        $client = Client::withoutGlobalScopes()->where('tenant_id', $tenant->id);
-        $client = PhoneHelper::wherePhone($client, 'phone', $phone)->first();
+        $clientMatch = Client::withoutGlobalScopes()->where('tenant_id', $tenant->id);
+        $clientMatch = PhoneHelper::wherePhone($clientMatch, 'phone', $phone)->first();
 
-        if (!$client) {
-            // Most-recent-sender attribution is a heuristic, not proof this phone belongs
-            // to a Moinfotech customer at all — but if they're replying to something we
-            // genuinely just sent them, self-registration is the reasonable next step
-            // rather than staying silent.
-            $this->startRegistration($tenant, $phone);
-            return response('OK', 200);
-        }
-
-        // Identity is not proven by the phone match alone — ask for the surname registered
-        // with MoBilling before showing any account details, exactly as requested (mirrors
-        // how DStv's own WhatsApp bot verifies before revealing account info).
-        WhatsappRenewalSession::updateOrCreate(
-            ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'items' => null, 'flow' => null, 'state' => null, 'confirmed_at' => null, 'attempts' => 0, 'expires_at' => now()->addMinutes(10)],
-        );
-
-        $this->reply($tenant, $phone,
-            'Karibu MoBilling! Kwa uthibitisho, tafadhali jibu kwa jina lako la ukoo (surname) lililosajiliwa.');
+        // Every fresh contact picks a language first — mirrors the DStv-style bot the
+        // user pointed to — before anything else (registration or identity
+        // verification) happens, in either language from that point on.
+        $this->startLanguageSelect($tenant, $phone, $clientMatch);
 
         return response('OK', 200);
     }
 
-    // ── Identity ─────────────────────────────────────────────────────────
+    // ── Language ─────────────────────────────────────────────────────────
 
-    private function startRegistration(Tenant $tenant, string $phone): void
+    private function startLanguageSelect(Tenant $tenant, string $phone, ?Client $clientMatch): void
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => null, 'flow' => 'register', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => null, 'attempts' => 0, 'expires_at' => now()->addMinutes(10)],
+            [
+                'client_id' => $clientMatch?->id,
+                'flow' => 'language_select',
+                'state' => ['next' => $clientMatch ? 'surname' : 'register'],
+                'items' => null,
+                'language' => null,
+                'confirmed_at' => null,
+                'attempts' => 0,
+                'expires_at' => now()->addMinutes(10),
+            ],
         );
 
-        $this->reply($tenant, $phone, 'Karibu MoBilling! Bado hujasajiliwa. Tafadhali andika jina lako kamili (jina la kwanza na la ukoo) kujisajili.');
+        $this->reply($tenant, $phone,
+            'Karibu MoBilling! Please select your preferred language to continue. Tafadhali chagua lugha: 1) English  2) Kiswahili');
+    }
+
+    private function handleLanguageStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
+    {
+        $lang = match (true) {
+            (bool) preg_match('/^\s*1\s*$/', $text) => 'en',
+            (bool) preg_match('/^\s*2\s*$/', $text) => 'sw',
+            (bool) preg_match('/english/i', $text) => 'en',
+            (bool) preg_match('/swahili|kiswahili/i', $text) => 'sw',
+            default => null,
+        };
+
+        if (!$lang) {
+            $this->reply($tenant, $phone, 'Please reply 1 for English or 2 for Kiswahili. Tafadhali jibu 1 kwa English au 2 kwa Kiswahili.');
+            return;
+        }
+
+        $next = $session->state['next'] ?? 'register';
+        $session->update(['language' => $lang]);
+
+        $client = $next === 'surname' ? Client::withoutGlobalScopes()->find($session->client_id) : null;
+
+        if (!$client) {
+            $this->startRegistration($tenant, $phone, $lang);
+            return;
+        }
+
+        $session->update(['flow' => null, 'state' => null]);
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Karibu MoBilling! Kwa uthibitisho, tafadhali jibu kwa jina lako la ukoo (surname) lililosajiliwa.',
+            'Welcome to MoBilling! For verification, please reply with the surname registered with your account.'
+        ));
+    }
+
+    // ── Identity ─────────────────────────────────────────────────────────
+
+    private function startRegistration(Tenant $tenant, string $phone, string $lang): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => null, 'flow' => 'register', 'language' => $lang, 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => null, 'attempts' => 0, 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Bado hujasajiliwa. Tafadhali andika jina lako kamili (jina la kwanza na la ukoo) kujisajili.',
+            "You're not registered with us yet. Please reply with your full name (first and last) to register."
+        ));
     }
 
     private function handleRegistrationStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
     {
+        $lang = $session->language ?? 'sw';
         $name = trim(preg_replace('/\s+/', ' ', $text));
 
         if (mb_strlen($name) < 3 || !str_contains($name, ' ')) {
-            $this->reply($tenant, $phone, 'Tafadhali andika jina lako kamili (jina la kwanza na la ukoo), mfano: Juma Pesa.');
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Tafadhali andika jina lako kamili (jina la kwanza na la ukoo), mfano: Juma Pesa.',
+                'Please reply with your full name (first and last), e.g. Juma Pesa.'
+            ));
             return;
         }
 
@@ -189,28 +251,35 @@ class WhatsappRenewalWebhookController extends Controller
 
         $session->update(['client_id' => $client->id, 'flow' => null, 'state' => null, 'confirmed_at' => now(), 'items' => null, 'expires_at' => now()->addMinutes(10)]);
 
-        $this->reply($tenant, $phone, "Asante {$name}! Umesajiliwa MoBilling.");
-        $this->sendRootMenu($tenant, $client, $phone);
+        $this->reply($tenant, $phone, $this->t($lang, "Asante {$name}! Umesajiliwa MoBilling.", "Thank you, {$name}! You're now registered with MoBilling."));
+        $this->sendRootMenu($tenant, $client, $phone, $lang);
     }
 
     private function handleSurnameStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
     {
+        $lang = $session->language ?? 'sw';
         $client = Client::withoutGlobalScopes()->find($session->client_id);
 
         if ($client && $this->surnameMatches($client, $text)) {
             $session->update(['confirmed_at' => now()]);
-            $this->sendRootMenu($tenant, $client, $phone);
+            $this->sendRootMenu($tenant, $client, $phone, $lang);
             return;
         }
 
         if ($session->attempts >= 2) {
             $session->delete();
-            $this->reply($tenant, $phone, 'Samahani, hatujaweza kuthibitisha jina lako. Tafadhali wasiliana nasi kwa msaada.');
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, hatujaweza kuthibitisha jina lako. Tafadhali wasiliana nasi kwa msaada.',
+                "Sorry, we couldn't verify your name. Please contact us for help."
+            ));
             return;
         }
 
         $session->increment('attempts');
-        $this->reply($tenant, $phone, 'Samahani, jina hilo halifanani na tulilonalo. Tafadhali jaribu tena — jina la ukoo (surname) lililosajiliwa MoBilling.');
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Samahani, jina hilo halifanani na tulilonalo. Tafadhali jaribu tena — jina la ukoo (surname) lililosajiliwa MoBilling.',
+            "Sorry, that doesn't match what we have. Please try again — the surname registered with MoBilling."
+        ));
     }
 
     /** Loosely matches typed text against the client's last name, or any word in their full name. */
@@ -251,33 +320,49 @@ class WhatsappRenewalWebhookController extends Controller
         return [$tenant, $account];
     }
 
+    /** sw/en text picker — the one place every bilingual message goes through. */
+    private function t(string $lang, string $sw, string $en): string
+    {
+        return $lang === 'en' ? $en : $sw;
+    }
+
     // ── Root menu ────────────────────────────────────────────────────────
 
     /**
      * Once verified, a client stays recognised on this phone for 30 days
      * (reset on every reply while idle at the root menu) — surname
-     * verification only happens once, not on every message, until they
-     * explicitly log out (option 0) or 30 days of inactivity pass.
+     * verification (and language choice) only happen once, not on every
+     * message, until they explicitly log out (option 0) or 30 days of
+     * inactivity pass.
      */
-    private function sendRootMenu(Tenant $tenant, Client $client, string $phone): void
+    private function sendRootMenu(Tenant $tenant, Client $client, string $phone, string $lang): void
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => null, 'state' => null, 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addDays(30)],
+            ['client_id' => $client->id, 'flow' => null, 'state' => null, 'items' => null, 'language' => $lang, 'confirmed_at' => now(), 'expires_at' => now()->addDays(30)],
         );
 
-        $this->reply($tenant, $phone,
+        $this->reply($tenant, $phone, $this->t($lang,
             "Habari {$client->name}! Chagua huduma: "
-            . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
-            . '4) Business Email Hosting · 5) Angalia na Lipa Invoice · '
-            . '6) WHOIS ya Domain · 7) Angalia kama Domain Inapatikana · '
-            . '0) Toka (Logout). Jibu na namba.');
+                . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
+                . '4) Business Email Hosting · 5) Angalia na Lipa Invoice · '
+                . '6) WHOIS ya Domain · 7) Angalia kama Domain Inapatikana · '
+                . '0) Toka (Logout). Jibu na namba.',
+            "Hi {$client->name}! Choose a service: "
+                . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
+                . '4) Business Email Hosting · 5) View and Pay Invoices · '
+                . '6) Domain WHOIS · 7) Check Domain Availability · '
+                . '0) Logout. Reply with a number.'
+        ));
     }
 
-    private function logout(Tenant $tenant, string $phone): void
+    private function logout(Tenant $tenant, string $phone, string $lang): void
     {
         WhatsappRenewalSession::where('tenant_id', $tenant->id)->where('phone', $phone)->delete();
-        $this->reply($tenant, $phone, 'Umetoka kwenye akaunti yako. Tuma ujumbe wowote kuingia tena.');
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Umetoka kwenye akaunti yako. Tuma ujumbe wowote kuingia tena.',
+            "You've been logged out. Send any message to sign in again."
+        ));
     }
 
     /**
@@ -286,30 +371,30 @@ class WhatsappRenewalWebhookController extends Controller
      * lookup or an order had no visible way back to the menu except
      * re-verifying their surname from scratch (reported live).
      */
-    private function finishFlow(Tenant $tenant, Client $client, string $phone, string $message): void
+    private function finishFlow(Tenant $tenant, Client $client, string $phone, string $message, string $lang): void
     {
         $this->reply($tenant, $phone, $message);
-        $this->sendRootMenu($tenant, $client, $phone);
+        $this->sendRootMenu($tenant, $client, $phone, $lang);
     }
 
-    private function handleRootStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, RenewalBundleService $bundler): void
+    private function handleRootStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, RenewalBundleService $bundler, string $lang): void
     {
         // Renewal picker already active (items populated by sendMenu()): a digit picks one.
         if (!empty($session->items) && preg_match('/^\s*([1-9])\s*$/', $text, $m)) {
-            $this->pickAndGenerate($tenant, $client, $phone, $session, (int) $m[1], $bundler);
+            $this->pickAndGenerate($tenant, $client, $phone, $session, (int) $m[1], $bundler, $lang);
             return;
         }
 
         match (true) {
-            (bool) preg_match('/^\s*0\s*$/', $text) => $this->logout($tenant, $phone),
-            (bool) preg_match('/^\s*1\s*$/', $text) => $this->startOrderDomain($tenant, $client, $phone),
-            (bool) preg_match('/^\s*2\s*$/', $text) => $this->sendMenu($tenant, $client, $phone, $bundler),
-            (bool) preg_match('/^\s*3\s*$/', $text) => $this->startOrderHosting($tenant, $client, $phone, 'Web Hosting'),
-            (bool) preg_match('/^\s*4\s*$/', $text) => $this->startOrderHosting($tenant, $client, $phone, 'Business E-mail'),
-            (bool) preg_match('/^\s*5\s*$/', $text) => $this->startPayInvoice($tenant, $client, $phone),
-            (bool) preg_match('/^\s*6\s*$/', $text) => $this->startWhois($tenant, $client, $phone),
-            (bool) preg_match('/^\s*7\s*$/', $text) => $this->startCheckAvailability($tenant, $client, $phone),
-            default => $this->sendRootMenu($tenant, $client, $phone),
+            (bool) preg_match('/^\s*0\s*$/', $text) => $this->logout($tenant, $phone, $lang),
+            (bool) preg_match('/^\s*1\s*$/', $text) => $this->startOrderDomain($tenant, $client, $phone, $lang),
+            (bool) preg_match('/^\s*2\s*$/', $text) => $this->sendMenu($tenant, $client, $phone, $bundler, $lang),
+            (bool) preg_match('/^\s*3\s*$/', $text) => $this->startOrderHosting($tenant, $client, $phone, 'Web Hosting', $lang),
+            (bool) preg_match('/^\s*4\s*$/', $text) => $this->startOrderHosting($tenant, $client, $phone, 'Business E-mail', $lang),
+            (bool) preg_match('/^\s*5\s*$/', $text) => $this->startPayInvoice($tenant, $client, $phone, $lang),
+            (bool) preg_match('/^\s*6\s*$/', $text) => $this->startWhois($tenant, $client, $phone, $lang),
+            (bool) preg_match('/^\s*7\s*$/', $text) => $this->startCheckAvailability($tenant, $client, $phone, $lang),
+            default => $this->sendRootMenu($tenant, $client, $phone, $lang),
         };
     }
 
@@ -320,7 +405,7 @@ class WhatsappRenewalWebhookController extends Controller
      * ones actually due (billable) so a reply digit stays unambiguous; the rest are
      * shown for information only.
      */
-    private function sendMenu(Tenant $tenant, Client $client, string $phone, RenewalBundleService $bundler): void
+    private function sendMenu(Tenant $tenant, Client $client, string $phone, RenewalBundleService $bundler, string $lang): void
     {
         $domains = Domain::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
@@ -355,15 +440,18 @@ class WhatsappRenewalWebhookController extends Controller
                 // artifacts), and showing the domain's date here has read as a
                 // contradiction ("needs payment" next to an expiry a year out).
                 $dueDate = collect($billable)->pluck('expire_date')->filter()->min()?->format('d M Y') ?? '—';
-                $lines[] = count($items) . ". {$domain->name} — {$what} inahitaji malipo (deadline {$dueDate})";
+                $lines[] = count($items) . ". {$domain->name} — {$what} " . $this->t($lang, "inahitaji malipo (deadline {$dueDate})", "payment due (deadline {$dueDate})");
             } else {
                 $expires = $domain->expires_at?->format('d M Y') ?? '—';
-                $lines[] = "• {$domain->name} — inaisha {$expires}, hakuna malipo yanayohitajika sasa";
+                $lines[] = "• {$domain->name} — " . $this->t($lang, "inaisha {$expires}, hakuna malipo yanayohitajika sasa", "expires {$expires}, nothing due right now");
             }
         }
 
         if ($domains->isEmpty()) {
-            $this->finishFlow($tenant, $client, $phone, "Habari {$client->name}, huna huduma yoyote iliyosajiliwa kwa sasa. Asante!");
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                "Habari {$client->name}, huna huduma yoyote iliyosajiliwa kwa sasa. Asante!",
+                "Hi {$client->name}, you don't have any services registered with us yet. Thanks!"
+            ), $lang);
             return;
         }
 
@@ -372,27 +460,27 @@ class WhatsappRenewalWebhookController extends Controller
             ['client_id' => $client->id, 'items' => $items, 'flow' => null, 'state' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(30)],
         );
 
-        $this->reply($tenant, $phone,
-            "Habari {$client->name}, huduma zako: "
-            . implode(' · ', $lines)
-            . (!empty($items) ? '. Jibu na namba kulipia huduma inayohitaji malipo.' : '.'));
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Habari {$client->name}, huduma zako: " . implode(' · ', $lines) . (!empty($items) ? '. Jibu na namba kulipia huduma inayohitaji malipo.' : '.'),
+            "Hi {$client->name}, your services: " . implode(' · ', $lines) . (!empty($items) ? '. Reply with a number to pay for a due service.' : '.')
+        ));
     }
 
     /** Picks items[$position-1] out of $session and bills it, or replies with why it can't. */
-    private function pickAndGenerate(Tenant $tenant, ?Client $client, string $phone, WhatsappRenewalSession $session, int $position, RenewalBundleService $bundler): void
+    private function pickAndGenerate(Tenant $tenant, ?Client $client, string $phone, WhatsappRenewalSession $session, int $position, RenewalBundleService $bundler, string $lang): void
     {
         $domainId = $session->items[$position - 1] ?? null;
         $client ??= Client::withoutGlobalScopes()->find($session->client_id);
         $session->delete();
 
         if (!$domainId) {
-            $this->replyOrFinish($tenant, $client, $phone, 'Samahani, chaguo hilo silo sahihi. Tafadhali jaribu tena.');
+            $this->replyOrFinish($tenant, $client, $phone, $this->t($lang, 'Samahani, chaguo hilo silo sahihi. Tafadhali jaribu tena.', 'Sorry, that choice is not valid. Please try again.'), $lang);
             return;
         }
 
         $domain = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($domainId);
         if (!$domain) {
-            $this->replyOrFinish($tenant, $client, $phone, 'Samahani, huduma hii haipatikani tena. Tafadhali wasiliana nasi.');
+            $this->replyOrFinish($tenant, $client, $phone, $this->t($lang, 'Samahani, huduma hii haipatikani tena. Tafadhali wasiliana nasi.', 'Sorry, this service is no longer available. Please contact us.'), $lang);
             return;
         }
 
@@ -407,21 +495,21 @@ class WhatsappRenewalWebhookController extends Controller
                 'domain' => $domain->name,
             ]), selfService: true);
         } catch (\Throwable $e) {
-            $this->replyOrFinish($tenant, $client, $phone, "Samahani, {$e->getMessage()}");
+            $this->replyOrFinish($tenant, $client, $phone, $this->t($lang, "Samahani, {$e->getMessage()}", "Sorry, {$e->getMessage()}"), $lang);
             return;
         }
 
-        $this->replyWithInvoice($tenant, $phone, $document);
+        $this->replyWithInvoice($tenant, $phone, $document, $lang);
         if ($client) {
-            $this->sendRootMenu($tenant, $client, $phone);
+            $this->sendRootMenu($tenant, $client, $phone, $lang);
         }
     }
 
     /** finishFlow() when a client is known (returns to the root menu), a plain reply otherwise. */
-    private function replyOrFinish(Tenant $tenant, ?Client $client, string $phone, string $message): void
+    private function replyOrFinish(Tenant $tenant, ?Client $client, string $phone, string $message, string $lang): void
     {
         if ($client) {
-            $this->finishFlow($tenant, $client, $phone, $message);
+            $this->finishFlow($tenant, $client, $phone, $message, $lang);
         } else {
             $this->reply($tenant, $phone, $message);
         }
@@ -429,17 +517,20 @@ class WhatsappRenewalWebhookController extends Controller
 
     // ── New domain registration ─────────────────────────────────────────
 
-    private function startOrderDomain(Tenant $tenant, Client $client, string $phone): void
+    private function startOrderDomain(Tenant $tenant, Client $client, string $phone, string $lang): void
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
             ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
         );
 
-        $this->reply($tenant, $phone, 'Andika jina la domain unalotaka kusajili (mfano: jinalako.co.tz).');
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Andika jina la domain unalotaka kusajili (mfano: jinalako.co.tz).',
+            'Please reply with the domain name you want to register (e.g. yourname.co.tz).'
+        ));
     }
 
-    private function handleOrderDomainStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text): void
+    private function handleOrderDomainStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
     {
         $state = $session->state ?? [];
         $step = $state['step'] ?? 'ask_name';
@@ -447,7 +538,10 @@ class WhatsappRenewalWebhookController extends Controller
         if ($step === 'ask_name') {
             $name = strtolower(trim($text));
             if (!preg_match('/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/', $name)) {
-                $this->reply($tenant, $phone, 'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako.co.tz');
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako.co.tz',
+                    "Sorry, that doesn't look like a valid domain. Reply like: yourname.co.tz"
+                ));
                 return;
             }
 
@@ -455,12 +549,18 @@ class WhatsappRenewalWebhookController extends Controller
             $pricing = $tld ? DomainTld::priceFor($tenant->id, $tld) : null;
 
             if (!$pricing || $pricing->is_unmanaged) {
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, aina hii ya domain haiwezi kusajiliwa papo hapo kwa sasa. Tafadhali wasiliana nasi.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                    'Samahani, aina hii ya domain haiwezi kusajiliwa papo hapo kwa sasa. Tafadhali wasiliana nasi.',
+                    "Sorry, this domain type can't be registered instantly right now. Please contact us."
+                ), $lang);
                 return;
             }
 
             if (Domain::withoutGlobalScopes()->where('name', $name)->whereNotIn('status', ['cancelled', 'transferred_out'])->exists()) {
-                $this->reply($tenant, $phone, "Samahani, {$name} tayari imesajiliwa nasi. Andika jina lingine.");
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Samahani, {$name} tayari imesajiliwa nasi. Andika jina lingine.",
+                    "Sorry, {$name} is already registered with us. Please try another name."
+                ));
                 return;
             }
 
@@ -468,24 +568,33 @@ class WhatsappRenewalWebhookController extends Controller
                 $availability = app(DomainRegistrarManager::class)->driverFor($tenant->id)->check($name);
             } catch (\Throwable $e) {
                 Log::warning('WhatsApp order_domain availability check failed', ['name' => $name, 'error' => $e->getMessage()]);
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, imeshindikana kuangalia upatikanaji wa domain hii sasa hivi. Jaribu tena baadaye.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                    'Samahani, imeshindikana kuangalia upatikanaji wa domain hii sasa hivi. Jaribu tena baadaye.',
+                    "Sorry, we couldn't check this domain's availability right now. Please try again later."
+                ), $lang);
                 return;
             }
 
             if (!($availability['available'] ?? false)) {
-                $this->reply($tenant, $phone, "Samahani, {$name} tayari imesajiliwa na mwenyewe. Andika jina lingine.");
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Samahani, {$name} tayari imesajiliwa na mwenyewe. Andika jina lingine.",
+                    "Sorry, {$name} is already registered by someone else. Please try another name."
+                ));
                 return;
             }
 
             $price = (float) $pricing->register_price;
             $session->update(['state' => ['step' => 'confirm', 'domain' => $name, 'price' => $price]]);
-            $this->reply($tenant, $phone, "Domain {$name} inapatikana! Bei: TZS " . number_format($price) . ' kwa mwaka 1. Jibu NDIYO kuagiza.');
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Domain {$name} inapatikana! Bei: TZS " . number_format($price) . ' kwa mwaka 1. Jibu NDIYO kuagiza.',
+                "Domain {$name} is available! Price: TZS " . number_format($price) . ' for 1 year. Reply YES to order.'
+            ));
             return;
         }
 
         if ($step === 'confirm') {
-            if (!preg_match('/^\s*ndiyo\s*$/i', $text)) {
-                $this->finishFlow($tenant, $client, $phone, 'Sawa, agizo limesitishwa.');
+            if (!preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Sawa, agizo limesitishwa.', 'Okay, the order was cancelled.'), $lang);
                 return;
             }
 
@@ -493,7 +602,7 @@ class WhatsappRenewalWebhookController extends Controller
             $price = $state['price'] ?? null;
 
             if (!$domain || !$price) {
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
                 return;
             }
 
@@ -501,11 +610,11 @@ class WhatsappRenewalWebhookController extends Controller
                 $document = $this->createDomainOrder($tenant, $client, $domain, (float) $price);
             } catch (\Throwable $e) {
                 Log::error('WhatsApp order_domain order creation failed', ['domain' => $domain, 'error' => $e->getMessage()]);
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
                 return;
             }
 
-            $this->replyWithInvoice($tenant, $phone, $document);
+            $this->replyWithInvoice($tenant, $phone, $document, $lang);
 
             // Continue straight into ordering hosting for the same domain, per request
             // ("agiza domain mpya mpaka ku-provision hosting") — a separate invoice
@@ -515,21 +624,24 @@ class WhatsappRenewalWebhookController extends Controller
             // → ProvisionHostingAccount), unchanged — this just removes the need to
             // start a second conversation to get there.
             $session->update(['state' => ['step' => 'offer_hosting', 'domain' => $domain]]);
-            $this->reply($tenant, $phone, "Je, unataka pia Website Hosting kwenye {$domain}? Jibu NDIYO kuendelea, au namba nyingine kuruka.");
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Je, unataka pia Website Hosting kwenye {$domain}? Jibu NDIYO kuendelea, au namba nyingine kuruka.",
+                "Would you also like Website Hosting on {$domain}? Reply YES to continue, or any other number to skip."
+            ));
             return;
         }
 
         if ($step === 'offer_hosting') {
-            if (preg_match('/^\s*ndiyo\s*$/i', $text)) {
-                $this->startOrderHosting($tenant, $client, $phone, 'Web Hosting', $state['domain'] ?? null);
+            if (preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+                $this->startOrderHosting($tenant, $client, $phone, 'Web Hosting', $lang, $state['domain'] ?? null);
                 return;
             }
 
-            $this->sendRootMenu($tenant, $client, $phone);
+            $this->sendRootMenu($tenant, $client, $phone, $lang);
             return;
         }
 
-        $this->finishFlow($tenant, $client, $phone, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.');
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
     }
 
     /** Mirrors PortalDomainController::order()'s register path exactly. */
@@ -601,7 +713,7 @@ class WhatsappRenewalWebhookController extends Controller
     // ── New hosting / business email orders ─────────────────────────────
 
     /** $prefilledDomain: set when continuing straight from a just-placed domain order — skips ask_domain. */
-    private function startOrderHosting(Tenant $tenant, Client $client, string $phone, string $category, ?string $prefilledDomain = null): void
+    private function startOrderHosting(Tenant $tenant, Client $client, string $phone, string $category, string $lang, ?string $prefilledDomain = null): void
     {
         $plans = ProductService::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
@@ -614,7 +726,7 @@ class WhatsappRenewalWebhookController extends Controller
             ->get();
 
         if ($plans->isEmpty()) {
-            $this->finishFlow($tenant, $client, $phone, 'Samahani, hakuna vifurushi vinavyopatikana kwa sasa. Tafadhali wasiliana nasi.');
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, hakuna vifurushi vinavyopatikana kwa sasa. Tafadhali wasiliana nasi.', 'Sorry, no plans are available right now. Please contact us.'), $lang);
             return;
         }
 
@@ -630,10 +742,13 @@ class WhatsappRenewalWebhookController extends Controller
             ['client_id' => $client->id, 'flow' => 'order_hosting', 'state' => ['step' => 'pick_plan', 'category' => $category, 'plan_ids' => $planIds, 'domain' => $prefilledDomain], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
         );
 
-        $this->reply($tenant, $phone, 'Chagua kifurushi: ' . implode(' · ', $lines) . '. Jibu na namba.');
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Chagua kifurushi: ' . implode(' · ', $lines) . '. Jibu na namba.',
+            'Choose a plan: ' . implode(' · ', $lines) . '. Reply with a number.'
+        ));
     }
 
-    private function handleOrderHostingStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text): void
+    private function handleOrderHostingStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
     {
         $state = $session->state ?? [];
         $step = $state['step'] ?? 'pick_plan';
@@ -643,10 +758,10 @@ class WhatsappRenewalWebhookController extends Controller
         // either continue or look at a different numbered option instead.
         if ($step === 'pick_plan' || $step === 'plan_details') {
             if (!preg_match('/^\s*([1-9])\s*$/', $text, $m) || empty($state['plan_ids'][$m[1] - 1])) {
-                if ($step === 'plan_details' && preg_match('/^\s*ndiyo\s*$/i', $text)) {
+                if ($step === 'plan_details' && preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
                     $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['product_service_id'] ?? null);
                     if (!$plan) {
-                        $this->finishFlow($tenant, $client, $phone, 'Samahani, kifurushi hicho hakipatikani tena. Tafadhali jaribu tena.');
+                        $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kifurushi hicho hakipatikani tena. Tafadhali jaribu tena.', 'Sorry, that plan is no longer available. Please try again.'), $lang);
                         return;
                     }
 
@@ -654,59 +769,76 @@ class WhatsappRenewalWebhookController extends Controller
                     // skip straight to confirming instead of asking for it again.
                     if (!empty($state['domain'])) {
                         $session->update(['state' => array_merge($state, ['step' => 'confirm', 'product_service_id' => $plan->id])]);
-                        $this->reply($tenant, $phone,
-                            "Thibitisha: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$state['domain']}. Jibu NDIYO kuagiza.");
+                        $this->reply($tenant, $phone, $this->t($lang,
+                            "Thibitisha: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$state['domain']}. Jibu NDIYO kuagiza.",
+                            "Confirm: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$state['domain']}. Reply YES to order."
+                        ));
                         return;
                     }
 
                     $session->update(['state' => array_merge($state, ['step' => 'ask_domain', 'product_service_id' => $plan->id])]);
-                    $this->reply($tenant, $phone, "Umechagua {$plan->name}. Andika jina la domain la huduma hii (lililopo tayari).");
+                    $this->reply($tenant, $phone, $this->t($lang,
+                        "Umechagua {$plan->name}. Andika jina la domain la huduma hii (lililopo tayari).",
+                        "You've chosen {$plan->name}. Please reply with the domain name for this service (one you already have)."
+                    ));
                     return;
                 }
 
-                $this->reply($tenant, $phone, 'Samahani, chagua namba sahihi kutoka kwenye orodha, au jibu NDIYO kuendelea na kifurushi ulichokwishachagua.');
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, chagua namba sahihi kutoka kwenye orodha, au jibu NDIYO kuendelea na kifurushi ulichokwishachagua.',
+                    'Sorry, please choose a valid number from the list, or reply YES to continue with the plan you already picked.'
+                ));
                 return;
             }
 
             $planId = $state['plan_ids'][$m[1] - 1];
             $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($planId);
             if (!$plan) {
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, kifurushi hicho hakipatikani tena. Tafadhali jaribu tena.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kifurushi hicho hakipatikani tena. Tafadhali jaribu tena.', 'Sorry, that plan is no longer available. Please try again.'), $lang);
                 return;
             }
 
             $session->update(['state' => array_merge($state, ['step' => 'plan_details', 'product_service_id' => $plan->id])]);
 
             $specs = trim((string) $plan->description) !== '' ? str_replace(["\r\n", "\n"], ' · ', trim($plan->description)) : null;
-            $this->reply($tenant, $phone,
+            $this->reply($tenant, $phone, $this->t($lang,
                 "{$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}"
-                . ($specs ? ". {$specs}" : '')
-                . '. Jibu NDIYO kuagiza hiki, au chagua namba nyingine kutoka kwenye orodha ya awali.');
+                    . ($specs ? ". {$specs}" : '')
+                    . '. Jibu NDIYO kuagiza hiki, au chagua namba nyingine kutoka kwenye orodha ya awali.',
+                "{$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}"
+                    . ($specs ? ". {$specs}" : '')
+                    . '. Reply YES to order this, or choose another number from the earlier list.'
+            ));
             return;
         }
 
         if ($step === 'ask_domain') {
             $name = strtolower(trim($text));
             if (!preg_match('/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/', $name)) {
-                $this->reply($tenant, $phone, 'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako.co.tz');
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako.co.tz',
+                    "Sorry, that doesn't look like a valid domain. Reply like: yourname.co.tz"
+                ));
                 return;
             }
 
             $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['product_service_id'] ?? null);
             if (!$plan) {
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
                 return;
             }
 
             $session->update(['state' => array_merge($state, ['step' => 'confirm', 'domain' => $name])]);
-            $this->reply($tenant, $phone,
-                "Thibitisha: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$name}. Jibu NDIYO kuagiza.");
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Thibitisha: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$name}. Jibu NDIYO kuagiza.",
+                "Confirm: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$name}. Reply YES to order."
+            ));
             return;
         }
 
         if ($step === 'confirm') {
-            if (!preg_match('/^\s*ndiyo\s*$/i', $text)) {
-                $this->finishFlow($tenant, $client, $phone, 'Sawa, agizo limesitishwa.');
+            if (!preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Sawa, agizo limesitishwa.', 'Okay, the order was cancelled.'), $lang);
                 return;
             }
 
@@ -714,7 +846,7 @@ class WhatsappRenewalWebhookController extends Controller
             $domain = $state['domain'] ?? null;
 
             if (!$plan || !$domain) {
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
                 return;
             }
 
@@ -722,16 +854,16 @@ class WhatsappRenewalWebhookController extends Controller
                 $document = $this->createHostingOrder($tenant, $client, $plan, $domain);
             } catch (\Throwable $e) {
                 Log::error('WhatsApp order_hosting order creation failed', ['plan_id' => $plan->id, 'domain' => $domain, 'error' => $e->getMessage()]);
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
                 return;
             }
 
-            $this->replyWithInvoice($tenant, $phone, $document);
-            $this->sendRootMenu($tenant, $client, $phone);
+            $this->replyWithInvoice($tenant, $phone, $document, $lang);
+            $this->sendRootMenu($tenant, $client, $phone, $lang);
             return;
         }
 
-        $this->finishFlow($tenant, $client, $phone, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.');
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
     }
 
     /**
@@ -795,7 +927,7 @@ class WhatsappRenewalWebhookController extends Controller
 
     // ── Unpaid invoices ──────────────────────────────────────────────────
 
-    private function startPayInvoice(Tenant $tenant, Client $client, string $phone): void
+    private function startPayInvoice(Tenant $tenant, Client $client, string $phone, string $lang): void
     {
         $invoices = Document::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
@@ -807,7 +939,10 @@ class WhatsappRenewalWebhookController extends Controller
             ->get();
 
         if ($invoices->isEmpty()) {
-            $this->finishFlow($tenant, $client, $phone, "Habari {$client->name}, huna invoice yoyote isiyolipwa kwa sasa. Asante!");
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                "Habari {$client->name}, huna invoice yoyote isiyolipwa kwa sasa. Asante!",
+                "Hi {$client->name}, you have no unpaid invoices right now. Thanks!"
+            ), $lang);
             return;
         }
 
@@ -825,30 +960,35 @@ class WhatsappRenewalWebhookController extends Controller
             ['client_id' => $client->id, 'flow' => 'pay_invoice', 'state' => ['step' => 'pick_invoice', 'doc_ids' => $docIds], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
         );
 
-        $this->reply($tenant, $phone, 'Invoice zako zisizolipwa: ' . implode(' · ', $lines) . '. Jibu na namba kuchagua.');
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Invoice zako zisizolipwa: ' . implode(' · ', $lines) . '. Jibu na namba kuchagua.',
+            'Your unpaid invoices: ' . implode(' · ', $lines) . '. Reply with a number to choose.'
+        ));
     }
 
-    private function handlePayInvoiceStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text): void
+    private function handlePayInvoiceStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
     {
         $state = $session->state ?? [];
         $step = $state['step'] ?? 'pick_invoice';
 
         if ($step === 'pick_invoice') {
             if (!preg_match('/^\s*([1-9])\s*$/', $text, $m) || empty($state['doc_ids'][$m[1] - 1])) {
-                $this->reply($tenant, $phone, 'Samahani, chagua namba sahihi kutoka kwenye orodha.');
+                $this->reply($tenant, $phone, $this->t($lang, 'Samahani, chagua namba sahihi kutoka kwenye orodha.', 'Sorry, please choose a valid number from the list.'));
                 return;
             }
 
             $docId = $state['doc_ids'][$m[1] - 1];
             $doc = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($docId);
             if (!$doc) {
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, invoice hiyo haipatikani tena. Tafadhali jaribu tena.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, invoice hiyo haipatikani tena. Tafadhali jaribu tena.', 'Sorry, that invoice is no longer available. Please try again.'), $lang);
                 return;
             }
 
             $session->update(['state' => ['step' => 'choose_method', 'document_id' => $doc->id]]);
-            $this->reply($tenant, $phone,
-                "Invoice {$doc->document_number} — TZS " . number_format((float) $doc->balance_due) . '. Chagua njia ya kulipa: 1) Online (Pesapal) · 2) Maelezo ya kulipa (Benki/Lipa Namba). Jibu na namba.');
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Invoice {$doc->document_number} — TZS " . number_format((float) $doc->balance_due) . '. Chagua njia ya kulipa: 1) Online (Pesapal) · 2) Maelezo ya kulipa (Benki/Lipa Namba). Jibu na namba.',
+                "Invoice {$doc->document_number} — TZS " . number_format((float) $doc->balance_due) . '. Choose how to pay: 1) Online (Pesapal) · 2) Payment details (Bank/mobile money). Reply with a number.'
+            ));
             return;
         }
 
@@ -856,38 +996,41 @@ class WhatsappRenewalWebhookController extends Controller
             $doc = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['document_id'] ?? null);
 
             if (!$doc) {
-                $this->finishFlow($tenant, $client, $phone, 'Samahani, invoice hiyo haipatikani tena. Tafadhali jaribu tena.');
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, invoice hiyo haipatikani tena. Tafadhali jaribu tena.', 'Sorry, that invoice is no longer available. Please try again.'), $lang);
                 return;
             }
 
             if (preg_match('/^\s*1\s*$/', $text)) {
                 if (!$tenant->pesapal_enabled || !$tenant->pesapal_consumer_key) {
-                    $this->reply($tenant, $phone, 'Samahani, malipo ya online hayapatikani kwa sasa. Tuma tena na uchague namba 2 kwa maelezo ya benki.');
+                    $this->reply($tenant, $phone, $this->t($lang,
+                        'Samahani, malipo ya online hayapatikani kwa sasa. Tuma tena na uchague namba 2 kwa maelezo ya benki.',
+                        "Sorry, online payment isn't available right now. Send again and choose 2 for bank details."
+                    ));
                     return;
                 }
                 try {
                     $redirectUrl = $this->pesapalCheckout($tenant, $doc);
-                    $this->finishFlow($tenant, $client, $phone, "Lipa hapa: {$redirectUrl}");
+                    $this->finishFlow($tenant, $client, $phone, $this->t($lang, "Lipa hapa: {$redirectUrl}", "Pay here: {$redirectUrl}"), $lang);
                 } catch (\Throwable $e) {
                     Log::warning('WhatsApp pay_invoice Pesapal checkout failed', ['document_id' => $doc->id, 'error' => $e->getMessage()]);
-                    $this->finishFlow($tenant, $client, $phone, 'Samahani, imeshindikana kutengeneza link ya kulipa. Tafadhali jaribu tena baadaye.');
+                    $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza link ya kulipa. Tafadhali jaribu tena baadaye.', "Sorry, we couldn't create a payment link. Please try again later."), $lang);
                 }
                 return;
             }
 
             if (preg_match('/^\s*2\s*$/', $text)) {
-                $this->finishFlow($tenant, $client, $phone, $this->paymentDetailsText($tenant));
+                $this->finishFlow($tenant, $client, $phone, $this->paymentDetailsText($tenant, $lang), $lang);
                 return;
             }
 
-            $this->finishFlow($tenant, $client, $phone, 'Samahani, sikuelewa.');
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, sikuelewa.', "Sorry, I didn't understand that."), $lang);
             return;
         }
 
-        $this->finishFlow($tenant, $client, $phone, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.');
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
     }
 
-    private function paymentDetailsText(Tenant $tenant): string
+    private function paymentDetailsText(Tenant $tenant, string $lang): string
     {
         $bank = trim(implode(' · ', array_filter([
             $tenant->bank_name ? "Benki: {$tenant->bank_name}" : null,
@@ -896,28 +1039,38 @@ class WhatsappRenewalWebhookController extends Controller
             $tenant->payment_instructions ?: null,
         ])));
 
-        return $bank !== '' ? "Lipa kupitia: {$bank}" : 'Tafadhali wasiliana nasi kwa maelezo ya kulipa.';
+        if ($bank === '') {
+            return $this->t($lang, 'Tafadhali wasiliana nasi kwa maelezo ya kulipa.', 'Please contact us for payment details.');
+        }
+
+        return $this->t($lang, "Lipa kupitia: {$bank}", "Pay via: {$bank}");
     }
 
     // ── WHOIS lookup ─────────────────────────────────────────────────────
 
-    private function startWhois(Tenant $tenant, Client $client, string $phone): void
+    private function startWhois(Tenant $tenant, Client $client, string $phone, string $lang): void
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
             ['client_id' => $client->id, 'flow' => 'whois', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
         );
 
-        $this->reply($tenant, $phone, 'Andika jina la domain (.tz) unalotaka kuangalia taarifa zake (mfano: jinalako.co.tz).');
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Andika jina la domain (.tz) unalotaka kuangalia taarifa zake (mfano: jinalako.co.tz).',
+            'Please reply with the .tz domain name you want to look up (e.g. yourname.co.tz).'
+        ));
     }
 
-    private function handleWhoisStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text): void
+    private function handleWhoisStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
     {
         $whois = app(TznicWhoisService::class);
         $name = $whois->normalise(strtolower(trim($text)));
 
         if (!str_ends_with($name, '.tz') || substr_count($name, '.') < 1) {
-            $this->reply($tenant, $phone, 'Samahani, andika jina la domain la .tz, mfano: jinalako.co.tz');
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, andika jina la domain la .tz, mfano: jinalako.co.tz',
+                'Sorry, please reply with a .tz domain name, e.g. yourname.co.tz'
+            ));
             return;
         }
 
@@ -925,41 +1078,47 @@ class WhatsappRenewalWebhookController extends Controller
             $info = $whois->lookup($name);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp WHOIS lookup failed', ['name' => $name, 'error' => $e->getMessage()]);
-            $this->finishFlow($tenant, $client, $phone, 'Samahani, imeshindikana kupata taarifa za domain hii sasa hivi. Jaribu tena baadaye.');
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kupata taarifa za domain hii sasa hivi. Jaribu tena baadaye.', "Sorry, we couldn't fetch this domain's information right now. Please try again later."), $lang);
             return;
         }
 
         if (!($info['found'] ?? false)) {
-            $this->finishFlow($tenant, $client, $phone, "Domain {$name} haijasajiliwa.");
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, "Domain {$name} haijasajiliwa.", "Domain {$name} is not registered."), $lang);
             return;
         }
 
         $this->finishFlow($tenant, $client, $phone, implode(' · ', array_filter([
             "Domain: {$name}",
-            $info['registrar'] ? "Msajili: {$info['registrar']}" : null,
-            $info['registered'] ? "Ilisajiliwa: {$info['registered']}" : null,
-            $info['expire'] ? "Inaisha: {$info['expire']}" : null,
+            $info['registrar'] ? $this->t($lang, "Msajili: {$info['registrar']}", "Registrar: {$info['registrar']}") : null,
+            $info['registered'] ? $this->t($lang, "Ilisajiliwa: {$info['registered']}", "Registered: {$info['registered']}") : null,
+            $info['expire'] ? $this->t($lang, "Inaisha: {$info['expire']}", "Expires: {$info['expire']}") : null,
             !empty($info['nameservers']) ? 'Nameservers: ' . implode(', ', $info['nameservers']) : null,
-        ])));
+        ])), $lang);
     }
 
     // ── Standalone availability check ───────────────────────────────────
 
-    private function startCheckAvailability(Tenant $tenant, Client $client, string $phone): void
+    private function startCheckAvailability(Tenant $tenant, Client $client, string $phone, string $lang): void
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
             ['client_id' => $client->id, 'flow' => 'check_availability', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
         );
 
-        $this->reply($tenant, $phone, 'Andika jina la domain unalotaka kuangalia kama linapatikana (mfano: jinalako.co.tz).');
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Andika jina la domain unalotaka kuangalia kama linapatikana (mfano: jinalako.co.tz).',
+            'Please reply with the domain name you want to check (e.g. yourname.co.tz).'
+        ));
     }
 
-    private function handleCheckAvailabilityStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text): void
+    private function handleCheckAvailabilityStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
     {
         $name = strtolower(trim($text));
         if (!preg_match('/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/', $name)) {
-            $this->reply($tenant, $phone, 'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako.co.tz');
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako.co.tz',
+                "Sorry, that doesn't look like a valid domain. Reply like: yourname.co.tz"
+            ));
             return;
         }
 
@@ -967,7 +1126,7 @@ class WhatsappRenewalWebhookController extends Controller
         $pricing = $tld ? DomainTld::priceFor($tenant->id, $tld) : null;
 
         if (!$pricing || $pricing->is_unmanaged) {
-            $this->finishFlow($tenant, $client, $phone, 'Samahani, hatuwezi kuangalia aina hii ya domain papo hapo. Tafadhali wasiliana nasi.');
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, hatuwezi kuangalia aina hii ya domain papo hapo. Tafadhali wasiliana nasi.', "Sorry, we can't check this domain type instantly. Please contact us."), $lang);
             return;
         }
 
@@ -975,29 +1134,34 @@ class WhatsappRenewalWebhookController extends Controller
             $availability = app(DomainRegistrarManager::class)->driverFor($tenant->id)->check($name);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp check_availability failed', ['name' => $name, 'error' => $e->getMessage()]);
-            $this->finishFlow($tenant, $client, $phone, 'Samahani, imeshindikana kuangalia domain hii sasa hivi. Jaribu tena baadaye.');
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kuangalia domain hii sasa hivi. Jaribu tena baadaye.', "Sorry, we couldn't check this domain right now. Please try again later."), $lang);
             return;
         }
 
         if ($availability['available'] ?? false) {
             $price = number_format((float) $pricing->register_price);
-            $this->finishFlow($tenant, $client, $phone, "Domain {$name} INAPATIKANA! Bei ya kusajili: TZS {$price}/mwaka. Chagua namba 1 kuagiza.");
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                "Domain {$name} INAPATIKANA! Bei ya kusajili: TZS {$price}/mwaka. Chagua namba 1 kuagiza.",
+                "Domain {$name} is AVAILABLE! Registration price: TZS {$price}/year. Choose option 1 to order it."
+            ), $lang);
         } else {
-            $this->finishFlow($tenant, $client, $phone, "Domain {$name} tayari limesajiliwa — halipatikani.");
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, "Domain {$name} tayari limesajiliwa — halipatikani.", "Domain {$name} is already registered — not available."), $lang);
         }
     }
 
     // ── Payment ──────────────────────────────────────────────────────────
 
-    private function replyWithInvoice(Tenant $tenant, string $phone, Document $document): void
+    private function replyWithInvoice(Tenant $tenant, string $phone, Document $document, string $lang): void
     {
         $total = number_format((float) $document->total);
 
         if ($tenant->pesapal_enabled && $tenant->pesapal_consumer_key) {
             try {
                 $redirectUrl = $this->pesapalCheckout($tenant, $document);
-                $this->reply($tenant, $phone,
-                    "Invoice {$document->document_number} — TZS {$total}. Lipa hapa: {$redirectUrl}");
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Invoice {$document->document_number} — TZS {$total}. Lipa hapa: {$redirectUrl}",
+                    "Invoice {$document->document_number} — TZS {$total}. Pay here: {$redirectUrl}"
+                ));
                 return;
             } catch (\Throwable $e) {
                 Log::warning('WhatsApp Pesapal checkout failed', ['document_id' => $document->id, 'error' => $e->getMessage()]);
@@ -1005,8 +1169,10 @@ class WhatsappRenewalWebhookController extends Controller
             }
         }
 
-        $this->reply($tenant, $phone,
-            "Invoice {$document->document_number} — TZS {$total} imetengenezwa. " . $this->paymentDetailsText($tenant));
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Invoice {$document->document_number} — TZS {$total} imetengenezwa. " . $this->paymentDetailsText($tenant, $lang),
+            "Invoice {$document->document_number} — TZS {$total} has been created. " . $this->paymentDetailsText($tenant, $lang)
+        ));
     }
 
     private function pesapalCheckout(Tenant $tenant, Document $document): string
