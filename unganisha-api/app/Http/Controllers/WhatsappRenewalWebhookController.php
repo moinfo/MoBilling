@@ -644,11 +644,12 @@ class WhatsappRenewalWebhookController extends Controller
     }
 
     /** Mirrors PortalDomainController::order()'s register path exactly. */
-    private function createDomainOrder(Tenant $tenant, Client $client, string $name, float $price): Document
+    private function createDomainOrder(Tenant $tenant, Client $client, string $name, float $price, string $action = 'register', ?string $authInfo = null): Document
     {
         $registrar = app(DomainRegistrarManager::class);
+        $verb = $action === 'transfer' ? 'transfer' : 'registration';
 
-        return DB::transaction(function () use ($tenant, $client, $name, $price, $registrar) {
+        return DB::transaction(function () use ($tenant, $client, $name, $price, $registrar, $action, $authInfo, $verb) {
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id' => $tenant->id,
                 'client_id' => $client->id,
@@ -661,12 +662,12 @@ class WhatsappRenewalWebhookController extends Controller
                 'tax_amount' => 0,
                 'total' => $price,
                 'status' => 'sent',
-                'notes' => "Domain registration (WhatsApp order): {$name} (1 year)",
+                'notes' => "Domain {$verb} (WhatsApp order): {$name} (1 year)",
             ]);
 
             $document->items()->create([
                 'item_type' => 'service',
-                'description' => "Register domain {$name} — 1 year",
+                'description' => ucfirst($verb) . " domain {$name} — 1 year",
                 'quantity' => 1,
                 'price' => $price,
                 'tax_percent' => 0,
@@ -681,8 +682,9 @@ class WhatsappRenewalWebhookController extends Controller
                 'name' => $name,
                 'status' => 'pending',
                 'auto_renew' => false,
+                'epp_auth_info' => $authInfo,
                 'meta' => [
-                    'pending_action' => 'register',
+                    'pending_action' => $action,
                     'pending_years' => 1,
                     'order_document_id' => $document->id,
                     'whatsapp_order' => true,
@@ -707,6 +709,51 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         return null;
+    }
+
+    /**
+     * @return array{ok: bool, price: ?float, message: ?string}
+     * $message is only set when ok=false (already a full bilingual reply string).
+     */
+    private function checkDomainForOrder(Tenant $tenant, string $name, bool $transfer, string $lang = 'sw'): array
+    {
+        $tld = $this->extractTld($name);
+        $pricing = $tld ? DomainTld::priceFor($tenant->id, $tld) : null;
+
+        if (!$pricing || $pricing->is_unmanaged) {
+            return ['ok' => false, 'price' => null, 'message' => $this->t($lang,
+                'Samahani, aina hii ya domain haiwezi kushughulikiwa papo hapo kwa sasa. Tafadhali wasiliana nasi.',
+                "Sorry, this domain type can't be handled instantly right now. Please contact us."
+            )];
+        }
+
+        if (!$transfer) {
+            if (Domain::withoutGlobalScopes()->where('name', $name)->whereNotIn('status', ['cancelled', 'transferred_out'])->exists()) {
+                return ['ok' => false, 'price' => null, 'message' => $this->t($lang,
+                    "Samahani, {$name} tayari imesajiliwa nasi. Andika jina lingine.",
+                    "Sorry, {$name} is already registered with us. Please try another name."
+                )];
+            }
+
+            try {
+                $availability = app(DomainRegistrarManager::class)->driverFor($tenant->id)->check($name);
+            } catch (\Throwable $e) {
+                Log::warning('WhatsApp domain check failed', ['name' => $name, 'error' => $e->getMessage()]);
+                return ['ok' => false, 'price' => null, 'message' => $this->t($lang,
+                    'Samahani, imeshindikana kuangalia upatikanaji wa domain hii sasa hivi. Jaribu tena baadaye.',
+                    "Sorry, we couldn't check this domain's availability right now. Please try again later."
+                )];
+            }
+
+            if (!($availability['available'] ?? false)) {
+                return ['ok' => false, 'price' => null, 'message' => $this->t($lang,
+                    "Samahani, {$name} tayari imesajiliwa na mwenyewe. Andika jina lingine.",
+                    "Sorry, {$name} is already registered by someone else. Please try another name."
+                )];
+            }
+        }
+
+        return ['ok' => true, 'price' => (float) ($transfer ? $pricing->transfer_price : $pricing->register_price), 'message' => null];
     }
 
     // ── New hosting / business email orders ─────────────────────────────
@@ -775,10 +822,10 @@ class WhatsappRenewalWebhookController extends Controller
                         return;
                     }
 
-                    $session->update(['state' => array_merge($state, ['step' => 'ask_domain', 'product_service_id' => $plan->id])]);
+                    $session->update(['state' => array_merge($state, ['step' => 'ask_domain_mode', 'product_service_id' => $plan->id])]);
                     $this->reply($tenant, $phone, $this->t($lang,
-                        "Umechagua {$plan->name}. Andika jina la domain la huduma hii (lililopo tayari).",
-                        "You've chosen {$plan->name}. Please reply with the domain name for this service (one you already have)."
+                        "Umechagua {$plan->name}. Domain: 1) Ninayo tayari (nitaweka DNS mwenyewe) 2) Nisajilie domain mpya 3) Nihamishie (transfer) domain yangu kwenu. Jibu na namba.",
+                        "You've chosen {$plan->name}. Domain: 1) I already have one (I'll point the DNS myself) 2) Register a new domain for me 3) Transfer my domain to you. Reply with a number."
                     ));
                     return;
                 }
@@ -808,6 +855,127 @@ class WhatsappRenewalWebhookController extends Controller
                     . ($specs ? ". {$specs}" : '')
                     . '. Reply YES to order this, or choose another number from the earlier list.'
             ));
+            return;
+        }
+
+        if ($step === 'ask_domain_mode') {
+            $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['product_service_id'] ?? null);
+            if (!$plan) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
+                return;
+            }
+
+            match (true) {
+                (bool) preg_match('/^\s*1\s*$/', $text) => (function () use ($tenant, $phone, $session, $state, $lang) {
+                    $session->update(['state' => array_merge($state, ['step' => 'ask_domain'])]);
+                    $this->reply($tenant, $phone, $this->t($lang,
+                        'Andika jina la domain la huduma hii (lililopo tayari).',
+                        'Please reply with the domain name for this service (one you already have).'
+                    ));
+                })(),
+                (bool) preg_match('/^\s*2\s*$/', $text) => (function () use ($tenant, $phone, $session, $state, $lang) {
+                    $session->update(['state' => array_merge($state, ['step' => 'register_domain_name'])]);
+                    $this->reply($tenant, $phone, $this->t($lang,
+                        'Andika jina la domain unalotaka kusajili (mfano: jinalako.co.tz).',
+                        'Please reply with the domain name you want to register (e.g. yourname.co.tz).'
+                    ));
+                })(),
+                (bool) preg_match('/^\s*3\s*$/', $text) => (function () use ($tenant, $phone, $session, $state, $lang) {
+                    $session->update(['state' => array_merge($state, ['step' => 'transfer_domain_name'])]);
+                    $this->reply($tenant, $phone, $this->t($lang,
+                        'Andika jina la domain unalotaka kuhamishia kwetu (mfano: jinalako.co.tz).',
+                        'Please reply with the domain name you want to transfer to us (e.g. yourname.co.tz).'
+                    ));
+                })(),
+                default => $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, jibu 1, 2, au 3.',
+                    'Sorry, please reply 1, 2, or 3.'
+                )),
+            };
+            return;
+        }
+
+        if ($step === 'register_domain_name' || $step === 'transfer_domain_name') {
+            $isTransfer = $step === 'transfer_domain_name';
+            $name = strtolower(trim($text));
+            if (!preg_match('/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/', $name)) {
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako.co.tz',
+                    "Sorry, that doesn't look like a valid domain. Reply like: yourname.co.tz"
+                ));
+                return;
+            }
+
+            ['ok' => $ok, 'price' => $price, 'message' => $message] = $this->checkDomainForOrder($tenant, $name, $isTransfer, $lang);
+            if (!$ok) {
+                $this->reply($tenant, $phone, $message);
+                return;
+            }
+
+            if ($isTransfer) {
+                $session->update(['state' => array_merge($state, ['step' => 'transfer_domain_auth', 'domain' => $name, 'domain_price' => $price])]);
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Bei ya kuhamisha {$name}: TZS " . number_format($price) . ". Andika EPP/Auth code ya domain hii (unaipata kwa msajili wako wa sasa).",
+                    "Transfer price for {$name}: TZS " . number_format($price) . ". Please reply with this domain's EPP/Auth code (get it from your current registrar)."
+                ));
+                return;
+            }
+
+            $session->update(['state' => array_merge($state, ['step' => 'register_domain_confirm', 'domain' => $name, 'domain_price' => $price])]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Domain {$name} inapatikana! Bei: TZS " . number_format($price) . ' kwa mwaka 1. Jibu NDIYO kuendelea.',
+                "Domain {$name} is available! Price: TZS " . number_format($price) . ' for 1 year. Reply YES to continue.'
+            ));
+            return;
+        }
+
+        if ($step === 'transfer_domain_auth') {
+            $authInfo = trim($text);
+            if ($authInfo === '') {
+                $this->reply($tenant, $phone, $this->t($lang, 'Tafadhali andika EPP/Auth code sahihi.', 'Please reply with a valid EPP/Auth code.'));
+                return;
+            }
+
+            $session->update(['state' => array_merge($state, ['step' => 'transfer_domain_confirm', 'auth_info' => $authInfo])]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Thibitisha kuhamisha {$state['domain']} — TZS " . number_format((float) $state['domain_price']) . ". Jibu NDIYO kuendelea.",
+                "Confirm transferring {$state['domain']} — TZS " . number_format((float) $state['domain_price']) . ". Reply YES to continue."
+            ));
+            return;
+        }
+
+        if ($step === 'register_domain_confirm' || $step === 'transfer_domain_confirm') {
+            if (!preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Sawa, imesitishwa.', 'Okay, cancelled.'), $lang);
+                return;
+            }
+
+            $isTransfer = $step === 'transfer_domain_confirm';
+            $name = $state['domain'] ?? null;
+            $price = (float) ($state['domain_price'] ?? 0);
+            $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['product_service_id'] ?? null);
+
+            if (!$name || !$price || !$plan) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
+                return;
+            }
+
+            try {
+                $document = $this->createDomainOrder($tenant, $client, $name, $price, $isTransfer ? 'transfer' : 'register', $isTransfer ? ($state['auth_info'] ?? null) : null);
+            } catch (\Throwable $e) {
+                Log::error('WhatsApp hosting-flow domain order creation failed', ['domain' => $name, 'error' => $e->getMessage()]);
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
+                return;
+            }
+
+            // Pay for the domain first; the hosting order (same plan already chosen,
+            // this domain now known) resumes right after via offerPayment()'s $after.
+            $this->offerPayment($tenant, $client, $phone, $document, $lang, [
+                'action' => 'continue_hosting',
+                'product_service_id' => $plan->id,
+                'category' => $state['category'] ?? null,
+                'domain' => $name,
+            ]);
             return;
         }
 
@@ -1067,17 +1235,48 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
+        if (($after['action'] ?? null) === 'continue_hosting' && !empty($after['product_service_id']) && !empty($after['domain'])) {
+            $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($after['product_service_id']);
+            if ($plan) {
+                WhatsappRenewalSession::updateOrCreate(
+                    ['tenant_id' => $tenant->id, 'phone' => $phone],
+                    ['client_id' => $client->id, 'flow' => 'order_hosting', 'state' => ['step' => 'confirm', 'category' => $after['category'] ?? null, 'product_service_id' => $plan->id, 'domain' => $after['domain']], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+                );
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Sasa thibitisha hosting: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$after['domain']}. Jibu NDIYO kuagiza.",
+                    "Now confirm hosting: {$plan->name} — TZS " . number_format((float) $plan->price) . "/{$plan->billing_cycle}, domain: {$after['domain']}. Reply YES to order."
+                ));
+                return;
+            }
+        }
+
         $this->sendRootMenu($tenant, $client, $phone, $lang);
     }
 
     private function paymentDetailsText(Tenant $tenant, string $lang): string
     {
-        $bank = trim(implode(' · ', array_filter([
+        // payment_methods (JSON: [{value,label,details:[{key,value}]}]) is the tenant's
+        // real, full offline-payment configuration — bank transfer AND mobile money
+        // (e.g. MIX BY YAS paybill), not just the older single bank_name/account fields,
+        // which only ever covered one bank account.
+        $methods = collect($tenant->payment_methods ?? [])
+            ->reject(fn ($m) => in_array($m['value'] ?? '', ['pesapal', 'cash', 'cheque'], true))
+            ->map(function ($m) {
+                $details = collect($m['details'] ?? [])
+                    ->map(fn ($d) => "{$d['key']}: {$d['value']}")
+                    ->implode(', ');
+                return $details !== '' ? "{$m['label']} ({$details})" : null;
+            })
+            ->filter();
+
+        $fallback = trim(implode(' · ', array_filter([
             $tenant->bank_name ? "Benki: {$tenant->bank_name}" : null,
             $tenant->bank_account_name ? "Jina: {$tenant->bank_account_name}" : null,
             $tenant->bank_account_number ? "Namba: {$tenant->bank_account_number}" : null,
-            $tenant->payment_instructions ?: null,
         ])));
+
+        $bank = $methods->isNotEmpty() ? $methods->implode(' · ') : $fallback;
+        $bank = trim($bank . ($tenant->payment_instructions ? ' · ' . $tenant->payment_instructions : ''));
 
         if ($bank === '') {
             return $this->t($lang, 'Tafadhali wasiliana nasi kwa maelezo ya kulipa.', 'Please contact us for payment details.');
