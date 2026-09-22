@@ -442,17 +442,71 @@ class WhatsappRenewalWebhookController extends Controller
                 . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
                 . '4) Business Email Hosting · 5) Angalia na Lipa Invoice · '
                 . '6) WHOIS ya Domain · 7) Angalia kama Domain Inapatikana · '
-                . '8) Badilisha Nameservers (DNS) · '
+                . '8) Badilisha Nameservers (DNS) · 9) Taarifa za Akaunti · '
                 . "0) Toka (Logout). Jibu na namba.\n\n"
                 . 'Andika MOSMS kwa huduma za akaunti yako ya SMS/WhatsApp bulk.',
             "Hi {$client->name}! Choose a service: "
                 . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
                 . '4) Business Email Hosting · 5) View and Pay Invoices · '
                 . '6) Domain WHOIS · 7) Check Domain Availability · '
-                . '8) Change Nameservers (DNS) · '
+                . '8) Change Nameservers (DNS) · 9) Account Information · '
                 . "0) Logout. Reply with a number.\n\n"
                 . 'Reply MOSMS for your bulk SMS/WhatsApp account.'
         ));
+    }
+
+    /** Full account snapshot: contact details, active domains, active subscriptions, outstanding balance. */
+    private function sendAccountInfo(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $domains = Domain::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereNotIn('status', ['cancelled', 'transferred_out'])
+            ->orderBy('expires_at')
+            ->get();
+
+        $subscriptions = \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereIn('status', ['active', 'pending', 'suspended'])
+            // Unauthenticated webhook context — the relation must also bypass
+            // ProductService's own tenant scope, or it silently resolves to null.
+            ->with(['productService' => fn ($q) => $q->withoutGlobalScopes()])
+            ->orderBy('expire_date')
+            ->get();
+
+        // balance_due is a computed accessor (total - paid_amount), not a DB column — sum in PHP.
+        $balanceDue = Document::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('type', 'invoice')->whereNotIn('status', ['draft', 'cancelled'])
+            ->get()
+            ->sum(fn ($d) => max($d->balance_due, 0));
+
+        $sw = $lang === 'sw';
+        $lines = [$sw ? '*Taarifa za Akaunti*' : '*Account Information*'];
+        $lines[] = ($sw ? '• Jina: ' : '• Name: ') . $client->name;
+        $lines[] = '• Email: ' . ($client->email ?: '—');
+        $lines[] = ($sw ? '• Simu: ' : '• Phone: ') . ($client->phone ?: '—');
+        $lines[] = ($sw ? '• Kampuni: ' : '• Company: ') . $tenant->name;
+
+        if ($domains->isNotEmpty()) {
+            $lines[] = "\n" . ($sw ? '*Domain (' : '*Domains (') . $domains->count() . '):*';
+            foreach ($domains as $d) {
+                $exp = $d->expires_at ? $d->expires_at->format('d M Y') : '—';
+                $lines[] = "• {$d->name} — {$d->status}, " . ($sw ? "inaisha {$exp}" : "expires {$exp}");
+            }
+        }
+
+        if ($subscriptions->isNotEmpty()) {
+            $lines[] = "\n" . ($sw ? '*Huduma (' : '*Services (') . $subscriptions->count() . '):*';
+            foreach ($subscriptions as $s) {
+                $exp = $s->expire_date ? $s->expire_date->format('d M Y') : '—';
+                $name = $s->productService?->name ?? ($sw ? 'Huduma' : 'Service');
+                $lines[] = "• {$name}" . ($s->label ? " — {$s->label}" : '') . " — {$s->status}, " . ($sw ? "inaisha {$exp}" : "expires {$exp}");
+            }
+        }
+
+        $lines[] = "\n" . ($sw ? '*Deni linalodaiwa:* TZS ' : '*Outstanding balance:* TZS ') . number_format($balanceDue);
+
+        $this->reply($tenant, $phone, implode("\n", $lines));
     }
 
     private function logout(Tenant $tenant, string $phone, string $lang): void
@@ -494,6 +548,10 @@ class WhatsappRenewalWebhookController extends Controller
             (bool) preg_match('/^\s*6\s*$/', $text) => $this->startWhois($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*7\s*$/', $text) => $this->startCheckAvailability($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*8\s*$/', $text) => $this->startChangeDns($tenant, $client, $phone, $lang),
+            (bool) preg_match('/^\s*9\s*$/', $text) => (function () use ($tenant, $client, $phone, $lang) {
+                $this->sendAccountInfo($tenant, $client, $phone, $lang);
+                $this->sendRootMenu($tenant, $client, $phone, $lang);
+            })(),
             default => $this->sendRootMenu($tenant, $client, $phone, $lang),
         };
     }
