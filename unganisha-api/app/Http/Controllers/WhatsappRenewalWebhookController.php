@@ -128,6 +128,14 @@ class WhatsappRenewalWebhookController extends Controller
                 return response('OK', 200);
             }
 
+            // Universal escape — works from any step of any flow, not just the root
+            // menu's own "unrecognised input" fallback, so someone stuck mid-order
+            // always has a way back out without waiting for the session to expire.
+            if ($session->flow && preg_match('/^\s*(menu|cancel|nyumbani|anza\s*upya)\s*$/i', $text)) {
+                $this->sendRootMenu($tenant, $client, $phone, $lang);
+                return response('OK', 200);
+            }
+
             match ($session->flow) {
                 'order_domain' => $this->handleOrderDomainStep($tenant, $client, $phone, $session, $text, $lang),
                 'order_hosting' => $this->handleOrderHostingStep($tenant, $client, $phone, $session, $text, $lang),
