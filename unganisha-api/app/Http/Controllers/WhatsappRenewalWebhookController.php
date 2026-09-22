@@ -121,7 +121,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         if ($session && !$session->isExpired() && $session->confirmed_at) {
             $lang = $session->language ?? 'sw';
-            $client = Client::withoutGlobalScopes()->find($session->client_id);
+            $client = Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
             if (!$client) {
                 $session->delete();
                 $this->reply($tenant, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali wasiliana nasi.', 'Sorry, something went wrong. Please contact us.'));
@@ -154,7 +154,7 @@ class WhatsappRenewalWebhookController extends Controller
             return response('OK', 200);
         }
 
-        $clientMatch = Client::withoutGlobalScopes()->where('tenant_id', $tenant->id);
+        $clientMatch = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
         $clientMatch = PhoneHelper::wherePhone($clientMatch, 'phone', $phone)->first();
 
         // Every fresh contact picks a language first — mirrors the DStv-style bot the
@@ -270,7 +270,7 @@ class WhatsappRenewalWebhookController extends Controller
     private function handleSurnameStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
     {
         $lang = $session->language ?? 'sw';
-        $client = Client::withoutGlobalScopes()->find($session->client_id);
+        $client = Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
         $state = $session->state ?? [];
 
         if (($state['step'] ?? 'surname') === 'has_account') {
@@ -312,7 +312,7 @@ class WhatsappRenewalWebhookController extends Controller
 
             // Re-check by phone right before creating anything — closes the loop
             // even if they mistakenly said "no account" earlier despite having one.
-            $existing = Client::withoutGlobalScopes()->where('tenant_id', $tenant->id);
+            $existing = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
             $existing = PhoneHelper::wherePhone($existing, 'phone', $phone)->first();
 
             if ($existing) {
@@ -565,7 +565,7 @@ class WhatsappRenewalWebhookController extends Controller
     private function pickAndGenerate(Tenant $tenant, ?Client $client, string $phone, WhatsappRenewalSession $session, int $position, RenewalBundleService $bundler, string $lang): void
     {
         $domainId = $session->items[$position - 1] ?? null;
-        $client ??= Client::withoutGlobalScopes()->find($session->client_id);
+        $client ??= Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
         $session->delete();
 
         if (!$domainId) {
