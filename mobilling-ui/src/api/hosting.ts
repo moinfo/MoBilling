@@ -33,7 +33,8 @@ export interface HostingAccount {
   last_synced_at: string | null;
   meta: { disk_used?: string; disk_limit?: string; plan?: string; ip?: string; adopted_from_whmcs?: boolean } | null;
   server: { id: string; name: string; hostname: string } | null;
-  subscription: { id: string; client: { id: string; name: string } | null } | null;
+  subscription: { id: string; expire_date: string | null; client: { id: string; name: string } | null } | null;
+  domain_expires_at: string | null;
   created_at: string;
 }
 

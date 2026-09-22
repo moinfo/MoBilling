@@ -18,6 +18,14 @@ import { usePermissions } from '../hooks/usePermissions';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
 
+function ExpiryText({ date }: { date: string | null | undefined }) {
+  if (!date) return <Text size="xs" c="dimmed">—</Text>;
+  const d = dayjs(date);
+  const daysLeft = d.diff(dayjs(), 'day');
+  const color = daysLeft < 0 ? 'red' : daysLeft <= 30 ? 'orange' : undefined;
+  return <Text size="xs" c={color} fw={color ? 600 : undefined}>{d.format('D MMM YYYY')}</Text>;
+}
+
 export default function HostingAccounts() {
   const qc = useQueryClient();
   const { can } = usePermissions();
@@ -122,6 +130,8 @@ export default function HostingAccounts() {
                   <Table.Th>Server</Table.Th>
                   <Table.Th>Package</Table.Th>
                   <Table.Th>Disk</Table.Th>
+                  <Table.Th>Hosting Expires</Table.Th>
+                  <Table.Th>Domain Expires</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th></Table.Th>
                 </Table.Tr>
@@ -149,6 +159,8 @@ export default function HostingAccounts() {
                         {a.meta?.disk_used ? `${a.meta.disk_used} / ${a.meta.disk_limit ?? '∞'}` : '—'}
                       </Text>
                     </Table.Td>
+                    <Table.Td><ExpiryText date={a.subscription?.expire_date} /></Table.Td>
+                    <Table.Td><ExpiryText date={a.domain_expires_at} /></Table.Td>
                     <Table.Td>
                       <Badge size="sm" color={HOSTING_STATUS_COLORS[a.status]} variant="light">
                         {a.status}

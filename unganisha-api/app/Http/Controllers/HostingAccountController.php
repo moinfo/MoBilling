@@ -10,6 +10,7 @@ use App\Jobs\Hosting\SuspendHostingAccount;
 use App\Jobs\Hosting\TerminateHostingAccount;
 use App\Models\Client;
 use App\Models\ClientSubscription;
+use App\Models\Domain;
 use App\Models\HostingAccount;
 use App\Models\ProductService;
 use App\Models\Server;
@@ -958,7 +959,19 @@ class HostingAccountController extends Controller
                 ->orWhere('cpanel_username', 'like', "%{$s}%"));
         }
 
-        return response()->json(['data' => $query->paginate($request->get('per_page', 20))]);
+        $paginated = $query->paginate($request->get('per_page', 20));
+
+        // Domain registration expiry — no FK to `domains`, matched by name
+        // (same convention used throughout the hosting integration).
+        $domainNames = $paginated->getCollection()->pluck('domain')->filter()->unique()->values();
+        $domainExpiry = Domain::whereIn('name', $domainNames)->pluck('expires_at', 'name');
+
+        $paginated->getCollection()->transform(function ($account) use ($domainExpiry) {
+            $account->domain_expires_at = $domainExpiry->get($account->domain)?->toDateString();
+            return $account;
+        });
+
+        return response()->json(['data' => $paginated]);
     }
 
     /** Manually provision the hosting account for a subscription. */
