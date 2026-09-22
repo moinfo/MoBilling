@@ -52,7 +52,14 @@ export default function ClientTable({ clients, onEdit, onDelete, onPortalLogin, 
                   {client.name}
                 </Anchor>
               </Table.Td>
-              <Table.Td>{client.email || '—'}</Table.Td>
+              <Table.Td>
+                <Text size="sm">{client.email || '—'}</Text>
+                {client.portal_emails && client.portal_emails.length > 0 && (
+                  <Tooltip label="Portal login email — different from the client's own">
+                    <Text size="xs" c="dimmed">Portal: {client.portal_emails.join(', ')}</Text>
+                  </Tooltip>
+                )}
+              </Table.Td>
               <Table.Td>{client.phone || '—'}</Table.Td>
               <Table.Td>
                 <Badge size="sm" variant="light" color={client.status === 'active' ? 'green' : 'gray'} tt="capitalize">

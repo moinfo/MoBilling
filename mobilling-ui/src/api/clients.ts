@@ -5,6 +5,7 @@ export interface Client {
   name: string;
   status: 'active' | 'inactive' | string;
   email: string | null;
+  portal_emails?: string[];
   phone: string | null;
   address: string | null;
   tax_id: string | null;

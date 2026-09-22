@@ -22,6 +22,7 @@ class ClientController extends Controller
     public function index(Request $request)
     {
         $query = Client::query()
+            ->with(['portalUsers:id,client_id,email'])
             ->withCount(['subscriptions as active_subscriptions_count' => function ($q) {
                 $q->where('status', 'active');
             }])

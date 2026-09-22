@@ -15,6 +15,15 @@ class ClientResource extends JsonResource
             'status' => $this->status,
             'email' => $this->email,
             'phone' => $this->phone,
+            // Portal login emails, when different from the client's own —
+            // a client's billing email and their portal login(s) commonly
+            // differ (an accountant's address, a different day-to-day
+            // contact), which otherwise leaves no visible trace anywhere
+            // on this list even though search matches against it.
+            'portal_emails' => $this->when(
+                $this->relationLoaded('portalUsers'),
+                fn () => $this->portalUsers->pluck('email')->filter()->unique()->reject(fn ($e) => $e === $this->email)->values()
+            ),
             'address' => $this->address,
             'tax_id' => $this->tax_id,
             'first_name' => $this->first_name,
