@@ -58,31 +58,62 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
         ];
     }
 
-    public function toWhatsApp($notifiable): array
+    /**
+     * A plain string, not the template/fallback array shape — the approved
+     * invoice_notice_v1/v2 templates only carry generic marketing copy ("Tap
+     * Pay Now below to pay securely...") with no slot for what the invoice is
+     * actually for or offline payment details, which clients have asked for.
+     */
+    public function toWhatsApp($notifiable): string
     {
-        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()]);
+        $this->document->loadMissing(['tenant' => fn ($q) => $q->withoutGlobalScopes()], 'items');
         $tenant = $this->document->tenant;
         $typeName = ucfirst($this->document->type);
         $amount = $tenant->currency . ' ' . number_format($this->document->total, 2);
         $due = $this->document->due_date?->format('d M Y') ?? '—';
         $payable = $tenant->pesapal_enabled && $this->document->balance_due > 0;
 
+        $items = $this->document->items->map(fn ($item) => "- {$item->description}: "
+            . number_format((float) $item->quantity, 2) . ' x ' . number_format((float) $item->price, 2)
+            . ' = ' . number_format((float) $item->total, 2))->implode(' · ');
+
+        $lines = array_filter([
+            "📄 {$typeName} {$this->document->document_number} — {$tenant->name}",
+            $items !== '' ? "Items: {$items}" : null,
+            "Total: {$amount}" . ($due !== '—' ? ", due {$due}" : ''),
+        ]);
+
         if ($payable) {
-            return [
-                'template' => 'invoice_notice_v2',
-                'parameters' => ["{$typeName} {$this->document->document_number}", $amount, $due, $tenant->name],
-                'language' => 'en',
-                'button_url' => (string) $this->document->id,
-                'fallback' => "📄 {$typeName} {$this->document->document_number} — {$amount}, due {$due}. Pay online: " . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}") . " — {$tenant->name}",
-            ];
+            $lines[] = 'Pay online: ' . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}");
+        } else {
+            $lines[] = $this->offlinePaymentMethodsText($tenant);
         }
 
-        return [
-            'template' => 'invoice_notice_v1',
-            'parameters' => ["{$typeName} {$this->document->document_number}", $amount, $due, 'Contact us for payment options', $tenant->name],
-            'language' => 'en',
-            'fallback' => "📄 {$typeName} {$this->document->document_number} — {$amount}, due {$due}. — {$tenant->name}",
-        ];
+        return implode(' · ', array_filter($lines));
+    }
+
+    /** Same payment_methods JSON the tenant configures for the public pay page — bank AND mobile money, not just one bank account. */
+    private function offlinePaymentMethodsText($tenant): string
+    {
+        $methods = collect($tenant->payment_methods ?? [])
+            ->reject(fn ($m) => in_array($m['value'] ?? '', ['pesapal', 'cash', 'cheque'], true))
+            ->map(function ($m) {
+                $details = collect($m['details'] ?? [])->map(fn ($d) => "{$d['key']}: {$d['value']}")->implode(', ');
+                return $details !== '' ? "{$m['label']} ({$details})" : null;
+            })
+            ->filter();
+
+        if ($methods->isNotEmpty()) {
+            return 'Pay via: ' . $methods->implode(' · ');
+        }
+
+        $bank = trim(implode(', ', array_filter([
+            $tenant->bank_name ? "{$tenant->bank_name}" : null,
+            $tenant->bank_account_name,
+            $tenant->bank_account_number,
+        ])));
+
+        return $bank !== '' ? "Pay via bank: {$bank}" : 'Contact us for payment options.';
     }
 
     public function toSms($notifiable): ?string
