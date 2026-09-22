@@ -26,6 +26,26 @@ function ExpiryText({ date }: { date: string | null | undefined }) {
   return <Text size="xs" c={color} fw={color ? 600 : undefined}>{d.format('D MMM YYYY')}</Text>;
 }
 
+const INVOICE_STATUS_COLORS: Record<string, string> = {
+  draft: 'gray', sent: 'blue', overdue: 'orange', partial: 'yellow', paid: 'green', cancelled: 'red',
+};
+
+function InvoiceBadge({ invoice }: { invoice: HostingAccount['latest_invoice'] }) {
+  const navigate = useNavigate();
+  if (!invoice) {
+    return <Badge size="sm" color="red" variant="light">No invoice</Badge>;
+  }
+  return (
+    <Badge
+      size="sm" color={INVOICE_STATUS_COLORS[invoice.status] ?? 'gray'} variant="light"
+      style={{ cursor: 'pointer' }}
+      onClick={() => navigate(`/invoices?preview=${invoice.id}`)}
+    >
+      {invoice.document_number} · {invoice.status}
+    </Badge>
+  );
+}
+
 export default function HostingAccounts() {
   const qc = useQueryClient();
   const { can } = usePermissions();
@@ -132,6 +152,7 @@ export default function HostingAccounts() {
                   <Table.Th>Disk</Table.Th>
                   <Table.Th>Hosting Expires</Table.Th>
                   <Table.Th>Domain Expires</Table.Th>
+                  <Table.Th>Invoice</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th></Table.Th>
                 </Table.Tr>
@@ -161,6 +182,7 @@ export default function HostingAccounts() {
                     </Table.Td>
                     <Table.Td><ExpiryText date={a.subscription?.expire_date} /></Table.Td>
                     <Table.Td><ExpiryText date={a.domain_expires_at} /></Table.Td>
+                    <Table.Td><InvoiceBadge invoice={a.latest_invoice} /></Table.Td>
                     <Table.Td>
                       <Badge size="sm" color={HOSTING_STATUS_COLORS[a.status]} variant="light">
                         {a.status}

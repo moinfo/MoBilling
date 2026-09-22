@@ -966,8 +966,27 @@ class HostingAccountController extends Controller
         $domainNames = $paginated->getCollection()->pluck('domain')->filter()->unique()->values();
         $domainExpiry = Domain::whereIn('name', $domainNames)->pluck('expires_at', 'name');
 
-        $paginated->getCollection()->transform(function ($account) use ($domainExpiry) {
+        // Most recent invoice generated for this subscription's renewal —
+        // surfaces the exact gap staff spotted: an account expires (or is
+        // about to) with no invoice ever raised for it, because the
+        // recurring-invoice job silently skipped it.
+        $subIds = $paginated->getCollection()->pluck('subscription.id')->filter()->unique()->values();
+        $latestLogBySub = \App\Models\RecurringInvoiceLog::whereIn('client_subscription_id', $subIds)
+            ->with('document:id,document_number,status,date,due_date')
+            ->orderByDesc('invoice_created_at')
+            ->get()
+            ->unique('client_subscription_id')
+            ->keyBy('client_subscription_id');
+
+        $paginated->getCollection()->transform(function ($account) use ($domainExpiry, $latestLogBySub) {
             $account->domain_expires_at = $domainExpiry->get($account->domain)?->toDateString();
+            $log = $account->subscription ? $latestLogBySub->get($account->subscription->id) : null;
+            $account->latest_invoice = $log?->document ? [
+                'id'              => $log->document->id,
+                'document_number' => $log->document->document_number,
+                'status'          => $log->document->status,
+                'date'            => $log->document->date?->toDateString(),
+            ] : null;
             return $account;
         });
 

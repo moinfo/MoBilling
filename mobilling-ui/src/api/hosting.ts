@@ -35,6 +35,7 @@ export interface HostingAccount {
   server: { id: string; name: string; hostname: string } | null;
   subscription: { id: string; expire_date: string | null; client: { id: string; name: string } | null } | null;
   domain_expires_at: string | null;
+  latest_invoice: { id: string; document_number: string; status: string; date: string | null } | null;
   created_at: string;
 }
 
