@@ -73,23 +73,27 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
         $due = $this->document->due_date?->format('d M Y') ?? '—';
         $payable = $tenant->pesapal_enabled && $this->document->balance_due > 0;
 
-        $items = $this->document->items->map(fn ($item) => "- {$item->description}: "
+        $items = $this->document->items->map(fn ($item) => "• {$item->description} — "
             . number_format((float) $item->quantity, 2) . ' x ' . number_format((float) $item->price, 2)
-            . ' = ' . number_format((float) $item->total, 2))->implode(' · ');
+            . ' = ' . number_format((float) $item->total, 2))->implode("\n");
 
         $lines = array_filter([
-            "📄 {$typeName} {$this->document->document_number} — {$tenant->name}",
-            $items !== '' ? "Items: {$items}" : null,
-            "Total: {$amount}" . ($due !== '—' ? ", due {$due}" : ''),
-        ]);
+            "📄 *{$typeName} {$this->document->document_number}*",
+            $tenant->name,
+            '',
+            $items !== '' ? "*Vitu:*\n{$items}" : null,
+            '',
+            "*Jumla: {$amount}*",
+            $due !== '—' ? "Malipo: {$due}" : null,
+        ], fn ($line) => $line !== null);
 
         if ($payable) {
-            $lines[] = 'Pay online: ' . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}");
+            $lines[] = "\n👇 Bonyeza kulipa: " . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}");
         } else {
-            $lines[] = $this->offlinePaymentMethodsText($tenant);
+            $lines[] = "\n" . $this->offlinePaymentMethodsText($tenant);
         }
 
-        return implode(' · ', array_filter($lines));
+        return implode("\n", $lines);
     }
 
     /** Same payment_methods JSON the tenant configures for the public pay page — bank AND mobile money, not just one bank account. */
@@ -104,7 +108,7 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             ->filter();
 
         if ($methods->isNotEmpty()) {
-            return 'Pay via: ' . $methods->implode(' · ');
+            return "*Njia za kulipa:*\n" . $methods->map(fn ($m) => "• {$m}")->implode("\n");
         }
 
         $bank = trim(implode(', ', array_filter([
@@ -113,7 +117,7 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             $tenant->bank_account_number,
         ])));
 
-        return $bank !== '' ? "Pay via bank: {$bank}" : 'Contact us for payment options.';
+        return $bank !== '' ? "*Lipa kwa benki:* {$bank}" : 'Wasiliana nasi kwa maelezo ya malipo.';
     }
 
     public function toSms($notifiable): ?string
