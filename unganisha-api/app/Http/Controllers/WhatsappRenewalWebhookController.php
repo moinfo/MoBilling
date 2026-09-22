@@ -138,7 +138,7 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone,
-            "🔔 *MoBilling*\n\nTumekuta akaunti ya *{$client->name}* iliyosajiliwa MoBilling. Je, hii ni wewe?\n\nJibu *NDIYO* kuendelea.");
+            "Tumekuta akaunti ya {$client->name} iliyosajiliwa MoBilling. Je, hii ni wewe? Jibu NDIYO kuendelea.");
 
         return response('OK', 200);
     }
@@ -217,9 +217,9 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone,
-            "🔔 *MoBilling*\n\nHabari {$client->name}, huduma unazoweza kujihudumia:\n\n"
-            . implode("\n", $lines)
-            . "\n\nJibu na namba kuchagua.");
+            "Habari {$client->name}, huduma unazoweza kujihudumia: "
+            . implode(' · ', $lines)
+            . '. Jibu na namba kuchagua.');
     }
 
     /** Picks items[$position-1] out of $session and bills it, or replies with why it can't. */
@@ -265,7 +265,7 @@ class WhatsappRenewalWebhookController extends Controller
             try {
                 $redirectUrl = $this->pesapalCheckout($tenant, $document);
                 $this->reply($tenant, $phone,
-                    "Invoice {$document->document_number} — TZS {$total}.\n\nLipa hapa: {$redirectUrl}");
+                    "Invoice {$document->document_number} — TZS {$total}. Lipa hapa: {$redirectUrl}");
                 return;
             } catch (\Throwable $e) {
                 Log::warning('WhatsApp renewal Pesapal checkout failed', ['document_id' => $document->id, 'error' => $e->getMessage()]);
@@ -273,7 +273,7 @@ class WhatsappRenewalWebhookController extends Controller
             }
         }
 
-        $bank = trim(implode("\n", array_filter([
+        $bank = trim(implode(' · ', array_filter([
             $tenant->bank_name ? "Benki: {$tenant->bank_name}" : null,
             $tenant->bank_account_name ? "Jina: {$tenant->bank_account_name}" : null,
             $tenant->bank_account_number ? "Namba: {$tenant->bank_account_number}" : null,
@@ -281,7 +281,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         $this->reply($tenant, $phone,
             "Invoice {$document->document_number} — TZS {$total} imetengenezwa."
-            . ($bank !== '' ? "\n\nLipa kupitia:\n{$bank}" : "\n\nTafadhali wasiliana nasi kulipa."));
+            . ($bank !== '' ? " Lipa kupitia: {$bank}" : ' Tafadhali wasiliana nasi kulipa.'));
     }
 
     private function pesapalCheckout(Tenant $tenant, Document $document): string

@@ -99,8 +99,8 @@ class DomainExpiryReminderNotification extends Notification implements ShouldQue
                 . "Renew in time to keep your website and email running. — {$this->tenant->name}";
         }
 
-        return "🔔 *MoBilling Renewal*\n\n⏰ Domain {$this->domain->name} inaisha {$expires} "
-            . "(siku {$this->daysLeft} zilizobaki). Ifanyie renew mapema kuepuka website/email kusimama."
-            . "\n\nJibu *1* kutengeneza invoice ya renewal na kulipa papo hapo. — {$this->tenant->name}";
+        return "MoBilling Renewal: Domain {$this->domain->name} inaisha {$expires} "
+            . "(siku {$this->daysLeft} zilizobaki). Ifanyie renew mapema kuepuka website/email kusimama. "
+            . "Jibu 1 kutengeneza invoice ya renewal na kulipa papo hapo. — {$this->tenant->name}";
     }
 }
