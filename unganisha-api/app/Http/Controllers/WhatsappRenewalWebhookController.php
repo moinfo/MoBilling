@@ -1288,7 +1288,15 @@ class WhatsappRenewalWebhookController extends Controller
                 }
                 try {
                     $redirectUrl = $this->pesapalCheckout($tenant, $doc);
-                    $this->reply($tenant, $phone, $this->t($lang, "Lipa hapa: {$redirectUrl}", "Pay here: {$redirectUrl}"));
+                    $this->replyWithCtaUrl(
+                        $tenant, $phone,
+                        $this->t($lang,
+                            'Bonyeza kitufe hapa chini kulipa (namba yako ya simu tayari imejazwa, utapata ombi la PIN moja kwa moja).',
+                            "Tap the button below to pay (your phone number is pre-filled — you'll get a PIN prompt right away)."
+                        ),
+                        $this->t($lang, 'Lipa Sasa', 'Pay Now'),
+                        $redirectUrl
+                    );
                 } catch (\Throwable $e) {
                     Log::warning('WhatsApp pay_invoice Pesapal checkout failed', ['document_id' => $doc->id, 'error' => $e->getMessage()]);
                     $this->reply($tenant, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza link ya kulipa. Tafadhali jaribu tena baadaye.', "Sorry, we couldn't create a payment link. Please try again later."));
@@ -1654,10 +1662,15 @@ class WhatsappRenewalWebhookController extends Controller
         if ($tenant->pesapal_enabled && $tenant->pesapal_consumer_key) {
             try {
                 $redirectUrl = $this->pesapalCheckout($tenant, $document);
-                $this->reply($tenant, $phone, $this->t($lang,
-                    "Invoice {$document->document_number} — TZS {$total}. Lipa hapa: {$redirectUrl}",
-                    "Invoice {$document->document_number} — TZS {$total}. Pay here: {$redirectUrl}"
-                ));
+                $this->replyWithCtaUrl(
+                    $tenant, $phone,
+                    $this->t($lang,
+                        "Invoice {$document->document_number} — TZS {$total}. Bonyeza kitufe hapa chini kulipa (namba yako ya simu tayari imejazwa, utapata ombi la PIN moja kwa moja).",
+                        "Invoice {$document->document_number} — TZS {$total}. Tap the button below to pay (your phone number is pre-filled — you'll get a PIN prompt right away)."
+                    ),
+                    $this->t($lang, 'Lipa Sasa', 'Pay Now'),
+                    $redirectUrl
+                );
                 return;
             } catch (\Throwable $e) {
                 Log::warning('WhatsApp Pesapal checkout failed', ['document_id' => $document->id, 'error' => $e->getMessage()]);
@@ -1717,6 +1730,21 @@ class WhatsappRenewalWebhookController extends Controller
             app(WhatsAppService::class)->sendSessionText($tenant, $phone, $message);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp renewal reply send failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * A CTA-URL button keeps the payment link inside WhatsApp's own in-app browser instead of a
+     * bare URL pasted in a text message — falls back to a plain text link if the button send
+     * fails for any reason (e.g. tenant on a WABA that doesn't support interactive messages yet).
+     */
+    private function replyWithCtaUrl(Tenant $tenant, string $phone, string $text, string $buttonText, string $url): void
+    {
+        try {
+            app(WhatsAppService::class)->sendCtaUrlSession($tenant, $phone, $text, $buttonText, $url);
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp CTA-URL reply failed, falling back to plain link', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
+            $this->reply($tenant, $phone, "{$text} {$url}");
         }
     }
 }

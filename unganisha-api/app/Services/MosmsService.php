@@ -139,6 +139,21 @@ class MosmsService
         ], $this->tokenFor($tenant));
     }
 
+    /**
+     * Free-form CTA-URL button (24h session window only, same rule as sendSessionText()) —
+     * Meta renders a proper button and opens the URL in WhatsApp's own in-app browser rather
+     * than the customer tapping a bare URL pasted in a text message.
+     */
+    public function sendCtaUrl(Tenant $tenant, string $to, string $text, string $buttonText, string $url): array
+    {
+        return $this->request('post', '/whatsapp/send-cta-url', [
+            'to'          => $to,
+            'text'        => $text,
+            'button_text' => $buttonText,
+            'url'         => $url,
+        ], $this->tokenFor($tenant));
+    }
+
     /** Named approved template with ordered variables (+ optional dynamic URL-button suffix). */
     public function sendTemplate(Tenant $tenant, string $to, string $template, array $variables = [], string $language = 'sw', ?string $buttonUrlParam = null): array
     {

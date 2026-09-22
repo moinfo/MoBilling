@@ -74,6 +74,48 @@ class WhatsAppService
     }
 
     /**
+     * Free-form "Call-To-Action URL" button (24h session window only, same rule as
+     * sendSessionText()) — Meta renders a proper button and opens the URL in WhatsApp's own
+     * in-app browser, instead of a plain-text message with a pasted link the customer has to
+     * tap-and-hold to open. Used for payment links so checkout stays inside WhatsApp.
+     */
+    public function sendCtaUrlSession(Tenant $tenant, string $recipient, string $text, string $buttonText, string $url): array
+    {
+        if ($this->useMosms($tenant)) {
+            return app(MosmsService::class)->sendCtaUrl($tenant, $recipient, $text, $buttonText, $url);
+        }
+
+        $this->validateCredentials($tenant);
+
+        $response = $this->postWithRateLimitRetry($tenant, "/{$tenant->whatsapp_phone_number_id}/messages", [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'to' => $this->formatPhone($recipient),
+            'type' => 'interactive',
+            'interactive' => [
+                'type' => 'cta_url',
+                'body' => ['text' => $text],
+                'action' => [
+                    'name' => 'cta_url',
+                    'parameters' => ['display_text' => $buttonText, 'url' => $url],
+                ],
+            ],
+        ]);
+
+        if (!$response->successful()) {
+            $error = $response->json('error.message') ?? $response->body();
+            Log::error('WhatsApp CTA-URL send failed', [
+                'tenant_id' => $tenant->id,
+                'recipient' => $recipient,
+                'error' => $error,
+            ]);
+            throw new \RuntimeException("WhatsApp CTA-URL send failed: {$error}");
+        }
+
+        return $response->json();
+    }
+
+    /**
      * Send a template message via WhatsApp Business API.
      * Required for business-initiated messages (outside 24h window).
      */
