@@ -264,10 +264,34 @@ class WhatsappRenewalWebhookController extends Controller
         $this->sendRootMenu($tenant, $client, $phone, $lang);
     }
 
+    /**
+     * Two verification factors, not one — a client who genuinely forgot their
+     * surname (or mistyped it twice) still has a path back into their own
+     * account via their registered email, rather than a dead end. This is
+     * deliberately never a route to *registering a new* account when a phone
+     * already matches an existing client — only ever re-proving the same one,
+     * so a failed verification can never create a duplicate.
+     */
     private function handleSurnameStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
     {
         $lang = $session->language ?? 'sw';
         $client = Client::withoutGlobalScopes()->find($session->client_id);
+        $state = $session->state ?? [];
+
+        if (($state['step'] ?? 'surname') === 'email') {
+            if ($client && $client->email && mb_strtolower(trim($text)) === mb_strtolower(trim($client->email))) {
+                $session->update(['confirmed_at' => now()]);
+                $this->sendRootMenu($tenant, $client, $phone, $lang);
+                return;
+            }
+
+            $session->delete();
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, hatujaweza kuthibitisha akaunti yako. Tafadhali wasiliana nasi kwa msaada.',
+                "Sorry, we still couldn't verify your account. Please contact us for help."
+            ));
+            return;
+        }
 
         if ($client && $this->surnameMatches($client, $text)) {
             $session->update(['confirmed_at' => now()]);
@@ -275,11 +299,20 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
-        if ($session->attempts >= 2) {
-            $session->delete();
+        if ($session->attempts >= 1) {
+            if (!$client || !$client->email) {
+                $session->delete();
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, hatujaweza kuthibitisha jina lako. Tafadhali wasiliana nasi kwa msaada.',
+                    "Sorry, we couldn't verify your name. Please contact us for help."
+                ));
+                return;
+            }
+
+            $session->update(['state' => ['step' => 'email']]);
             $this->reply($tenant, $phone, $this->t($lang,
-                'Samahani, hatujaweza kuthibitisha jina lako. Tafadhali wasiliana nasi kwa msaada.',
-                "Sorry, we couldn't verify your name. Please contact us for help."
+                'Samahani, jina halikubaliki. Jaribu kwa njia nyingine — andika barua pepe yako iliyosajiliwa MoBilling.',
+                "Sorry, that still doesn't match. Let's try another way — please reply with the email address registered with your MoBilling account."
             ));
             return;
         }
