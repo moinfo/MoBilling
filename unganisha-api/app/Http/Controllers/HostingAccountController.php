@@ -1055,6 +1055,7 @@ class HostingAccountController extends Controller
     }
 
     /** @return ClientSubscription[] */
+    /** @return array{candidates: ClientSubscription[], billable: ClientSubscription[]} */
     private function billableSubscriptions(HostingAccount $hostingAccount): array
     {
         $candidates = array_values(array_filter([
@@ -1065,7 +1066,9 @@ class HostingAccountController extends Controller
         // Never re-bundle a subscription that already has a real invoice —
         // hosting and domain are invoiced independently, so one having a
         // current invoice must not block (or duplicate-charge) the other.
-        return array_values(array_filter($candidates, fn ($sub) => !$this->hasCurrentInvoice($sub)));
+        $billable = array_values(array_filter($candidates, fn ($sub) => !$this->hasCurrentInvoice($sub)));
+
+        return compact('candidates', 'billable');
     }
 
     /** Whether $sub already has an invoice that represents a real charge (not draft/cancelled). */
@@ -1080,33 +1083,39 @@ class HostingAccountController extends Controller
     /** Price preview for a manual "generate invoice" action — computes, doesn't create anything. */
     public function invoicePreview(HostingAccount $hostingAccount)
     {
-        $subs = $this->billableSubscriptions($hostingAccount);
-        if (empty($subs)) {
+        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount);
+        if (empty($candidates)) {
             return response()->json(['message' => 'No hosting-plan or domain subscription found for this domain.'], 422);
+        }
+        if (empty($billable)) {
+            return response()->json(['message' => 'Everything for this domain already has a current invoice — nothing left to bill.'], 422);
         }
 
         try {
-            $preview = app(\App\Services\RecurringInvoiceService::class)->previewForSubscriptions($subs);
+            $preview = app(\App\Services\RecurringInvoiceService::class)->previewForSubscriptions($billable);
         } catch (\Throwable $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
         return response()->json(['data' => $preview + [
-            'product_name' => implode(' + ', array_map(fn ($s) => $s->productService->name, $subs)),
-            'client_name'  => $subs[0]->client()->withoutGlobalScopes()->value('name'),
+            'product_name' => implode(' + ', array_map(fn ($s) => $s->productService->name, $billable)),
+            'client_name'  => $billable[0]->client()->withoutGlobalScopes()->value('name'),
         ]]);
     }
 
     /** Manually generate the renewal invoice this domain is missing — bundles the domain renewal in too, if it has one. */
     public function generateInvoice(HostingAccount $hostingAccount)
     {
-        $subs = $this->billableSubscriptions($hostingAccount);
-        if (empty($subs)) {
+        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount);
+        if (empty($candidates)) {
             return response()->json(['message' => 'No hosting-plan or domain subscription found for this domain.'], 422);
+        }
+        if (empty($billable)) {
+            return response()->json(['message' => 'Everything for this domain already has a current invoice — nothing left to bill.'], 422);
         }
 
         try {
-            $document = app(\App\Services\RecurringInvoiceService::class)->generateForSubscriptions($subs);
+            $document = app(\App\Services\RecurringInvoiceService::class)->generateForSubscriptions($billable);
         } catch (\Throwable $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }

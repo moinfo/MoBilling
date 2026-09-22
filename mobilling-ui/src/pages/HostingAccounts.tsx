@@ -37,28 +37,33 @@ function InvoiceBadge({ account, canGenerate, onGenerate }: {
 }) {
   const navigate = useNavigate();
   const invoice = account.latest_invoice;
-  if (!invoice) {
-    return (
-      <Group gap={4} wrap="nowrap">
-        <Badge size="sm" color="red" variant="light">No invoice</Badge>
-        {canGenerate && (
-          <Tooltip label="Preview and generate the renewal invoice">
-            <ActionIcon size="sm" variant="light" color="teal" onClick={onGenerate}>
-              <IconReceipt2 size={13} />
-            </ActionIcon>
-          </Tooltip>
-        )}
-      </Group>
-    );
-  }
   return (
-    <Badge
-      size="sm" color={INVOICE_STATUS_COLORS[invoice.status] ?? 'gray'} variant="light"
-      style={{ cursor: 'pointer' }}
-      onClick={() => navigate(`/invoices?preview=${invoice.id}`)}
-    >
-      {invoice.document_number} · {invoice.status}
-    </Badge>
+    <Group gap={4} wrap="nowrap">
+      {invoice ? (
+        <Badge
+          size="sm" color={INVOICE_STATUS_COLORS[invoice.status] ?? 'gray'} variant="light"
+          style={{ cursor: 'pointer' }}
+          onClick={() => navigate(`/invoices?preview=${invoice.id}`)}
+        >
+          {invoice.document_number} · {invoice.status}
+        </Badge>
+      ) : (
+        <Badge size="sm" color="red" variant="light">No invoice</Badge>
+      )}
+      {canGenerate && (
+        // Always shown, even with an existing invoice — hosting and domain
+        // are billed as separate subscriptions, so one having an invoice
+        // doesn't mean the other does (e.g. a hosting-only invoice already
+        // exists but the domain renewal is still unbilled). The
+        // preview/generate action itself figures out what's actually left
+        // to bill, so this stays available whenever anything could be.
+        <Tooltip label="Check for anything still unbilled (hosting or domain) and generate it">
+          <ActionIcon size="sm" variant="light" color="teal" onClick={onGenerate}>
+            <IconReceipt2 size={13} />
+          </ActionIcon>
+        </Tooltip>
+      )}
+    </Group>
   );
 }
 
