@@ -66,13 +66,19 @@ class PortalDashboardController extends Controller
             'phone'   => $client?->phone,
         ];
 
-        $recentServices = ClientSubscription::where('client_id', $clientId)
-            ->where('status', '!=', 'cancelled')
+        $recentServices = ClientSubscription::where('client_subscriptions.client_id', $clientId)
+            ->where('client_subscriptions.status', '!=', 'cancelled')
+            // Hosting is the service the client actually logs in to manage day
+            // to day — surfaced before its domain, which otherwise sorts
+            // ahead purely by being a separate, often-earlier subscription.
+            ->join('product_services', 'product_services.id', '=', 'client_subscriptions.product_service_id')
+            ->select('client_subscriptions.*')
             // `meta` carries the cPanel disk figures the dashboard's usage bars
             // need — without it the bars have nothing to render.
             ->with(['productService:id,name', 'hostingAccount:id,client_subscription_id,status,meta'])
-            ->orderByRaw("CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
-            ->orderByDesc('start_date')
+            ->orderByRaw("CASE client_subscriptions.status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
+            ->orderByRaw("CASE product_services.category WHEN 'Web Hosting' THEN 0 WHEN 'Domain' THEN 1 ELSE 2 END")
+            ->orderByDesc('client_subscriptions.start_date')
             ->limit(4)
             ->get()
             ->map(fn ($s) => [
