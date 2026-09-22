@@ -103,19 +103,26 @@ class WhatsappRenewalWebhookController extends Controller
                 return response('OK', 200);
             }
 
-            // Awaiting "yes, this is my account" — anything else re-asks rather than
-            // silently proceeding, since the phone match alone isn't proof of identity.
+            // Awaiting surname verification — a phone match alone isn't proof of identity
+            // (shared/family phones, or the account registered under a different number),
+            // so nothing about the account is shown until this matches.
             if (!$session->confirmed_at) {
-                if (preg_match('/^\s*(ndiyo|ndio|yes|sawa)\s*$/i', $text)) {
-                    $client = Client::withoutGlobalScopes()->find($session->client_id);
-                    if ($client) {
-                        $this->sendMenu($tenant, $client, $phone, $bundler);
-                        return response('OK', 200);
-                    }
+                $client = Client::withoutGlobalScopes()->find($session->client_id);
+
+                if ($client && $this->surnameMatches($client, $text)) {
+                    $session->update(['confirmed_at' => now()]);
+                    $this->sendMenu($tenant, $client, $phone, $bundler);
+                    return response('OK', 200);
                 }
 
-                $session->delete();
-                $this->reply($tenant, $phone, 'Sawa, tukikuhitaji tutakuarifu. Kama ulitaka kujihudumia, tuma ujumbe wowote kuanza tena.');
+                if ($session->attempts >= 2) {
+                    $session->delete();
+                    $this->reply($tenant, $phone, 'Samahani, hatujaweza kuthibitisha jina lako. Tafadhali wasiliana nasi kwa msaada.');
+                    return response('OK', 200);
+                }
+
+                $session->increment('attempts');
+                $this->reply($tenant, $phone, 'Samahani, jina hilo halifanani na tulilonalo. Tafadhali jaribu tena — jina la ukoo (surname) lililosajiliwa MoBilling.');
                 return response('OK', 200);
             }
         }
@@ -130,17 +137,35 @@ class WhatsappRenewalWebhookController extends Controller
             return response('OK', 200);
         }
 
-        // Identity is not proven by the phone match alone (it's a heuristic on the shared
-        // MoSMS number) — ask before showing any account details, exactly as requested.
+        // Identity is not proven by the phone match alone — ask for the surname registered
+        // with MoBilling before showing any account details, exactly as requested (mirrors
+        // how DStv's own WhatsApp bot verifies before revealing account info).
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'items' => null, 'confirmed_at' => null, 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'items' => null, 'confirmed_at' => null, 'attempts' => 0, 'expires_at' => now()->addMinutes(10)],
         );
 
         $this->reply($tenant, $phone,
-            "Tumekuta akaunti ya {$client->name} iliyosajiliwa MoBilling. Je, hii ni wewe? Jibu NDIYO kuendelea.");
+            'Karibu MoBilling! Kwa uthibitisho, tafadhali jibu kwa jina lako la ukoo (surname) lililosajiliwa.');
 
         return response('OK', 200);
+    }
+
+    /** Loosely matches typed text against the client's last name, or any word in their full name. */
+    private function surnameMatches(Client $client, string $text): bool
+    {
+        $typed = mb_strtolower(trim($text));
+        if ($typed === '') {
+            return false;
+        }
+
+        if ($client->last_name && mb_strtolower(trim($client->last_name)) === $typed) {
+            return true;
+        }
+
+        $words = preg_split('/\s+/', mb_strtolower(trim((string) $client->name)));
+
+        return in_array($typed, $words, true);
     }
 
     /** @return array{0: ?Tenant, 1: ?MosmsAccount} */
