@@ -126,6 +126,19 @@ class MosmsService
         ], $this->tokenFor($tenant));
     }
 
+    /**
+     * Free-form reply within an open 24h session — no template, so none of the
+     * custom_message wrapper's fixed "Hello... Thank you" copy is added. Only
+     * valid as a reply to something the recipient messaged first.
+     */
+    public function sendSessionText(Tenant $tenant, string $to, string $text): array
+    {
+        return $this->request('post', '/whatsapp/send-session', [
+            'to'   => $to,
+            'text' => $text,
+        ], $this->tokenFor($tenant));
+    }
+
     /** Named approved template with ordered variables (+ optional dynamic URL-button suffix). */
     public function sendTemplate(Tenant $tenant, string $to, string $template, array $variables = [], string $language = 'sw', ?string $buttonUrlParam = null): array
     {

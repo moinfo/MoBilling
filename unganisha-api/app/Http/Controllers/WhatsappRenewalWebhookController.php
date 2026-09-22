@@ -320,10 +320,14 @@ class WhatsappRenewalWebhookController extends Controller
         return $result['redirect_url'];
     }
 
+    /**
+     * Always a reply to something this phone just messaged (confirm/menu/invoice text),
+     * so the free-form session path applies — no template wrapper copy.
+     */
     private function reply(Tenant $tenant, string $phone, string $message): void
     {
         try {
-            app(WhatsAppService::class)->sendText($tenant, $phone, $message);
+            app(WhatsAppService::class)->sendSessionText($tenant, $phone, $message);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp renewal reply send failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
         }

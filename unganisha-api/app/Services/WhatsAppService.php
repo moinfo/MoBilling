@@ -58,6 +58,22 @@ class WhatsAppService
     }
 
     /**
+     * Free-form reply within an open 24h session — a MoSMS-routed tenant gets this
+     * without the custom_message wrapper's fixed copy (unlike sendText(), which is
+     * always template-based for MoSMS-routed tenants). Only valid as a reply to
+     * something the recipient messaged first; a direct-Meta tenant's sendText() is
+     * already genuinely free-form, so this is just an alias for them.
+     */
+    public function sendSessionText(Tenant $tenant, string $recipient, string $message): array
+    {
+        if ($this->useMosms($tenant)) {
+            return app(MosmsService::class)->sendSessionText($tenant, $recipient, $message);
+        }
+
+        return $this->sendText($tenant, $recipient, $message);
+    }
+
+    /**
      * Send a template message via WhatsApp Business API.
      * Required for business-initiated messages (outside 24h window).
      */
