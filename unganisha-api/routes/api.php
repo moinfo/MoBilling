@@ -120,6 +120,8 @@ Route::match(['get', 'post'], '/attendance/device/{token}', [\App\Http\Controlle
 
 // MoSMS: client replied "1" to a domain-renewal WhatsApp reminder (public, shared-secret)
 Route::post('/webhooks/mosms/renewal-reply', [\App\Http\Controllers\WhatsappRenewalWebhookController::class, 'confirm']);
+// MoSMS: any other WhatsApp message from a phone attributed to this tenant (public, shared-secret)
+Route::post('/webhooks/mosms/menu', [\App\Http\Controllers\WhatsappRenewalWebhookController::class, 'menu']);
 
 // Public invoice payment (no auth required)
 Route::get('/pay/{document}', [InvoicePaymentController::class, 'show']);

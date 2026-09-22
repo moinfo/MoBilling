@@ -91,7 +91,7 @@ class SendDomainExpiryReminders extends Command
                 if ($replyEnabled) {
                     WhatsappRenewalSession::updateOrCreate(
                         ['tenant_id' => $tenant->id, 'phone' => PhoneHelper::normalize($client->phone)],
-                        ['client_id' => $client->id, 'domain_id' => $domain->id, 'expires_at' => now()->addDays(9)],
+                        ['client_id' => $client->id, 'items' => [$domain->id], 'expires_at' => now()->addDays(9)],
                     );
                 }
 
