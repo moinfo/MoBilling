@@ -108,6 +108,21 @@ export const getHostingAccounts = (params?: Record<string, string>) =>
 export const getHostingLogs = (id: string) =>
   api.get<{ data: ProvisioningLog[] }>(`/hosting-accounts/${id}/logs`);
 
+export interface InvoicePreview {
+  product_name: string;
+  client_name: string;
+  due_date: string;
+  subtotal: number;
+  tax_amount: number;
+  discount_amount: number;
+  total: number;
+  line_items: { description: string; quantity: number; price: string; total: number }[];
+}
+export const getHostingInvoicePreview = (id: string) =>
+  api.get<{ data: InvoicePreview }>(`/hosting-accounts/${id}/invoice-preview`);
+export const generateHostingInvoice = (id: string) =>
+  api.post<{ data: { id: string; document_number: string; total: number }; message: string }>(`/hosting-accounts/${id}/generate-invoice`);
+
 export interface DiscoveredAccount {
   server_id: string;
   server_name: string;

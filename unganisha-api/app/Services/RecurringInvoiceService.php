@@ -272,20 +272,20 @@ class RecurringInvoiceService
     }
 
     /**
-     * Create an invoice for one client with multiple subscription line items.
+     * The pricing/coupon/add-on/config-option math shared by createInvoice()
+     * (persists) and previewForSubscription() (doesn't) — kept as one method
+     * so a manual "generate invoice" action can never compute a different
+     * total than what actually gets billed.
      */
-    private function createInvoice(Tenant $tenant, Client $client, array $items, Carbon $dueDate): Document
+    private function buildLineItems(array $items): array
     {
-        $document = DB::transaction(function () use ($tenant, $client, $items, $dueDate) {
-            $docNumber = app(DocumentNumberService::class)->generate('invoice', $tenant->id);
+        $subtotal = 0;
+        $taxAmount = 0;
+        $discountTotal = 0;
+        $lineItems = [];
+        $renewalRedemptions = []; // [coupon, client_id, discount] to audit after the doc exists
 
-            $subtotal = 0;
-            $taxAmount = 0;
-            $discountTotal = 0;
-            $lineItems = [];
-            $renewalRedemptions = []; // [coupon, client_id, discount] to audit after the doc exists
-
-            foreach ($items as $item) {
+        foreach ($items as $item) {
                 $sub = $item['subscription'];
                 $product = $sub->productService;
                 $qty = $sub->quantity;
@@ -404,6 +404,24 @@ class RecurringInvoiceService
                     $taxAmount += $optTax;
                 }
             }
+        return [
+            'line_items' => $lineItems,
+            'subtotal' => round($subtotal, 2),
+            'tax_amount' => round($taxAmount, 2),
+            'discount_amount' => round($discountTotal, 2),
+            'total' => round($subtotal - $discountTotal + $taxAmount, 2),
+            'renewal_redemptions' => $renewalRedemptions,
+        ];
+    }
+
+    /**
+     * Create an invoice for one client with multiple subscription line items.
+     */
+    private function createInvoice(Tenant $tenant, Client $client, array $items, Carbon $dueDate): Document
+    {
+        $document = DB::transaction(function () use ($tenant, $client, $items, $dueDate) {
+            $docNumber = app(DocumentNumberService::class)->generate('invoice', $tenant->id);
+            $built = $this->buildLineItems($items);
 
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id' => $tenant->id,
@@ -412,20 +430,20 @@ class RecurringInvoiceService
                 'document_number' => $docNumber,
                 'date' => now()->format('Y-m-d'),
                 'due_date' => $dueDate->format('Y-m-d'),
-                'subtotal' => round($subtotal, 2),
-                'discount_amount' => round($discountTotal, 2),
-                'tax_amount' => round($taxAmount, 2),
-                'total' => round($subtotal - $discountTotal + $taxAmount, 2),
+                'subtotal' => $built['subtotal'],
+                'discount_amount' => $built['discount_amount'],
+                'tax_amount' => $built['tax_amount'],
+                'total' => $built['total'],
                 'notes' => 'Auto-generated recurring invoice',
                 'status' => 'sent',
             ]);
 
-            foreach ($lineItems as $lineItem) {
+            foreach ($built['line_items'] as $lineItem) {
                 $document->items()->create($lineItem);
             }
 
             // Audit each recurring-coupon discount applied on this renewal.
-            foreach ($renewalRedemptions as $r) {
+            foreach ($built['renewal_redemptions'] as $r) {
                 CouponRedemption::withoutGlobalScopes()->create([
                     'tenant_id'       => $r['coupon']->tenant_id,
                     'coupon_id'       => $r['coupon']->id,
@@ -450,6 +468,87 @@ class RecurringInvoiceService
                 'exception' => $e,
             ]);
         }
+
+        return $document;
+    }
+
+    /**
+     * Compute what a manually-triggered renewal invoice would look like for
+     * ONE subscription, without creating anything — same math buildLineItems()
+     * uses for the real thing, so the preview can never drift from what
+     * actually gets billed. Used by the Hosting Accounts "No invoice" action
+     * so staff can sanity-check the price before committing.
+     */
+    public function previewForSubscription(ClientSubscription $sub): array
+    {
+        $sub->loadMissing(['productService', 'addons', 'configOptions']);
+        $product = $sub->productService;
+        if (!$product) {
+            throw new \RuntimeException('This subscription has no product — cannot price an invoice.');
+        }
+
+        $interval = self::CYCLE_INTERVALS[$product->billing_cycle] ?? null;
+        $today = Carbon::today();
+
+        if ($product->invoice_day_of_month) {
+            $dueDate = $today->copy()->endOfMonth();
+            $serviceFrom = $today->copy()->startOfMonth();
+            $serviceTo = $dueDate->copy();
+        } elseif ($interval) {
+            $dueDate = $this->calculateNextBillDate($sub->start_date, $interval, $today);
+            $serviceFrom = $dueDate->copy()->sub($interval);
+            $serviceTo = $dueDate->copy()->subDay();
+        } else {
+            // One-off / no cycle — bill for today, no meaningful service period.
+            $dueDate = $today->copy();
+            $serviceFrom = $today->copy();
+            $serviceTo = $today->copy();
+        }
+
+        $items = [['subscription' => $sub, 'service_from' => $serviceFrom, 'service_to' => $serviceTo]];
+        $built = $this->buildLineItems($items);
+        $built['due_date'] = $dueDate->format('Y-m-d');
+
+        return $built;
+    }
+
+    /**
+     * Manually generate the renewal invoice for ONE subscription — the same
+     * createInvoice() the automated job uses, just triggered on demand for a
+     * subscription the automated pass missed (e.g. a broken hosting-account
+     * link masked it — see PlanChangeService's domain-fallback fix). Logs a
+     * RecurringInvoiceLog entry exactly like the automated paths do, so the
+     * "latest invoice" lookup picks it up immediately.
+     */
+    public function generateForSubscription(ClientSubscription $sub): Document
+    {
+        $preview = $this->previewForSubscription($sub);
+        $tenant = Tenant::find($sub->tenant_id);
+        $client = Client::withoutGlobalScopes()->find($sub->client_id);
+        if (!$tenant || !$client) {
+            throw new \RuntimeException('Tenant or client not found for this subscription.');
+        }
+
+        $dueDate = Carbon::parse($preview['due_date']);
+        $serviceFrom = $sub->productService->invoice_day_of_month
+            ? Carbon::today()->startOfMonth()
+            : $dueDate->copy()->sub(self::CYCLE_INTERVALS[$sub->productService->billing_cycle] ?? '1 year');
+        $serviceTo = $sub->productService->invoice_day_of_month ? $dueDate->copy() : $dueDate->copy()->subDay();
+
+        $document = $this->createInvoice($tenant, $client, [
+            ['subscription' => $sub, 'service_from' => $serviceFrom, 'service_to' => $serviceTo],
+        ], $dueDate);
+
+        RecurringInvoiceLog::withoutGlobalScopes()->create([
+            'tenant_id'              => $tenant->id,
+            'client_id'              => $client->id,
+            'product_service_id'     => $sub->product_service_id,
+            'client_subscription_id' => $sub->id,
+            'document_id'            => $document->id,
+            'next_bill_date'         => $dueDate,
+            'invoice_created_at'     => now(),
+            'reminders_sent'         => [],
+        ]);
 
         return $document;
     }

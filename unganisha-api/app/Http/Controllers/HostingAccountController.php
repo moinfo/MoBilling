@@ -1008,6 +1008,69 @@ class HostingAccountController extends Controller
         return response()->json(['message' => 'Provisioning started.'], 202);
     }
 
+    /**
+     * The hosting account's real hosting-PLAN subscription — not just
+     * $hostingAccount->subscription, which has repeatedly been found
+     * pointing at the wrong subscription for this domain (a Backup add-on,
+     * a Domain Registration, or a stale cancelled one — see
+     * PlanChangeService's own fallback for the first instance of this).
+     * Prefers the active "Web Hosting" subscription matched by domain
+     * name; falls back to the direct relation if none matches.
+     */
+    private function hostingPlanSubscription(HostingAccount $hostingAccount): ?ClientSubscription
+    {
+        $byDomain = ClientSubscription::withoutGlobalScopes()
+            ->whereNull('deleted_at')
+            ->where('tenant_id', $hostingAccount->tenant_id)
+            ->where('label', $hostingAccount->domain)
+            ->where('status', 'active')
+            ->whereHas('productService', fn ($q) => $q->where('category', 'Web Hosting'))
+            ->with('productService')
+            ->first();
+
+        return $byDomain ?? $hostingAccount->subscription;
+    }
+
+    /** Price preview for a manual "generate invoice" action — computes, doesn't create anything. */
+    public function invoicePreview(HostingAccount $hostingAccount)
+    {
+        $sub = $this->hostingPlanSubscription($hostingAccount);
+        if (!$sub) {
+            return response()->json(['message' => 'No hosting-plan subscription found for this domain.'], 422);
+        }
+
+        try {
+            $preview = app(\App\Services\RecurringInvoiceService::class)->previewForSubscription($sub);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => $preview + [
+            'product_name' => $sub->productService->name,
+            'client_name'  => $sub->client()->withoutGlobalScopes()->value('name'),
+        ]]);
+    }
+
+    /** Manually generate the renewal invoice this domain is missing. */
+    public function generateInvoice(HostingAccount $hostingAccount)
+    {
+        $sub = $this->hostingPlanSubscription($hostingAccount);
+        if (!$sub) {
+            return response()->json(['message' => 'No hosting-plan subscription found for this domain.'], 422);
+        }
+
+        try {
+            $document = app(\App\Services\RecurringInvoiceService::class)->generateForSubscription($sub);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data'    => ['id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
+            'message' => "Invoice {$document->document_number} created.",
+        ], 201);
+    }
+
     public function suspend(HostingAccount $hostingAccount)
     {
         SuspendHostingAccount::dispatch($hostingAccount, 'Suspended by admin');

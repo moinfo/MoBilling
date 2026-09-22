@@ -686,6 +686,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:hosting.terminate')->delete('/hosting-accounts/ftp-accounts', [\App\Http\Controllers\HostingAccountController::class, 'destroyFtpAccount']);
     Route::middleware('permission:hosting.create')->post('/hosting-accounts/import', [\App\Http\Controllers\HostingAccountController::class, 'import']);
     Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/logs', [\App\Http\Controllers\HostingAccountController::class, 'logs']);
+    Route::middleware('permission:hosting.read')->get('/hosting-accounts/{hostingAccount}/invoice-preview', [\App\Http\Controllers\HostingAccountController::class, 'invoicePreview']);
+    Route::middleware('permission:documents.create')->post('/hosting-accounts/{hostingAccount}/generate-invoice', [\App\Http\Controllers\HostingAccountController::class, 'generateInvoice']);
     Route::middleware('permission:hosting.create')->post('/client-subscriptions/{clientSubscription}/provision', [\App\Http\Controllers\HostingAccountController::class, 'provision']);
     Route::middleware('permission:hosting.suspend')->post('/hosting-accounts/{hostingAccount}/suspend', [\App\Http\Controllers\HostingAccountController::class, 'suspend']);
     Route::middleware('permission:hosting.suspend')->post('/hosting-accounts/{hostingAccount}/unsuspend', [\App\Http\Controllers\HostingAccountController::class, 'unsuspend']);

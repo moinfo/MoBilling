@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import {
   Title, Stack, Group, Table, Badge, ActionIcon, Tooltip, Text, Paper,
-  Select, TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code, Anchor, Alert,
+  Select, TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code, Anchor, Alert, Divider,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
   IconSearch, IconExternalLink, IconPlayerPause, IconPlayerPlay,
-  IconTrash, IconPackage, IconHistory, IconWorld,
+  IconTrash, IconPackage, IconHistory, IconWorld, IconReceipt2,
 } from '@tabler/icons-react';
 import {
   getHostingAccounts, getHostingLogs, suspendHosting, unsuspendHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
+  getHostingInvoicePreview, generateHostingInvoice,
   HostingAccount, ProvisioningLog, HOSTING_STATUS_COLORS,
 } from '../api/hosting';
 import { usePermissions } from '../hooks/usePermissions';
 import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
+import { formatCurrency } from '../utils/formatCurrency';
 
 function ExpiryText({ date }: { date: string | null | undefined }) {
   if (!date) return <Text size="xs" c="dimmed">—</Text>;
@@ -30,10 +32,24 @@ const INVOICE_STATUS_COLORS: Record<string, string> = {
   draft: 'gray', sent: 'blue', overdue: 'orange', partial: 'yellow', paid: 'green', cancelled: 'red',
 };
 
-function InvoiceBadge({ invoice }: { invoice: HostingAccount['latest_invoice'] }) {
+function InvoiceBadge({ account, canGenerate, onGenerate }: {
+  account: HostingAccount; canGenerate: boolean; onGenerate: () => void;
+}) {
   const navigate = useNavigate();
+  const invoice = account.latest_invoice;
   if (!invoice) {
-    return <Badge size="sm" color="red" variant="light">No invoice</Badge>;
+    return (
+      <Group gap={4} wrap="nowrap">
+        <Badge size="sm" color="red" variant="light">No invoice</Badge>
+        {canGenerate && (
+          <Tooltip label="Preview and generate the renewal invoice">
+            <ActionIcon size="sm" variant="light" color="teal" onClick={onGenerate}>
+              <IconReceipt2 size={13} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+      </Group>
+    );
   }
   return (
     <Badge
@@ -43,6 +59,91 @@ function InvoiceBadge({ invoice }: { invoice: HostingAccount['latest_invoice'] }
     >
       {invoice.document_number} · {invoice.status}
     </Badge>
+  );
+}
+
+function GenerateInvoiceModal({ account, onClose, onGenerated }: {
+  account: HostingAccount | null; onClose: () => void; onGenerated: () => void;
+}) {
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['hosting-invoice-preview', account?.id],
+    queryFn: () => getHostingInvoicePreview(account!.id),
+    enabled: !!account,
+  });
+  const preview = data?.data?.data;
+
+  const mutation = useMutation({
+    mutationFn: () => generateHostingInvoice(account!.id),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Invoice generated', message: res.data.message, color: 'green' });
+      onGenerated();
+      onClose();
+    },
+    onError: (e: any) => notifications.show({
+      title: 'Error', message: e?.response?.data?.message ?? 'Could not generate the invoice.', color: 'red',
+    }),
+  });
+
+  return (
+    <Modal opened={!!account} onClose={onClose} title={`Generate Invoice — ${account?.domain ?? ''}`} centered size="md">
+      {isLoading ? (
+        <Center py="lg"><Loader /></Center>
+      ) : isError ? (
+        <Alert color="red" variant="light">{(error as any)?.response?.data?.message ?? 'Could not price this invoice.'}</Alert>
+      ) : preview ? (
+        <Stack gap="sm">
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">Client</Text>
+            <Text size="sm" fw={600}>{preview.client_name}</Text>
+          </Group>
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">Product</Text>
+            <Text size="sm" fw={600}>{preview.product_name}</Text>
+          </Group>
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">Due date</Text>
+            <Text size="sm" fw={600}>{dayjs(preview.due_date).format('D MMM YYYY')}</Text>
+          </Group>
+          <Divider />
+          {preview.line_items.map((item, i) => (
+            <Group key={i} justify="space-between" wrap="nowrap">
+              <Text size="sm">{item.description}</Text>
+              <Text size="sm">{formatCurrency(item.total)}</Text>
+            </Group>
+          ))}
+          <Divider />
+          <Group justify="space-between">
+            <Text size="sm" c="dimmed">Subtotal</Text>
+            <Text size="sm">{formatCurrency(preview.subtotal)}</Text>
+          </Group>
+          {preview.discount_amount > 0 && (
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">Discount</Text>
+              <Text size="sm" c="red">−{formatCurrency(preview.discount_amount)}</Text>
+            </Group>
+          )}
+          {preview.tax_amount > 0 && (
+            <Group justify="space-between">
+              <Text size="sm" c="dimmed">Tax</Text>
+              <Text size="sm">{formatCurrency(preview.tax_amount)}</Text>
+            </Group>
+          )}
+          <Group justify="space-between">
+            <Text fw={700}>Total</Text>
+            <Text fw={800} size="lg">{formatCurrency(preview.total)}</Text>
+          </Group>
+          <Alert color="orange" variant="light" mt="xs">
+            Check the price above is correct before generating — this creates a real invoice and sends it to the client.
+          </Alert>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={onClose}>Cancel</Button>
+            <Button color="teal" loading={mutation.isPending} onClick={() => mutation.mutate()}>
+              Confirm & Generate Invoice
+            </Button>
+          </Group>
+        </Stack>
+      ) : null}
+    </Modal>
   );
 }
 
@@ -57,6 +158,7 @@ export default function HostingAccounts() {
   const [pkgFor, setPkgFor] = useState<HostingAccount | null>(null);
   const [pkgName, setPkgName] = useState('');
   const [terminateFor, setTerminateFor] = useState<HostingAccount | null>(null);
+  const [invoiceGenFor, setInvoiceGenFor] = useState<HostingAccount | null>(null);
 
   const params: Record<string, string> = { page: String(page) };
   if (statusFilter) params.status = statusFilter;
@@ -182,7 +284,9 @@ export default function HostingAccounts() {
                     </Table.Td>
                     <Table.Td><ExpiryText date={a.subscription?.expire_date} /></Table.Td>
                     <Table.Td><ExpiryText date={a.domain_expires_at} /></Table.Td>
-                    <Table.Td><InvoiceBadge invoice={a.latest_invoice} /></Table.Td>
+                    <Table.Td>
+                      <InvoiceBadge account={a} canGenerate={can('documents.create')} onGenerate={() => setInvoiceGenFor(a)} />
+                    </Table.Td>
                     <Table.Td>
                       <Badge size="sm" color={HOSTING_STATUS_COLORS[a.status]} variant="light">
                         {a.status}
@@ -285,6 +389,11 @@ export default function HostingAccounts() {
           </Group>
         </Stack>
       </Modal>
+
+      <GenerateInvoiceModal
+        account={invoiceGenFor} onClose={() => setInvoiceGenFor(null)}
+        onGenerated={invalidate}
+      />
     </Stack>
   );
 }
