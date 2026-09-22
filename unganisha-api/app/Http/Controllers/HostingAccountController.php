@@ -1008,160 +1008,31 @@ class HostingAccountController extends Controller
         return response()->json(['message' => 'Provisioning started.'], 202);
     }
 
-    /**
-     * The hosting account's real hosting-PLAN subscription — not just
-     * $hostingAccount->subscription, which has repeatedly been found
-     * pointing at the wrong subscription for this domain (a Backup add-on,
-     * a Domain Registration, or a stale cancelled one — see
-     * PlanChangeService's own fallback for the first instance of this).
-     * Prefers the active "Web Hosting" subscription matched by domain
-     * name; falls back to the direct relation if none matches.
-     */
-    private function hostingPlanSubscription(HostingAccount $hostingAccount): ?ClientSubscription
-    {
-        $byDomain = ClientSubscription::withoutGlobalScopes()
-            ->whereNull('deleted_at')
-            ->where('tenant_id', $hostingAccount->tenant_id)
-            ->where('label', $hostingAccount->domain)
-            ->where('status', 'active')
-            ->whereHas('productService', fn ($q) => $q->where('category', 'Web Hosting'))
-            ->with('productService')
-            ->first();
-
-        return $byDomain ?? $hostingAccount->subscription;
-    }
-
-    /**
-     * This domain's own registration subscription, if any — "hosting" for a
-     * client is the hosting plan AND the domain together, so the manual
-     * invoice action bundles both rather than leaving the domain renewal
-     * out (matches how the automated job groups everything due for a
-     * client into one invoice). Not required — many domains are registered
-     * elsewhere — so this returns null rather than erroring when absent.
-     * Deliberately not status-filtered to 'active': a lapsed domain
-     * subscription is exactly the case staff need to manually re-invoice.
-     */
-    private function domainSubscription(HostingAccount $hostingAccount): ?ClientSubscription
-    {
-        return ClientSubscription::withoutGlobalScopes()
-            ->whereNull('deleted_at')
-            ->where('tenant_id', $hostingAccount->tenant_id)
-            ->where('label', $hostingAccount->domain)
-            ->where('status', '!=', 'cancelled')
-            ->whereHas('productService', fn ($q) => $q->where('category', 'Domain'))
-            ->with('productService')
-            ->latest('start_date')
-            ->first();
-    }
-
-    /** @return ClientSubscription[] */
-    /** @return array{candidates: ClientSubscription[], billable: ClientSubscription[]} */
-    private function billableSubscriptions(HostingAccount $hostingAccount): array
-    {
-        $candidates = array_values(array_filter([
-            $this->hostingPlanSubscription($hostingAccount),
-            $this->domainSubscription($hostingAccount),
-        ]));
-
-        // Never re-bundle a subscription that already has a real invoice —
-        // hosting and domain are invoiced independently, so one having a
-        // current invoice must not block (or duplicate-charge) the other.
-        $billable = array_values(array_filter($candidates, fn ($sub) => !$this->hasCurrentInvoice($sub)));
-
-        return compact('candidates', 'billable');
-    }
-
-    /** Whether $sub already has an invoice that represents a real charge (not draft/cancelled). */
-    private function hasCurrentInvoice(ClientSubscription $sub): bool
-    {
-        return \App\Models\RecurringInvoiceLog::withoutGlobalScopes()
-            ->where('client_subscription_id', $sub->id)
-            ->whereHas('document', fn ($q) => $q->whereIn('status', ['sent', 'overdue', 'partial', 'paid']))
-            ->exists();
-    }
-
     /** Price preview for a manual "generate invoice" action — computes, doesn't create anything. */
-    public function invoicePreview(HostingAccount $hostingAccount)
+    public function invoicePreview(HostingAccount $hostingAccount, \App\Services\Hosting\RenewalBundleService $bundler)
     {
-        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount);
-        if (empty($candidates)) {
-            return response()->json(['message' => 'No hosting-plan or domain subscription found for this domain.'], 422);
-        }
-        if (empty($billable)) {
-            return response()->json(['message' => 'Everything for this domain already has a current invoice — nothing left to bill.'], 422);
-        }
-
         try {
-            $preview = app(\App\Services\RecurringInvoiceService::class)->previewForSubscriptions($billable);
+            $preview = $bundler->preview($hostingAccount);
         } catch (\Throwable $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
 
-        return response()->json(['data' => $preview + [
-            'product_name' => implode(' + ', array_map(fn ($s) => $s->productService->name, $billable)),
-            'client_name'  => $billable[0]->client()->withoutGlobalScopes()->value('name'),
-        ]]);
+        return response()->json(['data' => $preview]);
     }
 
     /** Manually generate the renewal invoice this domain is missing — bundles the domain renewal in too, if it has one. */
-    public function generateInvoice(HostingAccount $hostingAccount)
+    public function generateInvoice(HostingAccount $hostingAccount, \App\Services\Hosting\RenewalBundleService $bundler)
     {
-        ['candidates' => $candidates, 'billable' => $billable] = $this->billableSubscriptions($hostingAccount);
-        if (empty($candidates)) {
-            return response()->json(['message' => 'No hosting-plan or domain subscription found for this domain.'], 422);
-        }
-        if (empty($billable)) {
-            return response()->json(['message' => 'Everything for this domain already has a current invoice — nothing left to bill.'], 422);
-        }
-
         try {
-            $document = app(\App\Services\RecurringInvoiceService::class)->generateForSubscriptions($billable);
+            $document = $bundler->generate($hostingAccount);
         } catch (\Throwable $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         }
-
-        $this->markDomainRenewalPending($document, $billable);
 
         return response()->json([
             'data'    => ['id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
             'message' => "Invoice {$document->document_number} created.",
         ], 201);
-    }
-
-    /**
-     * A domain-registration subscription in the bundle doesn't, by itself,
-     * make the paid invoice actually renew the domain at the registry —
-     * that only happens via DocumentObserver, which looks for a Domain row
-     * carrying meta->renewal_document_id + pending_action, exactly as
-     * DomainBillingService::createRenewalInvoice stamps it. This bundle
-     * path bills a ClientSubscription, not a Domain, so without this the
-     * client pays and the domain silently stays expired at the registry
-     * (found live on manya.co.tz: invoice paid, subscription "renewed",
-     * registry never touched).
-     */
-    private function markDomainRenewalPending(\App\Models\Document $document, array $billable): void
-    {
-        foreach ($billable as $sub) {
-            if ($sub->productService?->category !== 'Domain') {
-                continue;
-            }
-
-            $domain = Domain::withoutGlobalScopes()
-                ->where('tenant_id', $sub->tenant_id)
-                ->where('client_id', $sub->client_id)
-                ->where('name', $sub->label)
-                ->first();
-
-            if (!$domain) {
-                continue;
-            }
-
-            $domain->update(['meta' => array_merge($domain->meta ?? [], [
-                'pending_action'      => 'renew',
-                'pending_years'       => max(1, (int) $sub->quantity),
-                'renewal_document_id' => $document->id,
-            ])]);
-        }
     }
 
     public function suspend(HostingAccount $hostingAccount)

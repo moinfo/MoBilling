@@ -5,6 +5,10 @@ return [
     'mosms' => [
         'base_url' => env('MOSMS_BASE_URL', 'https://mosms.co.tz/api'),
         'timeout'  => env('MOSMS_TIMEOUT', 30),
+        // Shared secret proving MoSMS's WhatsApp-renewal-reply webhook call
+        // actually originated from MoSMS (config('services.mobilling.*')
+        // on their side must hold the same value).
+        'inbound_webhook_secret' => env('MOSMS_INBOUND_WEBHOOK_SECRET'),
     ],
 
 

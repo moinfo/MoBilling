@@ -20,6 +20,7 @@ class DomainExpiryReminderNotification extends Notification implements ShouldQue
         public Domain $domain,
         public Tenant $tenant,
         public int $daysLeft,
+        public bool $replyEnabled = false,
     ) {}
 
     public function via($notifiable): array
@@ -81,15 +82,25 @@ class DomainExpiryReminderNotification extends Notification implements ShouldQue
             . "Ifanyie renew mapema kuepuka website/email kusimama. — {$this->tenant->name}";
     }
 
-    public function toWhatsApp($notifiable): array
+    /**
+     * A plain string, not the template/fallback array shape — a MoSMS-routed
+     * tenant's reply-CTA below only works because this exact text (not a
+     * template's fixed copy) is what lands in MoSMS's stored message body,
+     * which is what the inbound-reply matcher (MoSMS's WhatsAppWebhookController)
+     * greps for — specifically the literal phrase "MoBilling Renewal"
+     * below. See RenewalBundleService / whatsapp_renewal_sessions.
+     */
+    public function toWhatsApp($notifiable): string
     {
         $expires = $this->domain->expires_at->format('d M Y');
 
-        return [
-            'template' => 'domain_expiry_v1',
-            'parameters' => [$this->domain->name, $expires, (string) $this->daysLeft, $this->tenant->name],
-            'language' => 'en',
-            'fallback' => "⏰ Domain {$this->domain->name} expires {$expires} ({$this->daysLeft} days). Renew in time to keep your website and email running. — {$this->tenant->name}",
-        ];
+        if (!$this->replyEnabled) {
+            return "⏰ Domain {$this->domain->name} expires {$expires} ({$this->daysLeft} days). "
+                . "Renew in time to keep your website and email running. — {$this->tenant->name}";
+        }
+
+        return "🔔 *MoBilling Renewal*\n\n⏰ Domain {$this->domain->name} inaisha {$expires} "
+            . "(siku {$this->daysLeft} zilizobaki). Ifanyie renew mapema kuepuka website/email kusimama."
+            . "\n\nJibu *1* kutengeneza invoice ya renewal na kulipa papo hapo. — {$this->tenant->name}";
     }
 }

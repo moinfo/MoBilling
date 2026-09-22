@@ -2,8 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Helpers\PhoneHelper;
 use App\Models\Domain;
+use App\Models\MosmsAccount;
 use App\Models\Tenant;
+use App\Models\WhatsappRenewalSession;
 use App\Notifications\DomainExpiryReminderNotification;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -73,7 +76,25 @@ class SendDomainExpiryReminders extends Command
             }
 
             try {
-                $client->notify(new DomainExpiryReminderNotification($domain, $tenant, $daysLeft));
+                // Self-service "reply 1 to renew" only makes sense when the
+                // reply has somewhere to land — a MoSMS-linked tenant, whose
+                // inbound replies MoSMS forwards to us. A tenant with their
+                // own Meta WABA has no inbound webhook wired up at all yet,
+                // so telling their client to "reply 1" would be a dead end.
+                $replyEnabled = $tenant->whatsapp_enabled
+                    && $tenant->reminder_whatsapp_enabled
+                    && $client->phone
+                    && MosmsAccount::withoutGlobalScopes()->where('tenant_id', $tenant->id)->whereNotNull('token')->exists();
+
+                $client->notify(new DomainExpiryReminderNotification($domain, $tenant, $daysLeft, $replyEnabled));
+
+                if ($replyEnabled) {
+                    WhatsappRenewalSession::updateOrCreate(
+                        ['tenant_id' => $tenant->id, 'phone' => PhoneHelper::normalize($client->phone)],
+                        ['client_id' => $client->id, 'domain_id' => $domain->id, 'expires_at' => now()->addDays(9)],
+                    );
+                }
+
                 $meta = $domain->meta ?? [];
                 $meta['expiry_reminders_sent'][$expiryKey][] = $mark;
                 $domain->update(['meta' => $meta]);

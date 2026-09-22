@@ -118,6 +118,9 @@ Route::match(['get', 'post'], '/tenant-pesapal/ipn', [TenantPesapalWebhookContro
 // Attendance device (HIKVISION) event push — public webhook, token-secured
 Route::match(['get', 'post'], '/attendance/device/{token}', [\App\Http\Controllers\DeviceAttendanceController::class, 'capture']);
 
+// MoSMS: client replied "1" to a domain-renewal WhatsApp reminder (public, shared-secret)
+Route::post('/webhooks/mosms/renewal-reply', [\App\Http\Controllers\WhatsappRenewalWebhookController::class, 'confirm']);
+
 // Public invoice payment (no auth required)
 Route::get('/pay/{document}', [InvoicePaymentController::class, 'show']);
 Route::post('/pay/{document}/checkout', [InvoicePaymentController::class, 'checkout']);
