@@ -21,7 +21,10 @@ return new class extends Migration
             $table->foreignUuid('client_id')->constrained()->cascadeOnDelete();
             $table->foreignUuid('domain_id')->constrained()->cascadeOnDelete();
             $table->string('phone', 16);
-            $table->timestamp('expires_at');
+            // dateTime, not timestamp — MariaDB gives the first TIMESTAMP column in a table an
+            // implicit "ON UPDATE CURRENT_TIMESTAMP", which silently resets this on every row
+            // update that doesn't explicitly re-set it (see the later migration that fixed this live).
+            $table->dateTime('expires_at');
             $table->timestamps();
 
             $table->unique(['tenant_id', 'phone']);
