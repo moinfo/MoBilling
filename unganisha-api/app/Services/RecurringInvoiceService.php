@@ -473,20 +473,13 @@ class RecurringInvoiceService
     }
 
     /**
-     * Compute what a manually-triggered renewal invoice would look like for
-     * ONE subscription, without creating anything — same math buildLineItems()
-     * uses for the real thing, so the preview can never drift from what
-     * actually gets billed. Used by the Hosting Accounts "No invoice" action
-     * so staff can sanity-check the price before committing.
+     * The per-subscription due date + service period a manual invoice would
+     * use — same rules calculateNextBillDate()/the day-of-month path apply
+     * for the automated job, just computed on demand for one subscription.
      */
-    public function previewForSubscription(ClientSubscription $sub): array
+    private function billingWindowFor(ClientSubscription $sub): array
     {
-        $sub->loadMissing(['productService', 'addons', 'configOptions']);
         $product = $sub->productService;
-        if (!$product) {
-            throw new \RuntimeException('This subscription has no product — cannot price an invoice.');
-        }
-
         $interval = self::CYCLE_INTERVALS[$product->billing_cycle] ?? null;
         $today = Carbon::today();
 
@@ -505,50 +498,98 @@ class RecurringInvoiceService
             $serviceTo = $today->copy();
         }
 
-        $items = [['subscription' => $sub, 'service_from' => $serviceFrom, 'service_to' => $serviceTo]];
+        return compact('dueDate', 'serviceFrom', 'serviceTo');
+    }
+
+    /**
+     * Compute what a manually-triggered renewal invoice would look like for
+     * one or more subscriptions of the SAME client (e.g. a domain plus its
+     * hosting plan — hosting renewal isn't complete without the domain, so
+     * the Hosting Accounts "generate invoice" action bundles both into one
+     * invoice, same as the automated job groups everything due for a client
+     * into a single invoice), without creating anything — same math
+     * buildLineItems() uses for the real thing, so the preview can never
+     * drift from what actually gets billed.
+     *
+     * @param ClientSubscription[] $subs
+     */
+    public function previewForSubscriptions(array $subs): array
+    {
+        $items = [];
+        $dueDates = [];
+
+        foreach ($subs as $sub) {
+            $sub->loadMissing(['productService', 'addons', 'configOptions']);
+            if (!$sub->productService) {
+                continue;
+            }
+            $window = $this->billingWindowFor($sub);
+            $items[] = ['subscription' => $sub, 'service_from' => $window['serviceFrom'], 'service_to' => $window['serviceTo']];
+            $dueDates[] = $window['dueDate'];
+        }
+
+        if (empty($items)) {
+            throw new \RuntimeException('No billable subscription (with a product) found — cannot price an invoice.');
+        }
+
         $built = $this->buildLineItems($items);
-        $built['due_date'] = $dueDate->format('Y-m-d');
+        // Latest due date among the group — same convention processUpcomingBills() uses.
+        $built['due_date'] = collect($dueDates)->max()->format('Y-m-d');
 
         return $built;
     }
 
     /**
-     * Manually generate the renewal invoice for ONE subscription — the same
-     * createInvoice() the automated job uses, just triggered on demand for a
-     * subscription the automated pass missed (e.g. a broken hosting-account
-     * link masked it — see PlanChangeService's domain-fallback fix). Logs a
-     * RecurringInvoiceLog entry exactly like the automated paths do, so the
-     * "latest invoice" lookup picks it up immediately.
+     * Manually generate the renewal invoice for one or more subscriptions of
+     * the same client — the same createInvoice() the automated job uses,
+     * just triggered on demand for subscriptions the automated pass missed
+     * (e.g. a broken hosting-account link masked it — see
+     * PlanChangeService's domain-fallback fix). Logs one RecurringInvoiceLog
+     * entry per subscription against the same document, exactly like the
+     * automated grouped-invoice path does, so the "latest invoice" lookup
+     * picks it up for each of them immediately.
+     *
+     * @param ClientSubscription[] $subs
      */
-    public function generateForSubscription(ClientSubscription $sub): Document
+    public function generateForSubscriptions(array $subs): Document
     {
-        $preview = $this->previewForSubscription($sub);
-        $tenant = Tenant::find($sub->tenant_id);
-        $client = Client::withoutGlobalScopes()->find($sub->client_id);
+        $preview = $this->previewForSubscriptions($subs);
+        $first = $subs[array_key_first($subs)];
+        $tenant = Tenant::find($first->tenant_id);
+        $client = Client::withoutGlobalScopes()->find($first->client_id);
         if (!$tenant || !$client) {
             throw new \RuntimeException('Tenant or client not found for this subscription.');
         }
 
         $dueDate = Carbon::parse($preview['due_date']);
-        $serviceFrom = $sub->productService->invoice_day_of_month
-            ? Carbon::today()->startOfMonth()
-            : $dueDate->copy()->sub(self::CYCLE_INTERVALS[$sub->productService->billing_cycle] ?? '1 year');
-        $serviceTo = $sub->productService->invoice_day_of_month ? $dueDate->copy() : $dueDate->copy()->subDay();
+        $items = [];
+        foreach ($subs as $sub) {
+            if (!$sub->productService) {
+                continue;
+            }
+            $product = $sub->productService;
+            $serviceFrom = $product->invoice_day_of_month
+                ? Carbon::today()->startOfMonth()
+                : $dueDate->copy()->sub(self::CYCLE_INTERVALS[$product->billing_cycle] ?? '1 year');
+            $serviceTo = $product->invoice_day_of_month ? $dueDate->copy() : $dueDate->copy()->subDay();
+            $items[] = ['subscription' => $sub, 'service_from' => $serviceFrom, 'service_to' => $serviceTo];
+        }
 
-        $document = $this->createInvoice($tenant, $client, [
-            ['subscription' => $sub, 'service_from' => $serviceFrom, 'service_to' => $serviceTo],
-        ], $dueDate);
+        $document = $this->createInvoice($tenant, $client, $items, $dueDate);
 
-        RecurringInvoiceLog::withoutGlobalScopes()->create([
-            'tenant_id'              => $tenant->id,
-            'client_id'              => $client->id,
-            'product_service_id'     => $sub->product_service_id,
-            'client_subscription_id' => $sub->id,
-            'document_id'            => $document->id,
-            'next_bill_date'         => $dueDate,
-            'invoice_created_at'     => now(),
-            'reminders_sent'         => [],
-        ]);
+        foreach ($items as $item) {
+            $sub = $item['subscription'];
+            RecurringInvoiceLog::withoutGlobalScopes()->create([
+                'tenant_id'              => $tenant->id,
+                'client_id'              => $client->id,
+                'product_service_id'     => $sub->product_service_id,
+                'client_subscription_id' => $sub->id,
+                'document_id'            => $document->id,
+                'next_bill_date'         => $dueDate,
+                'invoice_created_at'     => now(),
+                'reminders_sent'         => [],
+            ]);
+        }
 
         return $document;
     }

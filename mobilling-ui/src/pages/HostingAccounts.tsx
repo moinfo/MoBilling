@@ -97,7 +97,7 @@ function GenerateInvoiceModal({ account, onClose, onGenerated }: {
             <Text size="sm" fw={600}>{preview.client_name}</Text>
           </Group>
           <Group justify="space-between">
-            <Text size="sm" c="dimmed">Product</Text>
+            <Text size="sm" c="dimmed">Products</Text>
             <Text size="sm" fw={600}>{preview.product_name}</Text>
           </Group>
           <Group justify="space-between">
