@@ -499,9 +499,10 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
-        $this->replyWithInvoice($tenant, $phone, $document, $lang);
         if ($client) {
-            $this->sendRootMenu($tenant, $client, $phone, $lang);
+            $this->offerPayment($tenant, $client, $phone, $document, $lang);
+        } else {
+            $this->replyWithInvoice($tenant, $phone, $document, $lang);
         }
     }
 
@@ -614,20 +615,14 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
-            $this->replyWithInvoice($tenant, $phone, $document, $lang);
-
-            // Continue straight into ordering hosting for the same domain, per request
-            // ("agiza domain mpya mpaka ku-provision hosting") — a separate invoice
-            // (domain registration and hosting are billed independently throughout this
-            // app), but one unbroken conversation. Actual provisioning still only fires
-            // once each invoice is actually paid (DocumentObserver / ClientSubscriptionObserver
-            // → ProvisionHostingAccount), unchanged — this just removes the need to
-            // start a second conversation to get there.
-            $session->update(['state' => ['step' => 'offer_hosting', 'domain' => $domain]]);
-            $this->reply($tenant, $phone, $this->t($lang,
-                "Je, unataka pia Website Hosting kwenye {$domain}? Jibu NDIYO kuendelea, au namba nyingine kuruka.",
-                "Would you also like Website Hosting on {$domain}? Reply YES to continue, or any other number to skip."
-            ));
+            // Choosing how to pay comes first; the "want hosting too?" offer (per request
+            // — "agiza domain mpya mpaka ku-provision hosting") resumes right after,
+            // via offerPayment()'s $after param — a separate invoice (domain registration
+            // and hosting are billed independently throughout this app), but one
+            // unbroken conversation. Actual provisioning still only fires once each
+            // invoice is actually paid (DocumentObserver / ClientSubscriptionObserver →
+            // ProvisionHostingAccount), unchanged.
+            $this->offerPayment($tenant, $client, $phone, $document, $lang, ['action' => 'offer_hosting', 'domain' => $domain]);
             return;
         }
 
@@ -858,8 +853,7 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
-            $this->replyWithInvoice($tenant, $phone, $document, $lang);
-            $this->sendRootMenu($tenant, $client, $phone, $lang);
+            $this->offerPayment($tenant, $client, $phone, $document, $lang);
             return;
         }
 
@@ -926,6 +920,26 @@ class WhatsappRenewalWebhookController extends Controller
     }
 
     // ── Unpaid invoices ──────────────────────────────────────────────────
+
+    /**
+     * Any newly-created invoice (renewal pick, domain order, hosting order) routes through
+     * here instead of sending a Pesapal link straight away — the client explicitly chooses
+     * online vs offline payment, exactly like picking an invoice from startPayInvoice() does.
+     * $after: extra state to resume once payment info has been delivered — currently only
+     * used to continue the "want hosting too?" offer after a domain order.
+     */
+    private function offerPayment(Tenant $tenant, Client $client, string $phone, Document $document, string $lang, ?array $after = null): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'pay_invoice', 'state' => ['step' => 'choose_method', 'document_id' => $document->id, 'after' => $after], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Invoice {$document->document_number} — TZS " . number_format((float) $document->total) . '. Chagua njia ya kulipa: 1) Online (Pesapal) · 2) Maelezo ya kulipa (Benki/Lipa Namba). Jibu na namba.',
+            "Invoice {$document->document_number} — TZS " . number_format((float) $document->total) . '. Choose how to pay: 1) Online (Pesapal) · 2) Payment details (Bank/mobile money). Reply with a number.'
+        ));
+    }
 
     private function startPayInvoice(Tenant $tenant, Client $client, string $phone, string $lang): void
     {
@@ -994,6 +1008,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         if ($step === 'choose_method') {
             $doc = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['document_id'] ?? null);
+            $after = $state['after'] ?? null;
 
             if (!$doc) {
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, invoice hiyo haipatikani tena. Tafadhali jaribu tena.', 'Sorry, that invoice is no longer available. Please try again.'), $lang);
@@ -1010,16 +1025,18 @@ class WhatsappRenewalWebhookController extends Controller
                 }
                 try {
                     $redirectUrl = $this->pesapalCheckout($tenant, $doc);
-                    $this->finishFlow($tenant, $client, $phone, $this->t($lang, "Lipa hapa: {$redirectUrl}", "Pay here: {$redirectUrl}"), $lang);
+                    $this->reply($tenant, $phone, $this->t($lang, "Lipa hapa: {$redirectUrl}", "Pay here: {$redirectUrl}"));
                 } catch (\Throwable $e) {
                     Log::warning('WhatsApp pay_invoice Pesapal checkout failed', ['document_id' => $doc->id, 'error' => $e->getMessage()]);
-                    $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza link ya kulipa. Tafadhali jaribu tena baadaye.', "Sorry, we couldn't create a payment link. Please try again later."), $lang);
+                    $this->reply($tenant, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza link ya kulipa. Tafadhali jaribu tena baadaye.', "Sorry, we couldn't create a payment link. Please try again later."));
                 }
+                $this->afterPayment($tenant, $client, $phone, $lang, $after);
                 return;
             }
 
             if (preg_match('/^\s*2\s*$/', $text)) {
-                $this->finishFlow($tenant, $client, $phone, $this->paymentDetailsText($tenant, $lang), $lang);
+                $this->reply($tenant, $phone, $this->paymentDetailsText($tenant, $lang));
+                $this->afterPayment($tenant, $client, $phone, $lang, $after);
                 return;
             }
 
@@ -1028,6 +1045,25 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
+    }
+
+    /** Resumes whatever offerPayment() was asked to continue with once payment info is delivered. */
+    private function afterPayment(Tenant $tenant, Client $client, string $phone, string $lang, ?array $after): void
+    {
+        if (($after['action'] ?? null) === 'offer_hosting' && !empty($after['domain'])) {
+            $domain = $after['domain'];
+            WhatsappRenewalSession::updateOrCreate(
+                ['tenant_id' => $tenant->id, 'phone' => $phone],
+                ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'offer_hosting', 'domain' => $domain], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            );
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Je, unataka pia Website Hosting kwenye {$domain}? Jibu NDIYO kuendelea, au namba nyingine kuruka.",
+                "Would you also like Website Hosting on {$domain}? Reply YES to continue, or any other number to skip."
+            ));
+            return;
+        }
+
+        $this->sendRootMenu($tenant, $client, $phone, $lang);
     }
 
     private function paymentDetailsText(Tenant $tenant, string $lang): string
