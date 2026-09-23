@@ -5,7 +5,8 @@ import {
   SimpleGrid, ThemeIcon, ActionIcon, Tooltip, Pagination, Anchor, Drawer, Tabs,
 } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconPhone, IconPhoneCall, IconAlertTriangle,
@@ -75,10 +76,14 @@ export default function Followups() {
     }),
   });
 
+  // Debounced + keepPreviousData: without them every keystroke swapped the option list to [] while
+  // the new request loaded, which made the search box drop focus/text and feel untypeable.
+  const [debouncedPickSearch] = useDebouncedValue(pickSearch, 300);
   const { data: pickData } = useQuery({
-    queryKey: ['assign-invoice-picker', pickSearch],
+    queryKey: ['assign-invoice-picker', debouncedPickSearch],
+    placeholderData: keepPreviousData,
     // status 'sent' is the API's "unpaid" group (sent + overdue + partial), filtered server-side — otherwise the latest 50 invoices of ANY status come back and older unpaid ones never appear.
-    queryFn: () => getDocuments({ type: 'invoice', status: 'sent', search: pickSearch || undefined, per_page: 100 }),
+    queryFn: () => getDocuments({ type: 'invoice', status: 'sent', search: debouncedPickSearch || undefined, per_page: 100 }),
     enabled: assignPickerOpen,
   });
   const pickable: Document[] = ((pickData?.data?.data ?? []) as Document[])
@@ -465,6 +470,7 @@ export default function Followups() {
               value: d.id,
               label: `${d.document_number} — ${d.client?.name ?? ''} (${formatCurrency(d.balance_due)})`,
             }))}
+            searchValue={pickSearch}
             onSearchChange={setPickSearch}
             filter={({ options }) => options}
             onChange={(v) => setPickDoc(pickable.find((d) => d.id === v) ?? null)}
