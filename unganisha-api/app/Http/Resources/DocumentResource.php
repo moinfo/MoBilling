@@ -48,6 +48,10 @@ class DocumentResource extends JsonResource
                 ])->values()),
             'created_by' => $this->created_by,
             'created_at' => $this->created_at,
+            'collection_reviewed_by' => $this->collection_reviewed_by,
+            'collection_reviewed_by_name' => $this->whenLoaded('collectionReviewedBy', fn () => $this->collectionReviewedBy?->name),
+            'collection_reviewed_at' => $this->collection_reviewed_at,
+            'collection_review_notes' => $this->collection_review_notes,
         ];
     }
 }

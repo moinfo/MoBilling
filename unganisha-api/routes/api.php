@@ -334,6 +334,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:documents.send')->patch('/documents/{document}/submit-for-approval', [DocumentController::class, 'submitForApproval']);
     Route::middleware('permission:documents.approve')->patch('/documents/{document}/approve', [DocumentController::class, 'approve']);
     Route::middleware('permission:documents.approve')->patch('/documents/{document}/reject', [DocumentController::class, 'reject']);
+    Route::middleware('permission:documents.approve_collection')->post('/documents/{document}/approve-collection', [DocumentController::class, 'approveForCollection']);
     Route::middleware('permission:documents.update')->patch('/documents/{document}/cancel', [DocumentController::class, 'cancel']);
     Route::middleware('permission:documents.update')->patch('/documents/{document}/uncancel', [DocumentController::class, 'uncancel']);
     Route::middleware('permission:documents.update')->delete('/documents/{document}/items/{item}', [DocumentController::class, 'removeItem']);

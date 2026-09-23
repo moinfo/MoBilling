@@ -156,6 +156,15 @@ class FollowupController extends Controller
 
         $document = Document::findOrFail($data['document_id']);
 
+        // An admin must have reviewed and approved this invoice as legitimately collectible
+        // before it can be assigned to anyone for follow-up — see
+        // DocumentController::approveForCollection().
+        if (!$document->collection_reviewed_at) {
+            return response()->json([
+                'message' => 'This invoice has not been reviewed and approved for collection yet. An admin must approve it first.',
+            ], 422);
+        }
+
         // Check max 3 calls
         $callCount = Followup::where('document_id', $document->id)
             ->whereNotNull('call_date')

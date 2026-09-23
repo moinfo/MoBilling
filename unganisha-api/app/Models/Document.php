@@ -16,6 +16,7 @@ class Document extends Model
         'tenant_id', 'client_id', 'type', 'document_number',
         'parent_id', 'date', 'due_date', 'subtotal', 'discount_amount',
         'tax_amount', 'total', 'notes', 'status', 'overdue_stage', 'created_by', 'legacy_id',
+        'collection_reviewed_by', 'collection_reviewed_at', 'collection_review_notes',
     ];
 
     protected $casts = [
@@ -25,7 +26,13 @@ class Document extends Model
         'discount_amount' => 'decimal:2',
         'tax_amount' => 'decimal:2',
         'total' => 'decimal:2',
+        'collection_reviewed_at' => 'datetime',
     ];
+
+    public function collectionReviewedBy()
+    {
+        return $this->belongsTo(User::class, 'collection_reviewed_by');
+    }
 
     public function client()
     {

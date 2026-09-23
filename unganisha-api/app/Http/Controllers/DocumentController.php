@@ -413,6 +413,31 @@ class DocumentController extends Controller
         ]);
     }
 
+    /**
+     * Admin sign-off that a specific unpaid invoice is legitimately owed and worth pursuing —
+     * required before FollowupController::store() lets anyone assign it to staff for collections
+     * follow-up (explicit requirement: verify the debt is real before assigning it out).
+     */
+    public function approveForCollection(Request $request, Document $document)
+    {
+        $data = $request->validate(['notes' => 'nullable|string|max:2000']);
+
+        if (!in_array($document->status, ['sent', 'overdue', 'partial'], true)) {
+            return response()->json(['message' => 'Only sent, overdue, or partially paid invoices can be approved for collection.'], 422);
+        }
+
+        $document->update([
+            'collection_reviewed_by' => $request->user()->id,
+            'collection_reviewed_at' => now(),
+            'collection_review_notes' => $data['notes'] ?? null,
+        ]);
+
+        return response()->json([
+            'data' => new DocumentResource($document->fresh()->load('items', 'client', 'collectionReviewedBy')),
+            'message' => "{$document->document_number} approved for debt-collection follow-up.",
+        ]);
+    }
+
     public function updateDueDate(Request $request, Document $document)
     {
         $request->validate([
