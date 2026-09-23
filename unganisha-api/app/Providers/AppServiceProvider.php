@@ -33,5 +33,7 @@ class AppServiceProvider extends ServiceProvider
         ClientSubscription::observe(ClientSubscriptionObserver::class);
         // Domain orders: invoice paid -> register/transfer/renew at the registry
         Document::observe(DocumentObserver::class);
+        // Collector alert when a client pays an invoice assigned for debt collection
+        \App\Models\PaymentIn::observe(\App\Observers\PaymentInObserver::class);
     }
 }

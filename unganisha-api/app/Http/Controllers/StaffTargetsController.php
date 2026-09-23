@@ -377,12 +377,7 @@ class StaffTargetsController extends Controller
      */
     private function collectedForTarget(StaffTarget $staffTarget): float
     {
-        $documentIds = $this->assignedDocumentIds($staffTarget);
-
-        return (float) \App\Models\PaymentIn::withoutGlobalScopes()
-            ->whereIn('document_id', $documentIds)
-            ->whereBetween('payment_date', [$staffTarget->period_start, $staffTarget->period_end])
-            ->sum('amount');
+        return $staffTarget->collectedAmount();
     }
 
     private function assignedDocumentIds(StaffTarget $staffTarget)

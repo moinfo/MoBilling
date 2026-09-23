@@ -170,10 +170,50 @@ class FollowupController extends Controller
             'status' => 'pending',
         ]);
 
+        if ($followup->user_id !== auth()->id()) {
+            $this->notifyAssignment($followup->user_id, [$document], Carbon::parse($data['next_followup'])->format('d M Y'));
+        }
+
         return response()->json([
             'data' => $followup,
             'message' => 'Follow-up scheduled.',
         ], 201);
+    }
+
+    /**
+     * One summary notification per staff member for the invoices just assigned to them.
+     * Never allowed to break the assignment itself.
+     *
+     * @param  Document[]  $docs
+     */
+    private function notifyAssignment(string $userId, array $docs, string $nextDate): void
+    {
+        try {
+            $user = \App\Models\User::find($userId);
+            $tenant = $user?->tenant;
+            if (!$user || !$tenant || !$docs) {
+                return;
+            }
+            $items = [];
+            $total = 0.0;
+            foreach ($docs as $i => $d) {
+                $balance = (float) $d->balance_due;
+                $total += $balance;
+                if ($i < 5) {
+                    $items[] = [
+                        'client' => $d->client?->name ?? '-',
+                        'invoice' => $d->document_number,
+                        'balance' => $balance,
+                        'next' => $nextDate,
+                    ];
+                }
+            }
+            $user->notify(new \App\Notifications\FollowupAssignedNotification(
+                $tenant, auth()->user()?->name ?? 'Admin', $items, count($docs), $total,
+            ));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Followup assignment notification failed', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -328,6 +368,14 @@ class FollowupController extends Controller
                 $assigned[] = $id;
             }
         });
+
+        if ($assigned && $data['user_id'] !== auth()->id()) {
+            $this->notifyAssignment(
+                $data['user_id'],
+                array_map(fn ($id) => $docs->get($id), $assigned),
+                Carbon::parse($data['next_followup'])->format('d M Y'),
+            );
+        }
 
         return response()->json([
             'assigned' => $assigned,

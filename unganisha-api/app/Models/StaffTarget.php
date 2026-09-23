@@ -40,6 +40,24 @@ class StaffTarget extends Model
     public function manager(): BelongsTo    { return $this->belongsTo(User::class, 'manager_id'); }
     public function criteria(): HasMany     { return $this->hasMany(StaffTargetCriterion::class, 'target_id'); }
 
+    /**
+     * Sum of PaymentIn amounts on invoices this target's staff member has Followups for, within the
+     * target period. Single source for auto-verify, live progress and payment notifications.
+     */
+    public function collectedAmount(): float
+    {
+        $documentIds = \App\Models\Followup::withoutGlobalScopes()
+            ->where('tenant_id', $this->tenant_id)
+            ->where('user_id', $this->user_id)
+            ->pluck('document_id')
+            ->unique();
+
+        return (float) \App\Models\PaymentIn::withoutGlobalScopes()
+            ->whereIn('document_id', $documentIds)
+            ->whereBetween('payment_date', [$this->period_start, $this->period_end])
+            ->sum('amount');
+    }
+
     public function grossCommission(): float
     {
         return (float) $this->criteria->sum('commission_earned')
