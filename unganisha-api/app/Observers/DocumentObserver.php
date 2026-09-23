@@ -17,6 +17,14 @@ class DocumentObserver
 {
     public function updated(Document $document): void
     {
+        if ($document->wasChanged('status') && in_array($document->status, ['paid', 'cancelled'], true)) {
+            try {
+                \App\Models\CollectionAssignment::syncForDocument($document);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Collection assignment sync failed', ['error' => $e->getMessage()]);
+            }
+        }
+
         if (!$document->wasChanged('status') || $document->status !== 'paid') {
             return;
         }

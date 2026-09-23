@@ -111,6 +111,18 @@ class ProcessFollowups extends Command
                 }
             }
 
+            // 5. Safety net: complete/cancel collection assignments whose invoice got paid/cancelled/deleted
+            //    (DocumentObserver does this live; this catches anything that bypassed model events).
+            $assignmentsClosed = 0;
+            foreach (\App\Models\CollectionAssignment::withoutGlobalScopes()->where('status', 'active')->get() as $a) {
+                $d = Document::withoutGlobalScopes()->withTrashed()->find($a->document_id);
+                $new = !$d || $d->trashed() || $d->status === 'cancelled' ? 'cancelled' : ($d->status === 'paid' ? 'completed' : null);
+                if ($new) {
+                    $a->update(['status' => $new]);
+                    $assignmentsClosed++;
+                }
+            }
+
             $this->info("Created: {$created}, Broken promises: {$broken}, Fulfilled: {$fulfilledCount}, Orphaned cancelled: {$orphaned}");
 
             CronLog::create([

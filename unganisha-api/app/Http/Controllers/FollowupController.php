@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CollectionAssignment;
 use App\Models\Document;
 use App\Models\Followup;
 use Carbon\Carbon;
@@ -44,7 +45,10 @@ class FollowupController extends Controller
             ->groupBy('document_id')
             ->pluck('aggregate', 'document_id');
 
-        $format = function ($f) use ($callCounts) {
+        $allF = $dueToday->concat($overdueFollowups);
+        $assignMap = $this->assignmentMap($allF->pluck('document_id')->unique()->values()->all(), $allF->pluck('document', 'document_id'));
+
+        $format = function ($f) use ($callCounts, $assignMap) {
             return [
                 'id' => $f->id,
                 'document_id' => $f->document_id,
@@ -64,6 +68,7 @@ class FollowupController extends Controller
                 'next_followup' => $f->next_followup?->toDateString(),
                 'status' => $f->status,
                 'call_count' => (int) ($callCounts[$f->document_id] ?? 0),
+                'assignment' => $assignMap[$f->document_id] ?? null,
             ];
         };
 
@@ -78,6 +83,33 @@ class FollowupController extends Controller
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Latest active (else latest) collection assignment per document, as compact progress arrays.
+     * @return array<string, array>
+     */
+    private function assignmentMap(array $documentIds, $docs = null): array
+    {
+        if (!$documentIds) {
+            return [];
+        }
+        $out = [];
+        foreach (CollectionAssignment::whereIn('document_id', $documentIds)->orderBy('created_at')->get() as $a) {
+            // later rows overwrite earlier ones; an active row always wins over a closed one
+            if (isset($out[$a->document_id]) && $out[$a->document_id]['status'] === 'active' && $a->status !== 'active') {
+                continue;
+            }
+            $doc = $docs[$a->document_id] ?? null;
+            $p = $a->progress($doc ? (float) $doc->paid_amount : null);
+            $out[$a->document_id] = $p + [
+                'id' => $a->id, 'status' => $a->status, 'user_id' => $a->user_id,
+                'commission_type' => $a->commission_type, 'commission_value' => (float) $a->commission_value,
+                'paid_out_at' => $a->paid_out_at?->toISOString(),
+            ];
+        }
+
+        return $out;
     }
 
     /**
@@ -119,7 +151,11 @@ class FollowupController extends Controller
 
         $followups = $query->paginate($request->get('per_page', 20));
 
+        $rowsC = $followups->getCollection();
+        $assignMap = $this->assignmentMap($rowsC->pluck('document_id')->unique()->values()->all(), $rowsC->pluck('document', 'document_id'));
+
         $followups->getCollection()->transform(fn ($f) => [
+            'assignment' => $assignMap[$f->document_id] ?? null,
             'id' => $f->id,
             'document_id' => $f->document_id,
             'document_number' => $f->document?->document_number,
@@ -153,6 +189,9 @@ class FollowupController extends Controller
             'next_followup' => 'required|date',
             'user_id' => 'nullable|uuid|exists:users,id',
             'notes' => 'nullable|string|max:1000',
+            'target_amount' => 'nullable|numeric|gt:0',
+            'commission_type' => 'nullable|in:none,percentage,fixed',
+            'commission_value' => 'nullable|numeric|min:0',
         ]);
 
         $document = Document::findOrFail($data['document_id']);
@@ -161,14 +200,49 @@ class FollowupController extends Controller
             return response()->json(['message' => $error], 422);
         }
 
-        $followup = Followup::create([
-            'document_id' => $document->id,
-            'client_id' => $document->client_id,
-            'user_id' => $data['user_id'] ?? auth()->id(),
-            'next_followup' => $data['next_followup'],
-            'notes' => $data['notes'] ?? null,
-            'status' => 'pending',
-        ]);
+        $userId = $data['user_id'] ?? auth()->id();
+        $explicit = isset($data['target_amount']) || isset($data['commission_type']) || isset($data['commission_value']);
+        $activeExists = CollectionAssignment::where('document_id', $document->id)->where('status', 'active')->exists();
+        $attrs = null;
+        if ($explicit && $activeExists) {
+            return response()->json(['message' => 'This invoice already has an active collection assignment.'], 422);
+        }
+        // Old callers (no target/commission fields) keep working: a plain follow-up on an invoice that is
+        // already tracked (or already settled) just schedules the reminder without a second assignment.
+        if ($explicit || (!$activeExists && (float) $document->balance_due > 0)) {
+            $attrs = CollectionAssignmentController::buildAttributes(
+                $document, $userId, null,
+                isset($data['target_amount']) ? (float) $data['target_amount'] : null,
+                $data['commission_type'] ?? null,
+                isset($data['commission_value']) ? (float) $data['commission_value'] : null,
+            );
+            if (is_string($attrs)) {
+                return response()->json(['message' => $attrs], 422);
+            }
+        }
+
+        $followup = DB::transaction(function () use ($document, $userId, $data, $attrs) {
+            if ($attrs) {
+                // serialise concurrent assigns of the same invoice, then re-check
+                Document::whereKey($document->id)->lockForUpdate()->first();
+                if (CollectionAssignment::where('document_id', $document->id)->where('status', 'active')->exists()) {
+                    return null;
+                }
+                CollectionAssignment::create($attrs);
+            }
+
+            return Followup::create([
+                'document_id' => $document->id,
+                'client_id' => $document->client_id,
+                'user_id' => $userId,
+                'next_followup' => $data['next_followup'],
+                'notes' => $data['notes'] ?? null,
+                'status' => 'pending',
+            ]);
+        });
+        if (!$followup) {
+            return response()->json(['message' => 'This invoice already has an active collection assignment.'], 422);
+        }
 
         if ($followup->user_id !== auth()->id()) {
             $this->notifyAssignment($followup->user_id, [$document], Carbon::parse($data['next_followup'])->format('d M Y'));
@@ -332,13 +406,18 @@ class FollowupController extends Controller
             'user_id' => 'required|uuid|exists:users,id',
             'next_followup' => 'required|date',
             'notes' => 'nullable|string|max:1000',
+            'commission_type' => 'nullable|in:none,percentage,fixed',
+            'commission_value' => 'nullable|numeric|min:0',
+            'targets' => 'nullable|array',
+            'targets.*' => 'nullable|numeric|gt:0',
         ]);
+        $batchId = (string) \Illuminate\Support\Str::uuid();
 
         $docs = Document::whereIn('id', $data['document_ids'])->get()->keyBy('id');
         $assigned = [];
         $skipped = [];
 
-        DB::transaction(function () use ($data, $docs, &$assigned, &$skipped) {
+        DB::transaction(function () use ($data, $docs, $batchId, &$assigned, &$skipped) {
             foreach (array_unique($data['document_ids']) as $id) {
                 $doc = $docs->get($id);
                 if (!$doc) {
@@ -350,13 +429,28 @@ class FollowupController extends Controller
                     $reason = 'Only sent, overdue or partially paid invoices can be assigned.';
                 } elseif (Followup::where('document_id', $doc->id)->active()->exists()) {
                     $reason = 'Already assigned (active follow-up exists).';
+                } elseif (CollectionAssignment::where('document_id', $doc->id)->where('status', 'active')->exists()) {
+                    $reason = 'Already has an active collection assignment.';
                 } else {
                     $reason = $this->assignmentBlocker($doc);
+                }
+                $attrs = null;
+                if (!$reason) {
+                    $attrs = CollectionAssignmentController::buildAttributes(
+                        $doc, $data['user_id'], $batchId,
+                        isset($data['targets'][$id]) ? (float) $data['targets'][$id] : null,
+                        $data['commission_type'] ?? null,
+                        isset($data['commission_value']) ? (float) $data['commission_value'] : null,
+                    );
+                    if (is_string($attrs)) {
+                        $reason = $attrs;
+                    }
                 }
                 if ($reason) {
                     $skipped[] = ['document_id' => $id, 'document_number' => $doc->document_number, 'reason' => $reason];
                     continue;
                 }
+                CollectionAssignment::create($attrs);
                 Followup::create([
                     'document_id' => $doc->id,
                     'client_id' => $doc->client_id,

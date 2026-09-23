@@ -1,5 +1,26 @@
 import api from './axios';
 
+export type CommissionType = 'none' | 'percentage' | 'fixed';
+
+export interface AssignmentBrief {
+  id: string;
+  status: 'active' | 'completed' | 'cancelled';
+  target: number;
+  collected: number;
+  remaining: number;
+  commission_earned: number;
+  achieved: boolean;
+  commission_type: CommissionType;
+  commission_value: number;
+  paid_out_at: string | null;
+}
+
+export interface CommissionFields {
+  target_amount?: number;
+  commission_type?: CommissionType;
+  commission_value?: number;
+}
+
 export interface FollowupEntry {
   id: string;
   document_id: string;
@@ -20,6 +41,7 @@ export interface FollowupEntry {
   status: 'pending' | 'open' | 'fulfilled' | 'broken' | 'escalated' | 'cancelled';
   call_count?: number;
   created_at?: string;
+  assignment?: AssignmentBrief | null;
 }
 
 export interface FollowupDashboard {
@@ -43,7 +65,7 @@ export const createFollowup = (data: {
   next_followup: string;
   user_id?: string;
   notes?: string;
-}) => api.post('/followups', data);
+} & CommissionFields) => api.post('/followups', data);
 
 export const logCall = (
   followupId: string,
@@ -108,4 +130,37 @@ export const bulkAssignFollowups = (data: {
   user_id: string;
   next_followup: string;
   notes?: string;
+  commission_type?: CommissionType;
+  commission_value?: number;
+  targets?: Record<string, number>;
 }) => api.post<BulkAssignResult>('/followups/bulk-assign', data);
+
+export interface CollectionAssignmentRow extends AssignmentBrief {
+  document_id: string;
+  document_number: string | null;
+  client_name: string | null;
+  invoice_balance: number | null;
+  user_id: string;
+  user_name: string | null;
+  batch_id: string | null;
+  created_at: string;
+}
+
+export interface CollectionAssignmentsResponse {
+  data: CollectionAssignmentRow[];
+  summary: { target: number; collected: number; commission_earned: number; commission_unpaid: number; count: number };
+}
+
+export const getCollectionAssignments = (params?: Record<string, string>) =>
+  api.get<CollectionAssignmentsResponse>('/collection-assignments', { params });
+
+export const markCommissionPaid = (ids: string[]) =>
+  api.post<{ message: string; updated: number }>('/collection-assignments/bulk-mark-paid', { ids });
+
+/** Commission preview matching the backend formula (CollectionAssignment::commissionFor). */
+export const previewCommission = (type: CommissionType, value: number, target: number, collected: number) => {
+  const counted = Math.min(collected, target);
+  if (type === 'percentage') return (counted * value) / 100;
+  if (type === 'fixed') return target > 0 && collected >= target ? value : 0;
+  return 0;
+};

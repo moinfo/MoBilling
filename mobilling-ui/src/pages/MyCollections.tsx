@@ -8,7 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import { notifications } from '@mantine/notifications';
 import { IconPhoneCall, IconAlertTriangle, IconPlayerPlay, IconCoin, IconFileInvoice, IconTarget } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import { getFollowupDashboard, getFollowups, FollowupEntry } from '../api/followups';
+import { getFollowupDashboard, getFollowups, getCollectionAssignments, FollowupEntry } from '../api/followups';
 import { getTargets, getCommissionSummary, StaffTarget } from '../api/staffTargets';
 import { getDocument, Document } from '../api/documents';
 import { useAuth } from '../context/AuthContext';
@@ -33,6 +33,17 @@ export default function MyCollections() {
     queryFn: () => getFollowups({ user_id: String(user?.id), per_page: '100' }),
     enabled: !!user?.id,
   });
+  const assignQ = useQuery({
+    queryKey: ['collection-assignments-mine', user?.id],
+    queryFn: () => getCollectionAssignments({ mine: '1' }),
+    enabled: !!user?.id,
+  });
+  const assignByDoc = useMemo(() => {
+    const m = new Map<string, NonNullable<typeof assignQ.data>['data']['data'][number]>();
+    (assignQ.data?.data?.data ?? []).forEach((a) => { const c = m.get(a.document_id); if (!c || a.status === 'active') m.set(a.document_id, a); });
+    return m;
+  }, [assignQ.data]);
+  const aSum = assignQ.data?.data?.summary;
   const targetsQ = useQuery({ queryKey: ['staff-targets-mine'], queryFn: () => getTargets() });
   const summaryQ = useQuery({
     queryKey: ['staff-targets-summary-mine', user?.id],
@@ -168,18 +179,26 @@ export default function MyCollections() {
         </Tabs.Panel>
 
         <Tabs.Panel value="invoices" pt="md">
+          {aSum && aSum.count > 0 && (
+            <SimpleGrid cols={{ base: 2, sm: 4 }} mb="md">
+              {([['Total target', aSum.target, undefined], ['Collected', aSum.collected, undefined], ['Commission earned', aSum.commission_earned, 'green'], ['Commission unpaid', aSum.commission_unpaid, 'orange']] as [string, number, string | undefined][]).map(([l, v, c]) => (
+                <Paper key={l} withBorder p="md" radius="md"><Text size="xs" c="dimmed" tt="uppercase" fw={600}>{l}</Text><Text size="lg" fw={700} c={c}>{formatCurrency(v)}</Text></Paper>
+              ))}
+            </SimpleGrid>
+          )}
           <Paper withBorder p="md" radius="md">
             {mine.isLoading ? <Center py="md"><Loader size="sm" /></Center> : mine.isError ? (
               <Text c="red" size="sm">Failed to load your assigned invoices.</Text>
             ) : !assigned.length ? (
               <Text c="dimmed" size="sm">No unpaid invoices are assigned to you.</Text>
             ) : (
-              <Table.ScrollContainer minWidth={650}>
+              <Table.ScrollContainer minWidth={900}>
                 <Table striped highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Client</Table.Th><Table.Th>Invoice</Table.Th><Table.Th>Total</Table.Th>
-                      <Table.Th>Balance</Table.Th><Table.Th>Next follow-up</Table.Th><Table.Th>Status</Table.Th>
+                      <Table.Th>Balance</Table.Th><Table.Th>Target</Table.Th><Table.Th>Collected</Table.Th>
+                      <Table.Th>Remaining</Table.Th><Table.Th>Commission</Table.Th><Table.Th>Next follow-up</Table.Th><Table.Th>Status</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -189,6 +208,24 @@ export default function MyCollections() {
                         <Table.Td><Anchor size="sm" onClick={() => openPreview(f.document_id)}>{f.document_number}</Anchor></Table.Td>
                         <Table.Td>{formatCurrency(f.invoice_total)}</Table.Td>
                         <Table.Td fw={600} c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
+                        {(() => {
+                          const a = assignByDoc.get(f.document_id);
+                          return a ? (
+                            <>
+                              <Table.Td>{formatCurrency(a.target)}</Table.Td>
+                              <Table.Td>{formatCurrency(a.collected)}</Table.Td>
+                              <Table.Td>{formatCurrency(a.remaining)}</Table.Td>
+                              <Table.Td>
+                                {a.commission_type === 'none' ? '—' : (
+                                  <>
+                                    <Text size="sm" fw={600} c="green">{formatCurrency(a.commission_earned)}</Text>
+                                    <Text size="xs" c="dimmed">{a.commission_type === 'percentage' ? `${a.commission_value}%` : `${formatCurrency(a.commission_value)} fixed`}{a.commission_earned > 0 ? (a.paid_out_at ? ' · paid' : ' · unpaid') : ''}</Text>
+                                  </>
+                                )}
+                              </Table.Td>
+                            </>
+                          ) : <Table.Td colSpan={4}><Text size="xs" c="dimmed">No target set</Text></Table.Td>;
+                        })()}
                         <Table.Td>{f.next_followup ? formatDate(f.next_followup) : '—'}</Table.Td>
                         <Table.Td><Badge size="sm" variant="light" color={f.status === 'escalated' ? 'orange' : 'blue'}>{f.status}</Badge></Table.Td>
                       </Table.Tr>

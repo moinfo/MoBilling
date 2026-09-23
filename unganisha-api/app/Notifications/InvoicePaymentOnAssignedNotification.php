@@ -13,6 +13,7 @@ use Illuminate\Notifications\Notification;
 /**
  * Tells a collector that a client paid an invoice assigned to them.
  *
+ * $estimate may instead be ['assignment' => [target, collected, commission, ...]] from a per-invoice CollectionAssignment.
  * $estimate (optional, all figures ESTIMATES until a supervisor verifies the target):
  *   ['target' => string, 'collected' => float, 'goal' => float, 'commission' => float]
  */
@@ -63,6 +64,11 @@ class InvoicePaymentOnAssignedNotification extends Notification implements Shoul
             return null;
         }
         $e = $this->estimate;
+        if (isset($e['assignment'])) {
+            $a = $e['assignment'];
+
+            return "Lengo la invoice hii: {$this->money($a['target'])}; umekusanya {$this->money($a['collected'])}; commission yako sasa: {$this->money($a['commission'])} (makadirio, si commission ya mwisho)";
+        }
         $text = "Lengo la makusanyo: umekusanya {$this->money($e['collected'])} kati ya {$this->money($e['goal'])}";
         if ($e['collected'] >= $e['goal']) {
             $text .= $e['commission'] > 0

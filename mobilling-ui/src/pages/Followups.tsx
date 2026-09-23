@@ -24,6 +24,7 @@ import { formatDate } from '../utils/formatDate';
 import { useAuth } from '../context/AuthContext';
 import CallScriptDrawer from '../components/CallScriptDrawer';
 import UnassignedInvoicesPanel from '../components/Collections/UnassignedInvoicesPanel';
+import CommissionsPanel from '../components/Collections/CommissionsPanel';
 import DocumentView from '../components/Billing/DocumentView';
 
 const outcomeColors: Record<string, string> = {
@@ -148,7 +149,11 @@ export default function Followups() {
         <Tabs.List mb="md">
           <Tabs.Tab value="active">Follow-ups</Tabs.Tab>
           <Tabs.Tab value="unassigned">Unassigned (Hazijapangiwa)</Tabs.Tab>
+          {(can('staff_targets.manage') || can('staff_targets.verify')) && <Tabs.Tab value="commissions">Commissions</Tabs.Tab>}
         </Tabs.List>
+        <Tabs.Panel value="commissions">
+          <CommissionsPanel onOpenInvoice={openPreview} />
+        </Tabs.Panel>
         <Tabs.Panel value="unassigned">
           <UnassignedInvoicesPanel onOpenInvoice={openPreview} />
         </Tabs.Panel>
@@ -378,6 +383,7 @@ export default function Followups() {
                     <Table.Th>Invoice</Table.Th>
                     <Table.Th>Balance</Table.Th>
                     <Table.Th>Assigned / Called By</Table.Th>
+                    <Table.Th>Target / Commission</Table.Th>
                     <Table.Th>Outcome</Table.Th>
                     <Table.Th>Promise</Table.Th>
                     <Table.Th>Notes</Table.Th>
@@ -400,6 +406,14 @@ export default function Followups() {
                       </Table.Td>
                       <Table.Td c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
                       <Table.Td>{f.assigned_to || '—'}</Table.Td>
+                      <Table.Td>
+                        {f.assignment ? (
+                          <Text size="xs">
+                            {formatCurrency(f.assignment.collected)} / {formatCurrency(f.assignment.target)}
+                            {f.assignment.commission_type !== 'none' && ` · comm ${formatCurrency(f.assignment.commission_earned)}`}
+                          </Text>
+                        ) : '—'}
+                      </Table.Td>
                       <Table.Td>
                         {f.outcome ? (
                           <Badge color={outcomeColors[f.outcome] || 'gray'} size="sm" variant="light">

@@ -73,12 +73,29 @@ class PaymentInObserver
                     $doc->document_number,
                     (float) $payment->amount,
                     $balance,
-                    $this->estimateFor($user, $date),
+                    $this->assignmentEstimate($user, $doc) ?? $this->estimateFor($user, $date),
                 ));
             } catch (\Throwable $e) {
                 Log::warning('Collector payment notification failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
             }
         }
+    }
+
+    /** Per-invoice assignment figures (manual target + commission), when this collector has one with commission. */
+    private function assignmentEstimate(User $user, Document $doc): ?array
+    {
+        $a = \App\Models\CollectionAssignment::withoutGlobalScopes()
+            ->where('document_id', $doc->id)->where('user_id', $user->id)->where('status', 'active')
+            ->where('commission_type', '!=', 'none')->first();
+        if (!$a) {
+            return null;
+        }
+        $p = $a->progress();
+
+        return ['assignment' => [
+            'target' => $p['target'], 'collected' => $p['collected'], 'commission' => $p['commission_earned'],
+            'achieved' => $p['achieved'], 'remaining' => $p['remaining'],
+        ]];
     }
 
     /** ESTIMATE only: live collected-to-date vs goal on the user's active 'collections' criterion. */

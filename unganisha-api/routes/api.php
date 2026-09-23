@@ -576,6 +576,9 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/followups/{followup}/log-call', [FollowupController::class, 'logCall'])->middleware('permission:field_visits.log');
         Route::patch('/followups/{followup}/cancel', [FollowupController::class, 'cancel']);
         Route::get('/followups/client/{clientId}', [FollowupController::class, 'clientHistory']);
+        Route::get('/collection-assignments', [\App\Http\Controllers\CollectionAssignmentController::class, 'index']);
+        Route::post('/collection-assignments/bulk-mark-paid', [\App\Http\Controllers\CollectionAssignmentController::class, 'bulkMarkPaid']);
+        Route::post('/collection-assignments/{id}/mark-paid', [\App\Http\Controllers\CollectionAssignmentController::class, 'markPaid']);
     });
 
     // Satisfaction Calls

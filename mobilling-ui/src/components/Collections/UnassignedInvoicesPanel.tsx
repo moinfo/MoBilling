@@ -261,7 +261,7 @@ export default function UnassignedInvoicesPanel({ onOpenInvoice }: Props) {
           onClose={() => setAssignBulk(false)}
           documentId=""
           documentNumber=""
-          bulkDocuments={selectedApproved.map((r) => ({ id: r.id, number: r.document_number }))}
+          bulkDocuments={selectedApproved.map((r) => ({ id: r.id, number: r.document_number, balance: r.balance_due }))}
           onDone={refresh}
         />
       )}
