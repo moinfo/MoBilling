@@ -3,7 +3,7 @@ import { Modal, Stack, Text, Select, Textarea, Group, Button, Alert } from '@man
 import { DateInput } from '@mantine/dates';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { createFollowup } from '../../api/followups';
+import { createFollowup, bulkAssignFollowups, BulkAssignResult } from '../../api/followups';
 import { getAssignableUsers } from '../../api/users';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +15,8 @@ interface Props {
   onClose: () => void;
   documentId: string;
   documentNumber: string;
+  /** When set, assigns all these invoices in one go (POST /followups/bulk-assign) instead of the single invoice. */
+  bulkDocuments?: { id: string; number: string }[];
   clientName?: string | null;
   balance?: number;
   onDone?: () => void;
@@ -23,7 +25,7 @@ interface Props {
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 
 /** Assign an invoice to a staff member for follow-up (POST /followups). */
-export default function AssignFollowupModal({ opened, onClose, documentId, documentNumber, clientName, balance, onDone }: Props) {
+export default function AssignFollowupModal({ opened, onClose, documentId, documentNumber, bulkDocuments, clientName, balance, onDone }: Props) {
   const qc = useQueryClient();
   const { can } = usePermissions();
   const { user } = useAuth();
@@ -33,6 +35,8 @@ export default function AssignFollowupModal({ opened, onClose, documentId, docum
   const [needsApproval, setNeedsApproval] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [bulkResult, setBulkResult] = useState<BulkAssignResult | null>(null);
+  const isBulk = !!bulkDocuments?.length;
 
   const { data: usersRes } = useQuery({
     queryKey: ['assignable-users'],
@@ -48,11 +52,19 @@ export default function AssignFollowupModal({ opened, onClose, documentId, docum
       setNotes('');
       setNeedsApproval(false);
       setErrorMsg(null);
+      setBulkResult(null);
     }
   }, [opened, user?.id]);
 
   const mutation = useMutation({
-    mutationFn: () => createFollowup({
+    mutationFn: async () => isBulk
+      ? bulkAssignFollowups({
+        document_ids: bulkDocuments!.map((d) => d.id),
+        user_id: staffId as string,
+        next_followup: date as string,
+        notes: notes.trim() || undefined,
+      })
+      : createFollowup({
       document_id: documentId,
       next_followup: date as string,
       user_id: staffId || undefined,
@@ -63,7 +75,12 @@ export default function AssignFollowupModal({ opened, onClose, documentId, docum
       qc.invalidateQueries({ queryKey: ['followup-dashboard'] });
       qc.invalidateQueries({ queryKey: ['followups'] });
       qc.invalidateQueries({ queryKey: ['my-followups'] });
+      qc.invalidateQueries({ queryKey: ['unassigned-invoices'] });
       onDone?.();
+      if (isBulk) {
+        const result = res.data as BulkAssignResult;
+        if (result.skipped?.length) { setBulkResult(result); return; }
+      }
       onClose();
     },
     onError: (err: any) => {
@@ -75,10 +92,21 @@ export default function AssignFollowupModal({ opened, onClose, documentId, docum
 
   return (
     <>
-      <Modal opened={opened} onClose={onClose} title={`Assign ${documentNumber} to staff`} size="md" centered>
+      <Modal opened={opened} onClose={onClose} title={isBulk ? `Assign ${bulkDocuments!.length} invoices to staff` : `Assign ${documentNumber} to staff`} size="md" centered>
         <Stack>
+          {bulkResult && (
+            <Alert color="orange" title={bulkResult.message}>
+              <Stack gap={4}>
+                {bulkResult.skipped.map((s) => (
+                  <Text key={s.document_id} size="sm"><b>{s.document_number ?? s.document_id}</b>: {s.reason}</Text>
+                ))}
+                <Button size="xs" w="fit-content" mt="xs" onClick={onClose}>Close</Button>
+              </Stack>
+            </Alert>
+          )}
           <Text size="sm" c="dimmed">
-            {clientName ? `${clientName} · ` : ''}{balance !== undefined ? `Balance ${formatCurrency(balance)}` : ''}
+            {isBulk ? bulkDocuments!.map((d) => d.number).join(', ') : null}
+            {!isBulk && clientName ? `${clientName} · ` : ''}{balance !== undefined ? `Balance ${formatCurrency(balance)}` : ''}
           </Text>
           {errorMsg && (
             <Alert color={needsApproval ? 'orange' : 'red'} title={needsApproval ? 'Approval required' : 'Error'}>
@@ -101,7 +129,7 @@ export default function AssignFollowupModal({ opened, onClose, documentId, docum
           <Group justify="flex-end">
             <Button variant="default" onClick={onClose}>Cancel</Button>
             <Button onClick={() => { setErrorMsg(null); setNeedsApproval(false); mutation.mutate(); }}
-              loading={mutation.isPending} disabled={!staffId || !date}>
+              loading={mutation.isPending} disabled={!staffId || !date || !!bulkResult}>
               Assign
             </Button>
           </Group>

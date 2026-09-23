@@ -334,6 +334,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:documents.send')->patch('/documents/{document}/submit-for-approval', [DocumentController::class, 'submitForApproval']);
     Route::middleware('permission:documents.approve')->patch('/documents/{document}/approve', [DocumentController::class, 'approve']);
     Route::middleware('permission:documents.approve')->patch('/documents/{document}/reject', [DocumentController::class, 'reject']);
+    Route::middleware('permission:documents.approve_collection')->post('/documents/bulk-approve-collection', [DocumentController::class, 'bulkApproveForCollection']);
     Route::middleware('permission:documents.approve_collection')->post('/documents/{document}/approve-collection', [DocumentController::class, 'approveForCollection']);
     Route::middleware('permission:documents.update')->patch('/documents/{document}/cancel', [DocumentController::class, 'cancel']);
     Route::middleware('permission:documents.update')->patch('/documents/{document}/uncancel', [DocumentController::class, 'uncancel']);
@@ -568,6 +569,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     // Follow-ups
     Route::middleware('permission:menu.followups')->group(function () {
         Route::get('/followups/dashboard', [FollowupController::class, 'dashboard']);
+        Route::get('/followups/unassigned', [FollowupController::class, 'unassigned']);
+        Route::post('/followups/bulk-assign', [FollowupController::class, 'bulkAssign']);
         Route::get('/followups', [FollowupController::class, 'index']);
         Route::post('/followups', [FollowupController::class, 'store']);
         Route::post('/followups/{followup}/log-call', [FollowupController::class, 'logCall'])->middleware('permission:field_visits.log');

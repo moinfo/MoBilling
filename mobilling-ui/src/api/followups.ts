@@ -61,3 +61,51 @@ export const cancelFollowup = (followupId: string) =>
 
 export const getClientFollowups = (clientId: string) =>
   api.get(`/followups/client/${clientId}`);
+
+export interface UnassignedInvoice {
+  id: string;
+  document_number: string;
+  client_id: string;
+  client_name: string | null;
+  client_phone: string | null;
+  total: number;
+  paid: number;
+  balance_due: number;
+  due_date: string | null;
+  days_overdue: number;
+  status: string;
+  collection_reviewed_at: string | null;
+  collection_reviewed_by_name: string | null;
+  escalated: boolean;
+  call_count: number;
+}
+
+export interface UnassignedResponse {
+  data: UnassignedInvoice[];
+  current_page: number;
+  last_page: number;
+  total: number;
+  summary: { total: number; total_balance: number; not_reviewed: number };
+}
+
+export interface BulkSkipped {
+  document_id: string;
+  document_number: string | null;
+  reason: string;
+}
+
+export interface BulkAssignResult {
+  assigned: string[];
+  skipped: BulkSkipped[];
+  message: string;
+}
+
+export const getUnassignedInvoices = (params?: Record<string, string>) =>
+  api.get<UnassignedResponse>('/followups/unassigned', { params });
+
+export const bulkAssignFollowups = (data: {
+  document_ids: string[];
+  user_id: string;
+  next_followup: string;
+  notes?: string;
+}) => api.post<BulkAssignResult>('/followups/bulk-assign', data);

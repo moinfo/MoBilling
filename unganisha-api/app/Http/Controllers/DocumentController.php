@@ -438,6 +438,43 @@ class DocumentController extends Controller
         ]);
     }
 
+    public function bulkApproveForCollection(Request $request)
+    {
+        $data = $request->validate([
+            'document_ids' => 'required|array|min:1|max:200',
+            'document_ids.*' => 'uuid',
+            'notes' => 'nullable|string|max:2000',
+        ]);
+
+        $docs = Document::whereIn('id', $data['document_ids'])->get()->keyBy('id');
+        $approved = [];
+        $skipped = [];
+
+        foreach (array_unique($data['document_ids']) as $id) {
+            $doc = $docs->get($id);
+            if (!$doc) {
+                $skipped[] = ['document_id' => $id, 'document_number' => null, 'reason' => 'Invoice not found.'];
+            } elseif ($doc->type !== 'invoice' || !in_array($doc->status, ['sent', 'overdue', 'partial'], true)) {
+                $skipped[] = ['document_id' => $id, 'document_number' => $doc->document_number, 'reason' => 'Only sent, overdue, or partially paid invoices can be approved.'];
+            } elseif ($doc->collection_reviewed_at) {
+                $skipped[] = ['document_id' => $id, 'document_number' => $doc->document_number, 'reason' => 'Already approved.'];
+            } else {
+                $doc->update([
+                    'collection_reviewed_by' => $request->user()->id,
+                    'collection_reviewed_at' => now(),
+                    'collection_review_notes' => $data['notes'] ?? null,
+                ]);
+                $approved[] = $id;
+            }
+        }
+
+        return response()->json([
+            'approved' => $approved,
+            'skipped' => $skipped,
+            'message' => count($approved) . ' invoice(s) approved, ' . count($skipped) . ' skipped.',
+        ]);
+    }
+
     public function updateDueDate(Request $request, Document $document)
     {
         $request->validate([

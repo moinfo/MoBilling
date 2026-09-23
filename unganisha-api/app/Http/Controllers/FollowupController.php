@@ -6,6 +6,7 @@ use App\Models\Document;
 use App\Models\Followup;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class FollowupController extends Controller
 {
@@ -156,24 +157,8 @@ class FollowupController extends Controller
 
         $document = Document::findOrFail($data['document_id']);
 
-        // An admin must have reviewed and approved this invoice as legitimately collectible
-        // before it can be assigned to anyone for follow-up — see
-        // DocumentController::approveForCollection().
-        if (!$document->collection_reviewed_at) {
-            return response()->json([
-                'message' => 'This invoice has not been reviewed and approved for collection yet. An admin must approve it first.',
-            ], 422);
-        }
-
-        // Check max 3 calls
-        $callCount = Followup::where('document_id', $document->id)
-            ->whereNotNull('call_date')
-            ->count();
-
-        if ($callCount >= 3) {
-            return response()->json([
-                'message' => 'Maximum 3 follow-up calls reached for this invoice. It has been escalated.',
-            ], 422);
+        if ($error = $this->assignmentBlocker($document)) {
+            return response()->json(['message' => $error], 422);
         }
 
         $followup = Followup::create([
@@ -189,6 +174,166 @@ class FollowupController extends Controller
             'data' => $followup,
             'message' => 'Follow-up scheduled.',
         ], 201);
+    }
+
+    /**
+     * Shared rules for assigning an invoice to staff. Returns an error message, or null when assignable.
+     * An admin must have reviewed/approved the invoice (DocumentController::approveForCollection),
+     * and at most 3 logged calls are allowed per invoice.
+     */
+    private function assignmentBlocker(Document $document): ?string
+    {
+        if (!$document->collection_reviewed_at) {
+            return 'This invoice has not been reviewed and approved for collection yet. An admin must approve it first.';
+        }
+
+        $callCount = Followup::where('document_id', $document->id)->whereNotNull('call_date')->count();
+        if ($callCount >= 3) {
+            return 'Maximum 3 follow-up calls reached for this invoice. It has been escalated.';
+        }
+
+        return null;
+    }
+
+    private function balanceSql(): string
+    {
+        return '(documents.total - (COALESCE((SELECT SUM(p.amount) FROM payments_in p WHERE p.document_id = documents.id), 0)'
+            . ' - COALESCE((SELECT SUM(r.amount) FROM refunds r WHERE r.document_id = documents.id), 0)))';
+    }
+
+    /**
+     * Unpaid invoices with no active follow-up (nobody is working them). Escalated ones are included and flagged.
+     */
+    public function unassigned(Request $request)
+    {
+        $balanceSql = $this->balanceSql();
+        $daysSql = 'CASE WHEN documents.due_date IS NULL THEN 0 ELSE GREATEST(DATEDIFF(CURDATE(), documents.due_date), 0) END';
+
+        $base = Document::query()
+            ->where('documents.type', 'invoice')
+            ->whereIn('documents.status', ['sent', 'overdue', 'partial'])
+            ->whereRaw("$balanceSql > 0")
+            ->whereDoesntHave('followups', fn ($q) => $q->whereIn('status', ['pending', 'open', 'broken']));
+
+        $filtered = clone $base;
+
+        if ($search = trim((string) $request->get('search', ''))) {
+            $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $search) . '%';
+            $filtered->where(fn ($q) => $q->where('documents.document_number', 'like', $like)
+                ->orWhereHas('client', fn ($c) => $c->where('name', 'like', $like)));
+        }
+        if ($request->filled('min_balance')) {
+            $filtered->whereRaw("$balanceSql >= ?", [(float) $request->min_balance]);
+        }
+        if ($request->filled('min_days_overdue')) {
+            $filtered->whereRaw("$daysSql >= ?", [(int) $request->min_days_overdue]);
+        }
+        $review = $request->get('review', 'all');
+        if ($review === 'approved') {
+            $filtered->whereNotNull('documents.collection_reviewed_at');
+        } elseif ($review === 'not_reviewed') {
+            $filtered->whereNull('documents.collection_reviewed_at');
+        }
+
+        $summaryRow = (clone $filtered)->selectRaw(
+            "COUNT(*) as total, COALESCE(SUM($balanceSql), 0) as total_balance, "
+            . "COALESCE(SUM(documents.collection_reviewed_at IS NULL), 0) as not_reviewed"
+        )->reorder()->first();
+
+        $perPage = min(max((int) $request->get('per_page', 25), 1), 100);
+
+        $page = $filtered
+            ->select('documents.*')
+            ->with(['client:id,name,phone', 'collectionReviewedBy:id,name'])
+            ->withSum('payments', 'amount')->withSum('refunds', 'amount')
+            ->withCount(['followups as escalated_count' => fn ($q) => $q->where('status', 'escalated')])
+            ->withCount(['followups as call_count' => fn ($q) => $q->whereNotNull('call_date')])
+            ->orderByRaw('documents.due_date IS NULL')
+            ->orderBy('documents.due_date')
+            ->orderBy('documents.document_number')
+            ->paginate($perPage);
+
+        $today = Carbon::today();
+        $page->getCollection()->transform(fn ($d) => [
+            'id' => $d->id,
+            'document_number' => $d->document_number,
+            'client_id' => $d->client_id,
+            'client_name' => $d->client?->name,
+            'client_phone' => $d->client?->phone,
+            'total' => (float) $d->total,
+            'paid' => (float) $d->paid_amount,
+            'balance_due' => (float) $d->balance_due,
+            'due_date' => $d->due_date?->toDateString(),
+            'days_overdue' => $d->due_date ? max((int) $d->due_date->startOfDay()->diffInDays($today, false), 0) : 0,
+            'status' => $d->status,
+            'collection_reviewed_at' => $d->collection_reviewed_at?->toISOString(),
+            'collection_reviewed_by_name' => $d->collectionReviewedBy?->name,
+            'escalated' => (int) $d->escalated_count > 0,
+            'call_count' => (int) $d->call_count,
+        ]);
+
+        return response()->json(array_merge($page->toArray(), [
+            'summary' => [
+                'total' => (int) $summaryRow->total,
+                'total_balance' => (float) $summaryRow->total_balance,
+                'not_reviewed' => (int) $summaryRow->not_reviewed,
+            ],
+        ]));
+    }
+
+    /**
+     * Assign many approved invoices to one staff member. Skips (with reasons) any that fail the store() rules.
+     */
+    public function bulkAssign(Request $request)
+    {
+        $data = $request->validate([
+            'document_ids' => 'required|array|min:1|max:200',
+            'document_ids.*' => 'uuid',
+            'user_id' => 'required|uuid|exists:users,id',
+            'next_followup' => 'required|date',
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $docs = Document::whereIn('id', $data['document_ids'])->get()->keyBy('id');
+        $assigned = [];
+        $skipped = [];
+
+        DB::transaction(function () use ($data, $docs, &$assigned, &$skipped) {
+            foreach (array_unique($data['document_ids']) as $id) {
+                $doc = $docs->get($id);
+                if (!$doc) {
+                    $skipped[] = ['document_id' => $id, 'document_number' => null, 'reason' => 'Invoice not found.'];
+                    continue;
+                }
+                $reason = null;
+                if ($doc->type !== 'invoice' || !in_array($doc->status, ['sent', 'overdue', 'partial'], true)) {
+                    $reason = 'Only sent, overdue or partially paid invoices can be assigned.';
+                } elseif (Followup::where('document_id', $doc->id)->active()->exists()) {
+                    $reason = 'Already assigned (active follow-up exists).';
+                } else {
+                    $reason = $this->assignmentBlocker($doc);
+                }
+                if ($reason) {
+                    $skipped[] = ['document_id' => $id, 'document_number' => $doc->document_number, 'reason' => $reason];
+                    continue;
+                }
+                Followup::create([
+                    'document_id' => $doc->id,
+                    'client_id' => $doc->client_id,
+                    'user_id' => $data['user_id'],
+                    'next_followup' => $data['next_followup'],
+                    'notes' => $data['notes'] ?? null,
+                    'status' => 'pending',
+                ]);
+                $assigned[] = $id;
+            }
+        });
+
+        return response()->json([
+            'assigned' => $assigned,
+            'skipped' => $skipped,
+            'message' => count($assigned) . ' invoice(s) assigned, ' . count($skipped) . ' skipped.',
+        ]);
     }
 
     /**

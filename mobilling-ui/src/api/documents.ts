@@ -224,3 +224,12 @@ export const getNextBills = () =>
 /** Admin approves an unpaid invoice as legitimately collectible (required before it can be assigned for follow-up). */
 export const approveForCollection = (id: string, notes?: string) =>
   api.post<{ data: Document; message: string }>(`/documents/${id}/approve-collection`, { notes: notes || undefined });
+
+export interface BulkApproveResult {
+  approved: string[];
+  skipped: { document_id: string; document_number: string | null; reason: string }[];
+  message: string;
+}
+
+export const bulkApproveForCollection = (documentIds: string[], notes?: string) =>
+  api.post<BulkApproveResult>('/documents/bulk-approve-collection', { document_ids: documentIds, notes: notes || undefined });

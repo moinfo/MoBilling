@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, Stack, Select,
   Loader, Center, Modal, Button,
-  SimpleGrid, ThemeIcon, ActionIcon, Tooltip, Pagination, Anchor, Drawer,
+  SimpleGrid, ThemeIcon, ActionIcon, Tooltip, Pagination, Anchor, Drawer, Tabs,
 } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +23,7 @@ import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import { useAuth } from '../context/AuthContext';
 import CallScriptDrawer from '../components/CallScriptDrawer';
+import UnassignedInvoicesPanel from '../components/Collections/UnassignedInvoicesPanel';
 import DocumentView from '../components/Billing/DocumentView';
 
 const outcomeColors: Record<string, string> = {
@@ -112,6 +113,7 @@ export default function Followups() {
     }
     queryClient.invalidateQueries({ queryKey: ['followup-dashboard'] });
     queryClient.invalidateQueries({ queryKey: ['followups'] });
+    queryClient.invalidateQueries({ queryKey: ['unassigned-invoices'] });
   };
 
   const dashboard = dashData?.data?.data;
@@ -142,6 +144,16 @@ export default function Followups() {
         </Group>
       </Group>
 
+      <Tabs defaultValue="active" keepMounted={false}>
+        <Tabs.List mb="md">
+          <Tabs.Tab value="active">Follow-ups</Tabs.Tab>
+          <Tabs.Tab value="unassigned">Unassigned (Hazijapangiwa)</Tabs.Tab>
+        </Tabs.List>
+        <Tabs.Panel value="unassigned">
+          <UnassignedInvoicesPanel onOpenInvoice={openPreview} />
+        </Tabs.Panel>
+        <Tabs.Panel value="active">
+          <Stack gap="lg">
       {/* Stats */}
       <SimpleGrid cols={{ base: 1, xs: 3 }}>
         <Paper withBorder p="md" radius="md">
@@ -422,6 +434,10 @@ export default function Followups() {
           </>
         )}
       </Paper>
+
+          </Stack>
+        </Tabs.Panel>
+      </Tabs>
 
       <LogCallModal followup={selectedFollowup} onClose={() => setSelectedFollowup(null)} />
 

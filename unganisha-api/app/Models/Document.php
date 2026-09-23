@@ -54,6 +54,11 @@ class Document extends Model
         return $this->hasMany(Refund::class);
     }
 
+    public function followups()
+    {
+        return $this->hasMany(Followup::class);
+    }
+
     public function parent()
     {
         return $this->belongsTo(Document::class, 'parent_id');
