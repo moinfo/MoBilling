@@ -77,7 +77,8 @@ export default function Followups() {
 
   const { data: pickData } = useQuery({
     queryKey: ['assign-invoice-picker', pickSearch],
-    queryFn: () => getDocuments({ type: 'invoice', search: pickSearch || undefined, per_page: 50 }),
+    // status 'sent' is the API's "unpaid" group (sent + overdue + partial), filtered server-side — otherwise the latest 50 invoices of ANY status come back and older unpaid ones never appear.
+    queryFn: () => getDocuments({ type: 'invoice', status: 'sent', search: pickSearch || undefined, per_page: 100 }),
     enabled: assignPickerOpen,
   });
   const pickable: Document[] = ((pickData?.data?.data ?? []) as Document[])
