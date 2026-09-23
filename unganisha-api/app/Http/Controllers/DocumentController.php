@@ -502,19 +502,29 @@ class DocumentController extends Controller
             return response()->json(['message' => 'Document is already cancelled.'], 422);
         }
 
-        // Prevent cancellation if there are partial payments
-        if ((float) $document->paid_amount > 0) {
-            return response()->json([
-                'message' => 'Cannot cancel a document with existing payments. Remove payments first.',
-            ], 422);
+        // Partially paid invoices may be cancelled. Existing payment records are
+        // left untouched (money received stays on the books; use Refund to return it).
+        $paid = (float) $document->paid_amount;
+        $update = ['status' => 'cancelled'];
+        if ($paid > 0) {
+            $line = 'Cancelled with ' . number_format($paid, 2) . ' already paid on ' . now()->toDateTimeString()
+                . ' by user #' . auth()->id() . '.';
+            $update['notes'] = trim(($document->notes ? $document->notes . "\n" : '') . $line);
         }
-
-        $document->update(['status' => 'cancelled']);
+        $document->update($update);
+        Log::info('Invoice cancelled', [
+            'document_id' => $document->id,
+            'document_number' => $document->document_number,
+            'paid_amount' => $paid,
+            'user_id' => auth()->id(),
+        ]);
         $this->cancelLinkedDomainOrder($document);
 
-        // Notify client about cancellation via email/SMS
+        // Notify client about cancellation via email/SMS. Skipped when payments
+        // were already received: the notification says "No payment is required",
+        // which would mislead a client who has paid part of it.
         $document->load('client');
-        if ($document->client) {
+        if ($document->client && $paid <= 0) {
             $document->client->notify(new \App\Notifications\InvoiceCancelledNotification($document));
         }
 

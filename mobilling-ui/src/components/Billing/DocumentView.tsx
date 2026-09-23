@@ -266,7 +266,9 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
   const handleCancel = () => {
     modals.openConfirmModal({
       title: 'Cancel Invoice',
-      children: `Cancel ${doc.document_number}? This will stop all reminders and collection actions.`,
+      children: parseFloat(String(doc.paid_amount)) > 0
+        ? `Cancel ${doc.document_number}? This will stop all reminders and collection actions. WARNING: TZS ${parseFloat(String(doc.paid_amount)).toLocaleString()} has already been received on this invoice. It stays recorded as a payment and is NOT returned automatically. Use Refund if the money must be returned to the client.`
+        : `Cancel ${doc.document_number}? This will stop all reminders and collection actions.`,
       labels: { confirm: 'Cancel Invoice', cancel: 'Keep' },
       confirmProps: { color: 'red' },
       onConfirm: async () => {
@@ -363,7 +365,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
 
   const canConvert = (doc.type === 'quotation' || doc.type === 'proforma') && doc.status !== 'accepted';
   const isInvoice = doc.type === 'invoice';
-  const canCancel = isInvoice && !['paid', 'cancelled', 'draft', 'pending_approval'].includes(doc.status) && doc.paid_amount <= 0;
+  const canCancel = isInvoice && !['paid', 'cancelled', 'draft', 'pending_approval'].includes(doc.status);
   const canUncancel = isInvoice && doc.status === 'cancelled';
 
   return (
