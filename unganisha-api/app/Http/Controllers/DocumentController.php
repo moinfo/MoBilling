@@ -21,7 +21,7 @@ class DocumentController extends Controller
 {
     public function index(Request $request)
     {
-        $query = Document::with(['client', 'items:id,document_id,description']);
+        $query = Document::with(['client', 'items:id,document_id,description', 'collectionReviewedBy:id,name']);
 
         if ($request->has('type')) {
             $query->where('type', $request->type);
@@ -127,7 +127,7 @@ class DocumentController extends Controller
 
     public function show(Document $document)
     {
-        return new DocumentResource($document->load('items', 'client', 'payments', 'refunds', 'children'));
+        return new DocumentResource($document->load('items', 'client', 'payments', 'refunds', 'children', 'collectionReviewedBy'));
     }
 
     public function update(StoreDocumentRequest $request, Document $document)

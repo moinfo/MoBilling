@@ -25,6 +25,7 @@ import {
 import { usePermissions } from '../hooks/usePermissions';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency, getTenantCurrency } from '../utils/formatCurrency';
+import CollectionsProgressPanel from '../components/Collections/CollectionsProgressPanel';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ const TYPE_LABELS: Record<CriterionType, string> = {
   revenue:        'Revenue',
   item_sales:     'Item Sales',
   custom:         'Custom',
+  collections:    'Collections (auto from follow-ups)',
 };
 
 const DEFAULT_UNITS: Record<CriterionType, string> = {
@@ -47,6 +49,7 @@ const DEFAULT_UNITS: Record<CriterionType, string> = {
   revenue:        getTenantCurrency(),
   item_sales:     'units',
   custom:         'units',
+  collections:    'TZS',
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -613,7 +616,7 @@ function MyTargetsTab({ can }: { can: (p: string) => boolean }) {
           {targets.map(t => (
             <TargetCard key={t.id} target={t}
               actions={
-                (t.status === 'active' || t.status === 'self_reported') && can('staff_targets.submit') ? (
+                (t.status === 'active' || t.status === 'self_reported') && can('staff_targets.submit') && t.criteria.some(c => c.type !== 'collections') ? (
                   <Button size="xs" variant="light" color="blue"
                     leftSection={<IconClipboardCheck size={13} />}
                     onClick={() => { setReporting(t); openReport(); }}>
@@ -839,6 +842,7 @@ function CommissionSummaryTab() {
 // ── Target Card ────────────────────────────────────────────────────────────────
 
 function TargetCard({ target: t, actions }: { target: StaffTarget; actions?: React.ReactNode }) {
+  const { can } = usePermissions();
   const [expanded, setExpanded] = useState(false);
   const statusCfg  = STATUS_CONFIG[t.status];
   const totalCrit  = t.criteria.length;
@@ -888,6 +892,12 @@ function TargetCard({ target: t, actions }: { target: StaffTarget; actions?: Rea
         <Collapse in={expanded}>
           <Stack gap="sm" mt="xs">
             {t.description && <Text size="xs" c="dimmed">{t.description}</Text>}
+
+            {t.criteria.some(c => c.type === 'collections') && (
+              <div onClick={e => e.stopPropagation()}>
+                <CollectionsProgressPanel target={t} showAutoVerify={can('staff_targets.verify')} />
+              </div>
+            )}
 
             {/* Criteria table */}
             <div style={{ overflowX: 'auto' }}>
@@ -1026,18 +1036,20 @@ function SelfReportModal({ target, opened, onClose, onSaved }: {
   target: StaffTarget; opened: boolean; onClose: () => void; onSaved: () => void;
 }) {
   const [values, setValues] = useState<Record<string, number>>({});
+  // 'collections' criteria are computed from real payments — never self-reported.
+  const manualCriteria = target.criteria.filter(c => c.type !== 'collections');
 
   useEffect(() => {
     if (opened) {
       const init: Record<string, number> = {};
-      target.criteria.forEach(c => { init[c.id] = c.achieved_value ?? 0; });
+      manualCriteria.forEach(c => { init[c.id] = c.achieved_value ?? 0; });
       setValues(init);
     }
   }, [opened, target]);
 
   const mutation = useMutation({
     mutationFn: () => selfReportTarget(target.id, {
-      criteria: target.criteria.map(c => ({ id: c.id, achieved_value: values[c.id] ?? 0 })),
+      criteria: manualCriteria.map(c => ({ id: c.id, achieved_value: values[c.id] ?? 0 })),
     }),
     onSuccess: () => {
       notifications.show({ message: 'Achievement submitted for review.', color: 'green' });
@@ -1046,7 +1058,7 @@ function SelfReportModal({ target, opened, onClose, onSaved }: {
     onError: () => notifications.show({ message: 'Failed to submit.', color: 'red' }),
   });
 
-  const allMet = target.criteria.every(c => (values[c.id] ?? 0) >= c.goal_value);
+  const allMet = manualCriteria.every(c => (values[c.id] ?? 0) >= c.goal_value);
   const groupBonus = groupBonusPotential(target);
 
   return (
@@ -1058,7 +1070,7 @@ function SelfReportModal({ target, opened, onClose, onSaved }: {
         </Text>
 
         <Stack gap="sm">
-          {target.criteria.map(c => {
+          {manualCriteria.map(c => {
             const val = values[c.id] ?? 0;
             const met = val >= c.goal_value;
             return (

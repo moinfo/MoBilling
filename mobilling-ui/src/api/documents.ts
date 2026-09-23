@@ -57,6 +57,10 @@ export interface Document {
   payments?: Payment[];
   refunds?: Refund[];
   linked_credit_notes?: LinkedCreditNote[];
+  collection_reviewed_by?: string | null;
+  collection_reviewed_by_name?: string | null;
+  collection_reviewed_at?: string | null;
+  collection_review_notes?: string | null;
   created_at: string;
 }
 
@@ -216,3 +220,7 @@ export interface NextBillItem {
 
 export const getNextBills = () =>
   api.get<{ data: NextBillItem[] }>('/next-bills');
+
+/** Admin approves an unpaid invoice as legitimately collectible (required before it can be assigned for follow-up). */
+export const approveForCollection = (id: string, notes?: string) =>
+  api.post<{ data: Document; message: string }>(`/documents/${id}/approve-collection`, { notes: notes || undefined });

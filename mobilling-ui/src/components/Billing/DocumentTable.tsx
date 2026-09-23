@@ -4,6 +4,7 @@ import { Document } from '../../api/documents';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
 import { usePermissions } from '../../hooks/usePermissions';
+import CollectionReviewBadge from '../Collections/CollectionReviewBadge';
 
 interface Props {
   documents: Document[];
@@ -136,6 +137,14 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                   <Badge color={statusColors[doc.status] || 'gray'} size="sm">
                     {statusLabels[doc.status] || doc.status}
                   </Badge>
+                  {doc.type === 'invoice' && ['sent', 'overdue', 'partial'].includes(doc.status) && (
+                    <CollectionReviewBadge
+                      reviewedAt={doc.collection_reviewed_at}
+                      reviewedByName={doc.collection_reviewed_by_name}
+                      notes={doc.collection_review_notes}
+                      size="xs"
+                    />
+                  )}
                   {doc.reminder_count > 0 && (
                     <Tooltip label={doc.overdue_stage ? stageLabels[doc.overdue_stage] || doc.overdue_stage : `${doc.reminder_count} reminder(s) sent`}>
                       <Badge variant="light" color="orange" size="sm" leftSection={<IconBell size={10} />}>

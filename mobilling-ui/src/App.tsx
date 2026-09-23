@@ -113,6 +113,7 @@ import Leave from './pages/Leave';
 import Payroll from './pages/Payroll';
 import Collection from './pages/Collection';
 import Followups from './pages/Followups';
+import MyCollections from './pages/MyCollections';
 import SatisfactionCalls from './pages/SatisfactionCalls';
 import Appointments from './pages/Appointments';
 import PortalShell from './components/Layout/PortalShell';
@@ -299,6 +300,7 @@ export default function App() {
                   <Route path="/subscription" element={<Subscription />} />
                   <Route path="/collection" element={<Collection />} />
                   <Route path="/followups" element={<Followups />} />
+                  <Route path="/my-collections" element={<MyCollections />} />
                   <Route path="/satisfaction-calls" element={<SatisfactionCalls />} />
                   <Route path="/appointments" element={<Appointments />} />
                   <Route path="/automation" element={<Automation />} />

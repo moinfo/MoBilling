@@ -1,6 +1,6 @@
 import api from './axios';
 
-export type CriterionType  = 'customer_count' | 'revenue' | 'item_sales' | 'custom';
+export type CriterionType  = 'customer_count' | 'revenue' | 'item_sales' | 'custom' | 'collections';
 export type CommissionType = 'none' | 'fixed' | 'percentage';
 export type TargetStatus   = 'active' | 'self_reported' | 'verified' | 'cancelled';
 
@@ -115,3 +115,21 @@ export const verifyTarget = (id: string, data: {
 
 export const getCommissionSummary = (params?: { user_id?: string }) =>
   api.get<{ data: CommissionSummaryEntry[] }>('/staff-targets/summary', { params });
+
+export interface CollectionsProgress {
+  target_id: string;
+  collected: number;
+  assigned_invoices: number;
+  assigned_balance: number;
+  criteria: {
+    id: string; label: string; goal_value: number; collected: number;
+    goal_met: boolean; projected_commission: number;
+  }[];
+}
+
+/** Live collected-to-date for a target's "collections" criteria (same query as auto-verify). */
+export const getCollectionsProgress = (id: string) =>
+  api.get<{ data: CollectionsProgress }>(`/staff-targets/${id}/collections-progress`);
+
+export const autoVerifyCollections = (id: string) =>
+  api.post<{ data: StaffTarget; collected: number }>(`/staff-targets/${id}/auto-verify-collections`);

@@ -372,6 +372,77 @@ class StaffTargetsController extends Controller
     }
 
     /**
+     * Sum of PaymentIn amounts on invoices the target's staff member has Followups for, within the
+     * target period. Shared by autoVerifyCollections() and collectionsProgress().
+     */
+    private function collectedForTarget(StaffTarget $staffTarget): float
+    {
+        $documentIds = $this->assignedDocumentIds($staffTarget);
+
+        return (float) \App\Models\PaymentIn::withoutGlobalScopes()
+            ->whereIn('document_id', $documentIds)
+            ->whereBetween('payment_date', [$staffTarget->period_start, $staffTarget->period_end])
+            ->sum('amount');
+    }
+
+    private function assignedDocumentIds(StaffTarget $staffTarget)
+    {
+        return \App\Models\Followup::withoutGlobalScopes()
+            ->where('tenant_id', $staffTarget->tenant_id)
+            ->where('user_id', $staffTarget->user_id)
+            ->pluck('document_id')
+            ->unique();
+    }
+
+    /**
+     * Read-only live progress for a target's "collections" criteria: collected-to-date, how many
+     * invoices / how much balance are currently assigned to the staff member, and the commission
+     * each criterion would pay if verified right now.
+     */
+    public function collectionsProgress(StaffTarget $staffTarget)
+    {
+        $this->authorizePermission('staff_targets.submit');
+        $user = auth()->user();
+
+        $privileged = $user->hasPermission('staff_targets.manage') || $user->hasPermission('staff_targets.verify');
+        if (!$privileged && $staffTarget->user_id !== $user->id && $staffTarget->manager_id !== $user->id) {
+            abort(403, 'You cannot view this target.');
+        }
+
+        $collected = $this->collectedForTarget($staffTarget);
+
+        $docs = \App\Models\Document::withoutGlobalScopes()
+            ->where('tenant_id', $staffTarget->tenant_id)
+            ->whereIn('id', $this->assignedDocumentIds($staffTarget))
+            ->whereIn('status', ['sent', 'overdue', 'partial'])
+            ->withSum('payments', 'amount')->withSum('refunds', 'amount')
+            ->get();
+        $assignedBalance = (float) $docs->sum(fn ($d) => max(0, (float) $d->balance_due));
+
+        $criteria = $staffTarget->criteria()->where('type', 'collections')->get()->map(function ($c) use ($collected) {
+            $goalMet = $collected >= (float) $c->goal_value;
+            $projected = (clone $c)->fill(['verified_value' => $collected, 'goal_met' => $goalMet])->calculateCommission();
+
+            return [
+                'id' => $c->id,
+                'label' => $c->label,
+                'goal_value' => (float) $c->goal_value,
+                'collected' => $collected,
+                'goal_met' => $goalMet,
+                'projected_commission' => (float) $projected,
+            ];
+        })->values();
+
+        return response()->json(['data' => [
+            'target_id' => $staffTarget->id,
+            'collected' => $collected,
+            'assigned_invoices' => $docs->count(),
+            'assigned_balance' => $assignedBalance,
+            'criteria' => $criteria,
+        ]]);
+    }
+
+    /**
      * Auto-verify criteria of type "collections" from what the staff member's assigned
      * follow-ups (app/Models/Followup.php) actually collected during the target's period —
      * no self-report/manual-verify needed for this criterion type. Other criteria on the same
@@ -391,16 +462,7 @@ class StaffTargetsController extends Controller
             abort(422, 'This target has no "collections" criteria to auto-verify.');
         }
 
-        $documentIds = \App\Models\Followup::withoutGlobalScopes()
-            ->where('tenant_id', $staffTarget->tenant_id)
-            ->where('user_id', $staffTarget->user_id)
-            ->pluck('document_id')
-            ->unique();
-
-        $collected = (float) \App\Models\PaymentIn::withoutGlobalScopes()
-            ->whereIn('document_id', $documentIds)
-            ->whereBetween('payment_date', [$staffTarget->period_start, $staffTarget->period_end])
-            ->sum('amount');
+        $collected = $this->collectedForTarget($staffTarget);
 
         foreach ($collectionsCriteria as $criterion) {
             $goalMet = $collected >= $criterion->goal_value;

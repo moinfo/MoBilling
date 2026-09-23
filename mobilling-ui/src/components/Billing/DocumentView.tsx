@@ -13,6 +13,9 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
 import dayjs from 'dayjs';
+import ApproveCollectionModal from '../Collections/ApproveCollectionModal';
+import AssignFollowupModal from '../Collections/AssignFollowupModal';
+import CollectionReviewBadge from '../Collections/CollectionReviewBadge';
 
 interface Props {
   document: Document;
@@ -38,6 +41,8 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
   const tenant = user?.tenant;
   const [showPayment, setShowPayment] = useState(false);
   const [showRefund, setShowRefund] = useState(false);
+  const [showApproveCollection, setShowApproveCollection] = useState(false);
+  const [showAssign, setShowAssign] = useState(false);
   const [loading, setLoading] = useState('');
 
   const refundForm = useForm({
@@ -504,6 +509,40 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
           This document is waiting for approval. {can('documents.approve') ? 'You can approve or reject it below.' : 'An approver needs to review it.'}
         </Alert>
       )}
+
+      {/* Debt-collection review */}
+      {doc.type === 'invoice' && ['sent', 'overdue', 'partial'].includes(doc.status) && (
+        <Paper withBorder p="sm" radius="md">
+          <Group justify="space-between" wrap="wrap">
+            <Group gap="xs">
+              <Text size="sm" fw={600}>Collection review</Text>
+              <CollectionReviewBadge
+                reviewedAt={doc.collection_reviewed_at}
+                reviewedByName={doc.collection_reviewed_by_name}
+                notes={doc.collection_review_notes}
+              />
+            </Group>
+            <Group gap="xs">
+              {can('documents.approve_collection') && (
+                <Button size="xs" color="green" variant="light" onClick={() => setShowApproveCollection(true)}>
+                  {doc.collection_reviewed_at ? 'Re-approve' : 'Approve for Collection'}
+                </Button>
+              )}
+              {can('menu.followups') && (
+                <Button size="xs" variant="light" onClick={() => setShowAssign(true)}>Assign to staff</Button>
+              )}
+            </Group>
+          </Group>
+          {doc.collection_review_notes && (
+            <Text size="xs" c="dimmed" mt={4}>Notes: {doc.collection_review_notes}</Text>
+          )}
+        </Paper>
+      )}
+      <ApproveCollectionModal opened={showApproveCollection} onClose={() => setShowApproveCollection(false)}
+        documentId={doc.id} documentNumber={doc.document_number} onApproved={onRefresh} />
+      <AssignFollowupModal opened={showAssign} onClose={() => setShowAssign(false)}
+        documentId={doc.id} documentNumber={doc.document_number} clientName={doc.client?.name}
+        balance={Number(doc.balance_due)} onDone={onRefresh} />
 
       {/* Action Buttons */}
       <Group>

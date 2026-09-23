@@ -934,6 +934,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::delete('/staff-targets/{staffTarget}',                 [\App\Http\Controllers\StaffTargetsController::class, 'destroy']);
     Route::post('/staff-targets/{staffTarget}/self-report',       [\App\Http\Controllers\StaffTargetsController::class, 'selfReport']);
     Route::post('/staff-targets/{staffTarget}/verify',            [\App\Http\Controllers\StaffTargetsController::class, 'verify']);
+    Route::get('/staff-targets/{staffTarget}/collections-progress', [\App\Http\Controllers\StaffTargetsController::class, 'collectionsProgress']);
     Route::post('/staff-targets/{staffTarget}/auto-verify-collections', [\App\Http\Controllers\StaffTargetsController::class, 'autoVerifyCollections']);
 
     // ── HR Phase 1: Employee Profiles & Leave (permission checks in-controller, same as Attendance/Staff Reports above) ──

@@ -32,7 +32,7 @@ export default function AppLayout() {
   const isActive = (path: string) => location.pathname === path;
 
   // Determine which section the current route belongs to
-  const billingPaths = ['/collection', '/followups', '/clients', '/product-services', '/product-addons', '/config-options', '/coupons', '/quotations', '/proformas', '/invoices', '/credit-notes', '/payments-in', '/client-subscriptions', '/next-bills'];
+  const billingPaths = ['/collection', '/followups', '/my-collections', '/clients', '/product-services', '/product-addons', '/config-options', '/coupons', '/quotations', '/proformas', '/invoices', '/credit-notes', '/payments-in', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
@@ -138,6 +138,7 @@ export default function AppLayout() {
     { label: 'Served Customers', path: '/served-customers', group: 'Engagement', visible: can('menu.served_customers') },
     { label: 'Collection', path: '/collection', group: 'Billing', visible: can('menu.collection') },
     { label: 'Follow-ups', path: '/followups', group: 'Billing', visible: can('menu.followups') },
+    { label: 'My Collections', path: '/my-collections', group: 'Billing', visible: can('menu.followups') },
     { label: 'Clients', path: '/clients', group: 'Billing', visible: can('menu.clients') },
     { label: 'Portal Users', path: '/portal-users', group: 'Billing', visible: can('menu.portal_users') },
     { label: 'Add Order', path: '/orders', group: 'Billing', visible: can('orders.create') },
@@ -448,6 +449,10 @@ export default function AppLayout() {
               {can('menu.followups') && (
                 <NavLink label="Follow-ups" leftSection={<IconPhoneCall size={16} />}
                   active={isActive('/followups')} onClick={() => navigateAndClose('/followups')} />
+              )}
+              {can('menu.followups') && (
+                <NavLink label="My Collections" leftSection={<IconTargetArrow size={16} />}
+                  active={isActive('/my-collections')} onClick={() => navigateAndClose('/my-collections')} />
               )}
               {can('menu.clients') && (
                 <NavLink label="Clients" leftSection={<IconUsers size={16} />}

@@ -1,22 +1,24 @@
 import { useState } from 'react';
 import {
   Title, Text, Group, Badge, Table, Paper, Stack, Select,
-  Loader, Center, Modal, Button, Textarea, NumberInput,
+  Loader, Center, Modal, Button,
   SimpleGrid, ThemeIcon, ActionIcon, Tooltip, Pagination, Anchor, Drawer,
 } from '@mantine/core';
 import { useNavigate } from 'react-router-dom';
-import { DateInput } from '@mantine/dates';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import {
-  IconPhone, IconPhoneCall, IconAlertTriangle, IconCheck,
+  IconPhone, IconPhoneCall, IconAlertTriangle,
   IconX, IconPlayerPlay, IconScript,
 } from '@tabler/icons-react';
 import {
-  getFollowupDashboard, getFollowups, logCall, cancelFollowup,
+  getFollowupDashboard, getFollowups, cancelFollowup,
   FollowupEntry,
 } from '../api/followups';
-import { getDocument, Document } from '../api/documents';
+import { getDocument, getDocuments, Document } from '../api/documents';
+import { usePermissions } from '../hooks/usePermissions';
+import LogCallModal from '../components/Collections/LogCallModal';
+import AssignFollowupModal from '../components/Collections/AssignFollowupModal';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
 import { useAuth } from '../context/AuthContext';
@@ -40,34 +42,21 @@ const statusColors: Record<string, string> = {
   cancelled: 'gray',
 };
 
-// Backend validates promise_date / next_followup_override as `after:today`,
-// so the earliest selectable date is tomorrow.
-const startOfTomorrow = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  d.setDate(d.getDate() + 1);
-  return d;
-};
-
 export default function Followups() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { user } = useAuth();
   const agentName = user?.name || 'Agent';
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
+  const { can } = usePermissions();
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
-  const [logModalOpen, setLogModalOpen] = useState(false);
+  const [assignPickerOpen, setAssignPickerOpen] = useState(false);
+  const [pickSearch, setPickSearch] = useState('');
+  const [pickDoc, setPickDoc] = useState<Document | null>(null);
   const [selectedFollowup, setSelectedFollowup] = useState<FollowupEntry | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [filterOutcome, setFilterOutcome] = useState<string>('all');
   const [page, setPage] = useState(1);
-
-  // Log call form state
-  const [outcome, setOutcome] = useState<string>('');
-  const [notes, setNotes] = useState('');
-  const [promiseDate, setPromiseDate] = useState<string | null>(null);
-  const [promiseAmount, setPromiseAmount] = useState<number | undefined>(undefined);
-  const [nextOverride, setNextOverride] = useState<string | null>(null);
 
   const { data: dashData, isLoading: dashLoading } = useQuery({
     queryKey: ['followup-dashboard'],
@@ -84,24 +73,13 @@ export default function Followups() {
     }),
   });
 
-  const logMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof logCall>[1] }) =>
-      logCall(id, data),
-    onSuccess: (res) => {
-      notifications.show({
-        title: 'Call Logged',
-        message: res.data.message,
-        color: res.data.escalated ? 'orange' : 'green',
-      });
-      queryClient.invalidateQueries({ queryKey: ['followup-dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['followups'] });
-      queryClient.invalidateQueries({ queryKey: ['collection-dashboard'] });
-      closeLogModal();
-    },
-    onError: () => {
-      notifications.show({ title: 'Error', message: 'Failed to log call.', color: 'red' });
-    },
+  const { data: pickData } = useQuery({
+    queryKey: ['assign-invoice-picker', pickSearch],
+    queryFn: () => getDocuments({ type: 'invoice', search: pickSearch || undefined, per_page: 50 }),
+    enabled: assignPickerOpen,
   });
+  const pickable: Document[] = ((pickData?.data?.data ?? []) as Document[])
+    .filter((d) => ['sent', 'overdue', 'partial'].includes(d.status));
 
   const cancelMutation = useMutation({
     mutationFn: cancelFollowup,
@@ -112,29 +90,7 @@ export default function Followups() {
     },
   });
 
-  const openLogModal = (f: FollowupEntry) => {
-    setSelectedFollowup(f);
-    setOutcome('');
-    setNotes('');
-    setPromiseDate(null);
-    setPromiseAmount(undefined);
-    setNextOverride(null);
-    setLogModalOpen(true);
-  };
-
-  const closeLogModal = () => {
-    setLogModalOpen(false);
-    setSelectedFollowup(null);
-  };
-
-  const handleOutcomeChange = (v: string) => {
-    setOutcome(v);
-    // Drop any promise details when the outcome no longer involves a promise.
-    if (v !== 'promised' && v !== 'partial_payment') {
-      setPromiseDate(null);
-      setPromiseAmount(undefined);
-    }
-  };
+  const openLogModal = (f: FollowupEntry) => setSelectedFollowup(f);
 
   const openPreview = async (docId: string) => {
     try {
@@ -158,36 +114,6 @@ export default function Followups() {
     queryClient.invalidateQueries({ queryKey: ['followups'] });
   };
 
-  // Mirror the backend required_if rules: a promise needs a date + amount;
-  // a partial payment needs an amount.
-  const promiseDetailsMissing =
-    (outcome === 'promised' && (!promiseDate || !promiseAmount)) ||
-    (outcome === 'partial_payment' && !promiseAmount);
-
-  const handleLogCall = () => {
-    if (!selectedFollowup || !outcome || !notes) return;
-    if (promiseDetailsMissing) {
-      notifications.show({
-        title: 'Missing details',
-        message: outcome === 'promised'
-          ? 'Enter the promise date and amount for a "Promised to Pay" outcome.'
-          : 'Enter the partial payment amount.',
-        color: 'red',
-      });
-      return;
-    }
-    logMutation.mutate({
-      id: selectedFollowup.id,
-      data: {
-        outcome,
-        notes,
-        promise_date: promiseDate || undefined,
-        promise_amount: promiseAmount,
-        next_followup_override: nextOverride || undefined,
-      },
-    });
-  };
-
   const dashboard = dashData?.data?.data;
   const history = historyData?.data;
 
@@ -199,14 +125,21 @@ export default function Followups() {
     <Stack gap="lg">
       <Group justify="space-between">
         <Title order={2}>Follow-ups</Title>
-        <Button
-          variant="light"
-          color="teal"
-          leftSection={<IconScript size={18} />}
-          onClick={() => setScriptDrawerOpen(true)}
-        >
-          Call Script
-        </Button>
+        <Group gap="sm">
+          {can('menu.followups') && (
+            <Button variant="filled" onClick={() => { setPickDoc(null); setPickSearch(''); setAssignPickerOpen(true); }}>
+              Assign invoice to staff
+            </Button>
+          )}
+          <Button
+            variant="light"
+            color="teal"
+            leftSection={<IconScript size={18} />}
+            onClick={() => setScriptDrawerOpen(true)}
+          >
+            Call Script
+          </Button>
+        </Group>
       </Group>
 
       {/* Stats */}
@@ -264,6 +197,7 @@ export default function Followups() {
                   <Table.Th>Phone</Table.Th>
                   <Table.Th>Invoice</Table.Th>
                   <Table.Th>Balance</Table.Th>
+                  <Table.Th>Assigned To</Table.Th>
                   <Table.Th>Calls Made</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th>Action</Table.Th>
@@ -284,6 +218,7 @@ export default function Followups() {
                       </Anchor>
                     </Table.Td>
                     <Table.Td fw={600} c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
+                    <Table.Td>{f.assigned_to || '—'}</Table.Td>
                     <Table.Td>
                       <Badge color={f.call_count! >= 3 ? 'red' : 'gray'} variant="light" size="sm">
                         {f.call_count}/3
@@ -330,6 +265,7 @@ export default function Followups() {
                   <Table.Th>Phone</Table.Th>
                   <Table.Th>Invoice</Table.Th>
                   <Table.Th>Balance</Table.Th>
+                  <Table.Th>Assigned To</Table.Th>
                   <Table.Th>Scheduled</Table.Th>
                   <Table.Th>Calls</Table.Th>
                   <Table.Th>Action</Table.Th>
@@ -350,6 +286,7 @@ export default function Followups() {
                       </Anchor>
                     </Table.Td>
                     <Table.Td fw={600} c="red">{formatCurrency(f.invoice_balance)}</Table.Td>
+                    <Table.Td>{f.assigned_to || '—'}</Table.Td>
                     <Table.Td>
                       <Badge color="red" variant="light" size="sm">
                         {f.next_followup ? formatDate(f.next_followup) : '—'}
@@ -428,7 +365,7 @@ export default function Followups() {
                     <Table.Th>Client</Table.Th>
                     <Table.Th>Invoice</Table.Th>
                     <Table.Th>Balance</Table.Th>
-                    <Table.Th>Called By</Table.Th>
+                    <Table.Th>Assigned / Called By</Table.Th>
                     <Table.Th>Outcome</Table.Th>
                     <Table.Th>Promise</Table.Th>
                     <Table.Th>Notes</Table.Th>
@@ -486,112 +423,35 @@ export default function Followups() {
         )}
       </Paper>
 
-      {/* Log Call Modal */}
-      <Modal
-        opened={logModalOpen}
-        onClose={closeLogModal}
-        title={
-          <Group gap="sm">
-            <IconPhoneCall size={20} />
-            <Text fw={600}>Log Call</Text>
-          </Group>
-        }
-        size="lg"
-      >
-        {selectedFollowup && (
-          <Stack gap="md">
-            <Paper p="sm" radius="sm" bg="var(--mantine-color-default)">
-              <Group justify="space-between">
-                <div>
-                  <Text size="xs" c="dimmed">Client</Text>
-                  <Text fw={600} tt="uppercase">{selectedFollowup.client_name}</Text>
-                </div>
-                <div>
-                  <Text size="xs" c="dimmed">Phone</Text>
-                  <Text fw={600}>{selectedFollowup.client_phone || 'No phone'}</Text>
-                </div>
-                <div>
-                  <Text size="xs" c="dimmed">Invoice</Text>
-                  <Text fw={600}>{selectedFollowup.document_number}</Text>
-                </div>
-                <div>
-                  <Text size="xs" c="dimmed">Balance</Text>
-                  <Text fw={700} c="red">{formatCurrency(selectedFollowup.invoice_balance)}</Text>
-                </div>
-              </Group>
-            </Paper>
+      <LogCallModal followup={selectedFollowup} onClose={() => setSelectedFollowup(null)} />
 
-            <Select
-              label="Call Outcome"
-              placeholder="What happened?"
-              required
-              value={outcome}
-              onChange={(v) => handleOutcomeChange(v || '')}
-              data={[
-                { value: 'promised', label: 'Promised to Pay' },
-                { value: 'no_answer', label: 'No Answer' },
-                { value: 'declined', label: 'Declined / Refused' },
-                { value: 'disputed', label: 'Disputed Invoice' },
-                { value: 'partial_payment', label: 'Will Make Partial Payment' },
-              ]}
-            />
-
-            <Textarea
-              label="Call Notes"
-              placeholder="What did the client say? Record the conversation details..."
-              required
-              minRows={3}
-              value={notes}
-              onChange={(e) => setNotes(e.currentTarget.value)}
-            />
-
-            {(outcome === 'promised' || outcome === 'partial_payment') && (
-              <Group grow>
-                <DateInput
-                  label="Promise Date"
-                  placeholder="When will they pay?"
-                  required={outcome === 'promised'}
-                  value={promiseDate}
-                  onChange={setPromiseDate}
-                  minDate={startOfTomorrow()}
-                />
-                <NumberInput
-                  label="Promise Amount"
-                  placeholder="How much?"
-                  required
-                  value={promiseAmount}
-                  onChange={(v) => setPromiseAmount(v as number)}
-                  min={0.01}
-                  decimalScale={2}
-                />
-              </Group>
-            )}
-
-            <DateInput
-              label="Override Next Follow-up Date (optional)"
-              description="Leave blank to use auto-scheduling rules"
-              placeholder="Custom date"
-              value={nextOverride}
-              onChange={setNextOverride}
-              minDate={startOfTomorrow()}
-              clearable
-            />
-
-            <Group justify="flex-end" mt="sm">
-              <Button variant="default" onClick={closeLogModal}>Cancel</Button>
-              <Button
-                color="green"
-                leftSection={<IconCheck size={16} />}
-                onClick={handleLogCall}
-                loading={logMutation.isPending}
-                disabled={!outcome || !notes || promiseDetailsMissing}
-              >
-                Log Call
-              </Button>
-            </Group>
-          </Stack>
-        )}
+      <Modal opened={assignPickerOpen && !pickDoc} onClose={() => setAssignPickerOpen(false)}
+        title="Assign an unpaid invoice to staff" size="md" centered>
+        <Stack>
+          <Select
+            label="Invoice" placeholder="Search invoice number or client" searchable required
+            data={pickable.map((d) => ({
+              value: d.id,
+              label: `${d.document_number} — ${d.client?.name ?? ''} (${formatCurrency(d.balance_due)})`,
+            }))}
+            onSearchChange={setPickSearch}
+            filter={({ options }) => options}
+            onChange={(v) => setPickDoc(pickable.find((d) => d.id === v) ?? null)}
+            nothingFoundMessage="No unpaid invoices found"
+          />
+          <Text size="xs" c="dimmed">Only sent, overdue or partially paid invoices can be assigned.</Text>
+        </Stack>
       </Modal>
+      {pickDoc && (
+        <AssignFollowupModal
+          opened
+          onClose={() => { setPickDoc(null); setAssignPickerOpen(false); }}
+          documentId={pickDoc.id}
+          documentNumber={pickDoc.document_number}
+          clientName={pickDoc.client?.name}
+          balance={Number(pickDoc.balance_due)}
+        />
+      )}
 
       <CallScriptDrawer
         opened={scriptDrawerOpen}
