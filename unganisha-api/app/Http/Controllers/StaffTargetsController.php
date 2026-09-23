@@ -78,7 +78,7 @@ class StaffTargetsController extends Controller
             'manager_commission_type'  => 'nullable|in:none,fixed,percentage',
             'manager_commission_value' => 'nullable|numeric|min:0',
             'criteria'               => 'required|array|min:1',
-            'criteria.*.type'        => 'required|in:customer_count,revenue,item_sales,custom',
+            'criteria.*.type'        => 'required|in:customer_count,revenue,item_sales,custom,collections',
             'criteria.*.label'       => 'required|string|max:255',
             'criteria.*.unit'        => 'nullable|string|max:50',
             'criteria.*.goal_value'        => 'required|numeric|min:0',
@@ -160,7 +160,7 @@ class StaffTargetsController extends Controller
             'manager_commission_type'    => 'nullable|in:none,fixed,percentage',
             'manager_commission_value'   => 'nullable|numeric|min:0',
             'criteria'               => 'sometimes|array|min:1',
-            'criteria.*.type'        => 'required_with:criteria|in:customer_count,revenue,item_sales,custom',
+            'criteria.*.type'        => 'required_with:criteria|in:customer_count,revenue,item_sales,custom,collections',
             'criteria.*.label'       => 'required_with:criteria|string|max:255',
             'criteria.*.unit'        => 'nullable|string|max:50',
             'criteria.*.goal_value'        => 'required_with:criteria|numeric|min:0',
@@ -316,7 +316,19 @@ class StaffTargetsController extends Controller
             ]);
         }
 
-        // Reload criteria to check all-goals-met after updates
+        $this->finalizeVerification($staffTarget, $data['supervisor_notes'] ?? null, auth()->id());
+
+        return response()->json(['data' => $this->format($staffTarget->fresh(['user', 'assignedBy', 'verifiedBy', 'manager', 'criteria']))]);
+    }
+
+    /**
+     * Shared by verify() (manual, HTTP-driven) and autoVerifyCollections() (computed from real
+     * payment collections) — every criterion on $staffTarget must already have verified_value/
+     * goal_met/commission_earned set before calling this; it only does the target-level rollup
+     * (group bonus, salary deduction, manager commission, status, notifications).
+     */
+    private function finalizeVerification(StaffTarget $staffTarget, ?string $supervisorNotes, ?string $verifiedByUserId): void
+    {
         $staffTarget->load('criteria');
         $allGoalsMet = $staffTarget->criteria->every(fn ($c) => $c->goal_met === true);
 
@@ -336,8 +348,8 @@ class StaffTargetsController extends Controller
 
         $staffTarget->update([
             'status'                  => 'verified',
-            'supervisor_notes'        => $data['supervisor_notes'] ?? null,
-            'verified_by'             => auth()->id(),
+            'supervisor_notes'        => $supervisorNotes,
+            'verified_by'             => $verifiedByUserId,
             'verified_at'             => now(),
             'group_commission_earned' => $groupCommissionEarned,
             'salary_deduction_earned' => $salaryDeductionEarned,
@@ -357,8 +369,62 @@ class StaffTargetsController extends Controller
                 new StaffTargetManagerVerifiedNotification($staffTarget->user->tenant, $staffTarget)
             );
         }
+    }
 
-        return response()->json(['data' => $this->format($staffTarget)]);
+    /**
+     * Auto-verify criteria of type "collections" from what the staff member's assigned
+     * follow-ups (app/Models/Followup.php) actually collected during the target's period —
+     * no self-report/manual-verify needed for this criterion type. Other criteria on the same
+     * target (customer_count, revenue, item_sales, custom) are untouched and still need the
+     * normal verify() flow if present.
+     */
+    public function autoVerifyCollections(StaffTarget $staffTarget)
+    {
+        $this->authorizePermission('staff_targets.verify');
+
+        if ($staffTarget->status === 'verified') {
+            abort(422, 'This target is already verified.');
+        }
+
+        $collectionsCriteria = $staffTarget->criteria()->where('type', 'collections')->get();
+        if ($collectionsCriteria->isEmpty()) {
+            abort(422, 'This target has no "collections" criteria to auto-verify.');
+        }
+
+        $documentIds = \App\Models\Followup::withoutGlobalScopes()
+            ->where('tenant_id', $staffTarget->tenant_id)
+            ->where('user_id', $staffTarget->user_id)
+            ->pluck('document_id')
+            ->unique();
+
+        $collected = (float) \App\Models\PaymentIn::withoutGlobalScopes()
+            ->whereIn('document_id', $documentIds)
+            ->whereBetween('payment_date', [$staffTarget->period_start, $staffTarget->period_end])
+            ->sum('amount');
+
+        foreach ($collectionsCriteria as $criterion) {
+            $goalMet = $collected >= $criterion->goal_value;
+            $criterion->update([
+                'achieved_value'    => $collected,
+                'verified_value'    => $collected,
+                'goal_met'          => $goalMet,
+                'commission_earned' => $criterion->fill(['verified_value' => $collected, 'goal_met' => $goalMet])
+                                                  ->calculateCommission(),
+            ]);
+        }
+
+        // Other, non-collections criteria on this target (if any) must already be verified —
+        // finalizeVerification() rolls up ALL criteria, so an unverified manual one would read
+        // as goal_met=false and incorrectly zero the group bonus. Block that combination rather
+        // than silently under-paying.
+        $unverified = $staffTarget->criteria()->where('type', '!=', 'collections')->whereNull('verified_value')->exists();
+        if ($unverified) {
+            abort(422, 'This target has other (non-collections) criteria that still need manual verify() first.');
+        }
+
+        $this->finalizeVerification($staffTarget, 'Auto-verified from actual follow-up collections.', auth()->id());
+
+        return response()->json(['data' => $this->format($staffTarget->fresh(['user', 'assignedBy', 'verifiedBy', 'manager', 'criteria'])), 'collected' => $collected]);
     }
 
     // ── Commission summary ────────────────────────────────────────────────────
@@ -467,6 +533,7 @@ class StaffTargetsController extends Controller
             'customer_count' => 'customers',
             'revenue'        => 'units',
             'item_sales'     => 'units',
+            'collections'    => 'TZS',
             default          => 'units',
         };
     }

@@ -117,7 +117,7 @@ class WhatsappRenewalWebhookController extends Controller
         // Staff-assist: a staff member's OWN phone helping a client, not the client's own
         // self-service. Checked before anything else — STAFF always wins over whatever this
         // phone's session state happens to be, same as MoSMS's cold-start keywords.
-        if ($session && !$session->isExpired() && in_array($session->flow, ['staff_pin', 'staff_search'], true)) {
+        if ($session && !$session->isExpired() && in_array($session->flow, ['staff_pin', 'staff_menu', 'staff_search'], true)) {
             $this->handleStaffAssistStep($tenant, $phone, $session, $text);
             return response('OK', 200);
         }
@@ -227,6 +227,14 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
+        // Universal exit from staff-assist mode entirely (not just back to the staff menu) —
+        // deletes the session, same as a client's own logout().
+        if (preg_match('/^\s*(menu|toka|cancel)\s*$/i', $text) && $session->flow !== 'staff_pin') {
+            $session->delete();
+            $this->reply($tenant, $phone, 'Umetoka kwenye hali ya staff-assist. Andika STAFF wakati wowote kuingia tena.');
+            return;
+        }
+
         $step = $state['step'] ?? null;
 
         if ($session->flow === 'staff_pin') {
@@ -248,7 +256,7 @@ class WhatsappRenewalWebhookController extends Controller
                 }
                 $staff->update(['whatsapp_pin_hash' => Hash::make(trim($text))]);
                 $this->reply($tenant, $phone, 'PIN imewekwa!');
-                $this->startStaffClientSearch($tenant, $phone, $session, $staff);
+                $this->startStaffMenu($tenant, $phone, $session, $staff);
                 return;
             }
 
@@ -270,7 +278,7 @@ class WhatsappRenewalWebhookController extends Controller
                     $this->reply($tenant, $phone, "PIN si sahihi. Jaribu tena ({$attempts}/" . self::MAX_STAFF_PIN_ATTEMPTS . ').');
                     return;
                 }
-                $this->startStaffClientSearch($tenant, $phone, $session, $staff);
+                $this->startStaffMenu($tenant, $phone, $session, $staff);
                 return;
             }
 
@@ -293,6 +301,21 @@ class WhatsappRenewalWebhookController extends Controller
                 $this->reply($tenant, $phone, 'Andika PIN mpya ya namba 4.');
                 return;
             }
+        }
+
+        if ($session->flow === 'staff_menu') {
+            if (preg_match('/^\s*1\s*$/', $text)) {
+                $this->sendStaffFollowups($tenant, $phone, $staff);
+                $this->startStaffMenu($tenant, $phone, $session, $staff);
+                return;
+            }
+            if (preg_match('/^\s*2\s*$/', $text)) {
+                $this->startStaffClientSearch($tenant, $phone, $session, $staff);
+                return;
+            }
+            $this->reply($tenant, $phone, 'Samahani, jibu 1 au 2.');
+            $this->startStaffMenu($tenant, $phone, $session, $staff);
+            return;
         }
 
         if ($session->flow === 'staff_search') {
@@ -336,6 +359,45 @@ class WhatsappRenewalWebhookController extends Controller
             $this->reply($tenant, $phone, implode("\n", $lines));
             return;
         }
+    }
+
+    private function startStaffMenu(Tenant $tenant, string $phone, WhatsappRenewalSession $session, User $staff): void
+    {
+        $session->update(['flow' => 'staff_menu', 'state' => ['staff_id' => $staff->id]]);
+        $this->reply($tenant, $phone, "Habari {$staff->name}! Chagua:\n"
+            . "1) Followups Zangu (Leo/Zilizochelewa)\n"
+            . "2) Tafuta Mteja Kumsaidia\n\n"
+            . 'Jibu na namba. MENU = ondoka.');
+    }
+
+    /** The staff member's own active follow-ups due today or overdue — from the existing web-portal Followup system. */
+    private function sendStaffFollowups(Tenant $tenant, string $phone, User $staff): void
+    {
+        $followups = \App\Models\Followup::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('user_id', $staff->id)
+            ->whereIn('status', ['pending', 'open', 'broken'])
+            ->whereDate('next_followup', '<=', now()->toDateString())
+            ->whereHas('document', fn ($q) => $q->where('status', '!=', 'cancelled'))
+            ->with(['client', 'document'])
+            ->orderBy('next_followup')
+            ->limit(15)
+            ->get();
+
+        if ($followups->isEmpty()) {
+            $this->reply($tenant, $phone, 'Huna followups zilizopangiwa leo au zilizochelewa. 👍');
+            return;
+        }
+
+        $lines = ['*Followups Zako (' . $followups->count() . ')*'];
+        foreach ($followups as $f) {
+            $overdue = $f->next_followup && $f->next_followup->isPast() ? ' ⚠️ IMECHELEWA' : '';
+            $lines[] = "\n• {$f->client?->name}" . $overdue
+                . "\n  Invoice {$f->document?->document_number} — TZS " . number_format((float) ($f->document?->balance_due ?? 0))
+                . "\n  Tarehe: " . ($f->next_followup?->format('d M Y') ?? '—');
+        }
+
+        $this->reply($tenant, $phone, implode("\n", $lines));
     }
 
     private function startStaffClientSearch(Tenant $tenant, string $phone, WhatsappRenewalSession $session, User $staff): void
