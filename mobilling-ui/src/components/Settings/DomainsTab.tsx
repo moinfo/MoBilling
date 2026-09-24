@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Stack, Group, Button, Table, Badge, ActionIcon, Tooltip, Modal, TextInput,
-  NumberInput, Switch, Text, Paper, Loader, Center, Alert, PasswordInput, FileInput, Grid,
+  NumberInput, Switch, Text, Paper, Loader, Center, Alert, PasswordInput, FileInput, Grid, Tabs,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -20,12 +20,18 @@ import { NameComTabs } from '../NameComManager';
 
 export default function DomainsTab() {
   const { can } = usePermissions();
+  const showNameCom = can('domains.settings');
   return (
-    <Stack gap="xl">
-      <RegistrarAccountsSection />
-      <TldPricingSection />
-      {can('domains.settings') && <NameComSection />}
-    </Stack>
+    <Tabs defaultValue="registrars" keepMounted={false}>
+      <Tabs.List mb="md">
+        <Tabs.Tab value="registrars">Registrar accounts</Tabs.Tab>
+        <Tabs.Tab value="tlds">TLD pricing</Tabs.Tab>
+        {showNameCom && <Tabs.Tab value="namecom" leftSection={<IconWorldWww size={14} />}>Name.com</Tabs.Tab>}
+      </Tabs.List>
+      <Tabs.Panel value="registrars"><RegistrarAccountsSection /></Tabs.Panel>
+      <Tabs.Panel value="tlds"><TldPricingSection /></Tabs.Panel>
+      {showNameCom && <Tabs.Panel value="namecom"><NameComSection /></Tabs.Panel>}
+    </Tabs>
   );
 }
 
