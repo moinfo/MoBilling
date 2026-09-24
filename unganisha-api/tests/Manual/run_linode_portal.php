@@ -151,6 +151,19 @@ try {
     ok(Http::recorded(fn ($q) => $q->method() === 'POST' && $q->url() === 'https://api.linode.com/v4/domains')->count() === 1
        && Http::recorded(fn ($q) => !in_array($q->method(), ['GET', 'POST']))->count() === 0, 'one domain POST, no DELETE/other verbs');
     ok(LinodeDomainRequest::where('domain', 'direct-site.co.tz')->where('status', 'approved')->where('client_id', $cA->id)->exists() && LinodeAuditLog::where('action', 'portal.domain_add')->exists(), 'recorded as approved + audited');
+    // extra fields: ttl / soa_email / point_to_server
+    fk([]);
+    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'ttl-bad.com', 'ttl' => 12345])->getStatusCode() === 422, 'invalid TTL refused');
+    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'mail-bad.com', 'soa_email' => 'not-an-email'])->getStatusCode() === 422, 'invalid SOA email refused');
+    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'pt-bad.com', 'point_to_server' => 'maybe'])->getStatusCode() === 422, 'non-boolean point_to_server refused');
+    ok(Http::recorded()->count() === 0, 'invalid extra fields make no Linode call');
+    fk(['api.linode.com/v4/domains' => Http::response(['id' => 9210, 'domain' => 'zone-only.com', 'status' => 'active', 'soa_email' => 'me@example.test', 'ttl_sec' => 300], 200)]);
+    $r = call($uA, 'requestDomain', $sA->id, ['domain' => 'zone-only.com', 'soa_email' => 'me@example.test', 'ttl' => 300, 'point_to_server' => false]);
+    ok($r->getStatusCode() === 201 && j($r)['data']['pointed'] === false && j($r)['data']['nameservers'] === LinodeService::NAMESERVERS, 'point_to_server=false: created, nameservers returned');
+    ok(Http::recorded(fn ($q) => str_contains($q->url(), '/records'))->count() === 0 && Http::recorded()->count() === 1, 'point_to_server=false: only the zone POST, no record POSTs');
+    $zp = Http::recorded()->first()[0]->data();
+    ok(($zp['soa_email'] ?? null) === 'me@example.test' && ($zp['ttl_sec'] ?? null) === 300, 'custom SOA email + TTL sent to Linode');
+    LinodeDomainRequest::where('domain', 'zone-only.com')->delete();
     fk([]);
     foreach (['not a domain', 'x', 'bad_domain.com', 'a..com', ''] as $bad) {
         ok(call($uA, 'requestDomain', $sA->id, ['domain' => $bad])->getStatusCode() === 422, "invalid domain '$bad' rejected");
@@ -250,7 +263,7 @@ try {
     $routes = collect(app('router')->getRoutes()->getRoutes())->filter(fn ($r) => str_contains($r->uri(), 'domain-requests') && str_starts_with($r->uri(), 'api/linode'));
     ok($routes->count() === 3 && $routes->every(fn ($r) => in_array('permission:linode.manage', $r->gatherMiddleware(), true)), 'staff routes are behind permission:linode.manage');
     $pr = collect(app('router')->getRoutes()->getRoutes())->filter(fn ($r) => str_starts_with($r->uri(), 'api/portal/linode'));
-    ok($pr->count() === 5 && $pr->every(fn ($r) => in_array('client_portal', $r->gatherMiddleware(), true)) && $pr->every(fn ($r) => !in_array('DELETE', $r->methods(), true)), 'portal routes behind client_portal auth group, no DELETE');
+    ok($pr->count() === 9 && $pr->every(fn ($r) => in_array('client_portal', $r->gatherMiddleware(), true)) && $pr->every(fn ($r) => !in_array('DELETE', $r->methods(), true)), 'portal routes behind client_portal auth group, no DELETE');
 } catch (\Throwable $e) {
     $fail++; echo 'FAIL exception ' . $e->getMessage() . ' @' . $e->getFile() . ':' . $e->getLine() . "\n";
 }

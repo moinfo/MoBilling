@@ -22,6 +22,13 @@ class LinodeService
     public const NAMESERVERS = ['ns1.linode.com', 'ns2.linode.com', 'ns3.linode.com', 'ns4.linode.com', 'ns5.linode.com'];
     public const DOMAIN_TTLS = [0, 30, 120, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200];
     public const RECORD_TTLS = [0, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200];
+    /** Request-field rules shared by the staff and portal record endpoints (semantic checks live in validateRecord). */
+    public const RECORD_INPUT_RULES = [
+        'type' => 'required|string|max:10', 'name' => 'nullable|string|max:253', 'target' => 'required|string|max:2000',
+        'ttl_sec' => 'nullable|integer', 'priority' => 'nullable|integer', 'weight' => 'nullable|integer',
+        'port' => 'nullable|integer', 'service' => 'nullable|string|max:60', 'protocol' => 'nullable|string|max:10', 'tag' => 'nullable|string|max:20',
+    ];
+
     public const RECORD_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA'];
     private const SECRET_KEYS = ['token', 'authorization', 'password', 'secret', 'api_token'];
 

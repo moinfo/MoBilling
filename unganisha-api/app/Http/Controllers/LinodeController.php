@@ -683,11 +683,7 @@ class LinodeController extends Controller
 
     private function recordInput(Request $request): array
     {
-        return $request->validate([
-            'type' => 'required|string|max:10', 'name' => 'nullable|string|max:253', 'target' => 'required|string|max:2000',
-            'ttl_sec' => 'nullable|integer', 'priority' => 'nullable|integer', 'weight' => 'nullable|integer',
-            'port' => 'nullable|integer', 'service' => 'nullable|string|max:60', 'protocol' => 'nullable|string|max:10', 'tag' => 'nullable|string|max:20',
-        ]);
+        return $request->validate(LinodeService::RECORD_INPUT_RULES);
     }
 
     private function withDomain(LinodeResource $resource, callable $fn, int $okStatus = 200): JsonResponse

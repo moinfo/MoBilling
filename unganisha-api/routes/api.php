@@ -1105,6 +1105,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/linode/servers/{server}/reboot', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'reboot'])->middleware('throttle:10,1');
     Route::post('/linode/servers/{server}/domain-requests', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'requestDomain'])->middleware('throttle:10,1');
     Route::post('/linode/servers/{server}/support-ticket', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'supportTicket'])->middleware('throttle:10,1');
+    Route::get('/linode/servers/{server}/domains/{domainResource}/records', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'dnsRecords'])->middleware('throttle:60,1');
+    Route::post('/linode/servers/{server}/domains/{domainResource}/records', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'dnsRecordStore'])->middleware('throttle:20,1');
+    Route::put('/linode/servers/{server}/domains/{domainResource}/records/{recordId}', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'dnsRecordUpdate'])->middleware('throttle:20,1');
+    Route::post('/linode/servers/{server}/domains/{domainResource}/point-to-server', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'dnsPointToServer'])->middleware('throttle:10,1');
     Route::get('/hosting', [\App\Http\Controllers\Portal\PortalHostingController::class, 'index']);
     Route::post('/hosting/{hostingAccount}/sso', [\App\Http\Controllers\Portal\PortalHostingController::class, 'sso']);
     Route::get('/hosting/{hostingAccount}', [\App\Http\Controllers\Portal\PortalHostingController::class, 'show']);

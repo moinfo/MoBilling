@@ -565,14 +565,23 @@ export const portalApplyCredit = (documentId: string) =>
 // Linode server self-service (portal): reboot only, domain requests, support ticket
 export interface PortalLinodeOverview {
   server: { id: string; name: string; ip: string | null; region: string | null; status: string | null };
-  domains: { name: string; checked_at: string | null; apex_ips: string[]; www_ips: string[]; registered: boolean; registration_status: string | null; expires_at: string | null }[];
+  domains: { id: string; registered_domain_id: string | null; name: string; checked_at: string | null; apex_ips: string[]; www_ips: string[]; registered: boolean; registration_status: string | null; expires_at: string | null }[];
   requests: { id: string; domain: string; status: 'pending' | 'approved' | 'rejected'; note: string | null; created_at: string }[];
 }
 export const getPortalLinodeServer = (id: string) => api.get<{ data: PortalLinodeOverview }>(`/portal/linode/servers/${id}`);
 export const portalLinodeReboot = (id: string, confirm_label: string) =>
   api.post<{ message: string; data: PortalLinodeOverview['server'] }>(`/portal/linode/servers/${id}/reboot`, { confirm_label });
-export const portalLinodeRequestDomain = (id: string, domain: string) =>
-  api.post<{ message: string }>(`/portal/linode/servers/${id}/domain-requests`, { domain });
+export interface PortalAddDomainResult { id: string; domain: string; status: string; records_created: number; pointed: boolean; nameservers: string[] }
+export const portalLinodeRequestDomain = (id: string, p: { domain: string; soa_email?: string; ttl?: number; point_to_server?: boolean }) =>
+  api.post<{ message: string; data: PortalAddDomainResult }>(`/portal/linode/servers/${id}/domain-requests`, p);
+export interface PortalDnsRecord { id: number; type: string; name: string; target: string; ttl_sec: number; priority?: number | null; weight?: number | null; port?: number | null; service?: string | null; protocol?: string | null; tag?: string | null; locked: boolean }
+export type PortalDnsRecordInput = { type: string; name: string; target: string; ttl_sec: number; priority?: number; weight?: number; port?: number; tag?: string };
+const dnsBase = (sid: string, did: string) => `/portal/linode/servers/${sid}/domains/${did}`;
+export const getPortalDnsRecords = (sid: string, did: string) =>
+  api.get<{ data: PortalDnsRecord[]; meta: { nameservers: string[]; max_records: number } }>(`${dnsBase(sid, did)}/records`);
+export const addPortalDnsRecord = (sid: string, did: string, p: PortalDnsRecordInput) => api.post<{ message: string }>(`${dnsBase(sid, did)}/records`, p);
+export const updatePortalDnsRecord = (sid: string, did: string, rid: number, p: PortalDnsRecordInput) => api.put<{ message: string }>(`${dnsBase(sid, did)}/records/${rid}`, p);
+export const portalDnsPointToServer = (sid: string, did: string) => api.post<{ message: string; data: { created: number } }>(`${dnsBase(sid, did)}/point-to-server`);
 export const portalLinodeSupportTicket = (id: string, message?: string) =>
   api.post<{ message: string }>(`/portal/linode/servers/${id}/support-ticket`, { message });
 
