@@ -142,6 +142,55 @@ class NameComDomainService
     }
 
     /**
+     * Bulk-refresh variant of sync(): read-only, logs ONLY when something changed (or the error changed).
+     * @return array{changed: bool, changes: array<string, array{0: mixed, 1: mixed}>}
+     * @throws NameComApiException|RegistrarApiException
+     */
+    public function refresh(Domain $domain): array
+    {
+        try {
+            $info = $this->registrar->namecomForDomain($domain)->getDomain($domain->name);
+        } catch (NameComApiException | RegistrarApiException $e) {
+            $msg = mb_substr($e->getMessage(), 0, 500);
+            if (($domain->meta['namecom']['last_sync_error'] ?? null) !== $msg) {
+                DomainLog::create([
+                    'tenant_id' => $domain->tenant_id, 'domain_id' => $domain->id, 'action' => 'namecom_synced',
+                    'request' => ['via' => 'namecom', 'bulk' => true], 'status' => 'failed', 'error' => $msg,
+                ]);
+            }
+            $this->touchMeta($domain, ['last_sync_error' => $msg], false);
+            throw $e;
+        }
+        $before = $this->snapshot($domain);
+        $this->applyInfo($domain, $info);
+        $after = $this->snapshot($domain->fresh());
+        $changes = [];
+        foreach ($after as $k => $v) {
+            if ($before[$k] === $v) continue;
+            if ($before[$k] === null && !in_array($k, ['expires_at', 'status'], true)) continue; // first fill of a flag: silent
+            $changes[$k] = [$before[$k], $v];
+        }
+        if ($changes) {
+            DomainLog::create([
+                'tenant_id' => $domain->tenant_id, 'domain_id' => $domain->id, 'action' => 'namecom_synced',
+                'request' => ['via' => 'namecom', 'bulk' => true, 'changes' => $changes], 'status' => 'success',
+            ]);
+        }
+        return ['changed' => (bool) $changes, 'changes' => $changes];
+    }
+
+    private function snapshot(Domain $d): array
+    {
+        $nc = $d->meta['namecom'] ?? [];
+        $ns = array_map('strtolower', (array) ($nc['nameservers'] ?? [])); sort($ns);
+        $b = fn ($v) => $v === null ? null : (bool) $v;
+        return [
+            'expires_at' => $d->expires_at?->toDateString(), 'status' => $d->status, 'nameservers' => $ns,
+            'locked' => $b($nc['locked'] ?? null), 'autorenew' => $b($nc['autorenew'] ?? null), 'privacy' => $b($nc['privacy'] ?? null),
+        ];
+    }
+
+    /**
      * Link (or upgrade an existing unmanaged row of) a Name.com domain to a client.
      * @throws \InvalidArgumentException|\DomainException
      */
@@ -207,7 +256,9 @@ class NameComDomainService
     private function applyInfo(Domain $domain, array $info): void
     {
         $expires = substr((string) ($info['expireDate'] ?? ''), 0, 10) ?: null;
-        $update = ['meta' => array_merge($domain->meta ?? [], ['namecom' => array_merge($domain->meta['namecom'] ?? [], $this->metaFrom($info))])];
+        $nc = array_merge($domain->meta['namecom'] ?? [], $this->metaFrom($info));
+        unset($nc['last_sync_error']);
+        $update = ['meta' => array_merge($domain->meta ?? [], ['namecom' => $nc])];
         if ($expires) {
             $update['expires_at'] = $expires;
             if (in_array($domain->status, ['active', 'expired'], true)) {
@@ -219,10 +270,10 @@ class NameComDomainService
         $domain->update($update);
     }
 
-    private function touchMeta(Domain $domain, array $extra): void
+    private function touchMeta(Domain $domain, array $extra, bool $stamp = true): void
     {
         $meta = $domain->meta ?? [];
-        $meta['namecom'] = array_merge($meta['namecom'] ?? [], $extra, ['synced_at' => now()->toIso8601String()]);
+        $meta['namecom'] = array_merge($meta['namecom'] ?? [], $extra, $stamp ? ['synced_at' => now()->toIso8601String()] : []);
         $domain->update(['meta' => $meta]);
     }
 

@@ -8,9 +8,9 @@ import NameComImport from './NameComImport';
 import { usePermissions } from '../hooks/usePermissions';
 
 /** Shared by the Domains-page modal and Settings > Domains (one implementation). */
-export function NameComTabs() {
+export function NameComTabs({ initialTab }: { initialTab?: string }) {
   const { can } = usePermissions();
-  const [tab, setTab] = useState<string | null>(can('domains.settings') ? 'connection' : 'import');
+  const [tab, setTab] = useState<string | null>(initialTab ?? (can('domains.settings') ? 'connection' : 'import'));
   return (
     <Tabs value={tab} onChange={setTab} keepMounted={false}>
       <Tabs.List>
@@ -25,11 +25,11 @@ export function NameComTabs() {
   );
 }
 
-export default function NameComManager({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+export default function NameComManager({ opened, onClose, initialTab }: { opened: boolean; onClose: () => void; initialTab?: string }) {
   const mobile = useMediaQuery('(max-width: 48em)');
   return (
     <Modal opened={opened} onClose={onClose} title="Name.com" size="xl" fullScreen={!!mobile}>
-      <NameComTabs />
+      <NameComTabs initialTab={initialTab} />
     </Modal>
   );
 }

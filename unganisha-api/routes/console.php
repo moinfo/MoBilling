@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('license:check')->dailyAt('05:00')->withoutOverlapping();
 Schedule::command('hosting:reconcile')->dailyAt('05:30')->withoutOverlapping();
 Schedule::command('domains:sync')->dailyAt('05:45')->withoutOverlapping();
+Schedule::command('namecom:sync-domains')->dailyAt('03:30')->withoutOverlapping();
 // After hosting:reconcile has refreshed disk usage into meta.
 Schedule::command('hosting:send-usage-warnings')->dailyAt('05:50')->withoutOverlapping();
 Schedule::command('domains:process-renewals')->dailyAt('06:30')->withoutOverlapping();

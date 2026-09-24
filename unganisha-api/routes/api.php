@@ -770,6 +770,13 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/account-options', [\App\Http\Controllers\NameComController::class, 'accountOptions']);
         Route::post('/link-matched', [\App\Http\Controllers\NameComController::class, 'linkMatched'])->middleware('throttle:30,1,namecom-linkmatched');
     });
+    // Bulk refresh + public registrar lookup (staff only; chunked, read-only). Own throttle prefixes.
+    Route::middleware('permission:domains.settings')->prefix('namecom')->group(function () {
+        $b = \App\Http\Controllers\NameComBulkController::class;
+        Route::post('/bulk-sync', [$b, 'bulkSync'])->middleware('throttle:60,1,namecom-bulksync');
+        Route::post('/registrar-lookup', [$b, 'registrarLookup'])->middleware('throttle:60,1,namecom-rdap-bulk');
+        Route::post('/registrar-lookup/{domain}', [$b, 'lookupOne'])->middleware('throttle:30,1,namecom-rdap-one');
+    });
     Route::middleware('permission:domains.create')->post('/domains/order', [\App\Http\Controllers\DomainController::class, 'order']);
     Route::middleware('permission:domains.create')->post('/domains/add-existing', [\App\Http\Controllers\DomainController::class, 'addExisting']);
 

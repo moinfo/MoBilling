@@ -18,11 +18,12 @@ import {
   getDomainAuthInfo, setDomainAutoRenew, describeDomainAction, addExistingDomain,
   createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
   DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
-  whoisDomain, WhoisResult,
+  whoisDomain, WhoisResult, lookupRegistrarOne, RegistrarView,
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import DomainSuggestPanel from '../components/DomainSuggestPanel';
 import NameComManager from '../components/NameComManager';
+import NameComBulkRunModal from '../components/NameComBulkRunModal';
 import NameComRegisterModal from '../components/NameComRegisterModal';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
@@ -51,6 +52,32 @@ function DomainStatCard({ icon, color, label, value, active, onClick }: {
   );
 }
 
+function RegistrarBadge({ v, canCheck, domainId, onChecked }: { v?: RegistrarView; canCheck: boolean; domainId: string; onChecked: () => void }) {
+  const [busy, setBusy] = useState(false);
+  if (!v) return <Text size="sm" c="dimmed">—</Text>;
+  const check = async () => {
+    setBusy(true);
+    try { await lookupRegistrarOne(domainId); onChecked(); }
+    catch (e: any) { notifications.show({ message: e?.response?.data?.message ?? 'Could not check the registrar.', color: 'red' }); }
+    finally { setBusy(false); }
+  };
+  if (v.kind === 'namecom') {
+    const tip = [v.account ? `Account: ${v.account}` : null, v.synced_at ? `Last synced: ${new Date(v.synced_at).toLocaleString('en-GB')}` : 'Never synced', v.sync_error ? `Last error: ${v.sync_error}` : null].filter(Boolean).join(' | ');
+    return <Tooltip label={tip} multiline maw={320}><Badge size="sm" color="blue" variant="light">{v.sync_error ? 'Name.com !' : 'Name.com'}</Badge></Tooltip>;
+  }
+  if (v.kind === 'tznic') return <Badge size="sm" color="teal" variant="light">TZNIC</Badge>;
+  const color = v.kind === 'namecom_unlinked' ? 'orange' : v.kind === 'other' ? 'gray' : 'yellow';
+  const tip = v.lookup?.checked_at ? `Public lookup ${new Date(v.lookup.checked_at).toLocaleDateString('en-GB')}${v.lookup.iana_id ? ` (IANA ${v.lookup.iana_id})` : ''}${v.lookup.error ? ` - ${v.lookup.error}` : ''}` : 'Not checked yet';
+  return (
+    <Group gap={4} wrap="nowrap">
+      <Tooltip label={tip}><Badge size="sm" color={color} variant="light" style={{ maxWidth: 170 }}>{v.label}</Badge></Tooltip>
+      {canCheck && (
+        <Tooltip label="Check registrar"><ActionIcon size="xs" variant="subtle" loading={busy} onClick={check}><IconRefresh size={12} /></ActionIcon></Tooltip>
+      )}
+    </Group>
+  );
+}
+
 export default function Domains() {
   const { can } = usePermissions();
   const qc = useQueryClient();
@@ -65,6 +92,9 @@ export default function Domains() {
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardName, setWizardName] = useState('');
   const [nameComOpen, setNameComOpen] = useState(false);
+  const [nameComTab, setNameComTab] = useState<string | undefined>(undefined);
+  const [bulkRun, setBulkRun] = useState<null | 'sync' | 'lookup'>(null);
+  const [registrarFilter, setRegistrarFilter] = useState('');
   const [ncRegister, setNcRegister] = useState<DomainRecord | null>(null);
   const [logsFor, setLogsFor] = useState<DomainRecord | null>(null);
   const [renewFor, setRenewFor] = useState<DomainRecord | null>(null);
@@ -76,6 +106,7 @@ export default function Domains() {
   if (expiringOnly) params.expiring = '1';
   if (oursFilter) params.ours = oursFilter;
   if (search) params.search = search;
+  if (registrarFilter) params.registrar = registrarFilter;
 
   // stat card click: toggle the corresponding filter
   const filterByStatus = (status: string) => {
@@ -188,8 +219,22 @@ export default function Domains() {
           <Title order={2}>Domains</Title>
         </Group>
         <Group gap="xs">
+          {can('domains.settings') && (
+            <Tooltip label="Refresh expiry, status, nameservers and lock for every Name.com-linked domain (read-only)">
+              <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => setBulkRun('sync')}>
+                Sync Name.com domains
+              </Button>
+            </Tooltip>
+          )}
+          {can('domains.settings') && (
+            <Tooltip label="Find out which registrar holds your unlinked .com/.net/.org domains (public lookup)">
+              <Button variant="light" color="gray" leftSection={<IconWorldCheck size={16} />} onClick={() => setBulkRun('lookup')}>
+                Check registrars
+              </Button>
+            </Tooltip>
+          )}
           {(can('domains.settings') || can('domains.create')) && (
-            <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => setNameComOpen(true)}>
+            <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => { setNameComTab(undefined); setNameComOpen(true); }}>
               Name.com
             </Button>
           )}
@@ -227,6 +272,22 @@ export default function Domains() {
         <DomainStatCard icon={<IconRepeat size={20} />} color="violet" label="Auto-renew On"
           value={stats?.auto_renew ?? '—'} />
       </SimpleGrid>
+
+      {(can('domains.settings') || can('domains.create')) && (stats?.registrar_summary?.unlinked_non_tz ?? 0) > 0 && (
+        <Alert color="yellow" variant="light" p="xs" icon={<IconAlertTriangle size={16} />}>
+          <Group justify="space-between" gap="xs">
+            <Text size="sm">
+              {stats!.registrar_summary!.unlinked_non_tz} .com/.net/.org domains are not linked to a registrar account
+              {stats!.registrar_summary!.at_namecom_unlinked > 0 && ` (${stats!.registrar_summary!.at_namecom_unlinked} are at Name.com and need the right account token)`}
+              {' '}- open Name.com &gt; Import.
+            </Text>
+            <Group gap="xs">
+              {can('domains.create') && <Button size="compact-xs" onClick={() => { setNameComTab('import'); setNameComOpen(true); }}>Open Name.com Import</Button>}
+              <Button size="compact-xs" variant="subtle" onClick={() => { setRegistrarFilter('unlinked'); setPage(1); }}>Show them</Button>
+            </Group>
+          </Group>
+        </Alert>
+      )}
 
       <DomainLookup canRegister={can('domains.create')} onRegister={() => { setWizardName(''); setWizardOpen(true); }}
         onOrderName={(n) => { setWizardName(n); setWizardOpen(true); }} />
@@ -322,6 +383,17 @@ export default function Domains() {
             { value: 'failed', label: 'Failed' },
             { value: 'cancelled', label: 'Cancelled' },
           ]} />
+        {(can('domains.settings') || can('domains.create')) && (
+          <Select size="xs" placeholder="Registrar: All" clearable w={230}
+            value={registrarFilter || null} onChange={(v) => { setRegistrarFilter(v ?? ''); setPage(1); }}
+            data={[
+              { value: 'tznic', label: 'Registrar: TZNIC' },
+              { value: 'namecom', label: 'Registrar: Name.com (linked)' },
+              { value: 'unlinked', label: 'Unlinked .com/.net/.org' },
+              { value: 'namecom_unlinked', label: 'At Name.com, not linked' },
+              { value: 'other', label: 'At another registrar' },
+            ]} />
+        )}
       </Group>
 
       {isLoading ? (
@@ -336,6 +408,7 @@ export default function Domains() {
                 <Table.Tr>
                   <Table.Th>Domain</Table.Th>
                   <Table.Th>Client</Table.Th>
+                  {(can('domains.settings') || can('domains.create')) && <Table.Th>Registrar</Table.Th>}
                   <Table.Th>Registered</Table.Th>
                   <Table.Th>Expires</Table.Th>
                   <Table.Th>Auto-renew</Table.Th>
@@ -366,6 +439,12 @@ export default function Domains() {
                         </Group>
                       </Table.Td>
                       <Table.Td><Text size="sm">{d.client?.name ?? '—'}</Text></Table.Td>
+                      {(can('domains.settings') || can('domains.create')) && (
+                        <Table.Td>
+                          <RegistrarBadge v={d.registrar_view} canCheck={can('domains.settings')} domainId={d.id}
+                            onChecked={() => { qc.invalidateQueries({ queryKey: ['domains'] }); qc.invalidateQueries({ queryKey: ['domain-stats'] }); }} />
+                        </Table.Td>
+                      )}
                       <Table.Td><Text size="sm" c="dimmed">{d.registered_at ?? '—'}</Text></Table.Td>
                       <Table.Td>
                         <Text size="sm" c={expiringSoon ? 'red' : undefined} fw={expiringSoon ? 600 : undefined}>
@@ -453,7 +532,9 @@ export default function Domains() {
       )}
 
       <OrderWizard opened={wizardOpen} prefillName={wizardName} onClose={() => setWizardOpen(false)} />
-      {nameComOpen && <NameComManager opened onClose={() => setNameComOpen(false)} />}
+      {nameComOpen && <NameComManager opened initialTab={nameComTab} onClose={() => setNameComOpen(false)} />}
+      {bulkRun && <NameComBulkRunModal kind={bulkRun} onClose={() => setBulkRun(null)}
+        onDone={() => { qc.invalidateQueries({ queryKey: ['domains'] }); qc.invalidateQueries({ queryKey: ['domain-stats'] }); }} />}
       {ncRegister && <NameComRegisterModal domainId={ncRegister.id} domainName={ncRegister.name} onClose={() => setNcRegister(null)} />}
 
       <RenewModal domain={renewFor} onClose={() => setRenewFor(null)} />

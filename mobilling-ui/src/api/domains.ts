@@ -11,7 +11,32 @@ export interface DomainRecord {
   auto_renew: boolean;
   meta: Record<string, any> | null;
   created_at: string;
+  /** Staff list only: where the domain lives. */
+  registrar_view?: RegistrarView;
 }
+
+export interface RegistrarView {
+  kind: 'tznic' | 'namecom' | 'namecom_unlinked' | 'other' | 'unchecked';
+  label: string;
+  account?: string | null;
+  synced_at?: string | null;
+  sync_error?: string | null;
+  lookup: { kind: string; name: string | null; iana_id: string | null; checked_at: string | null; error: string | null } | null;
+}
+
+export interface BulkSyncChunk {
+  processed: number; updated: number; unchanged: number; failed: number; skipped: number;
+  failures: { domain: string; reason: string }[]; next: string | null; total: number;
+}
+export interface LookupChunk {
+  processed: number; checked: number; skipped_fresh: number; at_namecom: number; other: number; unknown: number; next: string | null; total: number;
+}
+export const bulkSyncNameCom = (after: string | null) =>
+  api.post<{ data: BulkSyncChunk }>('/namecom/bulk-sync', { after });
+export const bulkRegistrarLookup = (after: string | null) =>
+  api.post<{ data: LookupChunk }>('/namecom/registrar-lookup', { after });
+export const lookupRegistrarOne = (id: string) =>
+  api.post(`/namecom/registrar-lookup/${id}`);
 
 export interface DomainCheckResult {
   name: string;
@@ -146,6 +171,9 @@ export interface DomainStats {
   our_registrar: string | null;
   ours: number;
   external: number;
+  registrar_summary?: {
+    linked_namecom: number; unlinked_non_tz: number; at_namecom_unlinked: number; at_other: number; lookup_due: number; last_synced_at: string | null;
+  };
 }
 
 export interface RegistrarCredit {

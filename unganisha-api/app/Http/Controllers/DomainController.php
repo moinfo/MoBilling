@@ -116,7 +116,27 @@ class DomainController extends Controller
                     ->orWhere('meta->sponsoring_registrar', '!=', $handle));
         }
 
-        return response()->json(['data' => $query->paginate($request->get('per_page', 20))]);
+        if ($request->filled('registrar')) {
+            $linked = fn ($q) => $q->whereNotNull('meta->namecom')->orWhere('meta->registrar', 'namecom');
+            match ($request->registrar) {
+                'tznic'            => $query->where('name', 'like', '%.tz')->whereNull('meta->namecom'),
+                'namecom'          => $query->where($linked),
+                'unlinked'         => \App\Services\Registrar\DomainRegistrarLookup::scopeUnlinked($query),
+                'namecom_unlinked' => \App\Services\Registrar\DomainRegistrarLookup::scopeUnlinked($query)->where('meta->registrar_lookup->kind', 'namecom'),
+                'other'            => \App\Services\Registrar\DomainRegistrarLookup::scopeUnlinked($query)->where('meta->registrar_lookup->kind', 'other'),
+                default            => null,
+            };
+        }
+
+        $page = $query->paginate(min((int) $request->get('per_page', 20), 100));
+
+        // Staff-only registrar view (never part of the portal responses).
+        $accounts = \App\Models\NameComAccount::all();
+        $labels = $accounts->mapWithKeys(fn ($a) => [$a->id => $a->displayLabel()])->all();
+        $defaultId = ($accounts->firstWhere('is_default', true) ?? $accounts->first())?->id;
+        $page->getCollection()->each(fn ($d) => $d->setAttribute('registrar_view', \App\Services\Registrar\DomainRegistrarLookup::view($d, $labels, $defaultId)));
+
+        return response()->json(['data' => $page]);
     }
 
     /**
@@ -326,6 +346,24 @@ class DomainController extends Controller
         ]]);
     }
 
+    /** Staff banner/filter counts: where non-.tz domains live, and when Name.com was last refreshed. */
+    private function registrarSummary(): array
+    {
+        $unlinked = fn () => \App\Services\Registrar\DomainRegistrarLookup::scopeUnlinked(Domain::query());
+        $linked = Domain::whereNotIn('status', ['cancelled', 'transferred_out'])
+            ->where(fn ($q) => $q->whereNotNull('meta->namecom')->orWhere('meta->registrar', 'namecom'))->get(['id', 'meta']);
+        $last = $linked->map(fn ($d) => $d->meta['namecom']['synced_at'] ?? null)->filter()->max();
+        $unchecked = $unlinked()->get(['id', 'meta'])->filter(fn ($d) => !\App\Services\Registrar\DomainRegistrarLookup::isFresh($d))->count();
+        return [
+            'linked_namecom'    => $linked->count(),
+            'unlinked_non_tz'   => $unlinked()->count(),
+            'at_namecom_unlinked' => $unlinked()->where('meta->registrar_lookup->kind', 'namecom')->count(),
+            'at_other'          => $unlinked()->where('meta->registrar_lookup->kind', 'other')->count(),
+            'lookup_due'        => $unchecked,
+            'last_synced_at'    => $last,
+        ];
+    }
+
     public function stats()
     {
         $byStatus = Domain::selectRaw('status, COUNT(*) as c')->groupBy('status')->pluck('c', 'status');
@@ -346,6 +384,7 @@ class DomainController extends Controller
             'auto_renew'     => (clone $active)->where('auto_renew', true)->count(),
             // registry-confirmed sponsorship (set by domains:sync from EPP cl_id)
             'our_registrar'  => $handle,
+            'registrar_summary' => $this->registrarSummary(),
             'ours'           => $handle ? (clone $live)->where('meta->sponsoring_registrar', $handle)->count() : 0,
             'external'       => $handle ? (clone $live)->where(fn ($q) => $q
                 ->whereNull('meta->sponsoring_registrar')
