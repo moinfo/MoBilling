@@ -297,3 +297,9 @@ export const suggestDomains: DomainSuggestFn = async (name, opts) => {
   });
   return res.data.data;
 };
+
+// ── transfer-out readiness for linked Name.com domains (staff) ──
+export const getDomainTransfer = (id: string) => api.get<{ data: any }>(`/domains/${id}/transfer`);
+export const lockDomainTransfer = (id: string) => api.post<{ data: any; message: string }>(`/domains/${id}/transfer/lock`);
+export const unlockDomainTransfer = (id: string) => api.post<{ data: any; message: string }>(`/domains/${id}/transfer/unlock`);
+export const getDomainTransferCode = (id: string) => api.post<{ auth_code: string }>(`/domains/${id}/transfer/auth-code`);

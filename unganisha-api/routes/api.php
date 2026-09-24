@@ -827,6 +827,13 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         // Creating a subscription also needs the normal subscription-create permission.
         Route::middleware('permission:client_subscriptions.create')->post('/resources/{resource}/bill', [\App\Http\Controllers\LinodeController::class, 'bill']);
     });
+    Route::middleware('permission:domains.transfer')->prefix('domains/{domain}/transfer')->group(function () {
+        $c = \App\Http\Controllers\DomainTransferController::class;
+        Route::get('/', [$c, 'show'])->middleware('throttle:60,1,staff-transfer-state');
+        Route::post('/lock', [$c, 'lock'])->middleware('throttle:30,1,staff-transfer-lock');
+        Route::post('/unlock', [$c, 'unlock'])->middleware('throttle:30,1,staff-transfer-unlock');
+        Route::post('/auth-code', [$c, 'authCode'])->middleware('throttle:20,1,staff-transfer-code');
+    });
     Route::middleware('permission:domains.transfer')->get('/domains/{domain}/auth-info', [\App\Http\Controllers\DomainController::class, 'authInfo']);
     Route::middleware('permission:domains.settings')->group(function () {
         Route::get('/registrar-accounts',                       [\App\Http\Controllers\RegistrarAccountController::class, 'index']);
@@ -1176,6 +1183,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/domains/order', [\App\Http\Controllers\Portal\PortalDomainController::class, 'order']);
     Route::get('/domains/{domain}', [\App\Http\Controllers\Portal\PortalDomainController::class, 'show']);
     Route::post('/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalDomainController::class, 'renew']);
+    Route::get('/domains/{domain}/transfer', [\App\Http\Controllers\Portal\PortalDomainTransferController::class, 'show'])->middleware('throttle:60,1,portal-transfer-state');
+    Route::post('/domains/{domain}/transfer/lock', [\App\Http\Controllers\Portal\PortalDomainTransferController::class, 'lock'])->middleware('throttle:20,1,portal-transfer-lock');
+    Route::post('/domains/{domain}/transfer/unlock', [\App\Http\Controllers\Portal\PortalDomainTransferController::class, 'unlock'])->middleware('throttle:20,1,portal-transfer-unlock');
+    Route::post('/domains/{domain}/transfer/code', [\App\Http\Controllers\Portal\PortalDomainTransferController::class, 'authCode'])->middleware('throttle:10,1,portal-transfer-code');
     Route::post('/domains/{domain}/epp-code', [\App\Http\Controllers\Portal\PortalDomainController::class, 'eppCode']);
     Route::get('/domains/{domain}/nameservers', [\App\Http\Controllers\Portal\PortalDomainController::class, 'nameservers']);
     Route::get('/domains/{domain}/dns-zone', [\App\Http\Controllers\Portal\PortalDomainController::class, 'dnsZone']);

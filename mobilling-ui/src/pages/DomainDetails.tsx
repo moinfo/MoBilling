@@ -1,4 +1,5 @@
 import NameComNameservers from '../components/NameComNameservers';
+import DomainTransferCard from '../components/DomainTransferCard';
 import NameComRegisterModal from '../components/NameComRegisterModal';
 import NameComRegistrarCard from '../components/NameComRegistrarCard';
 import { useState } from 'react';
@@ -16,7 +17,7 @@ import {
 } from '@tabler/icons-react';
 import {
   getDomain, getDomainLogs, renewDomain, retryDomain, syncDomain, confirmManualRegistration, getDomainAuthInfo, setDomainAutoRenew,
-  getDomainNameservers, updateDomainNameservers, describeDomainAction, getDomainRegistrarInfo,
+  getDomainNameservers, getDomainTransfer, lockDomainTransfer, unlockDomainTransfer, getDomainTransferCode, updateDomainNameservers, describeDomainAction, getDomainRegistrarInfo,
   DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { usePermissions } from '../hooks/usePermissions';
@@ -273,7 +274,7 @@ export default function DomainDetails() {
                   <Field label="Registrant:">{d as any && (d as any).registrant_handle ? <Code>{(d as any).registrant_handle}</Code> : '—'}</Field>
                   <Field label="NSset:">{(d as any).nsset_handle ? <Code>{(d as any).nsset_handle}</Code> : '—'}</Field>
                 </Group>
-                {can('domains.transfer') && (
+                {can('domains.transfer') && !meta.namecom && (
                   authCode ? (
                     <Stack gap={4}>
                       <Group>
@@ -317,6 +318,20 @@ export default function DomainDetails() {
               fetcher={() => getDomainNameservers(d.id) as any}
               saver={(list) => updateDomainNameservers(d.id, list)}
               canEdit={can('domains.manage_dns') && ['active', 'expired'].includes(d.status)}
+              invalidate={[['domain', d.id], ['domain-logs', d.id]]}
+            />
+          </Grid.Col>
+        )}
+        {meta.namecom && can('domains.transfer') && (
+          <Grid.Col span={12}>
+            <DomainTransferCard
+              queryKey={['domain-transfer', d.id]}
+              domainName={d.name}
+              fetcher={() => getDomainTransfer(d.id) as any}
+              lock={() => lockDomainTransfer(d.id) as any}
+              unlock={() => unlockDomainTransfer(d.id) as any}
+              getCode={() => getDomainTransferCode(d.id)}
+              canAct
               invalidate={[['domain', d.id], ['domain-logs', d.id]]}
             />
           </Grid.Col>

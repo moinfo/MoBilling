@@ -102,7 +102,7 @@ try {
     };
     foreach ([['DELETE', '/core/v1/domains/a.com'], ['PUT', '/core/v1/domains/a.com'], ['PATCH', '/core/v1/domains/a.com'],
         ['POST', '/core/v1/domains/a.com:renew'], ['POST', '/core/v1/domains/a.com:purchase'], ['POST', '/core/v1/domains/a.com:setContacts'],
-        ['POST', '/core/v1/domains'], ['POST', '/core/v1/transfers'], ['GET', '/core/v1/domains/a.com:getAuthCode'], ['GET', '/core/v1/account'],
+        ['POST', '/core/v1/domains'], ['POST', '/core/v1/transfers'], ['GET', '/core/v1/domains/a.com:getPricing'], ['GET', '/core/v1/account'],
         ['GET', '/core/v1/domains/a.com/records'], ['POST', '/core/v1/domains/a.com/records'], ['GET', '/core/v1/domains/../x'], ['POST', '/core/v1/domains/a.com:setNameservers/x'],
         ['GET', '/v4/anything'], ['POST', '/core/v1/domains/a.com:setNameservers?x=1']] as [$m, $p]) {
         ok($refuse($m, $p), "refused $m $p");

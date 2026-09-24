@@ -1,4 +1,5 @@
 import NameComNameservers from '../../components/NameComNameservers';
+import DomainTransferCard from '../../components/DomainTransferCard';
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, LoadingOverlay, Button, Grid,
@@ -15,7 +16,7 @@ import {
   IconCheck, IconX, IconListDetails,
 } from '@tabler/icons-react';
 import {
-  getPortalDomainDetail, portalRenewDomain, portalSetAutoRenew, portalGetEppCode,
+  getPortalDomainDetail, portalRenewDomain, portalSetAutoRenew, portalGetEppCode, getPortalTransfer, portalLockDomain, portalUnlockDomain, portalTransferCode,
   getPortalDomainNameservers, updatePortalDomainNameservers, getPortalDomainDnsZone, PortalDomainDetail,
 } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
@@ -38,7 +39,7 @@ const SECTIONS: { key: Section; label: string; icon: React.ReactNode }[] = [
   { key: 'dns',         label: 'DNS Records',         icon: <IconListDetails size={16} /> },
   { key: 'addons',      label: 'Addons',              icon: <IconPuzzle size={16} /> },
   { key: 'contacts',    label: 'Contact Information', icon: <IconAddressBook size={16} /> },
-  { key: 'epp',         label: 'Get EPP Code',        icon: <IconKey size={16} /> },
+  { key: 'epp',         label: 'Transfer / EPP Code',  icon: <IconKey size={16} /> },
 ];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -359,7 +360,20 @@ export default function PortalDomainDetails() {
               </Stack>
             )}
 
-            {section === 'epp' && (
+            {section === 'epp' && d.transfer_managed && (
+              <DomainTransferCard
+                portal
+                queryKey={['portal-domain-transfer', d.id]}
+                domainName={d.name}
+                fetcher={() => getPortalTransfer(d.id) as any}
+                lock={() => portalLockDomain(d.id) as any}
+                unlock={(c) => portalUnlockDomain(d.id, c) as any}
+                getCode={(c) => portalTransferCode(d.id, c)}
+                canAct={isPortalAdmin}
+              />
+            )}
+
+            {section === 'epp' && !d.transfer_managed && (
               <Stack gap="md">
                 <Title order={4}>Get EPP Code</Title>
                 <Text size="sm" c="dimmed">

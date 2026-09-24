@@ -21,6 +21,8 @@ use Illuminate\Support\Facades\Http;
  *   POST /core/v1/domains/{name}:setNameservers
  *   POST /core/v1/domains            (CREATE = real purchase; only via createDomain(),
  *                                     which requires the NameComRegistrationService)
+ *   POST /core/v1/domains/{name}:lock | :unlock   (transfer lock; empty {} body)
+ *   GET  /core/v1/domains/{name}:getAuthCode      (transfer-out EPP code; NEVER stored/logged/audited)
  * Everything else (renew, transfer, delete, contacts, DNS records...)
  * is refused before any network call. The token is only used as HTTP Basic
  * credentials: never logged, audited or returned.
@@ -242,6 +244,37 @@ class NameComDriver implements RegistrarDriver
         );
     }
 
+    // ── transfer-out readiness ──
+
+    /** Registrar lock: POST :lock. @return array the Domain object */
+    public function lockDomain(string $domain, array $actor = []): array
+    {
+        $domain = self::validateDomainName($domain);
+        return $this->request('POST', "/core/v1/domains/{$domain}:lock", [], [], 'domain.lock', $domain, $actor);
+    }
+
+    /** Registrar unlock: POST :unlock. @return array the Domain object */
+    public function unlockDomain(string $domain, array $actor = []): array
+    {
+        $domain = self::validateDomainName($domain);
+        return $this->request('POST', "/core/v1/domains/{$domain}:unlock", [], [], 'domain.unlock', $domain, $actor);
+    }
+
+    /**
+     * Transfer authorization (EPP) code. The audit row records ONLY that a code was requested
+     * (never the value); the caller must show it once and drop it.
+     */
+    public function getAuthCode(string $domain, array $actor = []): string
+    {
+        $domain = self::validateDomainName($domain);
+        $json = $this->request('GET', "/core/v1/domains/{$domain}:getAuthCode", [], [], 'domain.authcode_requested', $domain, $actor);
+        $code = (string) ($json['authCode'] ?? '');
+        if ($code === '') {
+            throw new NameComApiException('No transfer authorization code is available for this domain right now.');
+        }
+        return $code;
+    }
+
     // ── RegistrarDriver contract: only info() is meaningful here ──
 
     public function info(string $domain): array
@@ -292,15 +325,17 @@ class NameComDriver implements RegistrarDriver
 
     // ── transport ──
 
-    /** Allow-list: refuses anything but the three permitted calls BEFORE touching the network. */
+    /** Allow-list: refuses anything but the permitted calls BEFORE touching the network. */
     public static function assertAllowed(string $method, string $path, bool $createAuthorized = false): void
     {
         $m = strtoupper($method);
-        $ok = ($m === 'GET' && ($path === '/core/v1/domains' || $path === '/core/v1/tldpricing' || preg_match('#^/core/v1/domains/[a-z0-9.-]+$#', $path)))
+        $ok = ($m === 'GET' && preg_match('#^/core/v1/domains/[a-z0-9.-]+:getAuthCode$#', $path))
+            || ($m === 'POST' && preg_match('#^/core/v1/domains/[a-z0-9.-]+:(lock|unlock)$#', $path))
+            || ($m === 'GET' && ($path === '/core/v1/domains' || $path === '/core/v1/tldpricing' || preg_match('#^/core/v1/domains/[a-z0-9.-]+$#', $path)))
             || ($m === 'POST' && ($path === '/core/v1/domains:checkAvailability' || preg_match('#^/core/v1/domains/[a-z0-9.-]+:setNameservers$#', $path)))
             || ($m === 'POST' && $path === '/core/v1/domains' && $createAuthorized);
         if (!$ok) {
-            throw new NameComApiException('This request is not permitted: Name.com access is limited to reading, availability checks, nameservers and (staff-approved) registration.');
+            throw new NameComApiException('This request is not permitted: Name.com access is limited to reading, availability checks, nameservers, the transfer lock / authorization code and (staff-approved) registration.');
         }
     }
 
@@ -319,7 +354,8 @@ class NameComDriver implements RegistrarDriver
             while (true) {
                 $http = Http::withBasicAuth($user, (string) $this->account->token)->acceptJson()->timeout(20)->connectTimeout(10);
                 try {
-                    $res = $method === 'GET' ? $http->get($url, $query) : $http->post($url, $body);
+                    $res = $method === 'GET' ? $http->get($url, $query)
+                        : ($body === [] ? $http->withBody('{}', 'application/json')->post($url) : $http->post($url, $body)); // lock/unlock need a literal {}
                 } catch (ConnectionException) {
                     throw new NameComApiException('Could not reach Name.com (network error or timeout). Try again shortly.');
                 }

@@ -269,7 +269,7 @@ try {
     fk(['*' => Http::response([], 200)]);
     $refuse = function (string $m, string $p, bool $c = false) { try { NameComDriver::assertAllowed($m, $p, $c); return false; } catch (NameComApiException) { return true; } };
     foreach ([['DELETE', '/core/v1/domains/a.com'], ['PUT', '/core/v1/domains/a.com'], ['POST', '/core/v1/domains/a.com:renew'], ['POST', '/core/v1/domains/a.com:setContacts'],
-        ['POST', '/core/v1/domains'], ['POST', '/core/v1/transfers'], ['GET', '/core/v1/account'], ['POST', '/core/v1/accounts'], ['GET', '/core/v1/accounts'], ['GET', '/core/v1/domains/a.com:getAuthCode'], ['POST', '/core/v1/domains/a.com/records']] as [$m, $p]) {
+        ['POST', '/core/v1/domains'], ['POST', '/core/v1/transfers'], ['GET', '/core/v1/account'], ['POST', '/core/v1/accounts'], ['GET', '/core/v1/accounts'], ['GET', '/core/v1/domains/a.com:getPricing'], ['POST', '/core/v1/domains/a.com/records']] as [$m, $p]) {
         ok($refuse($m, $p), "still refused $m $p");
     }
     ok(!$refuse('GET', '/core/v1/domains') && !$refuse('GET', '/core/v1/domains/a.com') && !$refuse('POST', '/core/v1/domains/a.com:setNameservers') && !$refuse('POST', '/core/v1/domains', true), 'allowed set unchanged');

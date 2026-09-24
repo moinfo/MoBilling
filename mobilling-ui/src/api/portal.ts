@@ -351,6 +351,7 @@ export interface PortalDomainDetail {
   auto_renew: boolean;
   unmanaged: boolean;
   nameserver_managed?: boolean;
+  transfer_managed?: boolean;
   awaiting_manual_registration: boolean;
   billing: {
     first_payment: number | null;
@@ -599,3 +600,10 @@ export const portalLinodeSupportTicket = (id: string, message?: string) =>
 
 export const getPortalLinodeServers = () =>
   api.get<{ data: (PortalLinodeOverview['server'] & { plan: string | null })[] }>('/portal/linode/servers');
+
+// ── domain lock / transfer (neutral wording; code is shown once and never stored) ──
+export interface PortalTransferState { locked: boolean | null; transfer_lock_until: string | null; can_transfer: boolean; blocked: boolean; blocked_reason: string | null; is_admin: boolean }
+export const getPortalTransfer = (id: string) => api.get<{ data: PortalTransferState }>(`/portal/domains/${id}/transfer`);
+export const portalLockDomain = (id: string) => api.post<{ data: PortalTransferState; message: string }>(`/portal/domains/${id}/transfer/lock`);
+export const portalUnlockDomain = (id: string, confirm_domain: string) => api.post<{ data: PortalTransferState; message: string }>(`/portal/domains/${id}/transfer/unlock`, { confirm_domain });
+export const portalTransferCode = (id: string, confirm_domain: string) => api.post<{ auth_code: string }>(`/portal/domains/${id}/transfer/code`, { confirm_domain });

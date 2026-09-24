@@ -91,6 +91,7 @@ class PortalDomainController extends Controller
             'auto_renew'     => $domain->auto_renew || (bool) ($meta['manual_auto_renew_requested'] ?? false),
             'unmanaged'      => (bool) ($meta['unmanaged'] ?? false),
             'nameserver_managed' => !empty($meta['namecom']),
+            'transfer_managed'   => !empty($meta['namecom']),   // neutral flag: lock / transfer-code tools available
             'awaiting_manual_registration' => (bool) ($meta['awaiting_manual_registration'] ?? false),
             'billing'        => [
                 'first_payment'  => $firstPayment !== null ? (float) $firstPayment : null,
