@@ -1126,6 +1126,27 @@ class WhatsappRenewalWebhookController extends Controller
         }
     }
 
+    /**
+     * An exception message that is safe to write to logs from a WhatsApp step: a QueryException would echo its SQL
+     * bindings (e.g. the EPP/auth code being inserted), and any long mixed letter/digit token (a code, a password)
+     * or 6+ digit number (PIN / OTP / phone) is masked. Typed message text is never logged anywhere in this controller.
+     */
+    private function logSafe(\Throwable $e): string
+    {
+        $m = preg_split('/\s*\((?:Connection|SQL):/', $e->getMessage())[0] ?? '';
+        $m = preg_replace('/\b\d{6,}\b/', '[num]', $m) ?? '';
+        $m = preg_replace_callback('/\S{8,}/u', function ($mm) {
+            $t = $mm[0];
+            if (preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $t) || str_contains($t, '.') || str_contains($t, '/')) {
+                return $t; // ids, domain names, urls/paths
+            }
+
+            return (preg_match('/\d/', $t) && preg_match('/[^\d]/u', $t)) ? '[redacted]' : $t;
+        }, $m) ?? '';
+
+        return get_class($e) . ': ' . mb_substr($m, 0, 300);
+    }
+
     /** Loosely matches typed text against the client's last name, or any word in their full name. */
     private function surnameMatches(Client $client, string $text): bool
     {
@@ -2297,7 +2318,7 @@ class WhatsappRenewalWebhookController extends Controller
             // switched by DocumentObserver -> PlanChangeService::apply() once the invoice is paid.
             $document = app(\App\Services\Hosting\PlanChangeService::class)->createUpgradeInvoice($sub, $plan['plan'], $plan['charge'], $account->domain);
         } catch (\Throwable $e) {
-            Log::error('WhatsApp upgrade invoice failed', ['hosting_account_id' => $account->id, 'error' => $e->getMessage()]);
+            Log::error('WhatsApp upgrade invoice failed', ['hosting_account_id' => $account->id, 'error' => $this->logSafe($e)]);
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza invoice ya kuboresha. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the upgrade invoice. Please contact us."), $lang);
             return;
         }
@@ -2885,7 +2906,7 @@ class WhatsappRenewalWebhookController extends Controller
                 'message' => self::TICKET_MARKER . ($session->assisted_by_user_id ? ' (created via staff-assist by user #' . $session->assisted_by_user_id . ')' : '') . ".\n\n" . $description,
             ]);
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp support ticket failed', ['client_id' => $client->id, 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp support ticket failed', ['client_id' => $client->id, 'error' => $this->logSafe($e)]);
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutuma ujumbe. Tafadhali wasiliana nasi moja kwa moja.', "Sorry, we couldn't send the message. Please contact us directly."), $lang);
             return;
         }
@@ -2896,7 +2917,7 @@ class WhatsappRenewalWebhookController extends Controller
                 $staff->notify(new \App\Notifications\TicketActivityStaffNotification($ticket, 'opened'));
             }
         } catch (\Throwable $e) {
-            Log::warning("Ticket staff notification failed for {$ticket->ticket_number}: {$e->getMessage()}");
+            Log::warning("Ticket staff notification failed for {$ticket->ticket_number}: " . $this->logSafe($e));
         }
 
         $this->finishFlow($tenant, $client, $phone, $this->t($lang,
@@ -3116,7 +3137,7 @@ class WhatsappRenewalWebhookController extends Controller
             $refuse('Server haiwezi kuanzishwa upya sasa hivi — lazima iwe inafanya kazi. Jaribu tena baada ya muda.', "The server can't be rebooted right now — it must be running. Please try again in a minute.", 409, 'not_running', true);
             return;
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp server reboot failed', ['server_id' => $srv->id, 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp server reboot failed', ['server_id' => $srv->id, 'error' => $this->logSafe($e)]);
             $this->auditServer($tenant, $client, $srv, 'whatsapp.server_reboot', ['result' => 'failed'], 502, $e->getMessage());
             $this->finishFlow($tenant, $client, $phone, $this->t($lang,
                 'Kuanzisha upya kumeshindikana. Tafadhali jaribu tena baada ya dakika moja au wasiliana nasi.',
@@ -3309,7 +3330,7 @@ class WhatsappRenewalWebhookController extends Controller
                 ? $this->renewalInvoiceForDomain($tenant, $client, $id)
                 : $this->renewalInvoiceForSubscription($tenant, $client, $id);
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp renewal failed', ['kind' => $kind, 'id' => $id, 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp renewal failed', ['kind' => $kind, 'id' => $id, 'error' => $this->logSafe($e)]);
             $this->finishFlow($tenant, $client, $phone, $this->t($lang,
                 'Samahani, hatuwezi kutengeneza invoice ya huduma hii sasa hivi. Tafadhali wasiliana nasi.',
                 "Sorry, we can't create the invoice for this service right now. Please contact us."
@@ -4075,7 +4096,7 @@ class WhatsappRenewalWebhookController extends Controller
                     . ".\nHosting: {$account->domain} ({$account->cpanel_username}), status: {$account->status}.\n\n" . $description,
             ]);
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp hosting support ticket failed', ['client_id' => $client->id, 'hosting_account_id' => $account->id, 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp hosting support ticket failed', ['client_id' => $client->id, 'hosting_account_id' => $account->id, 'error' => $this->logSafe($e)]);
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutuma ujumbe. Tafadhali wasiliana nasi moja kwa moja.', "Sorry, we couldn't send the message. Please contact us directly."), $lang);
             return;
         }
@@ -4200,7 +4221,7 @@ class WhatsappRenewalWebhookController extends Controller
         try {
             $document = $bundler->generate($account, selfService: true);
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp renewal invoice generation failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'domain' => $domain->name, 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp renewal invoice generation failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'domain' => $domain->name, 'error' => $this->logSafe($e)]);
 
             // "Everything already has a current invoice": show that invoice so they can just pay it.
             if ($client && str_contains($e->getMessage(), 'already has a current invoice')) {
@@ -4380,7 +4401,7 @@ class WhatsappRenewalWebhookController extends Controller
             try {
                 $availability = app(DomainRegistrarManager::class)->checkFor($tenant->id, $name, $pricing);
             } catch (\Throwable $e) {
-                Log::warning('WhatsApp order_domain availability check failed', ['name' => $name, 'error' => $e->getMessage()]);
+                Log::warning('WhatsApp order_domain availability check failed', ['name' => $name, 'error' => $this->logSafe($e)]);
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang,
                     'Samahani, imeshindikana kuangalia upatikanaji wa domain hii sasa hivi. Jaribu tena baadaye.',
                     "Sorry, we couldn't check this domain's availability right now. Please try again later."
@@ -4424,7 +4445,7 @@ class WhatsappRenewalWebhookController extends Controller
             try {
                 $document = $this->createDomainOrder($tenant, $client, $domain, (float) $price);
             } catch (\Throwable $e) {
-                Log::error('WhatsApp order_domain order creation failed', ['domain' => $domain, 'error' => $e->getMessage()]);
+                Log::error('WhatsApp order_domain order creation failed', ['domain' => $domain, 'error' => $this->logSafe($e)]);
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
                 return;
             }
@@ -4563,7 +4584,7 @@ class WhatsappRenewalWebhookController extends Controller
             try {
                 $availability = app(DomainRegistrarManager::class)->driverFor($tenant->id)->check($name);
             } catch (\Throwable $e) {
-                Log::warning('WhatsApp domain check failed', ['name' => $name, 'error' => $e->getMessage()]);
+                Log::warning('WhatsApp domain check failed', ['name' => $name, 'error' => $this->logSafe($e)]);
                 return ['ok' => false, 'price' => null, 'message' => $this->t($lang,
                     'Samahani, imeshindikana kuangalia upatikanaji wa domain hii sasa hivi. Jaribu tena baadaye.',
                     "Sorry, we couldn't check this domain's availability right now. Please try again later."
@@ -4800,7 +4821,7 @@ class WhatsappRenewalWebhookController extends Controller
             try {
                 $document = $this->createDomainOrder($tenant, $client, $name, $price, $isTransfer ? 'transfer' : 'register', $isTransfer ? ($state['auth_info'] ?? null) : null);
             } catch (\Throwable $e) {
-                Log::error('WhatsApp hosting-flow domain order creation failed', ['domain' => $name, 'error' => $e->getMessage()]);
+                Log::error('WhatsApp hosting-flow domain order creation failed', ['domain' => $name, 'error' => $this->logSafe($e)]);
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
                 return;
             }
@@ -4909,7 +4930,7 @@ class WhatsappRenewalWebhookController extends Controller
                 ), $lang);
                 return;
             } catch (\Throwable $e) {
-                Log::error('WhatsApp order_hosting order creation failed', ['plan_id' => $plan->id, 'domain' => $domain, 'error' => $e->getMessage()]);
+                Log::error('WhatsApp order_hosting order creation failed', ['plan_id' => $plan->id, 'domain' => $domain, 'error' => $this->logSafe($e)]);
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
                 return;
             }
@@ -5199,7 +5220,7 @@ class WhatsappRenewalWebhookController extends Controller
                         $redirectUrl
                     );
                 } catch (\Throwable $e) {
-                    Log::warning('WhatsApp pay_invoice Pesapal checkout failed', ['document_id' => $doc->id, 'error' => $e->getMessage()]);
+                    Log::warning('WhatsApp pay_invoice Pesapal checkout failed', ['document_id' => $doc->id, 'error' => $this->logSafe($e)]);
                     $this->reply($tenant, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza link ya kulipa. Tafadhali jaribu tena baadaye.', "Sorry, we couldn't create a payment link. Please try again later."));
                 }
                 $this->afterPayment($tenant, $client, $phone, $lang, $after);
@@ -5316,7 +5337,7 @@ class WhatsappRenewalWebhookController extends Controller
         try {
             $info = $whois->lookup($name);
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp WHOIS lookup failed', ['name' => $name, 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp WHOIS lookup failed', ['name' => $name, 'error' => $this->logSafe($e)]);
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kupata taarifa za domain hii sasa hivi. Jaribu tena baadaye.', "Sorry, we couldn't fetch this domain's information right now. Please try again later."), $lang);
             return;
         }
@@ -5389,7 +5410,7 @@ class WhatsappRenewalWebhookController extends Controller
             $svc = app(DomainSuggestService::class);
             $rows = $svc->check($tenant->id, $svc->plan($tenant->id, $parsed['label'], $parsed['tld'], 'portal', null, self::AVAILABILITY_ROWS));
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp check_availability suggestions failed', ['label' => $parsed['label'], 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp check_availability suggestions failed', ['label' => $parsed['label'], 'error' => $this->logSafe($e)]);
             $rows = null;
         }
 
@@ -5496,7 +5517,7 @@ class WhatsappRenewalWebhookController extends Controller
         try {
             $availability = app(DomainRegistrarManager::class)->checkFor($tenant->id, $name, $pricing);
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp check_availability failed', ['name' => $name, 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp check_availability failed', ['name' => $name, 'error' => $this->logSafe($e)]);
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kuangalia domain hii sasa hivi. Jaribu tena baadaye.', "Sorry, we couldn't check this domain right now. Please try again later."), $lang);
             return;
         }
@@ -5697,7 +5718,7 @@ class WhatsappRenewalWebhookController extends Controller
             try {
                 app(\App\Services\Registrar\NameserverService::class)->update($domain, $nameservers, ['by_whatsapp_client_id' => $client->id]);
             } catch (\Throwable $e) {
-                Log::warning('WhatsApp change_dns nameserver update failed', ['domain' => $domain->name, 'error' => $e->getMessage()]);
+                Log::warning('WhatsApp change_dns nameserver update failed', ['domain' => $domain->name, 'error' => $this->logSafe($e)]);
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, registry imekataa mabadiliko — angalia majina au wasiliana nasi.', 'Sorry, the registry rejected the change — please check the hostnames or contact us.'), $lang);
                 return;
             }
@@ -5732,7 +5753,7 @@ class WhatsappRenewalWebhookController extends Controller
                 );
                 return;
             } catch (\Throwable $e) {
-                Log::warning('WhatsApp Pesapal checkout failed', ['document_id' => $document->id, 'error' => $e->getMessage()]);
+                Log::warning('WhatsApp Pesapal checkout failed', ['document_id' => $document->id, 'error' => $this->logSafe($e)]);
                 // fall through to bank details below
             }
         }
@@ -5856,7 +5877,7 @@ class WhatsappRenewalWebhookController extends Controller
     /** Logs a failed send with tenant/phone; a balance-style failure also alerts staff (once an hour per tenant). */
     private function noteSendFailure(Tenant $tenant, string $phone, \Throwable $e): void
     {
-        Log::warning('WhatsApp renewal reply send failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
+        Log::warning('WhatsApp renewal reply send failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $this->logSafe($e)]);
 
         if (!preg_match('/balance|insufficient|credit|not enough|\b422\b/i', $e->getMessage())) {
             return;
@@ -5868,7 +5889,7 @@ class WhatsappRenewalWebhookController extends Controller
             $this->notifyStaff($tenant, 'settings.company', new \App\Notifications\WhatsappBotAlertNotification(
                 'send_failed',
                 'WhatsApp bot cannot send replies',
-                'The WhatsApp self-service bot failed to send a reply (' . mb_substr($e->getMessage(), 0, 150) . '). Clients are getting no answer - please check the WhatsApp/MoSMS balance.',
+                'The WhatsApp self-service bot failed to send a reply (' . mb_substr($this->logSafe($e), 0, 150) . '). Clients are getting no answer - please check the WhatsApp/MoSMS balance.',
                 '/settings',
             ));
         } catch (\Throwable $x) {
@@ -5915,7 +5936,7 @@ class WhatsappRenewalWebhookController extends Controller
         try {
             app(WhatsAppService::class)->sendCtaUrlSession($tenant, $this->outTo($phone), $text, $buttonText, $url);
         } catch (\Throwable $e) {
-            Log::warning('WhatsApp CTA-URL reply failed, falling back to plain link', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
+            Log::warning('WhatsApp CTA-URL reply failed, falling back to plain link', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $this->logSafe($e)]);
             $this->noteSendFailure($tenant, $phone, $e);
             $this->reply($tenant, $phone, "{$text} {$url}");
         }

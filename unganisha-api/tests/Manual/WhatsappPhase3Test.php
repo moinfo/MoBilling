@@ -926,6 +926,87 @@ class WhatsappPhase3Test
         $this->assertTrue($l->get(), 'lock free after a failed request');
         $l->release();
     }
+
+    // ═══ H: log redaction ═══
+    private array $logged = [];
+
+    private function captureLogs(): void
+    {
+        $this->logged = [];
+        \Illuminate\Support\Facades\Event::listen(\Illuminate\Log\Events\MessageLogged::class, function ($e) {
+            $this->logged[] = $e->level . ' ' . $e->message . ' ' . json_encode($e->context, JSON_PARTIAL_OUTPUT_ON_ERROR);
+        });
+    }
+
+    private function assertNotLogged(array $secrets): void
+    {
+        $all = implode("\n", $this->logged);
+        foreach ($secrets as $x) {
+            if (str_contains($all, $x)) $this->fail("secret '$x' leaked into logs:\n" . mb_substr($all, 0, 1500));
+        }
+    }
+
+    public function test_h_logsafe_strips_sql_bindings_codes_and_numbers(): void
+    {
+        $ctl = app(\App\Http\Controllers\WhatsappRenewalWebhookController::class);
+        $m = new \ReflectionMethod($ctl, 'logSafe');
+        $m->setAccessible(true);
+        $q = new \Illuminate\Database\QueryException('mysql', 'insert into domains (epp_auth_info) values (?)', ['Zx9#SecretEPP1'], new \Exception('SQLSTATE[23000]: Integrity constraint violation'));
+        $out = $m->invoke($ctl, $q);
+        $this->assertNotContains('Zx9#SecretEPP1', $out);
+        $this->assertNotContains('SQL: insert', $out);
+        $this->assertContains('Integrity constraint', $out);
+        $out = $m->invoke($ctl, new \RuntimeException('bad code Qw8rTy7uIo6p and pin 12345678 for x.co.tz id 01a0d4f0-b9be-7279-8acb-10a360b807ce'));
+        $this->assertNotContains('Qw8rTy7uIo6p', $out);
+        $this->assertNotContains('12345678', $out);
+        $this->assertContains('x.co.tz', $out);
+        $this->assertContains('01a0d4f0-b9be-7279-8acb-10a360b807ce', $out);
+    }
+
+    public function test_h_typed_secrets_at_epp_pin_and_support_steps_never_reach_logs(): void
+    {
+        $this->captureLogs();
+        $c = $this->makeClient();
+        $this->startSession($c);
+        // EPP step
+        $this->session()->update(['flow' => 'order_hosting', 'state' => ['step' => 'transfer_domain_auth', 'domain' => 'p3-tr.test', 'domain_price' => 30000]]);
+        $this->say('Zx9#SecretEPP1');
+        $this->assertSame('Zx9#SecretEPP1', $this->session()->state['auth_info'], 'kept in the session only until the order exists');
+        // support text step
+        $this->startSession($c);
+        $this->say('10'); $this->say('3');
+        $this->say('my password is Sup3rSecretPw!');
+        // staff PIN step
+        $this->staffPin('0000');
+        $this->say('STAFF'); $this->say('9911228');
+        $this->say('MENU');
+        $this->assertNotLogged(['Zx9#SecretEPP1', 'Sup3rSecretPw', '9911228']);
+    }
+
+    private function staffPin(string $pin): void
+    {
+        $u = $this->user;
+        $u->forceFill(['phone' => '0' . substr($this->rawPhone, 3), 'is_active' => true, 'whatsapp_pin_hash' => \Illuminate\Support\Facades\Hash::make($pin), 'whatsapp_pin_failed_count' => 0, 'whatsapp_pin_failed_at' => null, 'whatsapp_pin_locked_until' => null])->save();
+    }
+
+    public function test_h_failed_transfer_order_creation_does_not_log_the_epp_code(): void
+    {
+        $this->captureLogs();
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $plan = ProductService::create(['tenant_id' => $this->tenant->id, 'type' => 'service', 'name' => 'Starter Plan', 'price' => 60000, 'tax_percent' => 0, 'unit' => 'pcs', 'category' => 'Web Hosting', 'billing_cycle' => 'yearly', 'provisioning_type' => 'whm_cpanel']);
+        $this->session()->update(['flow' => 'order_hosting', 'state' => ['step' => 'transfer_domain_confirm', 'domain' => 'p3-tr.test', 'domain_price' => 30000, 'product_service_id' => $plan->id, 'auth_info' => 'Zx9#SecretEPP1']]);
+        app()->instance(\App\Services\Registrar\DomainRegistrarManager::class, new class extends \App\Services\Registrar\DomainRegistrarManager {
+            public function __construct() {}
+            public function accountFor(string $tenantId): \App\Models\RegistrarAccount {
+                throw new \Illuminate\Database\QueryException('mysql', 'insert into domains (epp_auth_info) values (?)', ['Zx9#SecretEPP1'], new \Exception('SQLSTATE[HY000]: forced failure'));
+            }
+        });
+        $r = $this->say('1');
+        $this->assertContains("couldn't create the order", $r);
+        $this->assertTrue(count(array_filter($this->logged, fn ($l) => str_contains($l, 'domain order creation failed'))) === 1, 'the failure itself is logged');
+        $this->assertNotLogged(['Zx9#SecretEPP1']);
+    }
 }
 
 /** Records the push-style sends (WhatsAppChannel path) next to the session replies. */
