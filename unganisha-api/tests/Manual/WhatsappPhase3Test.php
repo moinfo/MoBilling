@@ -315,7 +315,8 @@ class WhatsappPhase3Test
         $part->update(['status' => 'partial', 'paid_amount' => 10000]);
         $this->say('10');
         $r = $this->say('4');
-        $this->assertNotContains('p3-paid.test', $r);
+        $this->assertNotContains('p3-paid.test — Domain registration', $r); // paid: only as a being-set-up line
+        $this->assertContains('p3-paid.test — Being set up', $r);
         $this->assertContains('p3-part.test', $r);
         $card = $this->say('1');
         $this->assertContains('1) Pay now', $card);
@@ -518,5 +519,68 @@ class WhatsappPhase3Test
         Fw::$sent = [];
         $this->say('3');
         $this->assertNotContains('99,999', Fw::$sent[0]['text']);
+    }
+
+    // ═══ B: "being set up" status lines ═══
+    private function activeDomain(Client $c, string $name): \App\Models\Domain
+    {
+        return \App\Models\Domain::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => $name, 'status' => 'active', 'expires_at' => now()->addDays(100), 'meta' => ['unmanaged' => true]]);
+    }
+
+    public function test_b_paid_pending_domain_shows_being_set_up_in_my_domains(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->activeDomain($c, 'p3-live.test');
+        [$doc] = $this->pendingDomainOrder($c, 'p3-wait.test');
+        $doc->update(['status' => 'paid', 'paid_amount' => 25000]);
+        [$unpaid] = $this->pendingDomainOrder($c, 'p3-unpaid.test');
+        $r = $this->say('11');
+        $this->assertContains('p3-live.test', $r);
+        $this->assertContains('p3-wait.test — Being set up (payment received)', $r);
+        $this->assertNotContains('p3-unpaid.test', $r);
+    }
+
+    public function test_b_only_setting_up_domain_and_swahili(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->session()->update(['language' => 'sw']);
+        [$doc] = $this->pendingDomainOrder($c, 'p3-wait.test');
+        $doc->update(['status' => 'paid', 'paid_amount' => 25000]);
+        $r = $this->say('11');
+        $this->assertContains('p3-wait.test — Inaandaliwa (malipo yamepokelewa)', $r);
+        $this->assertNotContains('Huna domain', $r);
+        $this->assertContains('Habari', $this->say('0'));
+    }
+
+    public function test_b_paid_hosting_subscription_without_account_shows_in_my_hosting_and_orders(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$doc] = $this->pendingHostingOrder($c, 'p3-host.test');
+        $doc->update(['status' => 'paid', 'paid_amount' => 60000]);
+        $r = $this->say('12');
+        $this->assertContains('p3-host.test — Being set up (payment received)', $r);
+        $this->assertNotContains("You don't have any hosting", $r);
+        $this->say('MENU');
+        $this->say('10');
+        $r = $this->say('4');
+        $this->assertContains('You have no unpaid orders', $r);
+        $this->assertContains('p3-host.test — Being set up', $r);
+    }
+
+    public function test_b_unpaid_hosting_and_other_clients_not_listed_as_setting_up(): void
+    {
+        $mine = $this->makeClient('Asha Test');
+        $other = $this->makeClient('Baraka Other', '255700000009');
+        $this->startSession($mine);
+        $this->pendingHostingOrder($mine, 'p3-unpaid-host.test');
+        [$od] = $this->pendingDomainOrder($other, 'p3-theirs.test');
+        $od->update(['status' => 'paid', 'paid_amount' => 25000]);
+        $r = $this->say('12');
+        $this->assertNotContains('Being set up', $r);
+        $r = $this->say('11');
+        $this->assertNotContains('p3-theirs.test', $r);
     }
 }

@@ -2212,8 +2212,9 @@ class WhatsappRenewalWebhookController extends Controller
     private function startMyOrders(Tenant $tenant, Client $client, string $phone, string $lang): void
     {
         $all = $this->pendingOrders($tenant, $client);
+        $su = $this->settingUpBlock(array_values(array_unique(array_merge($this->settingUpDomainNames($tenant, $client), $this->settingUpHostingNames($tenant, $client)))), $lang);
         if (!$all) {
-            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Huna oda yoyote isiyolipwa kwa sasa.', 'You have no unpaid orders right now.'), $lang);
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Huna oda yoyote isiyolipwa kwa sasa.', 'You have no unpaid orders right now.') . ($su !== '' ? "\n\n" . $su : ''), $lang);
             return;
         }
 
@@ -2226,6 +2227,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         $this->setSimpleState($tenant, $client, $phone, 'my_orders', ['step' => 'pick', 'doc_ids' => array_map(fn ($o) => $o['doc']->id, $shown)]);
         $notice = $this->moreNotice($tenant, $lang, count($all) - count($shown), false, '/portal/invoices');
+        $notice .= $su !== '' ? "\n\n" . $su : '';
         $this->reply($tenant, $phone, $this->t($lang,
             "*Oda zangu (zisizolipwa)*\n\n" . implode("\n", $lines) . $notice . "\n\nJibu na namba kuchagua.\n\n" . $this->menuFooter($lang),
             "*My orders (unpaid)*\n\n" . implode("\n", $lines) . $notice . "\n\nReply with a number to choose.\n\n" . $this->menuFooter($lang)
@@ -3062,6 +3064,61 @@ class WhatsappRenewalWebhookController extends Controller
         $this->offerPayment($tenant, $client, $phone, $document, $lang);
     }
 
+    // ── "Being set up" (paid, awaiting registration / provisioning) — neutral wording, no supplier ──
+
+    /** Names of this client's pending domain registrations/transfers whose order invoice is already paid. */
+    private function settingUpDomainNames(Tenant $tenant, Client $client): array
+    {
+        $names = [];
+        $domains = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('status', 'pending')->whereNotNull('meta->order_document_id')->get();
+        foreach ($domains as $d) {
+            // Paying the order invoice clears meta.pending_action (registration then runs / awaits staff), so the
+            // paid order invoice on a still-pending domain is the signal.
+            $paid = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+                ->where('type', 'invoice')->where('status', 'paid')->whereKey($d->meta['order_document_id'] ?? '')->exists();
+            if ($paid) {
+                $names[] = $d->name;
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    /** Hosting: an account still provisioning, or a paid pending hosting subscription with no account yet. */
+    private function settingUpHostingNames(Tenant $tenant, Client $client): array
+    {
+        $names = $this->clientHostingAccounts($tenant, $client)->where('hosting_accounts.status', 'pending')->pluck('hosting_accounts.domain')->all();
+
+        $subs = \App\Models\ClientSubscription::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('status', 'pending')->whereNull('deleted_at')->get();
+        foreach ($subs as $sub) {
+            $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($sub->product_service_id);
+            if (!$plan || $plan->provisioning_type !== 'whm_cpanel') {
+                continue;
+            }
+            $docIds = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+                ->where('client_subscription_id', $sub->id)->whereNotNull('document_id')->pluck('document_id');
+            $paid = $docIds->isNotEmpty() && Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+                ->where('type', 'invoice')->where('status', 'paid')->whereIn('id', $docIds)->exists();
+            if ($paid) {
+                $names[] = $sub->label ?: $plan->name;
+            }
+        }
+
+        return array_values(array_unique($names));
+    }
+
+    private function settingUpBlock(array $names, string $lang): string
+    {
+        if (!$names) {
+            return '';
+        }
+        $tail = $this->t($lang, 'Inaandaliwa (malipo yamepokelewa)', 'Being set up (payment received)');
+
+        return implode("\n", array_map(fn ($n) => "🟡 {$n} — {$tail}", $names));
+    }
+
     // ── 11) My Domains ──
 
     private function setSimpleState(Tenant $tenant, Client $client, string $phone, string $flow, array $state): void
@@ -3083,6 +3140,12 @@ class WhatsappRenewalWebhookController extends Controller
         $total = (clone $base)->count();
         $domains = $base->limit(9)->get();
 
+        $settingUp = $query === null ? $this->settingUpDomainNames($tenant, $client) : [];
+        if ($domains->isEmpty() && $settingUp) {
+            $this->setSimpleState($tenant, $client, $phone, 'my_domains', ['step' => 'pick', 'capped' => false, 'ids' => []]);
+            $this->reply($tenant, $phone, $this->t($lang, "*Domain Zangu*\n\n", "*My Domains*\n\n") . $this->settingUpBlock($settingUp, $lang) . "\n\n" . $this->menuFooter($lang));
+            return;
+        }
         if ($domains->isEmpty()) {
             $msg = $query !== null
                 ? $this->t($lang, "Hakuna domain inayolingana na \"{$query}\". Jaribu jina lingine, au:\n\n" . $this->menuFooter($lang), "No domain matches \"{$query}\". Try another name, or:\n\n" . $this->menuFooter($lang))
@@ -3110,6 +3173,8 @@ class WhatsappRenewalWebhookController extends Controller
 
         $this->setSimpleState($tenant, $client, $phone, 'my_domains', ['step' => 'pick', 'capped' => $total > $domains->count(), 'ids' => $domains->pluck('id')->all()]);
         $notice = $this->moreNotice($tenant, $lang, $total - $domains->count(), true);
+        $su = $this->settingUpBlock($settingUp, $lang);
+        $notice .= $su !== '' ? "\n\n" . $su : '';
         $this->reply($tenant, $phone, $this->t($lang,
             "*Domain Zangu*\n\n" . implode("\n", $lines) . $notice . "\n\nJibu na namba kuona maelezo.\n\n" . $this->menuFooter($lang),
             "*My Domains*\n\n" . implode("\n", $lines) . $notice . "\n\nReply with a number for details.\n\n" . $this->menuFooter($lang)
@@ -3214,6 +3279,12 @@ class WhatsappRenewalWebhookController extends Controller
         $total = (clone $base)->count();
         $accounts = $base->limit(9)->get();
 
+        $settingUp = $query === null ? $this->settingUpHostingNames($tenant, $client) : [];
+        if ($accounts->isEmpty() && $settingUp) {
+            $this->setSimpleState($tenant, $client, $phone, 'my_hosting', ['step' => 'pick', 'capped' => false, 'ids' => []]);
+            $this->reply($tenant, $phone, $this->t($lang, "*Hosting Yangu*\n\n", "*My Hosting*\n\n") . $this->settingUpBlock($settingUp, $lang) . "\n\n" . $this->menuFooter($lang));
+            return;
+        }
         if ($accounts->isEmpty()) {
             if ($query !== null) {
                 $this->reply($tenant, $phone, $this->t($lang,
@@ -3242,6 +3313,8 @@ class WhatsappRenewalWebhookController extends Controller
 
         $this->setSimpleState($tenant, $client, $phone, 'my_hosting', ['step' => 'pick', 'capped' => $total > $accounts->count(), 'ids' => $accounts->pluck('id')->all()]);
         $notice = $this->moreNotice($tenant, $lang, $total - $accounts->count(), true);
+        $su = $this->settingUpBlock($settingUp, $lang);
+        $notice .= $su !== '' ? "\n\n" . $su : '';
         $this->reply($tenant, $phone, $this->t($lang,
             "*Hosting Yangu*\n\n" . implode("\n", $lines) . $notice . "\n\nJibu na namba kuona maelezo.\n\n" . $this->menuFooter($lang),
             "*My Hosting*\n\n" . implode("\n", $lines) . $notice . "\n\nReply with a number for details.\n\n" . $this->menuFooter($lang)
