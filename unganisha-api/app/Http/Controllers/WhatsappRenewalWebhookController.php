@@ -2082,6 +2082,12 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
+        // 6) Lugha / Language: confirm the switch.
+        if (($session->state['step'] ?? '') === 'lang_confirm') {
+            $this->handleLanguageSwitchStep($tenant, $client, $phone, $session, $text, $lang);
+            return;
+        }
+
         if ($this->isBackWord($text)) {
             $this->sendRootMenu($tenant, $client, $phone, $lang);
         } elseif (preg_match('/^\s*1\s*$/', $text)) {
@@ -2090,9 +2096,43 @@ class WhatsappRenewalWebhookController extends Controller
             $this->startExpiring($tenant, $client, $phone, $lang);
         } elseif (preg_match('/^\s*3\s*$/', $text)) {
             $this->askGeneralSupportText($tenant, $client, $phone, $lang);
+        } elseif (preg_match('/^\s*6\s*$/', $text)) {
+            $this->startLanguageSwitch($tenant, $client, $phone, $lang);
         } else {
             $this->invalidChoice($tenant, $phone, $lang, 3);
         }
+    }
+
+    // ── 6) Lugha / Language (switch the session language without logging out) ──
+
+    private function startLanguageSwitch(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $this->setSimpleState($tenant, $client, $phone, 'more_services', ['step' => 'lang_confirm']);
+        $this->reply($tenant, $phone, $this->t($lang,
+            "*Lugha*\nLugha ya sasa: Kiswahili\n\nBadilisha kuwa English?\n" . $this->yesNoOptions($lang) . "\n\n" . $this->menuFooter($lang),
+            "*Language*\nCurrent language: English\n\nSwitch to Kiswahili?\n" . $this->yesNoOptions($lang) . "\n\n" . $this->menuFooter($lang)
+        ));
+    }
+
+    private function handleLanguageSwitchStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        if ($this->isBackWord($text)) {
+            $this->startMoreServices($tenant, $client, $phone, $lang);
+            return;
+        }
+        $yes = $this->parseYesNo($text);
+        if ($yes === null) {
+            $this->invalidYesNo($tenant, $phone, $lang);
+            return;
+        }
+        if (!$yes) {
+            $this->startMoreServices($tenant, $client, $phone, $lang);
+            return;
+        }
+
+        $new = $lang === 'en' ? 'sw' : 'en';
+        $this->reply($tenant, $phone, $this->t($new, 'Sawa, sasa nitatumia Kiswahili.', 'Done, I will now use English.'));
+        $this->sendRootMenu($tenant, $client, $phone, $new); // rewrites the session language, keeps the login
     }
 
     // ── 3) Msaada / Support (general ticket) ──
