@@ -7,7 +7,7 @@ import {
   IconCalendarDue, IconSettings, IconLogout, IconCalendarRepeat,
   IconSun, IconMoon, IconMessage, IconArrowBack, IconCreditCard, IconLink,
   IconClipboardList, IconClipboardCheck, IconCalendarEvent, IconCategory, IconFileSpreadsheet,
-  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww, IconMessageCircle, IconMessageDots, IconNews, IconBook,
+  IconWallet, IconCategory2, IconReceipt2, IconRobot, IconTargetArrow, IconPhoneCall, IconWorld, IconWorldWww, IconServer, IconMessageCircle, IconMessageDots, IconNews, IconBook,
   IconReportAnalytics, IconCash, IconClock, IconFileAnalytics, IconCreditCard as IconCreditCardReport,
   IconWallet as IconWalletReport, IconScale, IconShieldCheck, IconLink as IconLinkReport,
   IconChartBar, IconMail, IconSpeakerphone, IconShieldLock,
@@ -95,7 +95,7 @@ export default function AppLayout() {
   const showHr = canAny(['menu.staff_reports', 'attendance.manage', 'menu.work_locations', 'menu.staff_targets', 'menu.leave', 'menu.payroll']);
   // Grouped nav parents (Dec 2026 reorg) — each is purely a visual container;
   // every leaf item below still gates on the exact same permission it always did.
-  const showWebServices = canAny(['menu.hosting', 'menu.domains']);
+  const showWebServices = canAny(['menu.hosting', 'menu.domains', 'menu.linode']);
   const showSupport = canAny(['menu.tickets', 'menu.announcements']);
   const showEngagement = canAny(['menu.satisfaction_calls', 'menu.whatsapp', 'menu.field_marketing', 'menu.social_media', 'menu.served_customers']);
   const showRecords = canAny(['menu.system_records', 'menu.system_record_expenses', 'menu.my_verifications', 'menu.report_balance_statement']);
@@ -127,6 +127,7 @@ export default function AppLayout() {
     { label: 'Hosting — FTP Accounts', path: '/hosting/ftp-accounts', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Domains — SSL Certificates Expiry', path: '/domains/ssl-expiry', group: 'Web Services', visible: can('menu.domains') },
     { label: 'Domains', path: '/domains', group: 'Web Services', visible: can('menu.domains') },
+    { label: 'Linode (Servers & DNS)', path: '/linode', group: 'Web Services', visible: can('menu.linode') },
     { label: 'Support Tickets', path: '/tickets', group: 'Support', visible: can('menu.tickets') },
     { label: 'Canned Replies', path: '/canned-replies', group: 'Support', visible: can('menu.tickets') },
     { label: 'Knowledgebase', path: '/knowledgebase', group: 'Support', visible: can('menu.announcements') },
@@ -387,6 +388,10 @@ export default function AppLayout() {
                   <NavLink label="SSL Certificates Expiry" active={location.pathname === '/domains/ssl-expiry'}
                     onClick={() => navigateAndClose('/domains/ssl-expiry')} />
                 </NavLink>
+              )}
+              {can('menu.linode') && (
+                <NavLink label="Linode" leftSection={<IconServer size={16} />}
+                  active={isActive('/linode')} onClick={() => navigateAndClose('/linode')} />
               )}
             </NavLink>
           )}

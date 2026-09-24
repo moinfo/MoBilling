@@ -90,6 +90,7 @@ import MysqlDatabases from './pages/MysqlDatabases';
 import HostingPackages from './pages/HostingPackages';
 import ServerHealth from './pages/ServerHealth';
 import DnsZone from './pages/DnsZone';
+import Linode from './pages/Linode';
 import CronJobs from './pages/CronJobs';
 import PhpVersions from './pages/PhpVersions';
 import FtpAccounts from './pages/FtpAccounts';
@@ -317,6 +318,7 @@ export default function App() {
                   <Route path="/hosting/packages" element={<HostingPackages />} />
                   <Route path="/hosting/health" element={<ServerHealth />} />
                   <Route path="/hosting/dns-zone" element={<DnsZone />} />
+                  <Route path="/linode" element={<Linode />} />
                   <Route path="/hosting/cron-jobs" element={<CronJobs />} />
                   <Route path="/hosting/php-versions" element={<PhpVersions />} />
                   <Route path="/hosting/ftp-accounts" element={<FtpAccounts />} />

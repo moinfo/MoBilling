@@ -754,6 +754,27 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:domains.renew')->put('/domains/{domain}/auto-renew', [\App\Http\Controllers\DomainController::class, 'setAutoRenew']);
     Route::middleware('permission:domains.read')->get('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'nameservers']);
     Route::middleware('permission:domains.manage_dns')->put('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'updateNameservers']);
+    // Linode integration (tenant's own Linode account). Token is write-only.
+    Route::middleware('permission:linode.read')->prefix('linode')->group(function () {
+        Route::get('/accounts', [\App\Http\Controllers\LinodeController::class, 'accounts']);
+        Route::get('/servers', [\App\Http\Controllers\LinodeController::class, 'servers']);
+        Route::get('/domains', [\App\Http\Controllers\LinodeController::class, 'domains']);
+        Route::get('/domains/{resource}/records', [\App\Http\Controllers\LinodeController::class, 'records']);
+        Route::post('/domains/{resource}/check-nameservers', [\App\Http\Controllers\LinodeController::class, 'checkNameservers']);
+    });
+    Route::middleware('permission:linode.manage')->prefix('linode')->group(function () {
+        Route::post('/accounts', [\App\Http\Controllers\LinodeController::class, 'storeAccount']);
+        Route::put('/accounts/{account}', [\App\Http\Controllers\LinodeController::class, 'updateAccount']);
+        Route::delete('/accounts/{account}', [\App\Http\Controllers\LinodeController::class, 'destroyAccount']);
+        Route::post('/accounts/{account}/verify', [\App\Http\Controllers\LinodeController::class, 'verifyAccount']);
+        Route::post('/accounts/{account}/sync', [\App\Http\Controllers\LinodeController::class, 'sync']);
+        Route::post('/domains', [\App\Http\Controllers\LinodeController::class, 'storeDomain']);
+        Route::post('/domains/{resource}/set-nameservers', [\App\Http\Controllers\LinodeController::class, 'setNameservers']);
+        Route::post('/domains/{resource}/records', [\App\Http\Controllers\LinodeController::class, 'storeRecord']);
+        Route::put('/domains/{resource}/records/{recordId}', [\App\Http\Controllers\LinodeController::class, 'updateRecord']);
+        Route::delete('/domains/{resource}/records/{recordId}', [\App\Http\Controllers\LinodeController::class, 'destroyRecord']);
+        Route::patch('/resources/{resource}/map', [\App\Http\Controllers\LinodeController::class, 'map']);
+    });
     Route::middleware('permission:domains.transfer')->get('/domains/{domain}/auth-info', [\App\Http\Controllers\DomainController::class, 'authInfo']);
     Route::middleware('permission:domains.settings')->group(function () {
         Route::get('/registrar-accounts',                       [\App\Http\Controllers\RegistrarAccountController::class, 'index']);
