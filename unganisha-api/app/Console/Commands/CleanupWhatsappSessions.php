@@ -12,6 +12,7 @@ use Illuminate\Console\Command;
  *  - purge sessions that expired more than 7 days ago (the last week is kept so a returning client is
  *    still told "your session timed out");
  *  - strip sensitive state (transfer EPP/auth codes) from any session not touched for an hour;
+ *  - strip the encrypted cPanel password suggestion (pw_suggestion) from any session past its flow expiry;
  *  - purge expired reminder targets and stale, unlocked verification counters.
  */
 class CleanupWhatsappSessions extends Command
@@ -48,6 +49,27 @@ class CleanupWhatsappSessions extends Command
                 }
             });
 
+        $pw = 0;
+        WhatsappRenewalSession::withoutGlobalScopes()
+            ->whereNotNull('state')
+            ->where('state', 'like', '%pw_suggestion%')
+            ->where('expires_at', '<', now())
+            ->get()
+            ->each(function (WhatsappRenewalSession $s) use (&$pw, $dry) {
+                $state = $s->state ?? [];
+                if (!array_key_exists('pw_suggestion', $state)) {
+                    return;
+                }
+                $pw++;
+                if (!$dry) {
+                    unset($state['pw_suggestion']);
+                    $s->forceFill(['state' => $state])->saveQuietly();
+                }
+            });
+        if (!$dry) {
+            \App\Models\WhatsappOtp::where('created_at', '<', now()->subDay())->delete();
+        }
+
         $targets = WhatsappReminderTarget::where('expires_at', '<', now());
         $targetCount = (clone $targets)->count();
         $attempts = WhatsappVerifyAttempt::where('updated_at', '<', now()->subDays(30))
@@ -58,7 +80,7 @@ class CleanupWhatsappSessions extends Command
             $attempts->delete();
         }
 
-        $this->info(($dry ? '[dry-run] ' : '') . "sessions purged: {$expiredCount}, EPP state scrubbed: {$scrubbed}, reminder targets purged: {$targetCount}, verify counters purged: {$attemptCount}");
+        $this->info(($dry ? '[dry-run] ' : '') . "sessions purged: {$expiredCount}, EPP state scrubbed: {$scrubbed}, password suggestions scrubbed: {$pw}, reminder targets purged: {$targetCount}, verify counters purged: {$attemptCount}");
 
         return self::SUCCESS;
     }

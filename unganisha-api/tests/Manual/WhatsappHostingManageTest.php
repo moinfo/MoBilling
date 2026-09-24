@@ -301,7 +301,7 @@ class WhatsappHostingManageTest
         $this->plan('UpNoWhm', 40000, ['provisioning_type' => 'none']);
 
         $this->openMenu($client);
-        $this->assertSame(['cpanel', 'upgrade', 'email', 'connect', 'support'], $this->session()->state['options']);
+        $this->assertSame(['cpanel', 'upgrade', 'email', 'connect', 'support', 'resetpass'], $this->session()->state['options']);
         FakeWa::$sent = [];
         $this->say('2');
         $t = $this->allText();

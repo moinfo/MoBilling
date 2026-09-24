@@ -1290,7 +1290,7 @@ class WhatsappRenewalWebhookController extends Controller
         $state = $session->state ?? [];
         $step = $state['step'] ?? 'pick_account';
 
-        if (in_array($step, ['email_menu', 'upgrade_pick', 'upgrade_confirm', 'ask_email_name', 'ask_ticket_text'], true)) {
+        if (in_array($step, ['email_menu', 'upgrade_pick', 'upgrade_confirm', 'ask_email_name', 'ask_ticket_text', 'reset_otp', 'reset_pick'], true)) {
             $this->handleHostingSubStep($tenant, $client, $phone, $session, $text, $lang, $step, $state);
             return;
         }
@@ -1350,6 +1350,8 @@ class WhatsappRenewalWebhookController extends Controller
             $this->showEmailMenu($tenant, $client, $phone, $session, $account, $lang);
         } elseif ($option === 'connect') {
             $this->showConnectDomain($tenant, $client, $phone, $session, $account, $lang);
+        } elseif ($option === 'resetpass') {
+            $this->startCpanelReset($tenant, $client, $phone, $session, $account, $lang);
         } elseif (str_starts_with($option, 'invoice:')) {
             $doc = $this->unpaidHostingInvoices($tenant, $client, $account)->firstWhere('id', substr($option, 8));
             if (!$doc) {
@@ -1493,6 +1495,10 @@ class WhatsappRenewalWebhookController extends Controller
         if ($multiple) {
             $add('back', $this->t($lang, 'Hosting nyingine', 'Another hosting account'));
         }
+        // Appended last so every existing option keeps its number.
+        if ($account->status === 'active') {
+            $add('resetpass', $this->t($lang, 'Weka upya password ya cPanel', 'Reset cPanel password'));
+        }
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
@@ -1550,6 +1556,181 @@ class WhatsappRenewalWebhookController extends Controller
         );
     }
 
+    /**
+     * Reset cPanel password, step 1: email a one-time code. Client's own session only, never staff-assist.
+     * The chat only ever receives the new password after the emailed code is confirmed.
+     */
+    private function startCpanelReset(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
+    {
+        $svc = app(\App\Services\Hosting\WhatsappCpanelResetService::class);
+
+        if ($session->assisted_by_user_id) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Kwa usalama password haibadilishwi kupitia msaada wa staff; tumia admin panel.',
+                'For security the password is not changed through staff assistance; please use the admin panel.'
+            ));
+            return;
+        }
+        if ($account->status !== 'active') {
+            $this->reply($tenant, $phone, $this->t($lang, 'Password inaweza kubadilishwa tu kwa hosting inayofanya kazi.', 'The password can only be reset for an active hosting account.'));
+            return;
+        }
+        if (!$client->email) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Hatuna email yako. Tafadhali tumia portal au wasiliana nasi.',
+                "We don't have your email. Please use the portal or contact us."
+            ));
+            return;
+        }
+        if ($svc->resetsInLastDay($account) >= \App\Services\Hosting\WhatsappCpanelResetService::MAX_RESETS_PER_DAY) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Password ya hosting hii imeshabadilishwa mara nyingi leo. Tafadhali jaribu tena kesho au wasiliana nasi.',
+                'This hosting password was already reset several times today. Please try again tomorrow or contact us.'
+            ));
+            return;
+        }
+
+        $result = $svc->requestOtp($tenant, $client, $phone, $account);
+        if ($result !== 'sent') {
+            $this->reply($tenant, $phone, match ($result) {
+                'rate_limited' => $this->t($lang, 'Umeomba nambari nyingi sana. Tafadhali jaribu tena baada ya saa moja.', 'Too many code requests. Please try again in an hour.'),
+                'no_email' => $this->t($lang, 'Hatuna email yako. Tafadhali tumia portal au wasiliana nasi.', "We don't have your email. Please use the portal or contact us."),
+                default => $this->t($lang, 'Samahani, hatukuweza kutuma nambari kwa email sasa. Tafadhali jaribu tena baadaye.', "Sorry, we couldn't email the code right now. Please try again later."),
+            });
+            return;
+        }
+
+        $this->setHostingState($tenant, $client, $phone, ['step' => 'reset_otp', 'account_id' => $account->id, 'account_ids' => [$account->id]]);
+        $mask = \App\Services\Hosting\WhatsappCpanelResetService::maskEmail($client->email);
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Tumetuma nambari ya tarakimu 6 kwenye email yako ({$mask}). Ni halali kwa dakika 10.\n\nAndika nambari hiyo hapa kuweka upya password ya cPanel ya {$account->domain}.\n\n" . $this->menuFooter($lang),
+            "We emailed a 6-digit code to {$mask}. It is valid for 10 minutes.\n\nType the code here to reset the cPanel password of {$account->domain}.\n\n" . $this->menuFooter($lang)
+        ));
+    }
+
+    /** Reset cPanel password, step 2: check the emailed code, then set + show a generated password ONCE. */
+    private function verifyCpanelResetCode(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang, string $text): void
+    {
+        $svc = app(\App\Services\Hosting\WhatsappCpanelResetService::class);
+
+        if ($session->assisted_by_user_id || $account->status !== 'active' || !$client->email) {
+            $svc->cancelOtps($tenant, $phone);
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Huwezi kuendelea na ombi hili.', 'This request cannot continue.'), $lang);
+            return;
+        }
+        if (!preg_match('/^\s*(\d{6})\s*$/', $text, $m)) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Tafadhali andika nambari ya tarakimu 6 uliyotumiwa kwa email.\n\n" . $this->menuFooter($lang),
+                "Please type the 6-digit code we emailed you.\n\n" . $this->menuFooter($lang)
+            ));
+            return;
+        }
+
+        $res = $svc->verifyOtp($tenant, $client, $phone, $account, $m[1]);
+        if ($res === 'wrong') {
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Nambari si sahihi. Jaribu tena.\n\n" . $this->menuFooter($lang),
+                "That code is not correct. Please try again.\n\n" . $this->menuFooter($lang)
+            ));
+            return;
+        }
+        if ($res !== 'ok') {
+            $this->finishFlow($tenant, $client, $phone, $res === 'exhausted'
+                ? $this->t($lang, 'Umekosea mara 3; ombi limefutwa. Ukihitaji, anza upya baadaye.', 'Too many wrong codes; the request was cancelled. Start again later if needed.')
+                : $this->t($lang, 'Nambari imeisha muda au haipo. Anza upya kuomba nambari mpya.', 'The code has expired or is not valid. Start again to get a new code.'), $lang);
+            return;
+        }
+
+        if ($svc->resetsInLastDay($account) >= \App\Services\Hosting\WhatsappCpanelResetService::MAX_RESETS_PER_DAY) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Password ya hosting hii imeshabadilishwa mara nyingi leo. Tafadhali jaribu tena kesho au wasiliana nasi.',
+                'This hosting password was already reset several times today. Please try again tomorrow or contact us.'
+            ), $lang);
+            return;
+        }
+
+        $this->showCpanelSuggestion($tenant, $client, $phone, $account, $lang, 0);
+    }
+
+    /** Shows a generated strong password suggestion (kept ONLY encrypted in the session state until applied). */
+    private function showCpanelSuggestion(Tenant $tenant, Client $client, string $phone, HostingAccount $account, string $lang, int $regen): void
+    {
+        $pw = app(\App\Services\Hosting\WhatsappCpanelResetService::class)->generatePassword();
+        $this->setHostingState($tenant, $client, $phone, [
+            'step' => 'reset_pick', 'account_id' => $account->id, 'account_ids' => [$account->id],
+            'pw_suggestion' => \Illuminate\Support\Facades\Crypt::encryptString($pw), 'regen' => $regen,
+        ]);
+
+        $opts = $this->t($lang, "1) Tumia password hii\n", "1) Use this password\n")
+            . ($regen < \App\Services\Hosting\WhatsappCpanelResetService::MAX_SUGGESTIONS - 1 ? $this->t($lang, "2) Nipe pendekezo lingine\n", "2) Suggest another\n") : '')
+            . $this->t($lang, '0) Ghairi', '0) Cancel');
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Nambari imethibitishwa. Pendekezo la password mpya ya cPanel ya {$account->domain}:\n\n{$pw}\n\n{$opts}\n\nPassword haibadilishwi hadi uchague 1.",
+            "Code confirmed. Suggested new cPanel password for {$account->domain}:\n\n{$pw}\n\n{$opts}\n\nNothing changes until you choose 1."
+        ));
+    }
+
+    /** Reset cPanel password, step 3: apply the suggestion the client saw (exactly one WHM call), or regenerate. */
+    private function handleCpanelResetPick(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang, string $text, array $state): void
+    {
+        $svc = app(\App\Services\Hosting\WhatsappCpanelResetService::class);
+
+        if ($session->assisted_by_user_id || $account->status !== 'active') {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Huwezi kuendelea na ombi hili.', 'This request cannot continue.'), $lang);
+            return;
+        }
+        $regen = (int) ($state['regen'] ?? 0);
+        $max = \App\Services\Hosting\WhatsappCpanelResetService::MAX_SUGGESTIONS;
+        $allowed = $regen < $max - 1 ? '[12]' : '1';
+        if (!preg_match("/^\\s*({$allowed})\\s*\$/", $text, $m)) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, jibu ' . ($regen < $max - 1 ? '1, 2' : '1') . " au 0.\n\n" . $this->menuFooter($lang),
+                'Sorry, reply ' . ($regen < $max - 1 ? '1, 2' : '1') . " or 0.\n\n" . $this->menuFooter($lang)
+            ));
+            return;
+        }
+        if ($m[1] === '2') {
+            $this->showCpanelSuggestion($tenant, $client, $phone, $account, $lang, $regen + 1);
+            return;
+        }
+
+        try {
+            $password = \Illuminate\Support\Facades\Crypt::decryptString((string) ($state['pw_suggestion'] ?? ''));
+        } catch (\Throwable $e) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Ombi limeisha muda. Anza upya.', 'The request expired. Please start again.'), $lang);
+            return;
+        }
+        // Delete the stored suggestion before the WHM call: it must never outlive this step.
+        $this->setHostingState($tenant, $client, $phone, ['step' => 'account_menu_pending', 'account_id' => $account->id, 'account_ids' => [$account->id]]);
+
+        if ($svc->resetsInLastDay($account) >= \App\Services\Hosting\WhatsappCpanelResetService::MAX_RESETS_PER_DAY) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Password ya hosting hii imeshabadilishwa mara nyingi leo. Tafadhali jaribu tena kesho au wasiliana nasi.',
+                'This hosting password was already reset several times today. Please try again tomorrow or contact us.'
+            ), $lang);
+            return;
+        }
+
+        try {
+            $svc->applyPassword($tenant, $client, $account, $password);
+        } catch (\Throwable $e) {
+            // Never log the message: it can carry WHM request details.
+            Log::warning('WhatsApp cPanel password reset failed', ['client_id' => $client->id, 'hosting_account_id' => $account->id]);
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Samahani, hatukuweza kubadilisha password kwa sasa; hakuna kilichobadilika. Tafadhali jaribu tena baadaye au wasiliana nasi.',
+                "Sorry, we couldn't change the password right now; nothing was changed. Please try again later or contact us."
+            ), $lang);
+            return;
+        }
+
+        Log::info('WhatsApp cPanel password reset', ['client_id' => $client->id, 'hosting_account_id' => $account->id]);
+
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+            "Password imebadilishwa ({$account->domain}); ni ile uliyoona kwenye pendekezo. Hifadhi mahali salama; kwa usalama futa ujumbe huo baada ya kuihifadhi, na ubadilishe ukishaingia.",
+            "The password for {$account->domain} was changed to the one shown in the suggestion. Keep it somewhere safe; for security delete that message once saved, and change it after you log in."
+        ), $lang);
+    }
+
     private function hostingAccountFromState(Tenant $tenant, Client $client, array $state): ?HostingAccount
     {
         return !empty($state['account_id'])
@@ -1576,10 +1757,21 @@ class WhatsappRenewalWebhookController extends Controller
 
         // 0) Rudi / Back — to this account's own menu
         if (trim($text) === '0') {
+            if (in_array($step, ['reset_otp', 'reset_pick'], true)) {
+                app(\App\Services\Hosting\WhatsappCpanelResetService::class)->cancelOtps($tenant, $phone);
+            }
             $this->showHostingAccount($tenant, $client, $phone, $account, $lang, multiple: false);
             return;
         }
 
+        if ($step === 'reset_pick') {
+            $this->handleCpanelResetPick($tenant, $client, $phone, $session, $account, $lang, $text, $state);
+            return;
+        }
+        if ($step === 'reset_otp') {
+            $this->verifyCpanelResetCode($tenant, $client, $phone, $session, $account, $lang, $text);
+            return;
+        }
         if ($step === 'ask_ticket_text') {
             $this->createHostingSupportTicket($tenant, $client, $phone, $session, $account, $lang, $text);
             return;
