@@ -561,3 +561,17 @@ export const portalCreditTopup = (amount: number) =>
 
 export const portalApplyCredit = (documentId: string) =>
   api.post(`/portal/documents/${documentId}/apply-credit`);
+
+// Linode server self-service (portal): reboot only, domain requests, support ticket
+export interface PortalLinodeOverview {
+  server: { id: string; name: string; ip: string | null; region: string | null; status: string | null };
+  domains: { name: string; checked_at: string | null }[];
+  requests: { id: string; domain: string; status: 'pending' | 'approved' | 'rejected'; note: string | null; created_at: string }[];
+}
+export const getPortalLinodeServer = (id: string) => api.get<{ data: PortalLinodeOverview }>(`/portal/linode/servers/${id}`);
+export const portalLinodeReboot = (id: string, confirm_label: string) =>
+  api.post<{ message: string; data: PortalLinodeOverview['server'] }>(`/portal/linode/servers/${id}/reboot`, { confirm_label });
+export const portalLinodeRequestDomain = (id: string, domain: string) =>
+  api.post<{ message: string }>(`/portal/linode/servers/${id}/domain-requests`, { domain });
+export const portalLinodeSupportTicket = (id: string, message?: string) =>
+  api.post<{ message: string }>(`/portal/linode/servers/${id}/support-ticket`, { message });

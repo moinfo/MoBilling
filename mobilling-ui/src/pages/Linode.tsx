@@ -16,6 +16,7 @@ import {
   checkLinodeNameservers, getLinodeRecords, addLinodeRecord, updateLinodeRecord,
   mapLinodeResource, refreshLinodeDns, getLinodeBillingProducts, getLinodeClientSubscriptions, billLinodeServer, linkLinodeSubscription, unlinkLinodeSubscription, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
   RECORD_TYPES, LINODE_NAMESERVERS, DnsRefreshBatch, PowerAction,
+  getLinodeDomainRequests, approveLinodeDomainRequest, rejectLinodeDomainRequest,
 } from '../api/linode';
 import api from '../api/axios';
 import { getClients } from '../api/clients';
@@ -52,11 +53,13 @@ export default function Linode() {
           <Tabs.Tab value="accounts" leftSection={<IconPlugConnected size={14} />}>Accounts</Tabs.Tab>
           <Tabs.Tab value="servers" leftSection={<IconServer size={14} />}>Servers</Tabs.Tab>
           <Tabs.Tab value="domains" leftSection={<IconWorldWww size={14} />}>Domains</Tabs.Tab>
+          {canManage && <Tabs.Tab value="requests" leftSection={<IconLink size={14} />}>Domain requests</Tabs.Tab>}
           {canManage && <Tabs.Tab value="costs" leftSection={<IconReceipt size={14} />}>Gharama za Linode</Tabs.Tab>}
         </Tabs.List>
         <Tabs.Panel value="accounts" pt="md"><AccountsTab canManage={canManage} /></Tabs.Panel>
         <Tabs.Panel value="servers" pt="md"><ServersTab canManage={canManage} onShowDomains={showServerDomains} /></Tabs.Panel>
         {canManage && <Tabs.Panel value="costs" pt="md"><CostsTab /></Tabs.Panel>}
+        {canManage && <Tabs.Panel value="requests" pt="md"><DomainRequestsTab /></Tabs.Panel>}
         <Tabs.Panel value="domains" pt="md"><DomainsTab canManage={canManage} serverFilter={serverFilter} setServerFilter={setServerFilter} /></Tabs.Panel>
       </Tabs>
     </Stack>
@@ -653,6 +656,62 @@ function AutoMapModal({ rows, onClose }: { rows: LinodeResource[]; onClose: () =
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancel</Button><Button loading={m.isPending} onClick={() => m.mutate()}>Map {rows.length} domain(s)</Button></Group>
       </Stack>
     </Modal>
+  );
+}
+
+function DomainRequestsTab() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['linode-domain-requests'], queryFn: () => getLinodeDomainRequests('pending') });
+  const rows = data?.data?.data ?? [];
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const done = () => { qc.invalidateQueries({ queryKey: ['linode-domain-requests'] }); qc.invalidateQueries({ queryKey: ['linode-domains'] }); };
+  const approve = useMutation({
+    mutationFn: (id: string) => approveLinodeDomainRequest(id),
+    onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); done(); },
+    onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
+  });
+  const reject = useMutation({
+    mutationFn: (id: string) => rejectLinodeDomainRequest(id, note.trim() || undefined),
+    onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); setRejecting(null); setNote(''); done(); },
+    onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
+  });
+  if (isLoading) return <Center py="xl"><Loader /></Center>;
+  return (
+    <Stack>
+      <Text size="sm" c="dimmed">Domains clients asked to add to their servers. Approving adds the domain to Linode DNS with A / www records to the server IP and maps it to the client. Nothing is deleted.</Text>
+      <Paper withBorder>
+        <Table>
+          <Table.Thead><Table.Tr><Table.Th>Domain</Table.Th><Table.Th>Client</Table.Th><Table.Th>Server</Table.Th><Table.Th>Requested</Table.Th><Table.Th /></Table.Tr></Table.Thead>
+          <Table.Tbody>
+            {rows.length === 0 && <Table.Tr><Table.Td colSpan={5}><Text c="dimmed" ta="center" py="md" size="sm">No pending requests.</Text></Table.Td></Table.Tr>}
+            {rows.map((r) => (
+              <Table.Tr key={r.id}>
+                <Table.Td>{r.domain}</Table.Td>
+                <Table.Td>{r.client_name ?? '-'}</Table.Td>
+                <Table.Td>{r.server_label ?? '-'}{r.server_ip ? ` · ${r.server_ip}` : ''}</Table.Td>
+                <Table.Td>{fmt(r.created_at)}</Table.Td>
+                <Table.Td>
+                  <Group gap="xs" wrap="nowrap" justify="flex-end">
+                    <Button size="compact-sm" color="green" loading={approve.isPending && approve.variables === r.id} onClick={() => approve.mutate(r.id)}>Approve</Button>
+                    <Button size="compact-sm" color="red" variant="light" onClick={() => { setNote(''); setRejecting(r.id); }}>Reject</Button>
+                  </Group>
+                </Table.Td>
+              </Table.Tr>
+            ))}
+          </Table.Tbody>
+        </Table>
+      </Paper>
+      <Modal opened={!!rejecting} onClose={() => setRejecting(null)} title="Reject domain request">
+        <Stack>
+          <TextInput label="Reason (shown to the client)" maxLength={500} value={note} onChange={(e) => setNote(e.currentTarget.value)} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setRejecting(null)}>Cancel</Button>
+            <Button color="red" loading={reject.isPending} onClick={() => rejecting && reject.mutate(rejecting)}>Reject</Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </Stack>
   );
 }
 

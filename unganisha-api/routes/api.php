@@ -775,6 +775,9 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/accounts/{account}/verify', [\App\Http\Controllers\LinodeController::class, 'verifyAccount']);
         Route::post('/accounts/{account}/sync', [\App\Http\Controllers\LinodeController::class, 'sync']);
         Route::post('/accounts/{account}/refresh-dns', [\App\Http\Controllers\LinodeController::class, 'refreshDns']);
+        Route::get('/domain-requests', [\App\Http\Controllers\LinodeDomainRequestController::class, 'index']);
+        Route::post('/domain-requests/{domainRequest}/approve', [\App\Http\Controllers\LinodeDomainRequestController::class, 'approve']);
+        Route::post('/domain-requests/{domainRequest}/reject', [\App\Http\Controllers\LinodeDomainRequestController::class, 'reject']);
         Route::post('/domains/auto-map', [\App\Http\Controllers\LinodeController::class, 'autoMapClients']);
         Route::post('/domains', [\App\Http\Controllers\LinodeController::class, 'storeDomain']);
         Route::post('/domains/{resource}/set-nameservers', [\App\Http\Controllers\LinodeController::class, 'setNameservers']);
@@ -1097,6 +1100,10 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/statement', [PortalStatementController::class, 'index']);
     Route::get('/products-services', [PortalProductServiceController::class, 'index']);
     Route::get('/subscriptions', [PortalSubscriptionController::class, 'index']);
+    Route::get('/linode/servers/{server}', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'show']);
+    Route::post('/linode/servers/{server}/reboot', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'reboot'])->middleware('throttle:10,1');
+    Route::post('/linode/servers/{server}/domain-requests', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'requestDomain'])->middleware('throttle:10,1');
+    Route::post('/linode/servers/{server}/support-ticket', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'supportTicket'])->middleware('throttle:10,1');
     Route::get('/hosting', [\App\Http\Controllers\Portal\PortalHostingController::class, 'index']);
     Route::post('/hosting/{hostingAccount}/sso', [\App\Http\Controllers\Portal\PortalHostingController::class, 'sso']);
     Route::get('/hosting/{hostingAccount}', [\App\Http\Controllers\Portal\PortalHostingController::class, 'show']);

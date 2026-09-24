@@ -164,3 +164,13 @@ export interface LinodeCostsRow {
   payments: { id: number; date: string; usd: number }[];
 }
 export const getLinodeCosts = () => api.get<{ data: LinodeCostsRow[] }>('/linode/costs').then((r) => r.data.data);
+
+export interface LinodeDomainRequestRow {
+  id: string; domain: string; status: 'pending' | 'approved' | 'rejected'; note: string | null;
+  client_id: string; client_name: string | null; server_id: string; server_label: string | null; server_ip: string | null;
+  decided_at: string | null; created_at: string;
+}
+export const getLinodeDomainRequests = (status: 'pending' | 'approved' | 'rejected' = 'pending') =>
+  api.get<{ data: LinodeDomainRequestRow[] }>('/linode/domain-requests', { params: { status } });
+export const approveLinodeDomainRequest = (id: string) => api.post<{ message: string }>(`/linode/domain-requests/${id}/approve`);
+export const rejectLinodeDomainRequest = (id: string, note?: string) => api.post<{ message: string }>(`/linode/domain-requests/${id}/reject`, { note });

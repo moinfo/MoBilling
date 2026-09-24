@@ -57,7 +57,7 @@ class PortalSubscriptionController extends Controller
                 if ($srv = $servers->get($sub->id)) {
                     $doc = $invoiceLogs->get($sub->id)?->document;
                     $sub->linode_server = [
-                        'name' => $srv->label, 'ip' => $srv->ipv4[0] ?? null, 'region' => $srv->region,
+                        'id' => $srv->id, 'name' => $srv->label, 'ip' => $srv->ipv4[0] ?? null, 'region' => $srv->region,
                         'status' => $srv->status, 'last_synced_at' => $srv->synced_at,
                         'renewal_invoice' => $doc && !in_array($doc->status, ['paid', 'cancelled'])
                             ? ['id' => $doc->id, 'number' => $doc->document_number, 'status' => $doc->status, 'due_date' => $doc->due_date?->toDateString(), 'total' => $doc->total]

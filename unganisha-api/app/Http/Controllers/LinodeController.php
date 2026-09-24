@@ -12,6 +12,7 @@ use App\Models\LinodeResource;
 use App\Models\RecurringInvoiceLog;
 use App\Services\Linode\DnsMapping;
 use App\Services\Linode\LinodeBilling;
+use App\Services\Linode\LinodeDomainProvisioner;
 use App\Services\Linode\LinodeService;
 use App\Services\Registrar\NameserverService;
 use Illuminate\Http\JsonResponse;
@@ -522,41 +523,14 @@ class LinodeController extends Controller
             if (empty($server->ipv4[0])) return response()->json(['message' => 'Chosen server has no IPv4 address.'], 422);
         }
 
-        if (LinodeResource::where('type', 'domain')->where('label', $domain)->where('status', '!=', 'gone')->exists()) {
-            return response()->json(['message' => "$domain is already added to Linode (it exists in your synced domains)."], 422);
-        }
-
-        $svc = new LinodeService($account);
         try {
-            $created = $svc->createDomain($domain, $data['soa_email'] ?? $account->soa_email ?? auth()->user()->email, $ttl);
+            $out = app(LinodeDomainProvisioner::class)->add($account, $domain, $data['soa_email'] ?? $account->soa_email ?? auth()->user()->email, $ttl, $server);
         } catch (\InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
-        } catch (LinodeApiException $e) {
-            $msg = $e->getMessage();
-            if ($e->httpStatus === 400 && stripos($msg, 'already exists') !== false) {
-                $msg = "$domain already exists on Linode (possibly in another Linode account, since domain names are unique across Linode). $msg";
-            }
-            return response()->json(['message' => $msg], 422);
         }
-
-        $resource = LinodeResource::updateOrCreate(
-            ['linode_account_id' => $account->id, 'type' => 'domain', 'remote_id' => (string) $created['id']],
-            [
-                'tenant_id' => $account->tenant_id, 'label' => $domain, 'status' => $created['status'] ?? 'active',
-                'meta' => ['type' => 'master', 'soa_email' => $created['soa_email'] ?? null, 'ttl_sec' => $created['ttl_sec'] ?? null],
-                'domain_id' => Domain::where('name', $domain)->value('id'), 'synced_at' => now(),
-            ]
-        );
-
-        $recordsCreated = 0;
-        $warning = null;
-        if ($server) {
-            try {
-                $recordsCreated = count($svc->createStandardWebRecords($created['id'], $server->ipv4[0]));
-            } catch (\InvalidArgumentException | LinodeApiException $e) {
-                $warning = 'Domain created, but adding the A records failed: ' . $e->getMessage() . ' You can add them from the Records drawer.';
-            }
-        }
+        $resource = $out['resource'];
+        $recordsCreated = $out['records_created'];
+        $warning = $out['warning'];
 
         return response()->json([
             'data' => $this->resourceArray($resource->load('account:id,label,last_synced_at')) + [
