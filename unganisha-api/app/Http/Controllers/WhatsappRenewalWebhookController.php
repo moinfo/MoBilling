@@ -202,7 +202,7 @@ class WhatsappRenewalWebhookController extends Controller
             // "0) Rudi/Back": flows that own their own 0 (more_services, my_servers, expiring, hosting_manage)
             // step back themselves; every other flow's 0 returns to the main menu, so nothing is a dead end.
             if ($session->flow && trim($text) === '0'
-                && in_array($session->flow, ['order_domain', 'order_hosting', 'pay_invoice', 'whois', 'check_availability', 'change_dns', 'hosting_submenu', 'renew_pick'], true)) {
+                && in_array($session->flow, ['order_domain', 'order_hosting', 'pay_invoice', 'whois', 'check_availability', 'change_dns', 'hosting_submenu', 'renew_pick', 'pending_dup'], true)) {
                 $this->sendRootMenu($tenant, $client, $phone, $lang);
                 return response('OK', 200);
             }
@@ -222,6 +222,7 @@ class WhatsappRenewalWebhookController extends Controller
                 'my_domains' => $this->handleMyDomainsStep($tenant, $client, $phone, $session, $text, $lang),
                 'my_hosting' => $this->handleMyHostingStep($tenant, $client, $phone, $session, $text, $lang),
                 'renew_pick' => $this->handleRenewPickStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
+                'pending_dup' => $this->handlePendingDupStep($tenant, $client, $phone, $session, $text, $lang),
                 default => $this->handleRootStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
             };
 
@@ -2791,6 +2792,82 @@ class WhatsappRenewalWebhookController extends Controller
         $this->reply($tenant, $phone, implode("\n", $lines) . "\n\n" . implode("\n", $opts) . "\n\n" . $this->menuFooter($lang));
     }
 
+    /** This client's still-unpaid, still-open order invoice for a pending domain registration/transfer of $name. */
+    private function pendingDomainOrderInvoice(Tenant $tenant, Client $client, string $name): ?Document
+    {
+        $domains = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('name', $name)->where('status', 'pending')->whereNotNull('meta->order_document_id')->get();
+        foreach ($domains as $d) {
+            if (in_array($d->meta['pending_action'] ?? null, ['register', 'transfer'], true)
+                && ($doc = $this->openInvoice($tenant, $client, $d->meta['order_document_id'] ?? null))) {
+                return $doc;
+            }
+        }
+
+        return null;
+    }
+
+    /** Same for a pending (unpaid) hosting/email subscription of the same plan on $domain. */
+    private function pendingHostingOrderInvoice(Tenant $tenant, Client $client, string $domain, ProductService $plan): ?Document
+    {
+        $subIds = \App\Models\ClientSubscription::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('status', 'pending')->where('label', $domain)->where('product_service_id', $plan->id)->pluck('id');
+        if ($subIds->isEmpty()) {
+            return null;
+        }
+        $docIds = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereIn('client_subscription_id', $subIds)->whereNotNull('document_id')->pluck('document_id');
+        foreach ($docIds as $id) {
+            if ($doc = $this->openInvoice($tenant, $client, $id)) {
+                return $doc;
+            }
+        }
+
+        return null;
+    }
+
+    /** "You already ordered X — invoice N is unpaid": 1) pay now, 2) delete that order, 0) back. */
+    private function offerPendingDuplicate(Tenant $tenant, Client $client, string $phone, Document $doc, string $name, string $lang): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'pending_dup', 'state' => ['step' => 'choose', 'document_id' => $doc->id, 'name' => $name], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+        $amt = number_format((float) $doc->balance_due);
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Tayari uliagiza *{$name}* — invoice {$doc->document_number} (TZS {$amt}) haijalipwa.\n\n1) Lipa sasa\n2) Futa oda hiyo\n\n" . $this->menuFooter($lang),
+            "You already ordered *{$name}* — invoice {$doc->document_number} (TZS {$amt}) is still unpaid.\n\n1) Pay now\n2) Delete that order\n\n" . $this->menuFooter($lang)
+        ));
+    }
+
+    private function handlePendingDupStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        $state = $session->state ?? [];
+        $doc = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)->find($state['document_id'] ?? null);
+        $name = $state['name'] ?? '';
+
+        if (!preg_match('/^\s*[12]\s*$/', $text)) {
+            $this->invalidChoice($tenant, $phone, $lang, 2);
+            return;
+        }
+
+        if (!$doc || !$this->openInvoice($tenant, $client, $doc->id)) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Invoice hii tayari imelipwa/imefutwa.', 'This invoice is already paid or cancelled.'), $lang);
+            return;
+        }
+
+        if (trim($text) === '1') {
+            $this->offerPayment($tenant, $client, $phone, $doc, $lang);
+            return;
+        }
+
+        // Delete: only ever an unpaid order (releases the coupon, cancels the pending domain/subscription).
+        $ok = app(\App\Services\OrderCancellationService::class)->cancelUnpaidOrder($doc, 'Order deleted by client via WhatsApp');
+        $this->finishFlow($tenant, $client, $phone, $ok
+            ? $this->t($lang, "Oda ya {$name} imefutwa ({$doc->document_number}).", "The order for {$name} was deleted ({$doc->document_number}).")
+            : $this->t($lang, 'Invoice hii tayari imelipwa/imefutwa.', 'This invoice is already paid or cancelled.'), $lang);
+    }
+
     private function openInvoice(Tenant $tenant, Client $client, ?string $documentId): ?Document
     {
         if (!$documentId) {
@@ -3356,6 +3433,11 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
+            if ($pending = $this->pendingDomainOrderInvoice($tenant, $client, $name)) {
+                $this->offerPendingDuplicate($tenant, $client, $phone, $pending, $name, $lang);
+                return;
+            }
+
             if (Domain::withoutGlobalScopes()->where('name', $name)->whereNotIn('status', ['cancelled', 'transferred_out'])->exists()) {
                 $this->reply($tenant, $phone, $this->t($lang,
                     "Samahani, {$name} tayari imesajiliwa nasi. Andika jina lingine.",
@@ -3518,10 +3600,11 @@ class WhatsappRenewalWebhookController extends Controller
     }
 
     /**
-     * @return array{ok: bool, price: ?float, message: ?string}
-     * $message is only set when ok=false (already a full bilingual reply string).
+     * @return array{ok: bool, price: ?float, message: ?string, pending_doc?: Document}
+     * $message is only set when ok=false (already a full bilingual reply string); pending_doc is set instead
+     * when this client already has an unpaid order for the same name.
      */
-    private function checkDomainForOrder(Tenant $tenant, string $name, bool $transfer, string $lang = 'sw'): array
+    private function checkDomainForOrder(Tenant $tenant, string $name, bool $transfer, string $lang = 'sw', ?Client $client = null): array
     {
         $tld = $this->extractTld($name);
         $pricing = $tld ? DomainTld::priceFor($tenant->id, $tld) : null;
@@ -3534,6 +3617,10 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         if (!$transfer) {
+            if ($client && ($pending = $this->pendingDomainOrderInvoice($tenant, $client, $name))) {
+                return ['ok' => false, 'price' => null, 'message' => null, 'pending_doc' => $pending];
+            }
+
             if (Domain::withoutGlobalScopes()->where('name', $name)->whereNotIn('status', ['cancelled', 'transferred_out'])->exists()) {
                 return ['ok' => false, 'price' => null, 'message' => $this->t($lang,
                     "Samahani, {$name} tayari imesajiliwa nasi. Andika jina lingine.",
@@ -3717,8 +3804,13 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
-            ['ok' => $ok, 'price' => $price, 'message' => $message] = $this->checkDomainForOrder($tenant, $name, $isTransfer, $lang);
+            $check = $this->checkDomainForOrder($tenant, $name, $isTransfer, $lang, $client);
+            ['ok' => $ok, 'price' => $price, 'message' => $message] = $check;
             if (!$ok) {
+                if (!empty($check['pending_doc'])) {
+                    $this->offerPendingDuplicate($tenant, $client, $phone, $check['pending_doc'], $name, $lang);
+                    return;
+                }
                 $this->reply($tenant, $phone, $message);
                 return;
             }
@@ -3805,6 +3897,11 @@ class WhatsappRenewalWebhookController extends Controller
             $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($state['product_service_id'] ?? null);
             if (!$plan) {
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
+                return;
+            }
+
+            if ($pending = $this->pendingHostingOrderInvoice($tenant, $client, $name, $plan)) {
+                $this->offerPendingDuplicate($tenant, $client, $phone, $pending, $name, $lang);
                 return;
             }
 
@@ -4422,6 +4519,10 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         $name = $row['name'];
+        if ($pending = $this->pendingDomainOrderInvoice($tenant, $client, $name)) {
+            $this->offerPendingDuplicate($tenant, $client, $phone, $pending, $name, $lang);
+            return;
+        }
         $tld = $this->extractTld($name);
         $pricing = $tld ? DomainTld::priceFor($tenant->id, $tld) : null;
         if (!$pricing || !$this->tldOrderable($pricing)

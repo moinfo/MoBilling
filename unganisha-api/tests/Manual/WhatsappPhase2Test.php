@@ -48,7 +48,7 @@ class WhatsappPhase2Test
         $this->tenant = Tenant::withoutGlobalScopes()->where('name', 'MoBilling Test Co')->firstOrFail();
         $this->user = User::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
         auth()->login($this->user);
-        config(['services.mosms.inbound_webhook_secret' => 'test-secret']);
+        config(['services.mosms.inbound_webhook_secret' => 'test-secret', 'services.mosms.inbound_rate_limit' => 100000]);
         MosmsAccount::create(['tenant_id' => $this->tenant->id, 'mosms_tenant_id' => 987654321, 'email' => 'x@example.test', 'token' => 'x', 'sender' => 'x']);
         $this->fk([]);
         Notification::fake();
@@ -616,6 +616,105 @@ class WhatsappPhase2Test
         $this->payState($c, $d);
         $this->say('1');
         $this->assertSame(2, PesapalInvoicePayment::where('document_id', $d->id)->count());
+    }
+
+    // ═══ M1: pending duplicate order ═══
+    private function fredTld(): void
+    {
+        \App\Models\DomainTld::whereNull('tenant_id')->update(['is_active' => false]);
+        \App\Models\DomainTld::where('tenant_id', $this->tenant->id)->delete();
+        \App\Models\DomainTld::create(['tenant_id' => $this->tenant->id, 'tld' => 'co.tz', 'registrar' => 'fred', 'register_price' => 19999, 'renew_price' => 21000, 'transfer_price' => 0, 'is_active' => true, 'is_unmanaged' => false, 'is_popular' => true, 'sort_order' => 1]);
+    }
+
+    private function pendingDomainOrder(Client $c, string $name, string $invStatus = 'sent'): array
+    {
+        $inv = $this->makeInvoice($c, 19999, $invStatus, "Domain registration (WhatsApp order): $name (1 year)");
+        $d = \App\Models\Domain::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => $name, 'status' => 'pending', 'registrar' => 'fred', 'auto_renew' => false, 'meta' => ['pending_action' => 'register', 'pending_years' => 1, 'order_document_id' => $inv->id, 'whatsapp_order' => true]]);
+        return [$d, $inv];
+    }
+
+    private function orderAskName(Client $c): void
+    {
+        $this->startSession($c);
+        $this->session()->update(['flow' => 'order_domain', 'state' => ['step' => 'ask_name'], 'flow_expires_at' => null]);
+    }
+
+    public function test_m1_pending_domain_order_offers_pay_or_delete_instead_of_already_registered(): void
+    {
+        $this->fredTld();
+        FakeRegistrar::$fred = [];
+        app()->instance(\App\Services\Registrar\DomainRegistrarManager::class, new FakeRegistrar());
+        $c = $this->makeClient();
+        [$d, $inv] = $this->pendingDomainOrder($c, 'dup-p2.co.tz');
+        $coupon = $this->coupon(['max_uses' => 2]);
+        app(CouponService::class)->redeem($coupon, $c->id, $inv->id, 100.0);
+
+        $this->orderAskName($c);
+        $t = $this->say('dup-p2.co.tz');
+        $this->assertContains('You already ordered', $t);
+        $this->assertContains($inv->document_number, $t);
+        $this->assertContains('1) Pay now', $t);
+        $this->assertContains('2) Delete that order', $t);
+        $this->assertNotContains('already registered', $t);
+        $this->assertSame('pending_dup', $this->session()?->flow);
+
+        // 1) pay now -> the normal payment-method offer
+        $t = $this->say('1');
+        $this->assertContains('Choose how to pay', $t);
+        $this->assertSame('pay_invoice', $this->session()?->flow);
+
+        // 2) delete -> invoice + pending domain cancelled, coupon released
+        $this->orderAskName($c);
+        $this->say('dup-p2.co.tz');
+        $t = $this->say('2');
+        $this->assertContains('deleted', $t);
+        $this->assertSame('cancelled', $inv->fresh()->status);
+        $this->assertSame('cancelled', $d->fresh()->status);
+        $this->assertSame(0, (int) $coupon->fresh()->uses, 'coupon released');
+        // 0) back works too
+        [$d2, $inv2] = $this->pendingDomainOrder($c, 'dup2-p2.co.tz');
+        $this->orderAskName($c);
+        $this->say('dup2-p2.co.tz');
+        $this->say('0');
+        $this->assertSame('sent', $inv2->fresh()->status, 'Back changes nothing');
+        $this->assertSame(null, $this->session()->flow);
+    }
+
+    public function test_m1_paid_items_are_never_touched_and_keep_the_normal_message(): void
+    {
+        $this->fredTld();
+        FakeRegistrar::$fred = [];
+        app()->instance(\App\Services\Registrar\DomainRegistrarManager::class, new FakeRegistrar());
+        $c = $this->makeClient();
+        [$d, $inv] = $this->pendingDomainOrder($c, 'paid-p2.co.tz', 'paid');
+        $this->orderAskName($c);
+        $t = $this->say('paid-p2.co.tz');
+        $this->assertNotContains('You already ordered', $t);
+        $this->assertContains('already registered', $t);
+        // a stale pending_dup on an invoice paid meanwhile: no cancel
+        $inv2 = $this->makeInvoice($c, 1000, 'sent', 'x (WhatsApp order)');
+        $this->startSession($c);
+        $this->session()->update(['flow' => 'pending_dup', 'state' => ['step' => 'choose', 'document_id' => $inv2->id, 'name' => 'z.co.tz'], 'flow_expires_at' => null]);
+        $inv2->update(['status' => 'paid']);
+        $t = $this->say('2');
+        $this->assertContains('already paid or cancelled', $t);
+        $this->assertSame('paid', $inv2->fresh()->status);
+    }
+
+    public function test_m1_pending_hosting_order_same_plan_and_domain_offers_pay_or_delete(): void
+    {
+        $c = $this->makeClient();
+        $plan = ProductService::create(['tenant_id' => $this->tenant->id, 'type' => 'service', 'name' => 'P2 Host', 'price' => 30000, 'tax_percent' => 0, 'unit' => 'pcs', 'category' => 'Web Hosting', 'billing_cycle' => 'yearly', 'provisioning_type' => 'whm_cpanel', 'portal_visible' => true, 'is_active' => true]);
+        $inv = $this->makeInvoice($c, 30000, 'sent', 'P2 Host (WhatsApp order): host-p2.co.tz');
+        $sub = \App\Models\ClientSubscription::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'product_service_id' => $plan->id, 'label' => 'host-p2.co.tz', 'quantity' => 1, 'start_date' => now(), 'expire_date' => now()->addYear(), 'status' => 'pending']);
+        \App\Models\RecurringInvoiceLog::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'client_subscription_id' => $sub->id, 'product_service_id' => $plan->id, 'document_id' => $inv->id, 'next_bill_date' => now()->toDateString()]);
+        $this->startSession($c);
+        $this->session()->update(['flow' => 'order_hosting', 'state' => ['step' => 'ask_domain', 'product_service_id' => $plan->id, 'category' => 'Web Hosting'], 'flow_expires_at' => null]);
+        $t = $this->say('host-p2.co.tz');
+        $this->assertContains('You already ordered', $t);
+        $this->say('2');
+        $this->assertSame('cancelled', $inv->fresh()->status);
+        $this->assertSame('cancelled', $sub->fresh()->status, 'pending subscription cancelled');
     }
 }
 
