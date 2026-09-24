@@ -355,14 +355,15 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
-            $lines = ["Wateja " . $matches->count() . " wamepatikana kwa \"{$query}\":"];
+            $lines = ["Wateja " . $matches->count() . " wamepatikana kwa \"{$query}\":", ''];
             $ids = [];
             foreach ($matches->take(9) as $i => $c) {
                 $ids[] = $c->id;
                 $lines[] = ($i + 1) . ") {$c->name}" . ($c->phone ? " — {$c->phone}" : '');
             }
             $session->update(['state' => array_merge($state, ['step' => 'pick_client', 'match_ids' => $ids])]);
-            $lines[] = "\nJibu na namba kumchagua.";
+            $lines[] = '';
+            $lines[] = 'Jibu na namba kumchagua.';
             $this->reply($tenant, $phone, implode("\n", $lines));
             return;
         }
@@ -465,7 +466,7 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone,
-            'Karibu MoBilling! Please select your preferred language to continue. Tafadhali chagua lugha: 1) English  2) Kiswahili');
+            "Karibu MoBilling! Please select your preferred language to continue. Tafadhali chagua lugha:\n\n1) English\n2) Kiswahili");
     }
 
     private function handleLanguageStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
@@ -490,8 +491,8 @@ class WhatsappRenewalWebhookController extends Controller
         // routed correctly either way.
         $session->update(['language' => $lang, 'flow' => null, 'state' => ['step' => 'has_account']]);
         $this->reply($tenant, $phone, $this->t($lang,
-            'Je, una akaunti ya MoBilling? Jibu 1) Ndiyo 2) Hapana',
-            'Do you have a MoBilling account? Reply 1) Yes 2) No'
+            "Je, una akaunti ya MoBilling?\n\n1) Ndiyo\n2) Hapana\n\nJibu na namba.",
+            "Do you have a MoBilling account?\n\n1) Yes\n2) No\n\nReply with a number."
         ));
     }
 
@@ -567,16 +568,16 @@ class WhatsappRenewalWebhookController extends Controller
 
                 $session->update(['state' => ['step' => 'want_account']]);
                 $this->reply($tenant, $phone, $this->t($lang,
-                    'Samahani, hatujaweza kupata akaunti yenye namba hii ya simu. Je, ungependa tukutengenezee akaunti mpya ya MoBilling? Jibu 1) Ndiyo 2) Hapana',
-                    "Sorry, we couldn't find an account with this phone number. Would you like us to create a new MoBilling account for you? Reply 1) Yes 2) No"
+                    "Samahani, hatujaweza kupata akaunti yenye namba hii ya simu. Je, ungependa tukutengenezee akaunti mpya ya MoBilling?\n\n1) Ndiyo\n2) Hapana\n\nJibu na namba.",
+                    "Sorry, we couldn't find an account with this phone number. Would you like us to create a new MoBilling account for you?\n\n1) Yes\n2) No\n\nReply with a number."
                 ));
                 return;
             }
 
             $session->update(['state' => ['step' => 'want_account']]);
             $this->reply($tenant, $phone, $this->t($lang,
-                'Je, ungependa tukutengenezee akaunti ya MoBilling? Jibu 1) Ndiyo 2) Hapana',
-                'Would you like us to create a MoBilling account for you? Reply 1) Yes 2) No'
+                "Je, ungependa tukutengenezee akaunti ya MoBilling?\n\n1) Ndiyo\n2) Hapana\n\nJibu na namba.",
+                "Would you like us to create a MoBilling account for you?\n\n1) Yes\n2) No\n\nReply with a number."
             ));
             return;
         }
@@ -728,21 +729,33 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         $this->reply($tenant, $phone, $banner . $this->t($lang,
-            "Habari {$client->name}! Chagua huduma: "
-                . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
-                . '4) Business Email Hosting · 5) Angalia na Lipa Invoice · '
-                . '6) WHOIS ya Domain · 7) Angalia kama Domain Inapatikana · '
-                . '8) Badilisha Nameservers (DNS) · 9) Taarifa za Akaunti · '
-                . '10) Huduma Zaidi · '
-                . "0) Toka (Logout). Jibu na namba.\n\n"
+            "Habari {$client->name}! 👋\n*Chagua huduma:*\n\n"
+                . "1) Domain Registration\n"
+                . "2) Domain Renewal\n"
+                . "3) Website Hosting\n"
+                . "4) Business Email Hosting\n"
+                . "5) Angalia na Lipa Invoice\n"
+                . "6) WHOIS ya Domain\n"
+                . "7) Angalia kama Domain Inapatikana\n"
+                . "8) Badilisha Nameservers (DNS)\n"
+                . "9) Taarifa za Akaunti\n"
+                . "10) Huduma Zaidi\n"
+                . "0) Toka (Logout)\n\n"
+                . "Jibu na namba.\n"
                 . 'Andika MOSMS kwa huduma za akaunti yako ya SMS/WhatsApp bulk.',
-            "Hi {$client->name}! Choose a service: "
-                . '1) Domain Registration · 2) Domain Renewal · 3) Website Hosting · '
-                . '4) Business Email Hosting · 5) View and Pay Invoices · '
-                . '6) Domain WHOIS · 7) Check Domain Availability · '
-                . '8) Change Nameservers (DNS) · 9) Account Information · '
-                . '10) More services · '
-                . "0) Logout. Reply with a number.\n\n"
+            "Hi {$client->name}! 👋\n*Choose a service:*\n\n"
+                . "1) Domain Registration\n"
+                . "2) Domain Renewal\n"
+                . "3) Website Hosting\n"
+                . "4) Business Email Hosting\n"
+                . "5) View and Pay Invoices\n"
+                . "6) Domain WHOIS\n"
+                . "7) Check Domain Availability\n"
+                . "8) Change Nameservers (DNS)\n"
+                . "9) Account Information\n"
+                . "10) More services\n"
+                . "0) Logout\n\n"
+                . "Reply with a number.\n"
                 . 'Reply MOSMS for your bulk SMS/WhatsApp account.'
         ));
     }
@@ -862,8 +875,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            '*Website Hosting* — Chagua: 1) Agiza hosting mpya · 2) Hosting yangu (hali, cPanel, malipo). Jibu na namba, au andika MENU kurudi.',
-            '*Website Hosting* — Choose: 1) Order new hosting · 2) My hosting (status, cPanel, payment). Reply with a number, or type MENU to go back.'
+            "*Website Hosting*\n\n1) Agiza hosting mpya\n2) Hosting yangu (hali, cPanel, malipo)\n\nJibu na namba, au andika MENU kurudi.",
+            "*Website Hosting*\n\n1) Order new hosting\n2) My hosting (status, cPanel, payment)\n\nReply with a number, or type MENU to go back."
         ));
     }
 
@@ -920,8 +933,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            '*Hosting yako* — chagua akaunti: ' . implode(' · ', $lines) . '. Jibu na namba.',
-            '*Your hosting* — choose an account: ' . implode(' · ', $lines) . '. Reply with a number.'
+            "*Hosting yako* — chagua akaunti\n\n" . implode("\n", $lines) . "\n\nJibu na namba.",
+            "*Your hosting* — choose an account\n\n" . implode("\n", $lines) . "\n\nReply with a number."
         ));
     }
 
@@ -1136,7 +1149,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         $msg = implode("\n", $lines);
         if ($optLines) {
-            $msg .= "\n\n" . ($sw ? 'Chagua: ' : 'Choose: ') . implode(' · ', $optLines) . ($sw ? '. Jibu na namba, au MENU kurudi.' : '. Reply with a number, or MENU to go back.');
+            $msg .= "\n\n" . ($sw ? "Chagua:\n" : "Choose:\n") . implode("\n", $optLines) . "\n\n" . ($sw ? 'Jibu na namba, au MENU kurudi.' : 'Reply with a number, or MENU to go back.');
         } else {
             $msg .= "\n\n" . ($sw ? 'Andika MENU kurudi.' : 'Type MENU to go back.');
         }
@@ -1338,15 +1351,16 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
-        $lines = ["*" . ($sw ? "Boresha kifurushi: {$account->domain}" : "Upgrade package: {$account->domain}") . "*"];
+        $lines = ["*" . ($sw ? "Boresha kifurushi: {$account->domain}" : "Upgrade package: {$account->domain}") . "*", ''];
         foreach ($plans as $i => $r) {
             $p = $r['plan'];
             $desc = trim(preg_replace('/\s+/', ' ', strip_tags((string) $p->description)));
             $desc = mb_strlen($desc) > 90 ? mb_substr($desc, 0, 87) . '...' : $desc;
-            $lines[] = '• ' . ($i + 1) . ") {$p->name} — TZS " . number_format((float) $p->price) . '/' . $this->cycleLabel($p->billing_cycle, $lang)
+            $lines[] = ($i + 1) . ") {$p->name} — TZS " . number_format((float) $p->price) . '/' . $this->cycleLabel($p->billing_cycle, $lang)
                 . ($desc !== '' ? " — {$desc}" : '')
                 . ($sw ? ' — malipo sasa: TZS ' : ' — pay now: TZS ') . number_format($r['charge']);
         }
+        $lines[] = '';
         $lines[] = $sw ? 'Jibu na namba ya kifurushi, au MENU kurudi.' : 'Reply with the package number, or MENU to go back.';
 
         $this->setHostingState($tenant, $client, $phone, ['step' => 'upgrade_pick', 'account_id' => $account->id, 'plan_ids' => $plans->pluck('plan.id')->all(), 'account_ids' => [$account->id]]);
@@ -1399,8 +1413,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            "*Huduma Zaidi*\n1) Server Zangu (Cloud Server)\n2) Zinazokaribia kuisha\n0) Rudi\n\nJibu na namba. Andika MENU kurudi kwenye menyu kuu.",
-            "*More services*\n1) My Servers (Cloud Server)\n2) Expiring soon\n0) Back\n\nReply with a number. Type MENU for the main menu."
+            "*Huduma Zaidi*\n\n1) Server Zangu (Cloud Server)\n2) Zinazokaribia kuisha\n0) Rudi\n\nJibu na namba. Andika MENU kurudi kwenye menyu kuu.",
+            "*More services*\n\n1) My Servers (Cloud Server)\n2) Expiring soon\n0) Back\n\nReply with a number. Type MENU for the main menu."
         ));
     }
 
@@ -1466,7 +1480,7 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            "*Server Zako*\n" . implode("\n", $lines) . "\n0) Rudi\n\nJibu na namba ya server.",
+            "*Server Zako*\n\n" . implode("\n", $lines) . "\n0) Rudi\n\nJibu na namba ya server.",
             "*Your Cloud Servers*\n" . implode("\n", $lines) . "\n0) Back\n\nReply with a server number."
         ));
     }
@@ -1727,8 +1741,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            "*Zinazokaribia kuisha*\n" . implode("\n", $lines) . "\n0) Rudi\n\nJibu na namba kulipia/kuhuisha huduma hiyo.",
-            "*Expiring soon*\n" . implode("\n", $lines) . "\n0) Back\n\nReply with a number to renew and pay for that service."
+            "*Zinazokaribia kuisha*\n\n" . implode("\n", $lines) . "\n0) Rudi\n\nJibu na namba kulipia/kuhuisha huduma hiyo.",
+            "*Expiring soon*\n\n" . implode("\n", $lines) . "\n0) Back\n\nReply with a number to renew and pay for that service."
         ));
     }
 
@@ -1843,8 +1857,8 @@ class WhatsappRenewalWebhookController extends Controller
         }
         $this->setHostingState($tenant, $client, $phone, ['step' => 'email_menu', 'account_id' => $account->id, 'options' => ['create', 'forgot', 'back'], 'account_ids' => [$account->id]]);
         $this->reply($tenant, $phone, $this->t($lang,
-            "*Email zangu: {$account->domain}*\n• 1) Tengeneza email mpya (jina@{$account->domain})\n• 2) Nimesahau password ya email\n• 3) Rudi\nJibu na namba, au MENU kurudi.",
-            "*My email accounts: {$account->domain}*\n• 1) Create a new email (name@{$account->domain})\n• 2) I forgot my email password\n• 3) Back\nReply with a number, or MENU to go back."
+            "*Email zangu: {$account->domain}*\n\n1) Tengeneza email mpya (jina@{$account->domain})\n2) Nimesahau password ya email\n3) Rudi\n\nJibu na namba, au MENU kurudi.",
+            "*My email accounts: {$account->domain}*\n\n1) Create a new email (name@{$account->domain})\n2) I forgot my email password\n3) Back\n\nReply with a number, or MENU to go back."
         ));
     }
 
@@ -2120,8 +2134,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            "Habari {$client->name}, huduma zako: " . implode(' · ', $lines) . (!empty($items) ? '. Jibu na namba kulipia huduma inayohitaji malipo.' : '.'),
-            "Hi {$client->name}, your services: " . implode(' · ', $lines) . (!empty($items) ? '. Reply with a number to pay for a due service.' : '.')
+            "Habari {$client->name}, *huduma zako*\n\n" . implode("\n", $lines) . (!empty($items) ? "\n\nJibu na namba kulipia huduma inayohitaji malipo." : ''),
+            "Hi {$client->name}, *your services*\n\n" . implode("\n", $lines) . (!empty($items) ? "\n\nReply with a number to pay for a due service." : '')
         ));
     }
 
@@ -2448,8 +2462,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            'Chagua kifurushi: ' . implode(' · ', $lines) . '. Jibu na namba.',
-            'Choose a plan: ' . implode(' · ', $lines) . '. Reply with a number.'
+            "*Chagua kifurushi*\n\n" . implode("\n", $lines) . "\n\nJibu na namba.",
+            "*Choose a plan*\n\n" . implode("\n", $lines) . "\n\nReply with a number."
         ));
     }
 
@@ -2483,8 +2497,8 @@ class WhatsappRenewalWebhookController extends Controller
 
                     $session->update(['state' => array_merge($state, ['step' => 'ask_domain_mode', 'product_service_id' => $plan->id])]);
                     $this->reply($tenant, $phone, $this->t($lang,
-                        "Umechagua {$plan->name}. Domain: 1) Ninayo tayari (nitaweka DNS mwenyewe) 2) Nisajilie domain mpya 3) Nihamishie (transfer) domain yangu kwenu. Jibu na namba.",
-                        "You've chosen {$plan->name}. Domain: 1) I already have one (I'll point the DNS myself) 2) Register a new domain for me 3) Transfer my domain to you. Reply with a number."
+                        "Umechagua *{$plan->name}*. Domain:\n\n1) Ninayo tayari (nitaweka DNS mwenyewe)\n2) Nisajilie domain mpya\n3) Nihamishie (transfer) domain yangu kwenu\n\nJibu na namba.",
+                        "You've chosen *{$plan->name}*. Domain:\n\n1) I already have one (I'll point the DNS myself)\n2) Register a new domain for me\n3) Transfer my domain to you\n\nReply with a number."
                     ));
                     return;
                 }
@@ -2838,8 +2852,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            "Invoice {$document->document_number} — TZS " . number_format((float) $document->total) . '. Chagua njia ya kulipa: 1) Online (Pesapal) · 2) Maelezo ya kulipa (Benki/Lipa Namba). Jibu na namba.',
-            "Invoice {$document->document_number} — TZS " . number_format((float) $document->total) . '. Choose how to pay: 1) Online (Pesapal) · 2) Payment details (Bank/mobile money). Reply with a number.'
+            "*Invoice {$document->document_number}* — TZS " . number_format((float) $document->total) . "\n\nChagua njia ya kulipa:\n1) Online (Pesapal)\n2) Maelezo ya kulipa (Benki/Lipa Namba)\n\nJibu na namba.",
+            "*Invoice {$document->document_number}* — TZS " . number_format((float) $document->total) . "\n\nChoose how to pay:\n1) Online (Pesapal)\n2) Payment details (Bank/mobile money)\n\nReply with a number."
         ));
     }
 
@@ -2877,8 +2891,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            'Invoice zako zisizolipwa: ' . implode(' · ', $lines) . '. Jibu na namba kuchagua.',
-            'Your unpaid invoices: ' . implode(' · ', $lines) . '. Reply with a number to choose.'
+            "*Invoice zako zisizolipwa*\n\n" . implode("\n", $lines) . "\n\nJibu na namba kuchagua.",
+            "*Your unpaid invoices*\n\n" . implode("\n", $lines) . "\n\nReply with a number to choose."
         ));
     }
 
@@ -2902,8 +2916,8 @@ class WhatsappRenewalWebhookController extends Controller
 
             $session->update(['state' => ['step' => 'choose_method', 'document_id' => $doc->id]]);
             $this->reply($tenant, $phone, $this->t($lang,
-                "Invoice {$doc->document_number} — TZS " . number_format((float) $doc->balance_due) . '. Chagua njia ya kulipa: 1) Online (Pesapal) · 2) Maelezo ya kulipa (Benki/Lipa Namba). Jibu na namba.',
-                "Invoice {$doc->document_number} — TZS " . number_format((float) $doc->balance_due) . '. Choose how to pay: 1) Online (Pesapal) · 2) Payment details (Bank/mobile money). Reply with a number.'
+                "*Invoice {$doc->document_number}* — TZS " . number_format((float) $doc->balance_due) . "\n\nChagua njia ya kulipa:\n1) Online (Pesapal)\n2) Maelezo ya kulipa (Benki/Lipa Namba)\n\nJibu na namba.",
+                "*Invoice {$doc->document_number}* — TZS " . number_format((float) $doc->balance_due) . "\n\nChoose how to pay:\n1) Online (Pesapal)\n2) Payment details (Bank/mobile money)\n\nReply with a number."
             ));
             return;
         }
@@ -3067,8 +3081,8 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
-        $this->finishFlow($tenant, $client, $phone, implode(' · ', array_filter([
-            "Domain: {$name}",
+        $this->finishFlow($tenant, $client, $phone, implode("\n", array_filter([
+            "*Domain: {$name}*",
             $info['registrar'] ? $this->t($lang, "Msajili: {$info['registrar']}", "Registrar: {$info['registrar']}") : null,
             $info['registered'] ? $this->t($lang, "Ilisajiliwa: {$info['registered']}", "Registered: {$info['registered']}") : null,
             $info['expire'] ? $this->t($lang, "Inaisha: {$info['expire']}", "Expires: {$info['expire']}") : null,
@@ -3153,7 +3167,7 @@ class WhatsappRenewalWebhookController extends Controller
         $heldHere = Domain::withoutGlobalScopes()->whereIn('name', $names)->whereNotIn('status', ['cancelled', 'transferred_out'])->pluck('name')->all();
 
         $sw = $lang === 'sw';
-        $lines = [$sw ? "*Matokeo ya domain: {$parsed['label']}*" : "*Domain search: {$parsed['label']}*"];
+        $lines = [$sw ? "*Matokeo ya domain: {$parsed['label']}*" : "*Domain search: {$parsed['label']}*", ''];
         $stateRows = [];
         $anyAvailable = false;
         foreach ($rows as $i => $r) {
@@ -3268,7 +3282,7 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         $domainIds = $domains->pluck('id')->all();
-        $lines = $domains->values()->map(fn ($d, $i) => ($i + 1) . ". {$d->name}")->implode(' · ');
+        $lines = $domains->values()->map(fn ($d, $i) => ($i + 1) . ". {$d->name}")->implode("\n");
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
@@ -3276,8 +3290,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            "Chagua domain unayotaka kubadilisha nameservers: {$lines}. Jibu na namba.",
-            "Choose the domain to change nameservers for: {$lines}. Reply with a number."
+            "*Chagua domain unayotaka kubadilisha nameservers*\n\n{$lines}\n\nJibu na namba.",
+            "*Choose the domain to change nameservers for*\n\n{$lines}\n\nReply with a number."
         ));
     }
 

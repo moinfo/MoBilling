@@ -205,7 +205,7 @@ class WhatsappMoreServicesTest
         $this->startSession($c);
         $t = $this->say('hello');
         foreach (['1) Domain Registration', '2) Domain Renewal', '3) Website Hosting', '4) Business Email Hosting', '5) View and Pay Invoices', '6) Domain WHOIS', '7) Check Domain Availability', '8) Change Nameservers (DNS)', '9) Account Information', '10) More services', '0) Logout', 'Reply with a number.'] as $x) $this->assertContains($x, $t);
-        $this->assertContains("Hi {$c->name}! Choose a service:", $t);
+        $this->assertContains("Hi {$c->name}! 👋\n*Choose a service:*", $t);
 
         // untouched routes
         foreach (['1' => 'order_domain', '3' => 'hosting_submenu', '6' => 'whois', '7' => 'check_availability'] as $n => $flow) {
@@ -223,6 +223,34 @@ class WhatsappMoreServicesTest
         $this->startSession($c);
         $this->session()->update(['language' => 'sw']);
         $this->assertContains('10) Huduma Zaidi', $this->say('zzz'));
+    }
+
+    public function test_menus_are_multiline_one_option_per_line(): void
+    {
+        $c = $this->makeClient();
+        foreach (['en', 'sw'] as $lang) {
+            $this->startSession($c);
+            $this->session()->update(['language' => $lang]);
+            $root = $this->say('zzz');
+            $this->assertNoInlineOptions($root, range(1, 10), $lang . ' root');
+            $this->assertContains("\n0) ", $root);
+            foreach (['3' => 'hosting_submenu', '10' => 'more_services'] as $n => $flow) {
+                $this->startSession($c);
+                $this->session()->update(['language' => $lang]);
+                $t = $this->say($n);
+                $this->assertSame($flow, $this->session()?->flow);
+                $this->assertNoInlineOptions($t, [1, 2], "$lang $flow");
+            }
+        }
+    }
+
+    private function assertNoInlineOptions(string $text, array $nums, string $label): void
+    {
+        $this->assertTrue(!str_contains($text, ' · '), "$label has ' · ' between options");
+        foreach ($nums as $n) {
+            $this->assertTrue((bool) preg_match('/^' . $n . '\) \S/m', $text), "$label lacks own-line option $n");
+        }
+        $this->assertTrue(substr_count($text, "\n") >= count($nums), "$label not multi-line");
     }
 
     public function test_submenu_navigation_and_back(): void
@@ -563,7 +591,7 @@ class WhatsappMoreServicesTest
         $this->assertSame(1, $doc->count());
         $this->assertSame(21000.0, (float) $doc[0]->total);
         $this->assertSame('sent', $doc[0]->status);
-        $this->assertContains('Invoice ' . $doc[0]->document_number . ' — TZS 21,000', $t);
+        $this->assertContains('*Invoice ' . $doc[0]->document_number . '* — TZS 21,000', $t);
         $this->assertContains('Online (Pesapal)', $t);
         $meta = $d->fresh()->meta;
         $this->assertSame('renew', $meta['pending_action']);
@@ -698,7 +726,7 @@ class WhatsappMoreServicesTest
         $this->assertSame('register', $dom->meta['pending_action']);
         $this->assertSame($doc->id, $dom->meta['order_document_id']);
         $this->assertSame('namecom', $dom->meta['registrar']);
-        $this->assertContains('Invoice ' . $doc->document_number . ' — TZS 42,970', $t);
+        $this->assertContains('*Invoice ' . $doc->document_number . '* — TZS 42,970', $t);
         $this->assertSame('pay_invoice', $this->session()->flow);
         $this->assertSame(1, $this->ncChecks(), 'ordering does not re-query the registrar');
     }
