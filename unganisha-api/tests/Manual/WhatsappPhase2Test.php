@@ -77,6 +77,38 @@ class WhatsappPhase2Test
         return $d;
     }
 
+    private function say(string $text, ?string $rawPhone = null): string
+    {
+        $before = count(Fw::$sent);
+        $req = Request::create('/api/webhooks/mosms/menu', 'POST', ['secret' => 'test-secret', 'mosms_tenant_id' => 987654321, 'phone' => $rawPhone ?? $this->rawPhone, 'text' => $text], [], [], ['HTTP_ACCEPT' => 'application/json']);
+        $res = app()->handle($req);
+        $this->assertSame(200, $res->getStatusCode());
+        return implode("\n---\n", array_column(array_slice(Fw::$sent, $before), 'text'));
+    }
+
+    private function session(): ?WhatsappRenewalSession
+    {
+        return WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('phone', $this->phone)->first();
+    }
+
+    /** A verified client session (root menu state). */
+    private function startSession(Client $client, ?string $assistedBy = null): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $this->tenant->id, 'phone' => $this->phone],
+            ['client_id' => $client->id, 'assisted_by_user_id' => $assistedBy, 'flow' => null, 'state' => null, 'items' => null, 'language' => 'en', 'confirmed_at' => now(), 'expires_at' => $assistedBy ? now()->addHours(2) : now()->addDays(30), 'flow_expires_at' => null],
+        );
+    }
+
+    /** An unverified session waiting for the surname. */
+    private function startVerify(Client $client): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $this->tenant->id, 'phone' => $this->phone],
+            ['client_id' => $client->id, 'flow' => null, 'state' => ['step' => 'surname'], 'items' => null, 'language' => 'en', 'confirmed_at' => null, 'attempts' => 0, 'expires_at' => now()->addMinutes(10)],
+        );
+    }
+
     public function checkNeutral(): void
     {
         foreach (Fw::$sent as $m) {
@@ -419,5 +451,28 @@ class WhatsappPhase2Test
             $this->assertContains('Hello', $text);
             foreach (['name.com', 'namecom', 'linode', 'usd', '$', 'registrar'] as $bad) $this->assertNotContains($bad, strtolower($text));
         }
+    }
+
+    public function test_h4_controller_locks_phone_after_five_wrong_surnames_and_resets_on_success(): void
+    {
+        $c = $this->makeClient('Asha Mushi');
+        $c->update(['last_name' => 'Mushi']);
+        // 4 wrong, then a right one resets the counter
+        for ($i = 0; $i < 4; $i++) { $this->startVerify($c); $this->say('wrong' . $i); }
+        $this->startVerify($c);
+        $this->assertContains('Choose a service', $this->say('Mushi'));
+        // 5 wrong in a row -> lock, even with the session recreated between attempts
+        for ($i = 0; $i < 5; $i++) { $this->startVerify($c); $out = $this->say('nope' . $i); }
+        $this->assertContains('paused attempts', $out);
+        $this->startVerify($c);
+        $out = $this->say('Mushi'); // correct, but locked
+        $this->assertContains('paused attempts', $out);
+        $this->assertTrue($this->session()?->confirmed_at === null, 'not verified while locked');
+        // company stop-word cannot verify
+        DB::table('whatsapp_verify_attempts')->where('tenant_id', $this->tenant->id)->delete();
+        $co = $this->makeClient('Acme Trading Ltd', '255700000301');
+        $this->startVerify($co);
+        $out = $this->say('Ltd');
+        $this->assertNotContains('Choose a service', $out);
     }
 }

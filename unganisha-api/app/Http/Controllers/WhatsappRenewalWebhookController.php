@@ -705,14 +705,27 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
+        // Persistent brute-force guard (survives session deletion): checked before any surname/email guess.
+        $guard = app(\App\Services\WhatsappVerifyGuard::class);
+        if ($until = $guard->isLocked($tenant->id, $phone)) {
+            $this->replyVerifyLocked($tenant, $client, $phone, $lang, $until);
+            return;
+        }
+
         if (($state['step'] ?? 'surname') === 'email') {
             if ($client && $client->email && mb_strtolower(trim($text)) === mb_strtolower(trim($client->email))) {
+                $guard->reset($tenant->id, $phone);
                 $session->update(['confirmed_at' => now()]);
                 $this->sendRootMenu($tenant, $client, $phone, $lang);
                 return;
             }
 
+            $r = $guard->recordFailure($tenant->id, $phone);
             $session->delete();
+            if ($r['locked_until']) {
+                $this->replyVerifyLocked($tenant, $client, $phone, $lang, $r['locked_until']);
+                return;
+            }
             $this->reply($tenant, $phone, $this->t($lang,
                 'Samahani, hatujaweza kuthibitisha akaunti yako. Tafadhali wasiliana nasi kwa msaada.',
                 "Sorry, we still couldn't verify your account. Please contact us for help."
@@ -721,8 +734,15 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         if ($client && $this->surnameMatches($client, $text)) {
+            $guard->reset($tenant->id, $phone);
             $session->update(['confirmed_at' => now()]);
             $this->sendRootMenu($tenant, $client, $phone, $lang);
+            return;
+        }
+
+        $r = $guard->recordFailure($tenant->id, $phone);
+        if ($r['locked_until']) {
+            $this->replyVerifyLocked($tenant, $client, $phone, $lang, $r['locked_until']);
             return;
         }
 
@@ -754,18 +774,38 @@ class WhatsappRenewalWebhookController extends Controller
     /** Loosely matches typed text against the client's last name, or any word in their full name. */
     private function surnameMatches(Client $client, string $text): bool
     {
-        $typed = mb_strtolower(trim($text));
-        if ($typed === '') {
-            return false;
+        return \App\Services\WhatsappVerifyGuard::surnameMatches($client->last_name, $client->name, $text);
+    }
+
+    /** Polite "too many wrong answers" reply; staff are told once per lock. */
+    private function replyVerifyLocked(Tenant $tenant, ?Client $client, string $phone, string $lang, \Illuminate\Support\Carbon $until): void
+    {
+        $hours = max(1, (int) ceil(now()->diffInMinutes($until, false) / 60));
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Tumezuia majaribio kwa muda; jaribu tena baada ya saa {$hours} au wasiliana nasi.",
+            "We have paused attempts for now; please try again after {$hours} hour(s) or contact us."
+        ));
+
+        try {
+            if (app(\App\Services\WhatsappVerifyGuard::class)->claimStaffAlert($tenant->id, $phone)) {
+                $who = $client ? "{$client->name} ({$phone})" : $phone;
+                $note = new \App\Notifications\WhatsappBotAlertNotification(
+                    'verify_locked',
+                    'WhatsApp verification locked',
+                    "Too many failed identity checks from {$who}; the number is locked for {$hours} hour(s). If this is the real client, please assist them.",
+                    $client ? "/clients/{$client->id}" : '/',
+                );
+                foreach (['tickets.manage', 'orders.create'] as $perm) {
+                    $staff = User::withPermission($tenant->id, $perm);
+                    if ($staff->isNotEmpty()) {
+                        \Illuminate\Support\Facades\Notification::send($staff, $note);
+                        break;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            report($e);
         }
-
-        if ($client->last_name && mb_strtolower(trim($client->last_name)) === $typed) {
-            return true;
-        }
-
-        $words = preg_split('/\s+/', mb_strtolower(trim((string) $client->name)));
-
-        return in_array($typed, $words, true);
     }
 
     /** @return array{0: ?Tenant, 1: ?MosmsAccount} */
