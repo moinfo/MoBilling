@@ -161,6 +161,8 @@ class WhatsappRenewalWebhookController extends Controller
                 'whois' => $this->handleWhoisStep($tenant, $client, $phone, $session, $text, $lang),
                 'check_availability' => $this->handleCheckAvailabilityStep($tenant, $client, $phone, $session, $text, $lang),
                 'change_dns' => $this->handleChangeDnsStep($tenant, $client, $phone, $session, $text, $lang),
+                'hosting_submenu' => $this->handleHostingSubmenuStep($tenant, $client, $phone, $session, $text, $lang),
+                'hosting_manage' => $this->handleHostingManageStep($tenant, $client, $phone, $session, $text, $lang),
                 default => $this->handleRootStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
             };
 
@@ -825,7 +827,7 @@ class WhatsappRenewalWebhookController extends Controller
             (bool) preg_match('/^\s*0\s*$/', $text) => $this->logout($tenant, $phone, $lang),
             (bool) preg_match('/^\s*1\s*$/', $text) => $this->startOrderDomain($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*2\s*$/', $text) => $this->sendMenu($tenant, $client, $phone, $bundler, $lang),
-            (bool) preg_match('/^\s*3\s*$/', $text) => $this->startOrderHosting($tenant, $client, $phone, 'Web Hosting', $lang),
+            (bool) preg_match('/^\s*3\s*$/', $text) => $this->startHostingSubmenu($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*4\s*$/', $text) => $this->startOrderHosting($tenant, $client, $phone, 'Business E-mail', $lang),
             (bool) preg_match('/^\s*5\s*$/', $text) => $this->startPayInvoice($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*6\s*$/', $text) => $this->startWhois($tenant, $client, $phone, $lang),
@@ -837,6 +839,362 @@ class WhatsappRenewalWebhookController extends Controller
             })(),
             default => $this->sendRootMenu($tenant, $client, $phone, $lang),
         };
+    }
+
+    // ── Website Hosting submenu + "Hosting Yangu" self-service ──────────
+    // Everything here reads LOCAL data only (hosting_accounts as last synced by
+    // hosting:reconcile) — the webhook never calls WHM live, except the one
+    // explicit, client-requested cPanel SSO link (HostingSsoService).
+
+    private function startHostingSubmenu(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'hosting_submenu', 'state' => ['step' => 'choose'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            '*Website Hosting* — Chagua: 1) Agiza hosting mpya · 2) Hosting yangu (hali, cPanel, malipo). Jibu na namba, au andika MENU kurudi.',
+            '*Website Hosting* — Choose: 1) Order new hosting · 2) My hosting (status, cPanel, payment). Reply with a number, or type MENU to go back.'
+        ));
+    }
+
+    private function handleHostingSubmenuStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        if (preg_match('/^\s*1\s*$/', $text)) {
+            $this->startOrderHosting($tenant, $client, $phone, 'Web Hosting', $lang);
+        } elseif (preg_match('/^\s*2\s*$/', $text)) {
+            $this->startHostingManage($tenant, $client, $phone, $lang);
+        } else {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, jibu 1 au 2 (au MENU kurudi).', 'Sorry, reply 1 or 2 (or MENU to go back).'));
+        }
+    }
+
+    /** The client's own hosting accounts — tenant + client scoped, soft-deleted subscriptions excluded. */
+    private function clientHostingAccounts(Tenant $tenant, Client $client)
+    {
+        return HostingAccount::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->whereNotIn('status', ['terminated'])
+            ->whereHas('subscription', fn ($q) => $q->withoutGlobalScopes()
+                ->where('tenant_id', $tenant->id)
+                ->where('client_id', $client->id)
+                ->whereNull('deleted_at'))
+            ->with(['subscription' => fn ($q) => $q->withoutGlobalScopes()])
+            ->orderBy('domain');
+    }
+
+    private function startHostingManage(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $accounts = $this->clientHostingAccounts($tenant, $client)->limit(9)->get();
+
+        if ($accounts->isEmpty()) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Huna hosting yoyote iliyosajiliwa kwetu kwa sasa. Chagua 3 kisha 1 kuagiza hosting mpya.',
+                "You don't have any hosting registered with us yet. Choose 3 then 1 to order new hosting."
+            ), $lang);
+            return;
+        }
+
+        if ($accounts->count() === 1) {
+            $this->showHostingAccount($tenant, $client, $phone, $accounts->first(), $lang, multiple: false);
+            return;
+        }
+
+        $lines = [];
+        foreach ($accounts as $i => $a) {
+            $lines[] = ($i + 1) . ". {$a->domain} — " . $this->hostingStatusLabel($a->status, $lang);
+        }
+
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => ['step' => 'pick_account', 'account_ids' => $accounts->pluck('id')->all()], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            '*Hosting yako* — chagua akaunti: ' . implode(' · ', $lines) . '. Jibu na namba.',
+            '*Your hosting* — choose an account: ' . implode(' · ', $lines) . '. Reply with a number.'
+        ));
+    }
+
+    private function hostingStatusLabel(string $status, string $lang): string
+    {
+        return match ($status) {
+            'active' => $this->t($lang, 'inafanya kazi', 'active'),
+            'suspended' => $this->t($lang, 'imesimamishwa', 'suspended'),
+            'failed' => $this->t($lang, 'imeshindwa kuwashwa', 'failed'),
+            'pending' => $this->t($lang, 'inaandaliwa', 'pending'),
+            default => $status,
+        };
+    }
+
+    private function handleHostingManageStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        $state = $session->state ?? [];
+        $step = $state['step'] ?? 'pick_account';
+
+        if (!preg_match('/^\s*([1-9])\s*$/', $text, $m)) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, jibu na namba sahihi kutoka kwenye orodha (au MENU kurudi).', 'Sorry, reply with a valid number from the list (or MENU to go back).'));
+            return;
+        }
+        $n = (int) $m[1];
+
+        if ($step === 'pick_account') {
+            $id = $state['account_ids'][$n - 1] ?? null;
+            $account = $id ? $this->clientHostingAccounts($tenant, $client)->where('hosting_accounts.id', $id)->first() : null;
+            if (!$account) {
+                $this->reply($tenant, $phone, $this->t($lang, 'Samahani, chagua namba sahihi kutoka kwenye orodha.', 'Sorry, please choose a valid number from the list.'));
+                return;
+            }
+            $this->showHostingAccount($tenant, $client, $phone, $account, $lang, multiple: count($state['account_ids']) > 1);
+            return;
+        }
+
+        // account_menu: options were computed when the menu was shown.
+        $option = $state['options'][$n - 1] ?? null;
+        $account = !empty($state['account_id'])
+            ? $this->clientHostingAccounts($tenant, $client)->where('hosting_accounts.id', $state['account_id'])->first()
+            : null;
+        if (!$option || !$account) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, chagua namba sahihi kutoka kwenye orodha.', 'Sorry, please choose a valid number from the list.'));
+            return;
+        }
+
+        if ($option === 'back') {
+            $this->startHostingManage($tenant, $client, $phone, $lang);
+        } elseif ($option === 'cpanel') {
+            $this->sendCpanelLink($tenant, $client, $phone, $session, $account, $lang);
+        } elseif ($option === 'support') {
+            $this->openHostingSupportTicket($tenant, $client, $phone, $session, $account, $lang);
+        } elseif (str_starts_with($option, 'invoice:')) {
+            $doc = $this->unpaidHostingInvoices($tenant, $client, $account)->firstWhere('id', substr($option, 8));
+            if (!$doc) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, invoice hiyo haipatikani tena.', 'Sorry, that invoice is no longer available.'), $lang);
+                return;
+            }
+            // The existing pay flow (Pesapal / bank details). Paying it fires
+            // SubscriptionActivationService -> ClientSubscriptionObserver ->
+            // ReactivateHostingAccount, which is what restores a suspended account.
+            $this->offerPayment($tenant, $client, $phone, $doc, $lang);
+        }
+    }
+
+    /** Unpaid invoices tied to this account's subscription via RecurringInvoiceLog. balance_due is an accessor, so filter in PHP. */
+    private function unpaidHostingInvoices(Tenant $tenant, Client $client, HostingAccount $account): \Illuminate\Support\Collection
+    {
+        $docIds = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('client_id', $client->id)
+            ->where('client_subscription_id', $account->client_subscription_id)
+            ->whereNotNull('document_id')
+            ->pluck('document_id');
+
+        if ($docIds->isEmpty()) {
+            return collect();
+        }
+
+        return Document::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('client_id', $client->id)
+            ->where('type', 'invoice')
+            ->whereIn('id', $docIds)
+            ->whereIn('status', ['sent', 'overdue', 'partial'])
+            ->orderBy('due_date')
+            ->get()
+            ->filter(fn ($d) => $d->balance_due > 0)
+            ->values()
+            ->take(6);
+    }
+
+    /** "2186M" -> 2186.0 ; anything else -> null (we then show the raw stored text, never a guessed number). */
+    private function parseMegabytes(mixed $raw): ?float
+    {
+        if (is_string($raw) && preg_match('/^(\d+(?:\.\d+)?)\s*M$/i', trim($raw), $m)) {
+            return (float) $m[1];
+        }
+        return null;
+    }
+
+    private function showHostingAccount(Tenant $tenant, Client $client, string $phone, HostingAccount $account, string $lang, bool $multiple): void
+    {
+        $sw = $lang === 'sw';
+        $meta = $account->meta ?? [];
+        $sub = $account->subscription;
+
+        $meaning = match ($account->status) {
+            'active' => $this->t($lang, 'Website yako iko hewani na inafanya kazi.', 'Your hosting is live and working.'),
+            'suspended' => $this->t($lang, 'Hosting imesimamishwa, website haipatikani hadi itakaporejeshwa.', 'Your hosting is suspended, so the website is offline until it is restored.'),
+            'failed' => $this->t($lang, 'Kuna tatizo la kiufundi na akaunti hii; tunalishughulikia.', 'There is a technical problem with this account; we are looking into it.'),
+            'pending' => $this->t($lang, 'Akaunti bado inaandaliwa.', 'The account is still being set up.'),
+            default => '',
+        };
+
+        $lines = ["*Hosting: {$account->domain}*"];
+        $lines[] = ($sw ? '• Hali: ' : '• Status: ') . $this->hostingStatusLabel($account->status, $lang) . ($meaning ? " — {$meaning}" : '');
+        if ($account->package || !empty($meta['plan'])) {
+            $lines[] = ($sw ? '• Kifurushi: ' : '• Package: ') . ($account->package ?: $meta['plan']);
+        }
+        $lines[] = ($sw ? '• Domain: ' : '• Domain: ') . $account->domain;
+
+        $domain = Domain::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('name', $account->domain)->first();
+
+        if ($sub?->expire_date) {
+            $lines[] = ($sw ? '• Hosting inaisha: ' : '• Hosting expires: ') . $sub->expire_date->format('d M Y');
+        }
+        if ($domain?->expires_at) {
+            $lines[] = ($sw ? '• Domain inaisha: ' : '• Domain expires: ') . $domain->expires_at->format('d M Y');
+        }
+
+        // Disk: only what hosting:reconcile really stored.
+        $usedRaw = $meta['disk_used'] ?? null;
+        $limitRaw = $meta['disk_limit'] ?? null;
+        if ($usedRaw !== null && $usedRaw !== '') {
+            $used = $this->parseMegabytes($usedRaw);
+            $limit = $this->parseMegabytes($limitRaw);
+            if ($used !== null && $limit !== null && $limit > 0) {
+                $pct = (int) round($used / $limit * 100);
+                $filled = max(0, min(10, (int) round(min($pct, 100) / 10)));
+                $bar = str_repeat('█', $filled) . str_repeat('░', 10 - $filled);
+                $lines[] = ($sw ? '• Nafasi (disk): ' : '• Disk: ') . "{$usedRaw} / {$limitRaw} {$bar} {$pct}%";
+            } else {
+                $lines[] = ($sw ? '• Nafasi (disk): ' : '• Disk: ') . $usedRaw . ($limitRaw ? " / {$limitRaw}" : '');
+            }
+        }
+
+        // SSL: only when that domain's SSL check has actually stored a result.
+        if ($domain && is_array($domain->meta) && array_key_exists('ssl_valid', $domain->meta)) {
+            $sslExp = !empty($domain->meta['ssl_expires_at']) ? \Illuminate\Support\Carbon::parse($domain->meta['ssl_expires_at'])->format('d M Y') : null;
+            $lines[] = ($sw ? '• SSL: ' : '• SSL: ')
+                . ($domain->meta['ssl_valid'] ? ($sw ? 'halali' : 'valid') : ($sw ? 'si halali / tatizo' : 'not valid / problem'))
+                . ($sslExp ? ($sw ? ", inaisha {$sslExp}" : ", expires {$sslExp}") : '');
+        }
+
+        $lines[] = $account->last_synced_at
+            ? ($sw ? '• Imesasishwa mara ya mwisho: ' : '• Last synced: ') . $account->last_synced_at->format('d M Y H:i')
+            : ($sw ? '• Bado haijasasishwa (taarifa za matumizi hazipo).' : '• Not synced yet (no usage data).');
+
+        // Options
+        $options = [];
+        $optLines = [];
+        $add = function (string $key, string $label) use (&$options, &$optLines) {
+            $options[] = $key;
+            $optLines[] = count($options) . ") {$label}";
+        };
+
+        if ($account->status === 'active') {
+            $add('cpanel', $this->t($lang, 'Fungua cPanel', 'Open cPanel'));
+        } elseif ($account->status === 'suspended') {
+            $invoices = $this->unpaidHostingInvoices($tenant, $client, $account);
+            if ($invoices->isNotEmpty()) {
+                $lines[] = $sw
+                    ? '• Ili kurejesha, lipia invoice hapa chini; hosting itawashwa baada ya malipo kupokelewa.'
+                    : '• To restore it, pay an invoice below; hosting is switched back on once payment is received.';
+                foreach ($invoices as $inv) {
+                    $add('invoice:' . $inv->id, $this->t($lang,
+                        "Lipa {$inv->document_number} — TZS " . number_format((float) $inv->balance_due),
+                        "Pay {$inv->document_number} — TZS " . number_format((float) $inv->balance_due)));
+                }
+            } else {
+                $lines[] = $sw
+                    ? '• Hatuna deni linalojulikana kwa hosting hii; tafadhali wasiliana nasi ili tuchunguze.'
+                    : "• We don't see any known unpaid invoice for this hosting; please contact us so we can look into it.";
+            }
+        }
+        if (in_array($account->status, ['suspended', 'failed', 'pending'], true)) {
+            $add('support', $this->t($lang, 'Tuma ujumbe kwa support', 'Send a message to support'));
+        }
+        if ($multiple) {
+            $add('back', $this->t($lang, 'Hosting nyingine', 'Another hosting account'));
+        }
+
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => ['step' => 'account_menu', 'account_id' => $account->id, 'options' => $options, 'account_ids' => [$account->id]], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $msg = implode("\n", $lines);
+        if ($optLines) {
+            $msg .= "\n\n" . ($sw ? 'Chagua: ' : 'Choose: ') . implode(' · ', $optLines) . ($sw ? '. Jibu na namba, au MENU kurudi.' : '. Reply with a number, or MENU to go back.');
+        } else {
+            $msg .= "\n\n" . ($sw ? 'Andika MENU kurudi.' : 'Type MENU to go back.');
+        }
+        $this->reply($tenant, $phone, $msg);
+    }
+
+    private function sendCpanelLink(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
+    {
+        // A staff member is on THEIR phone here; a cPanel login link would hand full control of the
+        // client's hosting to whoever holds that phone. Staff use the admin panel instead.
+        if ($session->assisted_by_user_id) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Kwa usalama, kiungo cha cPanel hakitumwi kwenye hali ya staff. Tafadhali tumia admin panel kufungua cPanel ya mteja.',
+                'For security the cPanel link is not sent in staff-assist mode. Please use the admin panel to open the client\'s cPanel.'
+            ));
+            return;
+        }
+
+        if ($account->status !== 'active') {
+            $this->reply($tenant, $phone, $this->t($lang, 'cPanel inapatikana tu kwa hosting inayofanya kazi.', 'cPanel is only available for an active hosting account.'));
+            return;
+        }
+
+        try {
+            $url = app(\App\Services\Hosting\HostingSsoService::class)->cpanelUrl($account);
+        } catch (\Throwable $e) {
+            // Never log the exception message here: it can carry WHM request details.
+            Log::warning('WhatsApp cPanel SSO failed', ['client_id' => $client->id, 'hosting_account_id' => $account->id]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, hatuwezi kufungua cPanel kwa sasa. Tafadhali jaribu tena baadaye au wasiliana nasi.',
+                "Sorry, we can't open cPanel right now. Please try again later or contact us."
+            ));
+            return;
+        }
+
+        Log::info('WhatsApp cPanel SSO link issued', ['client_id' => $client->id, 'hosting_account_id' => $account->id]);
+
+        $this->replyWithCtaUrl(
+            $tenant, $phone,
+            $this->t($lang,
+                "Bonyeza kitufe hapa chini kufungua cPanel ya {$account->domain}. Kiungo ni cha mara moja na kinaisha muda haraka; usimtumie mtu mwingine.",
+                "Tap the button below to open cPanel for {$account->domain}. The link works once and expires quickly; don't share it."
+            ),
+            $this->t($lang, 'Fungua cPanel', 'Open cPanel'),
+            $url
+        );
+    }
+
+    private function openHostingSupportTicket(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
+    {
+        try {
+            $ticket = \App\Models\Ticket::create([
+                'tenant_id' => $tenant->id,
+                'client_id' => $client->id,
+                'ticket_number' => \App\Models\Ticket::nextNumber($tenant->id),
+                'subject' => "Hosting {$account->status}: {$account->domain}",
+                'department' => 'support',
+                'related_service' => $account->domain,
+                'status' => 'open',
+                'priority' => 'high',
+                'last_reply_at' => now(),
+            ]);
+            $ticket->replies()->create([
+                'tenant_id' => $tenant->id,
+                'author_type' => 'client',
+                'message' => "Requested via WhatsApp" . ($session->assisted_by_user_id ? ' (staff-assisted)' : '')
+                    . ".\nHosting: {$account->domain} ({$account->cpanel_username}), status: {$account->status}.",
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp hosting support ticket failed', ['client_id' => $client->id, 'hosting_account_id' => $account->id, 'error' => $e->getMessage()]);
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutuma ujumbe. Tafadhali wasiliana nasi moja kwa moja.', "Sorry, we couldn't send the message. Please contact us directly."), $lang);
+            return;
+        }
+
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+            "Asante, tumepokea ombi lako ({$ticket->ticket_number}) kuhusu {$account->domain}. Timu yetu itakujibu hivi karibuni.",
+            "Thanks, we've received your request ({$ticket->ticket_number}) about {$account->domain}. Our team will get back to you shortly."
+        ), $lang);
     }
 
     // ── Renewals (existing domains/hosting already owed) ────────────────

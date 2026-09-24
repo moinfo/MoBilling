@@ -29,7 +29,7 @@ use Illuminate\Support\Facades\Log;
  */
 class SendHostingUsageWarnings extends Command
 {
-    protected $signature = 'hosting:send-usage-warnings {--dry-run}';
+    protected $signature = 'hosting:send-usage-warnings {--dry-run} {--account= : Only this hosting account id (testing)}';
     protected $description = "Warn clients when a hosting account's disk or bandwidth usage is nearing or at its limit";
 
     public const MARKS = [85, 100];
@@ -44,7 +44,13 @@ class SendHostingUsageWarnings extends Command
         $errors = 0;
         $tenantCache = [];
 
-        foreach (Server::withoutGlobalScopes()->where('is_active', true)->get() as $server) {
+        $onlyAccount = $this->option('account');
+
+        $servers = Server::withoutGlobalScopes()->where('is_active', true)
+            ->when($onlyAccount, fn ($q) => $q->whereIn('id', HostingAccount::withoutGlobalScopes()->where('id', $onlyAccount)->select('server_id')))
+            ->get();
+
+        foreach ($servers as $server) {
             $whm = new WhmService($server);
 
             try {
@@ -59,6 +65,7 @@ class SendHostingUsageWarnings extends Command
             $accounts = HostingAccount::withoutGlobalScopes()
                 ->where('server_id', $server->id)
                 ->where('status', 'active')
+                ->when($onlyAccount, fn ($q) => $q->where('id', $onlyAccount))
                 ->with(['subscription' => fn ($q) => $q->withoutGlobalScopes()->with(['client' => fn ($q2) => $q2->withoutGlobalScopes()])])
                 ->get();
 

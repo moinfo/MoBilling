@@ -86,7 +86,8 @@ class HostingUsageWarningNotification extends Notification implements ShouldQueu
                     ? 'Once bandwidth is fully used, visitors may not be able to reach your website until the next billing cycle or an upgrade.'
                     : 'Once disk space is full, your website, email and backups on this account can start failing.')
                 : 'Please consider freeing up space or upgrading your plan soon to avoid any interruption.')
-            ->line('Contact us or log in to your client portal for options.')
+            ->line('To see your hosting status on WhatsApp, type HUDUMA, then choose Website Hosting, then My hosting (Hosting yangu).')
+            ->line('To upgrade your plan, please contact us or log in to your client portal.')
             ->line('Thank you.');
 
         $this->applyBranding($mail, $this->tenant);
@@ -103,7 +104,8 @@ class HostingUsageWarningNotification extends Notification implements ShouldQueu
             $label,
             $this->account->domain,
             $this->percent,
-            $this->atLimit ? 'Tafadhali wasiliana nasi haraka kuepuka usumbufu.' : 'Fikiria ku-upgrade au kufuta files zisizohitajika.',
+            ($this->atLimit ? 'Tafadhali wasiliana nasi haraka kuepuka usumbufu.' : 'Fikiria ku-upgrade au kufuta files zisizohitajika.')
+                . ' Kuona hali ya hosting andika HUDUMA > Website Hosting > Hosting yangu.',
             $this->tenant->name,
         );
     }
@@ -123,7 +125,8 @@ class HostingUsageWarningNotification extends Notification implements ShouldQueu
                 $label,
                 $this->account->domain,
                 $pct,
-                $this->atLimit ? 'Tafadhali wasiliana nasi haraka.' : 'Fikiria ku-upgrade au kusafisha files.',
+                ($this->atLimit ? 'Tafadhali wasiliana nasi haraka.' : 'Fikiria ku-upgrade (wasiliana nasi) au kusafisha files.')
+                    . ' Kuona hali ya hosting andika HUDUMA > Website Hosting > Hosting yangu.',
                 $this->tenant->name,
             ),
         ];
