@@ -6,7 +6,7 @@ use App\Helpers\PhoneHelper;
 use App\Models\Domain;
 use App\Models\MosmsAccount;
 use App\Models\Tenant;
-use App\Models\WhatsappRenewalSession;
+use App\Models\WhatsappReminderTarget;
 use App\Notifications\DomainExpiryReminderNotification;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
@@ -89,10 +89,9 @@ class SendDomainExpiryReminders extends Command
                 $client->notify(new DomainExpiryReminderNotification($domain, $tenant, $daysLeft, $replyEnabled));
 
                 if ($replyEnabled) {
-                    WhatsappRenewalSession::updateOrCreate(
-                        ['tenant_id' => $tenant->id, 'phone' => PhoneHelper::normalize($client->phone)],
-                        ['client_id' => $client->id, 'items' => [$domain->id], 'expires_at' => now()->addDays(9)],
-                    );
+                    // A separate target row (9-day window) — never the shared session row, so a
+                    // reminder cannot overwrite or inject items into a client's live conversation.
+                    WhatsappReminderTarget::record($tenant->id, PhoneHelper::normalize($client->phone), $client->id, $domain->id, 9);
                 }
 
                 $meta = $domain->meta ?? [];

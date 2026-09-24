@@ -109,6 +109,24 @@ class WhatsappPhase2Test
         );
     }
 
+    private function hit(string $route, string $text): string
+    {
+        $before = count(Fw::$sent);
+        $req = Request::create("/api/webhooks/mosms/$route", 'POST', ['secret' => 'test-secret', 'mosms_tenant_id' => 987654321, 'phone' => $this->rawPhone, 'text' => $text], [], [], ['HTTP_ACCEPT' => 'application/json']);
+        $res = app()->handle($req);
+        $this->assertSame(200, $res->getStatusCode());
+        return implode("\n---\n", array_column(array_slice(Fw::$sent, $before), 'text'));
+    }
+
+    /** RenewalBundleService that never touches cPanel/registrars: bills a fixed invoice and records which domains were asked. */
+    private function fakeBundler(Client $c): void
+    {
+        $doc = $this->makeInvoice($c, 25000, 'sent', 'Renewal');
+        FakeBundler::$asked = [];
+        FakeBundler::$doc = $doc;
+        app()->bind(\App\Services\Hosting\RenewalBundleService::class, fn () => new FakeBundler());
+    }
+
     public function checkNeutral(): void
     {
         foreach (Fw::$sent as $m) {
@@ -474,5 +492,67 @@ class WhatsappPhase2Test
         $this->startVerify($co);
         $out = $this->say('Ltd');
         $this->assertNotContains('Choose a service', $out);
+    }
+
+    public function test_m4_single_target_bare_one_renews_and_multiple_ask_which_domain(): void
+    {
+        $c = $this->makeClient();
+        $T = \App\Models\WhatsappReminderTarget::class;
+        $mk = fn ($n, $d) => \App\Models\Domain::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => $n, 'status' => 'active', 'registrar' => 'fred', 'expires_at' => now()->addDays($d), 'meta' => ['unmanaged' => true]]);
+        $a = $mk('m4-a.co.tz', 5);
+        $b = $mk('m4-b.co.tz', 9);
+        $this->fakeBundler($c);
+
+        // single target, no session at all
+        $T::record($this->tenant->id, $this->phone, $c->id, $a->id);
+        $t = $this->hit('renewal-reply', '1');
+        $this->assertSame(['m4-a.co.tz'], FakeBundler::$asked);
+        $this->assertSame('pay_invoice', $this->session()?->flow);
+        $this->assertSame(0, $T::openFor($this->tenant->id, $this->phone)->count(), 'target consumed');
+
+        // two targets -> "Domain gani?"
+        WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->delete();
+        FakeBundler::$asked = [];
+        $T::record($this->tenant->id, $this->phone, $c->id, $a->id);
+        $T::record($this->tenant->id, $this->phone, $c->id, $b->id);
+        $t = $this->hit('renewal-reply', '1');
+        $this->assertSame([], FakeBundler::$asked, 'nothing billed before the choice');
+        $this->assertContains('Domain gani', $t);
+        $this->assertContains('1) m4-a.co.tz', $t);
+        $this->assertContains('2) m4-b.co.tz', $t);
+        $this->assertSame('renew_pick', $this->session()?->flow);
+        $this->say('9'); // invalid
+        $this->assertSame([], FakeBundler::$asked);
+        $this->say('2');
+        $this->assertSame(['m4-b.co.tz'], FakeBundler::$asked);
+        $this->assertSame(1, $T::openFor($this->tenant->id, $this->phone)->count(), 'other domain stays open');
+    }
+
+    public function test_m4_live_flow_session_makes_bare_one_a_menu_digit_and_reminder_command_leaves_session_alone(): void
+    {
+        $c = $this->makeClient();
+        $d = \App\Models\Domain::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => 'm4-cmd.co.tz', 'status' => 'active', 'registrar' => 'fred', 'expires_at' => now()->addDays(5), 'auto_renew' => false, 'meta' => ['unmanaged' => true]]);
+        $this->tenant->forceFill(['whatsapp_enabled' => true, 'reminder_whatsapp_enabled' => true])->save();
+        $this->startSession($c);
+        $this->session()->update(['flow' => 'whois', 'state' => ['step' => 'ask_name'], 'items' => null]);
+        \Illuminate\Support\Facades\Artisan::call('domains:send-expiry-reminders');
+        $s = $this->session();
+        $this->assertSame('whois', $s->flow, 'reminder cron did not touch the live session');
+        $this->assertSame(null, $s->items);
+        $this->assertTrue(\App\Models\WhatsappReminderTarget::openFor($this->tenant->id, $this->phone)->count() >= 1, 'target recorded');
+        $this->fakeBundler($c);
+        $this->hit('renewal-reply', '1'); // mid-flow: a digit for the flow, not a renewal
+        $this->assertSame([], FakeBundler::$asked);
+    }
+}
+
+class FakeBundler extends \App\Services\Hosting\RenewalBundleService
+{
+    public static array $asked = [];
+    public static ?Document $doc = null;
+    public function generate(\App\Models\HostingAccount $h, bool $selfService = false): Document
+    {
+        self::$asked[] = $h->domain;
+        return self::$doc;
     }
 }

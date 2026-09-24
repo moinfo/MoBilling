@@ -74,10 +74,15 @@ class WhatsappRenewalWebhookController extends Controller
             ->where('phone', $phone)
             ->first();
 
+        // Domains the last reminder(s) invited this phone to renew (kept apart from the session row).
+        $targets = $this->openReminderTargets($tenant, $phone);
+
         // MoSMS sends a bare "1" here for days after a domain-expiry reminder, even when the client is
-        // mid-conversation (e.g. "1) Pay online", "1) English", "1) Yes"). If a live session is in a flow
-        // (or has no renewal items to act on), it is an ordinary menu digit, not a renewal reply.
-        if ($session && !$session->isExpired() && (!empty($session->flow) || empty($session->items))) {
+        // mid-conversation (e.g. "1) Pay online", "1) English", "1) Yes"). If a live session is in a flow,
+        // or the client has been chatting since the reminder (or there is nothing to renew), it is an
+        // ordinary menu digit, not a renewal reply.
+        $reminderIsLatest = $session && $targets->isNotEmpty() && $targets->max('created_at') > $session->updated_at;
+        if ($session && !$session->isExpired() && (!empty($session->flow) || (empty($session->items) && !$reminderIsLatest))) {
             $request->merge(['text' => '1']);
             return $this->menu($request, $bundler);
         }
@@ -86,6 +91,12 @@ class WhatsappRenewalWebhookController extends Controller
             return response('OK', 200);
         }
 
+        if ($targets->isNotEmpty()) {
+            $this->renewFromReminderTargets($tenant, $phone, $session, $targets, $bundler);
+            return response('OK', 200);
+        }
+
+        // Backward compatibility: a session that still carries `items` from before reminder targets.
         if (!$session || $session->isExpired() || empty($session->items)) {
             $lang = $session->language ?? 'sw';
             $this->reply($tenant, $phone, $this->t($lang,
@@ -191,7 +202,7 @@ class WhatsappRenewalWebhookController extends Controller
             // "0) Rudi/Back": flows that own their own 0 (more_services, my_servers, expiring, hosting_manage)
             // step back themselves; every other flow's 0 returns to the main menu, so nothing is a dead end.
             if ($session->flow && trim($text) === '0'
-                && in_array($session->flow, ['order_domain', 'order_hosting', 'pay_invoice', 'whois', 'check_availability', 'change_dns', 'hosting_submenu'], true)) {
+                && in_array($session->flow, ['order_domain', 'order_hosting', 'pay_invoice', 'whois', 'check_availability', 'change_dns', 'hosting_submenu', 'renew_pick'], true)) {
                 $this->sendRootMenu($tenant, $client, $phone, $lang);
                 return response('OK', 200);
             }
@@ -210,6 +221,7 @@ class WhatsappRenewalWebhookController extends Controller
                 'expiring' => $this->handleExpiringStep($tenant, $client, $phone, $session, $text, $lang),
                 'my_domains' => $this->handleMyDomainsStep($tenant, $client, $phone, $session, $text, $lang),
                 'my_hosting' => $this->handleMyHostingStep($tenant, $client, $phone, $session, $text, $lang),
+                'renew_pick' => $this->handleRenewPickStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
                 default => $this->handleRootStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
             };
 
@@ -2958,6 +2970,12 @@ class WhatsappRenewalWebhookController extends Controller
         $client ??= Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
         $session->delete();
 
+        $this->renewDomainById($tenant, $client, $phone, $domainId, $bundler, $lang);
+    }
+
+    /** Bills the renewal of one domain (by id) and offers payment, or replies with why it can't. */
+    private function renewDomainById(Tenant $tenant, ?Client $client, string $phone, ?string $domainId, RenewalBundleService $bundler, string $lang): void
+    {
         if (!$domainId) {
             $this->replyOrFinish($tenant, $client, $phone, $this->t($lang, 'Samahani, chaguo hilo silo sahihi. Tafadhali jaribu tena.', 'Sorry, that choice is not valid. Please try again.'), $lang);
             return;
@@ -3010,6 +3028,63 @@ class WhatsappRenewalWebhookController extends Controller
         } else {
             $this->replyWithInvoice($tenant, $phone, $document, $lang);
         }
+    }
+
+    /** Open (unexpired) reminder targets for this phone whose domain still exists, oldest expiry first. */
+    private function openReminderTargets(Tenant $tenant, string $phone): \Illuminate\Support\Collection
+    {
+        return \App\Models\WhatsappReminderTarget::openFor($tenant->id, $phone)
+            ->filter(fn ($t) => Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->whereKey($t->domain_id)->exists())
+            ->values();
+    }
+
+    /** Bare "1" to a reminder: one open target renews it; several ask "Domain gani?" first. */
+    private function renewFromReminderTargets(Tenant $tenant, string $phone, ?WhatsappRenewalSession $session, \Illuminate\Support\Collection $targets, RenewalBundleService $bundler): void
+    {
+        $lang = ($session && !$session->isExpired() ? $session->language : null) ?? 'sw';
+        $client = Client::withoutGlobalScopes()->whereNull('deleted_at')->find($targets->first()->client_id);
+        if (!$client) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, huduma hii haipatikani tena. Tafadhali wasiliana nasi.', 'Sorry, this service is no longer available. Please contact us.'));
+            return;
+        }
+
+        if ($targets->count() === 1) {
+            $t = $targets->first();
+            $t->delete();
+            $this->renewDomainById($tenant, $client, $phone, $t->domain_id, $bundler, $lang);
+            return;
+        }
+
+        $domains = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->whereIn('id', $targets->pluck('domain_id'))
+            ->orderBy('expires_at')->limit(9)->get();
+        $lines = [];
+        foreach ($domains as $i => $d) {
+            $when = $d->expires_at ? ' (' . $this->expiryPhrase($this->daysUntil($d->expires_at), $lang) . ')' : '';
+            $lines[] = ($i + 1) . ") {$d->name}{$when}";
+        }
+
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'renew_pick', 'state' => ['step' => 'pick', 'domain_ids' => $domains->pluck('id')->all()], 'items' => null, 'language' => $lang, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Domain gani ungependa kuisasisha?\n\n" . implode("\n", $lines) . "\n\n" . $this->menuFooter($lang),
+            "Which domain would you like to renew?\n\n" . implode("\n", $lines) . "\n\n" . $this->menuFooter($lang)
+        ));
+    }
+
+    private function handleRenewPickStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, RenewalBundleService $bundler, string $lang): void
+    {
+        $ids = $session->state['domain_ids'] ?? [];
+        if (!preg_match('/^\s*([1-9])\s*$/', $text, $m) || !isset($ids[(int) $m[1] - 1])) {
+            $this->invalidChoice($tenant, $phone, $lang, count($ids));
+            return;
+        }
+        $domainId = $ids[(int) $m[1] - 1];
+        \App\Models\WhatsappReminderTarget::where('tenant_id', $tenant->id)->where('phone', $phone)->where('domain_id', $domainId)->delete();
+        $session->delete();
+        $this->renewDomainById($tenant, $client, $phone, $domainId, $bundler, $lang);
     }
 
     /** The client's already-open invoice covering this domain (its renewal invoice, or its hosting/domain subscriptions' open invoice). */
