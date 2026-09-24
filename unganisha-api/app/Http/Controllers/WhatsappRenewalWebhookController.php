@@ -74,6 +74,14 @@ class WhatsappRenewalWebhookController extends Controller
             ->where('phone', $phone)
             ->first();
 
+        // MoSMS sends a bare "1" here for days after a domain-expiry reminder, even when the client is
+        // mid-conversation (e.g. "1) Pay online", "1) English", "1) Yes"). If a live session is in a flow
+        // (or has no renewal items to act on), it is an ordinary menu digit, not a renewal reply.
+        if ($session && !$session->isExpired() && (!empty($session->flow) || empty($session->items))) {
+            $request->merge(['text' => '1']);
+            return $this->menu($request, $bundler);
+        }
+
         if (!$session || $session->isExpired() || empty($session->items)) {
             $lang = $session->language ?? 'sw';
             $this->reply($tenant, $phone, $this->t($lang,
