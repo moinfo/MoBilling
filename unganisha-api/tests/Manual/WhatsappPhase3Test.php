@@ -1007,6 +1007,30 @@ class WhatsappPhase3Test
         $this->assertTrue(count(array_filter($this->logged, fn ($l) => str_contains($l, 'domain order creation failed'))) === 1, 'the failure itself is logged');
         $this->assertNotLogged(['Zx9#SecretEPP1']);
     }
+
+    // ═══ neutrality scan over every new screen, both languages ═══
+    public function test_z_neutrality_all_phase3_screens_both_languages(): void
+    {
+        $all = '';
+        $c = $this->makeClient();
+        $this->pendingDomainOrder($c, 'p3-order.test');
+        $this->pendingHostingOrder($c, 'p3-host.test');
+        [$pd] = $this->pendingDomainOrder($c, 'p3-wait.test');
+        $pd->update(['status' => 'paid', 'paid_amount' => 25000]);
+        $this->paidInvoice($c, 12000, now()->subDay()->toDateString());
+        foreach (['en', 'sw'] as $lang) {
+            $this->startSession($c);
+            $this->session()->update(['language' => $lang]);
+            $steps = ['10', '4', '1', '2', '2', '0', '0', 'MENU', '10', '5', '1', '1', '1', 'MENU', '10', '5', '2', '1', '1', '10', '5', '3', '10', '6', '1', 'MENU', '11', '12', 'stop', 'start', 'MENU', '99', '10', '4', '99'];
+            foreach ($steps as $st) $all .= "\n" . $this->say($st);
+            foreach (Fw::$sent as $m) $all .= "\n" . $m['text'] . ' ' . ($m['button'] ?? '') . ' ' . ($m['url'] ?? '');
+            Fw::$sent = [];
+        }
+        $this->assertTrue(mb_strlen($all) > 3000, 'the scan covered many screens');
+        foreach (['name.com', 'namecom', 'linode', 'usd', '$', 'whm', 'fred'] as $bad) {
+            if (str_contains(strtolower($all), $bad)) $this->fail("supplier/cost leak '$bad' in replies");
+        }
+    }
 }
 
 /** Records the push-style sends (WhatsAppChannel path) next to the session replies. */
