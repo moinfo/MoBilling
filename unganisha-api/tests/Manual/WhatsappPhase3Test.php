@@ -184,4 +184,197 @@ class WhatsappPhase3Test
         $this->assertContains('Choose a service', $this->say('MENU'));
         $this->assertSame('en', $this->session()->language);
     }
+
+    // ═══ shared order helpers ═══
+    private function pendingDomainOrder(Client $c, string $name = 'p3-new.test', float $total = 25000, string $action = 'register'): array
+    {
+        $doc = $this->makeInvoice($c, $total, 'sent', "Domain registration (WhatsApp order): $name (1 year)");
+        $d = \App\Models\Domain::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => $name, 'status' => 'pending', 'auto_renew' => false, 'meta' => ['pending_action' => $action, 'pending_years' => 1, 'order_document_id' => $doc->id, 'unmanaged' => true]]);
+        return [$doc, $d];
+    }
+
+    private function pendingHostingOrder(Client $c, string $domain = 'p3-host.test', float $total = 60000): array
+    {
+        $plan = ProductService::create(['tenant_id' => $this->tenant->id, 'type' => 'service', 'name' => 'Starter Plan', 'price' => $total, 'tax_percent' => 0, 'unit' => 'pcs', 'category' => 'Web Hosting', 'billing_cycle' => 'yearly', 'provisioning_type' => 'whm_cpanel']);
+        $sub = \App\Models\ClientSubscription::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'product_service_id' => $plan->id, 'label' => $domain, 'quantity' => 1, 'start_date' => now()->toDateString(), 'status' => 'pending']);
+        $doc = $this->makeInvoice($c, $total, 'sent', "Starter Plan (WhatsApp order): $domain");
+        \App\Models\RecurringInvoiceLog::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'client_subscription_id' => $sub->id, 'product_service_id' => $plan->id, 'document_id' => $doc->id, 'next_bill_date' => now()->toDateString()]);
+        return [$doc, $sub];
+    }
+
+    // ═══ A4: My orders ═══
+    public function test_a4_lists_pending_domain_and_hosting_orders_with_details(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$dd] = $this->pendingDomainOrder($c, 'p3-new.test', 25000);
+        [$hd] = $this->pendingHostingOrder($c, 'p3-host.test', 60000);
+        $this->say('10');
+        $r = $this->say('4');
+        $this->assertContains('My orders (unpaid)', $r);
+        $this->assertContains('p3-new.test', $r);
+        $this->assertContains('Domain registration', $r);
+        $this->assertContains('TZS 25,000', $r);
+        $this->assertContains($dd->document_number, $r);
+        $this->assertContains('Starter Plan — p3-host.test', $r);
+        $this->assertContains($hd->document_number, $r);
+        $this->assertContains('ago', $r);
+        $this->assertContains('0) Back', $r);
+    }
+
+    public function test_a4_sw_wording_and_empty(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->session()->update(['language' => 'sw']);
+        $this->say('10');
+        $r = $this->say('4');
+        $this->assertContains('Huna oda yoyote isiyolipwa', $r);
+        $this->assertContains('Chagua huduma', $r);
+        $this->pendingDomainOrder($c, 'p3-sw.test');
+        $this->say('10');
+        $r = $this->say('4');
+        $this->assertContains('Oda zangu (zisizolipwa)', $r);
+        $this->assertContains('zilizopita', $r);
+        $r = $this->say('1');
+        $this->assertContains('1) Lipa sasa', $r);
+        $this->assertContains('2) Futa oda hii', $r);
+    }
+
+    public function test_a4_pick_and_pay_now_goes_to_payment_options(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$doc] = $this->pendingDomainOrder($c);
+        $this->say('10');
+        $this->say('4');
+        $card = $this->say('1');
+        $this->assertContains('1) Pay now', $card);
+        $this->assertContains('2) Delete this order', $card);
+        $r = $this->say('1');
+        $this->assertContains("Invoice {$doc->document_number}", $r);
+        $this->assertContains('Pay online', $r);
+        $this->assertSame('pay_invoice', $this->session()->flow);
+    }
+
+    public function test_a4_delete_confirm_cancels_invoice_and_pending_domain(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$doc, $dom] = $this->pendingDomainOrder($c);
+        $this->say('10');
+        $this->say('4');
+        $this->say('1');
+        $r = $this->say('2');
+        $this->assertContains('Delete the order for', $r);
+        $this->assertContains('1) Yes', $r);
+        $this->assertContains("Sorry, reply 1 or 2", $this->say("maybe"));
+        $r = $this->say('1');
+        $this->assertContains('was deleted', $r);
+        $this->assertContains('Choose a service', $r);
+        $this->assertSame('cancelled', $doc->fresh()->status);
+        $this->assertSame('cancelled', $dom->fresh()->status);
+    }
+
+    public function test_a4_delete_declined_keeps_order(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$doc, $dom] = $this->pendingDomainOrder($c);
+        $this->say('10');
+        $this->say('4');
+        $this->say('1');
+        $this->say('2');
+        $r = $this->say('2');
+        $this->assertContains('Awaiting payment', $r);
+        $this->assertSame('sent', $doc->fresh()->status);
+        $this->assertSame('pending', $dom->fresh()->status);
+    }
+
+    public function test_a4_hosting_delete_cancels_subscription(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$doc, $sub] = $this->pendingHostingOrder($c);
+        $this->say('10');
+        $this->say('4');
+        $this->say('1');
+        $this->say('2');
+        $this->say('yes');
+        $this->assertSame('cancelled', $doc->fresh()->status);
+        $this->assertSame('cancelled', $sub->fresh()->status);
+    }
+
+    public function test_a4_paid_and_partly_paid_items_are_never_touched(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$paid, $pd] = $this->pendingDomainOrder($c, 'p3-paid.test');
+        $paid->update(['status' => 'paid', 'paid_amount' => 25000]);
+        [$part, $pt] = $this->pendingDomainOrder($c, 'p3-part.test', 40000);
+        $part->update(['status' => 'partial', 'paid_amount' => 10000]);
+        $this->say('10');
+        $r = $this->say('4');
+        $this->assertNotContains('p3-paid.test', $r);
+        $this->assertContains('p3-part.test', $r);
+        $card = $this->say('1');
+        $this->assertContains('1) Pay now', $card);
+        $this->assertNotContains('Delete this order', $card);
+        $r = $this->say('2');
+        $this->assertContains('Sorry, reply 1 or 0', $r);
+        $this->assertSame('partial', $part->fresh()->status);
+        $this->assertSame('pending', $pt->fresh()->status);
+        $this->assertSame('paid', $paid->fresh()->status);
+    }
+
+    public function test_a4_order_paid_between_list_and_delete_is_not_cancelled(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$doc, $dom] = $this->pendingDomainOrder($c);
+        $this->say('10');
+        $this->say('4');
+        $this->say('1');
+        $this->say('2');
+        $doc->update(['status' => 'paid', 'paid_amount' => 25000]); // paid while the confirmation was open
+        $r = $this->say('1');
+        $this->assertContains('already paid or cancelled', $r);
+        $this->assertSame('paid', $doc->fresh()->status);
+        $this->assertSame('pending', $dom->fresh()->status);
+    }
+
+    public function test_a4_other_client_orders_are_isolated(): void
+    {
+        $mine = $this->makeClient('Asha Test');
+        $other = $this->makeClient('Baraka Other', '255700000009');
+        $this->startSession($mine);
+        [$odoc, $odom] = $this->pendingDomainOrder($other, 'p3-theirs.test');
+        $this->pendingDomainOrder($mine, 'p3-mine.test');
+        $this->say('10');
+        $r = $this->say('4');
+        $this->assertContains('p3-mine.test', $r);
+        $this->assertNotContains('p3-theirs.test', $r);
+        $this->assertNotContains($odoc->document_number, $r);
+        // a crafted state pointing at the other client's invoice shows nothing
+        $this->session()->update(['flow' => 'my_orders', 'state' => ['step' => 'card', 'doc_id' => $odoc->id, 'can_delete' => true]]);
+        $r = $this->say('2');
+        $this->assertContains('already paid or cancelled', $r);
+        $this->assertSame('sent', $odoc->fresh()->status);
+        $this->assertSame('pending', $odom->fresh()->status);
+    }
+
+    public function test_a4_cap_of_nine_with_notice_and_back(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        for ($i = 1; $i <= 11; $i++) $this->pendingDomainOrder($c, "p3-cap$i.test", 1000 + $i);
+        $this->say('10');
+        $r = $this->say('4');
+        $this->assertContains('9) ', $r);
+        $this->assertTrue(!str_contains($r, '10) '), 'no tenth row');
+        $this->assertContains('There are 2 more', $r);
+        $this->assertContains('/portal/invoices', $r);
+        $this->assertContains('Sorry, reply 1-9 or 0', $this->say('12'));
+        $this->assertContains('More services', $this->say('0'));
+    }
 }

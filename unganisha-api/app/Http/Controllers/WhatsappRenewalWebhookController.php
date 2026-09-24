@@ -232,6 +232,7 @@ class WhatsappRenewalWebhookController extends Controller
                 'my_servers' => $this->handleMyServersStep($tenant, $client, $phone, $session, $text, $lang),
                 'expiring' => $this->handleExpiringStep($tenant, $client, $phone, $session, $text, $lang),
                 'my_domains' => $this->handleMyDomainsStep($tenant, $client, $phone, $session, $text, $lang),
+                'my_orders' => $this->handleMyOrdersStep($tenant, $client, $phone, $session, $text, $lang),
                 'my_hosting' => $this->handleMyHostingStep($tenant, $client, $phone, $session, $text, $lang),
                 'renew_pick' => $this->handleRenewPickStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
                 'pending_dup' => $this->handlePendingDupStep($tenant, $client, $phone, $session, $text, $lang),
@@ -2065,8 +2066,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            "*Huduma Zaidi*\n\n1) Server Zangu (Cloud Server)\n2) Zinazokaribia kuisha\n3) Msaada\n\n" . $this->menuFooter($lang),
-            "*More services*\n\n1) My Servers (Cloud Server)\n2) Expiring soon\n3) Support\n\n" . $this->menuFooter($lang)
+            "*Huduma Zaidi*\n\n1) Server Zangu (Cloud Server)\n2) Zinazokaribia kuisha\n3) Msaada\n4) Oda zangu (zisizolipwa)\n6) Lugha (Language)\n\n" . $this->menuFooter($lang),
+            "*More services*\n\n1) My Servers (Cloud Server)\n2) Expiring soon\n3) Support\n4) My orders (unpaid)\n6) Language (Lugha)\n\n" . $this->menuFooter($lang)
         ));
     }
 
@@ -2096,10 +2097,12 @@ class WhatsappRenewalWebhookController extends Controller
             $this->startExpiring($tenant, $client, $phone, $lang);
         } elseif (preg_match('/^\s*3\s*$/', $text)) {
             $this->askGeneralSupportText($tenant, $client, $phone, $lang);
+        } elseif (preg_match('/^\s*4\s*$/', $text)) {
+            $this->startMyOrders($tenant, $client, $phone, $lang);
         } elseif (preg_match('/^\s*6\s*$/', $text)) {
             $this->startLanguageSwitch($tenant, $client, $phone, $lang);
         } else {
-            $this->invalidChoice($tenant, $phone, $lang, 3);
+            $this->invalidChoice($tenant, $phone, $lang, 6);
         }
     }
 
@@ -2133,6 +2136,200 @@ class WhatsappRenewalWebhookController extends Controller
         $new = $lang === 'en' ? 'sw' : 'en';
         $this->reply($tenant, $phone, $this->t($new, 'Sawa, sasa nitatumia Kiswahili.', 'Done, I will now use English.'));
         $this->sendRootMenu($tenant, $client, $phone, $new); // rewrites the session language, keeps the login
+    }
+
+    // ── 4) Oda zangu / My orders (unpaid pending orders: pay or delete) ──
+
+    private function ageLabel(\Carbon\CarbonInterface $when, string $lang): string
+    {
+        $mins = max(0, (int) $when->diffInMinutes(now()));
+        if ($mins < 60) {
+            return $this->t($lang, "dakika {$mins} zilizopita", "{$mins} min ago");
+        }
+        if ($mins < 1440) {
+            $h = intdiv($mins, 60);
+            return $this->t($lang, "saa {$h} zilizopita", "{$h} hour(s) ago");
+        }
+        $d = intdiv($mins, 1440);
+        return $this->t($lang, "siku {$d} zilizopita", "{$d} day(s) ago");
+    }
+
+    /**
+     * This client's own unpaid pending orders: a pending domain registration/transfer, or a pending
+     * hosting/email/other subscription, whose order invoice is still open. Newest first.
+     *
+     * @return array<int, array{doc: Document, kind: string, name: string}>
+     */
+    private function pendingOrders(Tenant $tenant, Client $client): array
+    {
+        $found = [];
+
+        $domains = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('status', 'pending')->whereNotNull('meta->order_document_id')->get();
+        foreach ($domains as $d) {
+            if (!in_array($d->meta['pending_action'] ?? null, ['register', 'transfer'], true)) {
+                continue;
+            }
+            $doc = $this->openInvoice($tenant, $client, $d->meta['order_document_id'] ?? null);
+            if ($doc) {
+                $found[$doc->id] = ['doc' => $doc, 'kind' => ($d->meta['pending_action'] === 'transfer') ? 'transfer' : 'register', 'name' => $d->name];
+            }
+        }
+
+        $subs = \App\Models\ClientSubscription::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('status', 'pending')->whereNull('deleted_at')->get();
+        foreach ($subs as $sub) {
+            $docIds = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+                ->where('client_subscription_id', $sub->id)->whereNotNull('document_id')->pluck('document_id');
+            foreach ($docIds as $id) {
+                $doc = $this->openInvoice($tenant, $client, $id);
+                if ($doc && !isset($found[$doc->id])) {
+                    $plan = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($sub->product_service_id);
+                    $found[$doc->id] = ['doc' => $doc, 'kind' => 'service', 'name' => trim(($plan?->name ?? '') . ($sub->label ? ' — ' . $sub->label : ''), ' —')];
+                }
+            }
+        }
+
+        $list = array_values($found);
+        usort($list, fn ($a, $b) => $b['doc']->created_at <=> $a['doc']->created_at);
+
+        return $list;
+    }
+
+    private function orderKindLabel(string $kind, string $lang): string
+    {
+        return match ($kind) {
+            'register' => $this->t($lang, 'Usajili wa domain', 'Domain registration'),
+            'transfer' => $this->t($lang, 'Uhamisho wa domain', 'Domain transfer'),
+            default => $this->t($lang, 'Huduma', 'Service'),
+        };
+    }
+
+    private function startMyOrders(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $all = $this->pendingOrders($tenant, $client);
+        if (!$all) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Huna oda yoyote isiyolipwa kwa sasa.', 'You have no unpaid orders right now.'), $lang);
+            return;
+        }
+
+        $shown = array_slice($all, 0, 9);
+        $lines = [];
+        foreach ($shown as $i => $o) {
+            $lines[] = ($i + 1) . ') ' . $o['name'] . ' — ' . $this->orderKindLabel($o['kind'], $lang) . ' — TZS ' . number_format((float) $o['doc']->balance_due)
+                . " — {$o['doc']->document_number} — " . $this->ageLabel($o['doc']->created_at, $lang);
+        }
+
+        $this->setSimpleState($tenant, $client, $phone, 'my_orders', ['step' => 'pick', 'doc_ids' => array_map(fn ($o) => $o['doc']->id, $shown)]);
+        $notice = $this->moreNotice($tenant, $lang, count($all) - count($shown), false, '/portal/invoices');
+        $this->reply($tenant, $phone, $this->t($lang,
+            "*Oda zangu (zisizolipwa)*\n\n" . implode("\n", $lines) . $notice . "\n\nJibu na namba kuchagua.\n\n" . $this->menuFooter($lang),
+            "*My orders (unpaid)*\n\n" . implode("\n", $lines) . $notice . "\n\nReply with a number to choose.\n\n" . $this->menuFooter($lang)
+        ));
+    }
+
+    /** The order (still unpaid and pending) behind a picked invoice, or null when it was paid/cancelled meanwhile. */
+    private function pendingOrderFor(Tenant $tenant, Client $client, ?string $docId): ?array
+    {
+        foreach ($this->pendingOrders($tenant, $client) as $o) {
+            if ($o['doc']->id === $docId) {
+                return $o;
+            }
+        }
+
+        return null;
+    }
+
+    private function handleMyOrdersStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        $state = $session->state ?? [];
+        $step = $state['step'] ?? 'pick';
+
+        if ($this->isBackWord($text)) {
+            if ($step === 'pick') {
+                $this->startMoreServices($tenant, $client, $phone, $lang);
+            } else {
+                $this->startMyOrders($tenant, $client, $phone, $lang);
+            }
+            return;
+        }
+
+        if ($step === 'pick') {
+            $id = preg_match('/^\s*([1-9])\s*$/', $text, $m) ? ($state['doc_ids'][(int) $m[1] - 1] ?? null) : null;
+            if (!$id) {
+                $this->invalidChoice($tenant, $phone, $lang, count($state['doc_ids'] ?? []));
+                return;
+            }
+            $this->showMyOrder($tenant, $client, $phone, $id, $lang);
+            return;
+        }
+
+        $order = $this->pendingOrderFor($tenant, $client, $state['doc_id'] ?? null);
+        if (!$order) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Oda hii tayari imelipwa/imefutwa.', 'This order is already paid or cancelled.'), $lang);
+            return;
+        }
+        $doc = $order['doc'];
+
+        if ($step === 'card') {
+            if (preg_match('/^\s*1\s*$/', $text)) {
+                $this->offerPayment($tenant, $client, $phone, $doc, $lang);
+                return;
+            }
+            if (preg_match('/^\s*2\s*$/', $text) && !empty($state['can_delete'])) {
+                $this->setSimpleState($tenant, $client, $phone, 'my_orders', ['step' => 'del_confirm', 'doc_id' => $doc->id]);
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Futa oda ya *{$order['name']}* ({$doc->document_number}, TZS " . number_format((float) $doc->balance_due) . ")?\n\n" . $this->yesNoOptions($lang),
+                    "Delete the order for *{$order['name']}* ({$doc->document_number}, TZS " . number_format((float) $doc->balance_due) . ")?\n\n" . $this->yesNoOptions($lang)
+                ));
+                return;
+            }
+            $this->invalidChoice($tenant, $phone, $lang, !empty($state['can_delete']) ? 2 : 1);
+            return;
+        }
+
+        // del_confirm
+        $yes = $this->parseYesNo($text);
+        if ($yes === null) {
+            $this->invalidYesNo($tenant, $phone, $lang);
+            return;
+        }
+        if (!$yes) {
+            $this->showMyOrder($tenant, $client, $phone, $doc->id, $lang);
+            return;
+        }
+        $ok = app(\App\Services\OrderCancellationService::class)->cancelUnpaidOrder($doc, $session->assisted_by_user_id ? 'Order deleted via WhatsApp (staff-assist by user #' . $session->assisted_by_user_id . ')' : 'Order deleted by client via WhatsApp');
+        $this->noteAssisted($session, 'pending_order_deleted', $doc, ['cancelled' => $ok]);
+        $this->finishFlow($tenant, $client, $phone, $ok
+            ? $this->t($lang, "Oda ya {$order['name']} imefutwa ({$doc->document_number}).", "The order for {$order['name']} was deleted ({$doc->document_number}).")
+            : $this->t($lang, 'Oda hii tayari imelipwa/imefutwa.', 'This order is already paid or cancelled.'), $lang);
+    }
+
+    private function showMyOrder(Tenant $tenant, Client $client, string $phone, string $docId, string $lang): void
+    {
+        $order = $this->pendingOrderFor($tenant, $client, $docId);
+        if (!$order) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Oda hii tayari imelipwa/imefutwa.', 'This order is already paid or cancelled.'), $lang);
+            return;
+        }
+        $doc = $order['doc'];
+        $canDelete = app(\App\Services\OrderCancellationService::class)->cancellable($doc);
+
+        $sw = $lang === 'sw';
+        $opts = [$sw ? '1) Lipa sasa' : '1) Pay now'];
+        if ($canDelete) {
+            $opts[] = $sw ? '2) Futa oda hii' : '2) Delete this order';
+        }
+        $card = ["*{$order['name']}*",
+            ($sw ? '• Aina: ' : '• Type: ') . $this->orderKindLabel($order['kind'], $lang),
+            ($sw ? '• Kiasi: TZS ' : '• Amount: TZS ') . number_format((float) $doc->balance_due),
+            '• Invoice: ' . $doc->document_number,
+            ($sw ? '• Iliagizwa: ' : '• Ordered: ') . $this->ageLabel($doc->created_at, $lang),
+            ($sw ? '• Hali: Inasubiri malipo' : '• Status: Awaiting payment'),
+        ];
+
+        $this->setSimpleState($tenant, $client, $phone, 'my_orders', ['step' => 'card', 'doc_id' => $doc->id, 'can_delete' => $canDelete]);
+        $this->reply($tenant, $phone, implode("\n", $card) . "\n\n" . implode("\n", $opts) . "\n\n" . $this->menuFooter($lang));
     }
 
     // ── 3) Msaada / Support (general ticket) ──
