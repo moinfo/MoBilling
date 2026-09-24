@@ -262,7 +262,7 @@ class WhatsappMoreServicesTest
         foreach (['1) My Servers', '2) Expiring soon', '3) Support', '0) Back'] as $x) $this->assertContains($x, $t);
 
         $t = $this->say('9');
-        $this->assertContains('Sorry, reply 1, 2, 3 or 0', $t);
+        $this->assertContains('Sorry, reply 1-6 or 0', $t);
         $this->assertSame('more_services', $this->session()->flow, 'invalid input keeps state');
 
         $this->assertContains('10) More services', $this->say('0'));
@@ -1083,9 +1083,9 @@ class WhatsappMoreServicesTest
         $this->say('0'); // 0 = back to main menu
         $this->assertSame(null, $this->session()->flow);
         $this->say('10');
-        $this->assertContains('Sorry, reply 1, 2, 3 or 0.', $this->say('x'));
+        $this->assertContains('Sorry, reply 1-6 or 0.', $this->say('x'));
         $this->lang('sw');
-        $this->assertContains('Samahani, jibu 1, 2, 3 au 0.', $this->say('x'));
+        $this->assertContains('Samahani, jibu 1-6 au 0.', $this->say('x'));
         // payment method step
         $this->startSession($a);
         $inv = $this->invoice($a, 'sent', 5);

@@ -377,4 +377,146 @@ class WhatsappPhase3Test
         $this->assertContains('Sorry, reply 1-9 or 0', $this->say('12'));
         $this->assertContains('More services', $this->say('0'));
     }
+
+    // ═══ A5: Payments & receipts ═══
+    private function payIn(Client $c, Document $d, float $amt, string $method = 'mpesa', ?string $date = null): PaymentIn
+    {
+        $p = PaymentIn::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'document_id' => $d->id, 'client_id' => $c->id, 'amount' => $amt, 'payment_date' => $date ?? now()->toDateString(), 'payment_method' => $method]);
+        return $p;
+    }
+
+    private function paidInvoice(Client $c, float $total, string $date, string $method = 'mpesa'): array
+    {
+        $d = $this->makeInvoice($c, $total, 'paid');
+        $d->update(['paid_amount' => $total, 'date' => $date]);
+        return [$d, $this->payIn($c, $d, $total, $method, $date)];
+    }
+
+    public function test_a5_menu_lists_all_three_options(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->assertContains('5) Payments & receipts', $this->say('10'));
+        $r = $this->say('5');
+        $this->assertContains('1) My recent payments', $r);
+        $this->assertContains('2) My paid invoices', $r);
+        $this->assertContains('3) Statement', $r);
+        $this->assertContains('Sorry, reply 1, 2, 3 or 0', $this->say('9'));
+        $this->assertContains('More services', $this->say('0'));
+    }
+
+    public function test_a5_recent_payments_newest_first_max_five_then_receipt_cta(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $docs = [];
+        for ($i = 1; $i <= 6; $i++) { [$d] = $this->paidInvoice($c, 1000 * $i, now()->subDays(10 - $i)->toDateString(), $i % 2 ? 'mpesa' : 'bank'); $docs[$i] = $d; }
+        $this->say('10');
+        $this->say('5');
+        $r = $this->say('1');
+        $this->assertContains('Recent payments', $r);
+        $this->assertContains('1) ' . now()->subDays(4)->format('d M Y') . ' — ' . $docs[6]->document_number . ' — TZS 6,000 — Bank', $r);
+        $this->assertContains('5) ', $r);
+        $this->assertTrue(!str_contains($r, '6) '), 'max five');
+        $this->assertNotContains($docs[1]->document_number, $r);
+        $card = $this->say('1');
+        $this->assertContains('RCT-', $card);
+        $this->assertContains('1) Send me the receipt', $card);
+        Fw::$sent = [];
+        $r = $this->say('1');
+        $cta = Fw::$sent[0];
+        $this->assertSame('cta', $cta['type']);
+        $this->assertContains('TZS 6,000', $cta['text']);
+        $this->assertContains('/portal/payments', $cta['url']);
+        $this->assertContains('Choose a service', $r); // back at the root menu
+    }
+
+    public function test_a5_paid_invoices_list_and_resend_link(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$d] = $this->paidInvoice($c, 12000, now()->subDays(2)->toDateString());
+        $open = $this->makeInvoice($c, 9000, 'sent');
+        $this->say('10');
+        $this->say('5');
+        $r = $this->say('2');
+        $this->assertContains('Paid invoices', $r);
+        $this->assertContains($d->document_number, $r);
+        $this->assertNotContains($open->document_number, $r);
+        $card = $this->say('1');
+        $this->assertContains('1) Send me the invoice', $card);
+        Fw::$sent = [];
+        $this->say('1');
+        $this->assertSame('cta', Fw::$sent[0]['type']);
+        $this->assertContains("/pay/{$d->id}", Fw::$sent[0]['url']);
+    }
+
+    public function test_a5_statement_totals_and_link(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->paidInvoice($c, 10000, now()->subDays(60)->toDateString());
+        $this->paidInvoice($c, 5000, now()->subDays(3)->toDateString());
+        $this->makeInvoice($c, 8000, 'sent')->update(['date' => now()->subDays(1)->toDateString()]);
+        $this->makeInvoice($c, 7777, 'cancelled');
+        $this->say('10');
+        $this->say('5');
+        Fw::$sent = [];
+        $this->say('3');
+        $cta = Fw::$sent[0];
+        $this->assertSame('cta', $cta['type']);
+        $this->assertContains('Total invoiced: TZS 23,000', $cta['text']);
+        $this->assertContains('Total paid: TZS 15,000', $cta['text']);
+        $this->assertContains('Balance due: TZS 8,000', $cta['text']);
+        $this->assertContains('Invoiced: TZS 13,000', $cta['text']);
+        $this->assertContains('Paid: TZS 5,000', $cta['text']);
+        $this->assertContains('/portal/statement', $cta['url']);
+    }
+
+    public function test_a5_sw_and_empty_states(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->session()->update(['language' => 'sw']);
+        $this->say('10');
+        $r = $this->say('5');
+        $this->assertContains('Malipo na risiti', $r);
+        $this->assertContains('Hakuna malipo yaliyorekodiwa', $this->say('1'));
+        $this->say('10'); $this->say('5');
+        $this->assertContains('Huna invoice iliyolipwa', $this->say('2'));
+        $this->say('10'); $this->say('5');
+        Fw::$sent = [];
+        $this->say('3');
+        $this->assertContains('Deni linalodaiwa: TZS 0', Fw::$sent[0]['text']);
+    }
+
+    public function test_a5_other_clients_documents_never_exposed(): void
+    {
+        $mine = $this->makeClient('Asha Test');
+        $other = $this->makeClient('Baraka Other', '255700000009');
+        $this->startSession($mine);
+        [$od, $op] = $this->paidInvoice($other, 99999, now()->toDateString());
+        $this->paidInvoice($mine, 1500, now()->toDateString());
+        $this->say('10'); $this->say('5');
+        $r = $this->say('1');
+        $this->assertNotContains($od->document_number, $r);
+        $this->assertNotContains('99,999', $r);
+        $r = $this->say('1'); $r .= $this->say('1');
+        $this->assertNotContains('99,999', $r);
+        // crafted state pointing at the other client's payment / invoice
+        $this->say('10'); $this->say('5'); $this->say('1');
+        $this->session()->update(['state' => ['step' => 'pay_card', 'payment_id' => $op->id]]);
+        Fw::$sent = [];
+        $r = $this->say('1');
+        $this->assertContains('no longer available', $r);
+        $this->assertTrue(!str_contains(json_encode(Fw::$sent), '99,999'));
+        $this->say('10'); $this->say('5'); $this->say('2');
+        $this->session()->update(['state' => ['step' => 'inv_card', 'document_id' => $od->id]]);
+        $r = $this->say('1');
+        $this->assertContains('no longer available', $r);
+        $this->say('10'); $this->say('5');
+        Fw::$sent = [];
+        $this->say('3');
+        $this->assertNotContains('99,999', Fw::$sent[0]['text']);
+    }
 }

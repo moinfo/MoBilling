@@ -11,6 +11,7 @@ use App\Models\Domain;
 use App\Models\DomainTld;
 use App\Models\HostingAccount;
 use App\Models\MosmsAccount;
+use App\Models\PaymentIn;
 use App\Models\PesapalInvoicePayment;
 use App\Models\ProductService;
 use App\Models\Server;
@@ -232,6 +233,7 @@ class WhatsappRenewalWebhookController extends Controller
                 'my_servers' => $this->handleMyServersStep($tenant, $client, $phone, $session, $text, $lang),
                 'expiring' => $this->handleExpiringStep($tenant, $client, $phone, $session, $text, $lang),
                 'my_domains' => $this->handleMyDomainsStep($tenant, $client, $phone, $session, $text, $lang),
+                'payments' => $this->handlePaymentsStep($tenant, $client, $phone, $session, $text, $lang),
                 'my_orders' => $this->handleMyOrdersStep($tenant, $client, $phone, $session, $text, $lang),
                 'my_hosting' => $this->handleMyHostingStep($tenant, $client, $phone, $session, $text, $lang),
                 'renew_pick' => $this->handleRenewPickStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
@@ -2066,8 +2068,8 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            "*Huduma Zaidi*\n\n1) Server Zangu (Cloud Server)\n2) Zinazokaribia kuisha\n3) Msaada\n4) Oda zangu (zisizolipwa)\n6) Lugha (Language)\n\n" . $this->menuFooter($lang),
-            "*More services*\n\n1) My Servers (Cloud Server)\n2) Expiring soon\n3) Support\n4) My orders (unpaid)\n6) Language (Lugha)\n\n" . $this->menuFooter($lang)
+            "*Huduma Zaidi*\n\n1) Server Zangu (Cloud Server)\n2) Zinazokaribia kuisha\n3) Msaada\n4) Oda zangu (zisizolipwa)\n5) Malipo na risiti\n6) Lugha (Language)\n\n" . $this->menuFooter($lang),
+            "*More services*\n\n1) My Servers (Cloud Server)\n2) Expiring soon\n3) Support\n4) My orders (unpaid)\n5) Payments & receipts\n6) Language (Lugha)\n\n" . $this->menuFooter($lang)
         ));
     }
 
@@ -2099,6 +2101,8 @@ class WhatsappRenewalWebhookController extends Controller
             $this->askGeneralSupportText($tenant, $client, $phone, $lang);
         } elseif (preg_match('/^\s*4\s*$/', $text)) {
             $this->startMyOrders($tenant, $client, $phone, $lang);
+        } elseif (preg_match('/^\s*5\s*$/', $text)) {
+            $this->startPaymentsMenu($tenant, $client, $phone, $lang);
         } elseif (preg_match('/^\s*6\s*$/', $text)) {
             $this->startLanguageSwitch($tenant, $client, $phone, $lang);
         } else {
@@ -2330,6 +2334,221 @@ class WhatsappRenewalWebhookController extends Controller
 
         $this->setSimpleState($tenant, $client, $phone, 'my_orders', ['step' => 'card', 'doc_id' => $doc->id, 'can_delete' => $canDelete]);
         $this->reply($tenant, $phone, implode("\n", $card) . "\n\n" . implode("\n", $opts) . "\n\n" . $this->menuFooter($lang));
+    }
+
+    // ── 5) Malipo na risiti / Payments & receipts ──
+    // No document-send capability exists on the MoSMS/Meta sessions here (text + CTA-URL only), so a
+    // receipt is a concise text receipt plus a CTA button to the client's own portal / invoice page.
+
+    private function paymentMethodLabel(?string $method, string $lang): string
+    {
+        return match (strtolower((string) $method)) {
+            'mpesa' => 'M-Pesa',
+            'tigopesa' => 'Mixx by Yas',
+            'airtelmoney' => 'Airtel Money',
+            'bank' => $this->t($lang, 'Benki', 'Bank'),
+            'pesapal' => $this->t($lang, 'Mtandaoni (Kadi/Mobile Money)', 'Online (Card/Mobile Money)'),
+            'cash' => $this->t($lang, 'Fedha taslimu', 'Cash'),
+            'credit' => $this->t($lang, 'Salio la akaunti', 'Account credit'),
+            '' => '—',
+            default => ucfirst((string) $method),
+        };
+    }
+
+    /** Invoice ids of this client (all statuses) — the ownership boundary for payments, exactly like the portal. */
+    private function clientInvoiceIds(Tenant $tenant, Client $client)
+    {
+        return Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)->where('type', 'invoice')->select('id');
+    }
+
+    private function startPaymentsMenu(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $this->setSimpleState($tenant, $client, $phone, 'payments', ['step' => 'menu']);
+        $this->reply($tenant, $phone, $this->t($lang,
+            "*Malipo na risiti*\n\n1) Malipo yangu ya karibuni (risiti)\n2) Invoice zangu zilizolipwa\n3) Statement (muhtasari wa akaunti)\n\n" . $this->menuFooter($lang),
+            "*Payments & receipts*\n\n1) My recent payments (receipts)\n2) My paid invoices\n3) Statement (account summary)\n\n" . $this->menuFooter($lang)
+        ));
+    }
+
+    private function recentPayments(Tenant $tenant, Client $client)
+    {
+        return PaymentIn::withoutGlobalScopes()->where('tenant_id', $tenant->id)
+            ->whereIn('document_id', $this->clientInvoiceIds($tenant, $client))
+            ->with(['document' => fn ($q) => $q->withoutGlobalScopes()])
+            ->orderByDesc('payment_date')->orderByDesc('created_at')->limit(5)->get();
+    }
+
+    private function paidInvoices(Tenant $tenant, Client $client)
+    {
+        return Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('type', 'invoice')->where('status', 'paid')->orderByDesc('date')->orderByDesc('created_at')->limit(5)->get();
+    }
+
+    private function handlePaymentsStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        $state = $session->state ?? [];
+        $step = $state['step'] ?? 'menu';
+        $sw = $lang === 'sw';
+
+        if ($this->isBackWord($text)) {
+            match ($step) {
+                'menu' => $this->startMoreServices($tenant, $client, $phone, $lang),
+                default => $this->startPaymentsMenu($tenant, $client, $phone, $lang),
+            };
+            return;
+        }
+
+        if ($step === 'menu') {
+            if (preg_match('/^\s*1\s*$/', $text)) {
+                $payments = $this->recentPayments($tenant, $client);
+                if ($payments->isEmpty()) {
+                    $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Hakuna malipo yaliyorekodiwa bado.', 'No payments recorded yet.'), $lang);
+                    return;
+                }
+                $lines = [];
+                foreach ($payments as $i => $pay) {
+                    $lines[] = ($i + 1) . ') ' . $pay->payment_date->format('d M Y') . ' — ' . ($pay->document?->document_number ?? '—') . ' — TZS ' . number_format((float) $pay->amount) . ' — ' . $this->paymentMethodLabel($pay->payment_method, $lang);
+                }
+                $this->setSimpleState($tenant, $client, $phone, 'payments', ['step' => 'pay_list', 'ids' => $payments->pluck('id')->all()]);
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "*Malipo ya karibuni*\n\n" . implode("\n", $lines) . "\n\nJibu na namba kuchagua.\n\n" . $this->menuFooter($lang),
+                    "*Recent payments*\n\n" . implode("\n", $lines) . "\n\nReply with a number to choose.\n\n" . $this->menuFooter($lang)
+                ));
+                return;
+            }
+            if (preg_match('/^\s*2\s*$/', $text)) {
+                $invoices = $this->paidInvoices($tenant, $client);
+                if ($invoices->isEmpty()) {
+                    $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Huna invoice iliyolipwa bado.', 'You have no paid invoices yet.'), $lang);
+                    return;
+                }
+                $lines = [];
+                foreach ($invoices as $i => $inv) {
+                    $lines[] = ($i + 1) . ") {$inv->document_number} — " . ($inv->date?->format('d M Y') ?? '—') . ' — TZS ' . number_format((float) $inv->total);
+                }
+                $this->setSimpleState($tenant, $client, $phone, 'payments', ['step' => 'inv_list', 'ids' => $invoices->pluck('id')->all()]);
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "*Invoice zilizolipwa*\n\n" . implode("\n", $lines) . "\n\nJibu na namba kuchagua.\n\n" . $this->menuFooter($lang),
+                    "*Paid invoices*\n\n" . implode("\n", $lines) . "\n\nReply with a number to choose.\n\n" . $this->menuFooter($lang)
+                ));
+                return;
+            }
+            if (preg_match('/^\s*3\s*$/', $text)) {
+                $this->sendStatement($tenant, $client, $phone, $lang);
+                return;
+            }
+            $this->invalidChoice($tenant, $phone, $lang, 3);
+            return;
+        }
+
+        if ($step === 'pay_list') {
+            $id = preg_match('/^\s*([1-5])\s*$/', $text, $m) ? ($state['ids'][(int) $m[1] - 1] ?? null) : null;
+            $pay = $id ? PaymentIn::withoutGlobalScopes()->where('tenant_id', $tenant->id)->whereIn('document_id', $this->clientInvoiceIds($tenant, $client))->with(['document' => fn ($q) => $q->withoutGlobalScopes()])->find($id) : null;
+            if (!$pay) {
+                $this->invalidChoice($tenant, $phone, $lang, count($state['ids'] ?? []));
+                return;
+            }
+            $this->setSimpleState($tenant, $client, $phone, 'payments', ['step' => 'pay_card', 'payment_id' => $pay->id]);
+            $this->reply($tenant, $phone, implode("\n", [
+                '*' . $this->receiptNumber($pay) . '*',
+                ($sw ? '• Tarehe: ' : '• Date: ') . $pay->payment_date->format('d M Y'),
+                '• Invoice: ' . ($pay->document?->document_number ?? '—'),
+                ($sw ? '• Kiasi: TZS ' : '• Amount: TZS ') . number_format((float) $pay->amount),
+                ($sw ? '• Njia: ' : '• Method: ') . $this->paymentMethodLabel($pay->payment_method, $lang),
+            ]) . "\n\n" . $this->t($lang, "1) Nitumie risiti\n\n", "1) Send me the receipt\n\n") . $this->menuFooter($lang));
+            return;
+        }
+
+        if ($step === 'pay_card') {
+            $pay = PaymentIn::withoutGlobalScopes()->where('tenant_id', $tenant->id)->whereIn('document_id', $this->clientInvoiceIds($tenant, $client))->with(['document' => fn ($q) => $q->withoutGlobalScopes()])->find($state['payment_id'] ?? null);
+            if (!$pay) {
+                $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, malipo hayo hayapatikani tena.', 'Sorry, that payment is no longer available.'), $lang);
+                return;
+            }
+            if (!preg_match('/^\s*1\s*$/', $text)) {
+                $this->invalidChoice($tenant, $phone, $lang, 1);
+                return;
+            }
+            $this->replyWithCtaUrl($tenant, $phone,
+                $this->t($lang,
+                    "*Risiti {$this->receiptNumber($pay)}*\n• Invoice: " . ($pay->document?->document_number ?? '—') . "\n• Kiasi: TZS " . number_format((float) $pay->amount) . "\n• Tarehe: " . $pay->payment_date->format('d M Y') . "\n• Njia: " . $this->paymentMethodLabel($pay->payment_method, 'sw') . "\n\nBonyeza kitufe kufungua risiti yako kwenye portal.",
+                    "*Receipt {$this->receiptNumber($pay)}*\n• Invoice: " . ($pay->document?->document_number ?? '—') . "\n• Amount: TZS " . number_format((float) $pay->amount) . "\n• Date: " . $pay->payment_date->format('d M Y') . "\n• Method: " . $this->paymentMethodLabel($pay->payment_method, 'en') . "\n\nTap the button to open your receipt in the portal."
+                ),
+                $this->t($lang, 'Fungua Risiti', 'Open Receipt'),
+                $tenant->portalUrl('/portal/payments')
+            );
+            $this->sendRootMenu($tenant, $client, $phone, $lang);
+            return;
+        }
+
+        if ($step === 'inv_list') {
+            $id = preg_match('/^\s*([1-5])\s*$/', $text, $m) ? ($state['ids'][(int) $m[1] - 1] ?? null) : null;
+            $inv = $id ? Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)->where('type', 'invoice')->where('status', 'paid')->find($id) : null;
+            if (!$inv) {
+                $this->invalidChoice($tenant, $phone, $lang, count($state['ids'] ?? []));
+                return;
+            }
+            $this->setSimpleState($tenant, $client, $phone, 'payments', ['step' => 'inv_card', 'document_id' => $inv->id]);
+            $this->reply($tenant, $phone, implode("\n", [
+                "*Invoice {$inv->document_number}*",
+                ($sw ? '• Tarehe: ' : '• Date: ') . ($inv->date?->format('d M Y') ?? '—'),
+                ($sw ? '• Kiasi: TZS ' : '• Amount: TZS ') . number_format((float) $inv->total),
+                ($sw ? '• Hali: Imelipwa' : '• Status: Paid'),
+            ]) . "\n\n" . $this->t($lang, "1) Nitumie invoice\n\n", "1) Send me the invoice\n\n") . $this->menuFooter($lang));
+            return;
+        }
+
+        // inv_card
+        $inv = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)->where('type', 'invoice')->where('status', 'paid')->find($state['document_id'] ?? null);
+        if (!$inv) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, invoice hiyo haipatikani tena.', 'Sorry, that invoice is no longer available.'), $lang);
+            return;
+        }
+        if (!preg_match('/^\s*1\s*$/', $text)) {
+            $this->invalidChoice($tenant, $phone, $lang, 1);
+            return;
+        }
+        $this->replyWithCtaUrl($tenant, $phone,
+            $this->t($lang,
+                "*Invoice {$inv->document_number}* — TZS " . number_format((float) $inv->total) . " (imelipwa).\nBonyeza kitufe kuifungua.",
+                "*Invoice {$inv->document_number}* — TZS " . number_format((float) $inv->total) . " (paid).\nTap the button to open it."
+            ),
+            $this->t($lang, 'Fungua Invoice', 'Open Invoice'),
+            $tenant->portalUrl("/pay/{$inv->id}")
+        );
+        $this->sendRootMenu($tenant, $client, $phone, $lang);
+    }
+
+    private function receiptNumber(PaymentIn $pay): string
+    {
+        return 'RCT-' . $pay->payment_date->format('Ymd') . '-' . strtoupper(substr((string) $pay->id, 0, 6));
+    }
+
+    /** Compact statement: totals plus the last 30 days, and a link to the full one in the portal. */
+    private function sendStatement(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $invoices = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('type', 'invoice')->whereNotIn('status', ['draft', 'cancelled'])->get();
+        $invoiced = (float) $invoices->sum(fn ($d) => (float) $d->total);
+        $paid = (float) $invoices->sum(fn ($d) => (float) $d->paid_amount);
+        $balance = (float) $invoices->sum(fn ($d) => max((float) $d->balance_due, 0));
+
+        $since = now()->subDays(30)->startOfDay();
+        $invoiced30 = (float) $invoices->filter(fn ($d) => $d->date && $d->date->gte($since))->sum(fn ($d) => (float) $d->total);
+        $paid30 = (float) PaymentIn::withoutGlobalScopes()->where('tenant_id', $tenant->id)
+            ->whereIn('document_id', $this->clientInvoiceIds($tenant, $client))->where('payment_date', '>=', $since->toDateString())->get()
+            ->sum(fn ($p) => (float) $p->amount);
+
+        $f = fn (float $n) => 'TZS ' . number_format($n);
+        $this->replyWithCtaUrl($tenant, $phone,
+            $this->t($lang,
+                "*Statement — {$client->name}*\n• Jumla iliyotolewa (invoice): {$f($invoiced)}\n• Jumla iliyolipwa: {$f($paid)}\n• Deni linalodaiwa: {$f($balance)}\n\n*Siku 30 zilizopita*\n• Iliyotolewa: {$f($invoiced30)}\n• Iliyolipwa: {$f($paid30)}\n\nBonyeza kitufe kuona statement kamili.",
+                "*Statement — {$client->name}*\n• Total invoiced: {$f($invoiced)}\n• Total paid: {$f($paid)}\n• Balance due: {$f($balance)}\n\n*Last 30 days*\n• Invoiced: {$f($invoiced30)}\n• Paid: {$f($paid30)}\n\nTap the button for the full statement."
+            ),
+            $this->t($lang, 'Statement Kamili', 'Full Statement'),
+            $tenant->portalUrl('/portal/statement')
+        );
+        $this->sendRootMenu($tenant, $client, $phone, $lang);
     }
 
     // ── 3) Msaada / Support (general ticket) ──
