@@ -776,6 +776,12 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::put('/domains/{resource}/records/{recordId}', [\App\Http\Controllers\LinodeController::class, 'updateRecord']);
         Route::delete('/domains/{resource}/records/{recordId}', [\App\Http\Controllers\LinodeController::class, 'destroyRecord']);
         Route::patch('/resources/{resource}/map', [\App\Http\Controllers\LinodeController::class, 'map']);
+        Route::get('/billing-products', [\App\Http\Controllers\LinodeController::class, 'billingProducts']);
+        Route::get('/clients/{client}/subscriptions', [\App\Http\Controllers\LinodeController::class, 'clientSubscriptions']);
+        Route::post('/resources/{resource}/link-subscription', [\App\Http\Controllers\LinodeController::class, 'linkSubscription']);
+        Route::post('/resources/{resource}/unlink-subscription', [\App\Http\Controllers\LinodeController::class, 'unlinkSubscription']);
+        // Creating a subscription also needs the normal subscription-create permission.
+        Route::middleware('permission:client_subscriptions.create')->post('/resources/{resource}/bill', [\App\Http\Controllers\LinodeController::class, 'bill']);
     });
     Route::middleware('permission:domains.transfer')->get('/domains/{domain}/auth-info', [\App\Http\Controllers\DomainController::class, 'authInfo']);
     Route::middleware('permission:domains.settings')->group(function () {

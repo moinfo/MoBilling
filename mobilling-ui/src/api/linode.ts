@@ -36,9 +36,27 @@ export interface LinodeResource {
   dns?: LinodeDnsInfo;
   suggested_client?: { id: string; name: string; domains?: number } | null;
   // servers only
+  subscription?: LinodeServerBilling | null;
   domain_count?: number;
   domains?: { id: string; label: string }[];
 }
+
+export interface LinodeServerBilling {
+  id: string;
+  state: 'active' | 'pending' | 'suspended' | 'expired';
+  status: string;
+  label: string | null;
+  product_name: string | null;
+  billing_cycle: string | null;
+  amount: number;
+  start_date: string | null;
+  expire_date: string | null;
+  next_invoice_date: string | null;
+  latest_invoice: { id: string; number: string; status: string; due_date: string | null; total: string } | null;
+}
+
+export interface LinodeBillingProduct { id: string; name: string; price: string; tax_percent: string; billing_cycle: string; category: string | null }
+export interface LinodeClientSub { id: string; label: string | null; product_name: string | null; status: string; expire_date: string | null; billing_cycle: string | null }
 
 export type DnsStatus = 'server' | 'external' | 'no_a_record' | 'unknown';
 export interface LinodeDnsInfo {
@@ -124,3 +142,13 @@ export const deleteLinodeRecord = (id: string, rid: number) => api.delete(`/lino
 
 export const mapLinodeResource = (id: string, d: { client_id: string | null; client_subscription_id?: string | null }) =>
   api.patch<{ data: LinodeResource; message: string }>(`/linode/resources/${id}/map`, d);
+
+export const getLinodeBillingProducts = () => api.get<{ data: LinodeBillingProduct[] }>('/linode/billing-products');
+export const getLinodeClientSubscriptions = (clientId: string) => api.get<{ data: LinodeClientSub[] }>(`/linode/clients/${clientId}/subscriptions`);
+export const billLinodeServer = (id: string, d: {
+  client_id: string; product_service_id: string; amount: number; billing_cycle?: string; start_date: string;
+  expire_date?: string | null; label?: string; mode: 'paid_outside' | 'invoice_now';
+}) => api.post<{ data: { subscription_id: string; document_id: string | null; document_number: string | null }; message: string }>(`/linode/resources/${id}/bill`, d);
+export const linkLinodeSubscription = (id: string, client_subscription_id: string) =>
+  api.post<{ message: string }>(`/linode/resources/${id}/link-subscription`, { client_subscription_id });
+export const unlinkLinodeSubscription = (id: string) => api.post<{ message: string }>(`/linode/resources/${id}/unlink-subscription`);

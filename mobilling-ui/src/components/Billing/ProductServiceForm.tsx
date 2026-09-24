@@ -61,6 +61,7 @@ function packageSpecsText(p: ServerPackageDetails): string {
 export default function ProductServiceForm({ initialValues, onSubmit, loading }: Props) {
   const { can } = usePermissions();
   const canHosting = can('hosting.settings');
+  const canLinode = can('linode.manage');
 
   const form = useForm<ProductServiceFormData>({
     initialValues: initialValues || {
@@ -90,6 +91,7 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
   const unitOptions = form.values.type === 'product' ? productUnits : serviceUnits;
 
   const showProvisioning = canHosting && form.values.type === 'service';
+  const showProvisioningSelect = (canHosting || canLinode) && form.values.type === 'service';
   const { data: serversData } = useQuery({
     queryKey: ['servers'],
     queryFn: getServers,
@@ -159,18 +161,29 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
             {...form.getInputProps('invoice_day_of_month')}
           />
         )}
-        {showProvisioning && (
+        {showProvisioningSelect && (
           <>
-            <Divider label="Hosting Provisioning" labelPosition="left" />
+            <Divider label="Provisioning" labelPosition="left" />
             <Select
               label="Provisioning"
-              description="Automatically manage a cPanel account for subscriptions of this service"
+              description="cPanel: automatically manage a cPanel account. Linode Server: billing only — link it to a server from Linode → Servers → Bill this server; nothing is ever done to the server automatically."
               data={[
                 { value: 'none', label: 'None' },
-                { value: 'whm_cpanel', label: 'WHM / cPanel' },
+                ...(canHosting || form.values.provisioning_type === 'whm_cpanel' ? [{ value: 'whm_cpanel', label: 'WHM / cPanel' }] : []),
+                ...(canLinode || form.values.provisioning_type === 'linode' ? [{ value: 'linode', label: 'Linode Server (manual, billing only)' }] : []),
               ]}
               {...form.getInputProps('provisioning_type')}
+              onChange={(v) => {
+                form.setFieldValue('provisioning_type', (v as any) || 'none');
+                if (v === 'linode') {
+                  form.setFieldValue('portal_visible', false);
+                  if (!form.values.category) form.setFieldValue('category', 'Linode Servers');
+                }
+              }}
             />
+            {form.values.provisioning_type === 'linode' && (
+              <Text size="xs" c="dimmed">Use a yearly/monthly cycle. It is never shown in the portal shopping cart. The price is the default; the per-server amount can be overridden when billing a server.</Text>
+            )}
             {form.values.provisioning_type === 'whm_cpanel' && (
               <>
                 <Group grow>
@@ -229,7 +242,7 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
         )}
         <Group>
           <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
-          <Switch label="Show in portal catalog"
+          <Switch label="Show in portal catalog" disabled={form.values.provisioning_type === 'linode'}
             description="Clients can order this from the portal Shopping Cart"
             {...form.getInputProps('portal_visible', { type: 'checkbox' })} />
         </Group>

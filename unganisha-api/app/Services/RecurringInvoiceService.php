@@ -290,7 +290,13 @@ class RecurringInvoiceService
                 $product = $sub->productService;
                 $qty = $sub->quantity;
 
-                $lineBase = $qty * (float) $product->price;
+                // Opt-in per-subscription price (e.g. a Linode server billed at a negotiated
+                // amount): metadata.price_override + recurring_amount. Every other
+                // subscription keeps billing the product price, exactly as before.
+                $unitPrice = (is_array($sub->metadata ?? null) && !empty($sub->metadata['price_override']) && $sub->recurring_amount !== null)
+                    ? (float) $sub->recurring_amount
+                    : (float) $product->price;
+                $lineBase = $qty * $unitPrice;
 
                 // Recurring coupon: re-apply the discount on each renewal cycle,
                 // re-checking the coupon is still active + within its window. The
@@ -326,7 +332,7 @@ class RecurringInvoiceService
                     'item_type' => $product->type,
                     'description' => $description,
                     'quantity' => $qty,
-                    'price' => $product->price,
+                    'price' => $unitPrice,
                     'discount_type' => $renewalCoupon && $lineDiscount > 0 ? $renewalCoupon->type : 'percent',
                     'discount_value' => $renewalCoupon && $lineDiscount > 0 ? (float) $renewalCoupon->value : 0,
                     'tax_percent' => $product->tax_percent ?? 0,

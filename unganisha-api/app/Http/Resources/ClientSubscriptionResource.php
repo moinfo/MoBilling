@@ -25,6 +25,12 @@ class ClientSubscriptionResource extends JsonResource
             'expire_date' => $this->expire_date?->format('Y-m-d'),
             'status' => $this->status,
             'metadata' => $this->metadata,
+            'recurring_amount' => $this->recurring_amount,
+            'linode_server' => $this->whenLoaded('linodeResource', fn () => $this->linodeResource ? [
+                'id' => $this->linodeResource->id, 'label' => $this->linodeResource->label,
+                'ipv4' => $this->linodeResource->ipv4 ?? [], 'region' => $this->linodeResource->region,
+                'plan' => $this->linodeResource->plan, 'status' => $this->linodeResource->status,
+            ] : null),
             'created_at' => $this->created_at,
         ];
     }

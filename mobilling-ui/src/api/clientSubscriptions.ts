@@ -14,8 +14,10 @@ export interface ClientSubscription {
   discount_value?: number;
   start_date: string;
   expire_date?: string;
-  status: 'active' | 'cancelled' | 'suspended';
+  status: 'active' | 'cancelled' | 'suspended' | 'pending' | 'expired' | 'terminated';
   metadata: Record<string, unknown> | null;
+  recurring_amount?: string | null;
+  linode_server?: { id: string; label: string; ipv4: string[]; region: string | null; plan: string | null; status: string | null } | null;
   created_at: string;
 }
 

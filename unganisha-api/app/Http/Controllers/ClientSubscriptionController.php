@@ -16,7 +16,7 @@ class ClientSubscriptionController extends Controller
 {
     public function index(Request $request)
     {
-        $query = ClientSubscription::with('client', 'productService');
+        $query = ClientSubscription::with('client', 'productService', 'linodeResource');
 
         if ($request->has('client_id')) {
             $query->where('client_id', $request->client_id);
@@ -375,7 +375,7 @@ class ClientSubscriptionController extends Controller
     public function show(ClientSubscription $clientSubscription)
     {
         return new ClientSubscriptionResource(
-            $clientSubscription->load('client', 'productService')
+            $clientSubscription->load('client', 'productService', 'linodeResource')
         );
     }
 

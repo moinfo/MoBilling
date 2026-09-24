@@ -15,6 +15,8 @@ class PortalProductServiceController extends Controller
         $query = ProductService::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
             ->where('is_active', true)
+            // Linode Server products are billed manually by staff — never self-orderable.
+            ->where(fn ($q) => $q->whereNull('provisioning_type')->orWhere('provisioning_type', '!=', 'linode'))
             ->orderBy('type')
             ->orderBy('name');
 

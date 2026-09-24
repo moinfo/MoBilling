@@ -142,9 +142,17 @@ export default function PortalSubscriptions() {
                 return (
                   <Table.Tr key={s.id}>
                     <Table.Td>{s.product_service?.name || '-'}</Table.Td>
-                    <Table.Td>{s.label || '-'}</Table.Td>
+                    <Table.Td>
+                      {s.label || '-'}
+                      {s.linode_server && (
+                        <Text size="xs" c="dimmed">
+                          Server {s.linode_server.name}{s.linode_server.ip ? ` · ${s.linode_server.ip}` : ''}{s.linode_server.region ? ` · ${s.linode_server.region}` : ''}
+                          {s.linode_server.status ? ` · ${s.linode_server.status}` : ''}
+                        </Text>
+                      )}
+                    </Table.Td>
                     <Table.Td ta="right">{s.quantity}</Table.Td>
-                    <Table.Td ta="right">{s.product_service?.price ? fmt(s.product_service.price) : '-'}</Table.Td>
+                    <Table.Td ta="right">{s.metadata?.price_override && s.recurring_amount ? fmt(parseFloat(s.recurring_amount)) : s.product_service?.price ? fmt(parseFloat(s.product_service.price)) : '-'}</Table.Td>
                     <Table.Td>
                       <Badge variant="light" color="gray" size="sm">
                         {cycleLabel[s.billing_cycle] || s.billing_cycle || '-'}
@@ -187,7 +195,13 @@ export default function PortalSubscriptions() {
                             </Button>
                           </Tooltip>
                         )}
-                        {s.status === 'active' && (
+                        {s.linode_server?.renewal_invoice && (
+                          <Button variant="light" size="compact-sm" leftSection={<IconFileInvoice size={14} />}
+                            onClick={() => navigate(`/portal/invoices/${s.linode_server.renewal_invoice.id}`)}>
+                            Invoice {s.linode_server.renewal_invoice.number}
+                          </Button>
+                        )}
+                        {s.status === 'active' && !s.linode_server && (
                           <Tooltip label="Generate invoice and pay now">
                             <Button
                               variant="light"

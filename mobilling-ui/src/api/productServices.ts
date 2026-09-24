@@ -13,7 +13,7 @@ export interface ProductService {
   billing_cycle: string | null;
   invoice_day_of_month: number | null;
   is_active: boolean;
-  provisioning_type: 'none' | 'whm_cpanel';
+  provisioning_type: 'none' | 'whm_cpanel' | 'linode';
   server_id: string | null;
   cpanel_package: string | null;
   subscriptions_count?: number;
@@ -36,7 +36,7 @@ export interface ProductServiceFormData {
   billing_cycle: string;
   invoice_day_of_month?: number | null;
   is_active: boolean;
-  provisioning_type?: 'none' | 'whm_cpanel';
+  provisioning_type?: 'none' | 'whm_cpanel' | 'linode';
   server_id?: string | null;
   cpanel_package?: string;
   auto_provision?: boolean;

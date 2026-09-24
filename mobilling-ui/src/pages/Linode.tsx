@@ -1,24 +1,25 @@
 import { useState, useMemo } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, Select, Center, Loader, Alert, Button, Modal,
-  TextInput, PasswordInput, Tabs, ActionIcon, Drawer, NumberInput, CopyButton, Code, List, Tooltip, ScrollArea,
+  TextInput, PasswordInput, Radio, Checkbox, Tabs, ActionIcon, Drawer, NumberInput, CopyButton, Code, List, Tooltip, ScrollArea,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconPlus, IconRefresh, IconTrash, IconEdit, IconKey, IconCopy, IconCheck, IconServer, IconWorldWww, IconPlugConnected,
-  IconLink, IconWand,
+  IconLink, IconWand, IconReceipt,
 } from '@tabler/icons-react';
 import {
   getLinodeAccounts, createLinodeAccount, updateLinodeAccount, deleteLinodeAccount, verifyLinodeAccount,
   syncLinodeAccount, getLinodeServers, getLinodeDomains, addLinodeDomain, setLinodeNameservers,
   checkLinodeNameservers, getLinodeRecords, addLinodeRecord, updateLinodeRecord, deleteLinodeRecord,
-  mapLinodeResource, refreshLinodeDns, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
+  mapLinodeResource, refreshLinodeDns, getLinodeBillingProducts, getLinodeClientSubscriptions, billLinodeServer, linkLinodeSubscription, unlinkLinodeSubscription, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
   RECORD_TYPES, LINODE_NAMESERVERS, DnsRefreshBatch,
 } from '../api/linode';
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
+import { useNavigate } from 'react-router-dom';
 
 const errMsg = (e: any): string =>
   e?.response?.data?.message
@@ -192,19 +193,160 @@ function MapModal({ resource, onClose }: { resource: LinodeResource; onClose: ()
   );
 }
 
+
+const addMonths = (iso: string, m: number) => {
+  const [y, mo, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1 + m, d));
+  return dt.toISOString().slice(0, 10);
+};
+const CYCLE_MONTHS: Record<string, number> = { monthly: 1, quarterly: 3, half_yearly: 6, yearly: 12 };
+const CYCLE_LABEL: Record<string, string> = { monthly: 'Monthly', quarterly: 'Quarterly', half_yearly: 'Half-yearly', yearly: 'Yearly' };
+const money = (n: number | string) => Number(n).toLocaleString(undefined, { maximumFractionDigits: 2 });
+
+const BILL_STATE: Record<string, { color: string; label: string }> = {
+  active: { color: 'green', label: 'Active' }, pending: { color: 'yellow', label: 'Pending payment' },
+  suspended: { color: 'orange', label: 'Suspended' }, expired: { color: 'red', label: 'Expired' },
+};
+
+function BillModal({ resource, onClose }: { resource: LinodeResource; onClose: () => void }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+  const found = useClientOptions(search);
+  const [clientId, setClientId] = useState<string | null>(resource.client_id);
+  const [pickedLabel, setPickedLabel] = useState<string | null>(resource.client_name ?? null);
+  const options = clientId && !found.some((o) => o.value === clientId) && pickedLabel ? [{ value: clientId, label: pickedLabel }, ...found] : found;
+  const [tab, setTab] = useState<string | null>('new');
+  const [productId, setProductId] = useState<string | null>(null);
+  const [amount, setAmount] = useState<number | string>('');
+  const [start, setStart] = useState('');
+  const [expire, setExpire] = useState('');
+  const [expireTouched, setExpireTouched] = useState(false);
+  const [mode, setMode] = useState<'paid_outside' | 'invoice_now'>('paid_outside');
+  const [label, setLabel] = useState(`${resource.label}${resource.ipv4?.[0] ? ' ' + resource.ipv4[0] : ''}`);
+  const [existingId, setExistingId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const { data: prodData } = useQuery({ queryKey: ['linode-billing-products'], queryFn: getLinodeBillingProducts });
+  const products = prodData?.data?.data ?? [];
+  const product = products.find((p) => p.id === productId) ?? null;
+  const cycle = product?.billing_cycle ?? null;
+  const { data: subData } = useQuery({
+    queryKey: ['linode-client-subs', clientId], queryFn: () => getLinodeClientSubscriptions(clientId!), enabled: !!clientId && tab === 'existing',
+  });
+  const existing = subData?.data?.data ?? [];
+
+  const pickProduct = (v: string | null) => {
+    setProductId(v);
+    const p = products.find((x) => x.id === v);
+    if (p) setAmount(Number(p.price));
+    setExpireTouched(false);
+  };
+  const computedExpire = start && cycle ? addMonths(start, CYCLE_MONTHS[cycle]) : '';
+  const expireShown = expireTouched ? expire : computedExpire;
+
+  const done = (msg: string) => { notifications.show({ color: 'green', message: msg }); qc.invalidateQueries({ queryKey: ['linode-servers'] }); qc.invalidateQueries({ queryKey: ['linode-domains'] }); onClose(); };
+  const bill = useMutation({
+    mutationFn: () => billLinodeServer(resource.id, {
+      client_id: clientId!, product_service_id: productId!, amount: Number(amount), billing_cycle: cycle ?? undefined,
+      start_date: start, expire_date: mode === 'paid_outside' ? expireShown : null, label, mode,
+    }),
+    onSuccess: (r) => { done(r.data.message); if (r.data.data.document_id) navigate('/invoices'); },
+    onError: (e) => setError(errMsg(e)),
+  });
+  const link = useMutation({
+    mutationFn: () => linkLinodeSubscription(resource.id, existingId!),
+    onSuccess: (r) => done(r.data.message), onError: (e) => setError(errMsg(e)),
+  });
+
+  const canSubmit = !!clientId && !!productId && Number(amount) > 0 && !!start && confirm && (mode === 'invoice_now' || !!expireShown);
+  return (
+    <Modal opened onClose={onClose} title={`Bill server "${resource.label}"`} size="lg">
+      <Stack>
+        {error && <Alert color="red">{error}</Alert>}
+        <Alert color="blue" variant="light">Billing only. Nothing is changed at Linode: suspending or cancelling this subscription never touches the server.</Alert>
+        <Select label="Client" data={options} value={clientId}
+          onChange={(v) => { setClientId(v); setExistingId(null); setPickedLabel(options.find((o) => o.value === v)?.label ?? null); }}
+          searchValue={search} onSearchChange={setSearch} filter={({ options }) => options} nothingFoundMessage="No client found" searchable clearable placeholder="Search name, email or phone"
+          description="Choosing a client also maps this server to them." />
+        <Tabs value={tab} onChange={setTab}>
+          <Tabs.List><Tabs.Tab value="new">New subscription</Tabs.Tab><Tabs.Tab value="existing">Link existing subscription</Tabs.Tab></Tabs.List>
+          <Tabs.Panel value="new" pt="sm">
+            <Stack>
+              <Select label="Linode product" data={products.map((p) => ({ value: p.id, label: `${p.name} — ${money(p.price)} / ${CYCLE_LABEL[p.billing_cycle] ?? p.billing_cycle}` }))}
+                value={productId} onChange={pickProduct} placeholder={products.length ? 'Choose a product' : 'No Linode products yet'}
+                nothingFoundMessage="None" searchable
+                description={products.length ? undefined : 'Create one in Products & Services: type Service, Provisioning = Linode Server, a yearly/monthly cycle.'} />
+              <Group grow align="flex-start">
+                <NumberInput label="Billing amount (TZS)" value={amount} onChange={setAmount} min={0} thousandSeparator="," hideControls
+                  description={product && Number(amount) !== Number(product.price) ? `Overrides the product price (${money(product.price)}) for this server` : 'Defaults to the product price'} />
+                <TextInput label="Billing cycle" value={cycle ? CYCLE_LABEL[cycle] : ''} readOnly description="Set by the chosen product" />
+              </Group>
+              <Group grow align="flex-start">
+                <TextInput type="date" label="Start date" value={start} onChange={(e) => { setStart(e.currentTarget.value); setExpireTouched(false); }} required />
+                <TextInput type="date" label="Expiry / next due date" value={mode === 'paid_outside' ? expireShown : computedExpire}
+                  onChange={(e) => { setExpire(e.currentTarget.value); setExpireTouched(true); }} disabled={mode !== 'paid_outside'}
+                  description={mode === 'paid_outside' ? 'Start + cycle; editable. The next invoice is generated ~30 days before this date.' : 'Set automatically when the invoice is paid'} />
+              </Group>
+              <TextInput label="Label" value={label} onChange={(e) => setLabel(e.currentTarget.value)} />
+              <Radio.Group label="Current period" value={mode} onChange={(v) => setMode(v as any)}>
+                <Stack gap={6} mt={6}>
+                  <Radio value="paid_outside" label="Already paid / invoiced outside the system (do not create an invoice now; next invoice at renewal)" />
+                  <Radio value="invoice_now" label="Create invoice now (subscription stays pending until the invoice is paid)" />
+                </Stack>
+              </Radio.Group>
+              <Checkbox checked={confirm} onChange={(e) => setConfirm(e.currentTarget.checked)}
+                label={`Confirm: bill ${money(Number(amount) || 0)} ${cycle ? CYCLE_LABEL[cycle].toLowerCase() : ''} from ${start || '…'}${mode === 'paid_outside' ? `, paid until ${expireShown || '…'}, no invoice now` : ', invoice created now'}`} />
+              <Button loading={bill.isPending} disabled={!canSubmit} onClick={() => { setError(null); bill.mutate(); }}>Create subscription</Button>
+            </Stack>
+          </Tabs.Panel>
+          <Tabs.Panel value="existing" pt="sm">
+            <Stack>
+              {!clientId && <Text size="sm" c="dimmed">Choose a client first.</Text>}
+              {clientId && (
+                <Select label="Client's subscription" data={existing.map((x) => ({ value: x.id, label: `${x.label || x.product_name || x.id} (${x.status}${x.expire_date ? ', to ' + x.expire_date : ''})` }))}
+                  value={existingId} onChange={setExistingId} nothingFoundMessage="No unlinked subscriptions for this client" placeholder="Choose subscription" />
+              )}
+              <Button loading={link.isPending} disabled={!clientId || !existingId} onClick={() => { setError(null); link.mutate(); }}>Link to this server</Button>
+            </Stack>
+          </Tabs.Panel>
+        </Tabs>
+      </Stack>
+    </Modal>
+  );
+}
+
 function ServersTab({ canManage, onShowDomains }: { canManage: boolean; onShowDomains: (id: string) => void }) {
+  const { can } = usePermissions();
+  const canBill = can('linode.manage') && can('client_subscriptions.create');
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const [mapFor, setMapFor] = useState<LinodeResource | null>(null);
+  const [billFor, setBillFor] = useState<LinodeResource | null>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [billFilter, setBillFilter] = useState<string>('all');
   const { data, isLoading, isError, error } = useQuery({ queryKey: ['linode-servers'], queryFn: getLinodeServers });
-  const rows = data?.data?.data ?? [];
+  const allRows = data?.data?.data ?? [];
+  const unbilledCount = allRows.filter((s) => s.status !== 'gone' && !s.subscription).length;
+  const rows = billFilter === 'unbilled' ? allRows.filter((s) => !s.subscription) : allRows;
+  const unlink = useMutation({
+    mutationFn: (id: string) => unlinkLinodeSubscription(id),
+    onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); qc.invalidateQueries({ queryKey: ['linode-servers'] }); },
+    onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
+  });
   if (isLoading) return <Center><Loader /></Center>;
   if (isError) return <Alert color="red">{errMsg(error)}</Alert>;
-  if (!rows.length) return <Paper withBorder p="xl"><Text ta="center" c="dimmed">No servers yet. Connect a Linode account and press &quot;Sync now&quot; on the Accounts tab.</Text></Paper>;
+  if (!allRows.length) return <Paper withBorder p="xl"><Text ta="center" c="dimmed">No servers yet. Connect a Linode account and press &quot;Sync now&quot; on the Accounts tab.</Text></Paper>;
   return (
     <Paper withBorder>
-      <Table.ScrollContainer minWidth={950}>
+      <Group p="sm" gap="sm">
+        <Select size="xs" w={220} value={billFilter} onChange={(v) => setBillFilter(v ?? 'all')} allowDeselect={false}
+          data={[{ value: 'all', label: 'All servers' }, { value: 'unbilled', label: `Unbilled servers (${unbilledCount})` }]} />
+      </Group>
+      <Table.ScrollContainer minWidth={1150}>
         <Table verticalSpacing="sm">
-          <Table.Thead><Table.Tr><Table.Th>Label</Table.Th><Table.Th>Status</Table.Th><Table.Th>Region</Table.Th><Table.Th>Plan</Table.Th><Table.Th>IPv4</Table.Th><Table.Th>Domains</Table.Th><Table.Th>Client</Table.Th><Table.Th>Last synced</Table.Th><Table.Th /></Table.Tr></Table.Thead>
+          <Table.Thead><Table.Tr><Table.Th>Label</Table.Th><Table.Th>Status</Table.Th><Table.Th>Region</Table.Th><Table.Th>Plan</Table.Th><Table.Th>IPv4</Table.Th><Table.Th>Domains</Table.Th><Table.Th>Client</Table.Th><Table.Th>Billing</Table.Th><Table.Th>Last synced</Table.Th><Table.Th /></Table.Tr></Table.Thead>
           <Table.Tbody>
             {rows.map((s) => (
               <Table.Tr key={s.id}>
@@ -230,14 +372,36 @@ function ServersTab({ canManage, onShowDomains }: { canManage: boolean; onShowDo
                     <Text size="xs" c="blue">Suggested: {s.suggested_client.name} (all {s.suggested_client.domains} domain(s) belong to them)</Text>
                   )}
                 </Table.Td>
+                <Table.Td>
+                  {s.subscription ? (
+                    <Stack gap={2}>
+                      <Badge color={BILL_STATE[s.subscription.state]?.color ?? 'gray'}>{BILL_STATE[s.subscription.state]?.label ?? s.subscription.state}</Badge>
+                      <Text size="xs">{money(s.subscription.amount)} / {CYCLE_LABEL[s.subscription.billing_cycle ?? ''] ?? s.subscription.billing_cycle}</Text>
+                      <Text size="xs" c="dimmed">Expires {s.subscription.expire_date ?? '—'}</Text>
+                      <Text size="xs" c="dimmed">Next invoice {s.subscription.next_invoice_date ?? '—'}</Text>
+                      {s.subscription.latest_invoice && (
+                        <Text size="xs" c="blue" style={{ cursor: 'pointer' }} onClick={() => navigate('/invoices')}>
+                          {s.subscription.latest_invoice.number} ({s.subscription.latest_invoice.status})
+                        </Text>
+                      )}
+                    </Stack>
+                  ) : <Badge color="gray" variant="light">Unbilled</Badge>}
+                </Table.Td>
                 <Table.Td>{fmt(s.synced_at)}</Table.Td>
-                <Table.Td>{canManage && <Button size="xs" variant="light" leftSection={<IconLink size={14} />} onClick={() => setMapFor(s)}>Map to client</Button>}</Table.Td>
+                <Table.Td>
+                  <Stack gap={4}>
+                    {canManage && <Button size="xs" variant="light" leftSection={<IconLink size={14} />} onClick={() => setMapFor(s)}>Map to client</Button>}
+                    {canBill && !s.subscription && s.status !== 'gone' && <Button size="xs" leftSection={<IconReceipt size={14} />} onClick={() => setBillFor(s)}>Bill this server</Button>}
+                    {canManage && s.subscription && <Button size="xs" variant="subtle" color="gray" loading={unlink.isPending} onClick={() => { if (window.confirm('Unlink this subscription from the server? The subscription keeps billing; nothing changes at Linode.')) unlink.mutate(s.id); }}>Unlink</Button>}
+                  </Stack>
+                </Table.Td>
               </Table.Tr>
             ))}
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
       {mapFor && <MapModal resource={mapFor} onClose={() => setMapFor(null)} />}
+      {billFor && <BillModal resource={billFor} onClose={() => setBillFor(null)} />}
     </Paper>
   );
 }

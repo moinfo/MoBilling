@@ -247,6 +247,12 @@ export default function ClientSubscriptions() {
                   ) : (
                     <Text size="sm" c="dimmed">—</Text>
                   )}
+                  {sub.linode_server && (
+                    <Text size="xs" c="dimmed">
+                      Linode: {sub.linode_server.label}{sub.linode_server.ipv4?.[0] ? ` · ${sub.linode_server.ipv4[0]}` : ''}
+                      {sub.linode_server.region ? ` · ${sub.linode_server.region}` : ''}{sub.linode_server.plan ? ` · ${sub.linode_server.plan}` : ''}
+                    </Text>
+                  )}
                 </Table.Td>
                 <Table.Td>
                   <Badge variant="light" size="sm">
@@ -254,7 +260,7 @@ export default function ClientSubscriptions() {
                   </Badge>
                 </Table.Td>
                 <Table.Td>{sub.quantity}</Table.Td>
-                <Table.Td>{sub.price ? formatCurrency(sub.price) : '—'}</Table.Td>
+                <Table.Td>{(sub.metadata as any)?.price_override && sub.recurring_amount ? formatCurrency(sub.recurring_amount) : sub.price ? formatCurrency(sub.price) : '—'}</Table.Td>
                 <Table.Td>{formatDate(sub.start_date)}</Table.Td>
                 <Table.Td>
                   {sub.expire_date ? (

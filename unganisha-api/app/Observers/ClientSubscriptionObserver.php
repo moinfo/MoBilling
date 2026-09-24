@@ -21,6 +21,15 @@ class ClientSubscriptionObserver
         }
 
         $product = $sub->productService;
+
+        // Linode Server products are MANUAL, billing-only: a status change only changes
+        // billing state. We deliberately do NOT touch the Linode server (no shutdown/
+        // delete/API call of any kind); staff are alerted via the Linode audit log + app log.
+        if ($product && $product->provisioning_type === 'linode') {
+            app(\App\Services\Linode\LinodeBilling::class)->noteStatusChange($sub);
+            return;
+        }
+
         if (!$product || $product->provisioning_type !== 'whm_cpanel') {
             return;
         }

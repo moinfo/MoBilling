@@ -44,6 +44,11 @@ class ClientSubscription extends Model
         return $this->hasOne(HostingAccount::class);
     }
 
+    public function linodeResource()
+    {
+        return $this->hasOne(LinodeResource::class, 'client_subscription_id');
+    }
+
     public function addons()
     {
         return $this->hasMany(SubscriptionAddon::class);

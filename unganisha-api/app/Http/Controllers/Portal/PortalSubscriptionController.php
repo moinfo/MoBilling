@@ -38,11 +38,32 @@ class PortalSubscriptionController extends Controller
             ->orderByRaw("CASE status WHEN 'active' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END")
             ->orderBy('label')
             ->orderBy('expire_date')
-            ->get()
-            ->map(function ($sub) {
+            ->get();
+
+        // Linode servers billed through a subscription: read-only facts only (no tokens, no ids,
+        // no actions). Looked up by THIS client's subscription ids, so another client's server can't leak.
+        $servers = \App\Models\LinodeResource::withoutGlobalScopes()
+            ->whereIn('client_subscription_id', $subscriptions->pluck('id'))
+            ->where('client_id', $clientId)->get()->keyBy('client_subscription_id');
+        $invoiceLogs = $servers->isEmpty() ? collect() : RecurringInvoiceLog::withoutGlobalScopes()
+            ->whereIn('client_subscription_id', $servers->keys())->whereNotNull('document_id')
+            ->with('document:id,document_number,status,due_date,total')
+            ->orderByDesc('invoice_created_at')->get()->unique('client_subscription_id')->keyBy('client_subscription_id');
+
+        $subscriptions = $subscriptions->map(function ($sub) use ($servers, $invoiceLogs) {
                 $cycle = $sub->productService?->billing_cycle;
                 $sub->billing_cycle = $cycle;
                 $sub->next_invoice_date = $this->calculateNextDueDate($sub);
+                if ($srv = $servers->get($sub->id)) {
+                    $doc = $invoiceLogs->get($sub->id)?->document;
+                    $sub->linode_server = [
+                        'name' => $srv->label, 'ip' => $srv->ipv4[0] ?? null, 'region' => $srv->region,
+                        'status' => $srv->status, 'last_synced_at' => $srv->synced_at,
+                        'renewal_invoice' => $doc && !in_array($doc->status, ['paid', 'cancelled'])
+                            ? ['id' => $doc->id, 'number' => $doc->document_number, 'status' => $doc->status, 'due_date' => $doc->due_date?->toDateString(), 'total' => $doc->total]
+                            : null,
+                    ];
+                }
                 return $sub;
             });
 

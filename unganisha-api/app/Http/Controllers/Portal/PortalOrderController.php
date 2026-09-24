@@ -60,6 +60,8 @@ class PortalOrderController extends Controller
             ->where('tenant_id', $tenantId)
             ->where('is_active', true)
             ->when(!$isStaff, fn ($q) => $q->where('portal_visible', true))
+            // Linode Server products are billed manually by staff — never in the self-order catalog.
+            ->where(fn ($q) => $q->whereNull('provisioning_type')->orWhere('provisioning_type', '!=', 'linode'))
             ->where('price', '>', 0)
             ->whereNotNull('category')
             ->where('category', '!=', 'Server Sync Tool Auto-Created Products')
@@ -263,6 +265,9 @@ class PortalOrderController extends Controller
         ]);
 
         $product = ProductService::withoutGlobalScopes()->find($data['product_service_id']);
+        if (!$isStaff && $product && $product->provisioning_type === 'linode') {
+            return response()->json(['message' => 'This service cannot be ordered online. Please contact us.'], 422);
+        }
 
         // Promo code: re-validate server-side against THIS product + its base.
         // A tampered/expired code is rejected loudly (422) so the client is never

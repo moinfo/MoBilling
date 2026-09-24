@@ -63,6 +63,10 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
                     {item.cpanel_package ?? 'WHM'}
                   </Badge>
                 </Tooltip>
+              ) : item.provisioning_type === 'linode' ? (
+                <Tooltip label="Linode server: billing only, no automatic action on the server">
+                  <Badge size="xs" variant="light" color="indigo" leftSection={<IconServer size={10} />}>Linode</Badge>
+                </Tooltip>
               ) : (
                 <Text size="xs" c="dimmed">—</Text>
               )}

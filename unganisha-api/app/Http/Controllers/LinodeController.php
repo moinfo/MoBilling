@@ -9,7 +9,9 @@ use App\Models\Domain;
 use App\Models\LinodeAccount;
 use App\Models\LinodeAuditLog;
 use App\Models\LinodeResource;
+use App\Models\RecurringInvoiceLog;
 use App\Services\Linode\DnsMapping;
+use App\Services\Linode\LinodeBilling;
 use App\Services\Linode\LinodeService;
 use App\Services\Registrar\NameserverService;
 use Illuminate\Http\JsonResponse;
@@ -189,8 +191,17 @@ class LinodeController extends Controller
             foreach ($d['dns']['servers'] as $srv) $byServer[$srv['id']][] = $d;
         }
 
-        return response()->json(['data' => $rows->map(function ($r) use ($byServer) {
+        // Billing summary per server (one batched query each; no per-row N+1).
+        $subs = ClientSubscription::with('productService:id,name,price,billing_cycle')
+            ->whereIn('id', $rows->pluck('client_subscription_id')->filter())->get()->keyBy('id');
+        $logs = RecurringInvoiceLog::with('document:id,document_number,status,due_date,total')
+            ->whereIn('client_subscription_id', $subs->keys())->whereNotNull('document_id')
+            ->orderByDesc('invoice_created_at')->get()->unique('client_subscription_id')->keyBy('client_subscription_id');
+        $billing = app(LinodeBilling::class);
+
+        return response()->json(['data' => $rows->map(function ($r) use ($byServer, $subs, $logs, $billing) {
             $a = $this->resourceArray($r);
+            $a['subscription'] = $billing->summary($subs->get($r->client_subscription_id), $logs->get($r->client_subscription_id));
             $mine = $byServer[$r->id] ?? [];
             $a['domain_count'] = count($mine);
             $a['domains'] = array_map(fn ($d) => ['id' => $d['id'], 'label' => $d['label']], $mine);
@@ -503,10 +514,81 @@ class LinodeController extends Controller
             $clientId = $clientId ?: $sub->client_id;
         }
 
+        // A billed server keeps its subscription link: re-mapping must not silently drop it or move
+        // the server to a different client than the one being billed (use unlink-subscription first).
+        $linked = !$request->has('client_subscription_id') && $resource->client_subscription_id
+            ? ClientSubscription::where('id', $resource->client_subscription_id)->first() : null;
+        if ($linked) {
+            if ($clientId !== $linked->client_id) {
+                return response()->json(['message' => 'This server is billed to another client. Unlink its subscription first.'], 422);
+            }
+            $subId = $linked->id;
+        }
+
         $resource->update(['client_id' => $clientId, 'client_subscription_id' => $subId]);
         $this->audit($resource->account, 'resource.map', $resource->label, ['client_id' => $clientId, 'client_subscription_id' => $subId]);
 
         return response()->json(['data' => $this->resourceArray($resource->load(['account:id,label,last_synced_at', 'client:id,name'])), 'message' => 'Mapping saved.']);
+    }
+
+    // ── billing (server <-> subscription) ──
+
+    /** Linode-type products and the actor's ability to create subscriptions. */
+    public function billingProducts(): JsonResponse
+    {
+        return response()->json(['data' => app(LinodeBilling::class)->products()]);
+    }
+
+    /** A client's live subscriptions, for "Link existing subscription". */
+    public function clientSubscriptions(Client $client): JsonResponse
+    {
+        $taken = LinodeResource::whereNotNull('client_subscription_id')->pluck('client_subscription_id')->all();
+        $rows = ClientSubscription::with('productService:id,name,billing_cycle')
+            ->where('client_id', $client->id)->whereIn('status', LinodeBilling::LIVE)->whereNotIn('id', $taken)->orderBy('label')->get();
+
+        return response()->json(['data' => $rows->map(fn ($s) => [
+            'id' => $s->id, 'label' => $s->label, 'product_name' => $s->productService?->name, 'status' => $s->status,
+            'expire_date' => $s->expire_date?->toDateString(), 'billing_cycle' => $s->productService?->billing_cycle,
+        ])]);
+    }
+
+    public function bill(Request $request, LinodeResource $resource): JsonResponse
+    {
+        $data = $request->validate([
+            'client_id' => 'required|uuid', 'product_service_id' => 'required|uuid',
+            'amount' => 'required|numeric|min:0.01|max:999999999', 'billing_cycle' => 'nullable|in:monthly,quarterly,half_yearly,yearly',
+            'start_date' => 'required|date', 'expire_date' => 'nullable|date', 'label' => 'nullable|string|max:255',
+            'mode' => 'required|in:paid_outside,invoice_now',
+        ]);
+        try {
+            $res = app(LinodeBilling::class)->bill($resource, $data);
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json([
+            'data' => ['subscription_id' => $res['subscription']->id, 'document_id' => $res['document']?->id, 'document_number' => $res['document']?->document_number],
+            'message' => $res['document'] ? "Subscription created (pending payment) and invoice {$res['document']->document_number} issued." : 'Subscription created. No invoice was created; the next invoice is generated automatically before the renewal date.',
+        ], 201);
+    }
+
+    public function linkSubscription(Request $request, LinodeResource $resource): JsonResponse
+    {
+        $data = $request->validate(['client_subscription_id' => 'required|uuid']);
+        try {
+            app(LinodeBilling::class)->link($resource, $data['client_subscription_id']);
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Subscription linked to this server.']);
+    }
+
+    public function unlinkSubscription(LinodeResource $resource): JsonResponse
+    {
+        app(LinodeBilling::class)->unlink($resource);
+
+        return response()->json(['message' => 'Subscription unlinked. The subscription itself was not changed and nothing was changed at Linode.']);
     }
 
     // ── helpers ──

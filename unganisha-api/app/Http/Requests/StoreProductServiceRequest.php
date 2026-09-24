@@ -9,7 +9,30 @@ class StoreProductServiceRequest extends FormRequest
 {
     public function authorize(): bool
     {
+        // Linode Server products are billing-only records tied to the tenant's Linode
+        // integration — only staff who can manage Linode may create/convert them.
+        if ($this->input('provisioning_type') === 'linode') {
+            return (bool) $this->user()?->hasPermission('linode.manage');
+        }
+
         return true;
+    }
+
+    /**
+     * A Linode Server product is manual/billing-only: never self-orderable from the
+     * portal, and carries no WHM server/package.
+     */
+    public function validated($key = null, $default = null)
+    {
+        $data = parent::validated();
+        if (($data['provisioning_type'] ?? null) === 'linode') {
+            $data['portal_visible'] = false;
+            $data['auto_provision'] = false;
+            $data['server_id'] = null;
+            $data['cpanel_package'] = null;
+        }
+
+        return $key ? data_get($data, $key, $default) : $data;
     }
 
     public function rules(): array
@@ -30,7 +53,7 @@ class StoreProductServiceRequest extends FormRequest
             'invoice_day_of_month' => 'nullable|integer|min:1|max:28',
             'is_active' => 'nullable|boolean',
             // WHM/cPanel provisioning (tenant-scoped server check — never bare exists)
-            'provisioning_type' => 'nullable|in:none,whm_cpanel',
+            'provisioning_type' => 'nullable|in:none,whm_cpanel,linode',
             'server_id' => [
                 'nullable', 'uuid', 'required_if:provisioning_type,whm_cpanel',
                 Rule::exists('servers', 'id')->where('tenant_id', auth()->user()?->tenant_id),
