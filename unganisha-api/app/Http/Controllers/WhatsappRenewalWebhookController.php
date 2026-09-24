@@ -191,6 +191,18 @@ class WhatsappRenewalWebhookController extends Controller
                 return response('OK', 200);
             }
 
+            // A step that timed out only loses the flow, never the verified login.
+            if ($session->flow && !$session->assisted_by_user_id && $session->flow_expires_at && $session->flow_expires_at->isPast()) {
+                $this->reply($tenant, $phone, $this->t($lang, 'Muda wa hatua umeisha, tuanze upya:', 'That step timed out, let\'s start over:'));
+                $this->sendRootMenu($tenant, $client, $phone, $lang);
+                return response('OK', 200);
+            }
+
+            // Sliding per-flow window: each message inside a flow keeps it alive (60 min for payment steps).
+            if ($session->flow && !$session->assisted_by_user_id) {
+                $session->update(['flow_expires_at' => now()->addMinutes($session->flow === 'pay_invoice' ? 60 : 10)]);
+            }
+
             // Universal escape — works from any step of any flow, not just the root
             // menu's own "unrecognised input" fallback, so someone stuck mid-order
             // always has a way back out without waiting for the session to expire.
@@ -1058,7 +1070,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'assisted_by_user_id' => $assistedBy, 'flow' => null, 'state' => null, 'items' => null, 'language' => $lang, 'confirmed_at' => now(), 'expires_at' => $assistedBy ? now()->addHours(2) : now()->addDays(30)],
+            ['client_id' => $client->id, 'assisted_by_user_id' => $assistedBy, 'flow' => null, 'state' => null, 'items' => null, 'language' => $lang, 'confirmed_at' => now(), 'expires_at' => $assistedBy ? now()->addHours(2) : now()->addDays(30), 'flow_expires_at' => null],
         );
 
         $banner = '';
@@ -1230,7 +1242,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'hosting_submenu', 'state' => ['step' => 'choose'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'hosting_submenu', 'state' => ['step' => 'choose'], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -1301,7 +1313,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => ['step' => 'pick_account', 'account_ids' => $accounts->pluck('id')->all(), 'capped' => $total > $accounts->count()], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => ['step' => 'pick_account', 'account_ids' => $accounts->pluck('id')->all(), 'capped' => $total > $accounts->count()], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -1538,7 +1550,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => ['step' => 'account_menu', 'account_id' => $account->id, 'options' => $options, 'account_ids' => [$account->id]], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => ['step' => 'account_menu', 'account_id' => $account->id, 'options' => $options, 'account_ids' => [$account->id]], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $msg = implode("\n", $lines);
@@ -1778,7 +1790,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => $state, 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => $state, 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
     }
 
@@ -2012,7 +2024,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'more_services', 'state' => ['step' => 'choose'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'more_services', 'state' => ['step' => 'choose'], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -2069,7 +2081,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'more_services', 'state' => ['step' => 'support_text'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'more_services', 'state' => ['step' => 'support_text'], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -2195,7 +2207,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'my_servers', 'state' => ['step' => 'pick', 'server_ids' => $servers->pluck('id')->all(), 'capped' => $total > $servers->count()], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'my_servers', 'state' => ['step' => 'pick', 'server_ids' => $servers->pluck('id')->all(), 'capped' => $total > $servers->count()], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -2208,7 +2220,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'my_servers', 'state' => ['step' => 'detail', 'server_id' => $srv->id, 'multiple' => $multiple], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'my_servers', 'state' => ['step' => 'detail', 'server_id' => $srv->id, 'multiple' => $multiple], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -2269,7 +2281,7 @@ class WhatsappRenewalWebhookController extends Controller
                 ));
                 return;
             }
-            $session->update(['state' => ['step' => 'confirm_name', 'server_id' => $srv->id, 'multiple' => $state['multiple'] ?? false], 'expires_at' => now()->addMinutes(10)]);
+            $session->update(['state' => ['step' => 'confirm_name', 'server_id' => $srv->id, 'multiple' => $state['multiple'] ?? false]] + $this->flowRefresh($session, 10));
             $this->reply($tenant, $phone, $this->t($lang,
                 "Kuthibitisha, andika jina kamili la server: {$srv->label}\n(Server itazimika kwa muda mfupi.) Andika 0 kughairi.",
                 "To confirm, type the exact server name: {$srv->label}\n(The server will be briefly unavailable.) Type 0 to cancel."
@@ -2497,7 +2509,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'expiring', 'state' => ['step' => 'pick', 'capped' => count($all) > count($items), 'items' => array_map(fn ($it) => ['kind' => $it['kind'], 'id' => $it['id']], $items)], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(15)],
+            ['client_id' => $client->id, 'flow' => 'expiring', 'state' => ['step' => 'pick', 'capped' => count($all) > count($items), 'items' => array_map(fn ($it) => ['kind' => $it['kind'], 'id' => $it['id']], $items)], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 15)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -2563,7 +2575,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => $flow, 'state' => $state, 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => $flow, 'state' => $state, 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
     }
 
@@ -2827,6 +2839,33 @@ class WhatsappRenewalWebhookController extends Controller
         $this->reply($tenant, $phone, implode("\n", $lines) . "\n\n" . implode("\n", $opts) . "\n\n" . $this->menuFooter($lang));
     }
 
+    /**
+     * Session windows, kept apart: `expires_at` is the LOGIN (30 days, or 2h for staff-assist) and is never
+     * shortened by a flow step; `flow_expires_at` is the per-flow step TTL. A session that is not a genuine,
+     * still-valid verified login (e.g. reached through a renewal reminder) keeps the short window as its
+     * login too, exactly as before. Staff-assist keeps its 2h and has no per-flow TTL.
+     */
+    private function flowWindow(Tenant $tenant, string $phone, int $minutes): array
+    {
+        $existing = WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('phone', $phone)->first();
+        $short = now()->addMinutes($minutes);
+
+        if ($existing && $existing->confirmed_at && $existing->expires_at && $existing->expires_at->isFuture()) {
+            return [
+                'expires_at' => $existing->expires_at->gt($short) ? $existing->expires_at : $short,
+                'flow_expires_at' => $existing->assisted_by_user_id ? null : $short,
+            ];
+        }
+
+        return ['expires_at' => $short, 'flow_expires_at' => $short];
+    }
+
+    /** Extend only the per-flow TTL of an existing confirmed session (login window untouched). */
+    private function flowRefresh(WhatsappRenewalSession $session, int $minutes): array
+    {
+        return ['flow_expires_at' => $session->assisted_by_user_id ? null : now()->addMinutes($minutes)];
+    }
+
     /** Staff-assist attribution: every action taken in an assisted session is logged (and stamped on the invoice) with the staff user. */
     private function noteAssisted(?WhatsappRenewalSession $session, string $action, ?Document $doc = null, array $extra = []): void
     {
@@ -2894,7 +2933,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'pending_dup', 'state' => ['step' => 'choose', 'document_id' => $doc->id, 'name' => $name], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'pending_dup', 'state' => ['step' => 'choose', 'document_id' => $doc->id, 'name' => $name], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
         $amt = number_format((float) $doc->balance_due);
         $this->reply($tenant, $phone, $this->t($lang,
@@ -3122,7 +3161,7 @@ class WhatsappRenewalWebhookController extends Controller
             // Hand off to the EXISTING change-DNS flow at its explicit confirmation step.
             WhatsappRenewalSession::updateOrCreate(
                 ['tenant_id' => $tenant->id, 'phone' => $phone],
-                ['client_id' => $client->id, 'flow' => 'change_dns', 'state' => ['step' => 'confirm', 'domain_id' => $domain->id, 'nameservers' => $ns], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+                ['client_id' => $client->id, 'flow' => 'change_dns', 'state' => ['step' => 'confirm', 'domain_id' => $domain->id, 'nameservers' => $ns], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
             );
             $lines[] = $sw
                 ? "• {$account->domain} imesajiliwa nasi, tunaweza kubadilisha nameservers kwa niaba yako. Mabadiliko yanaweza kuchukua masaa kadhaa, na email/website ya sasa itaelekezwa kwenye hosting hii."
@@ -3285,7 +3324,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'items' => $items, 'flow' => null, 'state' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(30)],
+            ['client_id' => $client->id, 'items' => $items, 'flow' => null, 'state' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 30)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -3399,7 +3438,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'renew_pick', 'state' => ['step' => 'pick', 'domain_ids' => $domains->pluck('id')->all()], 'items' => null, 'language' => $lang, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'renew_pick', 'state' => ['step' => 'pick', 'domain_ids' => $domains->pluck('id')->all()], 'items' => null, 'language' => $lang, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -3463,7 +3502,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -3744,7 +3783,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'order_hosting', 'state' => ['step' => 'pick_plan', 'category' => $category, 'plan_ids' => $planIds, 'domain' => $prefilledDomain], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'order_hosting', 'state' => ['step' => 'pick_plan', 'category' => $category, 'plan_ids' => $planIds, 'domain' => $prefilledDomain], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -3939,6 +3978,10 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
             $this->noteAssisted($session, 'domain_order', $document, ['domain' => $name]);
+            // The EPP/auth code now lives on the Domain row only — drop it from the chat session state right away.
+            if (isset($state['auth_info'])) {
+                $session->update(['state' => array_diff_key($session->state ?? [], ['auth_info' => true])]);
+            }
 
             // Pay for the domain first; the hosting order (same plan already chosen,
             // this domain now known) resumes right after via offerPayment()'s $after.
@@ -4206,7 +4249,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'pay_invoice', 'state' => ['step' => 'choose_method', 'document_id' => $document->id, 'after' => $after], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'pay_invoice', 'state' => ['step' => 'choose_method', 'document_id' => $document->id, 'after' => $after], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 60)],
         );
 
         $this->reply($tenant, $phone, $this->paymentMethodMessage($lang, $document, (float) $document->total));
@@ -4254,7 +4297,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'pay_invoice', 'state' => ['step' => 'pick_invoice', 'doc_ids' => $docIds, 'capped' => $total > $invoices->count()], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'pay_invoice', 'state' => ['step' => 'pick_invoice', 'doc_ids' => $docIds, 'capped' => $total > $invoices->count()], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 60)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -4290,7 +4333,7 @@ class WhatsappRenewalWebhookController extends Controller
             }
 
             $this->noteAssisted($session, 'invoice_selected_for_payment', $doc);
-            $session->update(['state' => ['step' => 'choose_method', 'document_id' => $doc->id]]);
+            $session->update(['state' => ['step' => 'choose_method', 'document_id' => $doc->id]] + $this->flowRefresh($session, 60));
             $this->reply($tenant, $phone, $this->paymentMethodMessage($lang, $doc, (float) $doc->balance_due));
             return;
         }
@@ -4356,7 +4399,7 @@ class WhatsappRenewalWebhookController extends Controller
             $domain = $after['domain'];
             WhatsappRenewalSession::updateOrCreate(
                 ['tenant_id' => $tenant->id, 'phone' => $phone],
-                ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'offer_hosting', 'domain' => $domain], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+                ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'offer_hosting', 'domain' => $domain], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
             );
             $this->reply($tenant, $phone, $this->t($lang,
                 $this->confirmMessage('sw', 'Website Hosting', ["Domain: {$domain}"], "Unataka pia hosting kwenye {$domain}?"),
@@ -4370,7 +4413,7 @@ class WhatsappRenewalWebhookController extends Controller
             if ($plan) {
                 WhatsappRenewalSession::updateOrCreate(
                     ['tenant_id' => $tenant->id, 'phone' => $phone],
-                    ['client_id' => $client->id, 'flow' => 'order_hosting', 'state' => ['step' => 'confirm', 'category' => $after['category'] ?? null, 'product_service_id' => $plan->id, 'domain' => $after['domain']], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+                    ['client_id' => $client->id, 'flow' => 'order_hosting', 'state' => ['step' => 'confirm', 'category' => $after['category'] ?? null, 'product_service_id' => $plan->id, 'domain' => $after['domain']], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
                 );
                 $this->reply($tenant, $phone, $this->orderConfirmMessage($lang, $plan, (float) $plan->price, $after['domain']));
                 return;
@@ -4421,7 +4464,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'whois', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'whois', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -4471,7 +4514,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'check_availability', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'check_availability', 'state' => ['step' => 'ask_name'], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
@@ -4568,7 +4611,7 @@ class WhatsappRenewalWebhookController extends Controller
         $lines[] = '';
         $lines[] = $this->menuFooter($lang);
 
-        $session->update(['state' => ['step' => 'pick', 'rows' => $stateRows], 'expires_at' => now()->addMinutes(10)]);
+        $session->update(['state' => ['step' => 'pick', 'rows' => $stateRows]] + $this->flowRefresh($session, 10));
         $this->reply($tenant, $phone, implode("\n", $lines));
     }
 
@@ -4607,7 +4650,7 @@ class WhatsappRenewalWebhookController extends Controller
         $price = (float) $pricing->register_price;
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'confirm', 'domain' => $name, 'price' => $price], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'confirm', 'domain' => $name, 'price' => $price], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
         $this->reply($tenant, $phone, $this->availableDomainMessage($lang, $name, $price, 'order'));
     }
@@ -4636,7 +4679,7 @@ class WhatsappRenewalWebhookController extends Controller
             $price = (float) $pricing->register_price;
             WhatsappRenewalSession::updateOrCreate(
                 ['tenant_id' => $tenant->id, 'phone' => $phone],
-                ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'confirm', 'domain' => $name, 'price' => $price], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+                ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'confirm', 'domain' => $name, 'price' => $price], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
             );
             $this->reply($tenant, $phone, $this->availableDomainMessage($lang, $name, $price, 'order'));
         } else {
@@ -4685,7 +4728,7 @@ class WhatsappRenewalWebhookController extends Controller
 
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
-            ['client_id' => $client->id, 'flow' => 'change_dns', 'state' => ['step' => 'pick_domain', 'domain_ids' => $domainIds, 'capped' => $totalDomains > $domains->count()], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            ['client_id' => $client->id, 'flow' => 'change_dns', 'state' => ['step' => 'pick_domain', 'domain_ids' => $domainIds, 'capped' => $totalDomains > $domains->count()], 'items' => null, 'confirmed_at' => now(), ...$this->flowWindow($tenant, $phone, 10)],
         );
 
         $this->reply($tenant, $phone, $this->t($lang,

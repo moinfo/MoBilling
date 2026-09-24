@@ -814,6 +814,95 @@ class WhatsappPhase2Test
         $this->assertSame(1, Notification::sent($u, \App\Notifications\WhatsappPinSetNotification::class)->count(), 'notice sent once');
         $this->assertContains('PIN ya WhatsApp imewekwa', (new \App\Notifications\WhatsappPinSetNotification())->toArray($u)['title']);
     }
+
+    // ═══ H5: flow TTL independent of login ═══
+    private function mins($dt): int { return (int) round(now()->diffInMinutes(\Illuminate\Support\Carbon::parse($dt), false)); }
+
+    public function test_h5_flow_step_ttl_never_shortens_the_30_day_login(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->say('6'); // WHOIS flow
+        $s = $this->session();
+        $this->assertSame('whois', $s->flow);
+        $this->assertTrue($this->mins($s->expires_at) > 60 * 24 * 29, 'login still ~30 days, got ' . $this->mins($s->expires_at) . ' min');
+        $m = $this->mins($s->flow_expires_at);
+        $this->assertTrue($m >= 9 && $m <= 10, "flow TTL ~10 min, got $m");
+        // payment steps get 60 minutes
+        $inv = $this->makeInvoice($c, 5000);
+        $this->startSession($c);
+        $this->say('5'); // View and pay invoices
+        $s = $this->session();
+        $this->assertSame('pay_invoice', $s->flow);
+        $m = $this->mins($s->flow_expires_at);
+        $this->assertTrue($m >= 59 && $m <= 60, "payment TTL ~60 min, got $m");
+        $this->assertTrue($this->mins($s->expires_at) > 60 * 24 * 29, 'login kept');
+    }
+
+    public function test_h5_flow_timeout_keeps_client_verified_and_shows_root_menu(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->say('6');
+        $this->session()->update(['flow_expires_at' => now()->subMinute()]);
+        $t = $this->say('example.co.tz');
+        $this->assertContains("That step timed out", $t);
+        $this->assertContains('Choose a service', $t);
+        $this->assertNotContains('language', strtolower($t));
+        $s = $this->session();
+        $this->assertTrue($s->confirmed_at !== null && $s->flow === null && $s->flow_expires_at === null, 'still verified, flow reset');
+        $this->assertSame('en', $s->language);
+        // Swahili
+        $this->session()->update(['language' => 'sw']);
+        $this->say('6');
+        $this->session()->update(['flow_expires_at' => now()->subMinute()]);
+        $this->assertContains('Muda wa hatua umeisha, tuanze upya:', $this->say('x'));
+        // an active flow message extends the window (sliding)
+        $this->startSession($c);
+        $this->say('1'); // order_domain / ask_name
+        $this->assertSame('order_domain', $this->session()->flow);
+        $this->session()->update(['flow_expires_at' => now()->addMinutes(1)]);
+        $this->say('not a domain');
+        $this->assertTrue($this->mins($this->session()->flow_expires_at) >= 9, 'flow window slides forward');
+        // login itself expired -> old behaviour (start over from language)
+        $this->session()->update(['expires_at' => now()->subMinute()]);
+        $this->assertContains('timed out', $this->say('hi') . ' timed out');
+        $this->assertTrue($this->session()->flow === 'language_select');
+    }
+
+    public function test_h5_staff_assist_keeps_its_two_hour_window_and_has_no_flow_ttl(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c, $this->user->id);
+        $this->say('1');
+        $s = $this->session();
+        $this->assertSame('order_domain', $s->flow);
+        $m = $this->mins($s->expires_at);
+        $this->assertTrue($m > 100 && $m <= 120, "2h window kept, got $m");
+        $this->assertSame(null, $s->flow_expires_at);
+        $this->assertSame($this->user->id, $s->assisted_by_user_id);
+        // even a stale flow_expires_at never resets an assisted flow
+        $s->update(['flow_expires_at' => now()->subMinute()]);
+        $t = $this->say('not a domain');
+        $this->assertNotContains('timed out', $t);
+        $this->assertSame('order_domain', $this->session()->flow);
+    }
+
+    public function test_h5_epp_code_removed_from_state_once_transfer_order_is_created(): void
+    {
+        $this->fredTld();
+        $c = $this->makeClient();
+        $plan = ProductService::create(['tenant_id' => $this->tenant->id, 'type' => 'service', 'name' => 'P2 Host2', 'price' => 30000, 'tax_percent' => 0, 'unit' => 'pcs', 'category' => 'Web Hosting', 'billing_cycle' => 'yearly', 'provisioning_type' => 'whm_cpanel', 'portal_visible' => true, 'is_active' => true]);
+        $this->startSession($c);
+        // the transfer confirm step of the hosting flow, EPP still in state
+        $this->session()->update(['flow' => 'order_hosting', 'state' => ['step' => 'transfer_domain_confirm', 'category' => 'Web Hosting', 'product_service_id' => $plan->id, 'domain' => 'epp-p2.co.tz', 'domain_price' => 19999, 'auth_info' => 'SECRET-EPP-123']]);
+        $before = json_encode($this->session()->state);
+        $this->assertContains('SECRET-EPP-123', $before);
+        // yes -> creates the order (FRED account lookup may fail in a fake env; either way EPP must not linger)
+        $this->say('1');
+        $s = $this->session();
+        $this->assertNotContains('SECRET-EPP-123', json_encode($s?->state));
+    }
 }
 
 class FakeBundler extends \App\Services\Hosting\RenewalBundleService
