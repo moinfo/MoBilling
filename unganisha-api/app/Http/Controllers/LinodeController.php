@@ -117,6 +117,31 @@ class LinodeController extends Controller
         return response()->json(['data' => $account->toSafeArray(), 'message' => $check['message'] ?? 'Token is valid.']);
     }
 
+    /** Read-only: what Linode has billed us and the payments made, per account. Fetched live, never stored. */
+    public function costs(): JsonResponse
+    {
+        $out = [];
+        foreach (LinodeAccount::orderBy('label')->get() as $account) {
+            $row = ['account_id' => (string) $account->id, 'label' => $account->label, 'error' => null,
+                'balance' => null, 'balance_uninvoiced' => null, 'invoices' => [], 'payments' => []];
+            try {
+                $svc = new LinodeService($account);
+                $row = array_merge($row, $svc->accountBilling());
+                $row['invoices'] = collect($svc->listInvoices())->map(fn ($i) => [
+                    'id' => $i['id'] ?? null, 'label' => $i['label'] ?? null, 'date' => $i['date'] ?? null, 'total' => (float) ($i['total'] ?? 0),
+                ])->sortByDesc('date')->values()->all();
+                $row['payments'] = collect($svc->listPayments())->map(fn ($p) => [
+                    'id' => $p['id'] ?? null, 'date' => $p['date'] ?? null, 'usd' => (float) ($p['usd'] ?? 0),
+                ])->sortByDesc('date')->values()->all();
+            } catch (LinodeApiException $e) {
+                $row['error'] = $e->getMessage();
+            }
+            $out[] = $row;
+        }
+
+        return response()->json(['data' => $out]);
+    }
+
     public function sync(LinodeAccount $account): JsonResponse
     {
         $svc = new LinodeService($account);

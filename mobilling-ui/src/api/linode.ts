@@ -156,3 +156,11 @@ export type PowerAction = 'reboot' | 'shutdown' | 'boot';
 export const linodePower = (id: string, d: { action: PowerAction; confirm_label?: string; confirm?: boolean }) =>
   api.post<{ message: string; data: LinodeResource }>(`/linode/servers/${id}/power`, d);
 export const getLinodeServerStatus = (id: string) => api.get<{ data: { id: string; status: string } }>(`/linode/servers/${id}/status`);
+
+export interface LinodeCostsRow {
+  account_id: string; label: string; error: string | null;
+  balance: number | null; balance_uninvoiced: number | null;
+  invoices: { id: number; label: string | null; date: string; total: number }[];
+  payments: { id: number; date: string; usd: number }[];
+}
+export const getLinodeCosts = () => api.get<{ data: LinodeCostsRow[] }>('/linode/costs').then((r) => r.data.data);

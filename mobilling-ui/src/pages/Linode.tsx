@@ -11,7 +11,7 @@ import {
   IconLink, IconWand, IconReceipt, IconPower,
 } from '@tabler/icons-react';
 import {
-  getLinodeAccounts, createLinodeAccount, updateLinodeAccount, deleteLinodeAccount, verifyLinodeAccount,
+  getLinodeCosts, getLinodeAccounts, createLinodeAccount, updateLinodeAccount, deleteLinodeAccount, verifyLinodeAccount,
   syncLinodeAccount, getLinodeServers, getLinodeDomains, addLinodeDomain, setLinodeNameservers,
   checkLinodeNameservers, getLinodeRecords, addLinodeRecord, updateLinodeRecord,
   mapLinodeResource, refreshLinodeDns, getLinodeBillingProducts, getLinodeClientSubscriptions, billLinodeServer, linkLinodeSubscription, unlinkLinodeSubscription, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
@@ -51,9 +51,11 @@ export default function Linode() {
           <Tabs.Tab value="accounts" leftSection={<IconPlugConnected size={14} />}>Accounts</Tabs.Tab>
           <Tabs.Tab value="servers" leftSection={<IconServer size={14} />}>Servers</Tabs.Tab>
           <Tabs.Tab value="domains" leftSection={<IconWorldWww size={14} />}>Domains</Tabs.Tab>
+          {canManage && <Tabs.Tab value="costs" leftSection={<IconReceipt size={14} />}>Gharama za Linode</Tabs.Tab>}
         </Tabs.List>
         <Tabs.Panel value="accounts" pt="md"><AccountsTab canManage={canManage} /></Tabs.Panel>
         <Tabs.Panel value="servers" pt="md"><ServersTab canManage={canManage} onShowDomains={showServerDomains} /></Tabs.Panel>
+        {canManage && <Tabs.Panel value="costs" pt="md"><CostsTab /></Tabs.Panel>}
         <Tabs.Panel value="domains" pt="md"><DomainsTab canManage={canManage} serverFilter={serverFilter} setServerFilter={setServerFilter} /></Tabs.Panel>
       </Tabs>
     </Stack>
@@ -61,6 +63,54 @@ export default function Linode() {
 }
 
 // ───────────── Accounts ─────────────
+
+const usd = (n: number | null) => (n == null ? '—' : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+
+function CostsTab() {
+  const { data, isLoading, isFetching, refetch } = useQuery({ queryKey: ['linode-costs'], queryFn: getLinodeCosts, staleTime: 5 * 60_000 });
+  if (isLoading) return <Center h={200}><Loader /></Center>;
+  return (
+    <Stack>
+      <Group justify="space-between">
+        <Text size="sm" c="dimmed">Read-only: invoices Linode has billed and payments made, read live from Linode (USD). Nothing is paid or changed from here.</Text>
+        <Button variant="light" size="xs" leftSection={<IconRefresh size={14} />} loading={isFetching} onClick={() => refetch()}>Refresh</Button>
+      </Group>
+      {(data ?? []).length === 0 && <Alert>No Linode accounts connected.</Alert>}
+      {(data ?? []).map((a) => {
+        const invoiced = a.invoices.reduce((t, i) => t + i.total, 0);
+        const paid = a.payments.reduce((t, p) => t + p.usd, 0);
+        return (
+          <Paper key={a.account_id} withBorder p="md">
+            <Group justify="space-between" mb="xs"><Title order={4}>{a.label}</Title>
+              {a.balance != null && <Badge color={a.balance > 0 ? 'red' : 'green'} variant="light">Balance due: {usd(a.balance)}</Badge>}
+            </Group>
+            {a.error ? <Alert color="red">{a.error}</Alert> : (
+              <>
+                <Group gap="xl" mb="sm">
+                  <div><Text size="xs" c="dimmed">Accruing (not yet invoiced)</Text><Text fw={600}>{usd(a.balance_uninvoiced)}</Text></div>
+                  <div><Text size="xs" c="dimmed">Total invoiced</Text><Text fw={600}>{usd(invoiced)}</Text></div>
+                  <div><Text size="xs" c="dimmed">Total paid</Text><Text fw={600}>{usd(paid)}</Text></div>
+                </Group>
+                <Group align="flex-start" grow>
+                  <ScrollArea.Autosize mah={360}>
+                    <Text fw={600} size="sm" mb={4}>Invoices</Text>
+                    <Table striped><Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Invoice</Table.Th><Table.Th ta="right">Total</Table.Th></Table.Tr></Table.Thead>
+                      <Table.Tbody>{a.invoices.map((i) => <Table.Tr key={i.id}><Table.Td>{i.date?.slice(0, 10)}</Table.Td><Table.Td>#{i.id}</Table.Td><Table.Td ta="right">{usd(i.total)}</Table.Td></Table.Tr>)}</Table.Tbody></Table>
+                  </ScrollArea.Autosize>
+                  <ScrollArea.Autosize mah={360}>
+                    <Text fw={600} size="sm" mb={4}>Payments made</Text>
+                    <Table striped><Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Payment</Table.Th><Table.Th ta="right">Amount</Table.Th></Table.Tr></Table.Thead>
+                      <Table.Tbody>{a.payments.map((p) => <Table.Tr key={p.id}><Table.Td>{p.date?.slice(0, 10)}</Table.Td><Table.Td>#{p.id}</Table.Td><Table.Td ta="right">{usd(p.usd)}</Table.Td></Table.Tr>)}</Table.Tbody></Table>
+                  </ScrollArea.Autosize>
+                </Group>
+              </>
+            )}
+          </Paper>
+        );
+      })}
+    </Stack>
+  );
+}
 
 function AccountsTab({ canManage }: { canManage: boolean }) {
   const qc = useQueryClient();

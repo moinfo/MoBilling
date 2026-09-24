@@ -186,6 +186,23 @@ class LinodeService
         return $this->paginate('/linode/instances');
     }
 
+    /** Read-only billing view (needs token scope account:read_only). */
+    public function accountBilling(): array
+    {
+        $a = $this->request('GET', '/account');
+        return ['balance' => (float) ($a['balance'] ?? 0), 'balance_uninvoiced' => (float) ($a['balance_uninvoiced'] ?? 0)];
+    }
+
+    public function listInvoices(): array
+    {
+        return $this->paginate('/account/invoices');
+    }
+
+    public function listPayments(): array
+    {
+        return $this->paginate('/account/payments');
+    }
+
     public function listDomains(): array
     {
         return $this->paginate('/domains');
