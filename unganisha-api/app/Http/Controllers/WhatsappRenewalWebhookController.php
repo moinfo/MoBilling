@@ -96,6 +96,19 @@ class WhatsappRenewalWebhookController extends Controller
             return response('OK', 200);
         }
 
+        if ($this->isDuplicateInbound($tenant, $phone, '[confirm]')) {
+            return response('OK', 200);
+        }
+
+        return $this->withPhoneLock($tenant, $phone, fn () => $this->confirmLocked($tenant, $phone, $bundler));
+    }
+
+    private function confirmLocked(Tenant $tenant, string $phone, RenewalBundleService $bundler)
+    {
+        // Re-read inside the lock: a concurrent message may just have changed the session / reminder targets.
+        $session = WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('phone', $phone)->first();
+        $targets = $this->openReminderTargets($tenant, $phone);
+
         if ($targets->isNotEmpty()) {
             $this->renewFromReminderTargets($tenant, $phone, $session, $targets, $bundler);
             return response('OK', 200);
@@ -144,6 +157,62 @@ class WhatsappRenewalWebhookController extends Controller
             return response('OK', 200);
         }
 
+        // MoSMS sends no message id, so a Meta retry / double delivery is caught by an identical (phone, text)
+        // arriving within a few seconds.
+        if ($this->isDuplicateInbound($tenant, $phone, $text)) {
+            return response('OK', 200);
+        }
+
+        // One message per phone at a time: two concurrent "YES" replies queue up, so the second one sees the
+        // state the first one left behind (no second order / invoice / reboot).
+        return $this->withPhoneLock($tenant, $phone, fn () => $this->processMenu($tenant, $phone, $text, $bundler));
+    }
+
+    /** True when the very same text from the very same phone was already accepted within the duplicate window. */
+    private function isDuplicateInbound(Tenant $tenant, string $phone, string $text): bool
+    {
+        $window = (int) config('services.mosms.duplicate_window', 3);
+        if ($window <= 0) {
+            return false;
+        }
+        try {
+            return !\Illuminate\Support\Facades\Cache::add("wa_dup:{$tenant->id}:{$phone}:" . md5(mb_strtolower($text)), 1, $window);
+        } catch (\Throwable $e) {
+            return false; // never drop a client's message because the cache misbehaved
+        }
+    }
+
+    /** Serialises processing per (tenant, phone); a request that cannot get the lock in time gets a friendly note. */
+    private function withPhoneLock(Tenant $tenant, string $phone, callable $work)
+    {
+        try {
+            $lock = \Illuminate\Support\Facades\Cache::lock("wa_menu:{$tenant->id}:{$phone}", 30);
+        } catch (\Throwable $e) {
+            return $work(); // no lock support: behave as before
+        }
+
+        try {
+            $got = $lock->block((int) config('services.mosms.lock_wait', 8));
+        } catch (\Illuminate\Contracts\Cache\LockTimeoutException $e) {
+            $got = false;
+        } catch (\Throwable $e) {
+            return $work();
+        }
+
+        if (!$got) {
+            $this->reply($tenant, $phone, "Ombi lako la awali bado linashughulikiwa, tafadhali subiri sekunde chache.\nYour previous request is still being processed, please wait a few seconds.");
+            return response('OK', 200);
+        }
+
+        try {
+            return $work();
+        } finally {
+            $lock->release();
+        }
+    }
+
+    private function processMenu(Tenant $tenant, string $phone, string $text, RenewalBundleService $bundler)
+    {
         $session = WhatsappRenewalSession::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
             ->where('phone', $phone)

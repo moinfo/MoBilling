@@ -41,7 +41,7 @@ class WhatsappWorkflowFixesTest
         $this->tenant = Tenant::withoutGlobalScopes()->where('name', 'MoBilling Test Co')->firstOrFail();
         $this->user = User::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
         auth()->login($this->user);
-        config(['services.mosms.inbound_webhook_secret' => 'test-secret']);
+        config(['services.mosms.inbound_webhook_secret' => 'test-secret', 'services.mosms.duplicate_window' => 0]);
         MosmsAccount::create(['tenant_id' => $this->tenant->id, 'mosms_tenant_id' => 987654321, 'email' => 'x@example.test', 'token' => 'x', 'sender' => 'x']);
         Http::swap(new Factory());
         Http::preventStrayRequests();

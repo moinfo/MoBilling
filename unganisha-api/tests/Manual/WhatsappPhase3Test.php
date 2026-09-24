@@ -851,6 +851,81 @@ class WhatsappPhase3Test
         $this->assertNotContains('Sorry, reply', $r);
         $this->assertSame(null, $this->session()->items);
     }
+
+    // ═══ G: idempotency / race ═══
+    public function test_g_identical_text_within_window_is_ignored_then_allowed_later(): void
+    {
+        config(['services.mosms.duplicate_window' => 3]);
+        \Illuminate\Support\Carbon::setTestNow(now());
+        try {
+            $c = $this->makeClient();
+            $this->startSession($c);
+            $this->assertContains('Choose a service', $this->say('MENU'));
+            $this->assertSame('', $this->say('menu'), 'same text within 3s: no second reply');
+            $this->assertContains('More services', $this->say('10'), 'a different text is processed');
+            \Illuminate\Support\Carbon::setTestNow(now()->addSeconds(4));
+            $this->assertContains('Choose a service', $this->say('MENU'), 'after the window the same text works again');
+            // other phone is independent
+            $this->assertTrue($this->say('hello', '255711999888') !== '');
+        } finally {
+            \Illuminate\Support\Carbon::setTestNow();
+        }
+    }
+
+    public function test_g_double_confirmation_creates_no_second_effect(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$doc, $dom] = $this->pendingDomainOrder($c);
+        $this->say('10'); $this->say('4'); $this->say('1'); $this->say('2');
+        config(['services.mosms.duplicate_window' => 3]);
+        $r1 = $this->say('1'); // YES: order deleted
+        $this->assertContains('was deleted', $r1);
+        $notesAfter = $doc->fresh()->notes;
+        $r2 = $this->say('1'); // duplicate delivery of the same YES
+        $this->assertSame('', $r2);
+        $this->assertSame($notesAfter, $doc->fresh()->notes, 'cancelled exactly once');
+        // and with the duplicate guard off, the second 1 is just the root-menu digit 1 (no second cancellation)
+        config(['services.mosms.duplicate_window' => 0]);
+        $r3 = $this->say('1');
+        $this->assertNotContains('was deleted', $r3);
+        $this->assertSame($notesAfter, $doc->fresh()->notes);
+    }
+
+    public function test_g_concurrent_request_while_locked_gets_friendly_note_and_no_effect(): void
+    {
+        config(['services.mosms.lock_wait' => 0]);
+        $c = $this->makeClient();
+        $this->startSession($c);
+        [$doc, $dom] = $this->pendingDomainOrder($c);
+        $this->say('10'); $this->say('4'); $this->say('1'); $this->say('2');
+        $lock = \Illuminate\Support\Facades\Cache::lock("wa_menu:{$this->tenant->id}:{$this->phone}", 30);
+        $this->assertTrue($lock->get(), 'test holds the per-phone lock (the first request in flight)');
+        $r = $this->say('1'); // the second YES arrives while the first is still being processed
+        $this->assertContains('still being processed', $r);
+        $this->assertContains('bado linashughulikiwa', $r);
+        $this->assertSame('sent', $doc->fresh()->status, 'no effect while locked');
+        $lock->release();
+        $r = $this->say('1'); // once the first finished, the confirmation is processed exactly once
+        $this->assertContains('was deleted', $r);
+        $this->assertSame('cancelled', $doc->fresh()->status);
+        // lock is released after each request
+        $l2 = \Illuminate\Support\Facades\Cache::lock("wa_menu:{$this->tenant->id}:{$this->phone}", 5);
+        $this->assertTrue($l2->get(), 'lock released after processing');
+        $l2->release();
+    }
+
+    public function test_g_lock_released_even_when_processing_throws(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        // a reply-send failure inside processing is swallowed by reply(); force an exception path via a bad state
+        $this->session()->update(['flow' => 'my_orders', 'state' => 'garbage']);
+        try { $this->say('1'); } catch (\Throwable $e) {}
+        $l = \Illuminate\Support\Facades\Cache::lock("wa_menu:{$this->tenant->id}:{$this->phone}", 5);
+        $this->assertTrue($l->get(), 'lock free after a failed request');
+        $l->release();
+    }
 }
 
 /** Records the push-style sends (WhatsAppChannel path) next to the session replies. */

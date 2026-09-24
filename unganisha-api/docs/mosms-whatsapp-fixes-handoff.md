@@ -72,3 +72,10 @@ truncating/masking them.
 out of a live MoBilling conversation. Suggested: a small table/cache `whatsapp_conversation_routes(phone, tenant_id, expires_at)` written
 when a MoBilling menu/renewal callback succeeds (`handleMobillingMenuMessage`, L440-466) with a 30-minute sliding TTL (matches MoBilling's
 session expiry); consult it first in `handleInbound()` and fall back to the most-recent-sender heuristic only when absent.
+
+## 10. Send the WhatsApp message id to MoBilling (idempotency, phase 3)
+`handleMobillingMenuMessage()` (L440-466) posts only `secret`, `mosms_tenant_id`, `phone` and `text` to `/webhooks/mosms/menu`. Please also pass
+`message_id` (Meta's `wa_message_id`, the same value item 4 dedupes on) in that payload and in the renewal-reply callback. Until then MoBilling
+uses a stop-gap: an identical (phone, text) within 3 seconds is ignored, and each phone's messages are processed one at a time (per-phone lock)
+so a retried "YES" cannot create a second order/invoice/reboot. Once `message_id` arrives, MoBilling will dedupe on (tenant, message_id) with a 24h
+TTL instead, which is exact and does not swallow a client who genuinely sends the same digit twice quickly.
