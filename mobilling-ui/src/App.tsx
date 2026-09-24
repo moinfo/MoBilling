@@ -126,6 +126,7 @@ import PortalReseller from './pages/portal/PortalReseller';
 import PortalStatement from './pages/portal/PortalStatement';
 import PortalSubscriptions from './pages/portal/PortalSubscriptions';
 import PortalHosting from './pages/portal/PortalHosting';
+import PortalLinodeServerPage from './pages/portal/PortalLinodeServerPage';
 import PortalDomains from './pages/portal/PortalDomains';
 import PortalTickets from './pages/portal/PortalTickets';
 import PortalServiceDetails from './pages/portal/PortalServiceDetails';
@@ -374,6 +375,7 @@ export default function App() {
                   <Route path="/portal/products-services" element={<PortalProductServices />} />
                   <Route path="/portal/subscriptions" element={<PortalSubscriptions />} />
                   <Route path="/portal/hosting" element={<PortalHosting />} />
+                  <Route path="/portal/servers/:id" element={<PortalLinodeServerPage />} />
                   <Route path="/portal/domains" element={<PortalDomains />} />
                   <Route path="/portal/tickets" element={<PortalTickets />} />
                   <Route path="/portal/tickets/new" element={<PortalTicketNew />} />

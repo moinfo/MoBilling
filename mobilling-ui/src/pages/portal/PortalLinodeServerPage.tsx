@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { Modal, Stack, Text, Alert, TextInput, Group, Button, Badge, Divider, Textarea, Loader } from '@mantine/core';
+import { useNavigate, useParams } from 'react-router-dom';
+import { Paper, Title, Modal, Stack, Text, Alert, TextInput, Group, Button, Badge, Divider, Textarea, Loader } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconRefresh, IconWorldWww, IconLifebuoy } from '@tabler/icons-react';
+import { IconRefresh, IconLifebuoy, IconArrowLeft } from '@tabler/icons-react';
+import { useAuth } from '../../context/AuthContext';
 import { getPortalLinodeServer, portalLinodeReboot, portalLinodeRequestDomain, portalLinodeSupportTicket } from '../../api/portal';
 
 const errMsg = (e: any): string =>
@@ -11,21 +13,25 @@ const errMsg = (e: any): string =>
 const reqColor: Record<string, string> = { pending: 'yellow', approved: 'green', rejected: 'red' };
 const reqLabel: Record<string, string> = { pending: 'Inasubiri', approved: 'Imekubaliwa', rejected: 'Imekataliwa' };
 
-/** Buttons + modal for one Linode server on the client's subscription card. Reboot only - never shutdown/boot/delete. */
-export default function PortalLinodeServer({ server, isAdmin }: { server: { id: string; name: string; status?: string | null }; isAdmin: boolean }) {
+/** Full page for one Linode server: status, reboot only (never shutdown/boot/delete), domains, add-domain request, support ticket. */
+export default function PortalLinodeServerPage() {
+  const { user } = useAuth();
+  const isAdmin = (user as any)?.role === 'admin';
+  const { id = '' } = useParams();
+  const navigate = useNavigate();
   const qc = useQueryClient();
-  const [open, setOpen] = useState(false);
   const [rebootOpen, setRebootOpen] = useState(false);
   const [confirm, setConfirm] = useState('');
   const [domain, setDomain] = useState('');
   const [ticketOpen, setTicketOpen] = useState(false);
   const [ticketMsg, setTicketMsg] = useState('');
-  const key = ['portal-linode', server.id];
-  const { data, isLoading } = useQuery({ queryKey: key, queryFn: () => getPortalLinodeServer(server.id), enabled: open });
+  const key = ['portal-linode', id];
+  const { data, isLoading, error } = useQuery({ queryKey: key, queryFn: () => getPortalLinodeServer(id), retry: false });
   const info = data?.data?.data;
+  const server = { id, name: info?.server.name ?? '', status: info?.server.status };
 
   const reboot = useMutation({
-    mutationFn: () => portalLinodeReboot(server.id, confirm),
+    mutationFn: () => portalLinodeReboot(id, confirm),
     onSuccess: (r) => {
       notifications.show({ color: 'green', message: r.data.message });
       setRebootOpen(false); setConfirm('');
@@ -34,12 +40,12 @@ export default function PortalLinodeServer({ server, isAdmin }: { server: { id: 
     onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
   });
   const request = useMutation({
-    mutationFn: () => portalLinodeRequestDomain(server.id, domain.trim()),
+    mutationFn: () => portalLinodeRequestDomain(id, domain.trim()),
     onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); setDomain(''); qc.invalidateQueries({ queryKey: key }); },
     onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
   });
   const ticket = useMutation({
-    mutationFn: () => portalLinodeSupportTicket(server.id, ticketMsg.trim() || undefined),
+    mutationFn: () => portalLinodeSupportTicket(id, ticketMsg.trim() || undefined),
     onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); setTicketOpen(false); setTicketMsg(''); },
     onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
   });
@@ -47,11 +53,14 @@ export default function PortalLinodeServer({ server, isAdmin }: { server: { id: 
   const busy = ['booting', 'rebooting', 'shutting_down', 'provisioning', 'migrating', 'rebuilding'].includes(String(info?.server.status ?? server.status));
 
   return (
-    <>
-      <Button variant="light" size="compact-sm" leftSection={<IconWorldWww size={14} />} onClick={() => setOpen(true)}>Server</Button>
-      <Modal opened={open} onClose={() => setOpen(false)} title={`Server ${server.name}`} size="lg">
-        {isLoading || !info ? <Loader size="sm" /> : (
+    <Stack>
+      <Group>
+        <Button variant="subtle" size="compact-sm" leftSection={<IconArrowLeft size={14} />} onClick={() => navigate('/portal/subscriptions')}>Subscriptions</Button>
+      </Group>
+      {error ? <Alert color="red">Server haipatikani au huna ruhusa ya kuiona.</Alert> : isLoading || !info ? <Loader size="sm" /> : (
+        <Paper withBorder p="md">
           <Stack>
+            <Title order={3}>Server {info.server.name}</Title>
             <Text size="sm" c="dimmed">
               {info.server.ip ?? '-'} · {info.server.region ?? '-'} · <Badge size="sm" variant="light">{info.server.status ?? '-'}</Badge>
             </Text>
@@ -89,8 +98,8 @@ export default function PortalLinodeServer({ server, isAdmin }: { server: { id: 
               </Stack>
             )}
           </Stack>
-        )}
-      </Modal>
+        </Paper>
+      )}
 
       <Modal opened={rebootOpen} onClose={() => setRebootOpen(false)} title="Washa upya server" zIndex={400}>
         <Stack>
@@ -113,6 +122,6 @@ export default function PortalLinodeServer({ server, isAdmin }: { server: { id: 
           </Group>
         </Stack>
       </Modal>
-    </>
+    </Stack>
   );
 }

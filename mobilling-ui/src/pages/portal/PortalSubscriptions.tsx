@@ -6,7 +6,6 @@ import { useNavigate } from 'react-router-dom';
 import { IconFileInvoice, IconAlertCircle, IconExternalLink } from '@tabler/icons-react';
 import { getPortalSubscriptions, generateSubscriptionInvoice, portalHostingSso } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
-import PortalLinodeServer from './PortalLinodeServer';
 
 const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtDate = (d: string | null) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '-';
@@ -197,7 +196,7 @@ export default function PortalSubscriptions() {
                           </Tooltip>
                         )}
                         {s.linode_server?.id && s.status === 'active' && (
-                          <PortalLinodeServer server={s.linode_server} isAdmin={isPortalAdmin} />
+                          <Button variant="light" size="compact-sm" onClick={() => navigate(`/portal/servers/${s.linode_server.id}`)}>Manage server</Button>
                         )}
                         {s.linode_server?.renewal_invoice && (
                           <Button variant="light" size="compact-sm" leftSection={<IconFileInvoice size={14} />}
