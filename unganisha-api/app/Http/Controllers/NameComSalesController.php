@@ -182,17 +182,17 @@ class NameComSalesController extends Controller
 
     // ── registration queue ──
 
-    public function registrationPreview(Domain $domain): JsonResponse
+    public function registrationPreview(Request $request, Domain $domain): JsonResponse
     {
         if (!NameComRegistrationService::isQueued($domain)) return response()->json(['message' => 'This domain is not waiting for registration at Name.com.'], 422);
-        return response()->json(['data' => $this->reg->preview($domain)]);
+        return response()->json(['data' => $this->reg->preview($domain, $request->query('account_id') ?: null)]);
     }
 
     public function register(Request $request, Domain $domain): JsonResponse
     {
-        $data = $request->validate(['confirm' => 'required|accepted', 'usd_cost' => 'required|numeric|min:0']);
+        $data = $request->validate(['confirm' => 'required|accepted', 'usd_cost' => 'required|numeric|min:0', 'account_id' => 'nullable|uuid']);
         try {
-            $d = $this->reg->register($domain, ['by_user' => auth()->id()], 'manual', (float) $data['usd_cost']);
+            $d = $this->reg->register($domain, ['by_user' => auth()->id()], 'manual', (float) $data['usd_cost'], $data['account_id'] ?? null);
         } catch (\DomainException | \InvalidArgumentException $e) {
             return response()->json(['message' => $e->getMessage()], 422);
         } catch (NameComApiException | RegistrarApiException $e) {

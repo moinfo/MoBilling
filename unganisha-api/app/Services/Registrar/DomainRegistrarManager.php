@@ -39,17 +39,33 @@ class DomainRegistrarManager
     /**
      * Name.com is a tenant-owned credential (namecom_accounts), separate from the
      * FRED registrar_accounts resolution above so it can never affect .tz domains.
+     * A tenant may hold several credential sets; $accountId picks one, null = the default.
      */
-    public function namecomFor(string $tenantId): NameComDriver
+    public function namecomFor(string $tenantId, ?string $accountId = null): NameComDriver
     {
-        $account = \App\Models\NameComAccount::withoutGlobalScopes()->where('tenant_id', $tenantId)->first();
+        $account = $accountId
+            ? \App\Models\NameComAccount::findFor($tenantId, $accountId)
+            : \App\Models\NameComAccount::defaultFor($tenantId);
         if (!$account) {
-            throw new RegistrarApiException('resolve', 'Name.com is not connected. Add your Name.com API credentials under Domains > Name.com.');
+            throw new RegistrarApiException('resolve', $accountId
+                ? 'That Name.com account no longer exists. Pick another one under Domains > Name.com.'
+                : 'Name.com is not connected. Add your Name.com API credentials under Domains > Name.com.');
         }
         if ($account->status === 'invalid') {
-            throw new RegistrarApiException('resolve', 'The stored Name.com credentials were rejected. Update them under Domains > Name.com.');
+            throw new RegistrarApiException('resolve', 'The stored Name.com credentials for "' . $account->displayLabel() . '" were rejected. Update them under Domains > Name.com.');
         }
         return new NameComDriver($account);
+    }
+
+    /**
+     * Driver for the Name.com account a linked domain belongs to (meta.namecom.account_id);
+     * domains linked before multi-account support (or whose account was removed) use the default account.
+     */
+    public function namecomForDomain(\App\Models\Domain $domain): NameComDriver
+    {
+        $id = $domain->meta['namecom']['account_id'] ?? null;
+        if ($id && !\App\Models\NameComAccount::findFor($domain->tenant_id, $id)) $id = null;
+        return $this->namecomFor($domain->tenant_id, $id);
     }
 
     /**

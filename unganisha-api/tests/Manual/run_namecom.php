@@ -30,7 +30,7 @@ function trap(callable $f) {
 }
 function staff(User $s, string $ctl, string $m, array $d = [], ...$args) {
     $rq = req(Request::create('/x', 'POST', $d), $s);
-    $takesReq = in_array($m, ['saveAccount', 'link', 'updateNameservers'], true);
+    $takesReq = in_array($m, ['saveAccount', 'link', 'updateNameservers', 'domains'], true);
     return trap(fn () => $takesReq ? app($ctl)->$m($rq, ...$args) : app($ctl)->$m(...$args));
 }
 function portal(ClientUser $u, string $m, Domain $dom, array $d = []) {
@@ -296,7 +296,7 @@ try {
         ok($pid && DB::table('role_permissions')->where('permission_id', $pid)->exists() && DB::table('tenant_permissions')->where('permission_id', $pid)->exists() && DB::table('subscription_plan_permissions')->where('permission_id', $pid)->exists(), "reused permission $perm exists in all three layers");
     }
     $routes = collect(app('router')->getRoutes())->filter(fn ($r) => str_starts_with($r->uri(), 'api/namecom'));
-    ok($routes->count() === 15 && $routes->every(fn ($r) => collect($r->gatherMiddleware())->contains(fn ($m) => str_starts_with($m, 'permission:domains.'))), 'all namecom routes are permission-gated');
+    ok($routes->count() === 22 && $routes->every(fn ($r) => collect($r->gatherMiddleware())->contains(fn ($m) => str_starts_with($m, 'permission:domains.'))), 'all namecom routes are permission-gated');
 
     // ---------- secrets never logged ----------
     ok(!str_contains(implode("\n", $logged), TOKEN), 'token never appears in application logs');

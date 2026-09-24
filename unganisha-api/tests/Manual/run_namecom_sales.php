@@ -33,7 +33,7 @@ function trap(callable $f) {
 }
 function sales($u, string $m, array $d = [], ...$args) {
     $rq = req(Request::create('/x', 'POST', $d), $u);
-    $takesReq = in_array($m, ['saveSettings', 'updateTld', 'ackChanges', 'register', 'tlds'], true);
+    $takesReq = in_array($m, ['saveSettings', 'updateTld', 'ackChanges', 'register', 'tlds', 'registrationPreview'], true);
     return trap(fn () => $takesReq ? app(NameComSalesController::class)->$m($rq, ...$args) : app(NameComSalesController::class)->$m(...$args));
 }
 function pcheck(ClientUser $u, string $name) { $rq = req(Request::create('/x', 'GET', ['name' => $name]), $u); return trap(fn () => app(PortalDomainController::class)->check($rq, app(DomainRegistrarManager::class))); }

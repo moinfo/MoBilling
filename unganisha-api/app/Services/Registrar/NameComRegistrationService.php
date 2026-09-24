@@ -9,6 +9,7 @@ use App\Models\Document;
 use App\Models\Domain;
 use App\Models\DomainLog;
 use App\Models\DomainTld;
+use App\Models\NameComAccount;
 use App\Models\NameComAuditLog;
 use App\Models\NameComSettings;
 use App\Models\User;
@@ -101,7 +102,7 @@ class NameComRegistrationService
     /**
      * Everything staff must see before confirming. Two READ calls at Name.com (availability + live price).
      */
-    public function preview(Domain $d): array
+    public function preview(Domain $d, ?string $accountId = null): array
     {
         $blockers = [];
         $notes = [];
@@ -117,10 +118,12 @@ class NameComRegistrationService
         $row = DomainTld::where('tenant_id', $d->tenant_id)->where('tld', $tld)->where('registrar', 'namecom')->first();
         $expected = $row && $row->usd_register !== null ? round($row->usd_register * $years, 2) : null;
 
+        $account = $accountId ? NameComAccount::findFor($d->tenant_id, $accountId) : NameComAccount::defaultFor($d->tenant_id);
+        if ($accountId && !$account) $blockers[] = 'The selected Name.com account no longer exists.';
         $available = null; $reason = null; $live = null; $usd = null; $priceChanged = false;
-        if (self::isQueued($d)) {
+        if (self::isQueued($d) && $account) {
             try {
-                $driver = $this->registrar->namecomFor($d->tenant_id);
+                $driver = $this->registrar->namecomFor($d->tenant_id, $account->id);
                 $a = $driver->checkAvailability($d->name);
                 $available = $a['available']; $reason = $a['reason'];
                 if (!$available && !empty($d->meta['namecom_uncertain'])) {
@@ -151,6 +154,9 @@ class NameComRegistrationService
             'years'         => $years,
             'contact'       => $contact,
             'missing'       => $missing,
+            'account'       => $account ? ['id' => $account->id, 'label' => $account->displayLabel(), 'username' => $account->username, 'is_sandbox' => (bool) $account->is_sandbox] : null,
+            'accounts'      => NameComAccount::withoutGlobalScopes()->where('tenant_id', $d->tenant_id)->orderByDesc('is_default')->orderBy('created_at')->get()
+                ->map(fn ($a) => ['id' => $a->id, 'label' => $a->displayLabel(), 'username' => $a->username, 'is_default' => (bool) $a->is_default, 'status' => $a->status])->all(),
             'usd_cost'      => $usd,
             'usd_expected'  => $expected,
             'price_changed' => $priceChanged,
@@ -169,7 +175,7 @@ class NameComRegistrationService
      * Perform the registration (single create call). Throws \DomainException with a clear message when refused.
      * @param float|null $confirmedUsd the USD cost the staff member saw and confirmed (required for manual mode)
      */
-    public function register(Domain $domain, array $actor, string $mode = 'manual', ?float $confirmedUsd = null): Domain
+    public function register(Domain $domain, array $actor, string $mode = 'manual', ?float $confirmedUsd = null, ?string $accountId = null): Domain
     {
         // claim the row so a double click / parallel job cannot buy twice
         $claimed = DB::transaction(function () use ($domain) {
@@ -182,7 +188,7 @@ class NameComRegistrationService
         });
 
         try {
-            return $this->doRegister($claimed, $actor, $mode, $confirmedUsd);
+            return $this->doRegister($claimed, $actor, $mode, $confirmedUsd, $accountId);
         } finally {
             $f = Domain::withoutGlobalScopes()->find($domain->id);
             if ($f && isset($f->meta['namecom_registering'])) {
@@ -192,22 +198,28 @@ class NameComRegistrationService
         }
     }
 
-    private function doRegister(Domain $d, array $actor, string $mode, ?float $confirmedUsd): Domain
+    private function doRegister(Domain $d, array $actor, string $mode, ?float $confirmedUsd, ?string $accountId = null): Domain
     {
-        $driver = $this->registrar->namecomFor($d->tenant_id);
+        $account = $accountId ? NameComAccount::findFor($d->tenant_id, $accountId) : NameComAccount::defaultFor($d->tenant_id);
+        if (!$account) throw new \DomainException('The selected Name.com account does not exist.');
+        $actor = $actor + ['account_id' => $account->id, 'account' => $account->displayLabel()];
+        $driver = $this->registrar->namecomFor($d->tenant_id, $account->id);
 
         // A previous attempt with an unknown outcome: adopt it if it did go through (no spend).
         if (!empty($d->meta['namecom_uncertain'])) {
             try {
-                $info = $driver->getDomain($d->name);
-                return $this->finalize($d, $info, ['adopted' => true] + $actor, $mode);
+                // check the account where the unknown attempt was made (may differ from the one chosen now)
+                $prevId = $d->meta['namecom_attempt_account'] ?? $account->id;
+                $prev = NameComAccount::findFor($d->tenant_id, $prevId) ?? $account;
+                $info = $this->registrar->namecomFor($d->tenant_id, $prev->id)->getDomain($d->name);
+                return $this->finalize($d, $info, ['adopted' => true, 'account_id' => $prev->id, 'account' => $prev->displayLabel()] + $actor, $mode);
             } catch (NameComApiException $e) {
                 if ($e->httpStatus !== 404) throw new \DomainException($e->getMessage());
-                $m = $d->meta; unset($m['namecom_uncertain']); $d->update(['meta' => $m]); $d = $d->fresh();
+                $m = $d->meta; unset($m['namecom_uncertain'], $m['namecom_attempt_account']); $d->update(['meta' => $m]); $d = $d->fresh();
             }
         }
 
-        $p = $this->preview($d);
+        $p = $this->preview($d, $account->id);
         if ($p['blockers']) throw new \DomainException(implode(' ', $p['blockers']));
         if ($mode === 'manual') {
             if ($confirmedUsd === null || abs($confirmedUsd - (float) $p['usd_cost']) > 0.005) {
@@ -222,7 +234,7 @@ class NameComRegistrationService
             ] + $actor);
         } catch (NameComApiException $e) {
             if ($e->httpStatus === 0) { // timeout / network: outcome unknown, never blind-retry
-                $d->update(['meta' => array_merge($d->fresh()->meta, ['namecom_uncertain' => true])]);
+                $d->update(['meta' => array_merge($d->fresh()->meta, ['namecom_uncertain' => true, 'namecom_attempt_account' => $account->id])]);
             }
             DomainLog::create(['tenant_id' => $d->tenant_id, 'domain_id' => $d->id, 'action' => 'namecom_register_failed',
                 'request' => ['mode' => $mode, 'years' => $p['years']] + $actor, 'status' => 'failed', 'error' => mb_substr($e->getMessage(), 0, 250)]);
@@ -239,12 +251,13 @@ class NameComRegistrationService
         $ns = NameComDriver::extractNameservers($info);
 
         $meta = $d->fresh()->meta ?? [];
-        unset($meta['awaiting_manual_registration'], $meta['pending_action'], $meta['pending_years'], $meta['namecom_uncertain'], $meta['namecom_registering']);
+        unset($meta['awaiting_manual_registration'], $meta['pending_action'], $meta['pending_years'], $meta['namecom_uncertain'], $meta['namecom_registering'], $meta['namecom_attempt_account']);
         $meta['unmanaged'] = true;
         $meta['namecom'] = [
             'nameservers' => $ns, 'locked' => $info['locked'] ?? null, 'autorenew' => $info['autorenewEnabled'] ?? null,
             'original_nameservers' => $ns, 'synced_at' => now()->toIso8601String(),
             'order' => $log['order'] ?? null, 'paid_usd' => $log['total_paid_usd'] ?? null,
+            'account_id' => $log['account_id'] ?? null,
         ];
         $d->update(['status' => 'active', 'registered_at' => $created, 'expires_at' => $expires, 'auto_renew' => false, 'meta' => $meta]);
 

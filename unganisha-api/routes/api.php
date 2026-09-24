@@ -743,6 +743,12 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::put('/account', [\App\Http\Controllers\NameComController::class, 'saveAccount'])->middleware('throttle:10,1');
         Route::delete('/account', [\App\Http\Controllers\NameComController::class, 'deleteAccount']);
         Route::post('/account/test', [\App\Http\Controllers\NameComController::class, 'test'])->middleware('throttle:10,1');
+        $nc = \App\Http\Controllers\NameComController::class;
+        Route::get('/accounts', [$nc, 'accountList']);
+        Route::post('/accounts', [$nc, 'storeAccount'])->middleware('throttle:10,1');
+        Route::put('/accounts/{account}', [$nc, 'updateAccount'])->middleware('throttle:10,1');
+        Route::delete('/accounts/{account}', [$nc, 'destroyAccount']);
+        Route::post('/accounts/{account}/test', [$nc, 'testAccount'])->middleware('throttle:10,1');
     });
     Route::middleware('permission:domains.settings')->prefix('namecom')->group(function () {
         $c = \App\Http\Controllers\NameComSalesController::class;
@@ -760,6 +766,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
 
         Route::get('/domains', [\App\Http\Controllers\NameComController::class, 'domains'])->middleware('throttle:6,1');
         Route::post('/link', [\App\Http\Controllers\NameComController::class, 'link'])->middleware('throttle:60,1');
+        Route::get('/account-options', [\App\Http\Controllers\NameComController::class, 'accountOptions']);
+        Route::post('/link-matched', [\App\Http\Controllers\NameComController::class, 'linkMatched'])->middleware('throttle:30,1');
     });
     Route::middleware('permission:domains.create')->post('/domains/order', [\App\Http\Controllers\DomainController::class, 'order']);
     Route::middleware('permission:domains.create')->post('/domains/add-existing', [\App\Http\Controllers\DomainController::class, 'addExisting']);

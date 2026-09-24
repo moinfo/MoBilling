@@ -7,6 +7,7 @@ use App\Exceptions\RegistrarApiException;
 use App\Models\Client;
 use App\Models\Domain;
 use App\Models\DomainLog;
+use App\Models\NameComAccount;
 use Carbon\Carbon;
 
 /**
@@ -35,7 +36,7 @@ class NameComDomainService
 
     public function nameservers(Domain $domain): array
     {
-        return $this->registrar->namecomFor($domain->tenant_id)->nameservers($domain->name);
+        return $this->registrar->namecomForDomain($domain)->nameservers($domain->name);
     }
 
     /**
@@ -55,7 +56,7 @@ class NameComDomainService
             throw new \DomainException('Nameserver changes for this domain are limited to ' . self::MAX_CHANGES_PER_DAY . ' per day. Try again tomorrow.');
         }
 
-        $driver = $this->registrar->namecomFor($domain->tenant_id);
+        $driver = $this->registrar->namecomForDomain($domain);
         $current = $driver->nameservers($domain->name);
 
         $a = $new; $b = $current; sort($a); sort($b);
@@ -81,7 +82,7 @@ class NameComDomainService
     /** Read-only refresh of expiry/status/nameservers from Name.com. */
     public function sync(Domain $domain): Domain
     {
-        $info = $this->registrar->namecomFor($domain->tenant_id)->getDomain($domain->name);
+        $info = $this->registrar->namecomForDomain($domain)->getDomain($domain->name);
         $this->applyInfo($domain, $info);
         return $domain->fresh();
     }
@@ -90,14 +91,16 @@ class NameComDomainService
      * Link (or upgrade an existing unmanaged row of) a Name.com domain to a client.
      * @throws \InvalidArgumentException|\DomainException
      */
-    public function link(string $tenantId, string $name, string $clientId, array $actor): Domain
+    public function link(string $tenantId, string $name, string $clientId, array $actor, ?string $accountId = null): Domain
     {
         $name = NameComDriver::validateDomainName($name);
         if (!Client::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('id', $clientId)->exists()) {
             throw new \InvalidArgumentException('That client does not belong to your business.');
         }
 
-        $info = $this->registrar->namecomFor($tenantId)->getDomain($name); // source of truth: never trust the browser
+        $account = $accountId ? NameComAccount::findFor($tenantId, $accountId) : NameComAccount::defaultFor($tenantId);
+        if (!$account) throw new \InvalidArgumentException('That Name.com account does not exist.');
+        $info = $this->registrar->namecomFor($tenantId, $account->id)->getDomain($name); // source of truth: never trust the browser
         if (strtolower((string) ($info['domainName'] ?? $name)) !== $name) {
             throw new \DomainException('Name.com returned a different domain than requested.');
         }
@@ -122,6 +125,7 @@ class NameComDomainService
         if ($created) $attrs['registered_at'] = $created;
 
         $nc = $this->metaFrom($info);
+        $nc['account_id'] = $account->id; // which Name.com login owns this domain
         // Remember the nameservers at first link so "use original" can restore them.
         $nc['original_nameservers'] = $existing?->meta['namecom']['original_nameservers'] ?? $nc['nameservers'];
         $meta = array_merge($existing?->meta ?? [], ['unmanaged' => true, 'namecom' => $nc]);
@@ -139,7 +143,7 @@ class NameComDomainService
             'tenant_id' => $tenantId,
             'domain_id' => $domain->id,
             'action'    => 'namecom_linked',
-            'request'   => array_merge(['client_id' => $clientId, 'upgraded_existing' => $upgraded], $actor),
+            'request'   => array_merge(['client_id' => $clientId, 'upgraded_existing' => $upgraded, 'account' => $account->displayLabel()], $actor),
             'status'    => 'success',
         ]);
 
