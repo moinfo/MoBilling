@@ -659,6 +659,12 @@ class WhatsappRenewalWebhookController extends Controller
     private function handleRegistrationStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
     {
         $lang = $session->language ?? 'sw';
+
+        if (($session->state['step'] ?? 'ask_name') === 'ask_email') {
+            $this->handleRegistrationEmailStep($tenant, $phone, $session, $text, $lang);
+            return;
+        }
+
         $name = trim(preg_replace('/\s+/', ' ', $text));
 
         if (mb_strlen($name) < 3 || !str_contains($name, ' ')) {
@@ -680,9 +686,40 @@ class WhatsappRenewalWebhookController extends Controller
             'status' => 'active',
         ]);
 
-        $session->update(['client_id' => $client->id, 'flow' => null, 'state' => null, 'confirmed_at' => now(), 'items' => null, 'expires_at' => now()->addMinutes(10)]);
+        // Registered. One optional follow-up (email) before the menu: RUKA / SKIP moves on.
+        $session->update(['client_id' => $client->id, 'flow' => 'register', 'state' => ['step' => 'ask_email'], 'confirmed_at' => now(), 'items' => null, 'expires_at' => now()->addMinutes(10)]);
 
-        $this->reply($tenant, $phone, $this->t($lang, "Asante {$name}! Umesajiliwa MoBilling.", "Thank you, {$name}! You're now registered with MoBilling."));
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Asante {$name}! Umesajiliwa MoBilling.\n\nAndika email yako (si lazima), au andika RUKA.",
+            "Thank you, {$name}! You're now registered with MoBilling.\n\nReply with your email (optional), or type SKIP."
+        ));
+    }
+
+    /** Optional email after registration: stored only when valid and not used by another client. */
+    private function handleRegistrationEmailStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        $client = Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
+        if (!$client) {
+            $session->delete();
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali wasiliana nasi.', 'Sorry, something went wrong. Please contact us.'));
+            return;
+        }
+
+        $typed = trim($text);
+        if (!preg_match('/^\s*(ruka|skip|0|menu|cancel|nyumbani|anza\s*upya)\s*$/i', $typed)) {
+            $email = mb_strtolower($typed);
+            $usable = filter_var($email, FILTER_VALIDATE_EMAIL)
+                && !Client::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('email', $email)->exists();
+            if (!$usable) {
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, email hiyo haiwezi kutumika. Andika email nyingine sahihi, au andika RUKA.',
+                    "Sorry, that email can't be used. Please reply with another valid email, or type SKIP."
+                ));
+                return;
+            }
+            $client->update(['email' => $email]);
+        }
+
         $this->sendRootMenu($tenant, $client, $phone, $lang);
     }
 

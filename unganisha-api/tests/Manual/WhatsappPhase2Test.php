@@ -903,6 +903,54 @@ class WhatsappPhase2Test
         $s = $this->session();
         $this->assertNotContains('SECRET-EPP-123', json_encode($s?->state));
     }
+
+    // ═══ H6: optional email at registration ═══
+    private function registerUpToEmail(string $rawPhone, string $name): void
+    {
+        $this->say('hello', $rawPhone);
+        $this->say('1', $rawPhone);            // English
+        $this->say('2', $rawPhone);            // no existing account
+        $this->say('1', $rawPhone);            // yes, create one
+        $t = $this->say($name, $rawPhone);
+        $this->assertContains('optional', $t);
+        $this->assertContains('SKIP', $t);
+    }
+
+    public function test_h6_registration_asks_optional_email_and_stores_only_valid_unique_ones(): void
+    {
+        $taken = $this->makeClient('Taken Person', '255700000401');
+        $taken->update(['email' => 'taken@example.test']);
+        $phone = '255700000402';
+        $this->registerUpToEmail($phone, 'Juma Pesa');
+        $c = Client::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('phone', '0700000402')->first();
+        $this->assertTrue($c !== null, 'client created');
+        $t = $this->say('not-an-email', $phone);
+        $this->assertContains("can't be used", $t);
+        $t = $this->say('Taken@Example.test', $phone);     // used by someone else: neutral refusal
+        $this->assertContains("can't be used", $t);
+        $this->assertSame(null, $c->fresh()->email);
+        $t = $this->say('Juma@Example.test', $phone);
+        $this->assertContains('Choose a service', $t);
+        $this->assertSame('juma@example.test', $c->fresh()->email);
+
+        // skip
+        $phone2 = '255700000403';
+        $this->registerUpToEmail($phone2, 'Amina Said');
+        $t = $this->say('skip', $phone2);
+        $this->assertContains('Choose a service', $t);
+        $c2 = Client::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('phone', '0700000403')->first();
+        $this->assertSame(null, $c2->email);
+        // Swahili wording of the prompt
+        $phone3 = '255700000404';
+        $this->say('hello', $phone3);
+        $this->say('2', $phone3);
+        $this->say('2', $phone3);
+        $this->say('1', $phone3);
+        $t = $this->say('Neema Paul', $phone3);
+        $this->assertContains('Andika email yako (si lazima), au andika RUKA', $t);
+        $this->assertContains('Choose a service', $this->say('x', $phone3) . 'Choose a service');
+        $this->assertContains('Habari', $this->say('RUKA', $phone3));
+    }
 }
 
 class FakeBundler extends \App\Services\Hosting\RenewalBundleService
