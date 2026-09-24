@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, Select, Center, Loader, Alert, Button, Modal,
-  TextInput, PasswordInput, Tabs, ActionIcon, Drawer, NumberInput, CopyButton, Code, List, Tooltip,
+  TextInput, PasswordInput, Tabs, ActionIcon, Drawer, NumberInput, CopyButton, Code, List, Tooltip, ScrollArea,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useDebouncedValue } from '@mantine/hooks';
@@ -403,11 +403,12 @@ function AutoMapModal({ rows, onClose }: { rows: LinodeResource[]; onClose: () =
     <Modal opened onClose={onClose} title="Auto-map suggested clients" size="lg">
       <Stack>
         <Text size="sm">These {rows.length} domain(s) are registered with us and currently unmapped. Each will be mapped to the client that owns it in MoBilling. Existing mappings are never changed.</Text>
-        <Table.ScrollContainer minWidth={360} mah={320}>
+        {/* Table.ScrollContainer only scrolls horizontally, so a long list was cut off with no way to see the rest. */}
+        <ScrollArea.Autosize mah={360} type="auto" offsetScrollbars>
           <Table verticalSpacing="xs"><Table.Tbody>
             {rows.map((r) => <Table.Tr key={r.id}><Table.Td>{r.label}</Table.Td><Table.Td>&rarr; {r.suggested_client?.name}</Table.Td></Table.Tr>)}
           </Table.Tbody></Table>
-        </Table.ScrollContainer>
+        </ScrollArea.Autosize>
         <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancel</Button><Button loading={m.isPending} onClick={() => m.mutate()}>Map {rows.length} domain(s)</Button></Group>
       </Stack>
     </Modal>
