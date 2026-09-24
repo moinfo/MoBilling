@@ -79,12 +79,12 @@ export default function PortalLinodeServerPage() {
 
             {isAdmin && (
               <>
-                <Divider label="Omba kuongeza domain" labelPosition="left" />
+                <Divider label="Ongeza domain" labelPosition="left" />
                 <Group align="flex-end" wrap="nowrap">
                   <TextInput style={{ flex: 1 }} placeholder="mfano: biashara.co.tz" value={domain} onChange={(e) => setDomain(e.currentTarget.value)} />
-                  <Button loading={request.isPending} disabled={!domain.trim()} onClick={() => request.mutate()}>Tuma ombi</Button>
+                  <Button loading={request.isPending} disabled={!domain.trim()} onClick={() => request.mutate()}>Ongeza domain</Button>
                 </Group>
-                <Text size="xs" c="dimmed">Tutaiongeza kwenye server yako na kukutaarifu. Baada ya hapo weka nameservers za Linode kwa msajili wa domain.</Text>
+                <Text size="xs" c="dimmed">Domain itaongezwa mara moja kwenye server yako. Baada ya hapo weka nameservers za Linode kwa msajili wa domain: ns1.linode.com, ns2.linode.com, ns3.linode.com, ns4.linode.com, ns5.linode.com.</Text>
               </>
             )}
             {info.requests.length > 0 && (

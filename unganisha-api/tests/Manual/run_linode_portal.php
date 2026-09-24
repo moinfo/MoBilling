@@ -137,23 +137,41 @@ try {
     ok(collect($list)->pluck('id')->contains($sA->id) && !collect($list)->pluck('id')->contains($sB->id), 'index lists only own servers');
     ok(!str_contains(json_encode($list), TOKEN) && !str_contains(json_encode($list), 'remote_id'), 'index: no secrets');
 
-    // ---- domain requests
+    // ---- client adds a domain directly (no approval)
+    $fakeAdd = fn ($id, $dom, $ip) => [
+        'api.linode.com/v4/domains' => Http::response(['id' => $id, 'domain' => $dom, 'status' => 'active', 'soa_email' => 'soa@example.test', 'ttl_sec' => 0], 200),
+        "api.linode.com/v4/domains/$id/records*" => Http::sequence()
+            ->push(['data' => [], 'page' => 1, 'pages' => 1, 'results' => 0])->push(['id' => 1, 'type' => 'A', 'name' => '', 'target' => $ip, 'ttl_sec' => 0])
+            ->push(['data' => [['id' => 1, 'type' => 'A', 'name' => '', 'target' => $ip, 'ttl_sec' => 0]], 'page' => 1, 'pages' => 1, 'results' => 1])->push(['id' => 2, 'type' => 'A', 'name' => 'www', 'target' => $ip, 'ttl_sec' => 0]),
+    ];
+    fk($fakeAdd(9200, 'direct-site.co.tz', '203.0.113.71'));
+    $r = call($uA, 'requestDomain', $sA->id, ['domain' => 'Direct-Site.co.tz']);
+    $dres = LinodeResource::where('type', 'domain')->where('label', 'direct-site.co.tz')->first();
+    ok($r->getStatusCode() === 201 && $dres && $dres->client_id === $cA->id, 'client adds domain directly: created in Linode (faked) and mapped to the client');
+    ok(Http::recorded(fn ($q) => $q->method() === 'POST' && $q->url() === 'https://api.linode.com/v4/domains')->count() === 1
+       && Http::recorded(fn ($q) => !in_array($q->method(), ['GET', 'POST']))->count() === 0, 'one domain POST, no DELETE/other verbs');
+    ok(LinodeDomainRequest::where('domain', 'direct-site.co.tz')->where('status', 'approved')->where('client_id', $cA->id)->exists() && LinodeAuditLog::where('action', 'portal.domain_add')->exists(), 'recorded as approved + audited');
     fk([]);
-    $r = call($uA, 'requestDomain', $sA->id, ['domain' => 'New-Site.co.tz']);
-    ok($r->getStatusCode() === 201 && LinodeDomainRequest::where('domain', 'new-site.co.tz')->where('status', 'pending')->where('client_id', $cA->id)->where('linode_resource_id', $sA->id)->where('requested_by', $uA->id)->exists(), 'request created (normalised domain, pending)');
-    ok(Http::recorded()->count() === 0, 'NO Linode call at request time');
-    ok(Notification::sent($staffA, LinodeDomainRequestNotification::class)->where('event', 'requested')->count() >= 1, 'staff with linode.manage notified of the new request');
     foreach (['not a domain', 'x', 'bad_domain.com', 'a..com', ''] as $bad) {
         ok(call($uA, 'requestDomain', $sA->id, ['domain' => $bad])->getStatusCode() === 422, "invalid domain '$bad' rejected");
     }
-    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'new-site.co.tz'])->getStatusCode() === 422, 'duplicate pending request rejected');
-    ok(call($uB, 'requestDomain', $sB->id, ['domain' => 'new-site.co.tz'])->getStatusCode() === 422, 'other client cannot request the same pending domain');
-    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'mine.co.tz'])->getStatusCode() === 422, 'domain already in Linode rejected');
-    ok(call($uA, 'requestDomain', $sB->id, ['domain' => 'sneaky.com'])->getStatusCode() === 404, "cannot request on another client's server");
-    for ($i = 2; $i <= 5; $i++) call($uA, 'requestDomain', $sA->id, ['domain' => "site$i.com"]);
-    ok(LinodeDomainRequest::where('client_id', $cA->id)->where('status', 'pending')->count() === 5, '5 pending requests allowed');
-    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'site6.com'])->getStatusCode() === 422, '6th pending request refused (max 5)');
-    ok(call($uB, 'requestDomain', $sB->id, ['domain' => 'b-site.com'])->getStatusCode() === 201, 'client B has own quota');
+    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'direct-site.co.tz'])->getStatusCode() === 422, 'domain already in Linode rejected');
+    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'mine.co.tz'])->getStatusCode() === 422, 'another existing Linode domain rejected');
+    ok(call($uA, 'requestDomain', $sB->id, ['domain' => 'sneaky.com'])->getStatusCode() === 404, "cannot add on another client's server");
+    ok(Http::recorded()->count() === 0, 'refusals make no Linode call');
+    fk($fakeAdd(9201, 'fail-site.com', '203.0.113.71'));
+    fk(['api.linode.com/v4/domains' => Http::response(['errors' => [['reason' => 'Domain already exists']]], 400)]);
+    $r = call($uA, 'requestDomain', $sA->id, ['domain' => 'fail-site.com']);
+    ok($r->getStatusCode() === 422 && LinodeDomainRequest::where('domain', 'fail-site.com')->doesntExist() && !str_contains(json_encode(j($r)), 'Linode'), 'Linode failure -> generic 422, nothing recorded');
+    // daily limit (10)
+    for ($i = 0; $i < 9; $i++) LinodeDomainRequest::create(['tenant_id' => $tenantA->id, 'client_id' => $cA->id, 'linode_resource_id' => $sA->id, 'domain' => "filler$i.com", 'status' => 'approved', 'requested_by' => $uA->id]);
+    fk([]);
+    ok(call($uA, 'requestDomain', $sA->id, ['domain' => 'over-limit.com'])->getStatusCode() === 429, 'daily limit refused (429)');
+    LinodeDomainRequest::where('domain', 'like', 'filler%')->delete();
+    LinodeDomainRequest::where('domain', 'direct-site.co.tz')->delete();
+    // legacy pending requests (created before direct add) can still be handled by staff
+    foreach (['new-site.co.tz', 'site2.com', 'site3.com', 'site4.com', 'site5.com'] as $dm) LinodeDomainRequest::create(['tenant_id' => $tenantA->id, 'client_id' => $cA->id, 'linode_resource_id' => $sA->id, 'domain' => $dm, 'status' => 'pending', 'requested_by' => $uA->id]);
+    LinodeDomainRequest::create(['tenant_id' => $tenantA->id, 'client_id' => $cB->id, 'linode_resource_id' => $sB->id, 'domain' => 'b-site.com', 'status' => 'pending', 'requested_by' => $uB->id]);
 
     // ---- staff: list, approve, reject
     $list = j(staffCall($staffA, 'index', null))['data'];

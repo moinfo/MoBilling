@@ -13,6 +13,7 @@ use App\Models\Ticket;
 use App\Models\User;
 use App\Notifications\LinodeDomainRequestNotification;
 use App\Services\Linode\DnsMapping;
+use App\Services\Linode\LinodeDomainProvisioner;
 use App\Services\Linode\LinodeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,7 @@ class PortalLinodeController extends Controller
 {
     private const REBOOT_PER_SERVER_HOUR = 2;
     private const REBOOT_PER_CLIENT_DAY = 5;
-    private const MAX_PENDING_REQUESTS = 5;
+    private const MAX_DOMAIN_ADDS_PER_DAY = 10;
     private const MAX_TICKETS_PER_SERVER_DAY = 3;
 
     /** The client's OWN active, linked, live instance — anything else is a 404 (never reveals other clients' servers). */
@@ -156,7 +157,7 @@ class PortalLinodeController extends Controller
         $data = $request->validate(['domain' => 'required|string|max:253']);
         $srv = $this->ownServer($request, $server);
         $user = $request->user();
-        abort_unless($user->role === 'admin', 403, 'Only portal administrators can request domains.');
+        abort_unless($user->role === 'admin', 403, 'Only portal administrators can add domains.');
 
         try {
             $domain = LinodeService::validateDomainName($data['domain']);
@@ -168,41 +169,39 @@ class PortalLinodeController extends Controller
         }
 
         $reqs = LinodeDomainRequest::withoutGlobalScopes()->where('tenant_id', $srv->tenant_id);
-        if ((clone $reqs)->where('client_id', $user->client_id)->where('status', 'pending')->count() >= self::MAX_PENDING_REQUESTS) {
-            return response()->json(['message' => 'You already have ' . self::MAX_PENDING_REQUESTS . ' pending domain requests. Please wait for them to be processed.'], 422);
+        if ((clone $reqs)->where('client_id', $user->client_id)->where('created_at', '>=', now()->subDay())->count() >= self::MAX_DOMAIN_ADDS_PER_DAY) {
+            return response()->json(['message' => 'Umefikia kikomo cha domain ' . self::MAX_DOMAIN_ADDS_PER_DAY . ' kwa siku. Jaribu kesho au tumia "Omba msaada".'], 429);
         }
         $exists = LinodeResource::withoutGlobalScopes()->where('tenant_id', $srv->tenant_id)->where('type', 'domain')->where('label', $domain)
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'gone'))->exists();
         if ($exists) {
             return response()->json(['message' => "$domain is already set up. If it is yours and not working, use \"Omba msaada\"."], 422);
         }
-        if ((clone $reqs)->where('domain', $domain)->whereIn('status', ['pending', 'approved'])->exists()) {
-            return response()->json(['message' => "$domain has already been requested."], 422);
+        $account = LinodeAccount::withoutGlobalScopes()->where('id', $srv->linode_account_id)->where('tenant_id', $srv->tenant_id)->first();
+        if (!$account || $account->status !== 'active') {
+            return response()->json(['message' => 'Domains cannot be added to this server right now. Please contact support.'], 422);
         }
 
+        // Added straight away (no staff approval). The row is kept as an already-approved record for history/limits.
         $row = new LinodeDomainRequest([
             'tenant_id' => $srv->tenant_id, 'client_id' => $user->client_id, 'linode_resource_id' => $srv->id,
-            'domain' => $domain, 'status' => 'pending', 'requested_by' => $user->id,
+            'domain' => $domain, 'status' => 'approved', 'requested_by' => $user->id, 'decided_at' => now(),
+            'note' => 'Added directly by the client',
         ]);
-        $row->save();
-        $this->audit($request, $srv, 'portal.domain_request', ['domain' => $domain, 'request_id' => $row->id]);
-
         try {
-            $staff = User::withPermission($srv->tenant_id, 'linode.manage');
-            if ($staff->isNotEmpty()) {
-                Notification::send($staff, new LinodeDomainRequestNotification($row->load('client'), 'requested', null, $srv->label));
-            }
+            $out = app(LinodeDomainProvisioner::class)->add($account, $domain, $account->soa_email, null, $srv, $user->client_id);
         } catch (\Throwable $e) {
-            report($e);
+            $this->audit($request, $srv, 'portal.domain_add', ['domain' => $domain], 502, $e->getMessage());
+            return response()->json(['message' => 'Domain hii haikuweza kuongezwa (huenda tayari ipo au kuna hitilafu). Jaribu tena baadaye au tumia "Omba msaada".'], 422);
         }
+        $row->save();
+        $this->audit($request, $srv, 'portal.domain_add', ['domain' => $domain, 'request_id' => $row->id, 'records_created' => $out['records_created'] ?? null]);
 
         return response()->json([
-            'message' => "Request received for $domain. We will add it to your server and notify you.",
-            'data' => ['id' => $row->id, 'domain' => $domain, 'status' => 'pending'],
+            'message' => "$domain imeongezwa kwenye server yako. Sasa weka nameservers za Linode kwa msajili wa domain.",
+            'data' => ['id' => $row->id, 'domain' => $domain, 'status' => 'approved'],
         ], 201);
     }
-
-    // ── 4. support ticket, same path as the normal portal ticket ──
 
     public function supportTicket(Request $request, string $server): JsonResponse
     {
