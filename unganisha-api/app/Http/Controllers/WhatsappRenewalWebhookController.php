@@ -2079,7 +2079,7 @@ class WhatsappRenewalWebhookController extends Controller
             $ticket->replies()->create([
                 'tenant_id' => $tenant->id,
                 'author_type' => 'client',
-                'message' => self::TICKET_MARKER . ($session->assisted_by_user_id ? ' (created via staff-assist)' : '') . ".\n\n" . $description,
+                'message' => self::TICKET_MARKER . ($session->assisted_by_user_id ? ' (created via staff-assist by user #' . $session->assisted_by_user_id . ')' : '') . ".\n\n" . $description,
             ]);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp support ticket failed', ['client_id' => $client->id, 'error' => $e->getMessage()]);
@@ -2792,6 +2792,34 @@ class WhatsappRenewalWebhookController extends Controller
         $this->reply($tenant, $phone, implode("\n", $lines) . "\n\n" . implode("\n", $opts) . "\n\n" . $this->menuFooter($lang));
     }
 
+    /** Staff-assist attribution: every action taken in an assisted session is logged (and stamped on the invoice) with the staff user. */
+    private function noteAssisted(?WhatsappRenewalSession $session, string $action, ?Document $doc = null, array $extra = []): void
+    {
+        $by = $session?->assisted_by_user_id;
+        if (!$by) {
+            return;
+        }
+        try {
+            if ($doc && !$doc->created_by) {
+                $doc->forceFill(['created_by' => $by])->saveQuietly();
+            }
+            Log::info('WhatsApp staff-assist action', [
+                'action' => $action, 'assisted_by_user_id' => $by, 'client_id' => $session->client_id,
+                'document_id' => $doc?->id, 'phone' => $session->phone,
+            ] + $extra);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    private function nameserverAssistBlockedMessage(string $lang): string
+    {
+        return $this->t($lang,
+            'Kwa usalama, kubadilisha nameservers hakupatikani kwenye hali ya staff — mteja mwenyewe lazima aombe kutoka simu yake. Tafadhali tumia admin panel.',
+            'For security, changing nameservers is not available in staff-assist mode — the client must request it from their own phone. Please use the admin panel.'
+        );
+    }
+
     /** This client's still-unpaid, still-open order invoice for a pending domain registration/transfer of $name. */
     private function pendingDomainOrderInvoice(Tenant $tenant, Client $client, string $name): ?Document
     {
@@ -2862,7 +2890,8 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         // Delete: only ever an unpaid order (releases the coupon, cancels the pending domain/subscription).
-        $ok = app(\App\Services\OrderCancellationService::class)->cancelUnpaidOrder($doc, 'Order deleted by client via WhatsApp');
+        $ok = app(\App\Services\OrderCancellationService::class)->cancelUnpaidOrder($doc, $session->assisted_by_user_id ? 'Order deleted via WhatsApp (staff-assist by user #' . $session->assisted_by_user_id . ')' : 'Order deleted by client via WhatsApp');
+        $this->noteAssisted($session, 'pending_order_deleted', $doc, ['cancelled' => $ok]);
         $this->finishFlow($tenant, $client, $phone, $ok
             ? $this->t($lang, "Oda ya {$name} imefutwa ({$doc->document_number}).", "The order for {$name} was deleted ({$doc->document_number}).")
             : $this->t($lang, 'Invoice hii tayari imelipwa/imefutwa.', 'This invoice is already paid or cancelled.'), $lang);
@@ -3141,7 +3170,7 @@ class WhatsappRenewalWebhookController extends Controller
             $ticket->replies()->create([
                 'tenant_id' => $tenant->id,
                 'author_type' => 'client',
-                'message' => self::TICKET_MARKER . ($session->assisted_by_user_id ? ' (staff-assisted)' : '')
+                'message' => self::TICKET_MARKER . ($session->assisted_by_user_id ? ' (staff-assisted by user #' . $session->assisted_by_user_id . ')' : '')
                     . ".\nHosting: {$account->domain} ({$account->cpanel_username}), status: {$account->status}.\n\n" . $description,
             ]);
         } catch (\Throwable $e) {
@@ -3237,6 +3266,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         $domainId = $session->items[$position - 1] ?? null;
         $client ??= Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
+        $this->noteAssisted($session, 'renewal_invoice', null, ['domain_id' => $domainId]);
         $session->delete();
 
         $this->renewDomainById($tenant, $client, $phone, $domainId, $bundler, $lang);
@@ -3497,6 +3527,7 @@ class WhatsappRenewalWebhookController extends Controller
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
                 return;
             }
+            $this->noteAssisted($session, 'domain_order', $document, ['domain' => $domain]);
 
             // Choosing how to pay comes first; the "want hosting too?" offer (per request
             // — "agiza domain mpya mpaka ku-provision hosting") resumes right after,
@@ -3872,6 +3903,7 @@ class WhatsappRenewalWebhookController extends Controller
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
                 return;
             }
+            $this->noteAssisted($session, 'domain_order', $document, ['domain' => $name]);
 
             // Pay for the domain first; the hosting order (same plan already chosen,
             // this domain now known) resumes right after via offerPayment()'s $after.
@@ -3976,6 +4008,7 @@ class WhatsappRenewalWebhookController extends Controller
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza agizo. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the order. Please contact us."), $lang);
                 return;
             }
+            $this->noteAssisted($session, 'hosting_order', $document, ['domain' => $domain, 'plan_id' => $plan->id, 'coupon' => $coupon?->code]);
 
             $this->offerPayment($tenant, $client, $phone, $document, $lang);
             return;
@@ -4221,6 +4254,7 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
+            $this->noteAssisted($session, 'invoice_selected_for_payment', $doc);
             $session->update(['state' => ['step' => 'choose_method', 'document_id' => $doc->id]]);
             $this->reply($tenant, $phone, $this->paymentMethodMessage($lang, $doc, (float) $doc->balance_due));
             return;
@@ -4247,6 +4281,7 @@ class WhatsappRenewalWebhookController extends Controller
                     ));
                     return;
                 }
+                $this->noteAssisted($session, 'payment_link', $doc);
                 try {
                     $redirectUrl = $this->pesapalCheckout($tenant, $doc);
                     $this->replyWithCtaUrl(
@@ -4578,6 +4613,13 @@ class WhatsappRenewalWebhookController extends Controller
 
     private function startChangeDns(Tenant $tenant, Client $client, string $phone, string $lang, ?string $query = null): void
     {
+        $assistSession = WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('phone', $phone)->first();
+        if ($assistSession?->assisted_by_user_id) {
+            $this->noteAssisted($assistSession, 'nameserver_change_refused');
+            $this->finishFlow($tenant, $client, $phone, $this->nameserverAssistBlockedMessage($lang), $lang);
+            return;
+        }
+
         $domains = Domain::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
             ->where('client_id', $client->id)
@@ -4619,6 +4661,12 @@ class WhatsappRenewalWebhookController extends Controller
 
     private function handleChangeDnsStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
     {
+        if ($session->assisted_by_user_id) {
+            $this->noteAssisted($session, 'nameserver_change_refused');
+            $this->finishFlow($tenant, $client, $phone, $this->nameserverAssistBlockedMessage($lang), $lang);
+            return;
+        }
+
         $state = $session->state ?? [];
         $step = $state['step'] ?? 'pick_domain';
 

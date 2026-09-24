@@ -716,6 +716,58 @@ class WhatsappPhase2Test
         $this->assertSame('cancelled', $inv->fresh()->status);
         $this->assertSame('cancelled', $sub->fresh()->status, 'pending subscription cancelled');
     }
+
+    // ═══ M5: staff-assist attribution + nameserver block ═══
+    public function test_m5_assisted_nameserver_change_is_refused_in_menu_and_at_confirm(): void
+    {
+        $c = $this->makeClient();
+        $d = \App\Models\Domain::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => 'ns-p2.co.tz', 'status' => 'active', 'registrar' => 'fred', 'expires_at' => now()->addYear(), 'meta' => []]);
+        $this->startSession($c, $this->user->id);
+        $t = $this->say('8');
+        $this->assertContains('nameservers is not available in staff-assist mode', $t);
+        $this->assertSame(null, $this->session()->flow, 'no DNS flow started');
+
+        $this->startSession($c, $this->user->id);
+        $this->session()->update(['flow' => 'change_dns', 'state' => ['step' => 'confirm', 'domain_id' => $d->id, 'nameservers' => ['ns1.example.test', 'ns2.example.test']]]);
+        $t = $this->say('1');
+        $this->assertContains('not available in staff-assist mode', $t);
+        $this->assertSame([], $d->fresh()->meta ?? [], 'domain untouched');
+        $this->assertSame(0, \App\Models\DomainLog::where('domain_id', $d->id)->count());
+
+        // the client's own session still reaches the DNS flow
+        $this->startSession($c);
+        $t = $this->say('8');
+        $this->assertNotContains('staff-assist', $t);
+        $this->assertSame('change_dns', $this->session()->flow);
+    }
+
+    public function test_m5_assisted_actions_are_attributed_to_the_staff_user(): void
+    {
+        $this->tenant->forceFill(['pesapal_enabled' => true, 'pesapal_consumer_key' => 'k', 'pesapal_consumer_secret' => 's'])->save();
+        $c = $this->makeClient();
+        $this->fk([
+            '*RequestToken*' => Http::response(['token' => 'tok']),
+            '*SubmitOrderRequest*' => Http::response(['order_tracking_id' => 'TR-m5', 'redirect_url' => 'https://pay.example.test/m5']),
+        ]);
+        $logged = [];
+        \Illuminate\Support\Facades\Log::listen(function ($e) use (&$logged) { if ($e->message === 'WhatsApp staff-assist action') $logged[] = $e->context; });
+
+        $inv = $this->makeInvoice($c, 20000);
+        $this->payState($c, $inv);
+        $this->startSession($c, $this->user->id);
+        $this->session()->update(['flow' => 'pay_invoice', 'state' => ['step' => 'choose_method', 'document_id' => $inv->id]]);
+        $this->say('1');
+        $this->assertSame($this->user->id, $inv->fresh()->created_by, 'invoice stamped with the assisting staff user');
+        $this->assertTrue(count($logged) >= 1 && ($logged[0]['assisted_by_user_id'] ?? null) === $this->user->id && ($logged[0]['action'] ?? null) === 'payment_link', 'log carries assisted_by_user_id');
+
+        // a client's own (unassisted) session leaves no staff attribution
+        $inv2 = $this->makeInvoice($c, 20000);
+        $logged = [];
+        $this->payState($c, $inv2);
+        $this->say('2');
+        $this->assertSame(null, $inv2->fresh()->created_by);
+        $this->assertSame([], $logged);
+    }
 }
 
 class FakeBundler extends \App\Services\Hosting\RenewalBundleService
