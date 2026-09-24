@@ -262,4 +262,41 @@ class WhatsappPhase2Test
         $d->update(['status' => 'cancelled']);
         $this->assertSame(null, $svc->validateForOrder($coupon->code, $this->tenant->id, $p, 30000.0, $a->id)['error'], 'released use is reusable');
     }
+
+    // ═══ M2: abandoned orders command ═══
+    private function age(Document $d, int $days): void { DB::table('documents')->where('id', $d->id)->update(['created_at' => now()->subDays($days)]); }
+
+    public function test_m2_expire_abandoned_orders_command(): void
+    {
+        $c = $this->makeClient();
+        $coupon = $this->coupon(['max_uses' => 3]);
+        $old = $this->makeInvoice($c, 27000, 'sent', 'Plan (WhatsApp order): old.co.tz (promo X)');
+        CouponService::class; app(CouponService::class)->redeem($coupon, $c->id, $old->id, 3000.0);
+        $sub = \App\Models\ClientSubscription::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'product_service_id' => $this->product()->id, 'label' => 'old.co.tz', 'quantity' => 1, 'start_date' => now(), 'expire_date' => now()->addYear(), 'status' => 'pending']);
+        \App\Models\RecurringInvoiceLog::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'client_subscription_id' => $sub->id, 'product_service_id' => $sub->product_service_id, 'document_id' => $old->id, 'next_bill_date' => now()->toDateString()]);
+        $dom = \App\Models\Domain::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => 'abandoned-p2.co.tz', 'status' => 'pending', 'registrar' => 'fred', 'meta' => ['order_document_id' => $old->id, 'pending_action' => 'register']]);
+        $fresh = $this->makeInvoice($c, 1000, 'sent', 'Domain registered (WhatsApp order): fresh.co.tz');
+        $paid = $this->makeInvoice($c, 1000, 'paid', 'Domain registered (WhatsApp order): paid.co.tz');
+        $unmarked = $this->makeInvoice($c, 1000, 'sent', 'Manual staff invoice');
+        $part = $this->makeInvoice($c, 5000, 'partial', 'Domain registered (WhatsApp order): part.co.tz');
+        foreach ([$old, $paid, $unmarked, $part] as $d) $this->age($d, 30);
+        $this->age($fresh, 2);
+
+        \Illuminate\Support\Facades\Artisan::call('whatsapp:expire-abandoned-orders', ['--days' => 14, '--dry-run' => true]);
+        $this->assertContains('would cancel', strtolower(\Illuminate\Support\Facades\Artisan::output()));
+        $this->assertSame('sent', $old->fresh()->status, 'dry-run changes nothing');
+        $this->assertSame(1, (int) $coupon->fresh()->uses);
+
+        \Illuminate\Support\Facades\Artisan::call('whatsapp:expire-abandoned-orders', ['--days' => 14]);
+        $this->assertSame('cancelled', $old->fresh()->status);
+        $this->assertSame(0, (int) $coupon->fresh()->uses, 'coupon released');
+        $this->assertSame('cancelled', $sub->fresh()->status, 'pending subscription cancelled');
+        $this->assertSame('cancelled', $dom->fresh()->status, 'pending domain cancelled');
+        $this->assertSame('sent', $fresh->fresh()->status, 'recent order untouched');
+        $this->assertSame('paid', $paid->fresh()->status, 'paid untouched');
+        $this->assertSame('sent', $unmarked->fresh()->status, 'unmarked untouched');
+        $this->assertSame('partial', $part->fresh()->status, 'partial untouched');
+        \Illuminate\Support\Facades\Artisan::call('whatsapp:expire-abandoned-orders', ['--days' => 14]); // idempotent
+        $this->assertSame(0, (int) $coupon->fresh()->uses);
+    }
 }
