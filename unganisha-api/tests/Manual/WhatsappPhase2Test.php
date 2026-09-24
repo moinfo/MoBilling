@@ -299,4 +299,74 @@ class WhatsappPhase2Test
         \Illuminate\Support\Facades\Artisan::call('whatsapp:expire-abandoned-orders', ['--days' => 14]); // idempotent
         $this->assertSame(0, (int) $coupon->fresh()->uses);
     }
+
+    // ═══ H4: verification lockout ═══
+    public function test_h4_verify_guard_thresholds_reset_and_persistence(): void
+    {
+        $g = app(\App\Services\WhatsappVerifyGuard::class);
+        $t = $this->tenant->id;
+        $k = '255711111111';
+        $this->assertSame(null, $g->isLocked($t, $k));
+        for ($i = 1; $i <= 4; $i++) {
+            $r = $g->recordFailure($t, $k);
+            $this->assertTrue(!$r['newly_locked'], "failure $i not locked");
+        }
+        $this->assertSame(null, $g->isLocked($t, $k));
+        $r = $g->recordFailure($t, $k);
+        $this->assertTrue($r['newly_locked'], '5th failure locks');
+        $mins = now()->diffInMinutes($g->isLocked($t, $k), false);
+        $this->assertTrue($mins >= 58 && $mins <= 60, "lock ~1h, got $mins");
+        $this->assertTrue($g->claimStaffAlert($t, $k), 'staff alert claimed once');
+        $this->assertTrue(!$g->claimStaffAlert($t, $k), 'not twice for the same lock');
+        // survives session deletion: nothing in the session row
+        WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $t)->delete();
+        $this->assertTrue($g->isLocked($t, $k) !== null, 'lock independent of session');
+        // escalation to 24h at 10
+        for ($i = 6; $i <= 10; $i++) $g->recordFailure($t, $k);
+        $mins = now()->diffInMinutes($g->isLocked($t, $k), false);
+        $this->assertTrue($mins > 1400, "10 failures lock 24h, got $mins");
+        // success resets
+        $g->reset($t, $k);
+        $this->assertSame(null, $g->isLocked($t, $k));
+        $this->assertSame(1, $g->recordFailure($t, $k)['failures'], 'counter restarted');
+        // window: old failures do not count
+        DB::table('whatsapp_verify_attempts')->where('tenant_id', $t)->where('phone', $k)->update(['failures' => 4, 'last_failed_at' => now()->subHours(25)]);
+        $this->assertTrue(!$g->recordFailure($t, $k)['newly_locked'], 'failures older than 24h forgotten');
+        // staff policy: 5 -> 30 min
+        $sk = \App\Services\WhatsappVerifyGuard::staffKey('u1');
+        for ($i = 1; $i <= 5; $i++) $r = $g->recordFailure($t, $sk, \App\Services\WhatsappVerifyGuard::STAFF);
+        $mins = now()->diffInMinutes($g->isLocked($t, $sk), false);
+        $this->assertTrue($r['newly_locked'] && $mins >= 28 && $mins <= 30, "staff lock 30m, got $mins");
+    }
+
+    public function test_h4_surname_stop_words_and_short_tokens(): void
+    {
+        $m = fn ($last, $full, $typed) => \App\Services\WhatsappVerifyGuard::surnameMatches($last, $full, $typed);
+        $this->assertTrue($m('Mushi', 'Asha Mushi', 'mushi'), 'person surname');
+        $this->assertTrue($m(null, 'Asha Juma Mushi', 'Juma'), 'any name word');
+        $this->assertTrue(!$m(null, 'Acme Trading Ltd', 'ltd'), 'ltd rejected');
+        $this->assertTrue(!$m(null, 'Acme Trading Ltd', 'Trading'), 'trading rejected');
+        $this->assertTrue(!$m(null, 'Acme Investments Company Limited', 'company'), 'company rejected');
+        $this->assertTrue($m(null, 'Acme Trading Ltd', 'Acme'), 'distinctive token matches');
+        $this->assertTrue(!$m(null, 'Al Co', 'co'), 'short/stop rejected');
+        $this->assertTrue(!$m(null, 'Jo Ng Bee', 'ng'), 'token <3 rejected');
+        $this->assertTrue($m('Li', 'Wei Li', 'li'), 'exact registered short last name still matches');
+        $this->assertTrue(!$m('Ltd', 'X Ltd', 'ltd'), 'stop-word last name never matches');
+        $this->assertTrue(!$m('Mushi', 'Asha Mushi', ''), 'empty');
+    }
+
+    // ═══ M4: reminder targets ═══
+    public function test_m4_reminder_targets_model_and_command_do_not_touch_session(): void
+    {
+        $c = $this->makeClient();
+        $d1 = \App\Models\Domain::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => 'one-p2.co.tz', 'status' => 'active', 'registrar' => 'fred', 'expires_at' => now()->addDays(5)]);
+        $d2 = \App\Models\Domain::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => 'two-p2.co.tz', 'status' => 'active', 'registrar' => 'fred', 'expires_at' => now()->addDays(6)]);
+        $T = \App\Models\WhatsappReminderTarget::class;
+        $T::record($this->tenant->id, $this->phone, $c->id, $d1->id);
+        $T::record($this->tenant->id, $this->phone, $c->id, $d2->id);
+        $T::record($this->tenant->id, $this->phone, $c->id, $d2->id); // refresh, no duplicate row
+        $this->assertSame(2, $T::openFor($this->tenant->id, $this->phone)->count());
+        DB::table('whatsapp_reminder_targets')->where('domain_id', $d1->id)->update(['expires_at' => now()->subMinute()]);
+        $this->assertSame(1, $T::openFor($this->tenant->id, $this->phone)->count(), 'expired target ignored');
+    }
 }
