@@ -13,6 +13,11 @@ export const getOrderCatalog = () =>
 export const getOrderDomainTlds = () =>
   api.get<{ data: PortalTldRow[] }>('/orders/domain-tlds');
 
+// Staff standalone domain order: also lists Name.com TLDs on sale (`via`) and the ones not switched on yet.
+export type OrderTldRow = PortalTldRow & { via?: 'namecom' | null };
+export const getOrderDomainTldsForDomain = () =>
+  api.get<{ data: OrderTldRow[]; off_sale: string[] }>('/orders/domain-tlds', { params: { scope: 'domain' } });
+
 export const getOrderDomainAddons = () =>
   api.get<{ data: DomainAddonRow[] }>('/orders/domain-addons');
 

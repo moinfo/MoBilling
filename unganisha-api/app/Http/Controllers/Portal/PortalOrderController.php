@@ -91,13 +91,42 @@ class PortalOrderController extends Controller
         return response()->json(['data' => $groups]);
     }
 
-    /** Offered TLDs for the domain chooser dropdown. */
+    /**
+     * Offered TLDs for the domain chooser dropdown. Resolves with the same semantics as
+     * DomainTld::priceFor: a tenant's own Name.com row is authoritative for its TLD, so a
+     * platform placeholder row for that TLD is never listed (on sale or not).
+     *
+     * - Bundled hosting order / client portal: only TLDs sold with hosting (never Name.com ones,
+     *   which are ordered separately from the Domains page), neutral wording.
+     * - Staff standalone domain order (?scope=domain): every TLD on sale including Name.com ones
+     *   (flagged `via`), plus `off_sale` = Name.com TLDs the tenant has not switched on yet.
+     */
     public function tlds(Request $request)
     {
         $tenantId = $request->user()->tenant_id;
+        $isStaff = !$request->user()->client_id;
+        $namecomRows = \App\Models\DomainTld::where('tenant_id', $tenantId)->where('registrar', 'namecom')->get(['tld', 'is_active']);
+
+        if ($isStaff && $request->query('scope') === 'domain') {
+            $rows = \App\Models\DomainTld::onSaleCatalog($tenantId)->sortBy('tld')->values()
+                ->map(fn ($t) => [
+                    'tld'            => $t->tld,
+                    'register_price' => (float) $t->register_price,
+                    'transfer_price' => (float) $t->transfer_price,
+                    'years_min'      => $t->years_min,
+                    'years_max'      => $t->years_max,
+                    'via'            => $t->registrar === 'namecom' ? 'namecom' : null,
+                ]);
+
+            return response()->json([
+                'data'     => $rows,
+                'off_sale' => $namecomRows->where('is_active', false)->pluck('tld')->sort()->values(),
+            ]);
+        }
 
         $rows = \App\Models\DomainTld::where('is_active', true)
             ->where('registrar', '!=', 'namecom') // sold via the Domains page only
+            ->whereNotIn('tld', $namecomRows->pluck('tld')->all()) // tenant Name.com row owns the TLD: no placeholder fallback
             ->where(fn ($q) => $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id'))
             ->orderBy('tld')->orderByRaw('tenant_id IS NULL')
             ->get()->unique('tld')->values()

@@ -13,8 +13,11 @@ class DomainTldController extends Controller
         $tenantId = auth()->user()->tenant_id;
 
         // Tenant rows override platform (NULL tenant) rows for the same TLD.
+        // A TLD the tenant owns as a Name.com row is managed on the Name.com screen; its platform placeholder is hidden.
+        $ncTlds = DomainTld::where('tenant_id', $tenantId)->where('registrar', 'namecom')->pluck('tld')->all();
         $rows = DomainTld::where(fn ($q) => $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id'))
             ->where('registrar', '!=', 'namecom') // Name.com catalog has its own screen (Settings > Domains > Name.com)
+            ->whereNotIn('tld', $ncTlds)
             ->orderBy('tld')->orderByRaw('tenant_id IS NULL')
             ->get()
             ->unique('tld')

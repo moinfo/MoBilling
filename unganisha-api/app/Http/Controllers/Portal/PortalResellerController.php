@@ -44,6 +44,8 @@ class PortalResellerController extends Controller
         $tlds = DomainTld::where(fn ($q) => $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id'))
             ->whereNotNull('reseller_price')
             ->where('is_active', true)
+            ->where('registrar', '!=', 'namecom')
+            ->whereNotIn('tld', DomainTld::where('tenant_id', $tenantId)->where('registrar', 'namecom')->pluck('tld')->all())
             ->orderBy('tld')->orderByRaw('tenant_id IS NULL')
             ->get()
             ->unique('tld')

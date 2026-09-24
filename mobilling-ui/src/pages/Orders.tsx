@@ -11,7 +11,7 @@ import {
   IconShoppingCart, IconWorldWww, IconPackage, IconCheck, IconTicket,
 } from '@tabler/icons-react';
 import {
-  getOrderCatalog, getOrderDomainTlds, getOrderDomainAddons,
+  getOrderCatalog, getOrderDomainTlds, getOrderDomainTldsForDomain, getOrderDomainAddons,
   getOrderProductAddons, getOrderConfigOptions, validateOrderCoupon, placeOrder,
 } from '../api/orders';
 import { getClients, type Client } from '../api/clients';
@@ -121,7 +121,8 @@ function ProductOrderForm({ clientId }: { clientId: string }) {
   const needsDomain = product?.needs_domain ?? false;
 
   const { data: tldsRes } = useQuery({
-    queryKey: ['order-tlds'], queryFn: getOrderDomainTlds, enabled: needsDomain,
+    queryKey: ['order-tlds', 'hosting'], queryFn: getOrderDomainTlds, enabled: needsDomain,
+    staleTime: 0, refetchOnMount: 'always',
   });
   const tlds = tldsRes?.data?.data ?? [];
   const { data: domainAddonsRes } = useQuery({
@@ -434,12 +435,19 @@ function DomainOrderForm({ clientId }: { clientId: string }) {
   const [years, setYears] = useState(1);
   const [authInfo, setAuthInfo] = useState('');
 
-  const { data: tldsRes } = useQuery({ queryKey: ['order-tlds'], queryFn: getOrderDomainTlds });
+  // Never serve a cached price: always refetch when the form opens.
+  const { data: tldsRes } = useQuery({
+    queryKey: ['order-tlds', 'domain'], queryFn: getOrderDomainTldsForDomain,
+    staleTime: 0, refetchOnMount: 'always',
+  });
   const tlds = tldsRes?.data?.data ?? [];
+  const offSale = tldsRes?.data?.off_sale ?? [];
   const domain = name.trim().toLowerCase();
-  const tldRow = domain.includes('.')
-    ? tlds.find((t) => t.tld === domain.split('.').slice(1).join('.')) ?? null
-    : null;
+  const domainTld = domain.includes('.') ? domain.split('.').slice(1).join('.') : '';
+  const tldRow = domainTld ? tlds.find((t) => t.tld === domainTld) ?? null : null;
+  const notOnSale = !!domainTld && !tldRow && offSale.includes(domainTld);
+  const viaNameCom = tldRow?.via === 'namecom';
+  const transferBlocked = viaNameCom && action === 'transfer';
   const unit = tldRow ? (action === 'register' ? tldRow.register_price : tldRow.transfer_price) : 0;
 
   const orderMutation = useMutation({
@@ -450,7 +458,9 @@ function DomainOrderForm({ clientId }: { clientId: string }) {
     onSuccess: () => {
       notifications.show({
         title: 'Domain order placed',
-        message: `${domain} — an invoice was created; payment triggers the ${action}.`,
+        message: viaNameCom
+          ? `${domain} — an invoice was created; after payment it goes to the registration queue.`
+          : `${domain} — an invoice was created; payment triggers the ${action}.`,
         color: 'teal', icon: <IconCheck size={16} />, autoClose: 8000,
       });
       navigate('/domains');
@@ -482,10 +492,20 @@ function DomainOrderForm({ clientId }: { clientId: string }) {
                 value={years} onChange={(v) => setYears(Number(v) || 1)}
               />
               {tldRow && <Badge variant="light" mb={6}>.{tldRow.tld}: {formatCurrency(unit)}/yr</Badge>}
-              {domain.includes('.') && !tldRow && tlds.length > 0 && (
+              {domain.includes('.') && !tldRow && !notOnSale && tlds.length > 0 && (
                 <Badge color="red" variant="light" mb={6}>TLD not offered — add pricing in Settings → Domains</Badge>
               )}
             </Group>
+            {notOnSale && (
+              <Text size="sm" c="red">
+                .{domainTld} is not on sale yet — enable it in Settings &gt; Domains &gt; Name.com &gt; TLDs &amp; pricing.
+              </Text>
+            )}
+            {transferBlocked && (
+              <Text size="sm" c="red">
+                Transfers of .{domainTld} cannot be ordered here — record it as an existing domain instead.
+              </Text>
+            )}
             {action === 'transfer' && (
               <TextInput
                 label="EPP / Auth code" required value={authInfo}
@@ -505,14 +525,16 @@ function DomainOrderForm({ clientId }: { clientId: string }) {
             </Group>
             <Button
               leftSection={<IconShoppingCart size={16} />}
-              disabled={!tldRow || (action === 'transfer' && !authInfo.trim())}
+              disabled={!tldRow || transferBlocked || (action === 'transfer' && !authInfo.trim())}
               loading={orderMutation.isPending}
               onClick={() => orderMutation.mutate()}
             >
               Place Order
             </Button>
             <Text size="xs" c="dimmed">
-              Creates a pending domain and an invoice; payment triggers the {action} at the registry.
+              {viaNameCom
+                ? 'Creates a pending domain and an invoice; after payment it goes to the registration queue.'
+                : `Creates a pending domain and an invoice; payment triggers the ${action} at the registry.`}
             </Text>
           </Stack>
         </Card>
