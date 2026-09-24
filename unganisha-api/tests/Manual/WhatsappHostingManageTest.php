@@ -153,8 +153,8 @@ class WhatsappHostingManageTest
         $this->startSession($client);
         $this->say('3'); $this->say('2');
         $this->assertSame('pick_account', $this->session()->state['step']);
-        $this->assertStringContainsString('1. one.example.test', $this->allText());
-        $this->assertStringContainsString('2. two.example.test', $this->allText());
+        $this->assertStringContainsString('1) 🟢 one.example.test', $this->allText());
+        $this->assertStringContainsString('2) 🔴 two.example.test', $this->allText());
         $this->say('1');
         $this->assertSame('account_menu', $this->session()->state['step']);
     }

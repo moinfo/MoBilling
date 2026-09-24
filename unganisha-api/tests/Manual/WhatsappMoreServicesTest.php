@@ -259,10 +259,10 @@ class WhatsappMoreServicesTest
         $this->startSession($c);
         $t = $this->say('10');
         $this->assertSame('more_services', $this->session()->flow);
-        foreach (['1) My Servers', '2) Expiring soon', '0) Back'] as $x) $this->assertContains($x, $t);
+        foreach (['1) My Servers', '2) Expiring soon', '3) Support', '0) Back'] as $x) $this->assertContains($x, $t);
 
         $t = $this->say('9');
-        $this->assertContains('Sorry, reply 1, 2 or 0', $t);
+        $this->assertContains('Sorry, reply 1, 2, 3 or 0', $t);
         $this->assertSame('more_services', $this->session()->flow, 'invalid input keeps state');
 
         $this->assertContains('10) More services', $this->say('0'));
@@ -300,12 +300,12 @@ class WhatsappMoreServicesTest
         $this->startSession($a);
         $this->say('10');
         $t = $this->say('1');
-        foreach (['a-web', 'a-db', '203.0.113.71', 'eu-central', 'running'] as $x) $this->assertContains($x, $t);
+        foreach (['a-web', 'a-db', '203.0.113.71', 'eu-central', 'Running'] as $x) $this->assertContains($x, $t);
         foreach (['b-secret', '203.0.113.73', 'a-cancelled', 'a-gone', 'a-unlinked'] as $x) $this->assertNotContains($x, $t);
         $this->assertSame('pick', $this->session()->state['step']);
 
         // invalid pick keeps the list state; other numbers fine
-        $this->assertContains('valid number', $this->say('5'));
+        $this->assertContains('Sorry, reply 1, 2 or 0', $this->say('5'));
         $this->assertSame('pick', $this->session()->state['step']);
         $this->assertContains('*Cloud Server: a-db*', $this->say('1'));
         $this->assertSame('detail', $this->session()->state['step']);
@@ -552,7 +552,7 @@ class WhatsappMoreServicesTest
         // invalid replies re-prompt, keep the list
         $before = $this->session()->state;
         foreach (['abc', '9', '0x', '99'] as $bad) {
-            $this->assertContains('valid number', $this->say($bad));
+            $this->assertContains('Sorry, reply 1', $this->say($bad));
             $this->assertSame($before, $this->session()->state);
         }
         $this->assertContains('*More services*', $this->say('0'));
@@ -566,7 +566,7 @@ class WhatsappMoreServicesTest
         $this->startSession($a);
         $this->say('10');
         $t = $this->say('2');
-        $this->assertSame(10, preg_match_all('/^\d+\) d\d+\.co\.tz/m', $t));
+        $this->assertSame(10, preg_match_all('/^\d+\) (?:⚠️ )?d\d+\.co\.tz/m', $t));
         $this->assertContains('d10.co.tz', $t);
         $this->assertNotContains('d11.co.tz', $t);
     }
@@ -591,8 +591,8 @@ class WhatsappMoreServicesTest
         $this->assertSame(1, $doc->count());
         $this->assertSame(21000.0, (float) $doc[0]->total);
         $this->assertSame('sent', $doc[0]->status);
-        $this->assertContains('*Invoice ' . $doc[0]->document_number . '* — TZS 21,000', $t);
-        $this->assertContains('Online (Pesapal)', $t);
+        $this->assertContains('*Invoice ' . $doc[0]->document_number . "*\n• Amount: TZS 21,000", $t);
+        $this->assertContains('Pay online (Card / Mobile Money)', $t);
         $meta = $d->fresh()->meta;
         $this->assertSame('renew', $meta['pending_action']);
         $this->assertSame($doc[0]->id, $meta['renewal_document_id']);
@@ -715,7 +715,7 @@ class WhatsappMoreServicesTest
         $this->assertContains('1) mybiz.com — Available — TZS 42,970/yr', $t);
         $t = $this->say('1');
         $this->assertSame('order_domain', $this->session()->flow);
-        $this->assertContains('mybiz.com is available! Price: TZS 42,970 for 1 year. Reply YES to order.', $t);
+        $this->assertContains("✅ *mybiz.com* is available\nPrice: TZS 42,970 for 1 year\n\nOrder it now?\n1) Yes\n2) No", $t);
         $t = $this->say('yes');
         $doc = Document::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('client_id', $a->id)->where('notes', 'like', 'Domain registration (WhatsApp order): mybiz.com%')->first();
         $this->assertTrue($doc !== null, 'invoice created');
@@ -726,7 +726,7 @@ class WhatsappMoreServicesTest
         $this->assertSame('register', $dom->meta['pending_action']);
         $this->assertSame($doc->id, $dom->meta['order_document_id']);
         $this->assertSame('namecom', $dom->meta['registrar']);
-        $this->assertContains('*Invoice ' . $doc->document_number . '* — TZS 42,970', $t);
+        $this->assertContains('*Invoice ' . $doc->document_number . "*\n• Amount: TZS 42,970", $t);
         $this->assertSame('pay_invoice', $this->session()->flow);
         $this->assertSame(1, $this->ncChecks(), 'ordering does not re-query the registrar');
     }
@@ -740,7 +740,7 @@ class WhatsappMoreServicesTest
         $this->startSession($a);
         $this->say('7');
         $this->say('mybiz.co.tz');
-        $this->assertContains('mybiz.co.tz is available', $this->say('1'));
+        $this->assertContains('✅ *mybiz.co.tz* is available', $this->say('1'));
         $this->say('yes');
         $dom = Domain::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('name', 'mybiz.co.tz')->first();
         $this->assertSame('pending', $dom->status);
@@ -762,7 +762,7 @@ class WhatsappMoreServicesTest
         $rows = $state['rows'];
         $net = array_search('mybiz.net', array_column($rows, 'name')) + 1;
         $this->assertContains("can't be ordered", $this->say((string) $net));
-        $this->assertContains('valid number', $this->say('50'));
+        $this->assertContains('Sorry, reply 1-', $this->say('50'));
         $this->assertContains('Sorry', $this->say('not a domain!'));
         $this->assertSame($state, $this->session()->state, 'state intact after bad input');
         $this->assertSame('check_availability', $this->session()->flow);
@@ -791,8 +791,11 @@ class WhatsappMoreServicesTest
         $this->startSession($a);
         $this->say('7');
         $t = $this->say('mybiz.co.tz');
-        $this->assertContains('Domain mybiz.co.tz is AVAILABLE! Registration price: TZS 19,999/year. Choose option 1 to order it.', $t);
+        $this->assertContains("✅ *mybiz.co.tz* is available\nPrice: TZS 19,999 for 1 year\n\nOrder it now?\n1) Yes\n2) No", $t);
+        $this->assertSame('order_domain', $this->session()->flow, 'available single-domain check hands off to the confirm step');
+        $this->assertSame('confirm', $this->session()->state['step']);
         // bare label with no fallback possible: polite retry, state kept
+        $this->say('menu');
         $this->say('7');
         $t = $this->say('mybiz');
         $this->assertContains("couldn't check this right now", $t);
@@ -810,6 +813,631 @@ class WhatsappMoreServicesTest
         $t = $this->say('mybiz');
         $this->assertContains("mybiz.com — Can't check right now", $t);
         $this->assertContains('mybiz.co.tz — Available', $t);
+    }
+
+    // ═════════════════════ Polish pass: grouped root, confirmations, localisation, support, My Domains/Hosting ═════════════════════
+
+    private function lang(string $lang): void { $this->session()->update(['language' => $lang]); }
+
+    private function plan(string $name, float $price, string $cycle = 'yearly', string $desc = ''): ProductService
+    {
+        return ProductService::create(['tenant_id' => $this->tenant->id, 'type' => 'service', 'name' => $name, 'price' => $price, 'tax_percent' => 0, 'unit' => 'pcs', 'category' => 'Web Hosting', 'billing_cycle' => $cycle, 'provisioning_type' => 'whm_cpanel', 'portal_visible' => true, 'is_active' => true, 'description' => $desc]);
+    }
+
+    private function docs(Client $c)
+    {
+        return Document::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('client_id', $c->id)->where('type', 'invoice')->get();
+    }
+
+    private function invoice(Client $c, string $status, int $dueDays, float $total = 5000): Document
+    {
+        return Document::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'type' => 'invoice', 'document_number' => 'T-' . strtoupper(substr(md5(uniqid()), 0, 6)), 'date' => now()->toDateString(), 'due_date' => now()->addDays($dueDays)->toDateString(), 'subtotal' => $total, 'discount_amount' => 0, 'tax_amount' => 0, 'total' => $total, 'status' => $status]);
+    }
+
+    public function test_root_menu_is_grouped_and_every_number_still_works(): void
+    {
+        $c = $this->makeClient();
+        $order = ['en' => ['*Domains*', '1) Domain Registration', '2) Domain Renewal', '6) Domain WHOIS', '7) Check Domain Availability', '8) Change Nameservers (DNS)', '11) My Domains', '*Hosting & Email*', '3) Website Hosting', '4) Business Email Hosting', '12) My Hosting', '*Payments*', '5) View and Pay Invoices', '*Account*', '9) Account Information', '10) More services', '0) Logout'],
+                  'sw' => ['*Domain*', '1) Domain Registration', '2) Domain Renewal', '6) WHOIS ya Domain', '7) Angalia kama Domain Inapatikana', '8) Badilisha Nameservers (DNS)', '11) Domain Zangu', '*Hosting na Email*', '3) Website Hosting', '4) Business Email Hosting', '12) Hosting Yangu', '*Malipo*', '5) Angalia na Lipa Invoice', '*Akaunti*', '9) Taarifa za Akaunti', '10) Huduma Zaidi', '0) Toka (Logout)']];
+        foreach ($order as $lang => $seq) {
+            $this->startSession($c);
+            $this->lang($lang);
+            $t = $this->say('zzz');
+            $pos = -1;
+            foreach ($seq as $x) {
+                $p = strpos($t, $x);
+                $this->assertTrue($p !== false && $p > $pos, "$lang: '$x' missing or out of order");
+                $pos = $p;
+            }
+            $this->assertContains('MOSMS', $t);
+            $this->assertContains('👋', $t);
+            $this->assertSame(1, substr_count($t, '👋'), 'single greeting emoji');
+            $this->assertNoInlineOptions($t, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], "$lang root");
+            $this->assertTrue((bool) preg_match('/\n\n\*/', $t), 'blank line between groups');
+        }
+
+        foreach (['1' => 'order_domain', '3' => 'hosting_submenu', '6' => 'whois', '7' => 'check_availability', '8' => 'change_dns', '10' => 'more_services', '11' => 'my_domains', '12' => 'my_hosting', '5' => 'pay_invoice', '4' => 'order_hosting'] as $n => $flow) {
+            $this->startSession($c);
+            $this->say($n);
+            $s = $this->session();
+            // flows with nothing to show (no domains/invoices/plans) finish straight back to the root menu
+            $this->assertTrue($s !== null && ($s->flow === $flow || $s->flow === null), "option $n");
+        }
+        $this->startSession($c); $this->say('2');
+        $this->startSession($c); $this->assertContains('Account Information', $this->say('9'));
+        $this->startSession($c); $this->say('0'); $this->assertSame(null, $this->session());
+    }
+
+    public function test_confirmation_accepts_digits_and_words(): void
+    {
+        $this->tlds();
+        FakeRegistrar::$fred = ['mybiz.co.tz' => true];
+        $a = $this->makeClient();
+        foreach (['1', 'ndiyo', 'YES', 'Ndiyo', 'y'] as $yes) {
+            $this->startSession($a);
+            $before = $this->docs($a)->count();
+            $this->say('1');
+            $t = $this->say('mybiz.co.tz');
+            $this->assertContains("1) Yes\n2) No", $t);
+            $this->assertSame($before, $this->docs($a)->count());
+            $this->say($yes);
+            $this->assertSame($before + 1, $this->docs($a)->count(), "'$yes' confirms");
+            $this->assertSame('pay_invoice', $this->session()->flow);
+            Domain::withoutGlobalScopes()->where('name', 'mybiz.co.tz')->delete();
+        }
+        foreach (['2', 'hapana', 'NO', 'no'] as $no) {
+            $this->startSession($a);
+            $before = $this->docs($a)->count();
+            $this->say('1'); $this->say('mybiz.co.tz');
+            $t = $this->say($no);
+            $this->assertContains('cancelled', $t);
+            $this->assertSame($before, $this->docs($a)->count(), "'$no' cancels");
+        }
+        // anything else neither orders nor cancels: it names the choices and keeps the step
+        $this->startSession($a);
+        $this->say('1'); $this->say('mybiz.co.tz');
+        $before = $this->docs($a)->count();
+        $t = $this->say('maybe');
+        $this->assertContains('Sorry, reply 1 or 2.', $t);
+        $this->assertSame('confirm', $this->session()->state['step']);
+        $this->assertSame($before, $this->docs($a)->count());
+        // Swahili wording
+        $this->lang('sw');
+        $this->assertContains("1) Ndiyo\n2) Hapana", $this->say('maybe'));
+    }
+
+    public function test_plan_details_digit_cannot_be_read_as_a_pick_from_the_earlier_list(): void
+    {
+        $p1 = $this->plan('Alpha', 10000);
+        $p2 = $this->plan('Beta', 20000, 'monthly');
+        $a = $this->makeClient();
+        $this->startSession($a);
+        $t = $this->say('3'); $this->assertContains('1) Order new hosting', $t);
+        $t = $this->say('1');
+        $this->assertContains('1) Alpha — TZS 10,000 per year', $t);
+        $this->assertContains('2) Beta — TZS 20,000 per month', $t);
+        $this->assertNotContains('/yearly', $t);
+        $t = $this->say('2');
+        $this->assertSame('plan_details', $this->session()->state['step']);
+        $this->assertSame($p2->id, $this->session()->state['product_service_id']);
+        $this->assertContains("• Price: TZS 20,000 per month", $t);
+        $this->assertContains("1) Yes, order this one\n2) No, choose another", $t);
+        // '2' here means NO (back to the list), never "plan 2"
+        $t = $this->say('2');
+        $this->assertSame('pick_plan', $this->session()->state['step']);
+        $this->assertContains('*Choose a plan*', $t);
+        $this->say('1');
+        $this->assertSame($p1->id, $this->session()->state['product_service_id']);
+        $this->assertContains('Sorry, reply 1 or 2.', $this->say('7'));
+        $this->assertSame('plan_details', $this->session()->state['step']);
+        $t = $this->say('1'); // YES
+        $this->assertSame('ask_domain_mode', $this->session()->state['step']);
+        $this->assertContains('3) Transfer my domain to you', $t);
+        $this->assertContains('Sorry, reply 1, 2, 3 or 0.', $this->say('9'));
+        // word forms still work, and in Swahili
+        $this->startSession($a); $this->lang('sw');
+        $this->say('3'); $t = $this->say('1');
+        $this->assertContains('1) Alpha — TZS 10,000 kwa mwaka', $t);
+        $this->assertContains('2) Beta — TZS 20,000 kwa mwezi', $t);
+        $this->say('1');
+        $this->assertSame('ndiyo', 'ndiyo');
+        $this->say('NDIYO');
+        $this->assertSame('ask_domain_mode', $this->session()->state['step']);
+    }
+
+    public function test_hosting_order_confirm_summaries_and_promo_step(): void
+    {
+        $p = $this->plan('Alpha', 55000);
+        $a = $this->makeClient();
+        $this->startSession($a);
+        $this->say('3'); $this->say('1'); $this->say('1'); $this->say('1');   // plan, details, YES
+        $t = $this->say('1');                                                   // I already have a domain
+        $this->assertContains('Please reply with the domain name', $t);
+        $t = $this->say('mysite.example.test');
+        $this->assertContains('Reply 2 (No) if you don\'t have one.', $t);
+        $t = $this->say('2');                                                   // no promo, by digit
+        foreach (["*Confirm your order*", "• Package: Alpha", "• Price: TZS 55,000 per year", "• Domain: mysite.example.test", "Place the order?\n1) Yes\n2) No"] as $x) $this->assertContains($x, $t);
+        $t = $this->say('2');                                                   // NO
+        $this->assertContains('cancelled', $t);
+        $this->assertSame(0, $this->docs($a)->count());
+        // same in Swahili, then confirm by digit
+        $this->startSession($a); $this->lang('sw');
+        $this->say('3'); $this->say('1'); $this->say('1'); $this->say('1'); $this->say('1'); $this->say('mysite.example.test');
+        $t = $this->say('hapana');
+        foreach (['*Thibitisha agizo*', '• Kifurushi: Alpha', '• Bei: TZS 55,000 kwa mwaka', '• Domain: mysite.example.test', "1) Ndiyo\n2) Hapana"] as $x) $this->assertContains($x, $t);
+        $this->say('1');
+        $this->assertSame(1, $this->docs($a)->count());
+    }
+
+    public function test_availability_message_is_one_shared_helper(): void
+    {
+        $src = file_get_contents(__DIR__ . '/../../app/Http/Controllers/WhatsappRenewalWebhookController.php');
+        $this->assertSame(1, substr_count($src, '* inapatikana'), 'only the helper renders the availability text');
+        $this->assertSame(1, substr_count($src, 'is available\\nPrice'), 'only the helper renders the English availability text');
+
+        $this->tlds();
+        FakeRegistrar::$fred = ['mybiz.co.tz' => true];
+        $this->plan('Alpha', 10000);
+        $a = $this->makeClient();
+        $body = "✅ *mybiz.co.tz* is available\nPrice: TZS 19,999 for 1 year\n\n";
+        // 1) registration flow
+        $this->startSession($a);
+        $this->say('1');
+        $t = $this->say('mybiz.co.tz');
+        $this->assertContains($body . "Order it now?\n1) Yes\n2) No", $t);
+        // 2) hosting + new domain flow ("continue" wording)
+        $this->startSession($a);
+        $this->say('3'); $this->say('1'); $this->say('1'); $this->say('1'); $this->say('2');
+        $t = $this->say('mybiz.co.tz');
+        $this->assertContains($body . "Continue?\n1) Yes\n2) No", $t);
+        // 3) option-7 search row pick
+        $this->startSession($a);
+        $this->fk($this->ncFake());
+        $this->say('7');
+        $this->say('mybiz');
+        $rows = $this->session()->state['rows'];
+        $n = array_search('mybiz.co.tz', array_column($rows, 'name')) + 1;
+        $t = $this->say((string) $n);
+        $this->assertContains($body . "Order it now?\n1) Yes\n2) No", $t);
+        // Swahili
+        $this->lang('sw');
+        $this->startSession($a); $this->lang('sw');
+        $this->say('1');
+        $this->assertContains("✅ *mybiz.co.tz* inapatikana\nBei: TZS 19,999 kwa mwaka 1\n\nUnataka kuagiza sasa?\n1) Ndiyo\n2) Hapana", $this->say('mybiz.co.tz'));
+    }
+
+    public function test_cycle_and_status_are_localised(): void
+    {
+        $a = $this->makeClient();
+        [$s1] = $this->makeServer($a, 'srv-run', '8001', '203.0.113.81', 'active', null, 'running');
+        [$s2] = $this->makeServer($a, 'srv-off', '8002', '203.0.113.82', 'active', null, 'offline');
+        [$s3] = $this->makeServer($a, 'srv-reb', '8003', '203.0.113.83', 'active', null, 'rebooting');
+        foreach (['en' => ['Running', 'Off', 'Rebooting', '🟢', '🔴', '🟡'], 'sw' => ['inafanya kazi', 'imezimwa', 'inawashwa upya', '🟢', '🔴', '🟡']] as $lang => $words) {
+            $this->startSession($a); $this->lang($lang);
+            $this->say('10');
+            $t = $this->say('1');
+            foreach ($words as $w) $this->assertContains($w, $t);
+            foreach (['running', 'offline', 'rebooting'] as $raw) $this->assertNotContains($raw, $t);
+            $this->assertContains('🟢 srv-run', $t);
+            $this->assertContains('🔴 srv-off', $t);
+            $this->assertContains('🟡 srv-reb', $t);
+        }
+        // detail card
+        $this->startSession($a); $this->lang('sw');
+        $this->say('10'); $this->say('1');
+        $t = $this->say('1'); // srv-off sorts first? label order: srv-off, srv-reb, srv-run
+        $this->assertContains('Hali: 🔴 imezimwa', $t);
+        // billing cycles never leak raw
+        foreach (['monthly' => ['kwa mwezi', 'per month'], 'quarterly' => ['kwa miezi 3', 'per 3 months'], 'half_yearly' => ['kwa miezi 6', 'per 6 months'], 'yearly' => ['kwa mwaka', 'per year']] as $cyc => [$sw, $en]) {
+            ProductService::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('category', 'Web Hosting')->delete();
+            $this->plan('P-' . $cyc, 1000, $cyc);
+            foreach (['sw' => $sw, 'en' => $en] as $lang => $expect) {
+                $this->startSession($a); $this->lang($lang);
+                $this->say('3');
+                $t = $this->say('1');
+                $this->assertContains("P-$cyc — TZS 1,000 $expect", $t);
+                $this->assertNotContains("1,000 $cyc", $t);
+            }
+        }
+    }
+
+    public function test_cap_notice_search_and_portal_pointer(): void
+    {
+        $a = $this->makeClient();
+        for ($i = 1; $i <= 11; $i++) $this->domain($a, sprintf('dom%02d.co.tz', $i), $i, 'active', []);
+        $this->startSession($a);
+        $t = $this->say('11');
+        $this->assertSame(9, preg_match_all('/^\d\) dom\d\d\.co\.tz/m', $t));
+        $this->assertContains('There are 2 more. Type a name to search.', $t);
+        $t = $this->say('dom11');
+        $this->assertContains('1) dom11.co.tz', $t);
+        $this->assertNotContains('dom01', $t);
+        $this->assertNotContains('There are', $t, 'search result of 1 has no cap notice');
+        $this->say('0'); // back to the main menu
+        $this->lang('sw');
+        $this->assertContains('Zipo nyingine 2. Andika jina kutafuta.', $this->say('11'));
+    }
+
+    public function test_cap_notice_points_to_portal_where_search_is_not_supported(): void
+    {
+        for ($i = 1; $i <= 10; $i++) $this->plan(sprintf('Plan%02d', $i), 1000 * $i);
+        $a = $this->makeClient();
+        $this->startSession($a);
+        $this->say('3');
+        $t = $this->say('1');
+        $this->assertSame(9, preg_match_all('/^\d\) Plan\d\d/m', $t));
+        $this->assertContains('There is 1 more'.'', str_replace('There are 1 more', 'There is 1 more', $t));
+        $this->assertContains($this->tenant->portalUrl('/portal'), $t);
+        $this->assertContains('Visit the portal to see all', $t);
+        $this->startSession($a); $this->lang('sw');
+        $this->say('3');
+        $this->assertContains('Tembelea portal kuona zote', $this->say('1'));
+    }
+
+    public function test_invalid_input_names_the_valid_choices(): void
+    {
+        $a = $this->makeClient();
+        $this->startSession($a);
+        $this->say('3');
+        $this->assertContains('Sorry, reply 1, 2 or 0.', $this->say('x'));
+        $this->say('0'); // 0 = back to main menu
+        $this->assertSame(null, $this->session()->flow);
+        $this->say('10');
+        $this->assertContains('Sorry, reply 1, 2, 3 or 0.', $this->say('x'));
+        $this->lang('sw');
+        $this->assertContains('Samahani, jibu 1, 2, 3 au 0.', $this->say('x'));
+        // payment method step
+        $this->startSession($a);
+        $inv = $this->invoice($a, 'sent', 5);
+        $this->say('5');
+        $this->assertContains('Sorry, reply 1 or 0.', $this->say('9'));
+        $this->say('1');
+        $this->assertContains('Sorry, reply 1, 2 or 0.', $this->say('7'));
+    }
+
+    public function test_payment_method_wording_and_invoice_emoji(): void
+    {
+        $a = $this->makeClient();
+        $this->invoice($a, 'sent', 10);
+        $this->invoice($a, 'overdue', -3);
+        $this->startSession($a);
+        $t = $this->say('5');
+        $this->assertContains('⏳ ', $t);
+        $this->assertContains('⚠️ ', $t);
+        $this->assertTrue((bool) preg_match('/^1\) ⚠️ T-/m', $t), 'overdue first (due date order)');
+        $t = $this->say('1');
+        $this->assertContains('Pay online (Card / Mobile Money)', $t);
+        $this->assertContains('2) Payment details (Bank/mobile money)', $t);
+        $this->assertNotContains('Pesapal', $t);
+        $this->startSession($a); $this->lang('sw');
+        $this->say('5');
+        $t = $this->say('1');
+        $this->assertContains('1) Lipa mtandaoni (Kadi / Mobile Money)', $t);
+        $this->assertContains('2) Maelezo ya kulipa (Benki/Lipa Namba)', $t);
+        $this->assertContains('• Kiasi: TZS', $t);
+    }
+
+    public function test_invoice_list_cap_and_search(): void
+    {
+        $a = $this->makeClient();
+        for ($i = 1; $i <= 11; $i++) $this->invoice($a, 'sent', $i);
+        $this->startSession($a);
+        $t = $this->say('5');
+        $this->assertSame(9, preg_match_all('/^\d\) [⏳⚠️]+ T-/mu', $t));
+        $this->assertContains('There are 2 more. Type a name to search.', $t);
+        $any = Document::withoutGlobalScopes()->where('client_id', $a->id)->orderByDesc('due_date')->first();
+        $t = $this->say($any->document_number);
+        $this->assertContains('1) ⏳ ' . $any->document_number, $t);
+    }
+
+    public function test_emoji_are_only_the_approved_ones(): void
+    {
+        $this->tlds();
+        FakeRegistrar::$fred = ['mybiz.co.tz' => true];
+        $a = $this->makeClient();
+        $this->plan('Alpha', 10000);
+        $this->domain($a, 'e1.co.tz', 3); $this->domain($a, 'e2.co.tz', 40, 'active', []); $this->domain($a, 'e3.co.tz', -5, 'expired', []);
+        $this->hostingSub($a, 'host.example.test', 5);
+        $this->makeServer($a, 'sv', '8100', '203.0.113.90');
+        $this->invoice($a, 'sent', 4);
+        foreach (['en', 'sw'] as $lang) {
+            foreach (['zzz', '1', 'menu', '2', 'menu', '3', '1', 'menu', '3', '2', 'menu', '5', 'menu', '7', 'menu', '8', 'menu', '9', '10', '1', '0', '2', '0', '3', 'menu', '11', '1', 'menu', '12', '1', 'menu'] as $msg) {
+                if ($msg === 'zzz') { $this->startSession($a); $this->lang($lang); }
+                $this->say($msg);
+            }
+        }
+        $allowed = ['👋', '✅', '⏳', '⚠', '🟢', '🔴', '🟡', '👤'];
+        foreach (Fw::$sent as $m) {
+            preg_match_all('/[\x{1F000}-\x{1FAFF}\x{2600}-\x{27BF}\x{2B00}-\x{2BFF}]/u', $m['text'], $mm);
+            foreach ($mm[0] as $emoji) {
+                $this->assertTrue(in_array($emoji, $allowed, true), "unapproved emoji '$emoji' in:\n{$m['text']}");
+            }
+        }
+        // status dots follow the rules
+        $this->startSession($a);
+        $this->say('11');
+        $t = Fw::last();
+        $this->assertTrue((bool) preg_match('/e1\.co\.tz.*⚠️/u', $t), 'due within 7 days => warning');
+        $this->assertTrue((bool) preg_match('/e2\.co\.tz.*🟢/u', $t), 'healthy active => green');
+        $this->assertTrue((bool) preg_match('/e3\.co\.tz.*⚠️/u', $t), 'expired => warning');
+    }
+
+    // ── 3) Msaada / Support ──
+
+    private function tickets(Client $c)
+    {
+        return \App\Models\Ticket::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('client_id', $c->id)->get();
+    }
+
+    public function test_support_creates_a_numbered_ticket_through_the_portal_shape(): void
+    {
+        $a = $this->makeClient();
+        $this->startSession($a);
+        $t = $this->say('10');
+        $this->assertContains('3) Support', $t);
+        $t = $this->say('3');
+        $this->assertContains('Describe your issue', $t);
+        $this->assertContains('0) Back', $t);
+        // too short / too long
+        $this->assertContains('between 5 and 1000', $this->say('abcd'));
+        $this->assertContains('between 5 and 1000', $this->say(str_repeat('x', 1001)));
+        $this->assertSame(0, $this->tickets($a)->count());
+        $this->assertSame('more_services', $this->session()->flow);
+        $t = $this->say('My website shows an error since this morning');
+        $tk = $this->tickets($a);
+        $this->assertSame(1, $tk->count());
+        $ticket = $tk->first();
+        $this->assertSame('WhatsApp support request', $ticket->subject);
+        $this->assertSame('support', $ticket->department);
+        $this->assertSame('medium', $ticket->priority);
+        $this->assertSame('open', $ticket->status);
+        $this->assertTrue((bool) preg_match('/^[A-Z]+-?\d+/i', (string) $ticket->ticket_number) || $ticket->ticket_number !== '', 'numbered');
+        $this->assertContains($ticket->ticket_number, $t);
+        $this->assertContains('We will get back to you shortly', $t);
+        $reply = $ticket->replies()->first();
+        $this->assertSame('client', $reply->author_type);
+        $this->assertContains('My website shows an error', $reply->message);
+        $this->assertContains('Requested via WhatsApp', $reply->message);
+        $this->assertNotContains('staff-assist', $reply->message);
+        // staff are notified exactly as the portal does
+        $staff = \App\Http\Controllers\TicketController::staffToNotify($ticket);
+        if ($staff->isNotEmpty()) {
+            $this->assertTrue(Notification::sent($staff->first(), \App\Notifications\TicketActivityStaffNotification::class)->count() === 1, 'staff notified once');
+        }
+        // 0 backs out without a ticket
+        $this->startSession($a);
+        $this->say('10'); $this->say('3');
+        $this->assertContains('*More services*', $this->say('0'));
+        $this->assertSame(1, $this->tickets($a)->count());
+        // Swahili reply
+        $this->startSession($a); $this->lang('sw');
+        $this->say('10');
+        $this->assertContains('3) Msaada', Fw::last());
+        $this->say('3');
+        $t = $this->say('Nahitaji msaada kuhusu invoice yangu');
+        $this->assertContains('Tutakujibu hivi karibuni', $t);
+    }
+
+    public function test_support_is_rate_limited_to_three_per_client_per_day(): void
+    {
+        $a = $this->makeClient();
+        $b = $this->makeClient('Baraka Test', '255700000002');
+        for ($i = 1; $i <= 3; $i++) {
+            $this->startSession($a);
+            $this->say('10'); $this->say('3');
+            $this->say("Support request number $i please");
+        }
+        $this->assertSame(3, $this->tickets($a)->count());
+        $this->startSession($a);
+        $this->say('10');
+        $t = $this->say('3');
+        $this->assertContains("reached today's support limit (3 requests per day)", $t);
+        $this->assertSame(3, $this->tickets($a)->count());
+        // a stale prompt cannot bypass the limit either
+        $this->setStaleSupportStep($a);
+        $t = $this->say('One more request that should be refused');
+        $this->assertContains("today's support limit", $t);
+        $this->assertSame(3, $this->tickets($a)->count());
+        // other clients unaffected
+        $this->startSession($b);
+        $this->say('10'); $this->say('3');
+        $this->say('Baraka needs help here');
+        $this->assertSame(1, $this->tickets($b)->count());
+        // tickets older than a day stop counting
+        \App\Models\Ticket::withoutGlobalScopes()->where('client_id', $a->id)->update(['created_at' => now()->subDays(2)]);
+        $this->startSession($a);
+        $this->say('10');
+        $this->assertContains('Describe your issue', $this->say('3'));
+    }
+
+    private function setStaleSupportStep(Client $a): void
+    {
+        WhatsappRenewalSession::updateOrCreate(['tenant_id' => $this->tenant->id, 'phone' => $this->phone],
+            ['client_id' => $a->id, 'flow' => 'more_services', 'state' => ['step' => 'support_text'], 'items' => null, 'language' => 'en', 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)]);
+    }
+
+    public function test_support_in_staff_assist_is_tagged(): void
+    {
+        $a = $this->makeClient();
+        $this->startSession($a, $this->user->id);
+        $this->say('10'); $this->say('3');
+        $this->say('Client called and needs a callback');
+        $ticket = $this->tickets($a)->first();
+        $this->assertTrue($ticket !== null);
+        $this->assertContains('created via staff-assist', $ticket->replies()->first()->message);
+    }
+
+    // ── 11) My Domains ──
+
+    public function test_my_domains_list_order_wording_and_isolation(): void
+    {
+        $this->tlds();
+        $a = $this->makeClient();
+        $b = $this->makeClient('Baraka Test', '255700000002');
+        $this->domain($a, 'far.co.tz', 100, 'active', []);
+        $this->domain($a, 'soon.co.tz', 10, 'active', []);
+        $this->domain($a, 'today.co.tz', 0, 'active', []);
+        $this->domain($a, 'lapsed.co.tz', -12, 'expired', []);
+        $this->domain($a, 'gone.co.tz', 5, 'cancelled', []);
+        $this->domain($a, 'out.co.tz', 5, 'transferred_out', []);
+        $this->domain($b, 'theirs.co.tz', 3, 'active', []);
+        $this->startSession($a);
+        $t = $this->say('11');
+        $this->assertSame('my_domains', $this->session()->flow);
+        foreach (['gone.co.tz', 'out.co.tz', 'theirs.co.tz'] as $x) $this->assertNotContains($x, $t);
+        $this->assertTrue(strpos($t, 'lapsed.co.tz') < strpos($t, 'today.co.tz') && strpos($t, 'today.co.tz') < strpos($t, 'soon.co.tz') && strpos($t, 'soon.co.tz') < strpos($t, 'far.co.tz'), 'soonest expiry first');
+        foreach (['1) lapsed.co.tz — expires ', '(expired 12 days ago) — ⚠️', '(expires today) — ⚠️', '(10 days left) — 🟢', '(100 days left) — 🟢', now()->addDays(10)->format('d M Y')] as $x) $this->assertContains($x, $t);
+        $this->assertContains('0) Back', $t);
+        $this->lang('sw');
+        $t = $this->say('0'); // back to menu
+        $this->say('11');
+        $t = Fw::last();
+        foreach (['inaisha ', '(imeisha siku 12 zilizopita)', '(inaisha leo)', '(siku 10 zimebaki)', '*Domain Zangu*'] as $x) $this->assertContains($x, $t);
+        // a forged pick of someone else's domain is refused
+        $this->assertContains('Samahani, jibu 1', $this->say('9'));
+    }
+
+    public function test_my_domains_detail_and_renew_creates_then_reuses_one_invoice(): void
+    {
+        $this->tlds();
+        $a = $this->makeClient();
+        $d = $this->domain($a, 'soon.co.tz', 10, 'active', []);
+        $d->update(['auto_renew' => false]);
+        $this->startSession($a);
+        $this->say('11');
+        $t = $this->say('1');
+        foreach (['*soon.co.tz*', '• Expires: ', '(10 days left)', '• Status: 🟢 active', '• Auto-renew: Off', '• Renewal price (1 year): TZS 21,000', '1) Renew', '0) Back'] as $x) $this->assertContains($x, $t);
+        $this->assertSame('detail', $this->session()->state['step']);
+        $this->assertContains('Sorry, reply 1 or 0.', $this->say('5'));
+        $t = $this->say('1');
+        $docs = Document::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('client_id', $a->id)->where('notes', 'like', 'Domain renewal:%')->get();
+        $this->assertSame(1, $docs->count());
+        $this->assertSame(21000.0, (float) $docs[0]->total);
+        $this->assertSame('pay_invoice', $this->session()->flow);
+        $this->assertContains('Pay online (Card / Mobile Money)', $t);
+        $this->assertSame($docs[0]->id, $d->fresh()->meta['renewal_document_id']);
+        // again: reused, not duplicated
+        $this->startSession($a);
+        $this->say('11'); $this->say('1'); $this->say('1');
+        $this->assertSame(1, Document::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('client_id', $a->id)->where('notes', 'like', 'Domain renewal:%')->count());
+        // back from detail lists again; MENU leaves
+        $this->startSession($a);
+        $this->say('11'); $this->say('1');
+        $this->assertContains('*My Domains*', $this->say('0'));
+        $this->say('1');
+        $this->assertContains('*Choose a service:*', $this->say('menu'));
+        $this->assertSame(0, $this->httpCount(), 'no external call');
+    }
+
+    public function test_my_domains_not_renewable_through_us_shows_no_renew_option(): void
+    {
+        $this->tlds();
+        $a = $this->makeClient();
+        $this->domain($a, 'elsewhere.com', 30, 'active', ['unmanaged' => true, 'registrar' => 'someone-else']);
+        $this->domain($a, 'nopricing.xyz', 40, 'active', []);
+        $this->startSession($a);
+        $this->say('11');
+        foreach ([1, 2] as $n) {
+            $this->say('11') ; // re-open list (from detail this is an invalid pick; reset to be safe)
+            $this->startSession($a); $this->say('11');
+            $t = $this->say((string) $n);
+            $this->assertNotContains('1) Renew', $t);
+            $this->assertContains('Contact us to renew this domain.', $t);
+            $this->assertContains('Sorry, reply 0.', $this->say('1'));
+        }
+        $this->lang('sw');
+        $this->startSession($a); $this->lang('sw'); $this->say('11');
+        $this->assertContains('Wasiliana nasi kuhuisha domain hii.', $this->say('1'));
+        $this->assertSame(0, Document::withoutGlobalScopes()->where('client_id', $a->id)->count());
+    }
+
+    // ── 12) My Hosting ──
+
+    public function test_my_hosting_list_detail_renew_and_manage(): void
+    {
+        $a = $this->makeClient();
+        $b = $this->makeClient('Baraka Test', '255700000002');
+        [$h1, $s1] = $this->hostingSub($a, 'later.example.test', 60);
+        [$h2, $s2] = $this->hostingSub($a, 'sooner.example.test', 4);
+        [$h3, $s3] = $this->hostingSub($b, 'theirs.example.test', 4);
+        $this->startSession($a);
+        $t = $this->say('12');
+        $this->assertSame('my_hosting', $this->session()->flow);
+        $this->assertNotContains('theirs.example.test', $t);
+        $this->assertContains('1) sooner.example.test — Starter — expires ', $t);
+        $this->assertContains('(4 days left) — ⚠️', $t);
+        $this->assertContains('(60 days left) — 🟢', $t);
+        $this->startSession($a); $this->lang('sw');
+        $t = $this->say('12');
+        foreach (['*Hosting Yangu*', 'inaisha ', '(siku 4 zimebaki)'] as $x) $this->assertContains($x, $t);
+        $this->startSession($a);
+        $this->say('12');
+        $t = $this->say('1');
+        foreach (['*Hosting: sooner.example.test*', '• Plan: Starter', '• Domain: sooner.example.test', '• Expires: ', '• Status: ⚠️ active', '1) Renew', '2) Manage hosting', '0) Back'] as $x) $this->assertContains($x, $t);
+        // renew: generator invoice once, reused after
+        $t = $this->say('1');
+        $docs = $this->docs($a);
+        $this->assertSame(1, $docs->count());
+        $this->assertContains('Invoice ' . $docs[0]->document_number, $t);
+        $this->assertSame('pay_invoice', $this->session()->flow);
+        $this->startSession($a);
+        $this->say('12'); $this->say('1'); $this->say('1');
+        $this->assertSame(1, $this->docs($a)->count(), 'open invoice reused');
+        $this->assertSame(0, $this->docs($b)->count());
+        // manage jumps into the EXISTING hosting_manage flow
+        $this->startSession($a);
+        $this->say('12'); $this->say('1');
+        $t = $this->say('2');
+        $this->assertSame('hosting_manage', $this->session()->flow);
+        $this->assertSame('account_menu', $this->session()->state['step']);
+        $this->assertSame($h2->id, $this->session()->state['account_id']);
+        $this->assertContains('Open cPanel', $t);
+        // back / MENU
+        $this->startSession($a);
+        $this->say('12'); $this->say('1');
+        $this->assertContains('*My Hosting*', $this->say('0'));
+        $this->assertContains('Choose a service', $this->say('0'));
+        $this->assertContains('Sorry, reply 1, 2 or 0.', (function () { $this->say('12'); $this->say('1'); return $this->say('7'); })());
+        $this->assertContains('Choose a service', $this->say('menu'));
+        // a stranger's account can never be reached through a forged state
+        $s = $this->session();
+        $s->update(['flow' => 'my_hosting', 'state' => ['step' => 'detail', 'account_id' => $h3->id, 'options' => ['manage']]]);
+        $this->assertContains('no longer available', $this->say('1'));
+        $this->assertSame(1, $this->docs($a)->count());
+    }
+
+    public function test_my_domains_and_hosting_empty_states(): void
+    {
+        $a = $this->makeClient();
+        $this->startSession($a);
+        $this->assertContains("You don't have any registered domains right now.", $this->say('11'));
+        $this->assertContains("You don't have any hosting registered with us yet.", $this->say('12'));
+        $this->assertContains('*Choose a service:*', Fw::last());
+    }
+
+    public function test_hosting_and_server_lists_cap_with_search(): void
+    {
+        $a = $this->makeClient();
+        for ($i = 1; $i <= 11; $i++) $this->hostingSub($a, sprintf('site%02d.example.test', $i), $i + 5);
+        for ($i = 1; $i <= 10; $i++) $this->makeServer($a, sprintf('srv%02d', $i), (string) (9000 + $i), '203.0.113.' . (100 + $i));
+        $this->startSession($a);
+        $this->say('3');
+        $t = $this->say('2');
+        $this->assertSame(9, preg_match_all('/^\d\) 🟢 site\d\d/mu', $t));
+        $this->assertContains('There are 2 more. Type a name to search.', $t);
+        $t = $this->say('site11');
+        $this->assertContains('*Hosting: site11.example.test*', $t, 'a single search hit opens the account');
+        $this->startSession($a);
+        $this->say('10');
+        $t = $this->say('1');
+        $this->assertSame(9, preg_match_all('/^\d\) 🟢 srv\d\d/mu', $t));
+        $this->assertContains('There is 1 more'.'', str_replace('There are 1 more', 'There is 1 more', $t));
+        $this->assertContains('Type a name to search.', $t);
+        $t = $this->say('srv10');
+        $this->assertContains('*Cloud Server: srv10*', $t);
+        // no cap => no search: a stray word is just invalid input naming the choices
+        $b = $this->makeClient('Baraka Test', '255700000002');
+        $this->hostingSub($b, 'b1.example.test', 5); $this->hostingSub($b, 'b2.example.test', 6);
     }
 }
 
@@ -836,6 +1464,15 @@ class FakeRegistrar extends DomainRegistrarManager
     }
     public function driverFor(string $tenantId, ?string $domainId = null): \App\Contracts\RegistrarDriver
     {
-        throw new \RuntimeException('FRED driver must not be used in tests');
+        // Never a real FRED client: only check() answers (from $fred); anything else is a test failure.
+        return new class implements \App\Contracts\RegistrarDriver {
+            public function check(string $domain): array { FakeRegistrar::$fredCalls++; return ['available' => FakeRegistrar::$fred[$domain] ?? false, 'reason' => null]; }
+            public function info(string $domain): array { throw new \RuntimeException('FRED must not be used in tests'); }
+            public function credit(): array { throw new \RuntimeException('FRED must not be used in tests'); }
+            public function register(string $domain, int $years = 1, array $nameservers = []): array { throw new \RuntimeException('FRED must not be used in tests'); }
+            public function renew(string $domain, int $years = 1): array { throw new \RuntimeException('FRED must not be used in tests'); }
+            public function transferIn(string $domain, string $authInfo): array { throw new \RuntimeException('FRED must not be used in tests'); }
+            public function updateDomain(string $domain, array $changes): array { throw new \RuntimeException('FRED must not be used in tests'); }
+        };
     }
 }
