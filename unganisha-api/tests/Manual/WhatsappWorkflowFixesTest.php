@@ -94,7 +94,6 @@ class WhatsappWorkflowFixesTest
     // ── Fix 1: bare '1' hijack ──
     public function test_h1_bare_one_in_language_select_is_english_not_window_passed(): void
     {
-        $this->makeClient();
         $this->startSession($this->makeClientOnce(), ['flow' => 'language_select', 'confirmed_at' => null, 'language' => null, 'items' => ['x']]);
         $t = $this->hit('renewal-reply', '1');
         $this->assertNotContains('reply window has passed', $t);
@@ -134,6 +133,58 @@ class WhatsappWorkflowFixesTest
         $t = $this->hit('renewal-reply', '1');
         $this->assertContains('no longer available', $t); // reached pickAndGenerate, not the menu
         $this->assertTrue($this->session()?->flow !== 'order_domain', 'not routed to menu');
+    }
+
+    // ── Fix 2: yes/no parsing everywhere ──
+    private function atStep(string $step, bool $withClient = true): void
+    {
+        $c = $withClient ? $this->makeClientOnce() : null;
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $this->tenant->id, 'phone' => $this->phone],
+            ['client_id' => $c?->id, 'flow' => null, 'state' => ['step' => $step], 'items' => null, 'language' => 'sw', 'confirmed_at' => null, 'attempts' => 0, 'expires_at' => now()->addMinutes(10)],
+        );
+    }
+
+    public function test_h3_has_account_accepts_all_yes_forms(): void
+    {
+        foreach (['1', 'ndio', 'Ndiyo.', ' YES ', 'sawa', 'ok', 'y', 'Yes!', 'ndiyo 👍'] as $in) {
+            $this->atStep('has_account');
+            $t = $this->say($in);
+            $this->assertContains('jina lako la ukoo', $t);
+            $this->assertSame('surname', $this->session()?->state['step'] ?? null, $in);
+        }
+    }
+
+    public function test_h3_has_account_no_goes_to_want_account_and_gibberish_reprompts(): void
+    {
+        $this->atStep('has_account');
+        $t = $this->say('asdf');
+        $this->assertContains('Jibu 1 au 2', str_replace('jibu 1 au 2', 'Jibu 1 au 2', $t));
+        $this->assertSame('has_account', $this->session()?->state['step'] ?? null, 'state kept on gibberish');
+        $this->say('hapana');
+        $this->assertSame('want_account', $this->session()?->state['step'] ?? null);
+    }
+
+    public function test_h3_want_account_gibberish_reprompts_and_only_explicit_no_cancels(): void
+    {
+        $this->atStep('want_account');
+        $t = $this->say('labda');
+        $this->assertContains('jibu 1 au 2', $t);
+        $this->assertTrue($this->session() !== null, 'session kept');
+        $this->say('hapana');
+        $this->assertSame(null, $this->session(), 'explicit no cancels');
+
+    }
+
+    public function test_h3_want_account_yes_forms_start_registration_and_n_cancels(): void
+    {
+        $this->atStep('want_account', false);
+        $this->say(' Sawa ');
+        $this->assertSame('register', $this->session()?->flow, 'yes starts registration');
+
+        $this->atStep('want_account', false);
+        $this->say('N');
+        $this->assertSame(null, $this->session());
     }
 }
 

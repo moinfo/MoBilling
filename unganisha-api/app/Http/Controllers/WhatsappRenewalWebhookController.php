@@ -574,7 +574,12 @@ class WhatsappRenewalWebhookController extends Controller
         $state = $session->state ?? [];
 
         if (($state['step'] ?? 'surname') === 'has_account') {
-            if (preg_match('/^\s*1\s*$/', $text) || preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+            $yes = $this->parseYesNo($text);
+            if ($yes === null) {
+                $this->invalidYesNo($tenant, $phone, $lang);
+                return;
+            }
+            if ($yes) {
                 if ($client) {
                     $session->update(['state' => ['step' => 'surname']]);
                     $this->reply($tenant, $phone, $this->t($lang,
@@ -601,7 +606,12 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         if (($state['step'] ?? '') === 'want_account') {
-            if (!preg_match('/^\s*1\s*$/', $text) && !preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+            $yes = $this->parseYesNo($text);
+            if ($yes === null) {
+                $this->invalidYesNo($tenant, $phone, $lang);
+                return;
+            }
+            if (!$yes) {
                 $session->delete();
                 $this->reply($tenant, $phone, $this->t($lang,
                     'Sawa, tukihitaji tutakujulisha. Asante!',
@@ -732,8 +742,9 @@ class WhatsappRenewalWebhookController extends Controller
      */
     private function parseYesNo(string $text): ?bool
     {
-        $t = mb_strtolower(trim($text));
-        if (in_array($t, ['1', 'ndiyo', 'ndio', 'yes', 'y'], true)) {
+        // Case, spaces, trailing punctuation and emoji are ignored ("Ndiyo.", " YES ", "1)", "ok 👍").
+        $t = preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtolower($text));
+        if (in_array($t, ['1', 'ndiyo', 'ndio', 'yes', 'y', 'ok', 'okay', 'sawa'], true)) {
             return true;
         }
         if (in_array($t, ['2', 'hapana', 'no', 'n'], true)) {
