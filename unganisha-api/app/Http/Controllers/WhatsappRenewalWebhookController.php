@@ -4014,8 +4014,31 @@ class WhatsappRenewalWebhookController extends Controller
         );
     }
 
+    /**
+     * Money guard: re-load the invoice right before showing payment options / creating a link. It must still
+     * be sent/overdue/partial with a balance, and belong to this client. Otherwise say so and go to the menu.
+     */
+    private function payableInvoiceOrReply(Tenant $tenant, Client $client, string $phone, Document $document, string $lang): ?Document
+    {
+        $fresh = app(\App\Services\PesapalLinkGuard::class)->payable($document);
+        if ($fresh && $fresh->client_id === $client->id && $fresh->tenant_id === $tenant->id) {
+            return $fresh;
+        }
+
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+            'Invoice hii tayari imelipwa/imefutwa.',
+            'This invoice is already paid or cancelled.'
+        ), $lang);
+
+        return null;
+    }
+
     private function offerPayment(Tenant $tenant, Client $client, string $phone, Document $document, string $lang, ?array $after = null): void
     {
+        if (!($document = $this->payableInvoiceOrReply($tenant, $client, $phone, $document, $lang))) {
+            return;
+        }
+
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
             ['client_id' => $client->id, 'flow' => 'pay_invoice', 'state' => ['step' => 'choose_method', 'document_id' => $document->id, 'after' => $after], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
@@ -4097,6 +4120,10 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
 
+            if (!($doc = $this->payableInvoiceOrReply($tenant, $client, $phone, $doc, $lang))) {
+                return;
+            }
+
             $session->update(['state' => ['step' => 'choose_method', 'document_id' => $doc->id]]);
             $this->reply($tenant, $phone, $this->paymentMethodMessage($lang, $doc, (float) $doc->balance_due));
             return;
@@ -4109,6 +4136,10 @@ class WhatsappRenewalWebhookController extends Controller
             if (!$doc) {
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, invoice hiyo haipatikani tena. Tafadhali jaribu tena.', 'Sorry, that invoice is no longer available. Please try again.'), $lang);
                 return;
+            }
+
+            if (preg_match('/^\s*[12]\s*$/', $text) && !($doc = $this->payableInvoiceOrReply($tenant, $client, $phone, $doc, $lang))) {
+                return; // paid / cancelled meanwhile: no link, no bank details
             }
 
             if (preg_match('/^\s*1\s*$/', $text)) {
@@ -4660,6 +4691,17 @@ class WhatsappRenewalWebhookController extends Controller
 
     private function pesapalCheckout(Tenant $tenant, Document $document): string
     {
+        $guard = app(\App\Services\PesapalLinkGuard::class);
+        if (!($document = $guard->payable($document))) {
+            throw new \RuntimeException('Invoice is no longer payable.');
+        }
+
+        // Same document + amount already has a fresh open link (< 30 min): hand it back, no second order.
+        $existing = $guard->reusablePending($document, (float) $document->balance_due);
+        if ($existing) {
+            return $existing->pesapal_redirect_url;
+        }
+
         $merchantRef = 'INV-' . $document->id . '-' . Str::random(6);
         $pesapal = new TenantPesapalService($tenant);
 

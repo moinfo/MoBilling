@@ -544,6 +544,79 @@ class WhatsappPhase2Test
         $this->hit('renewal-reply', '1'); // mid-flow: a digit for the flow, not a renewal
         $this->assertSame([], FakeBundler::$asked);
     }
+
+    // ═══ M8: WhatsApp payment guards ═══
+    private function payState(Client $c, Document $d, string $step = 'choose_method'): void
+    {
+        $this->startSession($c);
+        $this->session()->update(['flow' => 'pay_invoice', 'state' => $step === 'choose_method' ? ['step' => 'choose_method', 'document_id' => $d->id] : ['step' => 'pick_invoice', 'doc_ids' => [$d->id]], 'flow_expires_at' => null]);
+    }
+
+    public function test_m8_wa_paid_or_cancelled_invoice_gets_no_link_and_no_details(): void
+    {
+        $this->tenant->forceFill(['pesapal_enabled' => true, 'pesapal_consumer_key' => 'k', 'pesapal_consumer_secret' => 's'])->save();
+        $c = $this->makeClient();
+        foreach (['paid', 'cancelled'] as $st) {
+            $d = $this->makeInvoice($c, 30000, 'sent');
+            // pick_invoice path (list was shown while it was still open)
+            $this->payState($c, $d, 'pick_invoice');
+            $d->update(['status' => $st]);
+            $this->fk([]);
+            $t = $this->say('1');
+            $this->assertContains('already paid or cancelled', $t);
+            $this->assertSame(0, Http::recorded()->count(), "$st: no Pesapal call (pick)");
+            // choose_method path
+            $d->update(['status' => 'sent']);
+            $this->payState($c, $d);
+            $d->update(['status' => $st]);
+            $t = $this->say('1');
+            $this->assertContains('already paid or cancelled', $t);
+            $this->assertTrue(!str_contains($t, 'Pay Now'), 'no pay button');
+            $this->payState($c, $d);
+            $t = $this->say('2');
+            $this->assertContains('already paid or cancelled', $t);
+            $this->assertSame(0, Http::recorded()->count());
+        }
+        // Swahili wording
+        $d = $this->makeInvoice($c, 1000, 'cancelled');
+        $this->startSession($c);
+        $this->session()->update(['language' => 'sw']);
+        $this->payState($c, $d);
+        $this->session()->update(['language' => 'sw']);
+        $this->assertContains('tayari imelipwa/imefutwa', $this->say('1'));
+    }
+
+    public function test_m8_wa_pending_link_is_reused_within_30_minutes_and_not_duplicated(): void
+    {
+        $this->tenant->forceFill(['pesapal_enabled' => true, 'pesapal_consumer_key' => 'k', 'pesapal_consumer_secret' => 's'])->save();
+        $c = $this->makeClient();
+        $d = $this->makeInvoice($c, 30000);
+        $this->fk([
+            '*RequestToken*' => Http::response(['token' => 'tok']),
+            '*SubmitOrderRequest*' => Http::response(['order_tracking_id' => 'TR-new1', 'redirect_url' => 'https://pay.example.test/new1']),
+        ]);
+        $this->payState($c, $d);
+        $this->say('1');
+        $submits = fn () => Http::recorded(fn ($r) => str_contains($r->url(), 'SubmitOrderRequest'))->count();
+        $this->assertSame(1, $submits(), 'first pay creates one link');
+        $this->payState($c, $d);
+        $this->say('1');
+        $this->payState($c, $d);
+        $t = $this->say('1');
+        $this->assertSame(1, $submits(), 'repeat taps reuse the open link');
+        $this->assertSame(1, PesapalInvoicePayment::where('document_id', $d->id)->count());
+        $cta = collect(Fw::$sent)->where('type', 'cta')->pluck('url')->unique()->values()->all();
+        $this->assertSame(['https://pay.example.test/new1'], $cta, 'same URL every time');
+        // an old link is not reused
+        DB::table('pesapal_invoice_payments')->where('document_id', $d->id)->update(['created_at' => now()->subMinutes(45)]);
+        $this->fk([
+            '*RequestToken*' => Http::response(['token' => 'tok']),
+            '*SubmitOrderRequest*' => Http::response(['order_tracking_id' => 'TR-new2', 'redirect_url' => 'https://pay.example.test/new2']),
+        ]);
+        $this->payState($c, $d);
+        $this->say('1');
+        $this->assertSame(2, PesapalInvoicePayment::where('document_id', $d->id)->count());
+    }
 }
 
 class FakeBundler extends \App\Services\Hosting\RenewalBundleService
