@@ -4437,10 +4437,11 @@ class WhatsappRenewalWebhookController extends Controller
         } catch (\Throwable $e) {
             return false; // never block a client because the cache misbehaved
         }
-        if ($n <= 30) {
+        $limit = (int) config('services.mosms.inbound_rate_limit', 30);
+        if ($n <= $limit) {
             return false;
         }
-        if ($n === 31) {
+        if ($n === $limit + 1) {
             $this->reply($tenant, $phone, "Tafadhali subiri kidogo, umetuma ujumbe mwingi. Jaribu tena baada ya dakika chache.\nPlease wait a little, you have sent many messages. Try again in a few minutes.");
         }
 

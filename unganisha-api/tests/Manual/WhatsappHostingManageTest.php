@@ -59,7 +59,7 @@ class WhatsappHostingManageTest
         $this->user = User::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->firstOrFail();
         auth()->login($this->user);
 
-        config(['services.mosms.inbound_webhook_secret' => 'test-secret']);
+        config(['services.mosms.inbound_webhook_secret' => 'test-secret', 'services.mosms.inbound_rate_limit' => 100000]);
         MosmsAccount::create(['tenant_id' => $this->tenant->id, 'mosms_tenant_id' => 987654321, 'email' => 'x@example.test', 'token' => 'x', 'sender' => 'x']);
 
         Http::fake();

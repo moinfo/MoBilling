@@ -333,6 +333,7 @@ class WhatsappWorkflowFixesTest
 
     public function test_m7_rate_limit_31st_gets_notice_then_silence(): void
     {
+        config(['services.mosms.inbound_rate_limit' => 30]);
         $c = $this->makeClientOnce();
         $this->startSession($c);
         for ($i = 1; $i <= 30; $i++) $this->say('zzz');
