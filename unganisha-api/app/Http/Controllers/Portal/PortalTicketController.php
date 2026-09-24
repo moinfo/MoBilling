@@ -41,10 +41,9 @@ class PortalTicketController extends Controller
             'related_service' => 'nullable|string|max:255',
         ], $this->attachmentValidationRules()));
 
-        $ticket = Ticket::create([
+        $ticket = Ticket::createNumbered([
             'tenant_id'       => $user->tenant_id,
             'client_id'       => $user->client_id,
-            'ticket_number'   => Ticket::nextNumber($user->tenant_id),
             'subject'         => $data['subject'],
             'department'      => $data['department'] ?? 'support',
             'related_service' => $data['related_service'] ?? null,

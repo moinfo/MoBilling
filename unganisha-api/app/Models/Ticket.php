@@ -43,28 +43,37 @@ class Ticket extends Model
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
-    /** Per-tenant sequential number: TKT-0001. */
+    /**
+     * Per-tenant sequential number: TKT-0001. Takes the highest numeric suffix (not the newest
+     * created_at — two tickets in the same second made that ambiguous and repeated a number).
+     */
     public static function nextNumber(string $tenantId): string
     {
-        $last = static::withoutGlobalScopes()
+        $max = (int) static::withoutGlobalScopes()
             ->where('tenant_id', $tenantId)
-            ->orderByDesc('created_at')
-            ->value('ticket_number');
+            ->whereRaw("ticket_number REGEXP '^TKT-[0-9]+$'")
+            ->max(\Illuminate\Support\Facades\DB::raw("CAST(SUBSTRING(ticket_number, 5) AS UNSIGNED)"));
 
-        $n = $last && preg_match('/(\d+)$/', $last, $m) ? ((int) $m[1]) + 1 : 1;
-
-        return 'TKT-' . str_pad((string) $n, 4, '0', STR_PAD_LEFT);
+        return 'TKT-' . str_pad((string) ($max + 1), 4, '0', STR_PAD_LEFT);
     }
 
-    /** Is there a still-open billing cancellation request for this document? See PortalDocumentController::requestCancellation. */
-    public static function hasPendingCancellation(string $tenantId, string $clientId, string $documentNumber): bool
+    /**
+     * Create a ticket with the next number, retrying if a concurrent request took the same
+     * number first (the (tenant_id, ticket_number) unique key turns that race into an
+     * exception instead of a duplicate). Pass tenant_id in $attributes; ticket_number is set here.
+     */
+    public static function createNumbered(array $attributes): static
     {
-        return static::withoutGlobalScopes()
-            ->where('tenant_id', $tenantId)
-            ->where('client_id', $clientId)
-            ->where('department', 'billing')
-            ->where('related_service', $documentNumber)
-            ->where('status', '!=', 'closed')
-            ->exists();
+        for ($attempt = 1; ; $attempt++) {
+            $attributes['ticket_number'] = static::nextNumber($attributes['tenant_id']);
+            try {
+                return static::create($attributes);
+            } catch (\Illuminate\Database\UniqueConstraintViolationException $e) {
+                if ($attempt >= 5) {
+                    throw $e;
+                }
+                usleep(random_int(20000, 80000));
+            }
+        }
     }
 }

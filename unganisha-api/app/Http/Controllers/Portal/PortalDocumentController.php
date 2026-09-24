@@ -146,10 +146,9 @@ class PortalDocumentController extends Controller
 
         $data = $request->validate(['reason' => 'required|string|max:2000']);
 
-        $ticket = \App\Models\Ticket::create([
+        $ticket = \App\Models\Ticket::createNumbered([
             'tenant_id'       => $user->tenant_id,
             'client_id'       => $user->client_id,
-            'ticket_number'   => \App\Models\Ticket::nextNumber($user->tenant_id),
             'subject'         => "Cancellation request: {$document->document_number}",
             'department'      => 'billing',
             'related_service' => $document->document_number,

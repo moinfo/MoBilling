@@ -1579,10 +1579,9 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         try {
-            $ticket = \App\Models\Ticket::create([
+            $ticket = \App\Models\Ticket::createNumbered([
                 'tenant_id' => $tenant->id,
                 'client_id' => $client->id,
-                'ticket_number' => \App\Models\Ticket::nextNumber($tenant->id),
                 'subject' => "Hosting {$account->status}: {$account->domain}",
                 'department' => 'support',
                 'related_service' => $account->domain,

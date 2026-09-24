@@ -827,10 +827,9 @@ class PortalHostingController extends Controller
         $user = $request->user();
         $whenLabel = $data['when'] === 'immediate' ? 'Immediately' : 'At the end of the billing period';
 
-        $ticket = \App\Models\Ticket::create([
+        $ticket = \App\Models\Ticket::createNumbered([
             'tenant_id'     => $user->tenant_id,
             'client_id'     => $user->client_id,
-            'ticket_number' => \App\Models\Ticket::nextNumber($user->tenant_id),
             'subject'       => "Cancellation request: {$hostingAccount->domain}",
             'status'        => 'open',
             'priority'      => 'high',
