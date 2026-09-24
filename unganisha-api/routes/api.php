@@ -1100,6 +1100,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/statement', [PortalStatementController::class, 'index']);
     Route::get('/products-services', [PortalProductServiceController::class, 'index']);
     Route::get('/subscriptions', [PortalSubscriptionController::class, 'index']);
+    Route::get('/linode/servers', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'index']);
     Route::get('/linode/servers/{server}', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'show']);
     Route::post('/linode/servers/{server}/reboot', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'reboot'])->middleware('throttle:10,1');
     Route::post('/linode/servers/{server}/domain-requests', [\App\Http\Controllers\Portal\PortalLinodeController::class, 'requestDomain'])->middleware('throttle:10,1');

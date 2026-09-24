@@ -24,7 +24,7 @@ function asPortal(ClientUser $u) { auth()->setUser($u); }
 function call(ClientUser $u, string $m, string $srvId, array $d = []) {
     asPortal($u);
     $rq = Request::create('/x', 'POST', $d); $rq->setUserResolver(fn () => $u); app()->instance('request', $rq);
-    try { return app(PortalLinodeController::class)->$m($rq, $srvId); }
+    try { return (in_array($m, ['index']) ? app(PortalLinodeController::class)->$m($rq) : app(PortalLinodeController::class)->$m($rq, $srvId)); }
     catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) { return response()->json(['message' => $e->getMessage()], $e->getStatusCode()); }
     catch (\Illuminate\Validation\ValidationException $e) { return response()->json(['message' => $e->getMessage()], 422); }
 }
@@ -133,6 +133,9 @@ try {
     ok($d['server']['name'] === 'a-server' && $d['server']['ip'] === '203.0.113.71', 'server facts present');
     ok(!str_contains(json_encode(j($r)), TOKEN) && !str_contains(json_encode(j($r)), 'remote_id') && Http::recorded()->count() === 0, 'show: no secrets, no Linode call');
     ok(call($uA, 'show', $sB->id)->getStatusCode() === 404, 'show other client server -> 404');
+    $list = j(call($uA, 'index', ''))['data'];
+    ok(collect($list)->pluck('id')->contains($sA->id) && !collect($list)->pluck('id')->contains($sB->id), 'index lists only own servers');
+    ok(!str_contains(json_encode($list), TOKEN) && !str_contains(json_encode($list), 'remote_id'), 'index: no secrets');
 
     // ---- domain requests
     fk([]);
@@ -229,7 +232,7 @@ try {
     $routes = collect(app('router')->getRoutes()->getRoutes())->filter(fn ($r) => str_contains($r->uri(), 'domain-requests') && str_starts_with($r->uri(), 'api/linode'));
     ok($routes->count() === 3 && $routes->every(fn ($r) => in_array('permission:linode.manage', $r->gatherMiddleware(), true)), 'staff routes are behind permission:linode.manage');
     $pr = collect(app('router')->getRoutes()->getRoutes())->filter(fn ($r) => str_starts_with($r->uri(), 'api/portal/linode'));
-    ok($pr->count() === 4 && $pr->every(fn ($r) => in_array('client_portal', $r->gatherMiddleware(), true)) && $pr->every(fn ($r) => !in_array('DELETE', $r->methods(), true)), 'portal routes behind client_portal auth group, no DELETE');
+    ok($pr->count() === 5 && $pr->every(fn ($r) => in_array('client_portal', $r->gatherMiddleware(), true)) && $pr->every(fn ($r) => !in_array('DELETE', $r->methods(), true)), 'portal routes behind client_portal auth group, no DELETE');
 } catch (\Throwable $e) {
     $fail++; echo 'FAIL exception ' . $e->getMessage() . ' @' . $e->getFile() . ':' . $e->getLine() . "\n";
 }

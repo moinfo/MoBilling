@@ -9,7 +9,7 @@ import classes from './PortalShell.module.css';
 import { useCallback } from 'react';
 import {
   IconDashboard, IconFileInvoice, IconFileText, IconCash, IconReceipt, IconWallet,
-  IconCalendarRepeat, IconWorld, IconWorldWww, IconMessageCircle, IconNews, IconBook, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
+  IconCalendarRepeat, IconWorld, IconServer, IconWorldWww, IconMessageCircle, IconNews, IconBook, IconUser, IconUsers, IconLogout, IconSun, IconMoon,
   IconLock, IconPackage, IconShoppingCart, IconArrowBack,
 } from '@tabler/icons-react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
@@ -74,6 +74,7 @@ export default function PortalShell() {
       label: t('nav.services'),
       items: [
         { icon: IconWorld, label: t('nav.myHosting'), path: '/portal/hosting', count: counts?.services_count },
+        ...((counts?.servers_count ?? 0) > 0 ? [{ icon: IconServer, label: 'My Servers', path: '/portal/servers', count: counts?.servers_count }] : []),
         { icon: IconWorldWww, label: t('nav.myDomains'), path: '/portal/domains', count: counts?.domains_count },
         { icon: IconPackage, label: t('nav.productsServices'), path: '/portal/products-services' },
         { icon: IconCalendarRepeat, label: t('nav.subscriptions'), path: '/portal/subscriptions' },

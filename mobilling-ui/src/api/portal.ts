@@ -575,3 +575,6 @@ export const portalLinodeRequestDomain = (id: string, domain: string) =>
   api.post<{ message: string }>(`/portal/linode/servers/${id}/domain-requests`, { domain });
 export const portalLinodeSupportTicket = (id: string, message?: string) =>
   api.post<{ message: string }>(`/portal/linode/servers/${id}/support-ticket`, { message });
+
+export const getPortalLinodeServers = () =>
+  api.get<{ data: (PortalLinodeOverview['server'] & { plan: string | null })[] }>('/portal/linode/servers');

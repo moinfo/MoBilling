@@ -197,6 +197,8 @@ class PortalDashboardController extends Controller
         return response()->json([
             'credit_balance' => (float) ($client?->credit_balance ?? 0),
             'services_count' => $servicesCount,
+            'servers_count' => \App\Models\LinodeResource::withoutGlobalScopes()->where('tenant_id', $request->user()->tenant_id)->where('client_id', $clientId)
+                ->where('type', 'instance')->whereIn('client_subscription_id', ClientSubscription::where('client_id', $clientId)->where('status', 'active')->select('id'))->count(),
             'domains_count' => $domainsCount,
             'tickets_count' => \App\Models\Ticket::where('client_id', $clientId)->where('status', '!=', 'closed')->count(),
             'unpaid_invoices_count' => $unpaidCount,

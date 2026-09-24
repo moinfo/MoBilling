@@ -60,6 +60,19 @@ class PortalLinodeController extends Controller
         return ['id' => $srv->id, 'name' => $srv->label, 'ip' => $srv->ipv4[0] ?? null, 'region' => $srv->region, 'status' => $srv->status];
     }
 
+    /** The client's own active, linked servers (same rule as ownServer). */
+    public function index(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $subIds = ClientSubscription::withoutGlobalScopes()->where('tenant_id', $user->tenant_id)
+            ->where('client_id', $user->client_id)->where('status', 'active')->pluck('id');
+        $servers = LinodeResource::withoutGlobalScopes()
+            ->where('tenant_id', $user->tenant_id)->where('client_id', $user->client_id)
+            ->where('type', 'instance')->whereIn('client_subscription_id', $subIds)->orderBy('label')->get();
+
+        return response()->json(['data' => $servers->map(fn ($r) => $this->serverFacts($r) + ['plan' => $r->plan])->values()]);
+    }
+
     // ── overview: server facts + mapped domains + this client's requests ──
 
     public function show(Request $request, string $server): JsonResponse
