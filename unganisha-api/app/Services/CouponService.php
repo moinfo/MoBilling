@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Coupon;
 use App\Models\CouponRedemption;
+use App\Models\Document;
 use App\Models\ProductService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -52,6 +53,10 @@ class CouponService
         if ($coupon->max_uses !== null && $coupon->uses >= $coupon->max_uses) {
             return ['coupon' => $coupon, 'discount' => 0.0, 'error' => 'This promo code has reached its usage limit.'];
         }
+        if ($coupon->max_uses_per_client !== null && $clientId
+            && $this->clientUses($coupon, $clientId) >= $coupon->max_uses_per_client) {
+            return ['coupon' => $coupon, 'discount' => 0.0, 'error' => 'You have already used this promo code the maximum number of times.'];
+        }
         if (!$coupon->appliesToProduct($product)) {
             return ['coupon' => $coupon, 'discount' => 0.0, 'error' => 'This promo code does not apply to this product.'];
         }
@@ -73,6 +78,52 @@ class CouponService
     }
 
     /**
+     * Live (non-released) order redemptions of this coupon by one client.
+     * Renewal discounts of recurring coupons are audit rows, not extra uses.
+     */
+    public function clientUses(Coupon $coupon, string $clientId): int
+    {
+        return CouponRedemption::withoutGlobalScopes()
+            ->where('coupon_id', $coupon->id)
+            ->where('client_id', $clientId)
+            ->whereNull('released_at')
+            ->where(fn ($q) => $q->whereNull('document_id')->orWhereNotIn('document_id',
+                Document::withoutGlobalScopes()->where('notes', 'like', 'Auto-generated recurring invoice%')->select('id')))
+            ->count();
+    }
+
+    /**
+     * Give back the use(s) held by an unpaid order that was cancelled/expired.
+     * Idempotent: a redemption is released once (released_at). Only the order
+     * redemption decrements coupons.uses (recurring renewal rows never did).
+     * A paid document is never released.
+     */
+    public function releaseForDocument(Document $document): int
+    {
+        if ($document->status === 'paid') {
+            return 0;
+        }
+        $isRenewal = str_starts_with((string) $document->notes, 'Auto-generated recurring invoice');
+        $released = 0;
+
+        DB::transaction(function () use ($document, $isRenewal, &$released) {
+            $rows = CouponRedemption::withoutGlobalScopes()
+                ->where('document_id', $document->id)->whereNull('released_at')
+                ->lockForUpdate()->get();
+            foreach ($rows as $row) {
+                $row->update(['released_at' => now()]);
+                if (!$isRenewal) {
+                    Coupon::withoutGlobalScopes()->whereKey($row->coupon_id)->where('uses', '>', 0)
+                        ->update(['uses' => DB::raw('uses - 1')]);
+                }
+                $released++;
+            }
+        });
+
+        return $released;
+    }
+
+    /**
      * Atomically consume one use of the coupon and record the redemption.
      * Must be called inside a DB transaction. The conditional UPDATE guards
      * against concurrent orders pushing uses past max_uses.
@@ -81,6 +132,10 @@ class CouponService
      */
     public function redeem(Coupon $coupon, string $clientId, ?string $documentId, float $discount): bool
     {
+        if ($coupon->max_uses_per_client !== null && $this->clientUses($coupon, $clientId) >= $coupon->max_uses_per_client) {
+            return false;
+        }
+
         $query = Coupon::withoutGlobalScopes()->whereKey($coupon->id);
 
         // Only increment while under the cap (unlimited when max_uses is null).

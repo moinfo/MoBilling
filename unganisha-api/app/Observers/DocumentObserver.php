@@ -25,6 +25,16 @@ class DocumentObserver
             }
         }
 
+        // An unpaid order that gets cancelled gives its coupon use back
+        // (every cancel path — staff, WhatsApp, merge — goes through here).
+        if ($document->wasChanged('status') && $document->status === 'cancelled') {
+            try {
+                app(\App\Services\CouponService::class)->releaseForDocument($document);
+            } catch (\Throwable $e) {
+                \Illuminate\Support\Facades\Log::warning('Coupon release failed', ['document_id' => $document->id, 'error' => $e->getMessage()]);
+            }
+        }
+
         if (!$document->wasChanged('status') || $document->status !== 'paid') {
             return;
         }

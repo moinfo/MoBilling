@@ -98,21 +98,77 @@ class TenantPesapalWebhookController extends Controller
     }
 
     /**
+     * A completed online payment that the invoice can no longer absorb
+     * (already paid / cancelled, or overpaying): credit the client wallet and
+     * tell staff. Falls back to a staff alert alone when no client is linked.
+     */
+    private function handleExcess(PesapalInvoicePayment $payment, Document $doc, float $excess, bool $whole): void
+    {
+        $credited = false;
+        try {
+            $doc->loadMissing('client');
+            if ($doc->client) {
+                app(\App\Services\CreditService::class)->adjust(
+                    $doc->client, $excess, 'deposit',
+                    "Pesapal payment received after {$doc->document_number} was already settled (ref "
+                        . ($payment->confirmation_code ?? $payment->order_tracking_id) . ')',
+                    $doc->id,
+                );
+                $credited = true;
+            }
+        } catch (\Throwable $e) {
+            Log::error('Tenant Pesapal: excess credit failed', ['payment_id' => $payment->id, 'error' => $e->getMessage()]);
+        }
+
+        Log::warning('Tenant Pesapal: payment on already-settled invoice', [
+            'payment_id' => $payment->id, 'document_id' => $doc->id,
+            'excess' => $excess, 'credited' => $credited, 'whole_payment' => $whole,
+        ]);
+
+        try {
+            $staff = \App\Models\User::withPermission($doc->tenant_id, 'payments_in.read');
+            if ($staff->isNotEmpty()) {
+                \Illuminate\Support\Facades\Notification::send($staff, new \App\Notifications\PaymentExcessNotification($doc, $excess, $credited));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Tenant Pesapal: excess staff notification failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Record the payment in payments_in and update invoice status.
      */
     private function processCompleted(PesapalInvoicePayment $payment): void
     {
-        if ($payment->status === 'completed') {
+        // Atomic claim: only one concurrent IPN delivery may flip the row to
+        // completed, so a duplicate/parallel callback can never book twice.
+        $claimed = PesapalInvoicePayment::where('id', $payment->id)
+            ->where('status', '!=', 'completed')
+            ->update(['status' => 'completed', 'completed_at' => now()]);
+        if (!$claimed) {
             return;
         }
-
-        $payment->update([
-            'status' => 'completed',
-            'completed_at' => now(),
-        ]);
+        $payment->refresh();
 
         $doc = $payment->document;
         if (!$doc) {
+            return;
+        }
+
+        // Double-booking guard: the invoice may have been paid another way
+        // (cash, another link, wallet) or cancelled while this link was open.
+        // Only book what the invoice can still absorb; the rest becomes
+        // client credit (never silently lost, never a second full PaymentIn).
+        $doc->refresh();
+        $dueNow = ($doc->status === 'cancelled') ? 0.0 : max(0.0, round((float) $doc->balance_due, 2));
+        $paidAmount = round((float) $payment->amount, 2);
+        $bookAmount = round(min($paidAmount, $dueNow), 2);
+        $excess = round($paidAmount - $bookAmount, 2);
+
+        if ($excess > 0) {
+            $this->handleExcess($payment, $doc, $excess, $bookAmount <= 0);
+        }
+        if ($bookAmount <= 0) {
             return;
         }
 
@@ -120,7 +176,7 @@ class TenantPesapalWebhookController extends Controller
         $paymentIn = PaymentIn::create([
             'tenant_id' => $payment->tenant_id,
             'document_id' => $payment->document_id,
-            'amount' => $payment->amount,
+            'amount' => $bookAmount,
             'payment_date' => now()->toDateString(),
             'payment_method' => 'pesapal',
             'reference' => $payment->confirmation_code ?? $payment->order_tracking_id,

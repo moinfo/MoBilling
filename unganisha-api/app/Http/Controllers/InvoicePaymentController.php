@@ -79,6 +79,10 @@ class InvoicePaymentController extends Controller
             return response()->json(['message' => 'Invoice is already paid.'], 400);
         }
 
+        if ($doc->status === 'cancelled') {
+            return response()->json(['message' => 'This invoice has been cancelled.'], 400);
+        }
+
         if (\App\Models\Ticket::hasPendingCancellation($doc->tenant_id, $doc->client_id, $doc->document_number)) {
             return response()->json(['message' => 'This invoice has a pending cancellation request — payment is on hold until it is resolved.'], 400);
         }
@@ -93,6 +97,16 @@ class InvoicePaymentController extends Controller
 
         if ($amount <= 0) {
             return response()->json(['message' => 'No balance due.'], 400);
+        }
+
+        // Same document + amount already has a fresh open link: hand it back.
+        $existing = app(\App\Services\PesapalLinkGuard::class)->reusablePending($doc, (float) $amount);
+        if ($existing) {
+            return response()->json([
+                'payment_id' => $existing->id,
+                'redirect_url' => $existing->pesapal_redirect_url,
+                'order_tracking_id' => $existing->order_tracking_id,
+            ]);
         }
 
         $merchantRef = 'INV-' . $doc->id . '-' . Str::random(6);

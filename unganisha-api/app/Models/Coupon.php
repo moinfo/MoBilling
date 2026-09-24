@@ -20,7 +20,7 @@ class Coupon extends Model
 
     protected $fillable = [
         'tenant_id', 'code', 'description', 'type', 'value', 'applies_to',
-        'max_uses', 'uses', 'min_order', 'starts_at', 'expires_at',
+        'max_uses', 'max_uses_per_client', 'uses', 'min_order', 'starts_at', 'expires_at',
         'recurring', 'is_active',
     ];
 
@@ -28,6 +28,7 @@ class Coupon extends Model
         'value'      => 'decimal:2',
         'min_order'  => 'decimal:2',
         'max_uses'   => 'integer',
+        'max_uses_per_client' => 'integer',
         'uses'       => 'integer',
         'starts_at'  => 'datetime',
         'expires_at' => 'datetime',

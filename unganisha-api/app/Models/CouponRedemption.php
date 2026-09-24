@@ -16,11 +16,12 @@ class CouponRedemption extends Model
     use HasFactory, HasUuids, BelongsToTenant;
 
     protected $fillable = [
-        'tenant_id', 'coupon_id', 'client_id', 'document_id', 'discount_amount',
+        'tenant_id', 'coupon_id', 'client_id', 'document_id', 'discount_amount', 'released_at',
     ];
 
     protected $casts = [
         'discount_amount' => 'decimal:2',
+        'released_at' => 'datetime',
     ];
 
     public function coupon()
