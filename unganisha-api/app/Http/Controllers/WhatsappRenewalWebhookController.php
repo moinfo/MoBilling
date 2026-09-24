@@ -1432,9 +1432,15 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
-        // Renewal picker already active (items populated by sendMenu()): a digit picks one.
-        if (!empty($session->items) && preg_match('/^\s*([1-9])\s*$/', $text, $m)) {
-            $this->pickAndGenerate($tenant, $client, $phone, $session, (int) $m[1], $bundler, $lang);
+        // Renewal picker already active (items populated by sendMenu()): a digit inside the list picks one;
+        // any other number (5 of 2, or a root-menu number like 10) re-prompts naming the valid choices instead
+        // of silently acting as a root-menu option. MENU (or any other text) still returns to the main menu.
+        if (!empty($session->items) && preg_match('/^\s*(\d+)\s*$/', $text, $m)) {
+            if ((int) $m[1] >= 1 && (int) $m[1] <= count($session->items)) {
+                $this->pickAndGenerate($tenant, $client, $phone, $session, (int) $m[1], $bundler, $lang);
+            } else {
+                $this->invalidChoice($tenant, $phone, $lang, count($session->items));
+            }
             return;
         }
 

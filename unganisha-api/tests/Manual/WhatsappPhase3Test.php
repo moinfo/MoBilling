@@ -818,6 +818,39 @@ class WhatsappPhase3Test
         $c->update(['status' => 'active']);
         $this->assertContains('Habari', $this->say('MENU'));
     }
+
+    // ═══ F: renewal picker vs root-menu numbers ═══
+    public function test_f_picker_rejects_out_of_range_and_root_numbers_but_menu_exits(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->session()->update(['items' => ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002']]);
+        foreach (['5', '10', '12', '9', '07'] as $n) {
+            $r = $this->say($n);
+            $this->assertContains('Sorry, reply 1, 2 or 0.', $r);
+            $this->assertNotContains('More services', $r);
+            $this->assertTrue($this->session()->items !== null, 'picker stays active after ' . $n);
+        }
+        $this->session()->update(['language' => 'sw']);
+        $this->assertContains('Samahani, jibu 1, 2 au 0.', $this->say('11'));
+        $r = $this->say('MENU');
+        $this->assertContains('Chagua huduma', $r);
+        $this->assertSame(null, $this->session()->items);
+        // after MENU the root numbers work again
+        $this->assertContains('Huduma Zaidi', $this->say('10'));
+    }
+
+    public function test_f_picker_zero_and_valid_pick_still_work(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->session()->update(['items' => ['x']]);
+        $this->assertContains('Choose a service', $this->say('0'));
+        $this->session()->update(['items' => ['00000000-0000-0000-0000-000000000009']]);
+        $r = $this->say('1'); // in range: picks (the fake id no longer exists -> a friendly stop, not a menu option)
+        $this->assertNotContains('Sorry, reply', $r);
+        $this->assertSame(null, $this->session()->items);
+    }
 }
 
 /** Records the push-style sends (WhatsAppChannel path) next to the session replies. */
