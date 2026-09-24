@@ -355,7 +355,7 @@ try {
     $refuse = function (string $m, string $p, bool $c = false) { try { NameComDriver::assertAllowed($m, $p, $c); return false; } catch (NameComApiException) { return true; } };
     ok($refuse('POST', '/core/v1/domains') && !$refuse('POST', '/core/v1/domains', true), 'POST /core/v1/domains only with the create authorisation');
     foreach ([['DELETE', '/core/v1/domains/a.com'], ['PUT', '/core/v1/domains'], ['POST', '/core/v1/domains/a.com:renew'], ['POST', '/core/v1/domains/a.com:purchase'], ['POST', '/core/v1/transfers'],
-        ['POST', '/core/v1/tldpricing'], ['GET', '/core/v1/tldpricing/com'], ['GET', '/core/v1/domains:checkAvailability'], ['POST', '/core/v1/domains:search'], ['POST', '/core/v1/domains/a.com:setContacts'],
+        ['POST', '/core/v1/tldpricing'], ['GET', '/core/v1/tldpricing/com'], ['GET', '/core/v1/domains:checkAvailability'], ['POST', '/core/v1/domains:search'], ['GET', '/core/v1/domains/a.com:setContacts'],
         ['DELETE', '/core/v1/domains', true], ['PATCH', '/core/v1/domains', true], ['POST', '/core/v1/domains/a.com', true], ['POST', '/core/v1/domains:checkAvailability/x'], ['GET', '/core/v1/orders'], ['POST', '/core/v1/refund']] as $t) {
         ok($refuse($t[0], $t[1], $t[2] ?? false), "refused {$t[0]} {$t[1]}");
     }

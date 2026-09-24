@@ -1228,4 +1228,26 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/users', [PortalProfileController::class, 'storeUser']);
     Route::put('/users/{portalUser}', [PortalProfileController::class, 'updateUser']);
     Route::delete('/users/{portalUser}', [PortalProfileController::class, 'deleteUser']);
+
+    // Domain Manager (neutral client feature: DNS records, contacts, forwarding, custom nameserver hosts). Own throttle buckets.
+    Route::prefix('domains/{domain}')->group(function () {
+        $c = \App\Http\Controllers\Portal\PortalDomainManagerController::class;
+        Route::get('/dns', [$c, 'dns'])->middleware('throttle:60,1,dm-read-dns');
+        Route::post('/dns/records', [$c, 'recordStore'])->middleware('throttle:30,1,dm-write-dns');
+        Route::put('/dns/records/{id}', [$c, 'recordUpdate'])->middleware('throttle:30,1,dm-edit-dns');
+        Route::delete('/dns/records/{id}', [$c, 'recordDestroy'])->middleware('throttle:30,1,dm-del-dns');
+        Route::post('/dns/use-default-servers', [$c, 'useDefaultServers'])->middleware('throttle:6,1,dm-dns-servers');
+        Route::get('/contacts', [$c, 'contacts'])->middleware('throttle:30,1,dm-read-contacts');
+        Route::put('/contacts', [$c, 'contactsUpdate'])->middleware('throttle:6,1,dm-write-contacts');
+        Route::get('/forwarding', [$c, 'forwarding'])->middleware('throttle:60,1,dm-read-fwd');
+        Route::post('/forwarding/url', [$c, 'urlStore'])->middleware('throttle:20,1,dm-write-urlfwd');
+        Route::put('/forwarding/url/{id}', [$c, 'urlUpdate'])->middleware('throttle:20,1,dm-edit-urlfwd');
+        Route::delete('/forwarding/url/{id}', [$c, 'urlDestroy'])->middleware('throttle:20,1,dm-del-urlfwd');
+        Route::post('/forwarding/email', [$c, 'emailStore'])->middleware('throttle:20,1,dm-write-mailfwd');
+        Route::put('/forwarding/email/{box}', [$c, 'emailUpdate'])->middleware('throttle:20,1,dm-edit-mailfwd');
+        Route::delete('/forwarding/email/{box}', [$c, 'emailDestroy'])->middleware('throttle:20,1,dm-del-mailfwd');
+        Route::get('/hosts', [$c, 'hosts'])->middleware('throttle:30,1,dm-read-hosts');
+        Route::post('/hosts', [$c, 'hostStore'])->middleware('throttle:10,1,dm-write-hosts');
+        Route::put('/hosts/{host}', [$c, 'hostUpdate'])->middleware('throttle:10,1,dm-edit-hosts');
+    });
 });

@@ -134,6 +134,7 @@ class PortalDomainController extends Controller
             $action === 'sent_by_registry'        => 'Transfer code requested from registry',
             $action === 'nameservers_changed', $action === 'namecom_nameservers_changed' => 'Nameservers changed',
             $action === 'namecom_registered'      => 'Domain registered',
+            str_starts_with($action, 'dm_')       => \App\Services\Registrar\NameComManagerService::activityLabel($action),
             str_contains($action, 'namecom')      => 'Domain updated',
             str_contains($action, '/renew/')      => 'Domain renewed',
             str_contains($action, '/register/')   => 'Domain registered',

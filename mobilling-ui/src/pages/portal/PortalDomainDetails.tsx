@@ -1,5 +1,6 @@
 import NameComNameservers from '../../components/NameComNameservers';
 import DomainTransferCard from '../../components/DomainTransferCard';
+import DomainManagerTabs from '../../components/DomainManagerTabs';
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, LoadingOverlay, Button, Grid,
@@ -30,7 +31,7 @@ const statusColor: Record<string, string> = {
   active: 'green', expired: 'red', pending: 'blue', failed: 'red', cancelled: 'gray',
 };
 
-type Section = 'overview' | 'autorenew' | 'nameservers' | 'dns' | 'addons' | 'contacts' | 'epp';
+type Section = 'overview' | 'autorenew' | 'nameservers' | 'dns' | 'addons' | 'contacts' | 'epp' | 'manager';
 
 const SECTIONS: { key: Section; label: string; icon: React.ReactNode }[] = [
   { key: 'overview',    label: 'Overview',            icon: <IconLayoutDashboard size={16} /> },
@@ -40,7 +41,10 @@ const SECTIONS: { key: Section; label: string; icon: React.ReactNode }[] = [
   { key: 'addons',      label: 'Addons',              icon: <IconPuzzle size={16} /> },
   { key: 'contacts',    label: 'Contact Information', icon: <IconAddressBook size={16} /> },
   { key: 'epp',         label: 'Transfer / EPP Code',  icon: <IconKey size={16} /> },
+  { key: 'manager',     label: 'Domain Manager',       icon: <IconSettings size={16} /> },
 ];
+/** Linked domains get the tabbed Domain Manager (DNS, contacts, forwarding, nameservers, security) instead of the separate sections it replaces. */
+const MANAGER_REPLACES: Section[] = ['nameservers', 'dns', 'contacts', 'epp'];
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -106,6 +110,7 @@ export default function PortalDomainDetails() {
   }
 
   const sslKnown = d.ssl.valid !== null;
+  const sections = SECTIONS.filter((s) => (d.nameserver_managed ? !MANAGER_REPLACES.includes(s.key) : s.key !== 'manager'));
 
   return (
     <Stack pos="relative">
@@ -134,7 +139,7 @@ export default function PortalDomainDetails() {
               </UnstyledButton>
               <Collapse in={manageOpen}>
                 <Stack gap={4} p="xs" pt={0}>
-                  {SECTIONS.map((s) => (
+                  {sections.map((s) => (
                     <UnstyledButton key={s.key} px="sm" py={8}
                       style={{
                         borderRadius: 8,
@@ -300,6 +305,33 @@ export default function PortalDomainDetails() {
                   Add Funds to Wallet
                 </Button>
               </Stack>
+            )}
+
+            {section === 'manager' && d.nameserver_managed && (
+              <DomainManagerTabs
+                domainId={d.id} domainName={d.name} isAdmin={isPortalAdmin} active={['active', 'expired'].includes(d.status)}
+                nameservers={(
+                  <NameComNameservers
+                    portal
+                    queryKey={['portal-domain-ns', d.id]}
+                    fetcher={() => getPortalDomainNameservers(d.id) as any}
+                    saver={(list) => updatePortalDomainNameservers(d.id, list)}
+                    canEdit={isPortalAdmin && ['active', 'expired'].includes(d.status)}
+                  />
+                )}
+                security={(
+                  <DomainTransferCard
+                    portal
+                    queryKey={['portal-domain-transfer', d.id]}
+                    domainName={d.name}
+                    fetcher={() => getPortalTransfer(d.id) as any}
+                    lock={() => portalLockDomain(d.id) as any}
+                    unlock={(c) => portalUnlockDomain(d.id, c) as any}
+                    getCode={(c) => portalTransferCode(d.id, c)}
+                    canAct={isPortalAdmin}
+                  />
+                )}
+              />
             )}
 
             {section === 'nameservers' && (

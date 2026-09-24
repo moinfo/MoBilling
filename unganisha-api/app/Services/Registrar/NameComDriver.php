@@ -23,7 +23,19 @@ use Illuminate\Support\Facades\Http;
  *                                     which requires the NameComRegistrationService)
  *   POST /core/v1/domains/{name}:lock | :unlock   (transfer lock; empty {} body)
  *   GET  /core/v1/domains/{name}:getAuthCode      (transfer-out EPP code; NEVER stored/logged/audited)
- * Everything else (renew, transfer, delete, contacts, DNS records...)
+ *
+ * "Domain Manager" additions (client self-service; each path verified against the official OpenAPI):
+ *   GET|POST   /core/v1/domains/{name}/records            DNS records list / create
+ *   PUT|DELETE /core/v1/domains/{name}/records/{id}       DNS record update / delete (records only, never domains)
+ *   GET|POST   /core/v1/domains/{name}/email/forwarding   email forwarding list / create
+ *   PUT|DELETE /core/v1/domains/{name}/email/forwarding/{box}
+ *   GET        /core/v1/urlforwarding/{name}              URL forwarding list (by-id API, the non-deprecated one)
+ *   POST       /core/v1/domains/{name}/url/forwarding     URL forwarding create (only create path)
+ *   PATCH|DELETE /core/v1/urlforwarding/{name}/{id}       URL forwarding update / delete
+ *   GET|POST   /core/v1/domains/{name}/vanity_nameservers glue hosts list / create
+ *   PUT        /core/v1/domains/{name}/vanity_nameservers/{host}  glue host IPs (no delete)
+ *   POST       /core/v1/domains/{name}:setContacts        WHOIS contacts (all four roles at once)
+ * Everything else (renew, transfer, domain delete, purchase, privacy...)
  * is refused before any network call. The token is only used as HTTP Basic
  * credentials: never logged, audited or returned.
  */
@@ -275,6 +287,148 @@ class NameComDriver implements RegistrarDriver
         return $code;
     }
 
+    // ── Domain Manager: DNS records / forwarding / glue hosts / contacts ──
+
+    /** Every page of a paginated list endpoint, paced. @return array[] */
+    private function pagedList(string $path, string $key): array
+    {
+        $all = [];
+        $page = 1;
+        do {
+            if (self::$paginatedGapMs > 0) {
+                $wait = self::$lastPaginatedAt + self::$paginatedGapMs / 1000 - microtime(true);
+                if ($wait > 0) usleep((int) ($wait * 1e6));
+            }
+            $json = $this->request('GET', $path, ['perPage' => self::PER_PAGE, 'page' => $page]);
+            self::$lastPaginatedAt = microtime(true);
+            $all = array_merge($all, $json[$key] ?? []);
+            $next = (int) ($json['nextPage'] ?? 0);
+            $page = $next > $page ? $next : 0;
+        } while ($page > 0 && $page <= self::MAX_PAGES);
+        return $all;
+    }
+
+    private static function intId($id): string
+    {
+        $id = (string) $id;
+        if (!ctype_digit($id)) throw new \InvalidArgumentException('Invalid id.');
+        return $id;
+    }
+
+    private static function box(string $box): string
+    {
+        $b = strtolower(trim($box));
+        if (!preg_match('/^[a-z0-9][a-z0-9._+-]{0,63}$/', $b)) throw new \InvalidArgumentException('Invalid mailbox name.');
+        return $b;
+    }
+
+    private static function label(string $l): string
+    {
+        $l = strtolower(trim($l));
+        if (!preg_match('/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/', $l)) throw new \InvalidArgumentException('Invalid host name.');
+        return $l;
+    }
+
+    public function listRecords(string $domain): array
+    {
+        return $this->pagedList('/core/v1/domains/' . self::validateDomainName($domain) . '/records', 'records');
+    }
+
+    /** @param array $rec host/type/answer/ttl[/priority] */
+    public function createRecord(string $domain, array $rec, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain);
+        return $this->request('POST', "/core/v1/domains/{$d}/records", [], $rec, 'dns.record_add', $d, ['type' => $rec['type'] ?? null, 'host' => $rec['host'] ?? null] + $actor);
+    }
+
+    public function updateRecord(string $domain, $id, array $rec, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $id = self::intId($id);
+        return $this->request('PUT', "/core/v1/domains/{$d}/records/{$id}", [], $rec, 'dns.record_edit', $d, ['id' => (int) $id, 'type' => $rec['type'] ?? null, 'host' => $rec['host'] ?? null] + $actor);
+    }
+
+    /** Deletes ONE DNS record (never a domain). */
+    public function deleteRecord(string $domain, $id, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $id = self::intId($id);
+        return $this->request('DELETE', "/core/v1/domains/{$d}/records/{$id}", [], [], 'dns.record_delete', $d, ['id' => (int) $id] + $actor);
+    }
+
+    public function listEmailForwards(string $domain): array
+    {
+        return $this->pagedList('/core/v1/domains/' . self::validateDomainName($domain) . '/email/forwarding', 'emailForwarding');
+    }
+
+    public function createEmailForward(string $domain, string $box, string $to, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $b = self::box($box);
+        return $this->request('POST', "/core/v1/domains/{$d}/email/forwarding", [], ['emailBox' => $b, 'emailTo' => $to], 'email_forward.add', $d, ['box' => $b] + $actor);
+    }
+
+    public function updateEmailForward(string $domain, string $box, string $to, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $b = self::box($box);
+        return $this->request('PUT', "/core/v1/domains/{$d}/email/forwarding/{$b}", [], ['emailTo' => $to], 'email_forward.edit', $d, ['box' => $b] + $actor);
+    }
+
+    public function deleteEmailForward(string $domain, string $box, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $b = self::box($box);
+        return $this->request('DELETE', "/core/v1/domains/{$d}/email/forwarding/{$b}", [], [], 'email_forward.delete', $d, ['box' => $b] + $actor);
+    }
+
+    public function listUrlForwards(string $domain): array
+    {
+        return $this->pagedList('/core/v1/urlforwarding/' . self::validateDomainName($domain), 'urlForwarding');
+    }
+
+    /** @param array $fwd host/forwardsTo/type[/title] */
+    public function createUrlForward(string $domain, array $fwd, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain);
+        return $this->request('POST', "/core/v1/domains/{$d}/url/forwarding", [], $fwd, 'url_forward.add', $d, ['host' => $fwd['host'] ?? null, 'type' => $fwd['type'] ?? null] + $actor);
+    }
+
+    public function updateUrlForward(string $domain, $id, array $fwd, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $id = self::intId($id);
+        return $this->request('PATCH', "/core/v1/urlforwarding/{$d}/{$id}", [], $fwd, 'url_forward.edit', $d, ['id' => (int) $id] + $actor);
+    }
+
+    public function deleteUrlForward(string $domain, $id, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $id = self::intId($id);
+        return $this->request('DELETE', "/core/v1/urlforwarding/{$d}/{$id}", [], [], 'url_forward.delete', $d, ['id' => (int) $id] + $actor);
+    }
+
+    public function listHosts(string $domain): array
+    {
+        return $this->pagedList('/core/v1/domains/' . self::validateDomainName($domain) . '/vanity_nameservers', 'vanityNameservers');
+    }
+
+    /** @param string $label subdomain part only ("ns1" for ns1.example.com) */
+    public function createHost(string $domain, string $label, array $ips, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $l = self::label($label);
+        return $this->request('POST', "/core/v1/domains/{$d}/vanity_nameservers", [], ['hostname' => $l, 'ips' => array_values($ips)], 'host.add', $d, ['host' => "$l.$d", 'ips' => array_values($ips)] + $actor);
+    }
+
+    public function updateHost(string $domain, string $fullHostname, array $ips, array $actor = []): array
+    {
+        $d = self::validateDomainName($domain); $h = self::validateDomainName($fullHostname);
+        return $this->request('PUT', "/core/v1/domains/{$d}/vanity_nameservers/{$h}", [], ['ips' => array_values($ips)], 'host.edit', $d, ['host' => $h, 'ips' => array_values($ips)] + $actor);
+    }
+
+    /**
+     * WHOIS contacts: all four roles must be sent complete (the API replaces them at once).
+     * The audit row records only WHICH roles changed, never the personal data.
+     */
+    public function setContacts(string $domain, array $contacts, array $changedRoles = [], array $actor = []): array
+    {
+        $d = self::validateDomainName($domain);
+        return $this->request('POST', "/core/v1/domains/{$d}:setContacts", [], ['contacts' => $contacts], 'contacts.set', $d, ['roles' => $changedRoles] + $actor);
+    }
+
     // ── RegistrarDriver contract: only info() is meaningful here ──
 
     public function info(string $domain): array
@@ -329,13 +483,23 @@ class NameComDriver implements RegistrarDriver
     public static function assertAllowed(string $method, string $path, bool $createAuthorized = false): void
     {
         $m = strtoupper($method);
+        $dn = '[a-z0-9.-]+';
         $ok = ($m === 'GET' && preg_match('#^/core/v1/domains/[a-z0-9.-]+:getAuthCode$#', $path))
+            // Domain Manager (see class docblock): DNS records, forwarding, glue hosts, contacts
+            || (in_array($m, ['GET', 'POST'], true) && preg_match("#^/core/v1/domains/$dn/(records|email/forwarding|vanity_nameservers)$#", $path))
+            || (in_array($m, ['PUT', 'DELETE'], true) && preg_match("#^/core/v1/domains/$dn/records/[0-9]+$#", $path))
+            || (in_array($m, ['PUT', 'DELETE'], true) && preg_match("#^/core/v1/domains/$dn/email/forwarding/[a-z0-9][a-z0-9._+-]{0,63}$#", $path))
+            || ($m === 'PUT' && preg_match("#^/core/v1/domains/$dn/vanity_nameservers/$dn$#", $path))
+            || ($m === 'POST' && preg_match("#^/core/v1/domains/$dn/url/forwarding$#", $path))
+            || ($m === 'GET' && preg_match("#^/core/v1/urlforwarding/$dn$#", $path))
+            || (in_array($m, ['PATCH', 'DELETE'], true) && preg_match("#^/core/v1/urlforwarding/$dn/[0-9]+$#", $path))
+            || ($m === 'POST' && preg_match("#^/core/v1/domains/$dn:setContacts$#", $path))
             || ($m === 'POST' && preg_match('#^/core/v1/domains/[a-z0-9.-]+:(lock|unlock)$#', $path))
             || ($m === 'GET' && ($path === '/core/v1/domains' || $path === '/core/v1/tldpricing' || preg_match('#^/core/v1/domains/[a-z0-9.-]+$#', $path)))
             || ($m === 'POST' && ($path === '/core/v1/domains:checkAvailability' || preg_match('#^/core/v1/domains/[a-z0-9.-]+:setNameservers$#', $path)))
             || ($m === 'POST' && $path === '/core/v1/domains' && $createAuthorized);
         if (!$ok) {
-            throw new NameComApiException('This request is not permitted: Name.com access is limited to reading, availability checks, nameservers, the transfer lock / authorization code and (staff-approved) registration.');
+            throw new NameComApiException('This request is not permitted: Name.com access is limited to reading, availability checks, nameservers, the transfer lock / authorization code, DNS records, forwarding, glue hosts, contacts and (staff-approved) registration.');
         }
     }
 
@@ -354,8 +518,13 @@ class NameComDriver implements RegistrarDriver
             while (true) {
                 $http = Http::withBasicAuth($user, (string) $this->account->token)->acceptJson()->timeout(20)->connectTimeout(10);
                 try {
-                    $res = $method === 'GET' ? $http->get($url, $query)
-                        : ($body === [] ? $http->withBody('{}', 'application/json')->post($url) : $http->post($url, $body)); // lock/unlock need a literal {}
+                    $res = match ($method) {
+                        'GET'    => $http->get($url, $query),
+                        'DELETE' => $http->delete($url),
+                        'PUT'    => $http->put($url, $body),
+                        'PATCH'  => $http->patch($url, $body),
+                        default  => $body === [] ? $http->withBody('{}', 'application/json')->post($url) : $http->post($url, $body), // lock/unlock need a literal {}
+                    };
                 } catch (ConnectionException) {
                     throw new NameComApiException('Could not reach Name.com (network error or timeout). Try again shortly.');
                 }

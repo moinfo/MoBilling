@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Stack, Table, Group, Text, Title, Button, ActionIcon, Modal, Select, TextInput, Textarea, NumberInput, Alert, Tooltip } from '@mantine/core';
-import { IconPlus, IconEdit } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash } from '@tabler/icons-react';
 import { RECORD_TTLS } from '../api/linode';
 
 /** Sectioned DNS view mirroring Linode Cloud Manager's domain detail page (shared by the client portal and staff). */
@@ -40,6 +40,8 @@ const sections = (domain: string): { title: string; type: string; types: string[
     { label: 'Hostname', render: (r) => host(r, domain) }, { label: 'IP Address', render: (r) => r.target }, { label: 'TTL', render: (r) => ttlText(r.ttl_sec) }] },
   { title: 'CNAME Record', type: 'CNAME', types: ['CNAME'], add: true, cols: [
     { label: 'Hostname', render: (r) => host(r, domain) }, { label: 'Aliases to', render: (r) => r.target }, { label: 'TTL', render: (r) => ttlText(r.ttl_sec) }] },
+  { title: 'ANAME Record', type: 'ANAME', types: ['ANAME'], add: true, cols: [
+    { label: 'Hostname', render: (r) => host(r, domain) }, { label: 'Aliases to', render: (r) => r.target }, { label: 'TTL', render: (r) => ttlText(r.ttl_sec) }] },
   { title: 'TXT Record', type: 'TXT', types: ['TXT'], add: true, cols: [
     { label: 'Hostname', render: (r) => host(r, domain) }, { label: 'Value', render: (r) => <LongText v={r.target} /> }, { label: 'TTL', render: (r) => ttlText(r.ttl_sec) }] },
   { title: 'SRV Record', type: 'SRV', types: ['SRV'], add: true, cols: [
@@ -50,9 +52,16 @@ const sections = (domain: string): { title: string; type: string; types: string[
     { label: 'Name', render: (r) => r.name }, { label: 'Tag', render: (r) => r.tag ?? '' }, { label: 'Value', render: (r) => <LongText v={r.target} /> }, { label: 'TTL', render: (r) => ttlText(r.ttl_sec) }] },
 ];
 
-export function DnsSections({ domain, rows, soa, canManage, sw = false, onAdd, onEdit, onEditSoa }: {
+/** Section types shown when the caller does not pass `types` (unchanged for Linode / staff). */
+export const DEFAULT_DNS_TYPES = ['NS', 'MX', 'A', 'CNAME', 'TXT', 'SRV', 'CAA'];
+
+export function DnsSections({ domain, rows, soa, canManage, sw = false, onAdd, onEdit, onEditSoa, onDelete, types = DEFAULT_DNS_TYPES }: {
   domain: string; rows: DnsRec[]; soa?: DnsSoa | null; canManage: boolean; sw?: boolean;
   onAdd: (type: string) => void; onEdit: (r: DnsRec) => void; onEditSoa?: () => void;
+  /** When given, each editable row also gets a delete button. */
+  onDelete?: (r: DnsRec) => void;
+  /** Which record sections to show (e.g. no CAA, plus ANAME). */
+  types?: string[];
 }) {
   const empty = 'No items to display.';
   return (
@@ -78,14 +87,14 @@ export function DnsSections({ domain, rows, soa, canManage, sw = false, onAdd, o
           </Table.ScrollContainer>
         </Stack>
       )}
-      {sections(domain).map((s) => {
+      {sections(domain).filter((s) => types.includes(s.type)).map((s) => {
         const list = rows.filter((r) => s.types.includes(r.type));
         const editable = s.add;
         return (
           <Stack gap={6} key={s.title}>
             <Group justify="space-between">
               <Title order={5}>{s.title}</Title>
-              {canManage && s.add && <Button size="compact-xs" variant="light" leftSection={<IconPlus size={14} />} onClick={() => onAdd(s.type)}>{sw ? `Ongeza ${s.type === 'A' ? 'A/AAAA' : s.type} record` : `Add ${s.type === 'A' ? 'an A/AAAA' : s.type === 'MX' ? 'an MX' : s.type === 'SRV' ? 'an SRV' : 'a ' + s.type} record`}</Button>}
+              {canManage && s.add && <Button size="compact-xs" variant="light" leftSection={<IconPlus size={14} />} onClick={() => onAdd(s.type)}>{sw ? `Ongeza ${s.type === 'A' ? 'A/AAAA' : s.type} record` : `Add ${s.type === 'A' ? 'an A/AAAA' : s.type === 'MX' ? 'an MX' : s.type === 'ANAME' ? 'an ANAME' : s.type === 'SRV' ? 'an SRV' : 'a ' + s.type} record`}</Button>}
             </Group>
             <Table.ScrollContainer minWidth={480}>
               <Table verticalSpacing="xs">
@@ -94,7 +103,12 @@ export function DnsSections({ domain, rows, soa, canManage, sw = false, onAdd, o
                   {list.length === 0 ? <Table.Tr><Table.Td colSpan={s.cols.length + 1}><Text size="sm" c="dimmed">{empty}</Text></Table.Td></Table.Tr> : list.map((r) => (
                     <Table.Tr key={r.id}>
                       {s.cols.map((c) => <Table.Td key={c.label}>{c.render(r)}</Table.Td>)}
-                      <Table.Td>{canManage && editable && !r.locked && <ActionIcon variant="light" aria-label={sw ? 'Hariri' : 'Edit'} onClick={() => onEdit(r)}><IconEdit size={14} /></ActionIcon>}</Table.Td>
+                      <Table.Td>{canManage && editable && !r.locked && (
+                        <Group gap={4} wrap="nowrap">
+                          <ActionIcon variant="light" aria-label={sw ? 'Hariri' : 'Edit'} onClick={() => onEdit(r)}><IconEdit size={14} /></ActionIcon>
+                          {onDelete && <ActionIcon variant="light" color="red" aria-label={sw ? 'Futa' : 'Delete'} onClick={() => onDelete(r)}><IconTrash size={14} /></ActionIcon>}
+                        </Group>
+                      )}</Table.Td>
                     </Table.Tr>
                   ))}
                 </Table.Tbody>
@@ -108,13 +122,15 @@ export function DnsSections({ domain, rows, soa, canManage, sw = false, onAdd, o
 }
 
 /** Add/Edit modal showing only the fields relevant to the record type, with Linode-like labels. `submit` performs the API call. */
-export function DnsRecordModal({ type: initialType, record, domain, sw = false, submit, onClose, onSaved }: {
+export function DnsRecordModal({ type: initialType, record, domain, sw = false, submit, onClose, onSaved, ttls = RECORD_TTLS, defaultTtl = 0 }: {
   type: string; record: DnsRec | null; domain: string; sw?: boolean; submit: (p: DnsPayload, record: DnsRec | null) => Promise<any>; onClose: () => void; onSaved: () => void;
+  /** Allowed TTL choices and the default for new records (Linode: 0 = Default; other providers may have a minimum). */
+  ttls?: number[]; defaultTtl?: number;
 }) {
   const [type, setType] = useState<string>(record?.type ?? initialType);
   const [name, setName] = useState(record?.name ?? '');
   const [target, setTarget] = useState(record?.target ?? '');
-  const [ttl, setTtl] = useState<string>(String(record?.ttl_sec ?? 0));
+  const [ttl, setTtl] = useState<string>(String(record?.ttl_sec ?? defaultTtl));
   const [priority, setPriority] = useState<number | string>(record?.priority ?? 10);
   const [weight, setWeight] = useState<number | string>(record?.weight ?? 5);
   const [port, setPort] = useState<number | string>(record?.port ?? 80);
@@ -144,6 +160,7 @@ export function DnsRecordModal({ type: initialType, record, domain, sw = false, 
         {(type === 'A' || type === 'AAAA') && <Select label="Type" data={['A', 'AAAA']} value={type} onChange={(v) => setType(v ?? 'A')} allowDeselect={false} disabled={!!record} />}
         {(type === 'A' || type === 'AAAA') && (<>{nameField('Hostname', hostDesc)}<TextInput label="IP Address" placeholder={type === 'A' ? '1.2.3.4' : '2001:db8::1'} value={target} onChange={(e) => setTarget(e.currentTarget.value)} required /></>)}
         {type === 'CNAME' && (<>{nameField('Hostname', sw ? 'Lazima iwe na jina (si domain kuu).' : 'Required (cannot be the root domain).', true)}<TextInput label="Aliases to" placeholder="host.example.com" value={target} onChange={(e) => setTarget(e.currentTarget.value)} required /></>)}
+        {type === 'ANAME' && (<>{nameField('Hostname', hostDesc)}<TextInput label="Aliases to" placeholder="host.example.com" value={target} onChange={(e) => setTarget(e.currentTarget.value)} required /></>)}
         {type === 'TXT' && (<>{nameField('Hostname', hostDesc)}<Textarea label="Value" autosize minRows={2} maxRows={8} value={target} onChange={(e) => setTarget(e.currentTarget.value)} required /></>)}
         {type === 'MX' && (<>
           <TextInput label="Mail Server" placeholder="mail.example.com" value={target} onChange={(e) => setTarget(e.currentTarget.value)} required />
@@ -162,7 +179,7 @@ export function DnsRecordModal({ type: initialType, record, domain, sw = false, 
           <Select label="Tag" data={['issue', 'issuewild', 'iodef']} value={tag} onChange={(v) => setTag(v ?? 'issue')} allowDeselect={false} />
           <TextInput label="Value" placeholder="letsencrypt.org" value={target} onChange={(e) => setTarget(e.currentTarget.value)} required />
         </>)}
-        <Select label="TTL" data={ttlSelectData(RECORD_TTLS)} value={ttl} onChange={(v) => setTtl(v ?? '0')} allowDeselect={false} />
+        <Select label="TTL" data={ttlSelectData(ttls)} value={ttl} onChange={(v) => setTtl(v ?? String(defaultTtl))} allowDeselect={false} />
         <Button loading={busy} disabled={!target.trim()} onClick={save}>{sw ? 'Hifadhi' : 'Save'}</Button>
       </Stack>
     </Modal>

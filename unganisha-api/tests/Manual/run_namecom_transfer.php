@@ -93,7 +93,7 @@ try {
         try { NameComDriver::assertAllowed($m, $p); ok(true, "allowed $m $p"); } catch (NameComApiException) { ok(false, "allowed $m $p"); }
     }
     foreach ([['POST', '/core/v1/domains/a.com:getAuthCode'], ['GET', '/core/v1/domains/a.com:lock'], ['GET', '/core/v1/domains/a.com:unlock'], ['DELETE', '/core/v1/domains/a.com:lock'],
-        ['POST', '/core/v1/domains/a.com:renew'], ['POST', '/core/v1/transfers'], ['POST', '/core/v1/domains/a.com:setContacts'], ['DELETE', '/core/v1/domains/a.com'], ['PATCH', '/core/v1/domains/a.com'],
+        ['POST', '/core/v1/domains/a.com:renew'], ['POST', '/core/v1/transfers'], ['GET', '/core/v1/domains/a.com:setContacts'], ['DELETE', '/core/v1/domains/a.com'], ['PATCH', '/core/v1/domains/a.com'],
         ['POST', '/core/v1/domains/a.com:enableAutorenew'], ['POST', '/core/v1/domains'], ['GET', '/core/v1/domains/a.com:getPricing'], ['POST', '/core/v1/domains/a.com:purchasePrivacy'], ['GET', '/core/v1/transfers']] as [$m, $p]) {
         try { NameComDriver::assertAllowed($m, $p); ok(false, "refused $m $p"); } catch (NameComApiException) { ok(true, "refused $m $p"); }
     }
