@@ -134,8 +134,10 @@ try {
     fk(['api.linode.com/v4/domains/55/records*' => Http::response($page([['id' => 1, 'type' => 'NS', 'name' => '', 'target' => 'ns1.linode.com']]))]);
     $r = app(LinodeController::class)->updateRecord(bind(['type' => 'A', 'name' => '', 'target' => '1.1.1.1']), $dom, '1');
     ok($r->getStatusCode() === 422 && str_contains(j($r)['message'], 'managed by Linode'), 'NS record edit refused');
-    $r = app(LinodeController::class)->destroyRecord($dom, '1');
-    ok($r->getStatusCode() === 422, 'NS record delete refused');
+    ok(!method_exists(LinodeController::class, 'destroyRecord') && !method_exists(\App\Services\Linode\LinodeService::class, 'deleteRecord'), 'no record-delete code path exists');
+    $req = new ReflectionMethod(\App\Services\Linode\LinodeService::class, 'request'); $req->setAccessible(true);
+    $threw = false; try { $req->invoke(new \App\Services\Linode\LinodeService($dom->account ?? LinodeAccount::firstOrFail()), 'DELETE', '/domains/55'); } catch (\Throwable $e) { $threw = str_contains($e->getMessage(), 'nothing is ever deleted'); }
+    ok($threw, 'service refuses any DELETE request at the lowest level');
 
     // ---- mapping
     $clientA = Client::create(['tenant_id' => $tenantA->id, 'name' => 'Asha', 'phone' => '255700000009', 'email' => 'asha@example.test', 'status' => 'active']);

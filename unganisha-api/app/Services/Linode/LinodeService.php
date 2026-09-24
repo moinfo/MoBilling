@@ -226,15 +226,6 @@ class LinodeService
         return $this->request('PUT', "/domains/{$domainId}/records/{$recordId}", $clean, 'record.update', "domain:{$domainId}/record:{$recordId}");
     }
 
-    public function deleteRecord(string|int $domainId, string|int $recordId): void
-    {
-        $current = collect($this->listRecords($domainId))->firstWhere('id', (int) $recordId);
-        if ($current && in_array(strtoupper($current['type'] ?? ''), ['NS', 'SOA'], true)) {
-            throw new \InvalidArgumentException(strtoupper($current['type']) . ' records are managed by Linode and cannot be changed here.');
-        }
-        $this->request('DELETE', "/domains/{$domainId}/records/{$recordId}", [], 'record.delete', "domain:{$domainId}/record:{$recordId}");
-    }
-
     /** A for the root ("") and www pointing at the server; identical existing ones are skipped. */
     public function createStandardWebRecords(string|int $domainId, string $ipv4, int $ttl = 0): array
     {
@@ -325,6 +316,9 @@ class LinodeService
 
     private function request(string $method, string $path, array $params = [], ?string $auditAction = null, ?string $target = null): array
     {
+        if (!in_array(strtoupper($method), ['GET', 'POST', 'PUT'], true)) {
+            throw new LinodeApiException('Only GET, POST and PUT are allowed; nothing is ever deleted at Linode from here.');
+        }
         $attempt = 0;
         $status = null;
         try {
@@ -336,7 +330,8 @@ class LinodeService
                         'GET'    => $http->get($url, $params),
                         'POST'   => $http->post($url, $params),
                         'PUT'    => $http->put($url, $params),
-                        'DELETE' => $http->delete($url),
+                        // Deliberately unsupported: this integration must never delete anything at Linode.
+                        'DELETE' => throw new LinodeApiException('Delete operations are disabled for the Linode integration.'),
                     };
                 } catch (ConnectionException $e) {
                     throw new LinodeApiException('Could not reach Linode (network error or timeout). Try again shortly.');

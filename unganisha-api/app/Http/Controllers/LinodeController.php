@@ -561,14 +561,6 @@ class LinodeController extends Controller
         return $this->withDomain($resource, fn (LinodeService $s) => ['data' => $s->updateRecord($resource->remote_id, $recordId, $this->recordInput($request)), 'message' => 'Record updated.']);
     }
 
-    public function destroyRecord(LinodeResource $resource, string $recordId): JsonResponse
-    {
-        return $this->withDomain($resource, function (LinodeService $s) use ($resource, $recordId) {
-            $s->deleteRecord($resource->remote_id, $recordId);
-            return ['message' => 'Record deleted.'];
-        });
-    }
-
     // ── mapping (phase 2 groundwork) ──
 
     public function map(Request $request, LinodeResource $resource): JsonResponse

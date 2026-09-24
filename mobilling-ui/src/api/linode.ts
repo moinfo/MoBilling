@@ -138,7 +138,6 @@ export const setLinodeNameservers = (id: string) =>
 export const getLinodeRecords = (id: string) => api.get<{ data: LinodeRecord[] }>(`/linode/domains/${id}/records`);
 export const addLinodeRecord = (id: string, d: LinodeRecordPayload) => api.post(`/linode/domains/${id}/records`, d);
 export const updateLinodeRecord = (id: string, rid: number, d: LinodeRecordPayload) => api.put(`/linode/domains/${id}/records/${rid}`, d);
-export const deleteLinodeRecord = (id: string, rid: number) => api.delete(`/linode/domains/${id}/records/${rid}`);
 
 export const mapLinodeResource = (id: string, d: { client_id: string | null; client_subscription_id?: string | null }) =>
   api.patch<{ data: LinodeResource; message: string }>(`/linode/resources/${id}/map`, d);

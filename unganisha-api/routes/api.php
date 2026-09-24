@@ -778,7 +778,6 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/domains/{resource}/set-nameservers', [\App\Http\Controllers\LinodeController::class, 'setNameservers']);
         Route::post('/domains/{resource}/records', [\App\Http\Controllers\LinodeController::class, 'storeRecord']);
         Route::put('/domains/{resource}/records/{recordId}', [\App\Http\Controllers\LinodeController::class, 'updateRecord']);
-        Route::delete('/domains/{resource}/records/{recordId}', [\App\Http\Controllers\LinodeController::class, 'destroyRecord']);
         Route::patch('/resources/{resource}/map', [\App\Http\Controllers\LinodeController::class, 'map']);
         Route::get('/billing-products', [\App\Http\Controllers\LinodeController::class, 'billingProducts']);
         Route::get('/clients/{client}/subscriptions', [\App\Http\Controllers\LinodeController::class, 'clientSubscriptions']);

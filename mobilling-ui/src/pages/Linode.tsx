@@ -13,7 +13,7 @@ import {
 import {
   getLinodeAccounts, createLinodeAccount, updateLinodeAccount, deleteLinodeAccount, verifyLinodeAccount,
   syncLinodeAccount, getLinodeServers, getLinodeDomains, addLinodeDomain, setLinodeNameservers,
-  checkLinodeNameservers, getLinodeRecords, addLinodeRecord, updateLinodeRecord, deleteLinodeRecord,
+  checkLinodeNameservers, getLinodeRecords, addLinodeRecord, updateLinodeRecord,
   mapLinodeResource, refreshLinodeDns, getLinodeBillingProducts, getLinodeClientSubscriptions, billLinodeServer, linkLinodeSubscription, unlinkLinodeSubscription, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
   RECORD_TYPES, LINODE_NAMESERVERS, DnsRefreshBatch, PowerAction,
 } from '../api/linode';
@@ -686,16 +686,10 @@ function RecordsDrawer({ resource, canManage, onClose }: { resource: LinodeResou
   const { data, isLoading, isError, error } = useQuery({ queryKey: key, queryFn: () => getLinodeRecords(resource.id) });
   const rows = data?.data?.data ?? [];
   const [editing, setEditing] = useState<LinodeRecord | 'new' | null>(null);
-  const del = useMutation({
-    mutationFn: (id: number) => deleteLinodeRecord(resource.id, id),
-    onSuccess: () => { notifications.show({ color: 'green', message: 'Record deleted.' }); qc.invalidateQueries({ queryKey: key }); },
-    onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
-  });
-
   return (
     <Drawer opened onClose={onClose} title={`DNS records - ${resource.label}`} position="right" size="xl">
       <Stack>
-        <Text size="xs" c="dimmed">NS and SOA records are managed by Linode and cannot be changed here.</Text>
+        <Text size="xs" c="dimmed">NS and SOA records are managed by Linode and cannot be changed here. Records can be added or edited but never deleted from MoBilling.</Text>
         {canManage && <Group><Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Add record</Button></Group>}
         {isLoading ? <Center><Loader /></Center> : isError ? <Alert color="red">{errMsg(error)}</Alert> : !rows.length ? <Text c="dimmed">No records.</Text> : (
           <Table.ScrollContainer minWidth={520}>
@@ -712,7 +706,6 @@ function RecordsDrawer({ resource, canManage, onClose }: { resource: LinodeResou
                       {canManage && !r.locked && (
                         <Group gap={4} wrap="nowrap">
                           <ActionIcon variant="light" onClick={() => setEditing(r)}><IconEdit size={14} /></ActionIcon>
-                          <ActionIcon variant="light" color="red" onClick={() => { if (window.confirm(`Delete ${r.type} record ${r.name || '@'}?`)) del.mutate(r.id); }}><IconTrash size={14} /></ActionIcon>
                         </Group>
                       )}
                     </Table.Td>
