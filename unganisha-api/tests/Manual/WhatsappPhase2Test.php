@@ -369,4 +369,30 @@ class WhatsappPhase2Test
         DB::table('whatsapp_reminder_targets')->where('domain_id', $d1->id)->update(['expires_at' => now()->subMinute()]);
         $this->assertSame(1, $T::openFor($this->tenant->id, $this->phone)->count(), 'expired target ignored');
     }
+
+    // ═══ H5: cleanup command ═══
+    public function test_h5_cleanup_sessions_command(): void
+    {
+        $c = $this->makeClient();
+        $mk = fn (string $phone, array $extra) => WhatsappRenewalSession::withoutGlobalScopes()->create(array_merge(['tenant_id' => $this->tenant->id, 'phone' => $phone, 'client_id' => $c->id, 'language' => 'en', 'confirmed_at' => now(), 'expires_at' => now()->addDays(30)], $extra));
+        $live = $mk('255700000101', []);
+        $recentExpired = $mk('255700000102', ['expires_at' => now()->subDays(2)]);
+        $oldExpired = $mk('255700000103', ['expires_at' => now()->subDays(9)]);
+        $epp = $mk('255700000104', ['flow' => 'order_domain', 'state' => ['step' => 'transfer_domain_confirm', 'domain' => 'x.com', 'auth_info' => 'SECRET-EPP']]);
+        $eppFresh = $mk('255700000105', ['flow' => 'order_domain', 'state' => ['step' => 'transfer_domain_confirm', 'auth_info' => 'FRESH-EPP']]);
+        DB::table('whatsapp_renewal_sessions')->where('id', $epp->id)->update(['updated_at' => now()->subHours(2)]);
+        WhatsappRenewalSession::withoutGlobalScopes()->whereKey($eppFresh->id)->first();
+
+        \Illuminate\Support\Facades\Artisan::call('whatsapp:cleanup-sessions', ['--dry-run' => true]);
+        $this->assertTrue(WhatsappRenewalSession::withoutGlobalScopes()->whereKey($oldExpired->id)->exists(), 'dry-run deletes nothing');
+        $this->assertContains('SECRET-EPP', json_encode(WhatsappRenewalSession::withoutGlobalScopes()->find($epp->id)->state));
+
+        \Illuminate\Support\Facades\Artisan::call('whatsapp:cleanup-sessions');
+        $this->assertTrue(!WhatsappRenewalSession::withoutGlobalScopes()->whereKey($oldExpired->id)->exists(), 'long-expired purged');
+        $this->assertTrue(WhatsappRenewalSession::withoutGlobalScopes()->whereKey($recentExpired->id)->exists(), 'recently expired kept (timeout notice)');
+        $this->assertTrue(WhatsappRenewalSession::withoutGlobalScopes()->whereKey($live->id)->exists(), 'live kept');
+        $state = WhatsappRenewalSession::withoutGlobalScopes()->find($epp->id)->state;
+        $this->assertTrue(!array_key_exists('auth_info', $state) && ($state['domain'] ?? null) === 'x.com', 'stale EPP removed, rest of state kept');
+        $this->assertContains('FRESH-EPP', json_encode(WhatsappRenewalSession::withoutGlobalScopes()->find($eppFresh->id)->state));
+    }
 }
