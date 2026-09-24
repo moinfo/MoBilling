@@ -152,3 +152,8 @@ export const billLinodeServer = (id: string, d: {
 export const linkLinodeSubscription = (id: string, client_subscription_id: string) =>
   api.post<{ message: string }>(`/linode/resources/${id}/link-subscription`, { client_subscription_id });
 export const unlinkLinodeSubscription = (id: string) => api.post<{ message: string }>(`/linode/resources/${id}/unlink-subscription`);
+
+export type PowerAction = 'reboot' | 'shutdown' | 'boot';
+export const linodePower = (id: string, d: { action: PowerAction; confirm_label?: string; confirm?: boolean }) =>
+  api.post<{ message: string; data: LinodeResource }>(`/linode/servers/${id}/power`, d);
+export const getLinodeServerStatus = (id: string) => api.get<{ data: { id: string; status: string } }>(`/linode/servers/${id}/status`);

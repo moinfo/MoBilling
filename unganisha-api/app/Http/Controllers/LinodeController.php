@@ -218,6 +218,80 @@ class LinodeController extends Controller
         })]);
     }
 
+    // ── server power actions (linode.power) ──
+
+    private const POWER_PER_SERVER_HOUR = 5;
+    private const POWER_PER_TENANT_HOUR = 20;
+
+    public function power(Request $request, LinodeResource $resource): JsonResponse
+    {
+        $data = $request->validate([
+            'action' => 'required|in:reboot,shutdown,boot',
+            'confirm_label' => 'nullable|string|max:255',
+            'confirm' => 'nullable|boolean',
+        ]);
+        $action = $data['action'];
+        abort_unless($resource->type === 'instance', 404);
+        $account = LinodeAccount::findOrFail($resource->linode_account_id);
+        $target = "{$resource->label} #{$resource->remote_id}";
+        $extra = ['server_id' => $resource->id, 'server_label' => $resource->label, 'linode_id' => $resource->remote_id, 'power_action' => $action];
+        $sub = $resource->client_subscription_id ? ClientSubscription::find($resource->client_subscription_id) : null;
+        if ($sub && $sub->status === 'active') {
+            $extra['client'] = $resource->client?->name;
+        }
+        $refuse = function (string $msg, int $code) use ($account, $target, $extra) {
+            $this->audit($account, 'server.power_refused', $target, $extra, $code, $msg);
+            return response()->json(['message' => $msg], $code);
+        };
+
+        if ($account->status !== 'active') return $refuse('This Linode account is not active. Fix the token on the Accounts tab first.', 422);
+        if ($resource->status === 'gone') return $refuse('This server no longer exists at Linode.', 422);
+
+        if ($action === 'boot') {
+            if (!filter_var($data['confirm'] ?? false, FILTER_VALIDATE_BOOLEAN)) return $refuse('Please confirm the boot.', 422);
+        } elseif (!isset($data['confirm_label']) || $data['confirm_label'] !== $resource->label) {
+            return $refuse('Type the exact server name to confirm.', 422);
+        }
+
+        $since = now()->subHour();
+        $base = LinodeAuditLog::where('action', 'server.power')->where('created_at', '>=', $since);
+        if ((clone $base)->where('target', $target)->where('linode_account_id', $account->id)->count() >= self::POWER_PER_SERVER_HOUR) {
+            return $refuse('Limit reached: at most ' . self::POWER_PER_SERVER_HOUR . ' power actions per server per hour.', 429);
+        }
+        if ((clone $base)->count() >= self::POWER_PER_TENANT_HOUR) {
+            return $refuse('Limit reached: at most ' . self::POWER_PER_TENANT_HOUR . ' power actions per hour for your account.', 429);
+        }
+
+        $svc = new LinodeService($account);
+        try {
+            $before = $svc->powerAction($resource->remote_id, $action);
+        } catch (\DomainException $e) {
+            return $refuse($e->getMessage(), 409);
+        } catch (LinodeApiException $e) {
+            $this->audit($account, 'server.power', $target, $extra + ['result' => 'failed'], $e->httpStatus ?: 502, $e->getMessage());
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        $resource->update(['status' => LinodeService::POWER_OPTIMISTIC[$action]]);
+        $this->audit($account, 'server.power', $target, $extra + ['result' => 'success', 'status_before' => $before], 200);
+
+        return response()->json(['message' => ucfirst($action) . ' requested for ' . $resource->label . '.', 'data' => $this->resourceArray($resource->load(['account:id,label,last_synced_at', 'client:id,name']))]);
+    }
+
+    /** Refresh ONE instance's status live (for UI polling after a power action). */
+    public function serverStatus(LinodeResource $resource): JsonResponse
+    {
+        abort_unless($resource->type === 'instance', 404);
+        $account = LinodeAccount::findOrFail($resource->linode_account_id);
+        try {
+            $live = (new LinodeService($account))->getInstance($resource->remote_id);
+        } catch (LinodeApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+        $resource->update(['status' => $live['status'] ?? $resource->status, 'synced_at' => now()]);
+        return response()->json(['data' => ['id' => $resource->id, 'status' => $resource->status]]);
+    }
+
     public function domains(): JsonResponse
     {
         $rows = $this->domainRows();
@@ -632,11 +706,12 @@ class LinodeController extends Controller
         ];
     }
 
-    private function audit(LinodeAccount $account, string $action, ?string $target, array $extra = []): void
+    private function audit(LinodeAccount $account, string $action, ?string $target, array $extra = [], int $status = 200, ?string $error = null): void
     {
         LinodeAuditLog::create([
             'tenant_id' => $account->tenant_id, 'user_id' => auth()->id(), 'linode_account_id' => $account->id,
-            'action' => $action, 'target' => $target, 'request' => $extra ?: null, 'response_status' => 200,
+            'action' => $action, 'target' => $target, 'request' => $extra ?: null, 'response_status' => $status,
+            'error' => $error ? mb_substr($error, 0, 250) : null,
         ]);
     }
 }

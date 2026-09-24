@@ -8,16 +8,18 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconPlus, IconRefresh, IconTrash, IconEdit, IconKey, IconCopy, IconCheck, IconServer, IconWorldWww, IconPlugConnected,
-  IconLink, IconWand, IconReceipt,
+  IconLink, IconWand, IconReceipt, IconPower,
 } from '@tabler/icons-react';
 import {
   getLinodeAccounts, createLinodeAccount, updateLinodeAccount, deleteLinodeAccount, verifyLinodeAccount,
   syncLinodeAccount, getLinodeServers, getLinodeDomains, addLinodeDomain, setLinodeNameservers,
   checkLinodeNameservers, getLinodeRecords, addLinodeRecord, updateLinodeRecord, deleteLinodeRecord,
   mapLinodeResource, refreshLinodeDns, getLinodeBillingProducts, getLinodeClientSubscriptions, billLinodeServer, linkLinodeSubscription, unlinkLinodeSubscription, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
-  RECORD_TYPES, LINODE_NAMESERVERS, DnsRefreshBatch,
+  RECORD_TYPES, LINODE_NAMESERVERS, DnsRefreshBatch, PowerAction,
 } from '../api/linode';
 import { getClients } from '../api/clients';
+import LinodePowerModal, { BUSY_STATUSES } from '../components/LinodePowerModal';
+import { Menu } from '@mantine/core';
 import { usePermissions } from '../hooks/usePermissions';
 import { useNavigate } from 'react-router-dom';
 
@@ -320,6 +322,8 @@ function BillModal({ resource, onClose }: { resource: LinodeResource; onClose: (
 function ServersTab({ canManage, onShowDomains }: { canManage: boolean; onShowDomains: (id: string) => void }) {
   const { can } = usePermissions();
   const canBill = can('linode.manage') && can('client_subscriptions.create');
+  const canPower = can('linode.power');
+  const [powerFor, setPowerFor] = useState<{ s: LinodeResource; action: PowerAction } | null>(null);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [mapFor, setMapFor] = useState<LinodeResource | null>(null);
@@ -351,7 +355,7 @@ function ServersTab({ canManage, onShowDomains }: { canManage: boolean; onShowDo
             {rows.map((s) => (
               <Table.Tr key={s.id}>
                 <Table.Td>{s.label}<Text size="xs" c="dimmed">{s.account_label}</Text></Table.Td>
-                <Table.Td><Badge color={s.status === 'running' ? 'green' : s.status === 'gone' ? 'red' : 'gray'}>{s.status === 'gone' ? 'removed at Linode' : s.status}</Badge></Table.Td>
+                <Table.Td><Badge color={s.status === 'running' ? 'green' : s.status === 'gone' ? 'red' : BUSY_STATUSES.includes(s.status ?? '') ? 'yellow' : 'gray'}>{s.status === 'gone' ? 'removed at Linode' : s.status}</Badge></Table.Td>
                 <Table.Td>{s.region}</Table.Td>
                 <Table.Td>{s.plan}</Table.Td>
                 <Table.Td>{s.ipv4.join(', ')}</Table.Td>
@@ -390,6 +394,16 @@ function ServersTab({ canManage, onShowDomains }: { canManage: boolean; onShowDo
                 <Table.Td>{fmt(s.synced_at)}</Table.Td>
                 <Table.Td>
                   <Stack gap={4}>
+                    {canPower && s.status !== 'gone' && (
+                      <Menu withinPortal position="bottom-end">
+                        <Menu.Target><Button size="xs" variant="light" color="red" leftSection={<IconPower size={14} />}>Power</Button></Menu.Target>
+                        <Menu.Dropdown>
+                          <Menu.Item disabled={s.status !== 'running'} onClick={() => setPowerFor({ s, action: 'reboot' })}>Reboot</Menu.Item>
+                          <Menu.Item color="red" disabled={s.status !== 'running'} onClick={() => setPowerFor({ s, action: 'shutdown' })}>Shutdown</Menu.Item>
+                          <Menu.Item disabled={s.status !== 'offline'} onClick={() => setPowerFor({ s, action: 'boot' })}>Boot</Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
+                    )}
                     {canManage && <Button size="xs" variant="light" leftSection={<IconLink size={14} />} onClick={() => setMapFor(s)}>Map to client</Button>}
                     {canBill && !s.subscription && s.status !== 'gone' && <Button size="xs" leftSection={<IconReceipt size={14} />} onClick={() => setBillFor(s)}>Bill this server</Button>}
                     {canManage && s.subscription && <Button size="xs" variant="subtle" color="gray" loading={unlink.isPending} onClick={() => { if (window.confirm('Unlink this subscription from the server? The subscription keeps billing; nothing changes at Linode.')) unlink.mutate(s.id); }}>Unlink</Button>}
@@ -400,6 +414,7 @@ function ServersTab({ canManage, onShowDomains }: { canManage: boolean; onShowDo
           </Table.Tbody>
         </Table>
       </Table.ScrollContainer>
+      {powerFor && <LinodePowerModal server={powerFor.s} action={powerFor.action} onClose={() => setPowerFor(null)} />}
       {mapFor && <MapModal resource={mapFor} onClose={() => setMapFor(null)} />}
       {billFor && <BillModal resource={billFor} onClose={() => setBillFor(null)} />}
     </Paper>

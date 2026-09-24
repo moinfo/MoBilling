@@ -758,9 +758,13 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:linode.read')->prefix('linode')->group(function () {
         Route::get('/accounts', [\App\Http\Controllers\LinodeController::class, 'accounts']);
         Route::get('/servers', [\App\Http\Controllers\LinodeController::class, 'servers']);
+        Route::get('/servers/{resource}/status', [\App\Http\Controllers\LinodeController::class, 'serverStatus']);
         Route::get('/domains', [\App\Http\Controllers\LinodeController::class, 'domains']);
         Route::get('/domains/{resource}/records', [\App\Http\Controllers\LinodeController::class, 'records']);
         Route::post('/domains/{resource}/check-nameservers', [\App\Http\Controllers\LinodeController::class, 'checkNameservers']);
+    });
+    Route::middleware('permission:linode.power')->prefix('linode')->group(function () {
+        Route::post('/servers/{resource}/power', [\App\Http\Controllers\LinodeController::class, 'power']);
     });
     Route::middleware('permission:linode.manage')->prefix('linode')->group(function () {
         Route::post('/accounts', [\App\Http\Controllers\LinodeController::class, 'storeAccount']);

@@ -252,6 +252,56 @@ class LinodeService
         return $created;
     }
 
+    // ── power actions (linodes:read_write) ──
+
+    public const POWER_ACTIONS = ['reboot', 'shutdown', 'boot'];
+    /** status required before each action */
+    public const POWER_REQUIRES = ['reboot' => 'running', 'shutdown' => 'running', 'boot' => 'offline'];
+    public const BUSY_STATUSES = ['booting', 'rebooting', 'shutting_down', 'provisioning', 'migrating', 'rebuilding', 'cloning', 'restoring', 'stopped_pending', 'resizing', 'deleting'];
+    public const POWER_OPTIMISTIC = ['reboot' => 'rebooting', 'shutdown' => 'shutting_down', 'boot' => 'booting'];
+
+    /** Live status of one instance (GET /linode/instances/{id}). */
+    public function getInstance(string|int $instanceId): array
+    {
+        return $this->request('GET', "/linode/instances/" . (int) $instanceId);
+    }
+
+    /**
+     * Refuses (\DomainException) unless the LIVE status allows the action, then issues exactly one POST.
+     * Returns the live status that was seen before acting.
+     */
+    public function powerAction(string|int $instanceId, string $action): string
+    {
+        if (!in_array($action, self::POWER_ACTIONS, true)) {
+            throw new \InvalidArgumentException('Unknown power action.');
+        }
+        $id = (int) $instanceId;
+        $live = (string) ($this->getInstance($id)['status'] ?? '');
+        if (in_array($live, self::BUSY_STATUSES, true)) {
+            throw new \DomainException("The server is busy right now (status: $live). Wait until it is running or offline, then try again.");
+        }
+        $need = self::POWER_REQUIRES[$action];
+        if ($live !== $need) {
+            throw new \DomainException(match ($action) {
+                'boot' => "Cannot boot: the server is '$live', not offline.",
+                default => "Cannot $action: the server is '$live', not running.",
+            });
+        }
+        try {
+            $this->request('POST', "/linode/instances/{$id}/{$action}");
+        } catch (LinodeApiException $e) {
+            if ($e->httpStatus === 403) {
+                throw new LinodeApiException('The Linode token needs linodes: read/write to control servers. Create a token with that scope in Linode Cloud Manager and rotate it on the Accounts tab.', 403, $e->errors);
+            }
+            if ($e->httpStatus === 400) {
+                $why = collect($e->errors)->pluck('reason')->filter()->implode('; ');
+                throw new LinodeApiException('Linode refused the action' . (stripos($why, 'busy') !== false ? ': the server is busy with another operation. Try again in a minute.' : ($why ? ": $why" : '.')), 400, $e->errors);
+            }
+            throw $e;
+        }
+        return $live;
+    }
+
     // ── transport ──
 
     private function paginate(string $path): array
