@@ -84,6 +84,7 @@ class SendDomainExpiryReminders extends Command
                 $replyEnabled = $tenant->whatsapp_enabled
                     && $tenant->reminder_whatsapp_enabled
                     && $client->phone
+                    && !$client->whatsappOptedOut()
                     && MosmsAccount::withoutGlobalScopes()->where('tenant_id', $tenant->id)->whereNotNull('token')->exists();
 
                 $client->notify(new DomainExpiryReminderNotification($domain, $tenant, $daysLeft, $replyEnabled));

@@ -18,7 +18,18 @@ class Client extends Model
         'address', 'tax_id', 'status', 'notes', 'legacy_id', 'credit_balance',
         'first_name', 'last_name', 'company_name',
         'address_1', 'address_2', 'city', 'state', 'postcode', 'country',
+        'whatsapp_opt_out_at',
     ];
+
+    protected $casts = [
+        'whatsapp_opt_out_at' => 'datetime',
+    ];
+
+    /** True once the client texted STOP to the WhatsApp bot (reminders/notifications on WhatsApp are off; START re-enables). */
+    public function whatsappOptedOut(): bool
+    {
+        return $this->whatsapp_opt_out_at !== null;
+    }
 
     public function documents()
     {

@@ -583,4 +583,106 @@ class WhatsappPhase3Test
         $r = $this->say('11');
         $this->assertNotContains('p3-theirs.test', $r);
     }
+
+    // ═══ C: STOP / START ═══
+    private function pushNote(bool $transactional = false): \Illuminate\Notifications\Notification
+    {
+        return new class($transactional) extends \Illuminate\Notifications\Notification {
+            public bool $whatsappTransactional;
+            public function __construct(bool $t) { $this->whatsappTransactional = $t; }
+            public function toWhatsApp($n) { return 'REMINDER-BODY'; }
+        };
+    }
+
+    private function pushedTexts(): array
+    {
+        return array_values(array_filter(Fw::$sent, fn ($m) => ($m['type'] ?? '') === 'push'));
+    }
+
+    public function test_c_stop_opts_out_replies_and_gates_the_whatsapp_channel(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $ch = new \App\Channels\WhatsAppChannel(new Fw3());
+        $ch->send($c->fresh(), $this->pushNote());
+        $this->assertSame(1, count($this->pushedTexts()), 'reminder goes out before STOP');
+        $r = $this->say('stop');
+        $this->assertContains('Okay, you will no longer receive WhatsApp reminders. Type START to turn them back on.', $r);
+        $this->assertTrue($c->fresh()->whatsapp_opt_out_at !== null);
+        Fw::$sent = [];
+        $ch->send($c->fresh(), $this->pushNote());
+        $this->assertSame(0, count($this->pushedTexts()), 'reminder blocked after STOP');
+        $ch->send($c->fresh(), $this->pushNote(true));
+        $this->assertSame(1, count($this->pushedTexts()), 'security notices still delivered');
+        // transactional reply to a message the client starts is still allowed
+        $r = $this->say('11');
+        $this->assertTrue($r !== '', 'bot still answers the client');
+    }
+
+    public function test_c_swahili_words_and_reply_text_and_start_reenables(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->session()->update(['language' => 'sw']);
+        foreach (['ACHA', ' Sitaki ', 'UNSUBSCRIBE'] as $w) {
+            $c->forceFill(['whatsapp_opt_out_at' => null])->save();
+            $this->assertContains('Sawa, hutapokea vikumbusho vya WhatsApp tena. Andika ANZA kuwasha tena.', $this->say($w));
+            $this->assertTrue($c->fresh()->whatsapp_opt_out_at !== null, $w);
+        }
+        $r = $this->say('ANZA');
+        $this->assertContains('vimewashwa tena', $r);
+        $this->assertSame(null, $c->fresh()->whatsapp_opt_out_at);
+        $ch = new \App\Channels\WhatsAppChannel(new Fw3());
+        Fw::$sent = [];
+        $ch->send($c->fresh(), $this->pushNote());
+        $this->assertSame(1, count($this->pushedTexts()));
+        $c->forceFill(['whatsapp_opt_out_at' => now()])->save();
+        $this->session()->update(['language' => 'en']);
+        $this->assertContains('back on', $this->say('washa'));
+        $this->assertSame(null, $c->fresh()->whatsapp_opt_out_at);
+        $c->fresh()->forceFill(['whatsapp_opt_out_at' => now()])->save();
+        $this->assertContains('back on', $this->say('START'));
+    }
+
+    public function test_c_only_the_whole_message_counts_and_unverified_phone_works(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->say('please stop the domain order');
+        $this->assertSame(null, $c->fresh()->whatsapp_opt_out_at);
+        $this->say('stop it');
+        $this->assertSame(null, $c->fresh()->whatsapp_opt_out_at);
+        // no session at all: matched by phone
+        WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->delete();
+        $r = $this->say('STOP');
+        $this->assertContains('WhatsApp reminders', $r);
+        $this->assertTrue($c->fresh()->whatsapp_opt_out_at !== null);
+        // START/ANZA from a NON opted-out unknown/normal contact is not swallowed (starts the normal flow)
+        $c->forceFill(['whatsapp_opt_out_at' => null])->save();
+        $r = $this->say('ANZA');
+        $this->assertContains('Please select your preferred language', $r);
+    }
+
+    public function test_c_stranger_stop_is_not_swallowed(): void
+    {
+        $r = $this->say('STOP', '255711111111');
+        $this->assertContains('Please select your preferred language', $r); // unknown number: normal flow
+    }
+
+    public function test_c_client_not_a_notifiable_client_is_unaffected(): void
+    {
+        $ch = new \App\Channels\WhatsAppChannel(new Fw3());
+        $u = new class { public $phone = '255700000001'; public $tenant; };
+        $u->tenant = $this->tenant;
+        Fw::$sent = [];
+        $ch->send($u, $this->pushNote());
+        $this->assertSame(1, count($this->pushedTexts()));
+    }
+}
+
+/** Records the push-style sends (WhatsAppChannel path) next to the session replies. */
+class Fw3 extends Fw
+{
+    public function sendText(Tenant $tenant, string $recipient, string $message): array { self::$sent[] = ['type' => 'push', 'text' => $message]; return []; }
+    public function sendTemplate(Tenant $tenant, string $recipient, string $template, array $parameters = [], string $language = 'en', ?string $buttonUrlParam = null): array { self::$sent[] = ['type' => 'push', 'text' => $template]; return []; }
 }

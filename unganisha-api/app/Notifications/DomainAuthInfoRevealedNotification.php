@@ -18,6 +18,9 @@ use Illuminate\Notifications\Notification;
  */
 class DomainAuthInfoRevealedNotification extends Notification implements ShouldQueue
 {
+    /** Security notice: still sent on WhatsApp even after a STOP. */
+    public bool $whatsappTransactional = true;
+
     use Queueable, HasTenantBranding;
 
     public function __construct(

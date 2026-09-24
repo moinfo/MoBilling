@@ -15,6 +15,12 @@ class WhatsAppChannel
             return;
         }
 
+        // The client replied STOP to the bot: no WhatsApp reminders/notifications (their replies to messages
+        // THEY start are unaffected — those never go through this channel). Security notices opt out of the opt-out.
+        if ($notifiable instanceof \App\Models\Client && $notifiable->whatsappOptedOut() && !($notification->whatsappTransactional ?? false)) {
+            return;
+        }
+
         $message = $notification->toWhatsApp($notifiable);
         if (!$message) {
             return;

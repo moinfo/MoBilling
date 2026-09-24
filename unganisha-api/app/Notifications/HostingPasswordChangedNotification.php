@@ -15,6 +15,9 @@ use Illuminate\Notifications\Notification;
 /** Security notice: the cPanel password was changed (never includes it). */
 class HostingPasswordChangedNotification extends Notification implements ShouldQueue
 {
+    /** Security notice: still sent on WhatsApp even after a STOP. */
+    public bool $whatsappTransactional = true;
+
     use Queueable, HasTenantBranding;
 
     public function __construct(

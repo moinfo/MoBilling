@@ -165,6 +165,11 @@ class WhatsappRenewalWebhookController extends Controller
             return response('OK', 200);
         }
 
+        // STOP / START: WhatsApp reminder opt-out (works from any state, whole message only).
+        if ($this->handleOptOut($tenant, $phone, $session, $text)) {
+            return response('OK', 200);
+        }
+
         // MENU / CANCEL / NYUMBANI / ANZA UPYA from any not-yet-verified state (language, registration,
         // surname/email, has_account/want_account): start over from the language choice.
         if ($session && !$session->isExpired() && !$session->confirmed_at
@@ -265,6 +270,68 @@ class WhatsappRenewalWebhookController extends Controller
         $this->startLanguageSelect($tenant, $phone, $clientMatch);
 
         return response('OK', 200);
+    }
+
+    // ── STOP / START (WhatsApp reminder opt-out) ──
+
+    /** Clients this phone belongs to (tenant scoped, last-9-digit match). */
+    private function phoneClients(Tenant $tenant, string $phone): \Illuminate\Support\Collection
+    {
+        $q = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
+
+        return PhoneHelper::wherePhone($q, 'phone', $phone)->get();
+    }
+
+    /**
+     * STOP/UNSUBSCRIBE/ACHA/SITAKI turns the client's WhatsApp reminders off; START/ANZA/WASHA turns them back on
+     * (only when they are actually opted out, so a new contact typing "ANZA" still starts normally).
+     * Only ever reduces/restores messaging to this very phone, so no identity check is needed.
+     */
+    private function handleOptOut(Tenant $tenant, string $phone, ?WhatsappRenewalSession $session, string $text): bool
+    {
+        $stop = (bool) preg_match('/^\s*(stop|unsubscribe|acha|sitaki)\s*[.!]*\s*$/i', $text);
+        $start = !$stop && preg_match('/^\s*(start|anza|washa)\s*[.!]*\s*$/i', $text);
+        if (!$stop && !$start) {
+            return false;
+        }
+
+        $clients = $this->phoneClients($tenant, $phone);
+        if ($session && !$session->isExpired() && $session->confirmed_at && $session->client_id && !$clients->contains('id', $session->client_id)) {
+            $c = Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
+            if ($c) {
+                $clients->push($c);
+            }
+        }
+        if ($clients->isEmpty()) {
+            return false;
+        }
+
+        $lang = ($session && !$session->isExpired() ? $session->language : null);
+        $say = fn (string $sw, string $en) => $lang ? $this->t($lang, $sw, $en) : "{$sw}\n{$en}";
+
+        if ($stop) {
+            foreach ($clients as $c) {
+                $c->forceFill(['whatsapp_opt_out_at' => now()])->save();
+            }
+            $this->reply($tenant, $phone, $say(
+                'Sawa, hutapokea vikumbusho vya WhatsApp tena. Andika ANZA kuwasha tena.',
+                'Okay, you will no longer receive WhatsApp reminders. Type START to turn them back on.'
+            ));
+            return true;
+        }
+
+        if (!$clients->contains(fn ($c) => $c->whatsappOptedOut())) {
+            return false;
+        }
+        foreach ($clients as $c) {
+            $c->forceFill(['whatsapp_opt_out_at' => null])->save();
+        }
+        $this->reply($tenant, $phone, $say(
+            'Sawa, vikumbusho vya WhatsApp vimewashwa tena. Asante!',
+            'Done, WhatsApp reminders are back on. Thank you!'
+        ));
+
+        return true;
     }
 
     private function handleMediaMessage(Tenant $tenant, string $phone, ?WhatsappRenewalSession $session): void
