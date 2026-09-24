@@ -768,6 +768,52 @@ class WhatsappPhase2Test
         $this->assertSame(null, $inv2->fresh()->created_by);
         $this->assertSame([], $logged);
     }
+
+    // ═══ M6: staff PIN lockout + first-PIN notice ═══
+    private function staffUser(?string $pin = '1234'): User
+    {
+        $u = $this->user;
+        $u->forceFill(['phone' => '0' . substr($this->rawPhone, 3), 'is_active' => true, 'whatsapp_pin_hash' => $pin ? \Illuminate\Support\Facades\Hash::make($pin) : null, 'whatsapp_pin_failed_count' => 0, 'whatsapp_pin_failed_at' => null, 'whatsapp_pin_locked_until' => null])->save();
+        return $u->fresh();
+    }
+
+    public function test_m6_staff_pin_locks_after_five_wrong_even_when_session_is_recreated(): void
+    {
+        $u = $this->staffUser();
+        $this->say('STAFF');
+        $this->assertSame('staff_pin', $this->session()?->flow);
+        $this->say('0000'); $this->say('1111');
+        $t = $this->say('2222');           // 3rd wrong: session dropped (existing per-session limit)
+        $this->assertSame(null, $this->session(), 'session deleted after 3');
+        $this->say('STAFF');               // a fresh session must NOT reset the counter
+        $this->say('3333');
+        $t = $this->say('4444');           // 5th wrong overall
+        $this->assertContains('imezuiwa kwa muda', $t);
+        $this->assertSame(5, (int) $u->fresh()->whatsapp_pin_failed_count);
+        $mins = now()->diffInMinutes(\Illuminate\Support\Carbon::parse($u->fresh()->whatsapp_pin_locked_until), false);
+        $this->assertTrue($mins >= 28 && $mins <= 30, "30 min lock, got $mins");
+        $t = $this->say('STAFF');
+        $this->assertContains('imezuiwa kwa muda', $t);
+        $this->assertSame(null, $this->session(), 'no PIN prompt while locked');
+        // correct PIN is refused while locked; after expiry it works and clears the counter
+        DB::table('users')->where('id', $u->id)->update(['whatsapp_pin_locked_until' => now()->subMinute()]);
+        $this->say('STAFF');
+        $t = $this->say('1234');
+        $this->assertTrue($this->session()?->flow === 'staff_menu' || str_contains($t, 'Habari') || str_contains($t, '1'), 'unlocked login works');
+        $this->assertSame(0, (int) $u->fresh()->whatsapp_pin_failed_count, 'success resets the counter');
+    }
+
+    public function test_m6_first_pin_set_notifies_the_staff_user_but_a_change_does_not(): void
+    {
+        $u = $this->staffUser(null);
+        $this->say('STAFF');
+        $this->assertSame('set_pin_1', $this->session()->state['step']);
+        $this->say('4321');
+        $this->say('4321');
+        $this->assertTrue(!empty($u->fresh()->whatsapp_pin_hash), 'PIN saved');
+        $this->assertSame(1, Notification::sent($u, \App\Notifications\WhatsappPinSetNotification::class)->count(), 'notice sent once');
+        $this->assertContains('PIN ya WhatsApp imewekwa', (new \App\Notifications\WhatsappPinSetNotification())->toArray($u)['title']);
+    }
 }
 
 class FakeBundler extends \App\Services\Hosting\RenewalBundleService

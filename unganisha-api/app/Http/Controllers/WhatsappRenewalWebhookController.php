@@ -307,6 +307,11 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
+        if ($until = app(\App\Services\StaffPinGuard::class)->lockedUntil($staff)) {
+            $this->reply($tenant, $phone, $this->staffPinLockedMessage($until));
+            return;
+        }
+
         $step = $staff->whatsapp_pin_hash ? 'enter_pin' : 'set_pin_1';
 
         WhatsappRenewalSession::updateOrCreate(
@@ -319,6 +324,33 @@ class WhatsappRenewalWebhookController extends Controller
         $this->reply($tenant, $phone, $step === 'enter_pin'
             ? "Habari {$staff->name}! Kwa usalama, andika PIN yako ya namba 4 (au andika BADILISHA kuibadilisha)."
             : "Habari {$staff->name}! Kwa usalama wa hali ya 'staff assist', tengeneza PIN ya namba 4 (mfano: 1234). Andika PIN mpya.");
+    }
+
+    private function staffPinLockedMessage(\Illuminate\Support\Carbon $until): string
+    {
+        $mins = max(1, (int) ceil(now()->diffInMinutes($until, false)));
+
+        return "PIN imezuiwa kwa muda kwa sababu ya majaribio mengi yasiyo sahihi. Jaribu tena baada ya dakika {$mins}.";
+    }
+
+    /** Wrong staff PIN: persistent counter (survives session deletion); true when it just locked the account. */
+    private function staffPinFailed(Tenant $tenant, string $phone, WhatsappRenewalSession $session, User $staff, array $state): void
+    {
+        $lockedUntil = app(\App\Services\StaffPinGuard::class)->recordFailure($staff);
+        if ($lockedUntil) {
+            $session->delete();
+            $this->reply($tenant, $phone, $this->staffPinLockedMessage($lockedUntil));
+            return;
+        }
+
+        $attempts = ((int) ($state['attempts'] ?? 0)) + 1;
+        if ($attempts >= self::MAX_STAFF_PIN_ATTEMPTS) {
+            $session->delete();
+            $this->reply($tenant, $phone, 'PIN si sahihi mara kadhaa. Kwa usalama, jaribu tena baadaye (andika STAFF).');
+            return;
+        }
+        $session->update(['state' => array_merge($state, ['attempts' => $attempts])]);
+        $this->reply($tenant, $phone, "PIN si sahihi. Jaribu tena ({$attempts}/" . self::MAX_STAFF_PIN_ATTEMPTS . ').');
     }
 
     private function handleStaffAssistStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text): void
@@ -359,9 +391,24 @@ class WhatsappRenewalWebhookController extends Controller
                     $this->reply($tenant, $phone, 'PIN hazifanani. Andika PIN mpya ya namba 4.');
                     return;
                 }
+                $firstPin = !$staff->whatsapp_pin_hash;
                 $staff->update(['whatsapp_pin_hash' => Hash::make(trim($text))]);
+                if ($firstPin) {
+                    try {
+                        $staff->notify(new \App\Notifications\WhatsappPinSetNotification());
+                    } catch (\Throwable $e) {
+                        report($e);
+                    }
+                }
                 $this->reply($tenant, $phone, 'PIN imewekwa!');
                 $this->startStaffMenu($tenant, $phone, $session, $staff);
+                return;
+            }
+
+            if (in_array($step, ['enter_pin', 'change_verify_old'], true)
+                && ($until = app(\App\Services\StaffPinGuard::class)->lockedUntil($staff))) {
+                $session->delete();
+                $this->reply($tenant, $phone, $this->staffPinLockedMessage($until));
                 return;
             }
 
@@ -373,16 +420,10 @@ class WhatsappRenewalWebhookController extends Controller
                 }
 
                 if (!Hash::check(trim($text), $staff->whatsapp_pin_hash)) {
-                    $attempts = ((int) ($state['attempts'] ?? 0)) + 1;
-                    if ($attempts >= self::MAX_STAFF_PIN_ATTEMPTS) {
-                        $session->delete();
-                        $this->reply($tenant, $phone, 'PIN si sahihi mara kadhaa. Kwa usalama, jaribu tena baadaye (andika STAFF).');
-                        return;
-                    }
-                    $session->update(['state' => array_merge($state, ['attempts' => $attempts])]);
-                    $this->reply($tenant, $phone, "PIN si sahihi. Jaribu tena ({$attempts}/" . self::MAX_STAFF_PIN_ATTEMPTS . ').');
+                    $this->staffPinFailed($tenant, $phone, $session, $staff, $state);
                     return;
                 }
+                app(\App\Services\StaffPinGuard::class)->reset($staff);
                 $this->startStaffMenu($tenant, $phone, $session, $staff);
                 return;
             }
@@ -392,16 +433,10 @@ class WhatsappRenewalWebhookController extends Controller
             // needed, they already hash+save+continue to client search on success.
             if ($step === 'change_verify_old') {
                 if (!Hash::check(trim($text), $staff->whatsapp_pin_hash)) {
-                    $attempts = ((int) ($state['attempts'] ?? 0)) + 1;
-                    if ($attempts >= self::MAX_STAFF_PIN_ATTEMPTS) {
-                        $session->delete();
-                        $this->reply($tenant, $phone, 'PIN si sahihi mara kadhaa. Kwa usalama, jaribu tena baadaye (andika STAFF).');
-                        return;
-                    }
-                    $session->update(['state' => array_merge($state, ['attempts' => $attempts])]);
-                    $this->reply($tenant, $phone, "PIN si sahihi. Jaribu tena ({$attempts}/" . self::MAX_STAFF_PIN_ATTEMPTS . ').');
+                    $this->staffPinFailed($tenant, $phone, $session, $staff, $state);
                     return;
                 }
+                app(\App\Services\StaffPinGuard::class)->reset($staff);
                 $session->update(['state' => array_merge($state, ['step' => 'set_pin_1'])]);
                 $this->reply($tenant, $phone, 'Andika PIN mpya ya namba 4.');
                 return;
