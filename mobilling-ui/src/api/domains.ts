@@ -175,6 +175,7 @@ export const addExistingDomain = (data: {
 }) => api.post<{ data: unknown; message: string }>('/domains/add-existing', data);
 
 export interface DomainNameservers {
+  provider?: 'namecom';
   nsset: string | null;
   nameservers: string[];
   tech?: string[];

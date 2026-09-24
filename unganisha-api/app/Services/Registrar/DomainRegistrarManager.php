@@ -35,4 +35,20 @@ class DomainRegistrarManager
             default    => throw new RegistrarApiException('resolve', "Unknown registrar driver [{$account->driver}]"),
         };
     }
+
+    /**
+     * Name.com is a tenant-owned credential (namecom_accounts), separate from the
+     * FRED registrar_accounts resolution above so it can never affect .tz domains.
+     */
+    public function namecomFor(string $tenantId): NameComDriver
+    {
+        $account = \App\Models\NameComAccount::withoutGlobalScopes()->where('tenant_id', $tenantId)->first();
+        if (!$account) {
+            throw new RegistrarApiException('resolve', 'Name.com is not connected. Add your Name.com API credentials under Domains > Name.com.');
+        }
+        if ($account->status === 'invalid') {
+            throw new RegistrarApiException('resolve', 'The stored Name.com credentials were rejected. Update them under Domains > Name.com.');
+        }
+        return new NameComDriver($account);
+    }
 }

@@ -170,6 +170,14 @@ class DomainController extends Controller
     /** Live nameserver list for a domain (registry truth). */
     public function nameservers(Domain $domain)
     {
+        if (\App\Services\Registrar\NameComDomainService::isLinked($domain)) {
+            try {
+                $ns = app(\App\Services\Registrar\NameComDomainService::class)->nameservers($domain);
+            } catch (\App\Exceptions\NameComApiException | RegistrarApiException $e) {
+                return response()->json(['message' => 'Could not read nameservers from Name.com: ' . preg_replace('/^Registrar \S+ failed: /', '', $e->getMessage())], 422);
+            }
+            return response()->json(['data' => ['provider' => 'namecom', 'nsset' => null, 'nameservers' => $ns, 'shared_with' => 0, 'original_nameservers' => \App\Services\Registrar\NameComDomainService::original($domain)]]);
+        }
         if (($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz')) {
             return response()->json(['message' => 'Nameservers for this domain are managed at its external registrar.'], 422);
         }
@@ -192,6 +200,21 @@ class DomainController extends Controller
      */
     public function updateNameservers(Request $request, Domain $domain)
     {
+        if (\App\Services\Registrar\NameComDomainService::isLinked($domain)) {
+            abort_unless(in_array($domain->status, ['active', 'expired']), 422, 'Domain is not active.');
+            $data = $request->validate(['nameservers' => 'required|array|max:20', 'nameservers.*' => 'required|string|max:253']);
+            try {
+                $r = app(\App\Services\Registrar\NameComDomainService::class)->updateNameservers($domain, $data['nameservers'], ['by_user' => auth()->id()]);
+            } catch (\InvalidArgumentException | \DomainException $e) {
+                return response()->json(['message' => $e->getMessage()], 422);
+            } catch (\App\Exceptions\NameComApiException | RegistrarApiException $e) {
+                return response()->json(['message' => preg_replace('/^Registrar \S+ failed: /', '', $e->getMessage())], 422);
+            }
+            return response()->json([
+                'data'    => ['provider' => 'namecom', 'nsset' => null, 'nameservers' => $r['nameservers']],
+                'message' => $r['changed'] ? 'Nameservers updated at Name.com. DNS changes can take up to a few hours to propagate.' : 'No changes - those are already the nameservers.',
+            ]);
+        }
         abort_if(($domain->meta['unmanaged'] ?? false) || !str_ends_with($domain->name, '.tz'), 422,
             'Nameservers for this domain are managed at its external registrar.');
         abort_unless(in_array($domain->status, ['active', 'expired']), 422, 'Domain is not active at the registry.');
@@ -337,6 +360,9 @@ class DomainController extends Controller
      */
     public function sync(Domain $domain)
     {
+        if (\App\Services\Registrar\NameComDomainService::isLinked($domain)) {
+            return app(NameComController::class)->refresh($domain);
+        }
         abort_if($domain->meta['unmanaged'] ?? false, 422, 'This domain is managed at its external registrar — nothing to sync here.');
         abort_unless(str_ends_with($domain->name, '.tz'), 422, 'Only .tz domains can be synced from the registry.');
 

@@ -1,3 +1,4 @@
+import NameComNameservers from '../../components/NameComNameservers';
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, LoadingOverlay, Button, Grid,
@@ -301,7 +302,17 @@ export default function PortalDomainDetails() {
             )}
 
             {section === 'nameservers' && (
-              <NameserversSection domainId={d.id} isPortalAdmin={isPortalAdmin} />
+              d.nameserver_managed ? (
+                <NameComNameservers
+                  portal
+                  queryKey={['portal-domain-ns', d.id]}
+                  fetcher={() => getPortalDomainNameservers(d.id) as any}
+                  saver={(list) => updatePortalDomainNameservers(d.id, list)}
+                  canEdit={isPortalAdmin && ['active', 'expired'].includes(d.status)}
+                />
+              ) : (
+                <NameserversSection domainId={d.id} isPortalAdmin={isPortalAdmin} />
+              )
             )}
 
             {section === 'dns' && (

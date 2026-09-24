@@ -1,3 +1,4 @@
+import NameComNameservers from '../components/NameComNameservers';
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Button, Grid, Anchor, Code,
@@ -141,7 +142,7 @@ export default function DomainDetails() {
             <Tooltip label="Re-pull status, expiry and nameservers from the registry">
               <Button size="xs" variant="light" color="grape" leftSection={<IconCloudDownload size={14} />}
                 loading={syncMutation.isPending} onClick={() => syncMutation.mutate()}>
-                Sync from Registry
+                {meta.namecom ? 'Sync from Name.com' : 'Sync from Registry'}
               </Button>
             </Tooltip>
           )}
@@ -270,6 +271,17 @@ export default function DomainDetails() {
           </Stack>
         </Grid.Col>
 
+        {meta.namecom && (
+          <Grid.Col span={12}>
+            <NameComNameservers
+              queryKey={['domain-nameservers', d.id]}
+              fetcher={() => getDomainNameservers(d.id) as any}
+              saver={(list) => updateDomainNameservers(d.id, list)}
+              canEdit={can('domains.manage_dns') && ['active', 'expired'].includes(d.status)}
+              invalidate={[['domain', d.id], ['domain-logs', d.id]]}
+            />
+          </Grid.Col>
+        )}
         {!meta.unmanaged && d.name.endsWith('.tz') && (
           <Grid.Col span={12}>
             <NameserversCard domainId={d.id} domainStatus={d.status} />

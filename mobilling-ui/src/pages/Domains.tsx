@@ -21,6 +21,7 @@ import {
   whoisDomain, WhoisResult,
 } from '../api/domains';
 import { getClients } from '../api/clients';
+import NameComManager from '../components/NameComManager';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
 import { DateInput } from '@mantine/dates';
@@ -60,6 +61,7 @@ export default function Domains() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [nameComOpen, setNameComOpen] = useState(false);
   const [logsFor, setLogsFor] = useState<DomainRecord | null>(null);
   const [renewFor, setRenewFor] = useState<DomainRecord | null>(null);
   const [confirmManualFor, setConfirmManualFor] = useState<DomainRecord | null>(null);
@@ -181,11 +183,18 @@ export default function Domains() {
           <IconWorldWww size={22} />
           <Title order={2}>Domains</Title>
         </Group>
-        {can('domains.create') && (
-          <Button leftSection={<IconPlus size={16} />} onClick={() => setWizardOpen(true)}>
-            Register / Transfer
-          </Button>
-        )}
+        <Group gap="xs">
+          {(can('domains.settings') || can('domains.create')) && (
+            <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={() => setNameComOpen(true)}>
+              Name.com
+            </Button>
+          )}
+          {can('domains.create') && (
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setWizardOpen(true)}>
+              Register / Transfer
+            </Button>
+          )}
+        </Group>
       </Group>
 
       <SimpleGrid cols={{ base: 2, sm: 3, lg: 4 }} spacing="sm">
@@ -432,6 +441,7 @@ export default function Domains() {
       )}
 
       <OrderWizard opened={wizardOpen} onClose={() => setWizardOpen(false)} />
+      {nameComOpen && <NameComManager opened onClose={() => setNameComOpen(false)} />}
 
       <RenewModal domain={renewFor} onClose={() => setRenewFor(null)} />
 

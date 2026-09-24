@@ -350,6 +350,7 @@ export interface PortalDomainDetail {
   expires_at: string | null;
   auto_renew: boolean;
   unmanaged: boolean;
+  nameserver_managed?: boolean;
   awaiting_manual_registration: boolean;
   billing: {
     first_payment: number | null;
@@ -386,7 +387,7 @@ export const portalGetEppCode = (id: string) =>
   api.post<PortalEppCodeResult>(`/portal/domains/${id}/epp-code`);
 
 export const getPortalDomainNameservers = (id: string) =>
-  api.get<{ data: { nameservers: string[]; editable: boolean } }>(`/portal/domains/${id}/nameservers`);
+  api.get<{ data: { nameservers: string[]; editable: boolean; provider?: 'namecom' } }>(`/portal/domains/${id}/nameservers`);
 
 export interface PortalDnsRecord {
   type: string;

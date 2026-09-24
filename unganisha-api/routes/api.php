@@ -734,6 +734,17 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/domains/{domain}/logs',    [\App\Http\Controllers\DomainController::class, 'logs']);
         Route::post('/domains/{domain}/sync',   [\App\Http\Controllers\DomainController::class, 'sync']);
     });
+    // Name.com (nameserver management for linked domains). Reuses the existing domain permissions.
+    Route::middleware('permission:domains.settings')->prefix('namecom')->group(function () {
+        Route::get('/account', [\App\Http\Controllers\NameComController::class, 'account']);
+        Route::put('/account', [\App\Http\Controllers\NameComController::class, 'saveAccount'])->middleware('throttle:10,1');
+        Route::delete('/account', [\App\Http\Controllers\NameComController::class, 'deleteAccount']);
+        Route::post('/account/test', [\App\Http\Controllers\NameComController::class, 'test'])->middleware('throttle:10,1');
+    });
+    Route::middleware('permission:domains.create')->prefix('namecom')->group(function () {
+        Route::get('/domains', [\App\Http\Controllers\NameComController::class, 'domains'])->middleware('throttle:6,1');
+        Route::post('/link', [\App\Http\Controllers\NameComController::class, 'link'])->middleware('throttle:60,1');
+    });
     Route::middleware('permission:domains.create')->post('/domains/order', [\App\Http\Controllers\DomainController::class, 'order']);
     Route::middleware('permission:domains.create')->post('/domains/add-existing', [\App\Http\Controllers\DomainController::class, 'addExisting']);
 
