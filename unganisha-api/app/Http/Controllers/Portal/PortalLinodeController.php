@@ -91,7 +91,14 @@ class PortalLinodeController extends Controller
                 $m = DnsMapping::match($dns['apex_ips'] ?? [], $dns['www_ips'] ?? [], $ipIndex);
                 return in_array($srv->id, $m['instance_ids'], true);
             })
-            ->map(fn ($d) => ['name' => $d->label, 'checked_at' => $d->meta['dns']['fetched_at'] ?? null])->values();
+            ->map(function ($d) use ($clientId) {
+                $ours = $d->domain_id ? \App\Models\Domain::withoutGlobalScopes()->where('id', $d->domain_id)->where('client_id', $clientId)->first() : null;
+                return [
+                    'name' => $d->label, 'checked_at' => $d->meta['dns']['fetched_at'] ?? null,
+                    'apex_ips' => $d->meta['dns']['apex_ips'] ?? [], 'www_ips' => $d->meta['dns']['www_ips'] ?? [],
+                    'registered' => (bool) $ours, 'registration_status' => $ours?->status, 'expires_at' => $ours?->expires_at?->toDateString(),
+                ];
+            })->values();
 
         $requests = LinodeDomainRequest::withoutGlobalScopes()
             ->where('tenant_id', $srv->tenant_id)->where('client_id', $clientId)->where('linode_resource_id', $srv->id)

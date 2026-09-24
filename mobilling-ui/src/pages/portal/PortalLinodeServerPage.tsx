@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Paper, Title, Modal, Stack, Text, Alert, TextInput, Group, Button, Badge, Divider, Textarea, Loader } from '@mantine/core';
+import { Paper, Title, Table, Modal, Stack, Text, Alert, TextInput, Group, Button, Badge, Divider, Textarea, Loader } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { IconRefresh, IconLifebuoy, IconArrowLeft } from '@tabler/icons-react';
@@ -75,7 +75,24 @@ export default function PortalLinodeServerPage() {
             <Divider label="Domains kwenye server hii" labelPosition="left" />
             {info.domains.length === 0
               ? <Text size="sm" c="dimmed">Hakuna domain iliyounganishwa bado.</Text>
-              : <Group gap="xs">{info.domains.map((d) => <Badge key={d.name} variant="outline">{d.name}</Badge>)}</Group>}
+              : (
+                <Table.ScrollContainer minWidth={560}>
+                  <Table striped highlightOnHover>
+                    <Table.Thead><Table.Tr><Table.Th>#</Table.Th><Table.Th>Domain</Table.Th><Table.Th>Inaelekea (IP)</Table.Th><Table.Th>Usajili</Table.Th><Table.Th>Inaisha</Table.Th></Table.Tr></Table.Thead>
+                    <Table.Tbody>
+                      {info.domains.map((d, i) => (
+                        <Table.Tr key={d.name}>
+                          <Table.Td>{i + 1}</Table.Td>
+                          <Table.Td><Text fw={600} size="sm">{d.name}</Text></Table.Td>
+                          <Table.Td><Text size="sm">{d.apex_ips.join(', ') || '-'}</Text></Table.Td>
+                          <Table.Td>{d.registered ? <Badge size="sm" variant="light" color={d.registration_status === 'active' ? 'green' : 'gray'}>{d.registration_status}</Badge> : <Text size="xs" c="dimmed">Nje ya mfumo</Text>}</Table.Td>
+                          <Table.Td><Text size="sm">{d.expires_at ?? '-'}</Text></Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                </Table.ScrollContainer>
+              )}
 
             {isAdmin && (
               <>

@@ -565,7 +565,7 @@ export const portalApplyCredit = (documentId: string) =>
 // Linode server self-service (portal): reboot only, domain requests, support ticket
 export interface PortalLinodeOverview {
   server: { id: string; name: string; ip: string | null; region: string | null; status: string | null };
-  domains: { name: string; checked_at: string | null }[];
+  domains: { name: string; checked_at: string | null; apex_ips: string[]; www_ips: string[]; registered: boolean; registration_status: string | null; expires_at: string | null }[];
   requests: { id: string; domain: string; status: 'pending' | 'approved' | 'rejected'; note: string | null; created_at: string }[];
 }
 export const getPortalLinodeServer = (id: string) => api.get<{ data: PortalLinodeOverview }>(`/portal/linode/servers/${id}`);
