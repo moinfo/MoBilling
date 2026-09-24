@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, Select, Center, Loader, Alert, Button, Modal,
   TextInput, PasswordInput, Tabs, ActionIcon, Drawer, NumberInput, CopyButton, Code, List, Tooltip,
@@ -8,14 +8,14 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconPlus, IconRefresh, IconTrash, IconEdit, IconKey, IconCopy, IconCheck, IconServer, IconWorldWww, IconPlugConnected,
-  IconLink,
+  IconLink, IconWand,
 } from '@tabler/icons-react';
 import {
   getLinodeAccounts, createLinodeAccount, updateLinodeAccount, deleteLinodeAccount, verifyLinodeAccount,
   syncLinodeAccount, getLinodeServers, getLinodeDomains, addLinodeDomain, setLinodeNameservers,
   checkLinodeNameservers, getLinodeRecords, addLinodeRecord, updateLinodeRecord, deleteLinodeRecord,
-  mapLinodeResource, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
-  RECORD_TYPES, LINODE_NAMESERVERS,
+  mapLinodeResource, refreshLinodeDns, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
+  RECORD_TYPES, LINODE_NAMESERVERS, DnsRefreshBatch,
 } from '../api/linode';
 import { getClients } from '../api/clients';
 import { usePermissions } from '../hooks/usePermissions';
@@ -31,6 +31,9 @@ const ttlOptions = (list: number[]) => list.map((t) => ({ value: String(t), labe
 
 export default function Linode() {
   const { can } = usePermissions();
+  const [tab, setTab] = useState<string | null>('accounts');
+  const [serverFilter, setServerFilter] = useState<string | null>(null);
+  const showServerDomains = (id: string) => { setServerFilter(id); setTab('domains'); };
   const canManage = can('linode.manage');
   return (
     <Stack>
@@ -40,15 +43,15 @@ export default function Linode() {
           <Text c="dimmed" size="sm">Connect your Linode account, see your servers and add domains to Linode DNS.</Text>
         </div>
       </Group>
-      <Tabs defaultValue="accounts" keepMounted={false}>
+      <Tabs value={tab} onChange={setTab} keepMounted={false}>
         <Tabs.List>
           <Tabs.Tab value="accounts" leftSection={<IconPlugConnected size={14} />}>Accounts</Tabs.Tab>
           <Tabs.Tab value="servers" leftSection={<IconServer size={14} />}>Servers</Tabs.Tab>
           <Tabs.Tab value="domains" leftSection={<IconWorldWww size={14} />}>Domains</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="accounts" pt="md"><AccountsTab canManage={canManage} /></Tabs.Panel>
-        <Tabs.Panel value="servers" pt="md"><ServersTab canManage={canManage} /></Tabs.Panel>
-        <Tabs.Panel value="domains" pt="md"><DomainsTab canManage={canManage} /></Tabs.Panel>
+        <Tabs.Panel value="servers" pt="md"><ServersTab canManage={canManage} onShowDomains={showServerDomains} /></Tabs.Panel>
+        <Tabs.Panel value="domains" pt="md"><DomainsTab canManage={canManage} serverFilter={serverFilter} setServerFilter={setServerFilter} /></Tabs.Panel>
       </Tabs>
     </Stack>
   );
@@ -189,8 +192,9 @@ function MapModal({ resource, onClose }: { resource: LinodeResource; onClose: ()
   );
 }
 
-function ServersTab({ canManage }: { canManage: boolean }) {
+function ServersTab({ canManage, onShowDomains }: { canManage: boolean; onShowDomains: (id: string) => void }) {
   const [mapFor, setMapFor] = useState<LinodeResource | null>(null);
+  const [open, setOpen] = useState<string | null>(null);
   const { data, isLoading, isError, error } = useQuery({ queryKey: ['linode-servers'], queryFn: getLinodeServers });
   const rows = data?.data?.data ?? [];
   if (isLoading) return <Center><Loader /></Center>;
@@ -198,9 +202,9 @@ function ServersTab({ canManage }: { canManage: boolean }) {
   if (!rows.length) return <Paper withBorder p="xl"><Text ta="center" c="dimmed">No servers yet. Connect a Linode account and press &quot;Sync now&quot; on the Accounts tab.</Text></Paper>;
   return (
     <Paper withBorder>
-      <Table.ScrollContainer minWidth={800}>
+      <Table.ScrollContainer minWidth={950}>
         <Table verticalSpacing="sm">
-          <Table.Thead><Table.Tr><Table.Th>Label</Table.Th><Table.Th>Status</Table.Th><Table.Th>Region</Table.Th><Table.Th>Plan</Table.Th><Table.Th>IPv4</Table.Th><Table.Th>Client</Table.Th><Table.Th>Last synced</Table.Th><Table.Th /></Table.Tr></Table.Thead>
+          <Table.Thead><Table.Tr><Table.Th>Label</Table.Th><Table.Th>Status</Table.Th><Table.Th>Region</Table.Th><Table.Th>Plan</Table.Th><Table.Th>IPv4</Table.Th><Table.Th>Domains</Table.Th><Table.Th>Client</Table.Th><Table.Th>Last synced</Table.Th><Table.Th /></Table.Tr></Table.Thead>
           <Table.Tbody>
             {rows.map((s) => (
               <Table.Tr key={s.id}>
@@ -209,7 +213,23 @@ function ServersTab({ canManage }: { canManage: boolean }) {
                 <Table.Td>{s.region}</Table.Td>
                 <Table.Td>{s.plan}</Table.Td>
                 <Table.Td>{s.ipv4.join(', ')}</Table.Td>
-                <Table.Td>{s.client_name ?? <Text c="dimmed" size="sm">unmapped</Text>}</Table.Td>
+                <Table.Td>
+                  {s.domain_count ? (
+                    <Stack gap={2}>
+                      <Group gap={4} wrap="nowrap">
+                        <Button size="compact-xs" variant="light" onClick={() => onShowDomains(s.id)}>{s.domain_count} domain(s)</Button>
+                        <Button size="compact-xs" variant="subtle" onClick={() => setOpen(open === s.id ? null : s.id)}>{open === s.id ? 'hide' : 'list'}</Button>
+                      </Group>
+                      {open === s.id && <Stack gap={0}>{(s.domains ?? []).map((d) => <Text key={d.id} size="xs">{d.label}</Text>)}</Stack>}
+                    </Stack>
+                  ) : <Text c="dimmed" size="sm">none (refresh DNS mapping)</Text>}
+                </Table.Td>
+                <Table.Td>
+                  {s.client_name ?? <Text c="dimmed" size="sm">unmapped</Text>}
+                  {!s.client_name && s.suggested_client && (
+                    <Text size="xs" c="blue">Suggested: {s.suggested_client.name} (all {s.suggested_client.domains} domain(s) belong to them)</Text>
+                  )}
+                </Table.Td>
                 <Table.Td>{fmt(s.synced_at)}</Table.Td>
                 <Table.Td>{canManage && <Button size="xs" variant="light" leftSection={<IconLink size={14} />} onClick={() => setMapFor(s)}>Map to client</Button>}</Table.Td>
               </Table.Tr>
@@ -305,13 +325,111 @@ function AddDomainModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function DomainsTab({ canManage }: { canManage: boolean }) {
+const DNS_STATUS_OPTIONS: { value: DnsStatus; label: string }[] = [
+  { value: 'server', label: 'Points to our server' },
+  { value: 'external', label: 'External IP' },
+  { value: 'no_a_record', label: 'No A record' },
+  { value: 'unknown', label: 'Not checked yet' },
+];
+
+function PointsTo({ d, onServer }: { d: LinodeResource; onServer: (id: string) => void }) {
+  const dns = d.dns;
+  if (!dns || dns.status === 'unknown') {
+    return <Tooltip label={dns?.error ?? 'Press "Refresh DNS mapping"'}><Text size="sm" c={dns?.error ? 'red' : 'dimmed'}>{dns?.error ? 'error' : 'not checked'}</Text></Tooltip>;
+  }
+  return (
+    <Stack gap={2}>
+      {dns.status === 'server' && (
+        <Group gap={4}>
+          {dns.servers.map((s) => (
+            <Tooltip key={s.id} label={`${s.apex ? 'root' : ''}${s.apex && s.www ? ' + ' : ''}${s.www ? 'www' : ''}`}>
+              <Badge component="button" style={{ cursor: 'pointer' }} variant="light" onClick={() => onServer(s.id)}>{s.label}</Badge>
+            </Tooltip>
+          ))}
+        </Group>
+      )}
+      {dns.external_ips.length > 0 && <Badge color="orange" variant="light">External IP {dns.external_ips.join(', ')}</Badge>}
+      {dns.status === 'no_a_record' && <Badge color="gray" variant="light">No A record</Badge>}
+      {dns.error && <Text size="xs" c="red">last refresh failed</Text>}
+    </Stack>
+  );
+}
+
+function DnsRefreshButton() {
+  const qc = useQueryClient();
+  const { data: accData } = useQuery({ queryKey: ['linode-accounts'], queryFn: getLinodeAccounts });
+  const accounts = (accData?.data?.data ?? []).filter((a) => a.status === 'active');
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const run = async () => {
+    const failed: { domain: string; error: string }[] = [];
+    let ok = 0;
+    try {
+      for (const acc of accounts) {
+        let offset: number | null = 0;
+        while (offset !== null) {
+          const r: DnsRefreshBatch = (await refreshLinodeDns(acc.id, offset)).data;
+          ok += r.ok; failed.push(...r.failed);
+          setProgress({ done: (offset ?? 0) + r.processed, total: r.total });
+          offset = r.next_offset;
+        }
+      }
+      notifications.show({
+        color: failed.length ? 'yellow' : 'green', autoClose: failed.length ? 12000 : 4000, title: 'DNS mapping refreshed',
+        message: `${ok} domain(s) checked` + (failed.length ? `; ${failed.length} failed (${failed.slice(0, 3).map((f) => f.domain).join(', ')}${failed.length > 3 ? ', ...' : ''}). Press again to retry those.` : '.'),
+      });
+    } catch (e) {
+      notifications.show({ color: 'red', title: 'DNS mapping', message: errMsg(e) });
+    } finally {
+      setProgress(null);
+      qc.invalidateQueries({ queryKey: ['linode-domains'] });
+      qc.invalidateQueries({ queryKey: ['linode-servers'] });
+    }
+  };
+  return (
+    <Button variant="light" leftSection={<IconRefresh size={16} />} loading={!!progress} disabled={!accounts.length} onClick={run}>
+      {progress ? `Checking DNS ${progress.done}/${progress.total}` : 'Refresh DNS mapping'}
+    </Button>
+  );
+}
+
+function AutoMapModal({ rows, onClose }: { rows: LinodeResource[]; onClose: () => void }) {
+  const qc = useQueryClient();
+  const m = useMutation({
+    mutationFn: () => autoMapLinodeClients(rows.map((r) => r.id)),
+    onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); qc.invalidateQueries({ queryKey: ['linode-domains'] }); qc.invalidateQueries({ queryKey: ['linode-servers'] }); onClose(); },
+    onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
+  });
+  return (
+    <Modal opened onClose={onClose} title="Auto-map suggested clients" size="lg">
+      <Stack>
+        <Text size="sm">These {rows.length} domain(s) are registered with us and currently unmapped. Each will be mapped to the client that owns it in MoBilling. Existing mappings are never changed.</Text>
+        <Table.ScrollContainer minWidth={360} mah={320}>
+          <Table verticalSpacing="xs"><Table.Tbody>
+            {rows.map((r) => <Table.Tr key={r.id}><Table.Td>{r.label}</Table.Td><Table.Td>&rarr; {r.suggested_client?.name}</Table.Td></Table.Tr>)}
+          </Table.Tbody></Table>
+        </Table.ScrollContainer>
+        <Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancel</Button><Button loading={m.isPending} onClick={() => m.mutate()}>Map {rows.length} domain(s)</Button></Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function DomainsTab({ canManage, serverFilter, setServerFilter }: { canManage: boolean; serverFilter: string | null; setServerFilter: (v: string | null) => void }) {
   const qc = useQueryClient();
   const [adding, setAdding] = useState(false);
   const [recordsFor, setRecordsFor] = useState<LinodeResource | null>(null);
   const [mapFor, setMapFor] = useState<LinodeResource | null>(null);
   const { data, isLoading, isError, error } = useQuery({ queryKey: ['linode-domains'], queryFn: getLinodeDomains });
-  const rows = data?.data?.data ?? [];
+  const allRows = data?.data?.data ?? [];
+  const lastRefreshed = data?.data?.dns_last_refreshed ?? null;
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [autoMap, setAutoMap] = useState(false);
+  const { data: srvData } = useQuery({ queryKey: ['linode-servers'], queryFn: getLinodeServers });
+  const servers = srvData?.data?.data ?? [];
+  const rows = useMemo(() => allRows.filter((d) =>
+    (!serverFilter || d.dns?.servers.some((s) => s.id === serverFilter))
+    && (!statusFilter || (d.dns?.status ?? 'unknown') === statusFilter)), [allRows, serverFilter, statusFilter]);
+  const suggestions = allRows.filter((d) => !d.client_id && d.suggested_client);
   const check = useMutation({
     mutationFn: (id: string) => checkLinodeNameservers(id),
     onSuccess: (r) => notifications.show({ color: r.data.data.pointing_to_linode ? 'green' : 'yellow',
@@ -326,22 +444,33 @@ function DomainsTab({ canManage }: { canManage: boolean }) {
 
   return (
     <Stack>
-      {canManage && <Group><Button leftSection={<IconPlus size={16} />} onClick={() => setAdding(true)}>Add domain</Button></Group>}
+      <Group align="flex-end">
+        {canManage && <Button leftSection={<IconPlus size={16} />} onClick={() => setAdding(true)}>Add domain</Button>}
+        {canManage && <DnsRefreshButton />}
+        {canManage && suggestions.length > 0 && <Button variant="light" color="teal" leftSection={<IconWand size={16} />} onClick={() => setAutoMap(true)}>Auto-map suggested clients ({suggestions.length})</Button>}
+        <Select placeholder="Filter by server" clearable size="sm" data={servers.map((s) => ({ value: s.id, label: `${s.label} (${s.domain_count ?? 0})` }))} value={serverFilter} onChange={setServerFilter} />
+        <Select placeholder="Filter by DNS status" clearable size="sm" data={DNS_STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} />
+        <Text size="xs" c="dimmed">DNS mapping last refreshed: {fmt(lastRefreshed)}</Text>
+      </Group>
       {isLoading ? <Center><Loader /></Center> : isError ? <Alert color="red">{errMsg(error)}</Alert> : !rows.length ? (
-        <Paper withBorder p="xl"><Text ta="center" c="dimmed">No domains yet. Sync an account or add a domain.</Text></Paper>
+        <Paper withBorder p="xl"><Text ta="center" c="dimmed">{allRows.length ? 'No domains match the filters.' : 'No domains yet. Sync an account or add a domain.'}</Text></Paper>
       ) : (
         <Paper withBorder>
-          <Table.ScrollContainer minWidth={800}>
+          <Table.ScrollContainer minWidth={1000}>
             <Table verticalSpacing="sm">
-              <Table.Thead><Table.Tr><Table.Th>Domain</Table.Th><Table.Th>Status</Table.Th><Table.Th>Account</Table.Th><Table.Th>Registered with us</Table.Th><Table.Th>Client</Table.Th><Table.Th /></Table.Tr></Table.Thead>
+              <Table.Thead><Table.Tr><Table.Th>Domain</Table.Th><Table.Th>Status</Table.Th><Table.Th>Account</Table.Th><Table.Th>Points to</Table.Th><Table.Th>Registered with us</Table.Th><Table.Th>Client</Table.Th><Table.Th /></Table.Tr></Table.Thead>
               <Table.Tbody>
                 {rows.map((d) => (
                   <Table.Tr key={d.id}>
                     <Table.Td>{d.label}</Table.Td>
                     <Table.Td><Badge color={d.status === 'active' ? 'green' : d.status === 'gone' ? 'red' : 'gray'}>{d.status === 'gone' ? 'removed at Linode' : d.status}</Badge></Table.Td>
                     <Table.Td>{d.account_label}</Table.Td>
+                    <Table.Td><PointsTo d={d} onServer={setServerFilter} /></Table.Td>
                     <Table.Td>{d.our_domain ? <Badge variant="light">{d.our_domain.status}</Badge> : <Text size="sm" c="dimmed">no</Text>}</Table.Td>
-                    <Table.Td>{d.client_name ?? <Text size="sm" c="dimmed">unmapped</Text>}</Table.Td>
+                    <Table.Td>
+                      {d.client_name ?? <Text size="sm" c="dimmed">unmapped</Text>}
+                      {!d.client_name && d.suggested_client && <Text size="xs" c="blue">Suggested: {d.suggested_client.name}</Text>}
+                    </Table.Td>
                     <Table.Td>
                       <Group gap={4} wrap="nowrap">
                         <Button size="xs" variant="light" leftSection={<IconEdit size={14} />} onClick={() => setRecordsFor(d)} disabled={d.status === 'gone'}>Records</Button>
@@ -361,6 +490,7 @@ function DomainsTab({ canManage }: { canManage: boolean }) {
         </Paper>
       )}
       <Text size="xs" c="dimmed">Domains must point to {LINODE_NAMESERVERS[0]} ... {LINODE_NAMESERVERS[4]} at the registrar before Linode DNS records take effect.</Text>
+      {autoMap && <AutoMapModal rows={suggestions} onClose={() => setAutoMap(false)} />}
       {adding && <AddDomainModal onClose={() => setAdding(false)} />}
       {recordsFor && <RecordsDrawer resource={recordsFor} canManage={canManage} onClose={() => setRecordsFor(null)} />}
       {mapFor && <MapModal resource={mapFor} onClose={() => setMapFor(null)} />}

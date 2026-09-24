@@ -32,6 +32,31 @@ export interface LinodeResource {
   synced_at: string | null;
   account_last_synced_at: string | null;
   our_domain?: { id: string; status: string; can_set_nameservers: boolean } | null;
+  // domains only
+  dns?: LinodeDnsInfo;
+  suggested_client?: { id: string; name: string; domains?: number } | null;
+  // servers only
+  domain_count?: number;
+  domains?: { id: string; label: string }[];
+}
+
+export type DnsStatus = 'server' | 'external' | 'no_a_record' | 'unknown';
+export interface LinodeDnsInfo {
+  status: DnsStatus;
+  apex_ips: string[];
+  www_ips: string[];
+  external_ips: string[];
+  servers: { id: string; label: string; apex: boolean; www: boolean }[];
+  fetched_at: string | null;
+  error: string | null;
+}
+
+export interface DnsRefreshBatch {
+  processed: number;
+  ok: number;
+  failed: { domain: string; error: string }[];
+  total: number;
+  next_offset: number | null;
 }
 
 export interface LinodeRecord {
@@ -80,7 +105,11 @@ export const verifyLinodeAccount = (id: string) => api.post<{ data: LinodeAccoun
 export const syncLinodeAccount = (id: string) => api.post<{ data: LinodeAccount; message: string }>(`/linode/accounts/${id}/sync`);
 
 export const getLinodeServers = () => api.get<{ data: LinodeResource[] }>('/linode/servers');
-export const getLinodeDomains = () => api.get<{ data: LinodeResource[] }>('/linode/domains');
+export const getLinodeDomains = () => api.get<{ data: LinodeResource[]; dns_last_refreshed: string | null }>('/linode/domains');
+export const refreshLinodeDns = (accountId: string, offset: number, limit = 10) =>
+  api.post<DnsRefreshBatch>(`/linode/accounts/${accountId}/refresh-dns`, { offset, limit });
+export const autoMapLinodeClients = (ids?: string[]) =>
+  api.post<{ mapped: { id: string; domain: string; client: string }[]; message: string }>('/linode/domains/auto-map', { confirm: true, ids });
 export const addLinodeDomain = (d: { account_id: string; domain: string; soa_email?: string; ttl?: number; server_id?: string }) =>
   api.post<{ data: AddDomainResult; message: string }>('/linode/domains', d);
 export const checkLinodeNameservers = (id: string) =>

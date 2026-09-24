@@ -768,6 +768,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::delete('/accounts/{account}', [\App\Http\Controllers\LinodeController::class, 'destroyAccount']);
         Route::post('/accounts/{account}/verify', [\App\Http\Controllers\LinodeController::class, 'verifyAccount']);
         Route::post('/accounts/{account}/sync', [\App\Http\Controllers\LinodeController::class, 'sync']);
+        Route::post('/accounts/{account}/refresh-dns', [\App\Http\Controllers\LinodeController::class, 'refreshDns']);
+        Route::post('/domains/auto-map', [\App\Http\Controllers\LinodeController::class, 'autoMapClients']);
         Route::post('/domains', [\App\Http\Controllers\LinodeController::class, 'storeDomain']);
         Route::post('/domains/{resource}/set-nameservers', [\App\Http\Controllers\LinodeController::class, 'setNameservers']);
         Route::post('/domains/{resource}/records', [\App\Http\Controllers\LinodeController::class, 'storeRecord']);

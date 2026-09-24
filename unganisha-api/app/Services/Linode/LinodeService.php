@@ -28,6 +28,9 @@ class LinodeService
     /** Tests set this false to skip real sleeping on 429. */
     public static bool $sleepOnRateLimit = true;
     private const MAX_RETRIES = 3;
+    /** Paginated GETs are limited to 200/min by Linode: keep >= 350ms between them (~170/min). Tests set 0. */
+    public static int $paginatedGapMs = 350;
+    private static float $lastPaginatedAt = 0.0;
 
     public function __construct(private LinodeAccount $account) {}
 
@@ -256,7 +259,12 @@ class LinodeService
         $all = [];
         $page = 1;
         do {
+            if (self::$paginatedGapMs > 0) {
+                $wait = self::$lastPaginatedAt + self::$paginatedGapMs / 1000 - microtime(true);
+                if ($wait > 0) usleep((int) ($wait * 1e6));
+            }
             $json = $this->request('GET', $path, ['page' => $page, 'page_size' => 100]);
+            self::$lastPaginatedAt = microtime(true);
             $all = array_merge($all, $json['data'] ?? []);
             $pages = (int) ($json['pages'] ?? 1);
             $page++;
@@ -287,7 +295,7 @@ class LinodeService
 
                 if ($status === 429 && $attempt < self::MAX_RETRIES) {
                     $attempt++;
-                    if (self::$sleepOnRateLimit) sleep(min(max((int) $res->header('Retry-After'), 1), 10));
+                    if (self::$sleepOnRateLimit) sleep(min(max((int) $res->header('Retry-After'), 1), 20));
                     continue;
                 }
                 break;

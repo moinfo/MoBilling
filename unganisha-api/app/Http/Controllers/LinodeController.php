@@ -9,6 +9,7 @@ use App\Models\Domain;
 use App\Models\LinodeAccount;
 use App\Models\LinodeAuditLog;
 use App\Models\LinodeResource;
+use App\Services\Linode\DnsMapping;
 use App\Services\Linode\LinodeService;
 use App\Services\Registrar\NameserverService;
 use Illuminate\Http\JsonResponse;
@@ -149,12 +150,13 @@ class LinodeController extends Controller
             $name = strtolower($d['domain'] ?? '');
             $seen['domain'][] = (string) $d['id'];
             $ours = Domain::where('name', $name)->value('id');
+            $prevDns = LinodeResource::where('linode_account_id', $account->id)->where('type', 'domain')->where('remote_id', (string) $d['id'])->first()?->meta['dns'] ?? null;
             LinodeResource::updateOrCreate(
                 ['linode_account_id' => $account->id, 'type' => 'domain', 'remote_id' => (string) $d['id']],
                 [
                     'tenant_id' => $account->tenant_id,
                     'label' => $name, 'status' => $d['status'] ?? null,
-                    'meta' => ['type' => $d['type'] ?? null, 'soa_email' => $d['soa_email'] ?? null, 'ttl_sec' => $d['ttl_sec'] ?? null],
+                    'meta' => ['type' => $d['type'] ?? null, 'soa_email' => $d['soa_email'] ?? null, 'ttl_sec' => $d['ttl_sec'] ?? null] + ($prevDns ? ['dns' => $prevDns] : []),
                     'domain_id' => $ours, 'synced_at' => $now,
                 ]
             );
@@ -181,24 +183,163 @@ class LinodeController extends Controller
     public function servers(): JsonResponse
     {
         $rows = LinodeResource::with(['account:id,label,last_synced_at', 'client:id,name'])->where('type', 'instance')->orderBy('label')->get();
+        $domains = $this->domainRows();
+        $byServer = [];
+        foreach ($domains as $d) {
+            foreach ($d['dns']['servers'] as $srv) $byServer[$srv['id']][] = $d;
+        }
 
-        return response()->json(['data' => $rows->map(fn ($r) => $this->resourceArray($r))]);
+        return response()->json(['data' => $rows->map(function ($r) use ($byServer) {
+            $a = $this->resourceArray($r);
+            $mine = $byServer[$r->id] ?? [];
+            $a['domain_count'] = count($mine);
+            $a['domains'] = array_map(fn ($d) => ['id' => $d['id'], 'label' => $d['label']], $mine);
+            // Suggestion only (never applied): every domain on this server belongs to the same client.
+            $a['suggested_client'] = null;
+            if (!$r->client_id && $mine) {
+                $ids = array_unique(array_map(fn ($d) => $d['client_id'] ?? $d['suggested_client']['id'] ?? null, $mine));
+                if (count($ids) === 1 && $ids[0]) {
+                    $name = $mine[0]['client_name'] ?? $mine[0]['suggested_client']['name'] ?? null;
+                    $a['suggested_client'] = ['id' => $ids[0], 'name' => $name, 'domains' => count($mine)];
+                }
+            }
+            return $a;
+        })]);
     }
 
     public function domains(): JsonResponse
     {
+        $rows = $this->domainRows();
+        $fetched = collect($rows)->pluck('dns.fetched_at')->filter()->max();
+
+        return response()->json(['data' => $rows, 'dns_last_refreshed' => $fetched]);
+    }
+
+    /** Domain resources with our-domain link, DNS mapping (matched against CURRENT instances) and client suggestion. */
+    private function domainRows(): array
+    {
         $rows = LinodeResource::with(['account:id,label,last_synced_at', 'client:id,name'])->where('type', 'domain')->orderBy('label')->get();
         $ours = Domain::whereIn('id', $rows->pluck('domain_id')->filter())->get()->keyBy('id');
+        $clientNames = Client::whereIn('id', $ours->pluck('client_id')->filter())->pluck('name', 'id');
+        $instances = LinodeResource::where('type', 'instance')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'gone'))->get();
+        $ipIndex = DnsMapping::buildIpIndex($instances->map(fn ($i) => ['id' => $i->id, 'ipv4' => $i->ipv4 ?? [], 'ipv6' => $i->ipv6])->all());
+        $labels = $instances->pluck('label', 'id');
 
-        return response()->json(['data' => $rows->map(function ($r) use ($ours) {
+        return $rows->map(function ($r) use ($ours, $clientNames, $ipIndex, $labels) {
             $a = $this->resourceArray($r);
             $d = $r->domain_id ? $ours->get($r->domain_id) : null;
             $a['our_domain'] = $d ? [
                 'id' => $d->id, 'status' => $d->status,
                 'can_set_nameservers' => $this->canDelegate($d),
             ] : null;
+            $a['dns'] = $this->dnsView($r->meta['dns'] ?? null, $ipIndex, $labels);
+            $a['suggested_client'] = null;
+            if (!$r->client_id && $d && $d->client_id && isset($clientNames[$d->client_id])) {
+                $a['suggested_client'] = ['id' => $d->client_id, 'name' => $clientNames[$d->client_id]];
+            }
             return $a;
-        })]);
+        })->all();
+    }
+
+    private function dnsView(?array $dns, array $ipIndex, $labels): array
+    {
+        $empty = ['status' => 'unknown', 'apex_ips' => [], 'www_ips' => [], 'external_ips' => [], 'servers' => [], 'fetched_at' => null, 'error' => $dns['error'] ?? null];
+        if (!$dns || empty($dns['fetched_at'])) return $empty;
+
+        $m = DnsMapping::match($dns['apex_ips'] ?? [], $dns['www_ips'] ?? [], $ipIndex);
+        $servers = array_map(fn ($id) => [
+            'id' => $id, 'label' => $labels[$id] ?? '?',
+            'apex' => in_array($id, $m['apex_instance_ids'], true), 'www' => in_array($id, $m['www_instance_ids'], true),
+        ], $m['instance_ids']);
+
+        return [
+            'status' => $m['status'], 'apex_ips' => $dns['apex_ips'] ?? [], 'www_ips' => $dns['www_ips'] ?? [],
+            'external_ips' => $m['external_ips'], 'servers' => $servers, 'fetched_at' => $dns['fetched_at'], 'error' => $dns['error'] ?? null,
+        ];
+    }
+
+    /**
+     * Read-only DNS lookups (GET records) for one batch of this account's domains and store where each
+     * domain points. Batched so the UI can show progress and no request runs long; the service paces
+     * paginated GETs (<=~170/min, Linode allows 200/min) and honours 429 Retry-After. A failing domain
+     * never aborts the batch (except an invalid/forbidden token, which would fail every domain).
+     */
+    public function refreshDns(Request $request, LinodeAccount $account): JsonResponse
+    {
+        $data = $request->validate(['offset' => 'nullable|integer|min:0', 'limit' => 'nullable|integer|min:1|max:20']);
+        $offset = (int) ($data['offset'] ?? 0);
+        $limit = (int) ($data['limit'] ?? 10);
+
+        $base = LinodeResource::where('linode_account_id', $account->id)->where('type', 'domain')
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'gone'));
+        $total = (clone $base)->count();
+        $batch = $base->orderBy('label')->skip($offset)->take($limit)->get();
+
+        // instances of ALL the tenant's accounts
+        $instances = LinodeResource::where('type', 'instance')->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'gone'))->get();
+        $ipIndex = DnsMapping::buildIpIndex($instances->map(fn ($i) => ['id' => $i->id, 'ipv4' => $i->ipv4 ?? [], 'ipv6' => $i->ipv6])->all());
+        $svc = new LinodeService($account);
+        $ok = 0;
+        $failed = [];
+
+        foreach ($batch as $res) {
+            $meta = $res->meta ?? [];
+            try {
+                $addr = DnsMapping::extractAddresses($svc->listRecords($res->remote_id));
+                $m = DnsMapping::match($addr['apex_ips'], $addr['www_ips'], $ipIndex);
+                $meta['dns'] = $addr + [
+                    'status' => $m['status'], 'points_to_instance_ids' => $m['instance_ids'],
+                    'points_to_labels' => $instances->whereIn('id', $m['instance_ids'])->pluck('label')->values()->all(),
+                    'external_ips' => $m['external_ips'], 'fetched_at' => now()->toIso8601String(), 'error' => null,
+                ];
+                $ok++;
+            } catch (LinodeApiException $e) {
+                if ($e->httpStatus === 401 || $e->httpStatus === 403) {
+                    if ($e->httpStatus === 401) $account->update(['status' => 'invalid', 'status_message' => $e->getMessage()]);
+                    return response()->json(['message' => $e->getMessage()], 422);
+                }
+                $meta['dns'] = ($meta['dns'] ?? []) + ['apex_ips' => [], 'www_ips' => []];
+                $meta['dns']['error'] = mb_substr($e->getMessage(), 0, 250);
+                $failed[] = ['domain' => $res->label, 'error' => $meta['dns']['error']];
+            } catch (\Throwable $e) {
+                $meta['dns'] = ($meta['dns'] ?? []) + ['apex_ips' => [], 'www_ips' => []];
+                $meta['dns']['error'] = 'Unexpected error while reading DNS records.';
+                $failed[] = ['domain' => $res->label, 'error' => $meta['dns']['error']];
+            }
+            $res->meta = $meta;
+            $res->save();
+        }
+
+        $next = $offset + $batch->count();
+
+        return response()->json([
+            'processed' => $batch->count(), 'ok' => $ok, 'failed' => $failed, 'total' => $total,
+            'next_offset' => $next < $total && $batch->count() > 0 ? $next : null,
+        ]);
+    }
+
+    /** Fill the client of UNMAPPED domain resources from our own domains table. Never overwrites. */
+    public function autoMapClients(Request $request): JsonResponse
+    {
+        $data = $request->validate(['confirm' => 'accepted', 'ids' => 'nullable|array', 'ids.*' => 'string']);
+        $q = LinodeResource::with('account')->where('type', 'domain')->whereNull('client_id')->whereNotNull('domain_id');
+        if (!empty($data['ids'])) $q->whereIn('id', $data['ids']);
+        $rows = $q->get();
+        $ours = Domain::whereIn('id', $rows->pluck('domain_id'))->whereNotNull('client_id')->get()->keyBy('id');
+        $valid = Client::whereIn('id', $ours->pluck('client_id'))->pluck('name', 'id');
+
+        $mapped = [];
+        foreach ($rows as $r) {
+            $cid = $ours->get($r->domain_id)?->client_id;
+            if (!$cid || !isset($valid[$cid])) continue;
+            // conditional update: cannot clobber a mapping made since the read
+            $n = LinodeResource::where('id', $r->id)->whereNull('client_id')->update(['client_id' => $cid]);
+            if (!$n) continue;
+            $mapped[] = ['id' => $r->id, 'domain' => $r->label, 'client' => $valid[$cid]];
+            if ($r->account) $this->audit($r->account, 'resource.map', $r->label, ['client_id' => $cid, 'auto' => true]);
+        }
+
+        return response()->json(['mapped' => $mapped, 'message' => count($mapped) . ' domain(s) mapped to their clients.']);
     }
 
     /** Live DNS lookup: are the domain's public NS records Linode's? (bounded, best-effort) */
