@@ -47,7 +47,9 @@ class WhatsappWorkflowFixesTest
         Http::preventStrayRequests();
         Http::fake([]);
         Notification::fake();
-        \Illuminate\Support\Facades\Cache::flush();
+        // cache is the DB driver: writes roll back with the transaction, never flush the live cache
+        \Illuminate\Support\Facades\Cache::forget("wa_inbound_rl:{$this->tenant->id}:{$this->phone}");
+        \Illuminate\Support\Facades\Cache::forget("wa_bot_send_alert:{$this->tenant->id}");
         Wf::$sent = [];
         Wf::$fail = false;
         app()->bind(WhatsAppService::class, fn () => new Wf());
@@ -300,21 +302,82 @@ class WhatsappWorkflowFixesTest
         $this->startSession($c, ['language' => 'sw', 'items' => ['x'], 'expires_at' => now()->subMinute()]);
         $this->assertContains('Andika MENU', $this->hit('renewal-reply', '1'));
     }
+
+    // ── Fix 5: reliability / abuse ──
+    public function test_m7_send_failure_logs_and_alerts_staff_once_per_hour(): void
+    {
+        $logged = [];
+        \Illuminate\Support\Facades\Log::listen(function ($e) use (&$logged) { $logged[] = [$e->message, $e->context]; });
+        $c = $this->makeClientOnce();
+        $this->startSession($c);
+        Wf::$failMessage = 'MoSMS: Insufficient WhatsApp balance';
+        Wf::$fail = true;
+        $this->say('zzz');
+        $this->say('zzz');
+        Wf::$fail = false;
+        $hit = array_filter($logged, fn ($l) => str_contains($l[0], 'send failed') && ($l[1]['phone'] ?? null) === $this->phone && ($l[1]['tenant_id'] ?? null) === $this->tenant->id);
+        $this->assertTrue(count($hit) >= 1, 'failure logged with tenant/phone');
+        $this->assertSame(1, Notification::sent($this->user, \App\Notifications\WhatsappBotAlertNotification::class)->count());
+        Wf::$failMessage = 'WhatsApp send failed (fake)';
+    }
+
+    public function test_m7_non_balance_failure_does_not_alert(): void
+    {
+        $c = $this->makeClientOnce();
+        $this->startSession($c);
+        Wf::$fail = true;
+        $this->say('zzz');
+        Wf::$fail = false;
+        $this->assertSame(0, Notification::sent($this->user, \App\Notifications\WhatsappBotAlertNotification::class)->count());
+    }
+
+    public function test_m7_rate_limit_31st_gets_notice_then_silence(): void
+    {
+        $c = $this->makeClientOnce();
+        $this->startSession($c);
+        for ($i = 1; $i <= 30; $i++) $this->say('zzz');
+        $this->assertSame(30, count(Wf::$sent));
+        $t = $this->say('zzz');
+        $this->assertContains('Tafadhali subiri kidogo', $t);
+        $this->assertSame('', $this->say('zzz'), '32nd is dropped silently');
+        $this->assertSame('', $this->hit('renewal-reply', '1'), 'renewal-reply counts too');
+        // another phone is unaffected
+        $cache = \Illuminate\Support\Facades\Cache::get("wa_inbound_rl:{$this->tenant->id}:255700000009");
+        $this->assertSame(null, $cache);
+    }
+
+    public function test_m7_long_reply_split_on_line_boundaries(): void
+    {
+        $ref = new \ReflectionMethod(\App\Http\Controllers\WhatsappRenewalWebhookController::class, 'splitMessage');
+        $ref->setAccessible(true);
+        $ctl = app(\App\Http\Controllers\WhatsappRenewalWebhookController::class);
+        $lines = [];
+        for ($i = 0; $i < 400; $i++) $lines[] = str_pad("line $i ", 30, 'x');
+        $msg = implode("\n", $lines);
+        $parts = $ref->invoke($ctl, $msg);
+        $this->assertTrue(count($parts) > 1, 'split');
+        foreach ($parts as $p) $this->assertTrue(mb_strlen($p) <= 3900, 'part too long');
+        $this->assertSame($msg, implode("\n", $parts), 'nothing lost, lines intact');
+        $this->assertSame(['short'], $ref->invoke($ctl, 'short'));
+        $one = str_repeat('a', 9000);
+        $this->assertSame($one, implode('', $ref->invoke($ctl, $one)), 'single long line hard-cut');
+    }
 }
 
 class Wf extends WhatsAppService
 {
     public static array $sent = [];
     public static bool $fail = false;
+    public static string $failMessage = 'WhatsApp send failed (fake)';
     public function __construct() {}
     public function sendSessionText(Tenant $tenant, string $recipient, string $message): array
     {
-        if (self::$fail) throw new \RuntimeException('WhatsApp send failed (fake)');
+        if (self::$fail) throw new \RuntimeException(self::$failMessage);
         self::$sent[] = ['type' => 'text', 'text' => $message]; return [];
     }
     public function sendCtaUrlSession(Tenant $tenant, string $recipient, string $text, string $buttonText, string $url): array
     {
-        if (self::$fail) throw new \RuntimeException('WhatsApp send failed (fake)');
+        if (self::$fail) throw new \RuntimeException(self::$failMessage);
         self::$sent[] = ['type' => 'cta', 'text' => $text, 'button' => $buttonText, 'url' => $url]; return [];
     }
 }

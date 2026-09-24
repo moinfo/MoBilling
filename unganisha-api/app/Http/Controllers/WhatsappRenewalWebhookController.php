@@ -82,6 +82,10 @@ class WhatsappRenewalWebhookController extends Controller
             return $this->menu($request, $bundler);
         }
 
+        if ($this->inboundRateLimited($tenant, $phone)) {
+            return response('OK', 200);
+        }
+
         if (!$session || $session->isExpired() || empty($session->items)) {
             $lang = $session->language ?? 'sw';
             $this->reply($tenant, $phone, $this->t($lang,
@@ -118,6 +122,10 @@ class WhatsappRenewalWebhookController extends Controller
 
         $phone = PhoneHelper::normalize($request->phone);
         $text = trim((string) $request->input('text', ''));
+
+        if ($this->inboundRateLimited($tenant, $phone)) {
+            return response('OK', 200);
+        }
 
         $session = WhatsappRenewalSession::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
@@ -4340,13 +4348,103 @@ class WhatsappRenewalWebhookController extends Controller
      * Always a reply to something this phone just messaged, so the free-form
      * session path applies — no template wrapper copy.
      */
+    /** WhatsApp text messages max out around 4096 chars; stay well under and split on line boundaries. */
+    private const MAX_REPLY_CHARS = 3900;
+
+    /** @return string[] */
+    private function splitMessage(string $message, int $max = self::MAX_REPLY_CHARS): array
+    {
+        if (mb_strlen($message) <= $max) {
+            return [$message];
+        }
+        $parts = [];
+        $cur = '';
+        foreach (explode("\n", $message) as $line) {
+            // a single absurdly long line is hard-cut
+            while (mb_strlen($line) > $max) {
+                if ($cur !== '') {
+                    $parts[] = $cur;
+                    $cur = '';
+                }
+                $parts[] = mb_substr($line, 0, $max);
+                $line = mb_substr($line, $max);
+            }
+            $candidate = $cur === '' ? $line : $cur . "\n" . $line;
+            if (mb_strlen($candidate) > $max) {
+                $parts[] = $cur;
+                $cur = $line;
+            } else {
+                $cur = $candidate;
+            }
+        }
+        if ($cur !== '') {
+            $parts[] = $cur;
+        }
+
+        return $parts;
+    }
+
     private function reply(Tenant $tenant, string $phone, string $message): void
     {
-        try {
-            app(WhatsAppService::class)->sendSessionText($tenant, $phone, $message);
-        } catch (\Throwable $e) {
-            Log::warning('WhatsApp renewal reply send failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
+        foreach ($this->splitMessage($message) as $part) {
+            try {
+                app(WhatsAppService::class)->sendSessionText($tenant, $phone, $part);
+            } catch (\Throwable $e) {
+                $this->noteSendFailure($tenant, $phone, $e);
+                return; // the rest of a failed conversation turn would fail the same way
+            }
         }
+    }
+
+    /** Logs a failed send with tenant/phone; a balance-style failure also alerts staff (once an hour per tenant). */
+    private function noteSendFailure(Tenant $tenant, string $phone, \Throwable $e): void
+    {
+        Log::warning('WhatsApp renewal reply send failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
+
+        if (!preg_match('/balance|insufficient|credit|not enough|\b422\b/i', $e->getMessage())) {
+            return;
+        }
+        try {
+            if (!\Illuminate\Support\Facades\Cache::add("wa_bot_send_alert:{$tenant->id}", 1, 3600)) {
+                return;
+            }
+            $this->notifyStaff($tenant, 'settings.company', new \App\Notifications\WhatsappBotAlertNotification(
+                'send_failed',
+                'WhatsApp bot cannot send replies',
+                'The WhatsApp self-service bot failed to send a reply (' . mb_substr($e->getMessage(), 0, 150) . '). Clients are getting no answer - please check the WhatsApp/MoSMS balance.',
+                '/settings',
+            ));
+        } catch (\Throwable $x) {
+            report($x);
+        }
+    }
+
+    private function notifyStaff(Tenant $tenant, string $permission, \Illuminate\Notifications\Notification $notification): void
+    {
+        $staff = User::withPermission($tenant->id, $permission);
+        if ($staff->isNotEmpty()) {
+            \Illuminate\Support\Facades\Notification::send($staff, $notification);
+        }
+    }
+
+    /** More than 30 inbound messages per phone in 10 minutes: one polite notice, then silence for the rest of the window. */
+    private function inboundRateLimited(Tenant $tenant, string $phone): bool
+    {
+        try {
+            $key = "wa_inbound_rl:{$tenant->id}:{$phone}";
+            \Illuminate\Support\Facades\Cache::add($key, 0, 600);
+            $n = \Illuminate\Support\Facades\Cache::increment($key);
+        } catch (\Throwable $e) {
+            return false; // never block a client because the cache misbehaved
+        }
+        if ($n <= 30) {
+            return false;
+        }
+        if ($n === 31) {
+            $this->reply($tenant, $phone, "Tafadhali subiri kidogo, umetuma ujumbe mwingi. Jaribu tena baada ya dakika chache.\nPlease wait a little, you have sent many messages. Try again in a few minutes.");
+        }
+
+        return true;
     }
 
     /**
@@ -4360,6 +4458,7 @@ class WhatsappRenewalWebhookController extends Controller
             app(WhatsAppService::class)->sendCtaUrlSession($tenant, $phone, $text, $buttonText, $url);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp CTA-URL reply failed, falling back to plain link', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
+            $this->noteSendFailure($tenant, $phone, $e);
             $this->reply($tenant, $phone, "{$text} {$url}");
         }
     }
