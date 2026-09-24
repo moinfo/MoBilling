@@ -13,6 +13,7 @@ use App\Models\HostingAccount;
 use App\Models\MosmsAccount;
 use App\Models\PesapalInvoicePayment;
 use App\Models\ProductService;
+use App\Models\Server;
 use App\Models\Tenant;
 use App\Models\User;
 use App\Models\WhatsappRenewalSession;
@@ -933,6 +934,11 @@ class WhatsappRenewalWebhookController extends Controller
         $state = $session->state ?? [];
         $step = $state['step'] ?? 'pick_account';
 
+        if (in_array($step, ['email_menu', 'upgrade_pick', 'upgrade_confirm', 'ask_email_name', 'ask_ticket_text'], true)) {
+            $this->handleHostingSubStep($tenant, $client, $phone, $session, $text, $lang, $step, $state);
+            return;
+        }
+
         if (!preg_match('/^\s*([1-9])\s*$/', $text, $m)) {
             $this->reply($tenant, $phone, $this->t($lang, 'Samahani, jibu na namba sahihi kutoka kwenye orodha (au MENU kurudi).', 'Sorry, reply with a valid number from the list (or MENU to go back).'));
             return;
@@ -965,7 +971,13 @@ class WhatsappRenewalWebhookController extends Controller
         } elseif ($option === 'cpanel') {
             $this->sendCpanelLink($tenant, $client, $phone, $session, $account, $lang);
         } elseif ($option === 'support') {
-            $this->openHostingSupportTicket($tenant, $client, $phone, $session, $account, $lang);
+            $this->askHostingSupportText($tenant, $client, $phone, $session, $account, $lang);
+        } elseif ($option === 'upgrade') {
+            $this->showUpgradeOptions($tenant, $client, $phone, $session, $account, $lang);
+        } elseif ($option === 'email') {
+            $this->showEmailMenu($tenant, $client, $phone, $session, $account, $lang);
+        } elseif ($option === 'connect') {
+            $this->showConnectDomain($tenant, $client, $phone, $session, $account, $lang);
         } elseif (str_starts_with($option, 'invoice:')) {
             $doc = $this->unpaidHostingInvoices($tenant, $client, $account)->firstWhere('id', substr($option, 8));
             if (!$doc) {
@@ -1085,6 +1097,9 @@ class WhatsappRenewalWebhookController extends Controller
 
         if ($account->status === 'active') {
             $add('cpanel', $this->t($lang, 'Fungua cPanel', 'Open cPanel'));
+            $add('upgrade', $this->t($lang, 'Boresha kifurushi', 'Upgrade package'));
+            $add('email', $this->t($lang, 'Email zangu', 'My email accounts'));
+            $add('connect', $this->t($lang, 'Unganisha domain na hosting', 'Connect domain to hosting'));
         } elseif ($account->status === 'suspended') {
             $invoices = $this->unpaidHostingInvoices($tenant, $client, $account);
             if ($invoices->isNotEmpty()) {
@@ -1102,9 +1117,7 @@ class WhatsappRenewalWebhookController extends Controller
                     : "• We don't see any known unpaid invoice for this hosting; please contact us so we can look into it.";
             }
         }
-        if (in_array($account->status, ['suspended', 'failed', 'pending'], true)) {
-            $add('support', $this->t($lang, 'Tuma ujumbe kwa support', 'Send a message to support'));
-        }
+        $add('support', $this->t($lang, 'Wasiliana na msaada', 'Contact support'));
         if ($multiple) {
             $add('back', $this->t($lang, 'Hosting nyingine', 'Another hosting account'));
         }
@@ -1165,8 +1178,406 @@ class WhatsappRenewalWebhookController extends Controller
         );
     }
 
-    private function openHostingSupportTicket(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
+    private function hostingAccountFromState(Tenant $tenant, Client $client, array $state): ?HostingAccount
     {
+        return !empty($state['account_id'])
+            ? $this->clientHostingAccounts($tenant, $client)->where('hosting_accounts.id', $state['account_id'])->first()
+            : null;
+    }
+
+    private function setHostingState(Tenant $tenant, Client $client, string $phone, array $state): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'hosting_manage', 'state' => $state, 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+    }
+
+    /** Steps of hosting_manage that are not the plain numbered account menu. */
+    private function handleHostingSubStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang, string $step, array $state): void
+    {
+        $account = $this->hostingAccountFromState($tenant, $client, $state);
+        if (!$account) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, akaunti hiyo haipatikani tena.', 'Sorry, that account is no longer available.'), $lang);
+            return;
+        }
+
+        if ($step === 'ask_ticket_text') {
+            $this->createHostingSupportTicket($tenant, $client, $phone, $session, $account, $lang, $text);
+            return;
+        }
+        if ($step === 'ask_email_name') {
+            $this->createHostingMailbox($tenant, $client, $phone, $session, $account, $lang, $text);
+            return;
+        }
+        if ($step === 'upgrade_confirm') {
+            if (!preg_match('/^\s*(ndiyo|yes)\s*$/i', $text)) {
+                $this->showHostingAccount($tenant, $client, $phone, $account, $lang, multiple: false);
+                return;
+            }
+            $this->createUpgradeInvoiceAndOfferPayment($tenant, $client, $phone, $account, $lang, (string) ($state['plan_id'] ?? ''));
+            return;
+        }
+
+        // email_menu / upgrade_pick: a number from a list computed when it was shown.
+        if (!preg_match('/^\s*([1-9])\s*$/', $text, $m)) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, jibu na namba sahihi kutoka kwenye orodha (au MENU kurudi).', 'Sorry, reply with a valid number from the list (or MENU to go back).'));
+            return;
+        }
+        $n = (int) $m[1];
+
+        if ($step === 'upgrade_pick') {
+            $planId = $state['plan_ids'][$n - 1] ?? null;
+            $plan = $planId ? $this->upgradePlans($tenant, $account)->firstWhere('plan.id', $planId) : null;
+            if (!$plan) {
+                $this->reply($tenant, $phone, $this->t($lang, 'Samahani, chagua namba sahihi kutoka kwenye orodha.', 'Sorry, please choose a valid number from the list.'));
+                return;
+            }
+            $this->setHostingState($tenant, $client, $phone, ['step' => 'upgrade_confirm', 'account_id' => $account->id, 'plan_id' => $plan['plan']->id, 'account_ids' => [$account->id]]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                "*Thibitisha kuboresha {$account->domain}*\n• Kifurushi kipya: {$plan['plan']->name}\n• Utalipa sasa: TZS " . number_format($plan['charge']) . " (sehemu ya muda uliobaki)\n• Hosting haibadilishwi hadi malipo yapokelewe.\nJibu NDIYO kupata invoice, au MENU kusitisha.",
+                "*Confirm upgrade for {$account->domain}*\n• New package: {$plan['plan']->name}\n• You pay now: TZS " . number_format($plan['charge']) . " (prorated for the remaining term)\n• Nothing changes until payment is received.\nReply YES to get the invoice, or MENU to cancel."
+            ));
+            return;
+        }
+
+        // email_menu
+        $option = $state['options'][$n - 1] ?? null;
+        if ($option === 'create') {
+            $this->setHostingState($tenant, $client, $phone, ['step' => 'ask_email_name', 'account_id' => $account->id, 'account_ids' => [$account->id]]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Andika jina la email unalotaka (kabla ya @), herufi ndogo, namba, . _ - tu, hadi herufi 32. Mfano: info → info@{$account->domain}",
+                "Reply with the email name you want (the part before @): lowercase letters, numbers, . _ - only, up to 32 characters. Example: info → info@{$account->domain}"
+            ));
+        } elseif ($option === 'forgot') {
+            $this->sendEmailPageLink($tenant, $client, $phone, $session, $account, $lang,
+                $this->t($lang,
+                    "Fungua kiungo hapa chini, chagua email yako, kisha bonyeza \"Manage\" ili kuweka password mpya wewe mwenyewe. Sisi hatubadilishi password kupitia WhatsApp. Kiungo ni cha mara moja; usimtumie mtu.",
+                    "Open the link below, pick your email, then tap \"Manage\" to set a new password yourself. We never reset passwords over WhatsApp. The link works once; don't share it."
+                ));
+        } elseif ($option === 'back') {
+            $this->showHostingAccount($tenant, $client, $phone, $account, $lang, multiple: false);
+        } else {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, chagua namba sahihi kutoka kwenye orodha.', 'Sorry, please choose a valid number from the list.'));
+        }
+    }
+
+    private function cycleLabel(?string $cycle, string $lang): string
+    {
+        return match ($cycle) {
+            'monthly' => $this->t($lang, 'mwezi', 'month'),
+            'quarterly' => $this->t($lang, 'miezi 3', '3 months'),
+            'half_yearly' => $this->t($lang, 'miezi 6', '6 months'),
+            'yearly' => $this->t($lang, 'mwaka', 'year'),
+            default => (string) $cycle,
+        };
+    }
+
+    /**
+     * Plans this account can upgrade to: same tenant, active + portal-visible whm_cpanel, same
+     * category and billing cycle, strictly HIGHER price, with a positive prorated charge (same
+     * rule as PortalHostingController::upgradeOptions, via PlanChangeService).
+     *
+     * @return \Illuminate\Support\Collection<int, array{plan: ProductService, charge: float}>
+     */
+    private function upgradePlans(Tenant $tenant, HostingAccount $account): \Illuminate\Support\Collection
+    {
+        $sub = $account->subscription;
+        $current = $sub ? ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($sub->product_service_id) : null;
+        if (!$sub || !$current) {
+            return collect();
+        }
+        $sub->setRelation('productService', $current);
+        $svc = app(\App\Services\Hosting\PlanChangeService::class);
+
+        return ProductService::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('is_active', true)
+            ->where('portal_visible', true)
+            ->where('provisioning_type', 'whm_cpanel')
+            ->where('category', $current->category)
+            ->where('billing_cycle', $current->billing_cycle)
+            ->where('price', '>', $current->price)
+            ->where('id', '!=', $current->id)
+            ->where(fn ($q) => $q->whereNull('code')->orWhere('code', 'not like', 'WHMCS-P%-%'))
+            ->orderBy('price')
+            ->get()
+            ->unique('name')
+            ->map(fn ($p) => ['plan' => $p, 'charge' => $svc->proratedCharge($sub, $p)])
+            ->filter(fn ($r) => $r['charge'] > 0)
+            ->values()
+            ->take(8);
+    }
+
+    private function showUpgradeOptions(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
+    {
+        $sw = $lang === 'sw';
+        if ($account->status !== 'active') {
+            $this->reply($tenant, $phone, $this->t($lang, 'Kuboresha kifurushi kunawezekana kwa hosting inayofanya kazi tu.', 'Upgrades are only available for an active hosting account.'));
+            return;
+        }
+        $sub = $account->subscription;
+        if (config('whmcs.parallel_mode') && $sub?->legacy_id) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Hosting hii haiwezi kubadilishwa mtandaoni bado. Tafadhali wasiliana nasi.', 'This service cannot be changed online yet. Please contact us.'));
+            return;
+        }
+
+        $plans = $this->upgradePlans($tenant, $account);
+        if ($plans->isEmpty()) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Hakuna kifurushi cha juu zaidi kinachopatikana kwa hosting yako sasa. Andika MENU kurudi.',
+                'There is no higher package available for your hosting right now. Type MENU to go back.'
+            ));
+            return;
+        }
+
+        $lines = ["*" . ($sw ? "Boresha kifurushi: {$account->domain}" : "Upgrade package: {$account->domain}") . "*"];
+        foreach ($plans as $i => $r) {
+            $p = $r['plan'];
+            $desc = trim(preg_replace('/\s+/', ' ', strip_tags((string) $p->description)));
+            $desc = mb_strlen($desc) > 90 ? mb_substr($desc, 0, 87) . '...' : $desc;
+            $lines[] = '• ' . ($i + 1) . ") {$p->name} — TZS " . number_format((float) $p->price) . '/' . $this->cycleLabel($p->billing_cycle, $lang)
+                . ($desc !== '' ? " — {$desc}" : '')
+                . ($sw ? ' — malipo sasa: TZS ' : ' — pay now: TZS ') . number_format($r['charge']);
+        }
+        $lines[] = $sw ? 'Jibu na namba ya kifurushi, au MENU kurudi.' : 'Reply with the package number, or MENU to go back.';
+
+        $this->setHostingState($tenant, $client, $phone, ['step' => 'upgrade_pick', 'account_id' => $account->id, 'plan_ids' => $plans->pluck('plan.id')->all(), 'account_ids' => [$account->id]]);
+        $this->reply($tenant, $phone, implode("\n", $lines));
+    }
+
+    private function createUpgradeInvoiceAndOfferPayment(Tenant $tenant, Client $client, string $phone, HostingAccount $account, string $lang, string $planId): void
+    {
+        $sub = $account->subscription;
+        $plan = ($account->status === 'active' && $sub) ? $this->upgradePlans($tenant, $account)->firstWhere('plan.id', $planId) : null;
+        if (!$plan) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kifurushi hicho hakipatikani tena. Tafadhali jaribu tena.', 'Sorry, that package is no longer available. Please try again.'), $lang);
+            return;
+        }
+
+        try {
+            // Invoice + metadata.pending_plan_change only. The subscription and cPanel package are
+            // switched by DocumentObserver -> PlanChangeService::apply() once the invoice is paid.
+            $document = app(\App\Services\Hosting\PlanChangeService::class)->createUpgradeInvoice($sub, $plan['plan'], $plan['charge'], $account->domain);
+        } catch (\Throwable $e) {
+            Log::error('WhatsApp upgrade invoice failed', ['hosting_account_id' => $account->id, 'error' => $e->getMessage()]);
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kutengeneza invoice ya kuboresha. Tafadhali wasiliana nasi.', "Sorry, we couldn't create the upgrade invoice. Please contact us."), $lang);
+            return;
+        }
+
+        $this->offerPayment($tenant, $client, $phone, $document, $lang);
+    }
+
+    // ── Email accounts ───────────────────────────────────────────────────
+
+    private function requireOwnActiveSession(Tenant $tenant, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang, string $what): bool
+    {
+        if ($session->assisted_by_user_id) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Kwa usalama, {$what} haipatikani kwenye hali ya staff. Tafadhali tumia admin panel.",
+                "For security, {$what} is not available in staff-assist mode. Please use the admin panel."
+            ));
+            return false;
+        }
+        if ($account->status !== 'active') {
+            $this->reply($tenant, $phone, $this->t($lang, 'Huduma hii inapatikana kwa hosting inayofanya kazi tu.', 'This is only available for an active hosting account.'));
+            return false;
+        }
+        return true;
+    }
+
+    private function showEmailMenu(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
+    {
+        if (!$this->requireOwnActiveSession($tenant, $phone, $session, $account, $lang, $this->t($lang, 'huduma ya email', 'the email service'))) {
+            return;
+        }
+        $this->setHostingState($tenant, $client, $phone, ['step' => 'email_menu', 'account_id' => $account->id, 'options' => ['create', 'forgot', 'back'], 'account_ids' => [$account->id]]);
+        $this->reply($tenant, $phone, $this->t($lang,
+            "*Email zangu: {$account->domain}*\n• 1) Tengeneza email mpya (jina@{$account->domain})\n• 2) Nimesahau password ya email\n• 3) Rudi\nJibu na namba, au MENU kurudi.",
+            "*My email accounts: {$account->domain}*\n• 1) Create a new email (name@{$account->domain})\n• 2) I forgot my email password\n• 3) Back\nReply with a number, or MENU to go back."
+        ));
+    }
+
+    /** SSO link to cPanel's Email Accounts page. Client's own session only; never logged. */
+    private function sendEmailPageLink(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang, string $text, string $prefix = ''): bool
+    {
+        if (!$this->requireOwnActiveSession($tenant, $phone, $session, $account, $lang, $this->t($lang, 'kiungo cha cPanel', 'the cPanel link'))) {
+            return false;
+        }
+        try {
+            $url = app(\App\Services\Hosting\HostingSsoService::class)->cpanelUrlTo($account, \App\Services\Hosting\HostingSsoService::EMAIL_PAGE);
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp email SSO failed', ['client_id' => $client->id, 'hosting_account_id' => $account->id]);
+            $this->reply($tenant, $phone, $prefix . $this->t($lang,
+                'Samahani, hatuwezi kufungua cPanel kwa sasa. Tafadhali jaribu tena baadaye au wasiliana nasi.',
+                "Sorry, we can't open cPanel right now. Please try again later or contact us."
+            ));
+            return false;
+        }
+        Log::info('WhatsApp cPanel email SSO link issued', ['client_id' => $client->id, 'hosting_account_id' => $account->id]);
+        $this->replyWithCtaUrl($tenant, $phone, $prefix . $text, $this->t($lang, 'Fungua Email', 'Open Email'), $url);
+        return true;
+    }
+
+    private function createHostingMailbox(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang, string $text): void
+    {
+        if (!$this->requireOwnActiveSession($tenant, $phone, $session, $account, $lang, $this->t($lang, 'huduma ya email', 'the email service'))) {
+            return;
+        }
+
+        $local = strtolower(trim($text));
+        if (!preg_match('/^[a-z0-9][a-z0-9._-]{0,31}$/', $local) || str_contains($local, '..')) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, jina hilo si sahihi. Tumia herufi ndogo, namba, . _ - tu (hadi 32), bila @ na bila nafasi. Jaribu tena, au MENU kurudi.',
+                'Sorry, that name is not valid. Use lowercase letters, numbers, . _ - only (up to 32), with no @ and no spaces. Try again, or MENU to go back.'
+            ));
+            return;
+        }
+
+        $mail = app(\App\Services\Hosting\HostingEmailService::class);
+        try {
+            $usage = $mail->usage($account);
+            if ($usage['limit'] !== null && $usage['count'] >= $usage['limit']) {
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Umefikia kikomo cha email za kifurushi chako ({$usage['limit']}). Boresha kifurushi au futa email isiyotumika. Andika MENU kurudi.",
+                    "You've reached your package's email limit ({$usage['limit']}). Upgrade your package or delete an unused mailbox. Type MENU to go back."
+                ));
+                return;
+            }
+
+            // Random password: known only to the server. It is never messaged or logged; the client
+            // sets their own via cPanel.
+            $mail->create($account, $local, \Illuminate\Support\Str::password(24));
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp mailbox create failed', ['client_id' => $client->id, 'hosting_account_id' => $account->id]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, imeshindikana kutengeneza email hiyo (huenda jina tayari lipo). Jaribu jina lingine, au MENU kurudi.',
+                "Sorry, we couldn't create that email (the name may already exist). Try another name, or MENU to go back."
+            ));
+            return;
+        }
+
+        $address = "{$local}@{$account->domain}";
+        $this->sendEmailPageLink($tenant, $client, $phone, $session, $account, $lang,
+            $this->t($lang,
+                "*Email imetengenezwa: {$address}*\n• Kwa usalama, password haitumwi hapa.\n• Fungua kiungo hapa chini, bonyeza \"Manage\" kwenye {$address}, kisha weka password yako mwenyewe.\n• Kiungo ni cha mara moja; usimtumie mtu.",
+                "*Email created: {$address}*\n• For security, the password is not sent here.\n• Open the link below, tap \"Manage\" next to {$address}, then set your own password.\n• The link works once; don't share it."
+            ),
+            prefix: '');
+        $this->sendRootMenu($tenant, $client, $phone, $lang);
+    }
+
+    // ── Connect domain to hosting ────────────────────────────────────────
+
+    private function showConnectDomain(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
+    {
+        $sw = $lang === 'sw';
+        $server = Server::withoutGlobalScopes()->where('tenant_id', $tenant->id)->find($account->server_id);
+        $ns = array_values(array_filter(array_map(fn ($n) => strtolower(trim((string) $n)),
+            ($server?->nameservers && count($server->nameservers)) ? $server->nameservers : (array) config('hosting.default_nameservers', []))));
+        $ip = $account->meta['ip'] ?? null;
+        if (!$ip && $server) {
+            $resolved = @gethostbyname($server->hostname);
+            $ip = filter_var($resolved, FILTER_VALIDATE_IP) ? $resolved : null;
+        }
+
+        if (!$ns && !$ip) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, hatuna taarifa za nameservers za hosting hii. Tafadhali wasiliana nasi.', "Sorry, we don't have nameserver details for this hosting. Please contact us."));
+            return;
+        }
+
+        $lines = ["*" . ($sw ? "Unganisha {$account->domain} na hosting" : "Connect {$account->domain} to hosting") . "*"];
+        if ($ns) {
+            $lines[] = ($sw ? '• Nameservers: ' : '• Nameservers: ') . implode(', ', $ns);
+        }
+        if ($ip) {
+            $lines[] = ($sw ? '• A record (IP ya server): ' : '• A record (server IP): ') . $ip;
+        }
+
+        $domain = Domain::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('name', $account->domain)->where('status', 'active')->first();
+
+        if ($domain && count($ns) >= 2) {
+            $current = collect($domain->meta['nameservers'] ?? [])->map(fn ($n) => strtolower(is_array($n) ? ($n['name'] ?? '') : (string) $n))->sort()->values()->all();
+            $wanted = collect($ns)->sort()->values()->all();
+            if ($current === $wanted) {
+                $lines[] = $sw ? '• Domain yako tayari inatumia nameservers hizi.' : '• Your domain already uses these nameservers.';
+                $this->reply($tenant, $phone, implode("\n", $lines));
+                return;
+            }
+
+            // Hand off to the EXISTING change-DNS flow at its explicit confirmation step.
+            WhatsappRenewalSession::updateOrCreate(
+                ['tenant_id' => $tenant->id, 'phone' => $phone],
+                ['client_id' => $client->id, 'flow' => 'change_dns', 'state' => ['step' => 'confirm', 'domain_id' => $domain->id, 'nameservers' => $ns], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+            );
+            $lines[] = $sw
+                ? "• {$account->domain} imesajiliwa nasi, tunaweza kubadilisha nameservers kwa niaba yako. Mabadiliko yanaweza kuchukua masaa kadhaa, na email/website ya sasa itaelekezwa kwenye hosting hii."
+                : "• {$account->domain} is registered with us, so we can set the nameservers for you. It can take a few hours, and the current website/email will point to this hosting.";
+            $lines[] = $sw
+                ? 'Jibu NDIYO kubadilisha nameservers, au neno lingine lolote kusitisha.'
+                : 'Reply YES to change the nameservers, or anything else to cancel.';
+            $this->reply($tenant, $phone, implode("\n", $lines));
+            return;
+        }
+
+        $lines[] = $sw
+            ? '• Domain hii haijasajiliwa nasi: weka nameservers hizi (au A record) kwenye mtoa huduma wa domain yako. Hatuwezi kubadilisha kwa niaba yako.'
+            : '• This domain is not registered with us: set these nameservers (or the A record) at your domain registrar. We cannot change them for you.';
+        $lines[] = $sw ? 'Andika MENU kurudi.' : 'Type MENU to go back.';
+        $this->reply($tenant, $phone, implode("\n", $lines));
+    }
+
+    // ── Support tickets ──────────────────────────────────────────────────
+
+    private const WHATSAPP_TICKETS_PER_DAY = 3;
+    private const TICKET_MARKER = 'Requested via WhatsApp';
+
+    private function whatsappTicketsLast24h(Tenant $tenant, Client $client): int
+    {
+        return \App\Models\Ticket::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)
+            ->where('client_id', $client->id)
+            ->where('created_at', '>=', now()->subDay())
+            ->whereHas('replies', fn ($q) => $q->withoutGlobalScopes()->where('message', 'like', self::TICKET_MARKER . '%'))
+            ->count();
+    }
+
+    private function askHostingSupportText(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
+    {
+        if ($this->whatsappTicketsLast24h($tenant, $client) >= self::WHATSAPP_TICKETS_PER_DAY) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Umetuma maombi mengi ya msaada leo. Timu yetu inayashughulikia; tafadhali subiri majibu au tupigie simu.',
+                "You've sent several support requests today. Our team is working on them; please wait for a reply or call us."
+            ));
+            return;
+        }
+        $this->setHostingState($tenant, $client, $phone, ['step' => 'ask_ticket_text', 'account_id' => $account->id, 'account_ids' => [$account->id]]);
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Eleza tatizo au ombi lako kuhusu {$account->domain} kwa ujumbe mmoja (hadi herufi 500), au MENU kurudi.",
+            "Describe your issue or request about {$account->domain} in one message (up to 500 characters), or MENU to go back."
+        ));
+    }
+
+    private function createHostingSupportTicket(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang, string $description): void
+    {
+        $description = trim($description);
+        if (mb_strlen($description) < 3 || mb_strlen($description) > 500) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Samahani, ujumbe uwe kati ya herufi 3 na 500 (sasa: ' . mb_strlen($description) . '). Jaribu tena, au MENU kurudi.',
+                'Sorry, the message must be between 3 and 500 characters (now: ' . mb_strlen($description) . '). Try again, or MENU to go back.'
+            ));
+            return;
+        }
+        if ($this->whatsappTicketsLast24h($tenant, $client) >= self::WHATSAPP_TICKETS_PER_DAY) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Umetuma maombi mengi ya msaada leo. Timu yetu inayashughulikia; tafadhali subiri majibu au tupigie simu.',
+                "You've sent several support requests today. Our team is working on them; please wait for a reply or call us."
+            ), $lang);
+            return;
+        }
+
         try {
             $ticket = \App\Models\Ticket::create([
                 'tenant_id' => $tenant->id,
@@ -1176,14 +1587,14 @@ class WhatsappRenewalWebhookController extends Controller
                 'department' => 'support',
                 'related_service' => $account->domain,
                 'status' => 'open',
-                'priority' => 'high',
+                'priority' => $account->status === 'active' ? 'normal' : 'high',
                 'last_reply_at' => now(),
             ]);
             $ticket->replies()->create([
                 'tenant_id' => $tenant->id,
                 'author_type' => 'client',
-                'message' => "Requested via WhatsApp" . ($session->assisted_by_user_id ? ' (staff-assisted)' : '')
-                    . ".\nHosting: {$account->domain} ({$account->cpanel_username}), status: {$account->status}.",
+                'message' => self::TICKET_MARKER . ($session->assisted_by_user_id ? ' (staff-assisted)' : '')
+                    . ".\nHosting: {$account->domain} ({$account->cpanel_username}), status: {$account->status}.\n\n" . $description,
             ]);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp hosting support ticket failed', ['client_id' => $client->id, 'hosting_account_id' => $account->id, 'error' => $e->getMessage()]);

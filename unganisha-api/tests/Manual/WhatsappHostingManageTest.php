@@ -217,6 +217,8 @@ class WhatsappHostingManageTest
         $this->assertStringContainsString("don't see any known unpaid invoice", $this->allText());
         $this->assertSame(['support'], $this->session()->state['options']);
         $this->say('1');
+        $this->assertSame('ask_ticket_text', $this->session()->state['step']);
+        $this->say('Nimelipa lakini bado imesimama');
         $this->assertStringContainsString('TKT-', $this->allText());
     }
 
@@ -263,6 +265,265 @@ class WhatsappHostingManageTest
         $this->assertNull($this->session());
     }
 
+    // ── extended account menu (upgrade / email / ticket / connect domain) ──
+    private function plan(string $name, float $price, array $o = []): ProductService
+    {
+        return ProductService::create(array_merge(['tenant_id' => $this->tenant->id, 'type' => 'service', 'name' => $name, 'price' => $price, 'category' => 'Web Hosting', 'billing_cycle' => 'yearly', 'provisioning_type' => 'whm_cpanel', 'is_active' => true, 'portal_visible' => true, 'cpanel_package' => 'pkg_' . strtolower($name), 'description' => 'spec of ' . $name], $o));
+    }
+
+    private function openMenu(Client $client, ?string $assistedBy = null): void
+    {
+        $this->startSession($client, null, $assistedBy);
+        $this->say('3'); $this->say('2');
+    }
+
+    private function bindFakes(): void
+    {
+        FakeEmail::$created = []; FakeEmail::$limit = null; FakeEmail::$count = 0;
+        $this->app->bind(\App\Services\Hosting\HostingEmailService::class, fn () => new FakeEmail());
+        $this->app->bind(HostingSsoService::class, fn () => new class extends HostingSsoService {
+            public function cpanelUrl(HostingAccount $account): string { return 'https://fake.invalid/cpsess/login'; }
+            public function cpanelUrlTo(HostingAccount $account, string $goto): string { return 'https://fake.invalid/cpsess/login?goto_uri=' . urlencode($goto); }
+        });
+    }
+
+    public function test_upgrade_list_only_higher_priced_same_category_visible_active(): void
+    {
+        $client = $this->makeClient();
+        $acct = $this->makeHosting($client, 'up.example.test');   // Test Plan 10000 Web Hosting yearly
+        $this->plan('UpHigh', 30000);
+        $this->plan('UpLow', 5000);
+        $this->plan('UpSame', 10000);
+        $this->plan('UpHidden', 40000, ['portal_visible' => false]);
+        $this->plan('UpInactive', 40000, ['is_active' => false]);
+        $this->plan('UpOtherCat', 40000, ['category' => 'Email']);
+        $this->plan('UpMonthly', 40000, ['billing_cycle' => 'monthly']);
+        $this->plan('UpNoWhm', 40000, ['provisioning_type' => 'none']);
+
+        $this->openMenu($client);
+        $this->assertSame(['cpanel', 'upgrade', 'email', 'connect', 'support'], $this->session()->state['options']);
+        FakeWa::$sent = [];
+        $this->say('2');
+        $t = $this->allText();
+        $this->assertStringContainsString('UpHigh', $t);
+        $this->assertStringContainsString('spec of UpHigh', $t);
+        foreach (['UpLow', 'UpSame', 'UpHidden', 'UpInactive', 'UpOtherCat', 'UpMonthly', 'UpNoWhm'] as $bad) {
+            $this->assertStringNotContainsString($bad, $t);
+        }
+        $this->assertSame('upgrade_pick', $this->session()->state['step']);
+    }
+
+    private function doUpgrade(Client $client, ProductService $plan): Document
+    {
+        $this->openMenu($client);
+        $this->say('2'); $this->say('1'); $this->say('NDIYO');
+        $this->assertSame('pay_invoice', $this->session()->flow);
+        return Document::withoutGlobalScopes()->findOrFail($this->session()->state['document_id']);
+    }
+
+    public function test_upgrade_creates_invoice_and_marker_but_changes_nothing_until_paid_then_applies_once(): void
+    {
+        \Illuminate\Support\Facades\Bus::fake();
+        $client = $this->makeClient();
+        $acct = $this->makeHosting($client, 'up2.example.test');
+        $sub = $acct->subscription;
+        $oldProduct = $sub->product_service_id;
+        $new = $this->plan('UpNew', 30000);
+
+        $doc = $this->doUpgrade($client, $new);
+        $this->assertSame('invoice', $doc->type);
+        $this->assertSame('sent', $doc->status);
+        $this->assertSame($client->id, $doc->client_id);
+        $this->assertTrue(str_starts_with($doc->notes, 'Upgrade: Test Plan → UpNew — up2.example.test'), $doc->notes);
+        $this->assertTrue((float) $doc->total > 0 && (float) $doc->total <= 20000, 'prorated charge <= full difference');
+
+        $sub->refresh();
+        $this->assertSame($oldProduct, $sub->product_service_id);
+        $this->assertSame($new->id, $sub->metadata['pending_plan_change']['product_service_id']);
+        $this->assertSame($doc->id, $sub->metadata['pending_plan_change']['document_id']);
+        $this->assertSame(0, \Illuminate\Support\Facades\Bus::dispatched(\App\Jobs\Hosting\ChangeHostingPackage::class)->count());
+
+        // pay -> DocumentObserver applies via PlanChangeService
+        $doc->update(['status' => 'paid']);
+        $sub->refresh();
+        $this->assertSame($new->id, $sub->product_service_id);
+        $this->assertTrue(!isset($sub->metadata['pending_plan_change']));
+        $this->assertSame(1, \Illuminate\Support\Facades\Bus::dispatched(\App\Jobs\Hosting\ChangeHostingPackage::class)->count());
+
+        // double fire is a no-op
+        $doc->refresh();
+        (new \App\Observers\DocumentObserver())->updated($doc->setAttribute('status', 'paid'));
+        $this->assertSame(1, \Illuminate\Support\Facades\Bus::dispatched(\App\Jobs\Hosting\ChangeHostingPackage::class)->count());
+        $this->assertSame($new->id, $sub->fresh()->product_service_id);
+    }
+
+    public function test_upgrade_requires_ndiyo_and_creates_no_invoice_otherwise(): void
+    {
+        $client = $this->makeClient();
+        $acct = $this->makeHosting($client, 'up3.example.test');
+        $this->plan('UpNew3', 30000);
+        $before = Document::withoutGlobalScopes()->where('client_id', $client->id)->count();
+        $this->openMenu($client);
+        $this->say('2'); $this->say('1');
+        $this->assertSame('upgrade_confirm', $this->session()->state['step']);
+        $this->say('hapana');
+        $this->assertSame($before, Document::withoutGlobalScopes()->where('client_id', $client->id)->count());
+        $this->assertTrue(!isset($acct->subscription->fresh()->metadata['pending_plan_change']));
+    }
+
+    public function test_email_create_validates_never_exposes_password_and_sso_only_in_client_session(): void
+    {
+        $this->bindFakes();
+        $client = $this->makeClient();
+        $this->makeHosting($client, 'mail.example.test');
+
+        $this->openMenu($client);
+        $this->say('3');            // email menu
+        $this->say('1');            // create
+        foreach (['Bad Name', 'a@b.com', str_repeat('a', 33), '.dot', 'a..b'] as $bad) {
+            $this->say($bad);
+        }
+        $this->assertSame([], FakeEmail::$created);
+        $this->say('Info.Sales');
+        $this->assertSame(1, count(FakeEmail::$created));
+        [$local, $domain, $pw] = FakeEmail::$created[0];
+        $this->assertSame('info.sales', $local);
+        $this->assertSame('mail.example.test', $domain);
+        $this->assertTrue(strlen($pw) >= 20);
+        $t = $this->allText();
+        $this->assertStringNotContainsString($pw, $t);
+        $cta = collect(FakeWa::$sent)->firstWhere('type', 'cta');
+        $this->assertNotNull($cta);
+        $this->assertStringContainsString('email_accounts', $cta['url']);
+        $this->assertStringContainsString('set your own password', $cta['text']);
+        $this->assertStringNotContainsString($pw, json_encode(FakeWa::$sent));
+    }
+
+    public function test_email_limit_respected_forgot_password_link_and_assist_or_inactive_blocked(): void
+    {
+        $this->bindFakes();
+        $client = $this->makeClient();
+        $this->makeHosting($client, 'lim.example.test');
+
+        FakeEmail::$limit = 2; FakeEmail::$count = 2;
+        $this->openMenu($client);
+        $this->say('3'); $this->say('1'); $this->say('newbox');
+        $this->assertSame([], FakeEmail::$created);
+        $this->assertStringContainsString('email limit', $this->allText());
+
+        // forgot -> SSO link, no reset performed
+        FakeWa::$sent = [];
+        $this->openMenu($client);
+        $this->say('3'); $this->say('2');
+        $this->assertNotNull(collect(FakeWa::$sent)->firstWhere('type', 'cta'));
+        $this->assertSame([], FakeEmail::$created);
+
+        // staff assist: blocked, no link
+        FakeWa::$sent = [];
+        $this->openMenu($client, $this->user->id);
+        $this->say('3');
+        $this->assertNull(collect(FakeWa::$sent)->firstWhere('type', 'cta'));
+        $this->assertStringContainsString('staff-assist', $this->allText());
+        $this->assertNull($this->session()->state['step'] === 'email_menu' ? true : null);
+
+        // suspended account: no email option at all
+        $c2 = $this->makeClient('Susp Owner', '255700000005');
+        $this->makeHosting($c2, 'sus.example.test', 'suspended');
+        $this->openMenu($c2);
+        $this->assertTrue(!in_array('email', $this->session()->state['options'], true));
+    }
+
+    public function test_ticket_creation_and_rate_limit(): void
+    {
+        $client = $this->makeClient();
+        $this->makeHosting($client, 'tk.example.test');
+        for ($i = 1; $i <= 3; $i++) {
+            \Illuminate\Support\Carbon::setTestNow(now()->addSeconds(5));
+            $this->openMenu($client);
+            $this->say('5');
+            $this->assertSame('ask_ticket_text', $this->session()->state['step']);
+            $this->say('Website yangu ina hitilafu namba ' . $i);
+        }
+        $this->assertSame(3, \App\Models\Ticket::withoutGlobalScopes()->where('client_id', $client->id)->count());
+        $this->assertStringContainsString('TKT-', $this->allText());
+
+        FakeWa::$sent = [];
+        \Illuminate\Support\Carbon::setTestNow(now()->addSeconds(5));
+        $this->openMenu($client);
+        $this->say('5');
+        $this->assertStringContainsString('several support requests', $this->allText());
+        $this->assertSame(3, \App\Models\Ticket::withoutGlobalScopes()->where('client_id', $client->id)->count());
+
+        // >500 chars rejected (fresh client so limit not hit)
+        $c2 = $this->makeClient('Ticket Two', '255700000006');
+        $this->makeHosting($c2, 'tk2.example.test');
+        $this->openMenu($c2);
+        $this->say('5');
+        $this->say(str_repeat('x', 501));
+        $this->assertSame(0, \App\Models\Ticket::withoutGlobalScopes()->where('client_id', $c2->id)->count());
+        $this->assertSame('ask_ticket_text', $this->session()->state['step']);
+        \Illuminate\Support\Carbon::setTestNow();
+    }
+
+    public function test_connect_domain_prefills_change_dns_only_for_own_domain_and_requires_ndiyo(): void
+    {
+        $client = $this->makeClient();
+        $dnsAcct = $this->makeHosting($client, 'dns.example.test', 'active', ['ip' => '203.0.113.9']);
+        $srv = Server::create(['tenant_id' => $this->tenant->id, 'name' => 'dnssrv', 'hostname' => 'dns-fake.invalid', 'port' => 2087, 'username' => 'root', 'api_token' => 'x', 'type' => 'whm', 'is_active' => false, 'nameservers' => ['ns1.host.test', 'ns2.host.test']]);
+        HostingAccount::withoutGlobalScopes()->whereKey($dnsAcct->id)->update(['server_id' => $srv->id]);
+        $d = Domain::create(['tenant_id' => $this->tenant->id, 'client_id' => $client->id, 'name' => 'dns.example.test', 'status' => 'active', 'meta' => ['unmanaged' => true]]);
+
+        $this->openMenu($client);
+        $this->say('4');
+        $t = $this->allText();
+        $this->assertStringContainsString('ns1.host.test, ns2.host.test', $t);
+        $this->assertStringContainsString('203.0.113.9', $t);
+        $s = $this->session();
+        $this->assertSame('change_dns', $s->flow);
+        $this->assertSame('confirm', $s->state['step']);
+        $this->assertSame($d->id, $s->state['domain_id']);
+        $this->assertSame(['ns1.host.test', 'ns2.host.test'], $s->state['nameservers']);
+
+        // anything but NDIYO cancels, domain untouched
+        $this->say('hapana');
+        $this->assertNull(Domain::withoutGlobalScopes()->find($d->id)->meta['pending_nameserver_request'] ?? null);
+
+        // NDIYO goes through the existing flow (unmanaged -> manual staff request, no registrar call)
+        $this->openMenu($client);
+        $this->say('4'); $this->say('NDIYO');
+        $this->assertSame(['ns1.host.test', 'ns2.host.test'], Domain::withoutGlobalScopes()->find($d->id)->meta['pending_nameserver_request']['nameservers']);
+
+        // domain NOT with this client (another client owns it): info only, no handoff
+        FakeWa::$sent = [];
+        $c2 = $this->makeClient('Ext Owner', '255700000007');
+        $this->makeHosting($c2, 'ext.example.test', 'active', ['ip' => '203.0.113.10']);
+        $this->openMenu($c2);
+        $this->say('4');
+        $this->assertStringContainsString('not registered with us', $this->allText());
+        $this->assertSame('hosting_manage', $this->session()->flow);
+    }
+
+    public function test_client_a_cannot_touch_client_b_account_via_forged_state(): void
+    {
+        $this->bindFakes();
+        $a = $this->makeClient('Client A2', '255700000001');
+        $b = $this->makeClient('Client B2', '255700000003');
+        $this->makeHosting($a, 'a2.example.test');
+        $acctB = $this->makeHosting($b, 'b2.example.test');
+        $this->plan('UpNewB', 30000);
+
+        foreach (['ask_email_name' => 'hack', 'ask_ticket_text' => 'hello there', 'upgrade_confirm' => 'NDIYO'] as $step => $text) {
+            $this->startSession($a);
+            WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('phone', $this->phone)
+                ->update(['flow' => 'hosting_manage', 'state' => ['step' => $step, 'account_id' => $acctB->id, 'plan_id' => ProductService::where('name', 'UpNewB')->value('id')]]);
+            $this->say($text);
+        }
+        $this->assertSame([], FakeEmail::$created);
+        $this->assertSame(0, \App\Models\Ticket::withoutGlobalScopes()->where('related_service', 'b2.example.test')->count());
+        $this->assertTrue(!isset($acctB->subscription->fresh()->metadata['pending_plan_change']));
+        $this->assertSame(0, Document::withoutGlobalScopes()->where('client_id', $a->id)->count());
+    }
+
     public function test_usage_warning_command_sends_once_per_threshold(): void
     {
         $client = $this->makeClient();
@@ -296,5 +557,17 @@ class FakeWa extends WhatsAppService
     {
         self::$sent[] = ['type' => 'cta', 'text' => $text, 'button' => $buttonText, 'url' => $url];
         return [];
+    }
+}
+
+class FakeEmail extends \App\Services\Hosting\HostingEmailService
+{
+    public static array $created = [];
+    public static ?int $limit = null;
+    public static int $count = 0;
+    public function usage(HostingAccount $account): array { return ['count' => self::$count, 'limit' => self::$limit]; }
+    public function create(HostingAccount $account, string $localPart, string $password, int $quotaMb = 1024): void
+    {
+        self::$created[] = [$localPart, $account->domain, $password];
     }
 }

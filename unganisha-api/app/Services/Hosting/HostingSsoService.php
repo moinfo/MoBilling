@@ -25,4 +25,20 @@ class HostingSsoService
             ->forAccount($account->id)
             ->ssoUrl($account->cpanel_username, 'cpaneld');
     }
+
+    /** cPanel "Email Accounts" page (same path the portal's quick shortcut uses). */
+    public const EMAIL_PAGE = '/frontend/jupiter/email_accounts/index.html';
+
+    /** One-time cPanel login URL that lands on $goto (a whitelisted cPanel path). Never log it. */
+    public function cpanelUrlTo(HostingAccount $account, string $goto): string
+    {
+        $server = Server::withoutGlobalScopes()->find($account->server_id);
+        if (!$server) {
+            throw new \RuntimeException('Hosting server not found');
+        }
+
+        return (new WhmService($server))
+            ->forAccount($account->id)
+            ->ssoUrl($account->cpanel_username, 'cpaneld', $goto);
+    }
 }

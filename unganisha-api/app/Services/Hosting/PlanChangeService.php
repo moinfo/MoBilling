@@ -79,6 +79,64 @@ class PlanChangeService
     }
 
     /**
+     * Creates the upgrade invoice (same shape as the portal's upgrade endpoint) and records
+     * metadata.pending_plan_change on the subscription. NOTHING else changes here: the
+     * plan/cPanel package switch is applied by DocumentObserver -> apply() once it is paid.
+     * Any earlier unpaid (not partially paid) plan-change invoice for this subscription is cancelled.
+     */
+    public function createUpgradeInvoice(ClientSubscription $sub, ProductService $new, float $charge, string $domain): \App\Models\Document
+    {
+        $oldName    = $sub->productService?->name ?? '—';
+        $taxPercent = (float) ($new->tax_percent ?? 0);
+        $taxAmount  = round($charge * $taxPercent / 100, 2);
+        $total      = round($charge + $taxAmount, 2);
+        $label      = "Upgrade: {$oldName} → {$new->name} — {$domain}";
+
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($sub, $new, $charge, $taxPercent, $taxAmount, $total, $label) {
+            $priorDocId = $sub->metadata['pending_plan_change']['document_id'] ?? null;
+            if ($priorDocId) {
+                \App\Models\Document::withoutGlobalScopes()->where('id', $priorDocId)
+                    ->where('tenant_id', $sub->tenant_id)
+                    ->whereIn('status', ['draft', 'sent', 'overdue'])->update(['status' => 'cancelled']);
+            }
+
+            $document = \App\Models\Document::withoutGlobalScopes()->create([
+                'tenant_id'       => $sub->tenant_id,
+                'client_id'       => $sub->client_id,
+                'type'            => 'invoice',
+                'document_number' => app(\App\Services\DocumentNumberService::class)->generate('invoice', $sub->tenant_id),
+                'date'            => now()->toDateString(),
+                'due_date'        => now()->toDateString(),
+                'subtotal'        => $charge,
+                'discount_amount' => 0,
+                'tax_amount'      => $taxAmount,
+                'total'           => $total,
+                'status'          => 'sent',
+                'notes'           => $label,
+            ]);
+
+            $document->items()->create([
+                'item_type'   => 'service',
+                'description' => $label . ' (prorated until ' . ($sub->expire_date?->toDateString() ?? 'renewal') . ')',
+                'quantity'    => 1,
+                'price'       => $charge,
+                'tax_percent' => $taxPercent,
+                'tax_amount'  => $taxAmount,
+                'total'       => $total,
+            ]);
+
+            $sub->update(['metadata' => array_merge($sub->metadata ?? [], [
+                'pending_plan_change' => [
+                    'product_service_id' => $new->id,
+                    'document_id'        => $document->id,
+                ],
+            ])]);
+
+            return $document;
+        });
+    }
+
+    /**
      * Switch the subscription to the new plan and change the cPanel package.
      * The recurring amount is re-derived from the new product (WHMCS updates
      * the recurring on a plan change), so any manual override is cleared.
