@@ -3,6 +3,7 @@
 namespace Tests\Manual;
 
 use App\Models\Client;
+use App\Models\Document;
 use App\Models\MosmsAccount;
 use App\Models\Tenant;
 use App\Models\User;
@@ -185,6 +186,58 @@ class WhatsappWorkflowFixesTest
         $this->atStep('want_account', false);
         $this->say('N');
         $this->assertSame(null, $this->session());
+    }
+
+    // ── Fix 3: friendly errors ──
+    private function domainWithHosting(Client $c, string $name, int $days): array
+    {
+        $d = \App\Models\Domain::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => $name, 'status' => 'active', 'expires_at' => now()->addDays($days), 'meta' => ['unmanaged' => true]]);
+        $server = \App\Models\Server::withoutGlobalScopes()->first() ?? \App\Models\Server::create(['tenant_id' => $this->tenant->id, 'name' => 'fake', 'hostname' => 'fake.invalid', 'port' => 2087, 'username' => 'root', 'api_token' => 'x', 'type' => 'whm', 'is_active' => false]);
+        $product = \App\Models\ProductService::create(['tenant_id' => $this->tenant->id, 'type' => 'service', 'name' => 'Test Plan', 'price' => 10000, 'tax_percent' => 0, 'unit' => 'pcs', 'category' => 'Web Hosting', 'billing_cycle' => 'yearly', 'provisioning_type' => 'whm_cpanel']);
+        $sub = \App\Models\ClientSubscription::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'product_service_id' => $product->id, 'label' => $name, 'quantity' => 1, 'start_date' => now()->subMonths(12)->addDays($days), 'expire_date' => now()->addDays($days), 'status' => 'active']);
+        \App\Models\HostingAccount::create(['tenant_id' => $this->tenant->id, 'client_subscription_id' => $sub->id, 'server_id' => $server->id, 'domain' => $name, 'cpanel_username' => substr(str_replace('.', '', $name), 0, 8), 'package' => 'Starter', 'status' => 'active', 'last_synced_at' => now(), 'meta' => []]);
+        return [$d, $sub];
+    }
+
+    public function test_m3_existing_open_invoice_is_shown_instead_of_raw_error(): void
+    {
+        $c = $this->makeClient();
+        [$d, $sub] = $this->domainWithHosting($c, 'wf-open.test', 10);
+        $inv = Document::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'type' => 'invoice', 'document_number' => 'T-WF1', 'date' => now()->toDateString(), 'due_date' => now()->addDays(5)->toDateString(), 'subtotal' => 5000, 'discount_amount' => 0, 'tax_amount' => 0, 'total' => 5000, 'status' => 'sent']);
+        \App\Models\RecurringInvoiceLog::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'product_service_id' => $sub->product_service_id, 'client_subscription_id' => $sub->id, 'document_id' => $inv->id, 'next_bill_date' => now()->addYear(), 'invoice_created_at' => now(), 'reminders_sent' => []]);
+        $this->startSession($c, ['items' => [$d->id]]);
+        $t = $this->hit('renewal-reply', '1');
+        $this->assertNotContains('already has a current invoice', $t);
+        $this->assertNotContains('Everything for this domain', $t);
+        $this->assertSame('pay_invoice', $this->session()?->flow);
+        $this->assertSame($inv->id, $this->session()?->state['document_id'] ?? null);
+        $this->assertContains('T-WF1', $t);
+    }
+
+    public function test_m3_current_invoice_but_nothing_open_gets_friendly_message(): void
+    {
+        $c = $this->makeClient();
+        [$d, $sub] = $this->domainWithHosting($c, 'wf-paid.test', 10);
+        $inv = Document::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'type' => 'invoice', 'document_number' => 'T-WF2', 'date' => now()->toDateString(), 'due_date' => now()->addDays(5)->toDateString(), 'subtotal' => 5000, 'discount_amount' => 0, 'tax_amount' => 0, 'total' => 5000, 'status' => 'paid']);
+        \App\Models\RecurringInvoiceLog::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'product_service_id' => $sub->product_service_id, 'client_subscription_id' => $sub->id, 'document_id' => $inv->id, 'next_bill_date' => now()->addYear(), 'invoice_created_at' => now(), 'reminders_sent' => []]);
+        $this->startSession($c, ['items' => [$d->id]]);
+        $t = $this->hit('renewal-reply', '1');
+        $this->assertNotContains('already has a current invoice', $t);
+        $this->assertContains('nothing to pay right now', $t);
+    }
+
+    public function test_m3_unknown_exception_text_never_reaches_client(): void
+    {
+        $c = $this->makeClient();
+        $d = \App\Models\Domain::create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => 'wf-boom.test', 'status' => 'active', 'expires_at' => now()->addDays(10), 'meta' => ['unmanaged' => true]]);
+        app()->bind(\App\Services\Hosting\RenewalBundleService::class, fn () => new class extends \App\Services\Hosting\RenewalBundleService {
+            public function generate(\App\Models\HostingAccount $h, bool $selfService = false): Document { throw new \RuntimeException('SQLSTATE[HY000] secret internals namecom'); }
+        });
+        $this->startSession($c, ['items' => [$d->id]]);
+        $t = $this->hit('renewal-reply', '1');
+        $this->assertNotContains('SQLSTATE', $t);
+        $this->assertNotContains('secret internals', $t);
+        $this->assertContains("couldn't complete this request", $t);
     }
 }
 

@@ -2867,13 +2867,34 @@ class WhatsappRenewalWebhookController extends Controller
             ->where('domain', $domain->name)
             ->first();
 
+        $account = $hostingAccount ?? new HostingAccount([
+            'tenant_id' => $tenant->id,
+            'domain' => $domain->name,
+        ]);
+
         try {
-            $document = $bundler->generate($hostingAccount ?? new HostingAccount([
-                'tenant_id' => $tenant->id,
-                'domain' => $domain->name,
-            ]), selfService: true);
+            $document = $bundler->generate($account, selfService: true);
         } catch (\Throwable $e) {
-            $this->replyOrFinish($tenant, $client, $phone, $this->t($lang, "Samahani, {$e->getMessage()}", "Sorry, {$e->getMessage()}"), $lang);
+            Log::warning('WhatsApp renewal invoice generation failed', ['tenant_id' => $tenant->id, 'phone' => $phone, 'domain' => $domain->name, 'error' => $e->getMessage()]);
+
+            // "Everything already has a current invoice": show that invoice so they can just pay it.
+            if ($client && str_contains($e->getMessage(), 'already has a current invoice')) {
+                $open = $this->existingOpenInvoiceFor($tenant, $client, $domain, $bundler, $account);
+                if ($open) {
+                    $this->offerPayment($tenant, $client, $phone, $open, $lang);
+                    return;
+                }
+                $this->replyOrFinish($tenant, $client, $phone, $this->t($lang,
+                    "Hakuna malipo yanayohitajika sasa hivi kwa {$domain->name}. Kama unahitaji msaada, wasiliana nasi.",
+                    "There's nothing to pay right now for {$domain->name}. If you need help, please contact us."
+                ), $lang);
+                return;
+            }
+
+            $this->replyOrFinish($tenant, $client, $phone, $this->t($lang,
+                'Samahani, hatuwezi kukamilisha ombi hili sasa hivi. Tafadhali jaribu tena baadaye au wasiliana nasi.',
+                "Sorry, we couldn't complete this request right now. Please try again later or contact us."
+            ), $lang);
             return;
         }
 
@@ -2882,6 +2903,32 @@ class WhatsappRenewalWebhookController extends Controller
         } else {
             $this->replyWithInvoice($tenant, $phone, $document, $lang);
         }
+    }
+
+    /** The client's already-open invoice covering this domain (its renewal invoice, or its hosting/domain subscriptions' open invoice). */
+    private function existingOpenInvoiceFor(Tenant $tenant, Client $client, Domain $domain, RenewalBundleService $bundler, HostingAccount $account): ?Document
+    {
+        $doc = $this->openInvoice($tenant, $client, $domain->meta['renewal_document_id'] ?? null);
+        if ($doc) {
+            return $doc;
+        }
+        try {
+            $subIds = array_map(fn ($s) => $s->id, $bundler->billableSubscriptions($account, true)['candidates']);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        if (!$subIds) {
+            return null;
+        }
+        $docIds = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereIn('client_subscription_id', $subIds)->whereNotNull('document_id')->pluck('document_id');
+        if ($docIds->isEmpty()) {
+            return null;
+        }
+
+        return Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('type', 'invoice')->whereIn('id', $docIds)->whereIn('status', ['sent', 'overdue', 'partial'])
+            ->orderBy('due_date')->get()->first(fn ($d) => $d->balance_due > 0);
     }
 
     /** finishFlow() when a client is known (returns to the root menu), a plain reply otherwise. */
