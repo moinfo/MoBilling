@@ -79,12 +79,66 @@ class NameComDomainService
         return ['changed' => true, 'nameservers' => $applied];
     }
 
-    /** Read-only refresh of expiry/status/nameservers from Name.com. */
+    /** Whether this row is served by Name.com (linked, or ordered through the Name.com sales flow). */
+    public static function isNameComDomain(Domain $domain): bool
+    {
+        return !empty($domain->meta['namecom']) || ($domain->meta['registrar'] ?? null) === 'namecom';
+    }
+
+    /** Label of the Name.com API account this domain uses (its own, else the tenant default). Staff-only. */
+    public static function accountLabel(Domain $domain): ?string
+    {
+        $account = NameComAccount::findFor($domain->tenant_id, $domain->meta['namecom']['account_id'] ?? null)
+            ?? NameComAccount::defaultFor($domain->tenant_id);
+        return $account?->displayLabel();
+    }
+
+    /**
+     * Live read-only facts from Name.com (GET /core/v1/domains/{name}); only fields the API documents.
+     * @throws NameComApiException|RegistrarApiException
+     */
+    public function facts(Domain $domain): array
+    {
+        return self::normalizeFacts($this->registrar->namecomForDomain($domain)->getDomain($domain->name));
+    }
+
+    public static function normalizeFacts(array $info): array
+    {
+        $flag = fn ($k) => array_key_exists($k, $info) && $info[$k] !== null ? (bool) $info[$k] : null;
+        return [
+            'expires_at'               => substr((string) ($info['expireDate'] ?? ''), 0, 10) ?: null,
+            'created_at'               => substr((string) ($info['createDate'] ?? ''), 0, 10) ?: null,
+            'locked'                   => $flag('locked'),
+            'autorenew'                => $flag('autorenewEnabled'),
+            'privacy'                  => $flag('privacyEnabled'),
+            'locks'                    => array_values(array_filter((array) ($info['locks'] ?? []), 'is_string')),
+            'transfer_lock_expires_at' => substr((string) ($info['transferLockExpiresAt'] ?? ''), 0, 10) ?: null,
+            'nameservers'              => NameComDriver::extractNameservers($info),
+        ];
+    }
+
+    /** Read-only refresh of expiry/status/nameservers from Name.com. Writes an activity-log row (success or failure). */
     public function sync(Domain $domain): Domain
     {
-        $info = $this->registrar->namecomForDomain($domain)->getDomain($domain->name);
+        try {
+            $info = $this->registrar->namecomForDomain($domain)->getDomain($domain->name);
+        } catch (NameComApiException | RegistrarApiException $e) {
+            DomainLog::create([
+                'tenant_id' => $domain->tenant_id, 'domain_id' => $domain->id, 'action' => 'namecom_synced',
+                'request' => ['via' => 'namecom', 'by_user' => auth()->id()], 'status' => 'failed', 'error' => mb_substr($e->getMessage(), 0, 500),
+            ]);
+            throw $e;
+        }
+        $before = ['expires_at' => $domain->expires_at?->toDateString(), 'status' => $domain->status];
         $this->applyInfo($domain, $info);
-        return $domain->fresh();
+        $fresh = $domain->fresh();
+        DomainLog::create([
+            'tenant_id' => $domain->tenant_id, 'domain_id' => $domain->id, 'action' => 'namecom_synced',
+            'request' => ['via' => 'namecom', 'by_user' => auth()->id(), 'from' => $before,
+                'to' => ['expires_at' => $fresh->expires_at?->toDateString(), 'status' => $fresh->status]],
+            'status' => 'success',
+        ]);
+        return $fresh;
     }
 
     /**
@@ -178,6 +232,7 @@ class NameComDomainService
             'nameservers' => NameComDriver::extractNameservers($info),
             'locked'      => $info['locked'] ?? null,
             'autorenew'   => $info['autorenewEnabled'] ?? null,
+            'privacy'     => $info['privacyEnabled'] ?? null,
             'synced_at'   => now()->toIso8601String(),
         ];
     }

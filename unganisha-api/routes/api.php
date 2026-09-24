@@ -736,6 +736,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/domains/{domain}',         [\App\Http\Controllers\DomainController::class, 'show']);
         Route::get('/domains/{domain}/logs',    [\App\Http\Controllers\DomainController::class, 'logs']);
         Route::post('/domains/{domain}/sync',   [\App\Http\Controllers\DomainController::class, 'sync']);
+        Route::get('/domains/{domain}/registrar-info', [\App\Http\Controllers\DomainController::class, 'registrarInfo'])->middleware('throttle:30,1,staff-domain-registrar-info');
     });
     // Name.com (nameserver management for linked domains). Reuses the existing domain permissions.
     Route::middleware('permission:domains.settings')->prefix('namecom')->group(function () {

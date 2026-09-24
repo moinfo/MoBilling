@@ -100,10 +100,28 @@ export const getDomains = (params?: Record<string, string>) =>
 export const getDomain = (id: string) =>
   api.get<{ data: DomainRecord & { subscription?: { id: string; label: string | null; expire_date: string | null } | null } }>(`/domains/${id}`);
 
+export interface DomainRegistrarInfo {
+  provider: 'namecom' | 'fred';
+  label: string | null;
+  linked?: boolean;
+  error: string | null;
+  facts: {
+    expires_at: string | null; created_at: string | null;
+    locked: boolean | null; autorenew: boolean | null; privacy: boolean | null;
+    locks: string[]; transfer_lock_expires_at: string | null; nameservers: string[];
+  } | null;
+}
+
+export const getDomainRegistrarInfo = (id: string) =>
+  api.get<{ data: DomainRegistrarInfo }>(`/domains/${id}/registrar-info`);
+
 // FredHttpDriver logs raw API paths as the action — translate to something readable.
 export const describeDomainAction = (action: string): string => {
   if (action === 'auth_info_revealed') return 'Transfer code viewed';
-  if (action === 'nameservers_changed') return 'Nameservers changed';
+  if (action === 'nameservers_changed' || action === 'namecom_nameservers_changed') return 'Nameservers changed (Name.com)';
+  if (action === 'namecom_linked') return 'Linked to Name.com';
+  if (action === 'namecom_synced') return 'Synced from Name.com';
+  if (action === 'namecom_registered') return 'Registered at Name.com';
   if (action.includes('/nssets/') && action.includes('/update/')) return 'Nameserver set updated';
   if (action.includes('/nssets/create')) return 'Nameserver set created';
   if (action.includes('/nssets/')) return 'Nameserver lookup';

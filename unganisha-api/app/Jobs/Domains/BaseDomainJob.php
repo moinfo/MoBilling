@@ -42,6 +42,10 @@ abstract class BaseDomainJob implements ShouldQueue
     /** Pull registry truth into the local row after a successful mutation. */
     protected function syncFromRegistry(Domain $domain): void
     {
+        // Name.com-served domains (and non-.tz names) must never be looked up at the .tz registry.
+        if (\App\Services\Registrar\NameComDomainService::isNameComDomain($domain) || !str_ends_with($domain->name, '.tz')) {
+            return;
+        }
         try {
             $info = $this->driver($domain)->info($domain->name);
             $domain->update([

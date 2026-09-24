@@ -360,6 +360,35 @@ class DomainController extends Controller
         ]);
     }
 
+    /**
+     * Live, read-only facts for a Name.com domain (staff page). Never throws: a Name.com failure
+     * comes back as `error` so the page still renders. Nothing here is stored or leaks credentials.
+     */
+    public function registrarInfo(Domain $domain)
+    {
+        if (!\App\Services\Registrar\NameComDomainService::isNameComDomain($domain)) {
+            return response()->json(['data' => ['provider' => 'fred', 'label' => null, 'facts' => null, 'error' => null]]);
+        }
+        $svc = app(\App\Services\Registrar\NameComDomainService::class);
+        $facts = null; $error = null;
+        if (!\App\Services\Registrar\NameComDomainService::isLinked($domain)) {
+            $error = 'This domain is not linked to a Name.com account yet.';
+        } else {
+            try {
+                $facts = $svc->facts($domain);
+            } catch (\App\Exceptions\NameComApiException | RegistrarApiException $e) {
+                $error = 'Could not read from Name.com right now: ' . preg_replace('/^Registrar \S+ failed: /', '', $e->getMessage());
+            }
+        }
+        return response()->json(['data' => [
+            'provider' => 'namecom',
+            'label'    => \App\Services\Registrar\NameComDomainService::accountLabel($domain),
+            'linked'   => \App\Services\Registrar\NameComDomainService::isLinked($domain),
+            'facts'    => $facts,
+            'error'    => $error,
+        ]]);
+    }
+
     public function logs(Domain $domain)
     {
         return response()->json(['data' => $domain->logs()->limit(50)->get()]);

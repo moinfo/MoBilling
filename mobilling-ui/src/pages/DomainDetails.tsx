@@ -1,5 +1,6 @@
 import NameComNameservers from '../components/NameComNameservers';
 import NameComRegisterModal from '../components/NameComRegisterModal';
+import NameComRegistrarCard from '../components/NameComRegistrarCard';
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Button, Grid, Anchor, Code,
@@ -15,7 +16,7 @@ import {
 } from '@tabler/icons-react';
 import {
   getDomain, getDomainLogs, renewDomain, retryDomain, syncDomain, confirmManualRegistration, getDomainAuthInfo, setDomainAutoRenew,
-  getDomainNameservers, updateDomainNameservers, describeDomainAction,
+  getDomainNameservers, updateDomainNameservers, describeDomainAction, getDomainRegistrarInfo,
   DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { usePermissions } from '../hooks/usePermissions';
@@ -53,6 +54,15 @@ export default function DomainDetails() {
   });
   const d = data?.data?.data as (DomainRecord & { subscription?: { id: string; label: string | null; expire_date: string | null } | null }) | undefined;
 
+  const isNC = !!(d?.meta?.namecom || d?.meta?.registrar === 'namecom');
+  const { data: rinfoData, isLoading: rinfoLoading } = useQuery({
+    queryKey: ['domain-registrar-info', id],
+    queryFn: () => getDomainRegistrarInfo(id!),
+    enabled: !!id && isNC,
+    retry: false,
+  });
+  const rinfo = rinfoData?.data?.data;
+
   const { data: logsData } = useQuery({
     queryKey: ['domain-logs', id],
     queryFn: () => getDomainLogs(id!),
@@ -84,6 +94,11 @@ export default function DomainDetails() {
 
   const syncMutation = useMutation({
     mutationFn: () => syncDomain(id!),
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ['domain-logs', id] });
+      qc.invalidateQueries({ queryKey: ['domain-registrar-info', id] });
+      qc.invalidateQueries({ queryKey: ['domain-nameservers', id] });
+    },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['domain', id] });
       qc.invalidateQueries({ queryKey: ['domains'] });
@@ -192,15 +207,24 @@ export default function DomainDetails() {
                   {d.subscription.expire_date ? ` — next due ${dayjs(d.subscription.expire_date).format('D MMM YYYY')}` : ''}
                 </Field>
               )}
-              <Field label="Auto Renew:">
-                {can('domains.renew') && !meta.unmanaged && ['active', 'expired'].includes(d.status) ? (
+              <Field label={isNC ? 'Auto Renew (at Name.com):' : 'Auto Renew:'}>
+                {isNC ? (
+                  (() => {
+                    const ar = rinfo?.facts?.autorenew ?? meta.namecom?.autorenew ?? null;
+                    return ar === null ? 'Unknown (sync from Name.com)' : ar ? 'On at Name.com' : 'Off at Name.com';
+                  })()
+                ) : can('domains.renew') && !meta.unmanaged && ['active', 'expired'].includes(d.status) ? (
                   <Switch size="sm" checked={d.auto_renew}
                     disabled={autoRenewMutation.isPending}
                     label={d.auto_renew ? 'On — paid from client wallet' : 'Off'}
                     onChange={(e) => autoRenewMutation.mutate(e.currentTarget.checked)} />
                 ) : (d.auto_renew ? 'On — paid from client wallet' : 'Off')}
               </Field>
-              <Field label="Registrar Account:">{d.registrar_account?.name ?? '—'}</Field>
+              {isNC ? (
+                <Field label="Registrar:">Name.com{rinfo?.label ? ` — account: ${rinfo.label}` : ''}</Field>
+              ) : (
+                <Field label="Registrar Account:">{d.registrar_account?.name ?? '—'}</Field>
+              )}
             </Stack>
           </Paper>
         </Grid.Col>
@@ -217,7 +241,7 @@ export default function DomainDetails() {
                         {meta.ssl_valid
                           ? <IconLock size={15} color="var(--mantine-color-green-6)" />
                           : <IconLockOpen size={15} color="var(--mantine-color-gray-5)" />}
-                        {meta.ssl_valid ? 'Valid SSL Detected' : 'No SSL Detected'}
+                        {meta.ssl_valid ? 'Valid SSL Detected' : (meta.ssl_valid === false || meta.ssl_expires_at ? 'No SSL Detected' : 'Not checked yet')}
                       </Group>
                     </Field>
                     <Field label="Issuer:">{meta.ssl_issuer ?? '—'}</Field>
@@ -230,11 +254,18 @@ export default function DomainDetails() {
                   </Stack>
                 </Grid.Col>
               </Grid>
-              {meta.last_synced_at && (
+              {!isNC && meta.last_synced_at && (
                 <Text size="xs" c="dimmed" mt="sm">Last registry sync: {dayjs(meta.last_synced_at).format('D MMM YYYY HH:mm')}</Text>
+              )}
+              {isNC && meta.ssl_valid === undefined && (
+                <Text size="xs" c="dimmed" mt="sm">SSL is only checked for .tz domains automatically; this shows what was last recorded, if anything.</Text>
               )}
             </Paper>
 
+            {isNC ? (
+              <NameComRegistrarCard info={rinfo} loading={rinfoLoading} syncing={syncMutation.isPending}
+                canSync={can('domains.read')} onSync={() => syncMutation.mutate()} syncedAt={meta.namecom?.synced_at ?? null} />
+            ) : (
             <Paper withBorder radius="md" p="lg">
               <Title order={5} mb="md">Registry</Title>
               <Stack gap="md">
@@ -275,6 +306,7 @@ export default function DomainDetails() {
                 )}
               </Stack>
             </Paper>
+            )}
           </Stack>
         </Grid.Col>
 

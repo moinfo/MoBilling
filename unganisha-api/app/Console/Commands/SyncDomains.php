@@ -36,6 +36,12 @@ class SyncDomains extends Command
                 continue;
             }
 
+            // Name.com-served domains (linked, or ordered through Name.com) never go through the .tz registry.
+            if (\App\Services\Registrar\NameComDomainService::isNameComDomain($domain)) {
+                $unmanaged++;
+                continue;
+            }
+
             // The FRED driver only serves .tz — gTLDs imported from WHMCS are
             // unmanaged until a gTLD registrar driver exists. Flag once, skip after.
             if (!str_ends_with($domain->name, '.tz')) {
