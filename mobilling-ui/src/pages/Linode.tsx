@@ -3,7 +3,8 @@ import {
   Stack, Paper, Title, Text, Group, Badge, Table, Select, Center, Loader, Alert, Button, Modal,
   TextInput, PasswordInput, Tabs, ActionIcon, Drawer, NumberInput, CopyButton, Code, List, Tooltip,
 } from '@mantine/core';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconPlus, IconRefresh, IconTrash, IconEdit, IconKey, IconCopy, IconCheck, IconServer, IconWorldWww, IconPlugConnected,
@@ -149,16 +150,28 @@ function AccountModal({ account, onClose, onSaved }: { account: LinodeAccount | 
 
 // ───────────── Servers ─────────────
 
-function useClientOptions() {
-  const { data } = useQuery({ queryKey: ['linode-client-options'], queryFn: () => getClients({ per_page: 200, status: 'all' } as any), staleTime: 60_000 });
+// Server-side search (name/email/phone) — the old version loaded only the first 200 clients and
+// filtered them locally, so any client beyond that (or matched by email) could never be found.
+function useClientOptions(search: string) {
+  const [debounced] = useDebouncedValue(search, 300);
+  const { data } = useQuery({
+    queryKey: ['linode-client-options', debounced],
+    queryFn: () => getClients({ per_page: 50, status: 'all', search: debounced || undefined } as any),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
   const rows: any[] = data?.data?.data ?? [];
-  return rows.map((c) => ({ value: String(c.id), label: c.name }));
+  return rows.map((c) => ({ value: String(c.id), label: c.email ? `${c.name} (${c.email})` : c.name }));
 }
 
 function MapModal({ resource, onClose }: { resource: LinodeResource; onClose: () => void }) {
   const qc = useQueryClient();
-  const options = useClientOptions();
+  const [search, setSearch] = useState('');
+  const found = useClientOptions(search);
   const [clientId, setClientId] = useState<string | null>(resource.client_id);
+  const [pickedLabel, setPickedLabel] = useState<string | null>(resource.client_name ?? null);
+  // keep the chosen client in the list even after the search text changes
+  const options = clientId && !found.some((o) => o.value === clientId) && pickedLabel ? [{ value: clientId, label: pickedLabel }, ...found] : found;
   const [error, setError] = useState<string | null>(null);
   const m = useMutation({
     mutationFn: () => mapLinodeResource(resource.id, { client_id: clientId }),
@@ -169,7 +182,7 @@ function MapModal({ resource, onClose }: { resource: LinodeResource; onClose: ()
     <Modal opened onClose={onClose} title={`Map "${resource.label}" to a client`}>
       <Stack>
         {error && <Alert color="red">{error}</Alert>}
-        <Select label="Client" data={options} value={clientId} onChange={setClientId} searchable clearable placeholder="No client" />
+        <Select label="Client" data={options} value={clientId} onChange={(v) => { setClientId(v); setPickedLabel(options.find((o) => o.value === v)?.label ?? null); }} searchValue={search} onSearchChange={setSearch} filter={({ options }) => options} nothingFoundMessage="No client found" searchable clearable placeholder="Search name, email or phone" />
         <Button loading={m.isPending} onClick={() => { setError(null); m.mutate(); }}>Save</Button>
       </Stack>
     </Modal>
