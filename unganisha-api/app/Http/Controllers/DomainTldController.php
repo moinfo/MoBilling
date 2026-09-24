@@ -14,6 +14,7 @@ class DomainTldController extends Controller
 
         // Tenant rows override platform (NULL tenant) rows for the same TLD.
         $rows = DomainTld::where(fn ($q) => $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id'))
+            ->where('registrar', '!=', 'namecom') // Name.com catalog has its own screen (Settings > Domains > Name.com)
             ->orderBy('tld')->orderByRaw('tenant_id IS NULL')
             ->get()
             ->unique('tld')
@@ -58,6 +59,7 @@ class DomainTldController extends Controller
     public function update(Request $request, DomainTld $domainTld)
     {
         abort_unless($domainTld->tenant_id === auth()->user()->tenant_id, 403);
+        abort_if($domainTld->registrar === 'namecom', 422, 'Name.com TLDs are edited in the Name.com section.');
 
         $data = $request->validate([
             'register_price' => 'sometimes|numeric|min:0',
@@ -77,6 +79,7 @@ class DomainTldController extends Controller
     public function destroy(DomainTld $domainTld)
     {
         abort_unless($domainTld->tenant_id === auth()->user()->tenant_id, 403);
+        abort_if($domainTld->registrar === 'namecom', 422, 'Name.com TLDs are managed in the Name.com section.');
         $domainTld->delete();
         return response()->json(null, 204);
     }

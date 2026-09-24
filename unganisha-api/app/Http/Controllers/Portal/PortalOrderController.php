@@ -97,6 +97,7 @@ class PortalOrderController extends Controller
         $tenantId = $request->user()->tenant_id;
 
         $rows = \App\Models\DomainTld::where('is_active', true)
+            ->where('registrar', '!=', 'namecom') // sold via the Domains page only
             ->where(fn ($q) => $q->where('tenant_id', $tenantId)->orWhereNull('tenant_id'))
             ->orderBy('tld')->orderByRaw('tenant_id IS NULL')
             ->get()->unique('tld')->values()
@@ -379,8 +380,8 @@ class PortalOrderController extends Controller
             }
             $tld = strtolower(explode('.', $domain, 2)[1] ?? '');
             $domainPricing = \App\Models\DomainTld::priceFor($tenantId, $tld);
-            if (!$domainPricing) {
-                return response()->json(['message' => "We don't currently offer .{$tld} — please contact us."], 422);
+            if (!$domainPricing || $domainPricing->registrar === 'namecom') {
+                return response()->json(['message' => $domainPricing ? "Please order .{$tld} domains separately from the Domains page." : "We don't currently offer .{$tld} — please contact us."], 422);
             }
             $years = (int) ($data['years'] ?? 1);
             if ($years < $domainPricing->years_min || $years > $domainPricing->years_max) {

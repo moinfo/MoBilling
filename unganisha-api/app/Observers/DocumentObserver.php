@@ -184,6 +184,12 @@ class DocumentObserver
                     $meta['awaiting_manual_registration'] = true;
                     $domain->update(['meta' => $meta]);
 
+                    // Name.com TLD: never auto-buys by default. Notify staff (and, only if the tenant
+                    // enabled it, queue the guarded auto-registration - same service as the manual button).
+                    if (($meta['registrar'] ?? null) === 'namecom' && $pendingAction === 'register') {
+                        \App\Services\Registrar\NameComRegistrationService::onOrderPaid($domain->fresh());
+                    }
+
                     \Illuminate\Support\Facades\Log::info(
                         "Domain order paid but unmanaged (manual fulfilment needed): {$domain->name}"
                     );

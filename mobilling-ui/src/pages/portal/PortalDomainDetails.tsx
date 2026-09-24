@@ -114,7 +114,7 @@ export default function PortalDomainDetails() {
         <IconWorld size={22} />
         <Title order={3}>{d.name}</Title>
         {d.awaiting_manual_registration ? (
-          <Badge color="orange" variant="light">Setting Up</Badge>
+          <Badge color="orange" variant="light">Registration in progress</Badge>
         ) : (
           <Badge color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
         )}
@@ -191,7 +191,7 @@ export default function PortalDomainDetails() {
                       <Field label="Next Due Date:">{fmtFull(d.expires_at)}</Field>
                       <Field label="Status:">
                         {d.awaiting_manual_registration ? (
-                          <Badge color="orange" variant="light">Setting Up</Badge>
+                          <Badge color="orange" variant="light">Registration in progress</Badge>
                         ) : (
                           <Badge color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
                         )}

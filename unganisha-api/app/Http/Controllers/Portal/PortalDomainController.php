@@ -132,6 +132,8 @@ class PortalDomainController extends Controller
             $action === 'auth_info_revealed'      => 'Transfer code viewed',
             $action === 'sent_by_registry'        => 'Transfer code requested from registry',
             $action === 'nameservers_changed', $action === 'namecom_nameservers_changed' => 'Nameservers changed',
+            $action === 'namecom_registered'      => 'Domain registered',
+            str_contains($action, 'namecom')      => 'Domain updated',
             str_contains($action, '/renew/')      => 'Domain renewed',
             str_contains($action, '/register/')   => 'Domain registered',
             str_contains($action, '/transfer/')   => 'Transfer requested',
@@ -152,7 +154,7 @@ class PortalDomainController extends Controller
                 return response()->json(['message' => 'Could not read the nameservers right now - please try again shortly.'], 422);
             }
             return response()->json(['data' => [
-                'provider'    => 'namecom',
+                'provider'    => 'managed',
                 'original_nameservers' => \App\Services\Registrar\NameComDomainService::original($domain),
                 'nameservers' => $ns,
                 'editable'    => in_array($domain->status, ['active', 'expired']),
@@ -504,7 +506,7 @@ class PortalDomainController extends Controller
         $pricing = DomainTld::priceFor($tenantId, strtolower(explode('.', $name, 2)[1] ?? ''));
 
         try {
-            $result = $registrar->driverFor($tenantId)->check($name);
+            $result = $registrar->checkFor($tenantId, $name, $pricing);
         } catch (RegistrarApiException $e) {
             return response()->json(['message' => 'Could not check availability right now — please try again.'], 422);
         }
@@ -514,7 +516,7 @@ class PortalDomainController extends Controller
             'available' => $result['available'],
             'pricing'   => $pricing ? [
                 'register_price' => (float) $pricing->register_price,
-                'transfer_price' => (float) $pricing->transfer_price,
+                'transfer_price' => $pricing->registrar === 'namecom' ? 0.0 : (float) $pricing->transfer_price,
                 'years_min'      => $pricing->years_min,
                 'years_max'      => $pricing->years_max,
             ] : null,
@@ -559,9 +561,14 @@ class PortalDomainController extends Controller
             return response()->json(['message' => "We don't currently offer .{$tld} — please contact us."], 422);
         }
 
+        $viaNameCom = $pricing->registrar === 'namecom';
+        if ($viaNameCom && $data['action'] !== 'register') {
+            return response()->json(['message' => "Transfers of .{$tld} domains are handled by our team — please contact us."], 422);
+        }
+
         if ($data['action'] === 'register') {
             try {
-                $check = $registrar->driverFor($tenantId)->check($name);
+                $check = $registrar->checkFor($tenantId, $name, $pricing);
                 if (!$check['available']) {
                     return response()->json(['message' => "{$name} is not available."], 422);
                 }
@@ -573,7 +580,7 @@ class PortalDomainController extends Controller
         $unitPrice = $data['action'] === 'register' ? $pricing->register_price : $pricing->transfer_price;
         $total = round($unitPrice * $data['years'], 2);
 
-        [$domain, $document] = DB::transaction(function () use ($data, $name, $tenantId, $user, $total, $unitPrice, $registrar) {
+        [$domain, $document] = DB::transaction(function () use ($data, $name, $tenantId, $user, $total, $unitPrice, $registrar, $viaNameCom) {
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id'       => $tenantId,
                 'client_id'       => $user->client_id,
@@ -602,7 +609,7 @@ class PortalDomainController extends Controller
             $domain = Domain::reviveOrCreate([
                 'tenant_id'            => $tenantId,
                 'client_id'            => $user->client_id,
-                'registrar_account_id' => $registrar->accountFor($tenantId)->id,
+                'registrar_account_id' => $viaNameCom ? null : $registrar->accountFor($tenantId)->id,
                 'name'                 => $name,
                 'status'               => 'pending',
                 // off by default — the client opts in (renewals then draw from their wallet)
@@ -613,7 +620,7 @@ class PortalDomainController extends Controller
                     'pending_years'     => $data['years'],
                     'order_document_id' => $document->id,
                     'portal_order'      => true,
-                ],
+                ] + ($viaNameCom ? ['unmanaged' => true, 'registrar' => 'namecom', 'namecom_years' => (int) $data['years']] : []),
             ]);
 
             return [$domain, $document];

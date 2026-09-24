@@ -16,7 +16,11 @@ class DomainTld extends Model
     protected $fillable = [
         'tenant_id', 'tld', 'register_price', 'renew_price', 'transfer_price', 'reseller_price',
         'years_min', 'years_max', 'is_active', 'is_unmanaged',
+        'registrar', 'usd_register', 'usd_renew', 'usd_transfer', 'price_overridden', 'overridden_ops', 'usd_changed', 'usd_prev', 'usd_synced_at',
     ];
+
+    /** Wholesale USD cost must never leave the staff-only Name.com endpoints. */
+    protected $hidden = ['usd_register', 'usd_renew', 'usd_transfer', 'usd_prev', 'usd_changed', 'usd_synced_at', 'price_overridden', 'overridden_ops'];
 
     protected $casts = [
         'register_price' => 'decimal:2',
@@ -25,7 +29,20 @@ class DomainTld extends Model
         'reseller_price' => 'decimal:2',
         'is_active'      => 'boolean',
         'is_unmanaged'   => 'boolean',
+        'usd_register'   => 'float',
+        'usd_renew'      => 'float',
+        'usd_transfer'   => 'float',
+        'price_overridden' => 'boolean',
+        'usd_changed'    => 'boolean',
+        'usd_prev'       => 'array',
+        'overridden_ops' => 'array',
+        'usd_synced_at'  => 'datetime',
     ];
+
+    public function isNameCom(): bool
+    {
+        return $this->registrar === 'namecom';
+    }
 
     /** Retail price row for a tenant+tld, falling back to the platform row. */
     public static function priceFor(string $tenantId, string $tld): ?self

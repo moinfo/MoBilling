@@ -22,6 +22,7 @@ import {
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import NameComManager from '../components/NameComManager';
+import NameComRegisterModal from '../components/NameComRegisterModal';
 import { usePermissions } from '../hooks/usePermissions';
 import { formatCurrency } from '../utils/formatCurrency';
 import { DateInput } from '@mantine/dates';
@@ -62,6 +63,7 @@ export default function Domains() {
   const [page, setPage] = useState(1);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [nameComOpen, setNameComOpen] = useState(false);
+  const [ncRegister, setNcRegister] = useState<DomainRecord | null>(null);
   const [logsFor, setLogsFor] = useState<DomainRecord | null>(null);
   const [renewFor, setRenewFor] = useState<DomainRecord | null>(null);
   const [confirmManualFor, setConfirmManualFor] = useState<DomainRecord | null>(null);
@@ -380,7 +382,7 @@ export default function Domains() {
                       </Table.Td>
                       <Table.Td>
                         {d.meta?.awaiting_manual_registration ? (
-                          <Tooltip label="Invoice paid — no registrar integration for this TLD, register it yourself then mark it here">
+                          <Tooltip label={d.meta?.registrar === 'namecom' ? 'Invoice paid - register it at Name.com (red button), or mark it registered if you did it elsewhere' : 'Invoice paid — no registrar integration for this TLD, register it yourself then mark it here'}>
                             <Badge size="sm" color="orange" variant="light">Awaiting Registration</Badge>
                           </Tooltip>
                         ) : (
@@ -395,6 +397,13 @@ export default function Domains() {
                             <Tooltip label="Renew (creates invoice)">
                               <ActionIcon variant="light" color="green" onClick={() => setRenewFor(d)}>
                                 <IconRefresh size={15} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                          {can('domains.create') && d.meta?.awaiting_manual_registration && d.meta?.registrar === 'namecom' && (
+                            <Tooltip label="Register at Name.com (review cost, then confirm)">
+                              <ActionIcon variant="filled" color="red" onClick={() => setNcRegister(d)} aria-label="Register at Name.com">
+                                <IconWorldCheck size={15} />
                               </ActionIcon>
                             </Tooltip>
                           )}
@@ -442,6 +451,7 @@ export default function Domains() {
 
       <OrderWizard opened={wizardOpen} onClose={() => setWizardOpen(false)} />
       {nameComOpen && <NameComManager opened onClose={() => setNameComOpen(false)} />}
+      {ncRegister && <NameComRegisterModal domainId={ncRegister.id} domainName={ncRegister.name} onClose={() => setNcRegister(null)} />}
 
       <RenewModal domain={renewFor} onClose={() => setRenewFor(null)} />
 

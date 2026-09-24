@@ -51,4 +51,24 @@ class DomainRegistrarManager
         }
         return new NameComDriver($account);
     }
+
+    /**
+     * Availability routed by the TLD's registrar: Name.com TLDs use the (read-only)
+     * Name.com lookup, everything else the unchanged FRED driver check.
+     * @return array{available: bool, reason: ?string}
+     * @throws RegistrarApiException
+     */
+    public function checkFor(string $tenantId, string $name, ?\App\Models\DomainTld $pricing): array
+    {
+        if ($pricing && $pricing->registrar === 'namecom') {
+            try {
+                $r = $this->namecomFor($tenantId)->checkAvailability($name);
+            } catch (\App\Exceptions\NameComApiException $e) {
+                throw new RegistrarApiException('check', $e->getMessage());
+            }
+            return ['available' => $r['available'], 'reason' => $r['reason']];
+        }
+
+        return $this->driverFor($tenantId)->check($name);
+    }
 }

@@ -16,8 +16,12 @@ use Illuminate\Support\Facades\Http;
  * Deliberately narrow: the HTTP wrapper only ever sends
  *   GET  /core/v1/domains            (list)
  *   GET  /core/v1/domains/{name}     (details)
+ *   GET  /core/v1/tldpricing         (TLD catalog + USD prices, read-only)
+ *   POST /core/v1/domains:checkAvailability (read-only lookup despite the verb)
  *   POST /core/v1/domains/{name}:setNameservers
- * Everything else (register, renew, transfer, delete, contacts, DNS records...)
+ *   POST /core/v1/domains            (CREATE = real purchase; only via createDomain(),
+ *                                     which requires the NameComRegistrationService)
+ * Everything else (renew, transfer, delete, contacts, DNS records...)
  * is refused before any network call. The token is only used as HTTP Basic
  * credentials: never logged, audited or returned.
  */
@@ -30,6 +34,7 @@ class NameComDriver implements RegistrarDriver
     private const MAX_RETRIES = 3;
     private const PER_PAGE = 250;
     private const MAX_PAGES = 40;
+    private const PRICING_PER_PAGE = 500;
 
     /** Tests set this false to skip real sleeping on 429. */
     public static bool $sleepOnRateLimit = true;
@@ -108,6 +113,65 @@ class NameComDriver implements RegistrarDriver
         return $this->request('GET', '/core/v1/domains/' . self::validateDomainName($domain));
     }
 
+    /**
+     * Whole TLD catalog with account-level USD prices for a 1-year term
+     * (GET /core/v1/tldpricing, paginated + paced; 429 backoff in request()).
+     * @return array[] entries: tld, registrationPrice, renewalPrice, transferInPrice (null = unsupported)
+     */
+    public function tldPricing(int $duration = 1): array
+    {
+        $all = [];
+        $page = 1;
+        do {
+            if (self::$paginatedGapMs > 0) {
+                $wait = self::$lastPaginatedAt + self::$paginatedGapMs / 1000 - microtime(true);
+                if ($wait > 0) usleep((int) ($wait * 1e6));
+            }
+            $json = $this->request('GET', '/core/v1/tldpricing', ['perPage' => self::PRICING_PER_PAGE, 'page' => $page, 'duration' => $duration]);
+            self::$lastPaginatedAt = microtime(true);
+            $all = array_merge($all, $json['pricing'] ?? []);
+            $next = (int) ($json['nextPage'] ?? 0);
+            $page = $next > $page ? $next : 0;
+        } while ($page > 0 && $page <= self::MAX_PAGES);
+
+        return $all;
+    }
+
+    /** Live account-level USD price of one TLD for $years (single read). null when unsupported. */
+    public function tldPriceFor(string $tld, int $years): ?array
+    {
+        $json = $this->request('GET', '/core/v1/tldpricing', ['tlds' => strtolower($tld), 'duration' => $years, 'perPage' => 25, 'page' => 1]);
+        foreach ($json['pricing'] ?? [] as $e) {
+            if (strtolower((string) ($e['tld'] ?? '')) === strtolower($tld)) return $e;
+        }
+        return null;
+    }
+
+    /**
+     * Read-only availability lookup (POST :checkAvailability, purchaseType=registration).
+     * @return array{available: bool, reason: ?string, premium: bool, price: ?float, purchase_type: ?string}
+     */
+    public function checkAvailability(string $domain): array
+    {
+        $domain = self::validateDomainName($domain);
+        $json = $this->request('POST', '/core/v1/domains:checkAvailability', [], ['domainNames' => [$domain], 'purchaseType' => 'registration']);
+        foreach ($json['results'] ?? [] as $r) {
+            if (strtolower((string) ($r['domainName'] ?? '')) !== $domain) continue;
+            $premium = (bool) ($r['premium'] ?? false);
+            $type = $r['purchaseType'] ?? null;
+            $purchasable = (bool) ($r['purchasable'] ?? false);
+            $standard = $purchasable && !$premium && ($type === null || $type === 'registration');
+            return [
+                'available'     => $standard,
+                'reason'        => $standard ? null : ($premium && $purchasable ? 'Premium domain - not offered.' : ($r['reason'] ?? 'Not available')),
+                'premium'       => $premium,
+                'price'         => isset($r['purchasePrice']) ? (float) $r['purchasePrice'] : null,
+                'purchase_type' => $type,
+            ];
+        }
+        return ['available' => false, 'reason' => 'No result returned for this name.', 'premium' => false, 'price' => null, 'purchase_type' => null];
+    }
+
     /** @return string[] live nameservers */
     public function nameservers(string $domain): array
     {
@@ -136,6 +200,25 @@ class NameComDriver implements RegistrarDriver
         );
     }
 
+    /**
+     * THE ONE PURCHASE CALL (real money). Only NameComRegistrationService may pass itself in,
+     * so nothing else can reach it. Standard (non-premium) registrations only: purchasePrice omitted.
+     * @param array $contacts ContactsRequest shape (registrant/admin/tech/billing)
+     * @param array $audit    extra audit fields (mode, domain_id, usd, by user...)
+     */
+    public function createDomain(NameComRegistrationService $authorizedBy, string $domain, int $years, array $contacts, array $audit = []): array
+    {
+        $domain = self::validateDomainName($domain);
+        if ($years < 1 || $years > 10) throw new \InvalidArgumentException('Years must be between 1 and 10.');
+
+        return $this->request(
+            'POST', '/core/v1/domains', [],
+            ['domain' => ['domainName' => $domain, 'contacts' => $contacts], 'years' => $years, 'purchaseType' => 'registration'],
+            'domain.register', $domain, ['years' => $years] + $audit,
+            true,
+        );
+    }
+
     // ── RegistrarDriver contract: only info() is meaningful here ──
 
     public function info(string $domain): array
@@ -160,7 +243,8 @@ class NameComDriver implements RegistrarDriver
 
     public function check(string $domain): array
     {
-        throw new RegistrarApiException('check', 'Availability checks are not supported for Name.com.');
+        $r = $this->checkAvailability($domain);
+        return ['available' => $r['available'], 'reason' => $r['reason']];
     }
 
     public function credit(): array
@@ -186,19 +270,20 @@ class NameComDriver implements RegistrarDriver
     // ── transport ──
 
     /** Allow-list: refuses anything but the three permitted calls BEFORE touching the network. */
-    public static function assertAllowed(string $method, string $path): void
+    public static function assertAllowed(string $method, string $path, bool $createAuthorized = false): void
     {
         $m = strtoupper($method);
-        $ok = ($m === 'GET' && ($path === '/core/v1/domains' || preg_match('#^/core/v1/domains/[a-z0-9.-]+$#', $path)))
-            || ($m === 'POST' && preg_match('#^/core/v1/domains/[a-z0-9.-]+:setNameservers$#', $path));
+        $ok = ($m === 'GET' && ($path === '/core/v1/domains' || $path === '/core/v1/tldpricing' || preg_match('#^/core/v1/domains/[a-z0-9.-]+$#', $path)))
+            || ($m === 'POST' && ($path === '/core/v1/domains:checkAvailability' || preg_match('#^/core/v1/domains/[a-z0-9.-]+:setNameservers$#', $path)))
+            || ($m === 'POST' && $path === '/core/v1/domains' && $createAuthorized);
         if (!$ok) {
-            throw new NameComApiException('This request is not permitted: only reading domains and setting nameservers is enabled for Name.com.');
+            throw new NameComApiException('This request is not permitted: Name.com access is limited to reading, availability checks, nameservers and (staff-approved) registration.');
         }
     }
 
-    private function request(string $method, string $path, array $query = [], array $body = [], ?string $auditAction = null, ?string $target = null, array $auditRequest = []): array
+    private function request(string $method, string $path, array $query = [], array $body = [], ?string $auditAction = null, ?string $target = null, array $auditRequest = [], bool $createAuthorized = false): array
     {
-        self::assertAllowed($method, $path);
+        self::assertAllowed($method, $path, $createAuthorized);
         $method = strtoupper($method);
 
         $sandbox = $this->account->is_sandbox;

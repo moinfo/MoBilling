@@ -1,4 +1,5 @@
 import NameComNameservers from '../components/NameComNameservers';
+import NameComRegisterModal from '../components/NameComRegisterModal';
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Button, Grid, Anchor, Code,
@@ -39,6 +40,7 @@ export default function DomainDetails() {
   const { can } = usePermissions();
   const [renewOpen, setRenewOpen] = useState(false);
   const [confirmManualOpen, setConfirmManualOpen] = useState(false);
+  const [ncRegisterOpen, setNcRegisterOpen] = useState(false);
   const [authCode, setAuthCode] = useState<string | null>(null);
   const [authGenerated, setAuthGenerated] = useState(false);
   const [authSentInfo, setAuthSentInfo] = useState<{ message: string; hint: string | null } | null>(null);
@@ -150,6 +152,11 @@ export default function DomainDetails() {
             <Button size="xs" variant="light" color="green" leftSection={<IconRefresh size={14} />}
               onClick={() => setRenewOpen(true)}>
               Renew (creates invoice)
+            </Button>
+          )}
+          {can('domains.create') && meta.awaiting_manual_registration && meta.registrar === 'namecom' && (
+            <Button size="xs" color="red" leftSection={<IconWorldCheck size={14} />} onClick={() => setNcRegisterOpen(true)}>
+              Register at Name.com
             </Button>
           )}
           {can('domains.create') && meta.awaiting_manual_registration && (
@@ -318,6 +325,7 @@ export default function DomainDetails() {
         <StaffRenewForm domainId={d.id} onDone={() => setRenewOpen(false)} />
       </Modal>
 
+      {ncRegisterOpen && <NameComRegisterModal domainId={d.id} domainName={d.name} onClose={() => setNcRegisterOpen(false)} />}
       <Modal opened={confirmManualOpen} onClose={() => setConfirmManualOpen(false)} title={`Mark ${d.name} as registered`} centered>
         <StaffConfirmManualForm domainId={d.id} onDone={() => setConfirmManualOpen(false)} />
       </Modal>

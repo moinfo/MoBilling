@@ -30,11 +30,11 @@ class DomainController extends Controller
 
         // No registrar driver can answer for this TLD (gTLDs — only .tz is
         // FRED-backed) — nothing to ask, so don't pretend to ask it.
-        if ($pricing && $pricing->is_unmanaged) {
+        if ($pricing && $pricing->is_unmanaged && $pricing->registrar !== 'namecom') {
             $result = ['available' => true, 'reason' => 'Manually fulfilled — verify availability yourself before ordering; this was not checked against a live registry.'];
         } else {
             try {
-                $result = $this->registrar->driverFor(auth()->user()->tenant_id)->check($name);
+                $result = $this->registrar->checkFor(auth()->user()->tenant_id, $name, $pricing);
             } catch (RegistrarApiException $e) {
                 return response()->json(['message' => 'Registry check failed: ' . $e->getMessage()], 422);
             }
@@ -490,9 +490,13 @@ class DomainController extends Controller
         // check) — skipped for unmanaged TLDs: no registrar driver exists to
         // ask, staff is responsible for confirming availability themselves
         // before ordering (see the advisory note check() already returns).
-        if ($data['action'] === 'register' && !$pricing->is_unmanaged) {
+        $viaNameCom = $pricing->registrar === 'namecom';
+        if ($viaNameCom && $data['action'] !== 'register') {
+            return response()->json(['message' => "Transfers of .{$this->tldOf($name)} (Name.com) are not supported here - record it as an existing domain instead."], 422);
+        }
+        if ($data['action'] === 'register' && (!$pricing->is_unmanaged || $viaNameCom)) {
             try {
-                $check = $this->registrar->driverFor($tenantId)->check($name);
+                $check = $this->registrar->checkFor($tenantId, $name, $pricing);
                 if (!$check['available']) {
                     return response()->json(['message' => "{$name} is not available: " . ($check['reason'] ?? 'taken')], 422);
                 }
@@ -504,7 +508,7 @@ class DomainController extends Controller
         $unitPrice = $data['action'] === 'register' ? $pricing->register_price : $pricing->transfer_price;
         $total     = round($unitPrice * $data['years'], 2);
 
-        $result = DB::transaction(function () use ($data, $name, $tenantId, $total, $unitPrice, $pricing) {
+        $result = DB::transaction(function () use ($data, $name, $tenantId, $total, $unitPrice, $pricing, $viaNameCom) {
             $document = Document::create([
                 'tenant_id'       => $tenantId,
                 'client_id'       => $data['client_id'],
@@ -534,7 +538,7 @@ class DomainController extends Controller
             $domain = Domain::reviveOrCreate([
                 'tenant_id'            => $tenantId,
                 'client_id'            => $data['client_id'],
-                'registrar_account_id' => $this->registrar->accountFor($tenantId)->id,
+                'registrar_account_id' => $viaNameCom ? null : $this->registrar->accountFor($tenantId)->id,
                 'name'                 => $name,
                 'status'               => 'pending',
                 // off by default — the client opts in via the portal
@@ -545,7 +549,7 @@ class DomainController extends Controller
                     'pending_years'     => $data['years'],
                     'order_document_id' => $document->id,
                     'unmanaged'         => $pricing->is_unmanaged,
-                ],
+                ] + ($viaNameCom ? ['registrar' => 'namecom', 'namecom_years' => (int) $data['years']] : []),
             ]);
 
             return [$domain, $document];
@@ -567,9 +571,11 @@ class DomainController extends Controller
         return response()->json([
             'data'     => $domain->load('client:id,name'),
             'document' => ['id' => $document->id, 'document_number' => $document->document_number, 'total' => $document->total],
-            'message'  => $pricing->is_unmanaged
+            'message'  => $viaNameCom
+                ? "Order created - invoice {$document->document_number}. Once it is paid the domain appears in the Name.com registration queue (Domains page) for you to register."
+                : ($pricing->is_unmanaged
                 ? "Order created — invoice {$document->document_number}. No registrar integration for .{$this->tldOf($name)}: once paid, {$data['action']} it yourself at your registrar, then mark it registered here."
-                : "Order created — invoice {$document->document_number}. The domain will be {$data['action']}ed at the registry once the invoice is paid.",
+                : "Order created — invoice {$document->document_number}. The domain will be {$data['action']}ed at the registry once the invoice is paid."),
         ], 201);
     }
 

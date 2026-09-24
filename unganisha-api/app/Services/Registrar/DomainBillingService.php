@@ -20,6 +20,9 @@ class DomainBillingService
         $tld = strtolower(explode('.', $domain->name, 2)[1] ?? '');
         $pricing = DomainTld::priceFor($domain->tenant_id, $tld);
 
+        if (!$pricing && ($domain->meta['registrar'] ?? null) === 'namecom') {
+            $pricing = DomainTld::where('tenant_id', $domain->tenant_id)->where('registrar', 'namecom')->where('tld', $tld)->where('renew_price', '>', 0)->first();
+        }
         if (!$pricing) {
             throw new \RuntimeException("No pricing configured for .{$tld}");
         }

@@ -52,7 +52,7 @@ class PublicDomainController extends Controller
         }
 
         try {
-            $result = $this->registrar->driverFor($tenantId)->check($name);
+            $result = $this->registrar->checkFor($tenantId, $name, $pricing);
         } catch (RegistrarApiException $e) {
             report($e);
 
@@ -68,7 +68,7 @@ class PublicDomainController extends Controller
             'pricing'   => [
                 'tld'            => $pricing->tld,
                 'register_price' => (float) $pricing->register_price,
-                'transfer_price' => (float) $pricing->transfer_price,
+                'transfer_price' => $pricing->registrar === 'namecom' ? 0.0 : (float) $pricing->transfer_price,
                 'years_min'      => $pricing->years_min,
                 'years_max'      => $pricing->years_max,
             ],

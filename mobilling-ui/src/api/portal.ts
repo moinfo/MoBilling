@@ -387,7 +387,7 @@ export const portalGetEppCode = (id: string) =>
   api.post<PortalEppCodeResult>(`/portal/domains/${id}/epp-code`);
 
 export const getPortalDomainNameservers = (id: string) =>
-  api.get<{ data: { nameservers: string[]; editable: boolean; provider?: 'namecom' } }>(`/portal/domains/${id}/nameservers`);
+  api.get<{ data: { nameservers: string[]; editable: boolean; provider?: 'managed' } }>(`/portal/domains/${id}/nameservers`);
 
 export interface PortalDnsRecord {
   type: string;

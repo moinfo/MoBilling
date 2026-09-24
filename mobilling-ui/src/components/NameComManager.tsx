@@ -5,7 +5,8 @@ import {
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { useDebouncedValue, useMediaQuery } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconPlugConnected, IconDownload } from '@tabler/icons-react';
+import { IconPlugConnected, IconDownload, IconTags } from '@tabler/icons-react';
+import NameComPricingPanel from './NameComPricingPanel';
 import {
   getNameComAccount, saveNameComAccount, deleteNameComAccount, testNameComAccount, listNameComDomains, linkNameComDomain, NameComDomainRow,
 } from '../api/namecom';
@@ -17,20 +18,29 @@ const errMsg = (e: any): string =>
   || (e?.response?.data?.errors ? Object.values(e.response.data.errors).flat().join(' ') : null)
   || e?.message || 'Something went wrong';
 
-export default function NameComManager({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+/** Shared by the Domains-page modal and Settings > Domains (one implementation). */
+export function NameComTabs() {
   const { can } = usePermissions();
-  const mobile = useMediaQuery('(max-width: 48em)');
   const [tab, setTab] = useState<string | null>(can('domains.settings') ? 'connection' : 'import');
   return (
+    <Tabs value={tab} onChange={setTab} keepMounted={false}>
+      <Tabs.List>
+        {can('domains.settings') && <Tabs.Tab value="connection" leftSection={<IconPlugConnected size={14} />}>Connection</Tabs.Tab>}
+        {can('domains.settings') && <Tabs.Tab value="pricing" leftSection={<IconTags size={14} />}>TLDs &amp; pricing</Tabs.Tab>}
+        {can('domains.create') && <Tabs.Tab value="import" leftSection={<IconDownload size={14} />}>Import from Name.com</Tabs.Tab>}
+      </Tabs.List>
+      {can('domains.settings') && <Tabs.Panel value="connection" pt="md"><ConnectionTab /></Tabs.Panel>}
+      {can('domains.settings') && <Tabs.Panel value="pricing" pt="md"><NameComPricingPanel /></Tabs.Panel>}
+      {can('domains.create') && <Tabs.Panel value="import" pt="md"><ImportTab /></Tabs.Panel>}
+    </Tabs>
+  );
+}
+
+export default function NameComManager({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+  const mobile = useMediaQuery('(max-width: 48em)');
+  return (
     <Modal opened={opened} onClose={onClose} title="Name.com" size="xl" fullScreen={!!mobile}>
-      <Tabs value={tab} onChange={setTab} keepMounted={false}>
-        <Tabs.List>
-          {can('domains.settings') && <Tabs.Tab value="connection" leftSection={<IconPlugConnected size={14} />}>Connection</Tabs.Tab>}
-          {can('domains.create') && <Tabs.Tab value="import" leftSection={<IconDownload size={14} />}>Import from Name.com</Tabs.Tab>}
-        </Tabs.List>
-        {can('domains.settings') && <Tabs.Panel value="connection" pt="md"><ConnectionTab /></Tabs.Panel>}
-        {can('domains.create') && <Tabs.Panel value="import" pt="md"><ImportTab /></Tabs.Panel>}
-      </Tabs>
+      <NameComTabs />
     </Modal>
   );
 }
@@ -72,8 +82,9 @@ function ConnectionTab() {
   return (
     <Stack>
       <Text size="sm" c="dimmed">
-        Connect your Name.com API account so MoBilling can read your domains and change their nameservers.
-        Nothing else is ever done at Name.com (no registration, renewal, transfer or deletion).
+        Connect your Name.com API account so MoBilling can read your domains, read TLD prices, check availability,
+        change nameservers and - only when you confirm it (or if you turn on auto-register) - register domains that customers paid for.
+        Renewals, transfers and deletions are never done through the API.
       </Text>
       <Alert color="blue" variant="light" title="Before you connect">
         Create an API token at Name.com (Account &gt; Settings &gt; API Token Management). Two-step verification (2FA)

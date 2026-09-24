@@ -9,7 +9,7 @@ import { NAMECOM_LINODE_NAMESERVERS } from '../api/namecom';
 interface NsData { nameservers: string[]; original_nameservers?: string[]; editable?: boolean }
 
 /**
- * Nameserver editor for Name.com-linked domains (staff drawer + client portal).
+ * Nameserver editor for externally managed domains (staff drawer + client portal).
  * Live read, 2-13 hostnames, presets, confirmation before saving.
  */
 export default function NameComNameservers({ queryKey, fetcher, saver, canEdit, portal, invalidate = [] }: {
@@ -71,7 +71,7 @@ export default function NameComNameservers({ queryKey, fetcher, saver, canEdit, 
   const body = (
     <>
       {isLoading ? (
-        <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">Fetching live from Name.com...</Text></Group>
+        <Group gap="xs"><Loader size="xs" /><Text size="sm" c="dimmed">{portal ? 'Loading nameservers...' : 'Fetching live from Name.com...'}</Text></Group>
       ) : isError || !ns ? (
         <Alert color="orange" variant="light">{loadErr ?? 'Could not read the nameservers right now - please try again shortly.'}</Alert>
       ) : !editing ? (

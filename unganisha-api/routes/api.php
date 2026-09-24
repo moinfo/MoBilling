@@ -741,7 +741,20 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::delete('/account', [\App\Http\Controllers\NameComController::class, 'deleteAccount']);
         Route::post('/account/test', [\App\Http\Controllers\NameComController::class, 'test'])->middleware('throttle:10,1');
     });
+    Route::middleware('permission:domains.settings')->prefix('namecom')->group(function () {
+        $c = \App\Http\Controllers\NameComSalesController::class;
+        Route::get('/settings', [$c, 'settings']);
+        Route::put('/settings', [$c, 'saveSettings'])->middleware('throttle:20,1');
+        Route::get('/tlds', [$c, 'tlds']);
+        Route::post('/tlds/sync', [$c, 'sync'])->middleware('throttle:6,60');
+        Route::post('/tlds/ack', [$c, 'ackChanges']);
+        Route::post('/tlds/recompute', [$c, 'recompute'])->middleware('throttle:10,1');
+        Route::put('/tlds/{tld}', [$c, 'updateTld'])->where('tld', '[a-z.]+')->middleware('throttle:120,1');
+    });
     Route::middleware('permission:domains.create')->prefix('namecom')->group(function () {
+        Route::get('/registration/{domain}', [\App\Http\Controllers\NameComSalesController::class, 'registrationPreview'])->middleware('throttle:30,1');
+        Route::post('/registration/{domain}', [\App\Http\Controllers\NameComSalesController::class, 'register'])->middleware('throttle:20,1');
+
         Route::get('/domains', [\App\Http\Controllers\NameComController::class, 'domains'])->middleware('throttle:6,1');
         Route::post('/link', [\App\Http\Controllers\NameComController::class, 'link'])->middleware('throttle:60,1');
     });

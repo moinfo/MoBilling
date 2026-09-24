@@ -182,8 +182,8 @@ export default function PortalDomains() {
                   </Table.Td>
                   <Table.Td>
                     {d.awaiting_manual_registration ? (
-                      <Tooltip label="Your order is paid — we're setting this domain up now.">
-                        <Badge size="sm" color="orange" variant="light">Setting Up</Badge>
+                      <Tooltip label="Your order is paid - your domain registration is in progress.">
+                        <Badge size="sm" color="orange" variant="light">Registration in progress</Badge>
                       </Tooltip>
                     ) : (
                       <Badge size="sm" color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>

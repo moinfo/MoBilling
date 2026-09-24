@@ -15,12 +15,31 @@ import {
 } from '../../api/domains';
 import { modals } from '@mantine/modals';
 import { formatCurrency } from '../../utils/formatCurrency';
+import { usePermissions } from '../../hooks/usePermissions';
+import { NameComTabs } from '../NameComManager';
 
 export default function DomainsTab() {
+  const { can } = usePermissions();
   return (
     <Stack gap="xl">
       <RegistrarAccountsSection />
       <TldPricingSection />
+      {can('domains.settings') && <NameComSection />}
+    </Stack>
+  );
+}
+
+function NameComSection() {
+  return (
+    <Stack>
+      <Group gap="xs">
+        <IconWorldWww size={20} />
+        <Text fw={600}>Name.com (international TLDs)</Text>
+      </Group>
+      <Alert color="blue" variant="light" icon={<IconAlertCircle size={16} />}>
+        Connect Name.com, sync its TLD list and USD prices, then enable the TLDs you want to sell. Selling price = USD cost x rate + fixed markup (per TLD, editable).
+      </Alert>
+      <Paper withBorder p="md" radius="md"><NameComTabs /></Paper>
     </Stack>
   );
 }
