@@ -198,12 +198,12 @@ class PortalLinodeController extends Controller
 
         $reqs = LinodeDomainRequest::withoutGlobalScopes()->where('tenant_id', $srv->tenant_id);
         if ((clone $reqs)->where('client_id', $user->client_id)->where('created_at', '>=', now()->subDay())->count() >= self::MAX_DOMAIN_ADDS_PER_DAY) {
-            return response()->json(['message' => 'Umefikia kikomo cha domain ' . self::MAX_DOMAIN_ADDS_PER_DAY . ' kwa siku. Jaribu kesho au tumia "Omba msaada".'], 429);
+            return response()->json(['message' => 'You have reached the limit of ' . self::MAX_DOMAIN_ADDS_PER_DAY . ' domains per day. Try again tomorrow or use "Request server support".'], 429);
         }
         $exists = LinodeResource::withoutGlobalScopes()->where('tenant_id', $srv->tenant_id)->where('type', 'domain')->where('label', $domain)
             ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'gone'))->exists();
         if ($exists) {
-            return response()->json(['message' => "$domain is already set up. If it is yours and not working, use \"Omba msaada\"."], 422);
+            return response()->json(['message' => "$domain is already set up. If it is yours and not working, use \"Request server support\"."], 422);
         }
         $account = LinodeAccount::withoutGlobalScopes()->where('id', $srv->linode_account_id)->where('tenant_id', $srv->tenant_id)->first();
         if (!$account || $account->status !== 'active') {
@@ -220,13 +220,13 @@ class PortalLinodeController extends Controller
             $out = app(LinodeDomainProvisioner::class)->add($account, $domain, $data['soa_email'] ?? $account->soa_email, $ttl, $point ? $srv : null, $user->client_id);
         } catch (\Throwable $e) {
             $this->audit($request, $srv, 'portal.domain_add', ['domain' => $domain], 502, $e->getMessage());
-            return response()->json(['message' => 'Domain hii haikuweza kuongezwa (huenda tayari ipo au kuna hitilafu). Jaribu tena baadaye au tumia "Omba msaada".'], 422);
+            return response()->json(['message' => 'This domain could not be added (it may already exist, or there was an error). Try again later or use "Request server support".'], 422);
         }
         $row->save();
         $this->audit($request, $srv, 'portal.domain_add', ['domain' => $domain, 'request_id' => $row->id, 'records_created' => $out['records_created'] ?? null, 'point_to_server' => $point, 'ttl' => $ttl]);
 
         return response()->json([
-            'message' => "$domain imeongezwa kwenye server yako. Sasa weka nameservers za Linode kwa msajili wa domain.",
+            'message' => "$domain was added to your server. Now set the Linode nameservers at your domain registrar.",
             'data' => ['id' => $row->id, 'domain' => $domain, 'status' => 'approved', 'records_created' => $out['records_created'] ?? 0, 'pointed' => $point, 'nameservers' => LinodeService::NAMESERVERS],
         ], 201);
     }
@@ -236,7 +236,7 @@ class PortalLinodeController extends Controller
     private const DNS_WRITES_PER_CLIENT_HOUR = 20;
     private const MAX_RECORDS_PER_DOMAIN = 50;
     private const DNS_WRITE_ACTIONS = ['portal.dns_record_add', 'portal.dns_record_edit', 'portal.dns_point_to_server', 'portal.dns_soa_edit'];
-    private const DNS_GENERIC_ERROR = 'Haikuweza kukamilisha ombi la DNS sasa hivi. Jaribu tena baadaye au tumia "Omba msaada wa server".';
+    private const DNS_GENERIC_ERROR = 'The DNS request could not be completed right now. Try again later or use "Request server support".';
 
     private function dnsContext(Request $request, string $server, string $domainResource, bool $write): array
     {
@@ -269,7 +269,7 @@ class PortalLinodeController extends Controller
         $n = LinodeAuditLog::withoutGlobalScopes()->where('tenant_id', $srv->tenant_id)->whereIn('action', self::DNS_WRITE_ACTIONS)
             ->where('created_at', '>=', now()->subHour())->where('request->client_id', $request->user()->client_id)->count();
         return $n >= self::DNS_WRITES_PER_CLIENT_HOUR
-            ? response()->json(['message' => 'Umefikia kikomo cha mabadiliko ' . self::DNS_WRITES_PER_CLIENT_HOUR . ' ya DNS kwa saa. Jaribu tena baadaye.'], 429)
+            ? response()->json(['message' => 'You have reached the limit of ' . self::DNS_WRITES_PER_CLIENT_HOUR . ' DNS changes per hour. Try again later.'], 429)
             : null;
     }
 
@@ -322,7 +322,7 @@ class PortalLinodeController extends Controller
         $dom->meta = $meta;
         $dom->save();
         $this->dnsAudit($request, $srv, $dom, 'portal.dns_soa_edit', ['changed' => $clean]);
-        return response()->json(['data' => $this->soaFacts($d + $clean, $dom), 'message' => 'SOA imesasishwa.']);
+        return response()->json(['data' => $this->soaFacts($d + $clean, $dom), 'message' => 'SOA updated.']);
     }
 
     public function dnsRecordStore(Request $request, string $server, string $domainResource): JsonResponse
@@ -332,7 +332,7 @@ class PortalLinodeController extends Controller
         if ($limited = $this->dnsLimited($request, $srv)) return $limited;
         try {
             if (count($svc->listRecords($dom->remote_id)) >= self::MAX_RECORDS_PER_DOMAIN) {
-                return response()->json(['message' => 'Domain hii imefikia kikomo cha records ' . self::MAX_RECORDS_PER_DOMAIN . '. Tumia "Omba msaada wa server".'], 422);
+                return response()->json(['message' => 'This domain has reached the limit of ' . self::MAX_RECORDS_PER_DOMAIN . ' records. Use "Request server support".'], 422);
             }
             $rec = $svc->createRecord($dom->remote_id, $input);
         } catch (\InvalidArgumentException $e) {
@@ -342,7 +342,7 @@ class PortalLinodeController extends Controller
             return response()->json(['message' => self::DNS_GENERIC_ERROR], 422);
         }
         $this->dnsAudit($request, $srv, $dom, 'portal.dns_record_add', ['record_type' => $rec['type'] ?? strtoupper((string) $input['type']), 'record_name' => $rec['name'] ?? ($input['name'] ?? '')], 201);
-        return response()->json(['data' => $this->safeRecord($rec), 'message' => 'Record imeongezwa.'], 201);
+        return response()->json(['data' => $this->safeRecord($rec), 'message' => 'Record added.'], 201);
     }
 
     public function dnsRecordUpdate(Request $request, string $server, string $domainResource, string $recordId): JsonResponse
@@ -360,7 +360,7 @@ class PortalLinodeController extends Controller
             return response()->json(['message' => self::DNS_GENERIC_ERROR], 422);
         }
         $this->dnsAudit($request, $srv, $dom, 'portal.dns_record_edit', ['record_type' => $rec['type'] ?? strtoupper((string) $input['type']), 'record_name' => $rec['name'] ?? ($input['name'] ?? '')]);
-        return response()->json(['data' => $this->safeRecord($rec), 'message' => 'Record imesasishwa.']);
+        return response()->json(['data' => $this->safeRecord($rec), 'message' => 'Record updated.']);
     }
 
     /** (Re)create the standard A + www records pointing at this server. Idempotent: identical records are skipped. */
@@ -368,11 +368,11 @@ class PortalLinodeController extends Controller
     {
         [$srv, $dom, $svc] = $this->dnsContext($request, $server, $domainResource, true);
         $ip = $srv->ipv4[0] ?? null;
-        if (!$ip) return response()->json(['message' => 'Server hii haina IP kwa sasa. Tumia "Omba msaada wa server".'], 422);
+        if (!$ip) return response()->json(['message' => 'This server has no IP address right now. Use "Request server support".'], 422);
         if ($limited = $this->dnsLimited($request, $srv)) return $limited;
         try {
             if (count($svc->listRecords($dom->remote_id)) >= self::MAX_RECORDS_PER_DOMAIN) {
-                return response()->json(['message' => 'Domain hii imefikia kikomo cha records ' . self::MAX_RECORDS_PER_DOMAIN . '. Tumia "Omba msaada wa server".'], 422);
+                return response()->json(['message' => 'This domain has reached the limit of ' . self::MAX_RECORDS_PER_DOMAIN . ' records. Use "Request server support".'], 422);
             }
             $created = $svc->createStandardWebRecords($dom->remote_id, $ip);
         } catch (\InvalidArgumentException $e) {
@@ -382,7 +382,7 @@ class PortalLinodeController extends Controller
             return response()->json(['message' => self::DNS_GENERIC_ERROR], 422);
         }
         $this->dnsAudit($request, $srv, $dom, 'portal.dns_point_to_server', ['records_created' => count($created)]);
-        return response()->json(['message' => count($created) ? 'Records za A na www zimeelekezwa kwenye server hii.' : 'Records tayari zinaelekea kwenye server hii.', 'data' => ['created' => count($created)]]);
+        return response()->json(['message' => count($created) ? 'A and www records now point to this server.' : 'Records already point to this server.', 'data' => ['created' => count($created)]]);
     }
 
     public function supportTicket(Request $request, string $server): JsonResponse

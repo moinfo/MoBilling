@@ -11,12 +11,12 @@ export default function PortalServers() {
     <Stack>
       <Title order={2}>My Servers</Title>
       {isLoading ? <Center h={160}><Loader /></Center> : rows.length === 0 ? (
-        <Alert>Huna server bado. Server yako ya Linode ikiunganishwa na subscription yako itaonekana hapa.</Alert>
+        <Alert>You have no servers yet. Your Linode server will appear here once it is linked to your subscription.</Alert>
       ) : (
         <Paper withBorder p="md">
           <Table.ScrollContainer minWidth={520}>
             <Table striped>
-              <Table.Thead><Table.Tr><Table.Th>Server</Table.Th><Table.Th>IP</Table.Th><Table.Th>Region</Table.Th><Table.Th>Hali</Table.Th><Table.Th /></Table.Tr></Table.Thead>
+              <Table.Thead><Table.Tr><Table.Th>Server</Table.Th><Table.Th>IP</Table.Th><Table.Th>Region</Table.Th><Table.Th>Status</Table.Th><Table.Th /></Table.Tr></Table.Thead>
               <Table.Tbody>
                 {rows.map((s) => (
                   <Table.Tr key={s.id}>
