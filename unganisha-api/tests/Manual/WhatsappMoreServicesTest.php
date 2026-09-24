@@ -1445,8 +1445,8 @@ class Fw extends WhatsAppService
 {
     public static array $sent = [];
     public function __construct() {}
-    public function sendSessionText(Tenant $tenant, string $recipient, string $message): array { self::$sent[] = ['type' => 'text', 'text' => $message]; return []; }
-    public function sendCtaUrlSession(Tenant $tenant, string $recipient, string $text, string $buttonText, string $url): array { self::$sent[] = ['type' => 'cta', 'text' => $text, 'button' => $buttonText, 'url' => $url]; return []; }
+    public function sendSessionText(Tenant $tenant, string $recipient, string $message): array { self::$sent[] = ['type' => 'text', 'text' => $message, 'to' => $recipient]; return []; }
+    public function sendCtaUrlSession(Tenant $tenant, string $recipient, string $text, string $buttonText, string $url): array { self::$sent[] = ['type' => 'cta', 'text' => $text, 'button' => $buttonText, 'url' => $url, 'to' => $recipient]; return []; }
     public static function last(): string { return end(self::$sent)['text'] ?? ''; }
     public static function allText(): string { return implode("\n", array_column(self::$sent, 'text')); }
 }

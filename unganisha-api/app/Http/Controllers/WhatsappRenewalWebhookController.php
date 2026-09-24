@@ -54,6 +54,9 @@ use Illuminate\Support\Str;
  */
 class WhatsappRenewalWebhookController extends Controller
 {
+    /** The sender's number exactly as received (digits, with country code) — session keys use the 9-digit form. */
+    private string $inboundDigits = '';
+
     /** Marker-triggered: MoSMS already knows this was a bare "1" to a specific reminder. */
     public function confirm(Request $request, RenewalBundleService $bundler)
     {
@@ -69,6 +72,7 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         $phone = PhoneHelper::normalize($request->phone);
+        $this->inboundDigits = preg_replace('/\D/', '', (string) $request->phone);
 
         $session = WhatsappRenewalSession::withoutGlobalScopes()
             ->where('tenant_id', $tenant->id)
@@ -133,6 +137,7 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         $phone = PhoneHelper::normalize($request->phone);
+        $this->inboundDigits = preg_replace('/\D/', '', (string) $request->phone);
         $text = trim((string) $request->input('text', ''));
 
         if ($this->inboundRateLimited($tenant, $phone)) {
@@ -197,6 +202,12 @@ class WhatsappRenewalWebhookController extends Controller
                 return response('OK', 200);
             }
 
+            // Inactive / suspended / merged client: no self-service menu at all (staff-assist is a staff decision).
+            if (!$session->assisted_by_user_id && $this->clientBlocked($client)) {
+                $this->replyClientSuspended($tenant, $client, $phone, $lang);
+                return response('OK', 200);
+            }
+
             // A step that timed out only loses the flow, never the verified login.
             if ($session->flow && !$session->assisted_by_user_id && $session->flow_expires_at && $session->flow_expires_at->isPast()) {
                 $this->reply($tenant, $phone, $this->t($lang, 'Muda wa hatua umeisha, tuanze upya:', 'That step timed out, let\'s start over:'));
@@ -254,8 +265,7 @@ class WhatsappRenewalWebhookController extends Controller
             return response('OK', 200);
         }
 
-        $clientMatch = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
-        $clientMatch = PhoneHelper::wherePhone($clientMatch, 'phone', $phone)->first();
+        $clientMatch = $this->phoneClients($tenant, $phone);
 
         // A session that ran out says so, once, before we start over (startLanguageSelect replaces it).
         if ($session && $session->isExpired()) {
@@ -279,7 +289,7 @@ class WhatsappRenewalWebhookController extends Controller
     {
         $q = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
 
-        return PhoneHelper::wherePhone($q, 'phone', $phone)->get();
+        return PhoneHelper::wherePhone($q, 'phone', $phone, $this->inboundDigits ?: null)->orderBy('created_at')->orderBy('id')->get();
     }
 
     /**
@@ -664,14 +674,18 @@ class WhatsappRenewalWebhookController extends Controller
 
     // ── Language ─────────────────────────────────────────────────────────
 
-    private function startLanguageSelect(Tenant $tenant, string $phone, ?Client $clientMatch): void
+    private function startLanguageSelect(Tenant $tenant, string $phone, \Illuminate\Support\Collection $matches): void
     {
+        // Several clients share this phone: the account is asked for (masked names) before surname verification.
+        $clientMatch = $matches->count() === 1 ? $matches->first() : null;
+        $candidates = $matches->count() > 1 ? $matches->take(5)->pluck('id')->all() : null;
+
         WhatsappRenewalSession::updateOrCreate(
             ['tenant_id' => $tenant->id, 'phone' => $phone],
             [
                 'client_id' => $clientMatch?->id,
                 'flow' => 'language_select',
-                'state' => ['next' => $clientMatch ? 'surname' : 'register'],
+                'state' => ['next' => $clientMatch ? 'surname' : 'register'] + ($candidates ? ['candidates' => $candidates] : []),
                 'items' => null,
                 'language' => null,
                 'confirmed_at' => null,
@@ -704,7 +718,7 @@ class WhatsappRenewalWebhookController extends Controller
         // handleSurnameStep's 'has_account'/'want_account' steps), never as the
         // sole decider, so someone can always say "no account" honestly and be
         // routed correctly either way.
-        $session->update(['language' => $lang, 'flow' => null, 'state' => ['step' => 'has_account']]);
+        $session->update(['language' => $lang, 'flow' => null, 'state' => ['step' => 'has_account'] + (($session->state['candidates'] ?? null) ? ['candidates' => $session->state['candidates']] : [])]);
         $this->reply($tenant, $phone, $this->t($lang,
             "Je, una akaunti ya MoBilling?\n\n1) Ndiyo\n2) Hapana\n\nJibu na namba.",
             "Do you have a MoBilling account?\n\n1) Yes\n2) No\n\nReply with a number."
@@ -752,7 +766,7 @@ class WhatsappRenewalWebhookController extends Controller
             'name' => $name,
             'first_name' => $firstName,
             'last_name' => $lastName,
-            'phone' => '0' . $phone,
+            'phone' => $this->registrationPhone($phone),
             'status' => 'active',
         ]);
 
@@ -766,6 +780,16 @@ class WhatsappRenewalWebhookController extends Controller
     }
 
     /** Optional email after registration: stored only when valid and not used by another client. */
+    /**
+     * Stored form for a new registration: Tanzanian numbers keep the existing national form (0 + 9 digits, as
+     * everywhere else in the data); a number from another country is stored in full international digits
+     * (e.g. 254712345678) so it can never be mistaken for a Tanzanian one.
+     */
+    private function registrationPhone(string $phone): string
+    {
+        return PhoneHelper::isForeign($this->inboundDigits) ? PhoneHelper::e164($this->inboundDigits) : '0' . $phone;
+    }
+
     private function handleRegistrationEmailStep(Tenant $tenant, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
     {
         $client = Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
@@ -814,6 +838,10 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
             if ($yes) {
+                if (!$client && count($state['candidates'] ?? []) > 1) {
+                    $this->askWhichAccount($tenant, $phone, $session, $state['candidates'], $lang);
+                    return;
+                }
                 if ($client) {
                     $session->update(['state' => ['step' => 'surname']]);
                     $this->reply($tenant, $phone, $this->t($lang,
@@ -856,8 +884,12 @@ class WhatsappRenewalWebhookController extends Controller
 
             // Re-check by phone right before creating anything — closes the loop
             // even if they mistakenly said "no account" earlier despite having one.
-            $existing = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
-            $existing = PhoneHelper::wherePhone($existing, 'phone', $phone)->first();
+            $matches = $this->phoneClients($tenant, $phone);
+            if ($matches->count() > 1) {
+                $this->askWhichAccount($tenant, $phone, $session, $matches->take(5)->pluck('id')->all(), $lang);
+                return;
+            }
+            $existing = $matches->first();
 
             if ($existing) {
                 $session->update(['client_id' => $existing->id, 'state' => ['step' => 'surname']]);
@@ -872,6 +904,27 @@ class WhatsappRenewalWebhookController extends Controller
             return;
         }
 
+        if (($state['step'] ?? '') === 'choose_account') {
+            $ids = $state['candidates'] ?? [];
+            if (!preg_match('/^\s*([1-5])\s*$/', $text, $m) || empty($ids[(int) $m[1] - 1])) {
+                $this->invalidChoice($tenant, $phone, $lang, count($ids), false);
+                return;
+            }
+            $chosen = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id)->find($ids[(int) $m[1] - 1]);
+            if (!$chosen) {
+                $session->delete();
+                $this->reply($tenant, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali wasiliana nasi.', 'Sorry, something went wrong. Please contact us.'));
+                return;
+            }
+            // The choice is remembered on the session (client_id); verification then runs against THAT account only.
+            $session->update(['client_id' => $chosen->id, 'state' => ['step' => 'surname']]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                'Kwa uthibitisho, tafadhali jibu kwa jina lako la ukoo (surname) lililosajiliwa.',
+                'For verification, please reply with the surname registered with your account.'
+            ));
+            return;
+        }
+
         // Persistent brute-force guard (survives session deletion): checked before any surname/email guess.
         $guard = app(\App\Services\WhatsappVerifyGuard::class);
         if ($until = $guard->isLocked($tenant->id, $phone)) {
@@ -882,6 +935,11 @@ class WhatsappRenewalWebhookController extends Controller
         if (($state['step'] ?? 'surname') === 'email') {
             if ($client && $client->email && mb_strtolower(trim($text)) === mb_strtolower(trim($client->email))) {
                 $guard->reset($tenant->id, $phone);
+                if ($this->clientBlocked($client)) {
+                    $session->delete();
+                    $this->replyClientSuspended($tenant, $client, $phone, $lang);
+                    return;
+                }
                 $session->update(['confirmed_at' => now()]);
                 $this->sendRootMenu($tenant, $client, $phone, $lang);
                 return;
@@ -902,6 +960,11 @@ class WhatsappRenewalWebhookController extends Controller
 
         if ($client && $this->surnameMatches($client, $text)) {
             $guard->reset($tenant->id, $phone);
+            if ($this->clientBlocked($client)) {
+                $session->delete();
+                $this->replyClientSuspended($tenant, $client, $phone, $lang);
+                return;
+            }
             $session->update(['confirmed_at' => now()]);
             $this->sendRootMenu($tenant, $client, $phone, $lang);
             return;
@@ -936,6 +999,62 @@ class WhatsappRenewalWebhookController extends Controller
             'Samahani, jina hilo halifanani na tulilonalo. Tafadhali jaribu tena — jina la ukoo (surname) lililosajiliwa MoBilling.',
             "Sorry, that doesn't match what we have. Please try again — the surname registered with MoBilling."
         ));
+    }
+
+    /** "A** M***" — first letter of each word kept, the rest starred (never the full name of a shared-phone account). */
+    private function maskName(string $name): string
+    {
+        $words = preg_split('/\s+/u', trim($name), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+        return implode(' ', array_map(fn ($w) => mb_substr($w, 0, 1) . str_repeat('*', min(3, max(1, mb_strlen($w) - 1))), $words));
+    }
+
+    /** Several accounts use this phone: ask which one, by masked name, before any verification. */
+    private function askWhichAccount(Tenant $tenant, string $phone, WhatsappRenewalSession $session, array $ids, string $lang): void
+    {
+        $ids = array_slice(array_values($ids), 0, 5);
+        $clients = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id)->whereIn('id', $ids)->get()->keyBy('id');
+        $ids = array_values(array_filter($ids, fn ($id) => $clients->has($id)));
+        $lines = [];
+        foreach ($ids as $i => $id) {
+            $lines[] = ($i + 1) . ') ' . $this->maskName($clients[$id]->name);
+        }
+
+        $session->update(['client_id' => null, 'state' => ['step' => 'choose_account', 'candidates' => $ids]]);
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Namba hii ina akaunti zaidi ya moja. Chagua:\n" . implode("\n", $lines) . "\n\nJibu na namba.",
+            "This number has more than one account. Choose:\n" . implode("\n", $lines) . "\n\nReply with a number."
+        ));
+    }
+
+    // ── Suspended / inactive client ──
+
+    /** Anything but an active client (status inactive / merged / suspended / archived ...) gets no self-service. */
+    private function clientBlocked(Client $client): bool
+    {
+        return !in_array(strtolower((string) $client->status), ['', 'active'], true);
+    }
+
+    private function replyClientSuspended(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $this->reply($tenant, $phone, $this->t($lang,
+            'Akaunti yako imesimamishwa. Tafadhali wasiliana nasi.',
+            'Your account has been suspended. Please contact us.'
+        ));
+
+        // Staff hint, at most once a day per client.
+        try {
+            if (\Illuminate\Support\Facades\Cache::add("wa_suspended_alert:{$client->id}", 1, 86400)) {
+                $this->notifyStaff($tenant, 'tickets.manage', new \App\Notifications\WhatsappBotAlertNotification(
+                    'suspended_client',
+                    'Suspended client contacted the WhatsApp bot',
+                    "{$client->name} ({$phone}) is marked {$client->status} but tried to use WhatsApp self-service; they were told to contact us.",
+                    "/clients/{$client->id}",
+                ));
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     /** Loosely matches typed text against the client's last name, or any word in their full name. */
@@ -5636,11 +5755,22 @@ class WhatsappRenewalWebhookController extends Controller
         return $parts;
     }
 
+    /**
+     * Where a reply goes. Sessions are keyed by the 9-digit form, which would send a foreign number's reply to a
+     * Tanzanian number sharing those digits — so a foreign sender is answered on its full international number.
+     */
+    private function outTo(string $phone): string
+    {
+        return ($this->inboundDigits !== '' && PhoneHelper::isForeign($this->inboundDigits) && PhoneHelper::normalize($this->inboundDigits) === $phone)
+            ? PhoneHelper::e164($this->inboundDigits)
+            : $phone;
+    }
+
     private function reply(Tenant $tenant, string $phone, string $message): void
     {
         foreach ($this->splitMessage($message) as $part) {
             try {
-                app(WhatsAppService::class)->sendSessionText($tenant, $phone, $part);
+                app(WhatsAppService::class)->sendSessionText($tenant, $this->outTo($phone), $part);
             } catch (\Throwable $e) {
                 $this->noteSendFailure($tenant, $phone, $e);
                 return; // the rest of a failed conversation turn would fail the same way
@@ -5708,7 +5838,7 @@ class WhatsappRenewalWebhookController extends Controller
     private function replyWithCtaUrl(Tenant $tenant, string $phone, string $text, string $buttonText, string $url): void
     {
         try {
-            app(WhatsAppService::class)->sendCtaUrlSession($tenant, $phone, $text, $buttonText, $url);
+            app(WhatsAppService::class)->sendCtaUrlSession($tenant, $this->outTo($phone), $text, $buttonText, $url);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp CTA-URL reply failed, falling back to plain link', ['tenant_id' => $tenant->id, 'phone' => $phone, 'error' => $e->getMessage()]);
             $this->noteSendFailure($tenant, $phone, $e);

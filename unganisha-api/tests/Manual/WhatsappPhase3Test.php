@@ -678,6 +678,146 @@ class WhatsappPhase3Test
         $ch->send($u, $this->pushNote());
         $this->assertSame(1, count($this->pushedTexts()));
     }
+
+    // ═══ D: shared phone / country code ═══
+    private function unverifiedTo(string $raw, string $lang = '1'): void
+    {
+        // fresh contact: any text -> language -> "have an account?" yes
+        $this->say('hi', $raw);
+        $this->say($lang, $raw);
+    }
+
+    private function sharedClients(array $names): array
+    {
+        $out = [];
+        $forms = ['0755000111', '255755000111', '+255755000111', '755000111', '0755-000-111', '+255 755 000 111', '255 755 000 111'];
+        foreach (array_values($names) as $i => $n) {
+            $out[] = Client::create(['tenant_id' => $this->tenant->id, 'name' => $n, 'phone' => $forms[$i], 'email' => strtolower(str_replace(' ', '', $n)) . '@example.test', 'status' => 'active']);
+        }
+        return $out;
+    }
+
+    public function test_d_shared_phone_asks_which_account_with_masked_names(): void
+    {
+        [$a, $j] = $this->sharedClients(['Asha Mwinyi', 'Juma Kibwana']);
+        $raw = '255755000111';
+        $this->unverifiedTo($raw);
+        $r = $this->say('1', $raw);
+        $this->assertContains('This number has more than one account. Choose:', $r);
+        $this->assertContains('1) A*** M***', $r);
+        $this->assertContains('2) J*** K***', $r);
+        $this->assertNotContains('Mwinyi', $r);
+        $this->assertNotContains('Kibwana', $r);
+        $this->assertNotContains('Asha', $r);
+        $this->assertContains('Sorry, reply 1 or 2', $this->say('7', $raw));
+        $r = $this->say('2', $raw);
+        $this->assertContains('registered with your account', $r);
+        $s = WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('phone', '755000111')->first();
+        $this->assertSame($j->id, $s->client_id, 'choice remembered');
+        // the OTHER account's surname does not verify
+        $r = $this->say('Mwinyi', $raw);
+        $this->assertContains("doesn't match", $r);
+        $r = $this->say('Kibwana', $raw);
+        $this->assertContains('Hi Juma Kibwana', $r);
+        $s = WhatsappRenewalSession::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('phone', '755000111')->first();
+        $this->assertSame($j->id, $s->client_id);
+        $this->assertTrue($s->confirmed_at !== null);
+    }
+
+    public function test_d_shared_phone_caps_at_five_and_works_in_swahili_via_no_account_path(): void
+    {
+        $this->sharedClients(['Amina Zuberi', 'Bakari Zuberi', 'Chausiku Zuberi', 'Daudi Zuberi', 'Emma Zuberi', 'Fatuma Zuberi', 'Gerald Zuberi']);
+        $raw = '255755000111';
+        $this->unverifiedTo($raw, '2'); // Kiswahili
+        $r = $this->say('2', $raw);      // "no account" -> want account?
+        $this->assertContains('ungependa', $r);
+        $r = $this->say('1', $raw);      // yes, create -> but the phone already has accounts -> choose
+        $this->assertContains('Namba hii ina akaunti zaidi ya moja. Chagua:', $r);
+        $this->assertContains('5) ', $r);
+        $this->assertTrue(!str_contains($r, '6) '), 'max five');
+        $this->assertContains('Samahani, jibu 1-5', $this->say('6', $raw));
+    }
+
+    public function test_d_single_match_flow_unchanged(): void
+    {
+        $c = $this->makeClient();
+        $this->unverifiedTo($this->rawPhone);
+        $r = $this->say('1');
+        $this->assertContains('registered with your account', $r);
+        $this->assertNotContains('more than one account', $r);
+        $this->assertContains('Hi Asha Test', $this->say('Test'));
+    }
+
+    public function test_d_registration_phone_format_tz_and_foreign(): void
+    {
+        // Tanzanian: unchanged national form
+        $this->unverifiedTo('255755000333');
+        $this->say('2', '255755000333'); $this->say('1', '255755000333');
+        $this->say('Neema Tz', '255755000333');
+        $tz = Client::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('name', 'Neema Tz')->first();
+        $this->assertSame('0755000333', $tz->phone);
+        // Kenyan: full international digits; replies go to the full number, not the 9-digit form
+        $raw = '254755000444';
+        Fw::$sent = [];
+        $this->unverifiedTo($raw);
+        $this->say('2', $raw); $this->say('1', $raw);
+        $this->say('Wanjiku Ke', $raw);
+        $ke = Client::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->where('name', 'Wanjiku Ke')->first();
+        $this->assertSame('254755000444', $ke->phone);
+        foreach (Fw::$sent as $m) $this->assertSame('254755000444', $m['to'], 'foreign sender answered on its own number');
+    }
+
+    public function test_d_country_code_rules_in_matching(): void
+    {
+        $mk = fn ($n, $phone) => Client::create(['tenant_id' => $this->tenant->id, 'name' => $n, 'phone' => $phone, 'email' => $n . '@example.test', 'status' => 'active']);
+        $ph = fn (string $raw) => \App\Helpers\PhoneHelper::wherePhone(Client::withoutGlobalScopes()->where('tenant_id', $this->tenant->id)->whereNull('deleted_at'), 'phone', \App\Helpers\PhoneHelper::normalize($raw), $raw)->pluck('name')->sort()->values()->all();
+        $mk('tzlocal', '0766000555'); $mk('tzintl', '255766000555'); $mk('tzplus', '+255 766 000 555'); $mk('tzbare', '766000555'); $mk('ke', '254766000555');
+        // every Tanzanian form still matches a Tanzanian sender (0.. / 255.. / +255 / bare)
+        foreach (['255766000555', '+255766000555', '0766000555', '766000555'] as $raw) {
+            $got = $ph($raw);
+            foreach (['tzlocal', 'tzintl', 'tzplus', 'tzbare'] as $n) $this->assertTrue(in_array($n, $got, true), "$n must match sender $raw");
+        }
+        // a Kenyan sender does not match Tanzanian clients that share the last 9 digits (0.. counts as TZ), but the
+        // Kenyan client and the country-less bare number still match
+        $got = $ph('254766000555');
+        $this->assertTrue(in_array('ke', $got, true), 'ke matches');
+        $this->assertTrue(!in_array('tzlocal', $got, true) && !in_array('tzintl', $got, true) && !in_array('tzplus', $got, true), 'no TZ client for a KE sender: ' . json_encode($got));
+        $this->assertTrue(in_array('tzbare', $got, true), 'unknown-country stored number stays a match (conservative)');
+        // and a TZ sender no longer matches the Kenyan client
+        $this->assertTrue(!in_array('ke', $ph('255766000555'), true), 'TZ sender must not match KE client');
+        $this->assertSame('255', \App\Helpers\PhoneHelper::countryCode('+255 766 000 555'));
+        $this->assertSame('254', \App\Helpers\PhoneHelper::countryCode('254766000555'));
+        $this->assertSame(null, \App\Helpers\PhoneHelper::countryCode('0766000555'));
+        $this->assertSame(null, \App\Helpers\PhoneHelper::countryCode('766000555'));
+    }
+
+    // ═══ E: suspended / inactive client ═══
+    public function test_e_inactive_client_verified_gets_suspended_message_no_menu(): void
+    {
+        $c = $this->makeClient();
+        $c->update(['status' => 'inactive']);
+        $this->unverifiedTo($this->rawPhone);
+        $this->say('1');
+        $r = $this->say('Test');
+        $this->assertContains('Your account has been suspended. Please contact us.', $r);
+        $this->assertNotContains('Choose a service', $r);
+        $this->assertSame(null, $this->session(), 'no login for a suspended account');
+    }
+
+    public function test_e_existing_session_of_a_client_suspended_meanwhile_is_stopped(): void
+    {
+        $c = $this->makeClient();
+        $this->startSession($c);
+        $this->assertContains('Choose a service', $this->say('MENU'));
+        $c->update(['status' => 'merged']);
+        $r = $this->say('5');
+        $this->assertContains('Your account has been suspended', $r);
+        $this->assertNotContains('unpaid', $r);
+        $this->session()->update(['language' => 'sw']);
+        $this->assertContains('Akaunti yako imesimamishwa. Tafadhali wasiliana nasi.', $this->say('1'));
+        $c->update(['status' => 'active']);
+        $this->assertContains('Habari', $this->say('MENU'));
+    }
 }
 
 /** Records the push-style sends (WhatsAppChannel path) next to the session replies. */
