@@ -103,6 +103,8 @@ Route::get('/public/branding', [\App\Http\Controllers\PublicBrandingController::
 // costs a live registry call, so it is throttled per IP.
 Route::get('/public/domains/check', [\App\Http\Controllers\PublicDomainController::class, 'check'])
     ->middleware('throttle:20,1');
+Route::get('/public/domains/suggest', [\App\Http\Controllers\PublicDomainController::class, 'suggest'])
+    ->middleware('throttle:30,1');
 
 // Portal self-registration (public)
 Route::post('/portal/request-otp', [PortalAuthController::class, 'requestOtp']);
@@ -724,6 +726,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     // ── Domains (.tz registrar) ──────────────────────────────────────────────
     Route::middleware('permission:domains.read')->group(function () {
         Route::get('/domains/check',            [\App\Http\Controllers\DomainController::class, 'check']);
+        Route::get('/domains/suggest',          [\App\Http\Controllers\DomainController::class, 'suggest'])->middleware('throttle:60,1');
         Route::get('/domains/whois',            [\App\Http\Controllers\DomainController::class, 'whois']);
         Route::get('/domains/stats',            [\App\Http\Controllers\DomainController::class, 'stats']);
         Route::get('/domains/registrar-credit', [\App\Http\Controllers\DomainController::class, 'registrarCredit']);
@@ -1159,6 +1162,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/hosting/{hostingAccount}/upgrade', [\App\Http\Controllers\Portal\PortalHostingController::class, 'upgrade']);
     Route::get('/domains', [\App\Http\Controllers\Portal\PortalDomainController::class, 'index']);
     Route::get('/domains/check', [\App\Http\Controllers\Portal\PortalDomainController::class, 'check']);
+    Route::get('/domains/suggest', [\App\Http\Controllers\Portal\PortalDomainController::class, 'suggest'])->middleware('throttle:60,1');
     Route::get('/domains/whois', [\App\Http\Controllers\Portal\PortalDomainController::class, 'whois']);
     Route::post('/domains/order', [\App\Http\Controllers\Portal\PortalDomainController::class, 'order']);
     Route::get('/domains/{domain}', [\App\Http\Controllers\Portal\PortalDomainController::class, 'show']);

@@ -75,6 +75,17 @@ class PublicDomainController extends Controller
         ]);
     }
 
+    /** Multi-TLD search: typed TLD first, then the popular on-sale TLDs (see DomainSuggestService). */
+    public function suggest(Request $request, \App\Services\Registrar\DomainSuggestService $svc)
+    {
+        $data = $request->validate(\App\Services\Registrar\DomainSuggestService::rules());
+        $tenantId = $this->storefrontTenantId($request);
+        if (!$tenantId) return response()->json(['message' => 'Domain search is unavailable right now — please contact us.'], 503);
+        [$body, $status] = $svc->respond($tenantId, $data, 'public');
+
+        return response()->json($body, $status);
+    }
+
     /**
      * Whose pricing and registrar account answer this search.
      *

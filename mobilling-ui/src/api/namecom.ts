@@ -40,7 +40,7 @@ export interface NameComTldRow {
   tld: string;
   usd_register: number | null; usd_renew: number | null; usd_transfer: number | null;
   register_price: number; renew_price: number; transfer_price: number;
-  is_active: boolean; price_overridden: boolean; usd_changed: boolean;
+  is_active: boolean; is_popular: boolean; sort_order: number; price_overridden: boolean; usd_changed: boolean;
   usd_prev: { register: number | null; renew: number | null; transfer: number | null; at?: string } | null;
   synced_at: string | null;
 }
@@ -56,7 +56,7 @@ export const listNameComTlds = (p: { search?: string; filter?: string; page?: nu
 export const syncNameComTlds = () => api.post<{ message: string }>('/namecom/tlds/sync');
 export const recomputeNameComTlds = () => api.post<{ message: string }>('/namecom/tlds/recompute');
 export const ackNameComTlds = (tlds?: string[]) => api.post<{ message: string }>('/namecom/tlds/ack', tlds ? { tlds } : {});
-export const updateNameComTld = (tld: string, b: Partial<{ register_price: number; renew_price: number; transfer_price: number | null; is_active: boolean; reset_override: boolean }>) =>
+export const updateNameComTld = (tld: string, b: Partial<{ register_price: number; renew_price: number; transfer_price: number | null; is_active: boolean; is_popular: boolean; sort_order: number; reset_override: boolean }>) =>
   api.put<{ data: NameComTldRow; message: string }>(`/namecom/tlds/${tld}`, b);
 
 export interface NameComRegistrationPreview {

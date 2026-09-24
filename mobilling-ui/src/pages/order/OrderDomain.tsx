@@ -10,9 +10,10 @@ import {
   IconArrowLeft, IconSearch, IconCheck, IconX, IconAlertCircle, IconWorldWww,
 } from '@tabler/icons-react';
 import {
-  getPortalDomainTlds, portalCheckDomain, portalOrderDomain,
+  getPortalDomainTlds, portalCheckDomain, portalOrderDomain, portalSuggestDomains,
 } from '../../api/portal';
 import { formatTsh } from '../../data/storefront';
+import DomainSuggestPanel from '../../components/DomainSuggestPanel';
 
 type Action = 'register' | 'transfer';
 
@@ -123,6 +124,14 @@ export default function OrderDomain() {
             <Radio value="transfer" label="Transfer to us" />
           </Group>
         </Radio.Group>
+
+        {action === 'register' && (
+          <Stack gap={4} mb="md">
+            <Text size="sm" fw={600}>Search popular extensions</Text>
+            <DomainSuggestPanel suggest={portalSuggestDomains} actionLabel="Select" initialQuery={searchParams.get('query') ?? ''}
+              onSelect={(row) => { setDomain(row.name); setChecked({ name: row.name, available: true }); }} />
+          </Stack>
+        )}
 
         <Group align="flex-end" gap="sm">
           <TextInput

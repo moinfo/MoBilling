@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tansta
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
-import { IconRefresh, IconEdit, IconAlertTriangle } from '@tabler/icons-react';
+import { IconRefresh, IconEdit, IconAlertTriangle, IconStar, IconStarFilled } from '@tabler/icons-react';
 import {
   listNameComTlds, syncNameComTlds, recomputeNameComTlds, ackNameComTlds, updateNameComTld, saveNameComSettings, NameComTldRow, NameComSettingsData,
 } from '../api/namecom';
@@ -47,6 +47,11 @@ export default function NameComPricingPanel() {
     mutationFn: () => ackNameComTlds(),
     onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); refresh(); },
   });
+  const star = useMutation({
+    mutationFn: (v: { tld: string; is_popular: boolean }) => updateNameComTld(v.tld, { is_popular: v.is_popular }),
+    onSuccess: refresh,
+    onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
+  });
   const toggle = useMutation({
     mutationFn: (v: { tld: string; is_active: boolean }) => updateNameComTld(v.tld, { is_active: v.is_active }),
     onSuccess: refresh,
@@ -62,7 +67,7 @@ export default function NameComPricingPanel() {
           <Button leftSection={<IconRefresh size={16} />} loading={sync.isPending}
             onClick={() => modals.openConfirmModal({
               title: 'Sync TLDs & prices from Name.com',
-              children: <Text size="sm">Reads the full TLD list and your USD prices from Name.com (read-only, a few paced requests). New TLDs are added <b>disabled</b>. Your price overrides and enabled/disabled choices are kept; TLDs whose USD cost changed are flagged.</Text>,
+              children: <Text size="sm">Reads the full TLD list and your USD prices from Name.com (read-only, a few paced requests). New TLDs are added <b>disabled</b>; old manual placeholders such as .com/.net/.org become Name.com rows (also disabled until you switch them on). Your price overrides and enabled/disabled choices are kept; TLDs whose USD cost changed are flagged.</Text>,
               labels: { confirm: 'Sync now', cancel: 'Cancel' },
               onConfirm: () => sync.mutate(),
             })}>
@@ -99,7 +104,17 @@ export default function NameComPricingPanel() {
             <Table.Tbody>
               {rows.map((r) => (
                 <Table.Tr key={r.tld}>
-                  <Table.Td fw={600}>.{r.tld}</Table.Td>
+                  <Table.Td fw={600}>
+                    <Group gap={4} wrap="nowrap">
+                      <Tooltip label={r.is_popular ? 'Popular: shown first in customer search. Click to remove.' : 'Mark as popular (shown first in search when on sale)'}>
+                        <ActionIcon variant="subtle" color="yellow" disabled={star.isPending} aria-label={`Popular .${r.tld}`}
+                          onClick={() => star.mutate({ tld: r.tld, is_popular: !r.is_popular })}>
+                          {r.is_popular ? <IconStarFilled size={16} /> : <IconStar size={16} />}
+                        </ActionIcon>
+                      </Tooltip>
+                      .{r.tld}
+                    </Group>
+                  </Table.Td>
                   <Table.Td>{usd(r.usd_register)} / {usd(r.usd_renew)} / {usd(r.usd_transfer)}</Table.Td>
                   <Table.Td>{tzs(r.register_price)}</Table.Td>
                   <Table.Td>{tzs(r.renew_price)}</Table.Td>

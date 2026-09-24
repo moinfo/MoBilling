@@ -51,15 +51,16 @@ class NameComPricingService
         return $out;
     }
 
-    /** @return array{created:int, updated:int, changed:int, unchanged:int, skipped_other_registrar:int, skipped_invalid:int, total:int} */
+    /** @return array{created:int, adopted:int, updated:int, changed:int, unchanged:int, skipped_other_registrar:int, skipped_invalid:int, total:int} */
     public function sync(string $tenantId, NameComDriver $driver): array
     {
         $entries = $driver->tldPricing(1);
         $settings = NameComSettings::forTenant($tenantId);
         $now = now();
-        $out = ['created' => 0, 'updated' => 0, 'changed' => 0, 'unchanged' => 0, 'skipped_other_registrar' => 0, 'skipped_invalid' => 0, 'total' => count($entries)];
+        $out = ['created' => 0, 'updated' => 0, 'changed' => 0, 'unchanged' => 0, 'adopted' => 0, 'skipped_other_registrar' => 0, 'skipped_invalid' => 0, 'total' => count($entries)];
 
-        $existing = DomainTld::where('tenant_id', $tenantId)->get()->keyBy('tld');
+        // A real Name.com row wins over an unmanaged placeholder of the same TLD.
+        $existing = DomainTld::where('tenant_id', $tenantId)->get()->sortBy(fn ($r) => $r->registrar === 'namecom' ? 1 : 0)->keyBy('tld');
 
         foreach ($entries as $e) {
             $tld = strtolower(trim((string) ($e['tld'] ?? ''), '. '));
@@ -86,6 +87,17 @@ class NameComPricingService
                 continue;
             }
 
+            if (self::isPlaceholder($row)) {
+                // Old manual placeholder (e.g. com/net/org): becomes the Name.com row. NOT put on sale.
+                $row->update([
+                    'registrar' => 'namecom', 'is_active' => false, 'is_unmanaged' => true,
+                    'register_price' => $p['register'] ?? 0, 'renew_price' => $p['renew'] ?? 0, 'transfer_price' => $p['transfer'] ?? 0,
+                    'price_overridden' => false, 'overridden_ops' => null,
+                    'usd_register' => $ur, 'usd_renew' => $un, 'usd_transfer' => $ut, 'usd_synced_at' => $now,
+                ]);
+                $out['adopted']++;
+                continue;
+            }
             if ($row->registrar !== 'namecom') { $out['skipped_other_registrar']++; continue; }
 
             $changed = !self::same($row->usd_register, $ur) || !self::same($row->usd_renew, $un) || !self::same($row->usd_transfer, $ut);
@@ -107,6 +119,38 @@ class NameComPricingService
         }
 
         return $out;
+    }
+
+    /** A manual "unmanaged" stand-in row (registrar fred + is_unmanaged); real FRED-managed rows never match. */
+    public static function isPlaceholder(DomainTld $r): bool
+    {
+        return $r->registrar === 'fred' && $r->is_unmanaged && $r->tenant_id !== null;
+    }
+
+    /**
+     * Offline adoption (no Name.com call): converts a tenant's unmanaged placeholder rows to registrar=namecom,
+     * OFF sale, USD unknown until the next sync. Only TLDs Name.com sells matter, so $onlyTlds limits it.
+     * If a namecom row for the same TLD already exists the placeholder is redundant: it is removed
+     * (nothing references domain_tlds rows). Dry-run unless $apply.
+     * @return array<int, array{tld:string, id:string, action:string}>
+     */
+    public function adoptPlaceholders(string $tenantId, bool $apply, ?array $onlyTlds = null): array
+    {
+        $rows = DomainTld::where('tenant_id', $tenantId)->get();
+        $namecom = $rows->where('registrar', 'namecom')->keyBy('tld');
+        $report = [];
+        foreach ($rows->filter(fn ($r) => self::isPlaceholder($r)) as $r) {
+            if ($onlyTlds !== null && !in_array($r->tld, $onlyTlds, true)) continue;
+            $dup = $namecom->get($r->tld);
+            if ($dup) {
+                $report[] = ['tld' => $r->tld, 'id' => $r->id, 'action' => "delete redundant placeholder (name.com row {$dup->id} exists)"];
+                if ($apply) $r->delete();
+                continue;
+            }
+            $report[] = ['tld' => $r->tld, 'id' => $r->id, 'action' => 'convert to namecom, off sale (was active=' . (int) $r->is_active . ', price ' . $r->register_price . ')'];
+            if ($apply) $r->update(['registrar' => 'namecom', 'is_active' => false, 'is_unmanaged' => true]);
+        }
+        return $report;
     }
 
     /** Re-apply the current rate/markup to every non-overridden operation of the Name.com rows. Returns rows changed. */

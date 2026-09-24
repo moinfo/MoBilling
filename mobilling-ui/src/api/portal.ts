@@ -404,6 +404,13 @@ export const updatePortalDomainNameservers = (id: string, nameservers: string[])
 export const portalSetAutoRenew = (id: string, enabled: boolean) =>
   api.put<{ data: { auto_renew: boolean }; message: string }>(`/portal/domains/${id}/auto-renew`, { enabled });
 
+export const portalSuggestDomains: import('./domains').DomainSuggestFn = async (name, opts) => {
+  const res = await api.get<{ data: import('./domains').DomainSuggestRow[] }>('/portal/domains/suggest', {
+    params: { name, tlds: opts?.tlds?.join(','), check: opts?.check === false ? 0 : undefined },
+  });
+  return res.data.data;
+};
+
 export const portalCheckDomain = (name: string) =>
   api.get('/portal/domains/check', { params: { name } });
 

@@ -264,3 +264,18 @@ export interface SslExpiryRow {
 }
 export const getSslExpiry = (params?: { search?: string; invalid_only?: 0 | 1 }) =>
   api.get<{ data: SslExpiryRow[] }>('/domains/ssl-expiry', { params });
+
+export interface DomainSuggestRow {
+  tld: string; name: string; typed: boolean; popular: boolean; offered: boolean;
+  status: 'pending' | 'available' | 'taken' | 'unavailable' | 'cannot_check' | 'not_offered' | 'disabled' | 'manual';
+  message: string | null; register_price: number | null; years_min: number | null; years_max: number | null;
+  can_order: boolean; check_group: 'batch' | 'single'; via?: string | null;
+}
+export type DomainSuggestFn = (name: string, opts?: { tlds?: string[]; check?: boolean }) => Promise<DomainSuggestRow[]>;
+
+export const suggestDomains: DomainSuggestFn = async (name, opts) => {
+  const res = await api.get<{ data: DomainSuggestRow[] }>('/domains/suggest', {
+    params: { name, tlds: opts?.tlds?.join(','), check: opts?.check === false ? 0 : undefined },
+  });
+  return res.data.data;
+};

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Title, Stack, Group, Table, Badge, ActionIcon, Tooltip, Text, Paper, Select,
   TextInput, Loader, Center, Drawer, Modal, Button, Pagination, Code, NumberInput,
@@ -13,7 +13,7 @@ import {
   IconHourglass, IconRepeat, IconShieldCheck, IconShieldOff, IconRotateClockwise, IconWorldCheck,
 } from '@tabler/icons-react';
 import {
-  checkDomain, getDomains, getDomainStats, getRegistrarCredit, getDomainLogs, orderDomain, renewDomain, retryDomain,
+  checkDomain, suggestDomains, getDomains, getDomainStats, getRegistrarCredit, getDomainLogs, orderDomain, renewDomain, retryDomain,
   confirmManualRegistration,
   getDomainAuthInfo, setDomainAutoRenew, describeDomainAction, addExistingDomain,
   createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
@@ -21,6 +21,7 @@ import {
   whoisDomain, WhoisResult,
 } from '../api/domains';
 import { getClients } from '../api/clients';
+import DomainSuggestPanel from '../components/DomainSuggestPanel';
 import NameComManager from '../components/NameComManager';
 import NameComRegisterModal from '../components/NameComRegisterModal';
 import { usePermissions } from '../hooks/usePermissions';
@@ -62,6 +63,7 @@ export default function Domains() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardName, setWizardName] = useState('');
   const [nameComOpen, setNameComOpen] = useState(false);
   const [ncRegister, setNcRegister] = useState<DomainRecord | null>(null);
   const [logsFor, setLogsFor] = useState<DomainRecord | null>(null);
@@ -226,7 +228,8 @@ export default function Domains() {
           value={stats?.auto_renew ?? '—'} />
       </SimpleGrid>
 
-      <DomainLookup canRegister={can('domains.create')} onRegister={() => setWizardOpen(true)} />
+      <DomainLookup canRegister={can('domains.create')} onRegister={() => { setWizardName(''); setWizardOpen(true); }}
+        onOrderName={(n) => { setWizardName(n); setWizardOpen(true); }} />
 
       {/* Registrar (TZNIC) prepaid credit — real money the registry draws for register/renew */}
       {registrarCredit && (
@@ -449,7 +452,7 @@ export default function Domains() {
         <Group justify="center"><Pagination value={page} onChange={setPage} total={lastPage} size="sm" /></Group>
       )}
 
-      <OrderWizard opened={wizardOpen} onClose={() => setWizardOpen(false)} />
+      <OrderWizard opened={wizardOpen} prefillName={wizardName} onClose={() => setWizardOpen(false)} />
       {nameComOpen && <NameComManager opened onClose={() => setNameComOpen(false)} />}
       {ncRegister && <NameComRegisterModal domainId={ncRegister.id} domainName={ncRegister.name} onClose={() => setNcRegister(null)} />}
 
@@ -547,7 +550,7 @@ function WhoisLine({ label, value }: { label: string; value: string | null }) {
 }
 
 /** .tz domain search + WHOIS, live from the TZNIC registry (whois.tznic.or.tz). */
-function DomainLookup({ canRegister, onRegister }: { canRegister: boolean; onRegister: () => void }) {
+function DomainLookup({ canRegister, onRegister, onOrderName }: { canRegister: boolean; onRegister: () => void; onOrderName: (name: string) => void }) {
   const [name, setName] = useState('');
   const [showRaw, setShowRaw] = useState(false);
 
@@ -562,6 +565,16 @@ function DomainLookup({ canRegister, onRegister }: { canRegister: boolean; onReg
   const submit = () => { const n = name.trim(); if (n) { setShowRaw(false); lookup.mutate(n); } };
 
   return (
+    <Stack gap="md">
+    <Paper withBorder radius="md" p="md">
+      <Group gap="xs" mb="xs">
+        <IconSearch size={16} />
+        <Text fw={600} size="sm">Find a domain — popular extensions</Text>
+      </Group>
+      <DomainSuggestPanel staff suggest={suggestDomains} actionLabel={canRegister ? 'Register' : 'Select'}
+        onSelect={(row) => { if (canRegister) onOrderName(row.name); }} />
+      <Text size="xs" c="dimmed" mt={6}>Type a name (or name plus extension) to see it across the popular extensions on sale. Extensions marked "Not on sale" can be enabled in Settings &gt; Domains &gt; Name.com &gt; TLDs &amp; pricing.</Text>
+    </Paper>
     <Paper withBorder radius="md" p="md">
       <Group gap="xs" mb="xs">
         <IconSearch size={16} />
@@ -621,10 +634,11 @@ function DomainLookup({ canRegister, onRegister }: { canRegister: boolean; onReg
         </Paper>
       ))}
     </Paper>
+    </Stack>
   );
 }
 
-function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+function OrderWizard({ opened, onClose, prefillName = '' }: { opened: boolean; onClose: () => void; prefillName?: string }) {
   const qc = useQueryClient();
   const [action, setAction] = useState<'register' | 'transfer' | 'existing'>('register');
   const [name, setName] = useState('');
@@ -636,6 +650,10 @@ function OrderWizard({ opened, onClose }: { opened: boolean; onClose: () => void
   const [existingRegistrar, setExistingRegistrar] = useState<'tznic' | 'external'>('external');
   const [existingExpiry, setExistingExpiry] = useState<Date | null>(null);
   const [existingNotes, setExistingNotes] = useState('');
+
+  useEffect(() => {
+    if (opened && prefillName) { setName(prefillName); setChecked(null); setAction('register'); }
+  }, [opened, prefillName]);
 
   const { data: clientsData } = useQuery({
     queryKey: ['clients-for-domains'],

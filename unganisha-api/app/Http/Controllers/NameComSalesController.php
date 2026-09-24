@@ -64,7 +64,7 @@ class NameComSalesController extends Controller
             'tld' => $t->tld,
             'usd_register' => $t->usd_register, 'usd_renew' => $t->usd_renew, 'usd_transfer' => $t->usd_transfer,
             'register_price' => (float) $t->register_price, 'renew_price' => (float) $t->renew_price, 'transfer_price' => (float) $t->transfer_price,
-            'is_active' => $t->is_active, 'price_overridden' => $t->price_overridden, 'overridden_ops' => $t->overridden_ops ?? [],
+            'is_active' => $t->is_active, 'is_popular' => (bool) $t->is_popular, 'sort_order' => (int) $t->sort_order, 'price_overridden' => $t->price_overridden, 'overridden_ops' => $t->overridden_ops ?? [],
             'usd_changed' => $t->usd_changed, 'usd_prev' => $t->usd_prev,
             'synced_at' => $t->usd_synced_at?->toIso8601String(),
         ];
@@ -79,11 +79,18 @@ class NameComSalesController extends Controller
             'changed'    => (clone $q)->where('usd_changed', true)->count(),
             'overridden' => (clone $q)->where('price_overridden', true)->count(),
         ];
-        if ($s = trim((string) $request->query('search', ''))) $q->where('tld', 'like', '%' . str_replace(['%', '_'], ['\\%', '\\_'], strtolower($s)) . '%');
+        $exact = null;
+        if ($s = ltrim(trim((string) $request->query('search', '')), '. ')) {
+            $s = strtolower($s);
+            $exact = $s;
+            $q->where('tld', 'like', '%' . str_replace(['%', '_'], ['\\%', '\\_'], $s) . '%');
+        }
         match ($request->query('filter')) {
             'enabled' => $q->where('is_active', true), 'disabled' => $q->where('is_active', false),
             'changed' => $q->where('usd_changed', true), 'overridden' => $q->where('price_overridden', true), default => null,
         };
+        if ($exact !== null) $q->orderByRaw('tld = ? desc', [$exact])->orderByRaw('tld like ? desc', [str_replace(['%', '_'], ['\\%', '\\_'], $exact) . '%']);
+        else $q->orderByDesc('is_popular')->orderBy('sort_order');
         $page = $q->orderBy('tld')->paginate(min(max((int) $request->query('per_page', 50), 10), 200));
 
         return response()->json([
@@ -105,7 +112,7 @@ class NameComSalesController extends Controller
         }
         NameComAuditLog::create(['tenant_id' => $this->tenant(), 'user_id' => auth()->id(), 'action' => 'tlds.sync', 'request' => $r, 'response_status' => 200]);
 
-        return response()->json(['data' => $r, 'message' => "Synced {$r['total']} TLDs: {$r['created']} new, {$r['changed']} with a changed USD cost."]);
+        return response()->json(['data' => $r, 'message' => "Synced {$r['total']} TLDs: {$r['created']} new, {$r['adopted']} converted from manual placeholders, {$r['changed']} with a changed USD cost."]);
     }
 
     public function updateTld(Request $request, string $tld): JsonResponse
@@ -116,6 +123,8 @@ class NameComSalesController extends Controller
             'renew_price'    => 'sometimes|numeric|min:0|max:100000000',
             'transfer_price' => 'sometimes|nullable|numeric|min:0|max:100000000',
             'is_active'      => 'sometimes|boolean',
+            'is_popular'     => 'sometimes|boolean',
+            'sort_order'     => 'sometimes|integer|min:0|max:60000',
             'reset_override' => 'sometimes|boolean',
         ]);
 
@@ -135,6 +144,8 @@ class NameComSalesController extends Controller
             $upd['price_overridden'] = !empty($upd['overridden_ops']);
         }
         if (array_key_exists('is_active', $data)) $upd['is_active'] = (bool) $data['is_active'];
+        if (array_key_exists('is_popular', $data)) $upd['is_popular'] = (bool) $data['is_popular'];
+        if (array_key_exists('sort_order', $data)) $upd['sort_order'] = (int) $data['sort_order'];
 
         $after = array_merge($t->only(['register_price', 'renew_price', 'transfer_price', 'is_active']), $upd);
         if (!empty($after['is_active'])) {

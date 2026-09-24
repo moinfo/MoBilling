@@ -505,6 +505,11 @@ class PortalDomainController extends Controller
 
         $pricing = DomainTld::priceFor($tenantId, strtolower(explode('.', $name, 2)[1] ?? ''));
 
+        if (!$pricing && DomainTld::disabledNameCom($tenantId, strtolower(explode('.', $name, 2)[1] ?? ''))) {
+            return response()->json(['name' => $name, 'available' => null, 'offered' => false, 'pricing' => null,
+                'message' => "We don't currently offer ." . strtolower(explode('.', $name, 2)[1] ?? '') . ' domains.']);
+        }
+
         try {
             $result = $registrar->checkFor($tenantId, $name, $pricing);
         } catch (RegistrarApiException $e) {
@@ -521,6 +526,15 @@ class PortalDomainController extends Controller
                 'years_max'      => $pricing->years_max,
             ] : null,
         ]);
+    }
+
+    /** Multi-TLD search: typed TLD first, then the popular on-sale TLDs (see DomainSuggestService). */
+    public function suggest(Request $request, \App\Services\Registrar\DomainSuggestService $svc)
+    {
+        $data = $request->validate(\App\Services\Registrar\DomainSuggestService::rules());
+        [$body, $status] = $svc->respond($request->user()->tenant_id, $data, 'portal');
+
+        return response()->json($body, $status);
     }
 
     /**

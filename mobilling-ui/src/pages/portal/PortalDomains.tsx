@@ -13,9 +13,10 @@ import {
 } from '@tabler/icons-react';
 import {
   getPortalDomains, portalRenewDomain, portalCheckDomain, portalOrderDomain,
-  portalSetAutoRenew, portalWhoisDomain, PortalDomain, PortalWhoisResult,
+  portalSetAutoRenew, portalWhoisDomain, portalSuggestDomains, PortalDomain, PortalWhoisResult,
 } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
+import DomainSuggestPanel from '../../components/DomainSuggestPanel';
 
 const fmtDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
@@ -115,6 +116,15 @@ export default function PortalDomains() {
           You have {stats!.expiring_soon} domain(s) expiring within 45 days — renew them to avoid losing your website and email.
         </Alert>
       )}
+
+      <Paper withBorder p="md">
+        <Group gap="xs" mb="xs">
+          <IconSearch size={16} />
+          <Text fw={600} size="sm">Find a new domain</Text>
+        </Group>
+        <DomainSuggestPanel suggest={portalSuggestDomains} actionLabel="Register"
+          onSelect={(row) => { setPrefillName(row.name); setOrderAction('register'); }} />
+      </Paper>
 
       <WhoisLookup onRegister={(name) => { setPrefillName(name); setOrderAction('register'); }} />
 

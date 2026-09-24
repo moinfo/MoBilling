@@ -154,14 +154,37 @@ class NameComDriver implements RegistrarDriver
     public function checkAvailability(string $domain): array
     {
         $domain = self::validateDomainName($domain);
-        $json = $this->request('POST', '/core/v1/domains:checkAvailability', [], ['domainNames' => [$domain], 'purchaseType' => 'registration']);
-        foreach ($json['results'] ?? [] as $r) {
-            if (strtolower((string) ($r['domainName'] ?? '')) !== $domain) continue;
+        return $this->checkAvailabilityMany([$domain])[$domain];
+    }
+
+    /**
+     * ONE read-only :checkAvailability call for several names (max 50).
+     * @param string[] $domains
+     * @return array<string, array{available: bool, reason: ?string, premium: bool, price: ?float, purchase_type: ?string}> keyed by name
+     */
+    public function checkAvailabilityMany(array $domains): array
+    {
+        $names = [];
+        foreach ($domains as $d) $names[] = self::validateDomainName($d);
+        $names = array_values(array_unique($names));
+        if (!$names || count($names) > 50) throw new \InvalidArgumentException('Provide between 1 and 50 domain names.');
+
+        $json = $this->request('POST', '/core/v1/domains:checkAvailability', [], ['domainNames' => $names, 'purchaseType' => 'registration']);
+        $by = [];
+        foreach ($json['results'] ?? [] as $r) $by[strtolower((string) ($r['domainName'] ?? ''))] = $r;
+
+        $out = [];
+        foreach ($names as $domain) {
+            $r = $by[$domain] ?? null;
+            if (!$r) {
+                $out[$domain] = ['available' => false, 'reason' => 'No result returned for this name.', 'premium' => false, 'price' => null, 'purchase_type' => null];
+                continue;
+            }
             $premium = (bool) ($r['premium'] ?? false);
             $type = $r['purchaseType'] ?? null;
             $purchasable = (bool) ($r['purchasable'] ?? false);
             $standard = $purchasable && !$premium && ($type === null || $type === 'registration');
-            return [
+            $out[$domain] = [
                 'available'     => $standard,
                 'reason'        => $standard ? null : ($premium && $purchasable ? 'Premium domain - not offered.' : ($r['reason'] ?? 'Not available')),
                 'premium'       => $premium,
@@ -169,7 +192,7 @@ class NameComDriver implements RegistrarDriver
                 'purchase_type' => $type,
             ];
         }
-        return ['available' => false, 'reason' => 'No result returned for this name.', 'premium' => false, 'price' => null, 'purchase_type' => null];
+        return $out;
     }
 
     /** @return string[] live nameservers */

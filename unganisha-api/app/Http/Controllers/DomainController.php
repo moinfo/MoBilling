@@ -28,6 +28,10 @@ class DomainController extends Controller
 
         $pricing = DomainTld::priceFor(auth()->user()->tenant_id, $this->tldOf($name));
 
+        if (!$pricing && DomainTld::disabledNameCom(auth()->user()->tenant_id, $this->tldOf($name))) {
+            return response()->json(['name' => $name, 'available' => null, 'reason' => sprintf(DomainTld::DISABLED_HINT, $this->tldOf($name)), 'offered' => false, 'pricing' => null]);
+        }
+
         // No registrar driver can answer for this TLD (gTLDs — only .tz is
         // FRED-backed) — nothing to ask, so don't pretend to ask it.
         if ($pricing && $pricing->is_unmanaged && $pricing->registrar !== 'namecom') {
@@ -53,6 +57,15 @@ class DomainController extends Controller
                 'years_max'      => $pricing->years_max,
             ] : null,
         ]);
+    }
+
+    /** Multi-TLD search: typed TLD first, then the popular on-sale TLDs (see DomainSuggestService). */
+    public function suggest(Request $request, \App\Services\Registrar\DomainSuggestService $svc)
+    {
+        $data = $request->validate(\App\Services\Registrar\DomainSuggestService::rules());
+        [$body, $status] = $svc->respond(auth()->user()->tenant_id, $data, 'staff');
+
+        return response()->json($body, $status);
     }
 
     /**
@@ -479,6 +492,9 @@ class DomainController extends Controller
 
         $name    = strtolower($data['name']);
         $pricing = DomainTld::priceFor($tenantId, $this->tldOf($name));
+        if (!$pricing && DomainTld::disabledNameCom($tenantId, $this->tldOf($name))) {
+            return response()->json(['message' => sprintf(DomainTld::DISABLED_HINT, $this->tldOf($name))], 422);
+        }
         if (!$pricing) {
             return response()->json(['message' => 'No pricing configured for .' . $this->tldOf($name) . ' — add it in Settings → Domains.'], 422);
         }
