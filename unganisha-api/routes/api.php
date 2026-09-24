@@ -726,7 +726,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     // ── Domains (.tz registrar) ──────────────────────────────────────────────
     Route::middleware('permission:domains.read')->group(function () {
         Route::get('/domains/check',            [\App\Http\Controllers\DomainController::class, 'check']);
-        Route::get('/domains/suggest',          [\App\Http\Controllers\DomainController::class, 'suggest'])->middleware('throttle:60,1');
+        Route::get('/domains/suggest',          [\App\Http\Controllers\DomainController::class, 'suggest'])->middleware('throttle:60,1,domain-suggest');
         Route::get('/domains/whois',            [\App\Http\Controllers\DomainController::class, 'whois']);
         Route::get('/domains/stats',            [\App\Http\Controllers\DomainController::class, 'stats']);
         Route::get('/domains/registrar-credit', [\App\Http\Controllers\DomainController::class, 'registrarCredit']);
@@ -740,9 +740,9 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     // Name.com (nameserver management for linked domains). Reuses the existing domain permissions.
     Route::middleware('permission:domains.settings')->prefix('namecom')->group(function () {
         Route::get('/account', [\App\Http\Controllers\NameComController::class, 'account']);
-        Route::put('/account', [\App\Http\Controllers\NameComController::class, 'saveAccount'])->middleware('throttle:10,1');
+        Route::put('/account', [\App\Http\Controllers\NameComController::class, 'saveAccount'])->middleware('throttle:10,1,namecom-account');
         Route::delete('/account', [\App\Http\Controllers\NameComController::class, 'deleteAccount']);
-        Route::post('/account/test', [\App\Http\Controllers\NameComController::class, 'test'])->middleware('throttle:10,1');
+        Route::post('/account/test', [\App\Http\Controllers\NameComController::class, 'test'])->middleware('throttle:10,1,namecom-test');
         $nc = \App\Http\Controllers\NameComController::class;
         Route::get('/accounts', [$nc, 'accountList']);
         Route::post('/accounts', [$nc, 'storeAccount'])->middleware('throttle:10,1');
@@ -755,19 +755,19 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/settings', [$c, 'settings']);
         Route::put('/settings', [$c, 'saveSettings'])->middleware('throttle:20,1');
         Route::get('/tlds', [$c, 'tlds']);
-        Route::post('/tlds/sync', [$c, 'sync'])->middleware('throttle:6,60');
+        Route::post('/tlds/sync', [$c, 'sync'])->middleware('throttle:6,60,namecom-sync');
         Route::post('/tlds/ack', [$c, 'ackChanges']);
         Route::post('/tlds/recompute', [$c, 'recompute'])->middleware('throttle:10,1');
         Route::put('/tlds/{tld}', [$c, 'updateTld'])->where('tld', '[a-z.]+')->middleware('throttle:120,1');
     });
     Route::middleware('permission:domains.create')->prefix('namecom')->group(function () {
-        Route::get('/registration/{domain}', [\App\Http\Controllers\NameComSalesController::class, 'registrationPreview'])->middleware('throttle:30,1');
-        Route::post('/registration/{domain}', [\App\Http\Controllers\NameComSalesController::class, 'register'])->middleware('throttle:20,1');
+        Route::get('/registration/{domain}', [\App\Http\Controllers\NameComSalesController::class, 'registrationPreview'])->middleware('throttle:30,1,namecom-regprev');
+        Route::post('/registration/{domain}', [\App\Http\Controllers\NameComSalesController::class, 'register'])->middleware('throttle:20,1,namecom-register');
 
-        Route::get('/domains', [\App\Http\Controllers\NameComController::class, 'domains'])->middleware('throttle:6,1');
-        Route::post('/link', [\App\Http\Controllers\NameComController::class, 'link'])->middleware('throttle:60,1');
+        Route::get('/domains', [\App\Http\Controllers\NameComController::class, 'domains'])->middleware('throttle:12,1,namecom-import');
+        Route::post('/link', [\App\Http\Controllers\NameComController::class, 'link'])->middleware('throttle:60,1,namecom-link');
         Route::get('/account-options', [\App\Http\Controllers\NameComController::class, 'accountOptions']);
-        Route::post('/link-matched', [\App\Http\Controllers\NameComController::class, 'linkMatched'])->middleware('throttle:30,1');
+        Route::post('/link-matched', [\App\Http\Controllers\NameComController::class, 'linkMatched'])->middleware('throttle:30,1,namecom-linkmatched');
     });
     Route::middleware('permission:domains.create')->post('/domains/order', [\App\Http\Controllers\DomainController::class, 'order']);
     Route::middleware('permission:domains.create')->post('/domains/add-existing', [\App\Http\Controllers\DomainController::class, 'addExisting']);
@@ -1170,7 +1170,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::post('/hosting/{hostingAccount}/upgrade', [\App\Http\Controllers\Portal\PortalHostingController::class, 'upgrade']);
     Route::get('/domains', [\App\Http\Controllers\Portal\PortalDomainController::class, 'index']);
     Route::get('/domains/check', [\App\Http\Controllers\Portal\PortalDomainController::class, 'check']);
-    Route::get('/domains/suggest', [\App\Http\Controllers\Portal\PortalDomainController::class, 'suggest'])->middleware('throttle:60,1');
+    Route::get('/domains/suggest', [\App\Http\Controllers\Portal\PortalDomainController::class, 'suggest'])->middleware('throttle:60,1,portal-domain-suggest');
     Route::get('/domains/whois', [\App\Http\Controllers\Portal\PortalDomainController::class, 'whois']);
     Route::post('/domains/order', [\App\Http\Controllers\Portal\PortalDomainController::class, 'order']);
     Route::get('/domains/{domain}', [\App\Http\Controllers\Portal\PortalDomainController::class, 'show']);
