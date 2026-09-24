@@ -153,7 +153,7 @@ try {
     $dump = json_encode([DB::table('namecom_audit_logs')->get(), DB::table('domain_logs')->get(), DB::table('domains')->get(), DB::table('notifications')->get()]);
     ok(!str_contains($dump, CODE), 'code not present in audit/domain logs/domains/notifications rows');
     ok(!str_contains(implode("\n", $logged), CODE) && !str_contains(implode("\n", $logged), 'SECRET-INTERNAL'), 'code and internal errors not in application logs');
-    ok(NameComAuditLog::where('action', 'domain.authcode_requested')->count() === 1 && DomainLog::where('action', 'transfer_code_requested')->count() === 1, 'audit + domain log record only THAT a code was requested');
+    ok(NameComAuditLog::where('action', 'domain.authcode_requested')->where('target', 'xfer-one-test.com')->count() === 1 && DomainLog::where('action', 'transfer_code_requested')->where('domain_id', $d1->id)->count() === 1, 'audit + domain log record only THAT a code was requested');
     ok(sent($staffA, DomainTransferActivityNotification::class, fn ($n) => $n->event === 'code' && !str_contains(json_encode($n->toArray($staffA)) . json_encode($n->toFcm($staffA)) . $n->toMail($staffA)->subject, CODE)), 'notification sent: DomainTransferActivityNotification');
     ok(sent($clientA, DomainAuthInfoRevealedNotification::class), 'notification sent: DomainAuthInfoRevealedNotification');
     fk(fakeNc($own, $st, 'OTHER'));
