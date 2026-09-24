@@ -190,7 +190,7 @@ try {
     ok(posts() === 1, 'exactly one POST');
     $p = Http::recorded(fn ($q) => $q->method() === 'POST')->first()[0];
     ok($p->url() === 'https://api.name.com/core/v1/domains/existing-nc-test.com:setNameservers' && $p->data() === ['nameservers' => $target], 'POST to :setNameservers with exact body');
-    $al = NameComAuditLog::where('action', 'nameservers.set')->latest('created_at')->first();
+    $al = NameComAuditLog::where('action', 'nameservers.set')->orderByDesc('created_at')->orderByDesc('id')->first();
     ok($al && $al->target === 'existing-nc-test.com' && $al->request['from'] === ['ns1.name.com', 'ns2.name.com'] && $al->request['to'] === $target && $al->user_id === $staffA->id && $al->response_status === 200, 'audit row: who/domain/old->new');
     ok(!str_contains(json_encode(NameComAuditLog::all()->toArray()), TOKEN), 'audit still has no secrets');
     $dl = DomainLog::where('domain_id', $pre->id)->where('action', 'namecom_nameservers_changed')->first();
@@ -249,7 +249,7 @@ try {
     fk(['api.name.com/core/v1/domains/existing-nc-test.com:setNameservers' => Http::response(dom('x')), 'api.name.com/core/v1/domains/existing-nc-test.com' => Http::response(dom('existing-nc-test.com'))]);
     $r = portal($uA, 'updateNameservers', $pre, ['nameservers' => $target]);
     ok($r->getStatusCode() === 200 && posts() === 1 && Http::recorded(fn ($q) => $q->method() === 'POST' && $q->data() === ['nameservers' => $target])->count() === 1, 'portal admin update: one POST, exact body');
-    $al = NameComAuditLog::where('action', 'nameservers.set')->latest('created_at')->first();
+    $al = NameComAuditLog::where('action', 'nameservers.set')->orderByDesc('created_at')->orderByDesc('id')->first();
     ok($al->request['by_portal_user'] === $uA->id && $al->user_id === $uA->id && $al->request['to'] === $target, 'portal change audited with portal user');
     ok(!str_contains(json_encode(j($r)), TOKEN) && !str_contains(json_encode(j($r)), 'namecom_account'), 'portal response leaks nothing');
     $r = portal($uA, 'show', $pre);
