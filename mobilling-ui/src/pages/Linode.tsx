@@ -14,12 +14,13 @@ import {
   getLinodeCosts, getLinodeAccounts, createLinodeAccount, updateLinodeAccount, deleteLinodeAccount, verifyLinodeAccount,
   syncLinodeAccount, getLinodeServers, getLinodeDomains, addLinodeDomain, setLinodeNameservers,
   checkLinodeNameservers, getLinodeRecords, addLinodeRecord, updateLinodeRecord,
-  mapLinodeResource, refreshLinodeDns, getLinodeBillingProducts, getLinodeClientSubscriptions, billLinodeServer, linkLinodeSubscription, unlinkLinodeSubscription, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
-  RECORD_TYPES, LINODE_NAMESERVERS, DnsRefreshBatch, PowerAction,
+  mapLinodeResource, refreshLinodeDns, getLinodeBillingProducts, getLinodeClientSubscriptions, billLinodeServer, linkLinodeSubscription, unlinkLinodeSubscription, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, AddDomainResult, DOMAIN_TTLS,
+  LINODE_NAMESERVERS, DnsRefreshBatch, PowerAction,
   getLinodeDomainRequests, approveLinodeDomainRequest, rejectLinodeDomainRequest,
 } from '../api/linode';
 import api from '../api/axios';
 import { getClients } from '../api/clients';
+import { DnsSections, DnsRecordModal, DnsRec, DnsPayload } from '../components/DnsSections';
 import LinodePowerModal, { BUSY_STATUSES } from '../components/LinodePowerModal';
 import { Menu } from '@mantine/core';
 import { usePermissions } from '../hooks/usePermissions';
@@ -805,79 +806,21 @@ function RecordsDrawer({ resource, canManage, onClose }: { resource: LinodeResou
   const qc = useQueryClient();
   const key = ['linode-records', resource.id];
   const { data, isLoading, isError, error } = useQuery({ queryKey: key, queryFn: () => getLinodeRecords(resource.id) });
-  const rows = data?.data?.data ?? [];
-  const [editing, setEditing] = useState<LinodeRecord | 'new' | null>(null);
+  const rows = (data?.data?.data ?? []) as DnsRec[];
+  const [editing, setEditing] = useState<{ type: string; record: DnsRec | null } | null>(null);
+  const submit = async (p: DnsPayload, record: DnsRec | null) => {
+    await (record ? updateLinodeRecord(resource.id, record.id, p) : addLinodeRecord(resource.id, p));
+    notifications.show({ color: 'green', message: record ? 'Record updated.' : 'Record added.' });
+  };
   return (
-    <Drawer opened onClose={onClose} title={`DNS records - ${resource.label}`} position="right" size="xl">
+    <Drawer opened onClose={onClose} title={resource.label} position="right" size="xl">
       <Stack>
         <Text size="xs" c="dimmed">NS and SOA records are managed by Linode and cannot be changed here. Records can be added or edited but never deleted from MoBilling.</Text>
-        {canManage && <Group><Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Add record</Button></Group>}
-        {isLoading ? <Center><Loader /></Center> : isError ? <Alert color="red">{errMsg(error)}</Alert> : !rows.length ? <Text c="dimmed">No records.</Text> : (
-          <Table.ScrollContainer minWidth={520}>
-            <Table verticalSpacing="xs">
-              <Table.Thead><Table.Tr><Table.Th>Type</Table.Th><Table.Th>Name</Table.Th><Table.Th>Target</Table.Th><Table.Th>TTL</Table.Th><Table.Th /></Table.Tr></Table.Thead>
-              <Table.Tbody>
-                {rows.map((r) => (
-                  <Table.Tr key={r.id}>
-                    <Table.Td><Badge variant="light">{r.type}</Badge></Table.Td>
-                    <Table.Td>{r.name || '@'}</Table.Td>
-                    <Table.Td style={{ wordBreak: 'break-all' }}>{r.target}{r.priority != null && r.type === 'MX' ? ` (prio ${r.priority})` : ''}</Table.Td>
-                    <Table.Td>{ttlLabel(r.ttl_sec)}</Table.Td>
-                    <Table.Td>
-                      {canManage && !r.locked && (
-                        <Group gap={4} wrap="nowrap">
-                          <ActionIcon variant="light" onClick={() => setEditing(r)}><IconEdit size={14} /></ActionIcon>
-                        </Group>
-                      )}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+        {isLoading ? <Center><Loader /></Center> : isError ? <Alert color="red">{errMsg(error)}</Alert> : (
+          <DnsSections domain={resource.label} rows={rows} canManage={canManage} onAdd={(t) => setEditing({ type: t, record: null })} onEdit={(r) => setEditing({ type: r.type, record: r })} />
         )}
       </Stack>
-      {editing && <RecordModal resource={resource} record={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => qc.invalidateQueries({ queryKey: key })} />}
+      {editing && <DnsRecordModal type={editing.type} record={editing.record} domain={resource.label} submit={submit} onClose={() => setEditing(null)} onSaved={() => qc.invalidateQueries({ queryKey: key })} />}
     </Drawer>
-  );
-}
-
-function RecordModal({ resource, record, onClose, onSaved }: { resource: LinodeResource; record: LinodeRecord | null; onClose: () => void; onSaved: () => void }) {
-  const [type, setType] = useState<string>(record?.type ?? 'A');
-  const [name, setName] = useState(record?.name ?? '');
-  const [target, setTarget] = useState(record?.target ?? '');
-  const [ttl, setTtl] = useState<string>(String(record?.ttl_sec ?? 0));
-  const [priority, setPriority] = useState<number | string>(record?.priority ?? 10);
-  const [weight, setWeight] = useState<number | string>(record?.weight ?? 0);
-  const [port, setPort] = useState<number | string>(record?.port ?? 0);
-  const [tag, setTag] = useState<string>(record?.tag ?? 'issue');
-  const [error, setError] = useState<string | null>(null);
-
-  const m = useMutation({
-    mutationFn: () => {
-      const p = { type, name: name.trim(), target: target.trim(), ttl_sec: Number(ttl),
-        ...(type === 'MX' || type === 'SRV' ? { priority: Number(priority) } : {}),
-        ...(type === 'SRV' ? { weight: Number(weight), port: Number(port) } : {}),
-        ...(type === 'CAA' ? { tag } : {}) };
-      return record ? updateLinodeRecord(resource.id, record.id, p) : addLinodeRecord(resource.id, p);
-    },
-    onSuccess: () => { notifications.show({ color: 'green', message: record ? 'Record updated.' : 'Record added.' }); onSaved(); onClose(); },
-    onError: (e) => setError(errMsg(e)),
-  });
-
-  return (
-    <Modal opened onClose={onClose} title={record ? 'Edit record' : 'Add record'}>
-      <Stack>
-        {error && <Alert color="red">{error}</Alert>}
-        <Select label="Type" data={RECORD_TYPES} value={type} onChange={(v) => setType(v ?? 'A')} allowDeselect={false} disabled={!!record} />
-        <TextInput label="Name" description="Leave empty for the root domain. CNAME cannot be on the root." placeholder="www" value={name} onChange={(e) => setName(e.currentTarget.value)} />
-        <TextInput label="Target" placeholder={type === 'A' ? '1.2.3.4' : type === 'CNAME' || type === 'MX' ? 'host.example.com' : ''} value={target} onChange={(e) => setTarget(e.currentTarget.value)} required />
-        {(type === 'MX' || type === 'SRV') && <NumberInput label="Priority (0-255)" min={0} max={255} value={priority} onChange={setPriority} />}
-        {type === 'SRV' && (<Group grow><NumberInput label="Weight" min={0} max={65535} value={weight} onChange={setWeight} /><NumberInput label="Port" min={0} max={65535} value={port} onChange={setPort} /></Group>)}
-        {type === 'CAA' && <Select label="Tag" data={['issue', 'issuewild', 'iodef']} value={tag} onChange={(v) => setTag(v ?? 'issue')} allowDeselect={false} />}
-        <Select label="TTL" data={ttlOptions(RECORD_TTLS)} value={ttl} onChange={(v) => setTtl(v ?? '0')} allowDeselect={false} />
-        <Button loading={m.isPending} disabled={!target} onClick={() => { setError(null); m.mutate(); }}>Save</Button>
-      </Stack>
-    </Modal>
   );
 }

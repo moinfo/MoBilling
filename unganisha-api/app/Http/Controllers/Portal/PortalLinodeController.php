@@ -235,7 +235,7 @@ class PortalLinodeController extends Controller
 
     private const DNS_WRITES_PER_CLIENT_HOUR = 20;
     private const MAX_RECORDS_PER_DOMAIN = 50;
-    private const DNS_WRITE_ACTIONS = ['portal.dns_record_add', 'portal.dns_record_edit', 'portal.dns_point_to_server'];
+    private const DNS_WRITE_ACTIONS = ['portal.dns_record_add', 'portal.dns_record_edit', 'portal.dns_point_to_server', 'portal.dns_soa_edit'];
     private const DNS_GENERIC_ERROR = 'Haikuweza kukamilisha ombi la DNS sasa hivi. Jaribu tena baadaye au tumia "Omba msaada wa server".';
 
     private function dnsContext(Request $request, string $server, string $domainResource, bool $write): array
@@ -282,6 +282,47 @@ class PortalLinodeController extends Controller
             return response()->json(['message' => self::DNS_GENERIC_ERROR], 422);
         }
         return response()->json(['data' => $rows, 'meta' => ['nameservers' => LinodeService::NAMESERVERS, 'max_records' => self::MAX_RECORDS_PER_DOMAIN]]);
+    }
+
+    private function soaFacts(array $d, LinodeResource $dom): array
+    {
+        return ['domain' => $dom->label, 'soa_email' => $d['soa_email'] ?? null, 'ttl_sec' => (int) ($d['ttl_sec'] ?? 0), 'refresh_sec' => (int) ($d['refresh_sec'] ?? 0),
+            'retry_sec' => (int) ($d['retry_sec'] ?? 0), 'expire_sec' => (int) ($d['expire_sec'] ?? 0)];
+    }
+
+    /** Live SOA info of the domain (like the header of Linode's domain page). */
+    public function dnsDomain(Request $request, string $server, string $domainResource): JsonResponse
+    {
+        [, $dom, $svc] = $this->dnsContext($request, $server, $domainResource, false);
+        try {
+            $d = $svc->getDomain($dom->remote_id);
+        } catch (\Throwable $e) {
+            return response()->json(['message' => self::DNS_GENERIC_ERROR], 422);
+        }
+        return response()->json(['data' => $this->soaFacts($d, $dom), 'meta' => ['ttls' => LinodeService::SOA_TTLS]]);
+    }
+
+    public function dnsSoaUpdate(Request $request, string $server, string $domainResource): JsonResponse
+    {
+        $input = $request->validate(['soa_email' => 'nullable|email|max:255', 'ttl_sec' => 'nullable|integer', 'refresh_sec' => 'nullable|integer', 'retry_sec' => 'nullable|integer', 'expire_sec' => 'nullable|integer']);
+        [$srv, $dom, $svc] = $this->dnsContext($request, $server, $domainResource, true);
+        if ($limited = $this->dnsLimited($request, $srv)) return $limited;
+        try {
+            $clean = LinodeService::validateSoa(array_filter($input, fn ($v) => $v !== null));
+            $d = $svc->updateDomain($dom->remote_id, $clean);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            $this->dnsAudit($request, $srv, $dom, 'portal.dns_soa_edit', ['fields' => array_keys($input)], 502, 'linode_error');
+            return response()->json(['message' => self::DNS_GENERIC_ERROR], 422);
+        }
+        $meta = (array) $dom->meta;
+        $meta['soa_email'] = $d['soa_email'] ?? $clean['soa_email'] ?? ($meta['soa_email'] ?? null);
+        $meta['ttl_sec'] = $d['ttl_sec'] ?? $clean['ttl_sec'] ?? ($meta['ttl_sec'] ?? null);
+        $dom->meta = $meta;
+        $dom->save();
+        $this->dnsAudit($request, $srv, $dom, 'portal.dns_soa_edit', ['changed' => $clean]);
+        return response()->json(['data' => $this->soaFacts($d + $clean, $dom), 'message' => 'SOA imesasishwa.']);
     }
 
     public function dnsRecordStore(Request $request, string $server, string $domainResource): JsonResponse

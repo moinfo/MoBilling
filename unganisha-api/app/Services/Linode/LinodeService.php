@@ -22,6 +22,12 @@ class LinodeService
     public const NAMESERVERS = ['ns1.linode.com', 'ns2.linode.com', 'ns3.linode.com', 'ns4.linode.com', 'ns5.linode.com'];
     public const DOMAIN_TTLS = [0, 30, 120, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200];
     public const RECORD_TTLS = [0, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200];
+    /** Values Linode accepts for a domain's SOA ttl_sec / refresh_sec / retry_sec / expire_sec (0 = "Default"). */
+    public const SOA_TTLS = [0, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200];
+    public const SOA_REFRESH = self::SOA_TTLS;
+    public const SOA_RETRY = self::SOA_TTLS;
+    public const SOA_EXPIRE = self::SOA_TTLS;
+    public const SOA_FIELDS = ['soa_email', 'ttl_sec', 'refresh_sec', 'retry_sec', 'expire_sec'];
     /** Request-field rules shared by the staff and portal record endpoints (semantic checks live in validateRecord). */
     public const RECORD_INPUT_RULES = [
         'type' => 'required|string|max:10', 'name' => 'nullable|string|max:253', 'target' => 'required|string|max:2000',
@@ -230,6 +236,40 @@ class LinodeService
         if ($ttl !== null) $body['ttl_sec'] = self::validateTtl($ttl);
 
         return $this->request('POST', '/domains', $body, 'domain.create', $domain);
+    }
+
+    /** Live domain (GET /domains/{id}); includes the SOA fields. */
+    public function getDomain(string|int $domainId): array
+    {
+        return $this->request('GET', '/domains/' . (int) $domainId);
+    }
+
+    /** Validate SOA input against Linode's allowed values; only keys present are returned. @throws \InvalidArgumentException */
+    public static function validateSoa(array $in): array
+    {
+        $out = [];
+        if (array_key_exists('soa_email', $in)) {
+            $e = trim((string) $in['soa_email']);
+            if (!filter_var($e, FILTER_VALIDATE_EMAIL) || strlen($e) > 255) throw new \InvalidArgumentException('A valid SOA email is required.');
+            $out['soa_email'] = $e;
+        }
+        foreach (['ttl_sec' => self::SOA_TTLS, 'refresh_sec' => self::SOA_REFRESH, 'retry_sec' => self::SOA_RETRY, 'expire_sec' => self::SOA_EXPIRE] as $k => $allowed) {
+            if (array_key_exists($k, $in) && $in[$k] !== null && $in[$k] !== '') {
+                if (!is_numeric($in[$k]) || !in_array((int) $in[$k], $allowed, true)) {
+                    throw new \InvalidArgumentException("$k must be one of: " . implode(', ', $allowed) . '.');
+                }
+                $out[$k] = (int) $in[$k];
+            }
+        }
+        if (!$out) throw new \InvalidArgumentException('Nothing to update.');
+        return $out;
+    }
+
+    /** PUT /domains/{id} with validated SOA fields (never changes domain name/type). */
+    public function updateDomain(string|int $domainId, array $fields): array
+    {
+        $clean = self::validateSoa($fields);
+        return $this->request('PUT', '/domains/' . (int) $domainId, $clean, 'domain.update', "domain:{$domainId}");
     }
 
     public function listRecords(string|int $domainId): array

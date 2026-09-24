@@ -14,6 +14,7 @@ const TOKEN = 'lin_SECRET_TOKEN_abcdefghijklmnopqrstuvwxyz1234';
 LinodeService::$sleepOnRateLimit = false;
 LinodeService::$paginatedGapMs = 0;
 $fail = 0;
+$soaState = ['soa_email' => 'soa@example.test', 'ttl_sec' => 0, 'refresh_sec' => 0, 'retry_sec' => 0, 'expire_sec' => 0];
 function ok($c, $m) { global $fail; if (!$c) { $fail++; echo "FAIL $m\n"; } else echo "PASS $m\n"; }
 function j($r) { return $r->getData(true); }
 function verbs() { return Http::recorded()->map(fn ($p) => $p[0]->method())->countBy()->all(); }
@@ -25,6 +26,9 @@ function fakeDns(int $did, array &$records) {
         if ($req->method() === 'GET' && $u === "/v4/domains/$did/records") return Http::response(['data' => $records, 'page' => 1, 'pages' => 1, 'results' => count($records)]);
         if ($req->method() === 'POST' && $u === "/v4/domains/$did/records") { $b = $req->data(); $b['id'] = 900 + count($records); $records[] = $b; return Http::response($b); }
         if ($req->method() === 'PUT' && preg_match("#^/v4/domains/$did/records/(\d+)$#", $u, $m)) { $b = $req->data(); $b['id'] = (int) $m[1]; return Http::response($b); }
+        global $soaState;
+        if ($req->method() === 'GET' && $u === "/v4/domains/$did") return Http::response(['id' => $did, 'domain' => 'mine.co.tz', 'type' => 'master', 'status' => 'active'] + $soaState);
+        if ($req->method() === 'PUT' && $u === "/v4/domains/$did") { $soaState = array_merge($soaState, $req->data()); return Http::response(['id' => $did, 'domain' => 'mine.co.tz'] + $soaState); }
         return Http::response(['errors' => [['reason' => 'LINODE INTERNAL scope domains:read_write ' . TOKEN]]], 500);
     });
 }
@@ -187,9 +191,52 @@ try {
         ok(call($uX, 'dnsRecords', $args($sA, $dMine), [], 'GET')->getStatusCode() === 404 && call($uX, 'dnsRecordStore', $args($sA, $dMine), ['type' => 'A', 'name' => 'x', 'target' => '1.2.3.4'])->getStatusCode() === 404 && Http::recorded()->count() === 0, 'other-tenant portal user -> 404, no call');
     } else echo "SKIP no second tenant user\n";
 
+    // ---- SOA get / edit
+    fakeDns(9300, $recs);
+    $r = call($uA, 'dnsDomain', $args($sA, $dMine), [], 'GET');
+    ok($r->getStatusCode() === 200 && j($r)['data']['domain'] === 'mine.co.tz' && j($r)['data']['soa_email'] === 'soa@example.test' && verbs() === ['GET' => 1]
+        && Http::recorded(fn ($q) => str_ends_with($q->url(), '/v4/domains/9300'))->count() === 1, 'SOA get: one live GET /domains/{id}');
+    ok(!str_contains(json_encode(j($r)), TOKEN) && !str_contains(json_encode(j($r)), '9300'), 'SOA get: no secrets / remote id');
+    fakeDns(9300, $recs);
+    ok(call($uAv, 'dnsDomain', $args($sA, $dMine), [], 'GET')->getStatusCode() === 200, 'viewer may read SOA');
+    fakeDns(9300, $recs);
+    ok(call($uA, 'dnsDomain', $args($sA, $dOther), [], 'GET')->getStatusCode() === 404 && call($uA, 'dnsDomain', $args($sA, $dElse), [], 'GET')->getStatusCode() === 404 && Http::recorded()->count() === 0, 'SOA get: other/unmapped domain -> 404, no call');
+    $soaIn = ['soa_email' => 'new@example.test', 'ttl_sec' => 3600, 'refresh_sec' => 7200, 'retry_sec' => 300, 'expire_sec' => 604800];
+    fakeDns(9300, $recs);
+    $r = call($uA, 'dnsSoaUpdate', $args($sA, $dMine), $soaIn, 'PUT');
+    ok($r->getStatusCode() === 200 && verbs() === ['PUT' => 1] && Http::recorded(fn ($q) => $q->method() === 'PUT' && str_ends_with($q->url(), '/v4/domains/9300') && $q->data() === $soaIn)->count() === 1, 'SOA edit: exactly one PUT /domains/{id} with the validated body');
+    ok(j($r)['data']['expire_sec'] === 604800 && j($r)['data']['soa_email'] === 'new@example.test', 'SOA edit: response reflects new values');
+    $dMine->refresh();
+    ok(($dMine->meta['soa_email'] ?? null) === 'new@example.test' && ($dMine->meta['ttl_sec'] ?? null) === 3600 && !empty($dMine->meta['dns']), 'SOA edit: local meta synced, dns mapping kept');
+    $a = LinodeAuditLog::where('action', 'portal.dns_soa_edit')->latest('created_at')->first();
+    ok($a && $a->request['client_id'] === $cA->id && $a->request['domain'] === 'mine.co.tz' && !str_contains(json_encode($a->toArray()), TOKEN), 'SOA edit audited (portal.dns_soa_edit), no secrets');
+    foreach ([['ttl_sec' => 45], ['refresh_sec' => 1234], ['retry_sec' => 30], ['expire_sec' => 99999999], ['soa_email' => 'not-an-email'], ['ttl_sec' => 'abc'], []] as $bad) {
+        fakeDns(9300, $recs);
+        $r = call($uA, 'dnsSoaUpdate', $args($sA, $dMine), $bad, 'PUT');
+        ok($r->getStatusCode() === 422 && Http::recorded()->count() === 0, 'SOA invalid refused, no Linode call: ' . json_encode($bad));
+    }
+    fakeDns(9300, $recs);
+    ok(call($uAv, 'dnsSoaUpdate', $args($sA, $dMine), $soaIn, 'PUT')->getStatusCode() === 403 && Http::recorded()->count() === 0, 'SOA edit: viewer -> 403, no call');
+    ok(call($uA, 'dnsSoaUpdate', $args($sA, $dOther), $soaIn, 'PUT')->getStatusCode() === 404 && call($uA, 'dnsSoaUpdate', $args($sA, $dElse), $soaIn, 'PUT')->getStatusCode() === 404
+        && call($uB, 'dnsSoaUpdate', $args($sA, $dMine), $soaIn, 'PUT')->getStatusCode() === 404 && Http::recorded()->count() === 0, 'SOA edit: other client / unmapped -> 404, no call');
+    Http::swap(new \Illuminate\Http\Client\Factory()); Http::preventStrayRequests();
+    Http::fake(['api.linode.com/*' => Http::response(['errors' => [['reason' => 'OAuth token missing scope domains:read_write']]], 403)]);
+    $r = call($uA, 'dnsSoaUpdate', $args($sA, $dMine), ['ttl_sec' => 300], 'PUT'); $m = strtolower(json_encode(j($r)));
+    ok($r->getStatusCode() === 422 && !str_contains($m, 'scope') && !str_contains($m, 'oauth'), 'SOA Linode failure -> generic message');
+    // shared rate limit
+    LinodeAuditLog::whereIn('action', ['portal.dns_record_add', 'portal.dns_record_edit', 'portal.dns_point_to_server', 'portal.dns_soa_edit'])->delete();
+    for ($i = 0; $i < 19; $i++) LinodeAuditLog::create(['tenant_id' => $tenantA->id, 'user_id' => $uA->id, 'linode_account_id' => $acct->id, 'action' => 'portal.dns_record_add', 'target' => 'x', 'request' => ['client_id' => $cA->id], 'response_status' => 200]);
+    fakeDns(9300, $recs);
+    ok(call($uA, 'dnsSoaUpdate', $args($sA, $dMine), ['ttl_sec' => 300], 'PUT')->getStatusCode() === 200, 'SOA edit is the 20th write: allowed');
+    fakeDns(9300, $recs);
+    ok(call($uA, 'dnsSoaUpdate', $args($sA, $dMine), ['ttl_sec' => 300], 'PUT')->getStatusCode() === 429 && call($uA, 'dnsRecordStore', $args($sA, $dMine), ['type' => 'A', 'name' => 'q', 'target' => '1.2.3.4'])->getStatusCode() === 429 && Http::recorded()->count() === 0, 'SOA edits share the 20/hour limit with record writes');
+    ok(LinodeService::SOA_TTLS === [0, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200], 'SOA allowed-value constants');
+    $ref = new ReflectionMethod(LinodeService::class, 'request'); $ref->setAccessible(true);
+    try { $ref->invoke(new LinodeService($acct), 'DELETE', '/domains/1'); ok(false, 'DELETE refused'); } catch (\App\Exceptions\LinodeApiException $e) { ok(true, 'request() still refuses DELETE'); }
+
     // ---- routes
     $pr = collect(app('router')->getRoutes()->getRoutes())->filter(fn ($r) => str_starts_with($r->uri(), 'api/portal/linode') && str_contains($r->uri(), 'domains/'));
-    ok($pr->count() === 4 && $pr->every(fn ($r) => in_array('client_portal', $r->gatherMiddleware(), true) && !in_array('DELETE', $r->methods(), true)), 'DNS routes behind client_portal, no DELETE');
+    ok($pr->count() === 6 && $pr->every(fn ($r) => in_array('client_portal', $r->gatherMiddleware(), true) && !in_array('DELETE', $r->methods(), true)), 'DNS routes behind client_portal, no DELETE');
     // ---- overview exposes domain id for the UI
     fakeDns(9300, $recs);
     $ov = call($uA, 'show', [$sA->id][0] ? [$sA->id] : [], [], 'GET');

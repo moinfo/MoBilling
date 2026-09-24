@@ -263,7 +263,7 @@ try {
     $routes = collect(app('router')->getRoutes()->getRoutes())->filter(fn ($r) => str_contains($r->uri(), 'domain-requests') && str_starts_with($r->uri(), 'api/linode'));
     ok($routes->count() === 3 && $routes->every(fn ($r) => in_array('permission:linode.manage', $r->gatherMiddleware(), true)), 'staff routes are behind permission:linode.manage');
     $pr = collect(app('router')->getRoutes()->getRoutes())->filter(fn ($r) => str_starts_with($r->uri(), 'api/portal/linode'));
-    ok($pr->count() === 9 && $pr->every(fn ($r) => in_array('client_portal', $r->gatherMiddleware(), true)) && $pr->every(fn ($r) => !in_array('DELETE', $r->methods(), true)), 'portal routes behind client_portal auth group, no DELETE');
+    ok($pr->count() === 11 && $pr->every(fn ($r) => in_array('client_portal', $r->gatherMiddleware(), true)) && $pr->every(fn ($r) => !in_array('DELETE', $r->methods(), true)), 'portal routes behind client_portal auth group, no DELETE');
 } catch (\Throwable $e) {
     $fail++; echo 'FAIL exception ' . $e->getMessage() . ' @' . $e->getFile() . ':' . $e->getLine() . "\n";
 }

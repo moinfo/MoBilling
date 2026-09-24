@@ -87,6 +87,8 @@ export interface LinodeRecord {
   weight?: number | null;
   port?: number | null;
   tag?: string | null;
+  service?: string | null;
+  protocol?: string | null;
   locked?: boolean;
 }
 
@@ -98,6 +100,8 @@ export interface LinodeRecordPayload {
   priority?: number;
   weight?: number;
   port?: number;
+  service?: string;
+  protocol?: string;
   tag?: string;
 }
 
@@ -110,6 +114,8 @@ export interface AddDomainResult extends LinodeResource {
 
 export const DOMAIN_TTLS = [0, 30, 120, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200];
 export const RECORD_TTLS = [0, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200];
+/** Values Linode accepts for SOA ttl/refresh/retry/expire (0 = Default). */
+export const SOA_TTLS = [0, 300, 3600, 7200, 14400, 28800, 57600, 86400, 172800, 345600, 604800, 1209600, 2419200];
 export const RECORD_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA'];
 export const LINODE_NAMESERVERS = ['ns1.linode.com', 'ns2.linode.com', 'ns3.linode.com', 'ns4.linode.com', 'ns5.linode.com'];
 

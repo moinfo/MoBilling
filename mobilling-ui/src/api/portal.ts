@@ -575,10 +575,14 @@ export interface PortalAddDomainResult { id: string; domain: string; status: str
 export const portalLinodeRequestDomain = (id: string, p: { domain: string; soa_email?: string; ttl?: number; point_to_server?: boolean }) =>
   api.post<{ message: string; data: PortalAddDomainResult }>(`/portal/linode/servers/${id}/domain-requests`, p);
 export interface PortalDnsRecord { id: number; type: string; name: string; target: string; ttl_sec: number; priority?: number | null; weight?: number | null; port?: number | null; service?: string | null; protocol?: string | null; tag?: string | null; locked: boolean }
-export type PortalDnsRecordInput = { type: string; name: string; target: string; ttl_sec: number; priority?: number; weight?: number; port?: number; tag?: string };
+export type PortalDnsRecordInput = { type: string; name: string; target: string; ttl_sec: number; priority?: number; weight?: number; port?: number; tag?: string; service?: string; protocol?: string };
 const dnsBase = (sid: string, did: string) => `/portal/linode/servers/${sid}/domains/${did}`;
 export const getPortalDnsRecords = (sid: string, did: string) =>
   api.get<{ data: PortalDnsRecord[]; meta: { nameservers: string[]; max_records: number } }>(`${dnsBase(sid, did)}/records`);
+export interface PortalSoa { domain: string; soa_email: string | null; ttl_sec: number; refresh_sec: number; retry_sec: number; expire_sec: number }
+export type PortalSoaInput = { soa_email: string; ttl_sec: number; refresh_sec: number; retry_sec: number; expire_sec: number };
+export const getPortalDnsDomain = (sid: string, did: string) => api.get<{ data: PortalSoa }>(dnsBase(sid, did));
+export const updatePortalDnsSoa = (sid: string, did: string, p: PortalSoaInput) => api.put<{ message: string; data: PortalSoa }>(`${dnsBase(sid, did)}/soa`, p);
 export const addPortalDnsRecord = (sid: string, did: string, p: PortalDnsRecordInput) => api.post<{ message: string }>(`${dnsBase(sid, did)}/records`, p);
 export const updatePortalDnsRecord = (sid: string, did: string, rid: number, p: PortalDnsRecordInput) => api.put<{ message: string }>(`${dnsBase(sid, did)}/records/${rid}`, p);
 export const portalDnsPointToServer = (sid: string, did: string) => api.post<{ message: string; data: { created: number } }>(`${dnsBase(sid, did)}/point-to-server`);

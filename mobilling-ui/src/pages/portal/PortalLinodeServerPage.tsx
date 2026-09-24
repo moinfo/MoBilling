@@ -1,21 +1,20 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { Paper, Title, Table, Modal, Stack, Text, Alert, TextInput, Group, Button, Badge, Divider, Textarea, Loader, Drawer, Select, NumberInput, Checkbox, Code, CopyButton, ActionIcon, Center } from '@mantine/core';
+import { Paper, Title, Table, Modal, Stack, Text, Alert, TextInput, Group, Button, Badge, Divider, Textarea, Loader, Drawer, Select, Checkbox, Code, CopyButton, ActionIcon, Center } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconRefresh, IconLifebuoy, IconArrowLeft, IconSettings, IconPlus, IconEdit, IconCopy, IconCheck, IconLock, IconWorldWww } from '@tabler/icons-react';
+import { IconRefresh, IconLifebuoy, IconArrowLeft, IconSettings, IconCopy, IconCheck, IconWorldWww } from '@tabler/icons-react';
 import { useAuth } from '../../context/AuthContext';
 import {
   getPortalLinodeServer, portalLinodeReboot, portalLinodeRequestDomain, portalLinodeSupportTicket, getPortalDnsRecords, addPortalDnsRecord, updatePortalDnsRecord,
-  portalDnsPointToServer, PortalDnsRecord, PortalDnsRecordInput, PortalAddDomainResult,
+  portalDnsPointToServer, PortalAddDomainResult, PortalSoa, getPortalDnsDomain, updatePortalDnsSoa,
 } from '../../api/portal';
-import { DOMAIN_TTLS, RECORD_TTLS, RECORD_TYPES, LINODE_NAMESERVERS } from '../../api/linode';
+import { DOMAIN_TTLS, SOA_TTLS, LINODE_NAMESERVERS } from '../../api/linode';
+import { DnsSections, DnsRecordModal, DnsRec, DnsPayload, dnsErrMsg, ttlSelectData } from '../../components/DnsSections';
 
-const errMsg = (e: any): string =>
-  e?.response?.data?.message || (e?.response?.data?.errors ? Object.values(e.response.data.errors).flat().join(' ') : null) || e?.message || 'Something went wrong';
+const errMsg = dnsErrMsg;
 
-const ttlLabel = (s: number) => (s === 0 ? 'Default' : s >= 86400 ? `siku ${s / 86400}` : s >= 3600 ? `saa ${s / 3600}` : `sek ${s}`);
-const ttlOptions = (list: number[]) => list.map((t) => ({ value: String(t), label: ttlLabel(t) }));
+const ttlOptions = ttlSelectData;
 
 function NameserverCard({ nameservers }: { nameservers: string[] }) {
   return (
@@ -39,39 +38,23 @@ function NameserverCard({ nameservers }: { nameservers: string[] }) {
   );
 }
 
-function RecordModal({ sid, did, record, onClose, onSaved }: { sid: string; did: string; record: PortalDnsRecord | null; onClose: () => void; onSaved: () => void }) {
-  const [type, setType] = useState<string>(record?.type ?? 'A');
-  const [name, setName] = useState(record?.name ?? '');
-  const [target, setTarget] = useState(record?.target ?? '');
-  const [ttl, setTtl] = useState<string>(String(record?.ttl_sec ?? 0));
-  const [priority, setPriority] = useState<number | string>(record?.priority ?? 10);
-  const [weight, setWeight] = useState<number | string>(record?.weight ?? 0);
-  const [port, setPort] = useState<number | string>(record?.port ?? 0);
-  const [tag, setTag] = useState<string>(record?.tag ?? 'issue');
+function SoaModal({ sid, did, soa, onClose, onSaved }: { sid: string; did: string; soa: PortalSoa; onClose: () => void; onSaved: () => void }) {
+  const [email, setEmail] = useState(soa.soa_email ?? '');
+  const [f, setF] = useState({ ttl_sec: String(soa.ttl_sec), refresh_sec: String(soa.refresh_sec), retry_sec: String(soa.retry_sec), expire_sec: String(soa.expire_sec) });
   const [error, setError] = useState<string | null>(null);
   const m = useMutation({
-    mutationFn: () => {
-      const p: PortalDnsRecordInput = { type, name: name.trim(), target: target.trim(), ttl_sec: Number(ttl),
-        ...(type === 'MX' || type === 'SRV' ? { priority: Number(priority) } : {}),
-        ...(type === 'SRV' ? { weight: Number(weight), port: Number(port) } : {}),
-        ...(type === 'CAA' ? { tag } : {}) };
-      return record ? updatePortalDnsRecord(sid, did, record.id, p) : addPortalDnsRecord(sid, did, p);
-    },
+    mutationFn: () => updatePortalDnsSoa(sid, did, { soa_email: email.trim(), ttl_sec: Number(f.ttl_sec), refresh_sec: Number(f.refresh_sec), retry_sec: Number(f.retry_sec), expire_sec: Number(f.expire_sec) }),
     onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); onSaved(); onClose(); },
     onError: (e) => setError(errMsg(e)),
   });
+  const sel = (label: string, k: keyof typeof f) => <Select label={label} data={ttlSelectData(SOA_TTLS)} value={f[k]} onChange={(v) => setF({ ...f, [k]: v ?? '0' })} allowDeselect={false} />;
   return (
-    <Modal opened onClose={onClose} title={record ? 'Hariri record' : 'Ongeza record'} zIndex={500}>
+    <Modal opened onClose={onClose} title="Hariri SOA Record" zIndex={500}>
       <Stack>
         {error && <Alert color="red">{error}</Alert>}
-        <Select label="Aina" data={RECORD_TYPES} value={type} onChange={(v) => setType(v ?? 'A')} allowDeselect={false} disabled={!!record} />
-        <TextInput label="Jina" description="Acha wazi kwa domain kuu. CNAME haiwezi kuwa kwenye domain kuu." placeholder="www" value={name} onChange={(e) => setName(e.currentTarget.value)} />
-        <TextInput label="Target" placeholder={type === 'A' ? '1.2.3.4' : type === 'CNAME' || type === 'MX' ? 'host.example.com' : ''} value={target} onChange={(e) => setTarget(e.currentTarget.value)} required />
-        {(type === 'MX' || type === 'SRV') && <NumberInput label="Priority (0-255)" min={0} max={255} value={priority} onChange={setPriority} />}
-        {type === 'SRV' && (<Group grow><NumberInput label="Weight" min={0} max={65535} value={weight} onChange={setWeight} /><NumberInput label="Port" min={0} max={65535} value={port} onChange={setPort} /></Group>)}
-        {type === 'CAA' && <Select label="Tag" data={['issue', 'issuewild', 'iodef']} value={tag} onChange={(v) => setTag(v ?? 'issue')} allowDeselect={false} />}
-        <Select label="TTL" data={ttlOptions(RECORD_TTLS)} value={ttl} onChange={(v) => setTtl(v ?? '0')} allowDeselect={false} />
-        <Button loading={m.isPending} disabled={!target.trim()} onClick={() => { setError(null); m.mutate(); }}>Hifadhi</Button>
+        <TextInput label="Email" value={email} onChange={(e) => setEmail(e.currentTarget.value)} required />
+        {sel('Default TTL', 'ttl_sec')}{sel('Refresh Rate', 'refresh_sec')}{sel('Retry Rate', 'retry_sec')}{sel('Expire Time', 'expire_sec')}
+        <Button loading={m.isPending} disabled={!email.trim()} onClick={() => { setError(null); m.mutate(); }}>Hifadhi</Button>
       </Stack>
     </Modal>
   );
@@ -81,51 +64,43 @@ function DnsDrawer({ sid, domain, isAdmin, serverIp, onClose }: { sid: string; d
   const qc = useQueryClient();
   const navigate = useNavigate();
   const key = ['portal-dns', sid, domain.id];
+  const soaKey = ['portal-dns-soa', sid, domain.id];
   const { data, isLoading, isError, error } = useQuery({ queryKey: key, queryFn: () => getPortalDnsRecords(sid, domain.id), retry: false });
-  const rows = data?.data?.data ?? [];
-  const [editing, setEditing] = useState<PortalDnsRecord | 'new' | null>(null);
+  const soaQ = useQuery({ queryKey: soaKey, queryFn: () => getPortalDnsDomain(sid, domain.id), retry: false });
+  const rows = (data?.data?.data ?? []) as DnsRec[];
+  const [editing, setEditing] = useState<{ type: string; record: DnsRec | null } | null>(null);
+  const [soaOpen, setSoaOpen] = useState(false);
   const point = useMutation({
     mutationFn: () => portalDnsPointToServer(sid, domain.id),
     onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); qc.invalidateQueries({ queryKey: key }); qc.invalidateQueries({ queryKey: ['portal-linode', sid] }); },
     onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
   });
+  const submit = async (p: DnsPayload, record: DnsRec | null) => {
+    const r = record ? await updatePortalDnsRecord(sid, domain.id, record.id, p) : await addPortalDnsRecord(sid, domain.id, p);
+    notifications.show({ color: 'green', message: r.data.message });
+  };
   return (
-    <Drawer opened onClose={onClose} title={`DNS - ${domain.name}`} position="right" size="xl" zIndex={400}>
+    <Drawer opened onClose={onClose} title={domain.name} position="right" size="xl" zIndex={400}>
       <Stack>
         <NameserverCard nameservers={data?.data?.meta?.nameservers ?? LINODE_NAMESERVERS} />
         {domain.registered_domain_id && (
           <Alert color="blue">Domain hii imesajiliwa kupitia sisi. <Button size="compact-xs" variant="subtle" onClick={() => navigate(`/portal/domains/${domain.registered_domain_id}`)}>Simamia usajili na nameservers</Button></Alert>
         )}
-        <Text size="xs" c="dimmed">Records za NS na SOA zinasimamiwa na Linode na haziwezi kubadilishwa. Unaweza kuongeza au kuhariri records, lakini si kuzifuta.</Text>
+        <Text size="xs" c="dimmed">Records za NS zinasimamiwa na Linode na haziwezi kubadilishwa. Unaweza kuongeza au kuhariri records, lakini si kuzifuta.</Text>
         {isAdmin && (
           <Group>
-            <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => setEditing('new')}>Ongeza record</Button>
             <Button size="xs" variant="light" leftSection={<IconWorldWww size={14} />} loading={point.isPending} disabled={!serverIp}
               onClick={() => { if (window.confirm(`Weka records za A na www zielekee ${serverIp}?`)) point.mutate(); }}>Elekeza kwenye server hii</Button>
           </Group>
         )}
-        {isLoading ? <Center><Loader /></Center> : isError ? <Alert color="red">{errMsg(error)}</Alert> : !rows.length ? <Text c="dimmed">Hakuna records.</Text> : (
-          <Table.ScrollContainer minWidth={480}>
-            <Table verticalSpacing="xs">
-              <Table.Thead><Table.Tr><Table.Th>Aina</Table.Th><Table.Th>Jina</Table.Th><Table.Th>Target</Table.Th><Table.Th>TTL</Table.Th><Table.Th /></Table.Tr></Table.Thead>
-              <Table.Tbody>
-                {rows.map((r) => (
-                  <Table.Tr key={r.id}>
-                    <Table.Td><Badge variant="light">{r.type}</Badge></Table.Td>
-                    <Table.Td>{r.name || '@'}</Table.Td>
-                    <Table.Td style={{ wordBreak: 'break-all' }}>{r.target}{r.priority != null && r.type === 'MX' ? ` (prio ${r.priority})` : ''}</Table.Td>
-                    <Table.Td>{ttlLabel(r.ttl_sec)}</Table.Td>
-                    <Table.Td>
-                      {r.locked ? <IconLock size={14} /> : isAdmin && <ActionIcon variant="light" aria-label="Hariri" onClick={() => setEditing(r)}><IconEdit size={14} /></ActionIcon>}
-                    </Table.Td>
-                  </Table.Tr>
-                ))}
-              </Table.Tbody>
-            </Table>
-          </Table.ScrollContainer>
+        {isLoading ? <Center><Loader /></Center> : isError ? <Alert color="red">{errMsg(error)}</Alert> : (
+          <DnsSections domain={domain.name} rows={rows} sw canManage={isAdmin}
+            soa={soaQ.isLoading || soaQ.isError ? undefined : (soaQ.data?.data?.data ?? null)}
+            onAdd={(t) => setEditing({ type: t, record: null })} onEdit={(r) => setEditing({ type: r.type, record: r })} onEditSoa={() => setSoaOpen(true)} />
         )}
       </Stack>
-      {editing && <RecordModal sid={sid} did={domain.id} record={editing === 'new' ? null : editing} onClose={() => setEditing(null)} onSaved={() => qc.invalidateQueries({ queryKey: key })} />}
+      {editing && <DnsRecordModal type={editing.type} record={editing.record} domain={domain.name} sw submit={submit} onClose={() => setEditing(null)} onSaved={() => qc.invalidateQueries({ queryKey: key })} />}
+      {soaOpen && soaQ.data?.data?.data && <SoaModal sid={sid} did={domain.id} soa={soaQ.data.data.data} onClose={() => setSoaOpen(false)} onSaved={() => qc.invalidateQueries({ queryKey: soaKey })} />}
     </Drawer>
   );
 }
