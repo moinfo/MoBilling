@@ -8,6 +8,7 @@ export interface Coupon {
   value: number;
   applies_to: 'all' | 'product';
   max_uses: number | null;
+  max_uses_per_client?: number | null;
   uses: number;
   min_order: number | null;
   starts_at: string | null;
@@ -27,6 +28,7 @@ export interface CouponFormData {
   value: number;
   applies_to: 'all' | 'product';
   max_uses?: number | null;
+  max_uses_per_client?: number | null;
   min_order?: number | null;
   starts_at?: string | null;
   expires_at?: string | null;

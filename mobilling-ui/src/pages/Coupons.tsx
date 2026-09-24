@@ -16,7 +16,7 @@ import { getProductServices } from '../api/productServices';
 
 const emptyForm: CouponFormData = {
   code: '', description: '', type: 'percent', value: 0, applies_to: 'all',
-  max_uses: null, min_order: null, starts_at: null, expires_at: null,
+  max_uses: null, max_uses_per_client: null, min_order: null, starts_at: null, expires_at: null,
   recurring: false, is_active: true, product_service_ids: [],
 };
 
@@ -57,7 +57,7 @@ export default function Coupons() {
     setEditing(c);
     form.setValues({
       code: c.code, description: c.description ?? '', type: c.type, value: Number(c.value),
-      applies_to: c.applies_to, max_uses: c.max_uses, min_order: c.min_order,
+      applies_to: c.applies_to, max_uses: c.max_uses, max_uses_per_client: c.max_uses_per_client ?? null, min_order: c.min_order,
       starts_at: c.starts_at, expires_at: c.expires_at, recurring: c.recurring,
       is_active: c.is_active, product_service_ids: c.product_service_ids ?? [],
     });
@@ -178,6 +178,8 @@ export default function Coupons() {
                 {...form.getInputProps('applies_to')} />
               <NumberInput label="Max uses (blank = unlimited)" min={1} allowDecimal={false}
                 {...form.getInputProps('max_uses')} />
+              <NumberInput label="Max uses per client (blank = unlimited)" min={1} allowDecimal={false}
+                {...form.getInputProps('max_uses_per_client')} />
               <NumberInput label="Min order (blank = none)" min={0} decimalScale={2}
                 {...form.getInputProps('min_order')} />
             </Group>
