@@ -34,5 +34,12 @@ try {
     Http::fake(['api.linode.com/v4/*' => Http::response(['errors' => [['reason' => 'Unauthorized']]], 403)]);
     $row = collect(app(LinodeController::class)->costs()->getData(true)['data'])->firstWhere('label', 'T');
     ok(str_contains($row['error'] ?? '', 'account:read_only'), '403 gives a clear missing-scope message');
+
+    Http::swap(new \Illuminate\Http\Client\Factory()); Http::preventStrayRequests();
+    Http::fake(['api.linode.com/v4/account/invoices/77/items*' => Http::response(['data' => [['label' => 'Nanode', 'from' => '2026-09-01', 'to' => '2026-09-30', 'quantity' => 1, 'unit_price' => '5', 'amount' => 5, 'tax' => 0, 'total' => 5]], 'pages' => 1])]);
+    $resp = app(LinodeController::class)->downloadInvoice($a, '77');
+    ob_start(); $resp->sendContent(); $csv = ob_get_clean();
+    ok(str_contains($csv, 'Nanode') && str_contains($csv, '5.00'), 'invoice CSV has items and total');
+    ok(Http::recorded(fn ($r) => $r->method() !== 'GET')->count() === 0, 'download is GET only');
 } finally { DB::rollBack(); }
 echo $fail ? "FAILED $fail\n" : "ALL PASSED\n";

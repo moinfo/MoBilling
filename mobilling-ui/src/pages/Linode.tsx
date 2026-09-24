@@ -8,7 +8,7 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import {
   IconPlus, IconRefresh, IconTrash, IconEdit, IconKey, IconCopy, IconCheck, IconServer, IconWorldWww, IconPlugConnected,
-  IconLink, IconWand, IconReceipt, IconPower,
+  IconLink, IconWand, IconDownload, IconReceipt, IconPower,
 } from '@tabler/icons-react';
 import {
   getLinodeCosts, getLinodeAccounts, createLinodeAccount, updateLinodeAccount, deleteLinodeAccount, verifyLinodeAccount,
@@ -17,6 +17,7 @@ import {
   mapLinodeResource, refreshLinodeDns, getLinodeBillingProducts, getLinodeClientSubscriptions, billLinodeServer, linkLinodeSubscription, unlinkLinodeSubscription, autoMapLinodeClients, DnsStatus, LinodeAccount, LinodeResource, LinodeRecord, AddDomainResult, DOMAIN_TTLS, RECORD_TTLS,
   RECORD_TYPES, LINODE_NAMESERVERS, DnsRefreshBatch, PowerAction,
 } from '../api/linode';
+import api from '../api/axios';
 import { getClients } from '../api/clients';
 import LinodePowerModal, { BUSY_STATUSES } from '../components/LinodePowerModal';
 import { Menu } from '@mantine/core';
@@ -64,6 +65,17 @@ export default function Linode() {
 
 // ───────────── Accounts ─────────────
 
+const downloadInvoice = async (accountId: string, id: number) => {
+  try {
+    const res = await api.get(`/linode/accounts/${accountId}/invoices/${id}/download`, { responseType: 'blob' });
+    const url = URL.createObjectURL(res.data);
+    const a = document.createElement('a'); a.href = url; a.download = `linode-invoice-${id}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  } catch {
+    notifications.show({ color: 'red', message: 'Could not download the invoice. Check the token has account: read only scope.' });
+  }
+};
+
 const usd = (n: number | null) => (n == null ? '—' : `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
 
 function CostsTab() {
@@ -94,8 +106,8 @@ function CostsTab() {
                 <Group align="flex-start" grow>
                   <ScrollArea.Autosize mah={360}>
                     <Text fw={600} size="sm" mb={4}>Invoices</Text>
-                    <Table striped><Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Invoice</Table.Th><Table.Th ta="right">Total</Table.Th></Table.Tr></Table.Thead>
-                      <Table.Tbody>{a.invoices.map((i) => <Table.Tr key={i.id}><Table.Td>{i.date?.slice(0, 10)}</Table.Td><Table.Td>#{i.id}</Table.Td><Table.Td ta="right">{usd(i.total)}</Table.Td></Table.Tr>)}</Table.Tbody></Table>
+                    <Table striped><Table.Thead><Table.Tr><Table.Th>Date</Table.Th><Table.Th>Invoice</Table.Th><Table.Th ta="right">Total</Table.Th><Table.Th /></Table.Tr></Table.Thead>
+                      <Table.Tbody>{a.invoices.map((i) => <Table.Tr key={i.id}><Table.Td>{i.date?.slice(0, 10)}</Table.Td><Table.Td>#{i.id}</Table.Td><Table.Td ta="right">{usd(i.total)}</Table.Td><Table.Td><Tooltip label="Download CSV"><ActionIcon variant="subtle" onClick={() => downloadInvoice(a.account_id, i.id)}><IconDownload size={14} /></ActionIcon></Tooltip></Table.Td></Table.Tr>)}</Table.Tbody></Table>
                   </ScrollArea.Autosize>
                   <ScrollArea.Autosize mah={360}>
                     <Text fw={600} size="sm" mb={4}>Payments made</Text>

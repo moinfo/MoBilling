@@ -770,6 +770,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/accounts', [\App\Http\Controllers\LinodeController::class, 'storeAccount']);
         Route::put('/accounts/{account}', [\App\Http\Controllers\LinodeController::class, 'updateAccount']);
         Route::delete('/accounts/{account}', [\App\Http\Controllers\LinodeController::class, 'destroyAccount']);
+        Route::get('/accounts/{account}/invoices/{invoice}/download', [\App\Http\Controllers\LinodeController::class, 'downloadInvoice']);
         Route::get('/costs', [\App\Http\Controllers\LinodeController::class, 'costs']);
         Route::post('/accounts/{account}/verify', [\App\Http\Controllers\LinodeController::class, 'verifyAccount']);
         Route::post('/accounts/{account}/sync', [\App\Http\Controllers\LinodeController::class, 'sync']);

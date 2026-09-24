@@ -203,6 +203,11 @@ class LinodeService
         return $this->paginate('/account/payments');
     }
 
+    public function invoiceItems(int $invoiceId): array
+    {
+        return $this->paginate("/account/invoices/{$invoiceId}/items");
+    }
+
     public function listDomains(): array
     {
         return $this->paginate('/domains');

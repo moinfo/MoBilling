@@ -142,6 +142,29 @@ class LinodeController extends Controller
         return response()->json(['data' => $out]);
     }
 
+    /** Invoice line items as a CSV download (Linode's API has no PDF). Read-only. */
+    public function downloadInvoice(LinodeAccount $account, string $invoice)
+    {
+        abort_unless(ctype_digit($invoice), 404);
+        try {
+            $items = (new LinodeService($account))->invoiceItems((int) $invoice);
+        } catch (LinodeApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->streamDownload(function () use ($items, $invoice) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, ['Invoice', 'Label', 'From', 'To', 'Quantity', 'Unit price', 'Amount', 'Tax', 'Total']);
+            $sum = 0;
+            foreach ($items as $i) {
+                $sum += (float) ($i['total'] ?? 0);
+                fputcsv($out, [$invoice, $i['label'] ?? '', $i['from'] ?? '', $i['to'] ?? '', $i['quantity'] ?? '', $i['unit_price'] ?? '', $i['amount'] ?? '', $i['tax'] ?? '', $i['total'] ?? '']);
+            }
+            fputcsv($out, ['', 'TOTAL', '', '', '', '', '', '', number_format($sum, 2, '.', '')]);
+            fclose($out);
+        }, "linode-invoice-{$invoice}.csv", ['Content-Type' => 'text/csv']);
+    }
+
     public function sync(LinodeAccount $account): JsonResponse
     {
         $svc = new LinodeService($account);
