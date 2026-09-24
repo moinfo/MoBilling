@@ -85,8 +85,8 @@ class WhatsappRenewalWebhookController extends Controller
         if (!$session || $session->isExpired() || empty($session->items)) {
             $lang = $session->language ?? 'sw';
             $this->reply($tenant, $phone, $this->t($lang,
-                'Samahani, muda wa kujibu umepita. Tafadhali wasiliana nasi au ingia kwenye client portal kufanya renewal.',
-                'Sorry, the reply window has passed. Please contact us or log in to the client portal to renew.'
+                'Samahani, muda wa kujibu umepita. Tafadhali wasiliana nasi au ingia kwenye client portal kufanya renewal. Andika MENU kuona huduma zetu.',
+                'Sorry, the reply window has passed. Please contact us or log in to the client portal to renew. Type MENU to see our services.'
             ));
             return response('OK', 200);
         }
@@ -135,6 +135,14 @@ class WhatsappRenewalWebhookController extends Controller
         if (preg_match('/^\s*(staff|wafanyakazi)\s*$/i', $text)) {
             $this->startStaffAssist($tenant, $phone);
             return response('OK', 200);
+        }
+
+        // MENU / CANCEL / NYUMBANI / ANZA UPYA from any not-yet-verified state (language, registration,
+        // surname/email, has_account/want_account): start over from the language choice.
+        if ($session && !$session->isExpired() && !$session->confirmed_at
+            && preg_match('/^\s*(menu|cancel|nyumbani|anza\s*upya)\s*$/i', $text)) {
+            $session->delete();
+            $session = null;
         }
 
         if ($session && !$session->isExpired() && $session->flow === 'language_select') {
@@ -200,6 +208,13 @@ class WhatsappRenewalWebhookController extends Controller
         $clientMatch = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
         $clientMatch = PhoneHelper::wherePhone($clientMatch, 'phone', $phone)->first();
 
+        // A session that ran out says so, once, before we start over (startLanguageSelect replaces it).
+        if ($session && $session->isExpired()) {
+            $sw = 'Muda wa kikao umeisha, tuanze upya.';
+            $en = "Your session timed out, let's start again.";
+            $this->reply($tenant, $phone, $session->language ? $this->t($session->language, $sw, $en) : "{$sw}\n{$en}");
+        }
+
         // Every fresh contact picks a language first — mirrors the DStv-style bot the
         // user pointed to — before anything else (registration or identity
         // verification) happens, in either language from that point on.
@@ -254,7 +269,8 @@ class WhatsappRenewalWebhookController extends Controller
 
         // Universal exit from staff-assist mode entirely (not just back to the staff menu) —
         // deletes the session, same as a client's own logout().
-        if (preg_match('/^\s*(menu|toka|cancel)\s*$/i', $text) && $session->flow !== 'staff_pin') {
+        // Also from the PIN steps (never counted as a wrong PIN).
+        if (preg_match('/^\s*(menu|toka|cancel|nyumbani|anza\s*upya)\s*$/i', $text)) {
             $session->delete();
             $this->reply($tenant, $phone, 'Umetoka kwenye hali ya staff-assist. Andika STAFF wakati wowote kuingia tena.');
             return;
@@ -1014,8 +1030,8 @@ class WhatsappRenewalWebhookController extends Controller
     {
         WhatsappRenewalSession::where('tenant_id', $tenant->id)->where('phone', $phone)->delete();
         $this->reply($tenant, $phone, $this->t($lang,
-            'Umetoka kwenye akaunti yako. Tuma ujumbe wowote kuingia tena.',
-            "You've been logged out. Send any message to sign in again."
+            'Umetoka. Andika MOBILLING kuanza tena.',
+            'You have logged out. Type MOBILLING to start again.'
         ));
     }
 

@@ -239,6 +239,67 @@ class WhatsappWorkflowFixesTest
         $this->assertNotContains('secret internals', $t);
         $this->assertContains("couldn't complete this request", $t);
     }
+
+    // ── Fix 4: MENU everywhere, timeout notice, logout, window-passed hint ──
+    public function test_l2_menu_words_work_in_every_unverified_state(): void
+    {
+        $c = $this->makeClientOnce();
+        foreach (['MENU', 'cancel', 'Nyumbani', 'anza upya'] as $word) {
+            foreach (['language_select', 'register', 'surname', 'has_account', 'want_account'] as $st) {
+                WhatsappRenewalSession::updateOrCreate(
+                    ['tenant_id' => $this->tenant->id, 'phone' => $this->phone],
+                    ['client_id' => $c->id, 'flow' => in_array($st, ['language_select', 'register']) ? $st : null, 'state' => ['step' => $st === 'register' ? 'ask_name' : $st], 'items' => null, 'language' => $st === 'language_select' ? null : 'en', 'confirmed_at' => null, 'attempts' => 0, 'expires_at' => now()->addMinutes(10)],
+                );
+                $t = $this->say($word);
+                $this->assertContains('1) English', $t);
+                $this->assertSame('language_select', $this->session()?->flow, "$word in $st");
+                $this->assertSame(0, (int) $this->session()?->attempts);
+            }
+        }
+    }
+
+    public function test_l2_menu_in_staff_pin_exits_without_counting_wrong_pin(): void
+    {
+        $this->user->update(['phone' => $this->rawPhone, 'is_active' => true, 'whatsapp_pin_hash' => \Illuminate\Support\Facades\Hash::make('1234')]);
+        $t = $this->say('STAFF');
+        $this->assertContains('PIN', $t);
+        $this->assertSame('staff_pin', $this->session()?->flow);
+        foreach (['MENU', 'nyumbani', 'anza upya', 'cancel'] as $w) {
+            $this->say('STAFF');
+            $t = $this->say($w);
+            $this->assertNotContains('PIN si sahihi', $t);
+            $this->assertSame(null, $this->session(), "$w exits staff mode");
+        }
+    }
+
+    public function test_l4_expired_session_says_timed_out_once_then_language(): void
+    {
+        $c = $this->makeClientOnce();
+        $this->startSession($c, ['language' => 'en', 'expires_at' => now()->subMinute()]);
+        $t = $this->say('hello');
+        $this->assertContains("Your session timed out, let's start again.", $t);
+        $this->assertContains('1) English', $t);
+        $t2 = $this->say('zzz');
+        $this->assertNotContains('timed out', $t2);
+
+        $this->startSession($c, ['language' => 'sw', 'expires_at' => now()->subMinute()]);
+        $this->assertContains('Muda wa kikao umeisha, tuanze upya.', $this->say('hi'));
+    }
+
+    public function test_l5_logout_message_and_window_passed_menu_hint(): void
+    {
+        $c = $this->makeClientOnce();
+        $this->startSession($c, ['language' => 'sw']);
+        $this->assertContains('Umetoka. Andika MOBILLING kuanza tena.', $this->say('0'));
+        $this->startSession($c, ['language' => 'en']);
+        $this->assertContains('Type MOBILLING to start again.', $this->say('0'));
+        $this->assertSame(null, $this->session());
+
+        $t = $this->hit('renewal-reply', '1'); // no session at all
+        $this->assertContains('Andika MENU', $t);
+        $this->startSession($c, ['language' => 'sw', 'items' => ['x'], 'expires_at' => now()->subMinute()]);
+        $this->assertContains('Andika MENU', $this->hit('renewal-reply', '1'));
+    }
 }
 
 class Wf extends WhatsAppService
