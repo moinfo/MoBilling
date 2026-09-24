@@ -144,16 +144,16 @@ class PortalLinodeController extends Controller
 
         $target = "{$srv->label} #{$srv->remote_id}";
         $hour = LinodeAuditLog::withoutGlobalScopes()->where('tenant_id', $srv->tenant_id)->where('created_at', '>=', now()->subHour());
-        if ((clone $hour)->where('linode_account_id', $account->id)->where('target', $target)->whereIn('action', ['portal.server_reboot', 'server.power'])->count() >= self::REBOOT_PER_SERVER_HOUR) {
+        if ((clone $hour)->where('linode_account_id', $account->id)->where('target', $target)->whereIn('action', ['portal.server_reboot', 'whatsapp.server_reboot', 'server.power'])->count() >= self::REBOOT_PER_SERVER_HOUR) {
             return $refuse('Limit reached: at most ' . self::REBOOT_PER_SERVER_HOUR . ' reboots per server per hour. Please try again later.', 429, 'server_hour_limit');
         }
-        $day = LinodeAuditLog::withoutGlobalScopes()->where('tenant_id', $srv->tenant_id)->where('action', 'portal.server_reboot')
+        $day = LinodeAuditLog::withoutGlobalScopes()->where('tenant_id', $srv->tenant_id)->whereIn('action', ['portal.server_reboot', 'whatsapp.server_reboot'])
             ->where('created_at', '>=', now()->subDay())->where('request->client_id', $user->client_id);
         if ($day->count() >= self::REBOOT_PER_CLIENT_DAY) {
             return $refuse('Limit reached: at most ' . self::REBOOT_PER_CLIENT_DAY . ' reboots per day. Please contact support.', 429, 'client_day_limit');
         }
         // staff-wide safety net shared with the staff power() limit (20/hour/tenant)
-        if ((clone $hour)->whereIn('action', ['portal.server_reboot', 'server.power'])->count() >= 20) {
+        if ((clone $hour)->whereIn('action', ['portal.server_reboot', 'whatsapp.server_reboot', 'server.power'])->count() >= 20) {
             return $refuse('Too many server actions right now. Please try again later.', 429, 'tenant_hour_limit');
         }
 

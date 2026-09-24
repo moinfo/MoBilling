@@ -21,6 +21,7 @@ use App\Services\CouponService;
 use App\Services\DocumentNumberService;
 use App\Services\Hosting\RenewalBundleService;
 use App\Services\Registrar\DomainRegistrarManager;
+use App\Services\Registrar\DomainSuggestService;
 use App\Services\TenantPesapalService;
 use App\Services\TznicWhoisService;
 use App\Services\WhatsAppService;
@@ -164,6 +165,9 @@ class WhatsappRenewalWebhookController extends Controller
                 'change_dns' => $this->handleChangeDnsStep($tenant, $client, $phone, $session, $text, $lang),
                 'hosting_submenu' => $this->handleHostingSubmenuStep($tenant, $client, $phone, $session, $text, $lang),
                 'hosting_manage' => $this->handleHostingManageStep($tenant, $client, $phone, $session, $text, $lang),
+                'more_services' => $this->handleMoreServicesStep($tenant, $client, $phone, $session, $text, $lang),
+                'my_servers' => $this->handleMyServersStep($tenant, $client, $phone, $session, $text, $lang),
+                'expiring' => $this->handleExpiringStep($tenant, $client, $phone, $session, $text, $lang),
                 default => $this->handleRootStep($tenant, $client, $phone, $session, $text, $bundler, $lang),
             };
 
@@ -729,6 +733,7 @@ class WhatsappRenewalWebhookController extends Controller
                 . '4) Business Email Hosting · 5) Angalia na Lipa Invoice · '
                 . '6) WHOIS ya Domain · 7) Angalia kama Domain Inapatikana · '
                 . '8) Badilisha Nameservers (DNS) · 9) Taarifa za Akaunti · '
+                . '10) Huduma Zaidi · '
                 . "0) Toka (Logout). Jibu na namba.\n\n"
                 . 'Andika MOSMS kwa huduma za akaunti yako ya SMS/WhatsApp bulk.',
             "Hi {$client->name}! Choose a service: "
@@ -736,6 +741,7 @@ class WhatsappRenewalWebhookController extends Controller
                 . '4) Business Email Hosting · 5) View and Pay Invoices · '
                 . '6) Domain WHOIS · 7) Check Domain Availability · '
                 . '8) Change Nameservers (DNS) · 9) Account Information · '
+                . '10) More services · '
                 . "0) Logout. Reply with a number.\n\n"
                 . 'Reply MOSMS for your bulk SMS/WhatsApp account.'
         ));
@@ -834,6 +840,7 @@ class WhatsappRenewalWebhookController extends Controller
             (bool) preg_match('/^\s*6\s*$/', $text) => $this->startWhois($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*7\s*$/', $text) => $this->startCheckAvailability($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*8\s*$/', $text) => $this->startChangeDns($tenant, $client, $phone, $lang),
+            (bool) preg_match('/^\s*10\s*$/', $text) => $this->startMoreServices($tenant, $client, $phone, $lang),
             (bool) preg_match('/^\s*9\s*$/', $text) => (function () use ($tenant, $client, $phone, $lang) {
                 $this->sendAccountInfo($tenant, $client, $phone, $lang);
                 $this->sendRootMenu($tenant, $client, $phone, $lang);
@@ -1368,6 +1375,449 @@ class WhatsappRenewalWebhookController extends Controller
         $this->offerPayment($tenant, $client, $phone, $document, $lang);
     }
 
+    // ── "10) More services" submenu: My Servers, Expiring soon ──────────
+    // Everything here is client-facing: neutral wording only ("Cloud Server"), never a supplier
+    // name or a cost. Reads local data; the ONLY live call is the reboot's status check + POST.
+
+    private const SERVER_REBOOT_PER_SERVER_HOUR = 2;
+    private const SERVER_REBOOT_PER_CLIENT_DAY = 5;
+    private const SERVER_REBOOT_PER_TENANT_HOUR = 20;
+    private const EXPIRING_AHEAD_DAYS = 60;
+    private const EXPIRING_BEHIND_DAYS = 30;
+    private const EXPIRING_MAX = 10;
+
+    private function isBackWord(string $text): bool
+    {
+        return (bool) preg_match('/^\s*(0|back|rudi)\s*$/i', $text);
+    }
+
+    private function startMoreServices(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'more_services', 'state' => ['step' => 'choose'], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            "*Huduma Zaidi*\n1) Server Zangu (Cloud Server)\n2) Zinazokaribia kuisha\n0) Rudi\n\nJibu na namba. Andika MENU kurudi kwenye menyu kuu.",
+            "*More services*\n1) My Servers (Cloud Server)\n2) Expiring soon\n0) Back\n\nReply with a number. Type MENU for the main menu."
+        ));
+    }
+
+    private function handleMoreServicesStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        if ($this->isBackWord($text)) {
+            $this->sendRootMenu($tenant, $client, $phone, $lang);
+        } elseif (preg_match('/^\s*1\s*$/', $text)) {
+            $this->startMyServers($tenant, $client, $phone, $lang);
+        } elseif (preg_match('/^\s*2\s*$/', $text)) {
+            $this->startExpiring($tenant, $client, $phone, $lang);
+        } else {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, jibu 1, 2 au 0 (Rudi). Andika MENU kurudi kwenye menyu kuu.', 'Sorry, reply 1, 2 or 0 (Back). Type MENU for the main menu.'));
+        }
+    }
+
+    // ── My Servers ──
+
+    /** The client's own active, linked, live servers (same rule as the portal's ownServer/index). */
+    private function clientServers(Tenant $tenant, Client $client)
+    {
+        $subIds = \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('status', 'active')->whereNull('deleted_at')->pluck('id');
+
+        return \App\Models\LinodeResource::withoutGlobalScopes()
+            ->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('type', 'instance')->whereIn('client_subscription_id', $subIds)
+            ->where(fn ($q) => $q->whereNull('status')->orWhere('status', '!=', 'gone'))
+            ->orderBy('label');
+    }
+
+    private function serverLine(\App\Models\LinodeResource $s): string
+    {
+        return "{$s->label} — IP " . ($s->ipv4[0] ?? '—') . " — {$s->region} — {$s->status}";
+    }
+
+    private function startMyServers(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $servers = $this->clientServers($tenant, $client)->limit(9)->get();
+
+        if ($servers->isEmpty()) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Huna Cloud Server yoyote inayotumika kwetu kwa sasa.',
+                "You don't have any active Cloud Servers with us right now."
+            ), $lang);
+            return;
+        }
+
+        if ($servers->count() === 1) {
+            $this->showServer($tenant, $client, $phone, $servers->first(), $lang, multiple: false);
+            return;
+        }
+
+        $lines = [];
+        foreach ($servers as $i => $s) {
+            $lines[] = ($i + 1) . ') ' . $this->serverLine($s);
+        }
+
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'my_servers', 'state' => ['step' => 'pick', 'server_ids' => $servers->pluck('id')->all()], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            "*Server Zako*\n" . implode("\n", $lines) . "\n0) Rudi\n\nJibu na namba ya server.",
+            "*Your Cloud Servers*\n" . implode("\n", $lines) . "\n0) Back\n\nReply with a server number."
+        ));
+    }
+
+    private function showServer(Tenant $tenant, Client $client, string $phone, \App\Models\LinodeResource $srv, string $lang, bool $multiple): void
+    {
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'my_servers', 'state' => ['step' => 'detail', 'server_id' => $srv->id, 'multiple' => $multiple], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            "*Cloud Server: {$srv->label}*\nIP: " . ($srv->ipv4[0] ?? '—') . "\nEneo: {$srv->region}\nHali: {$srv->status}\n\n1) Anzisha upya (Reboot)\n0) Rudi\n\nJibu na namba.",
+            "*Cloud Server: {$srv->label}*\nIP: " . ($srv->ipv4[0] ?? '—') . "\nRegion: {$srv->region}\nStatus: {$srv->status}\n\n1) Reboot\n0) Back\n\nReply with a number."
+        ));
+    }
+
+    private function handleMyServersStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        $state = $session->state ?? [];
+        $step = $state['step'] ?? 'pick';
+        $invalid = fn () => $this->reply($tenant, $phone, $this->t($lang, 'Samahani, jibu na namba sahihi kutoka kwenye orodha (au 0 kurudi).', 'Sorry, reply with a valid number from the list (or 0 to go back).'));
+
+        if ($step === 'pick') {
+            if ($this->isBackWord($text)) {
+                $this->startMoreServices($tenant, $client, $phone, $lang);
+                return;
+            }
+            if (!preg_match('/^\s*([1-9])\s*$/', $text, $m)) {
+                $invalid();
+                return;
+            }
+            $id = $state['server_ids'][(int) $m[1] - 1] ?? null;
+            $srv = $id ? $this->clientServers($tenant, $client)->where('id', $id)->first() : null;
+            if (!$srv) {
+                $invalid();
+                return;
+            }
+            $this->showServer($tenant, $client, $phone, $srv, $lang, multiple: count($state['server_ids']) > 1);
+            return;
+        }
+
+        $srv = !empty($state['server_id']) ? $this->clientServers($tenant, $client)->where('id', $state['server_id'])->first() : null;
+        if (!$srv) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, server hiyo haipatikani tena.', 'Sorry, that server is no longer available.'), $lang);
+            return;
+        }
+
+        if ($step === 'detail') {
+            if ($this->isBackWord($text)) {
+                $state['multiple'] ?? false ? $this->startMyServers($tenant, $client, $phone, $lang) : $this->startMoreServices($tenant, $client, $phone, $lang);
+                return;
+            }
+            if (!preg_match('/^\s*1\s*$/', $text)) {
+                $invalid();
+                return;
+            }
+            if ($session->assisted_by_user_id) {
+                $this->auditServer($tenant, $client, $srv, 'whatsapp.server_reboot_refused', ['reason' => 'staff_assist'], 403, 'staff assist');
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Kwa usalama, kuanzisha upya server hakupatikani kwenye hali ya staff — mteja mwenyewe lazima aombe kutoka simu yake. Tafadhali tumia admin panel.',
+                    'For security, rebooting a server is not available in staff-assist mode — the client must request it from their own phone. Please use the admin panel.'
+                ));
+                return;
+            }
+            $session->update(['state' => ['step' => 'confirm_name', 'server_id' => $srv->id, 'multiple' => $state['multiple'] ?? false], 'expires_at' => now()->addMinutes(10)]);
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Kuthibitisha, andika jina kamili la server: {$srv->label}\n(Server itazimika kwa muda mfupi.) Andika 0 kughairi.",
+                "To confirm, type the exact server name: {$srv->label}\n(The server will be briefly unavailable.) Type 0 to cancel."
+            ));
+            return;
+        }
+
+        if ($step === 'confirm_name') {
+            if ($this->isBackWord($text)) {
+                $this->showServer($tenant, $client, $phone, $srv, $lang, multiple: (bool) ($state['multiple'] ?? false));
+                return;
+            }
+            $this->rebootServer($tenant, $client, $phone, $session, $srv, $text, $lang);
+            return;
+        }
+
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kuna hitilafu. Tafadhali jaribu tena.', 'Sorry, something went wrong. Please try again.'), $lang);
+    }
+
+    private function auditServer(Tenant $tenant, Client $client, \App\Models\LinodeResource $srv, string $action, array $extra = [], int $status = 200, ?string $error = null): void
+    {
+        \App\Models\LinodeAuditLog::withoutGlobalScopes()->create([
+            'tenant_id' => $tenant->id, 'user_id' => null, 'linode_account_id' => $srv->linode_account_id,
+            'action' => $action, 'target' => "{$srv->label} #{$srv->remote_id}",
+            'request' => ['server_id' => $srv->id, 'server_label' => $srv->label, 'client_id' => $client->id, 'channel' => 'whatsapp'] + $extra,
+            'response_status' => $status, 'error' => $error ? mb_substr($error, 0, 250) : null,
+        ]);
+    }
+
+    /** Mirrors PortalLinodeController::reboot() (same checks, limits and shared counters); the only server action clients get. */
+    private function rebootServer(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, \App\Models\LinodeResource $srv, string $typed, string $lang): void
+    {
+        $refuse = function (string $sw, string $en, int $code, string $why, bool $finish = false) use ($tenant, $client, $phone, $srv, $lang) {
+            $this->auditServer($tenant, $client, $srv, 'whatsapp.server_reboot_refused', ['reason' => $why], $code, $why);
+            $msg = $this->t($lang, $sw, $en);
+            $finish ? $this->finishFlow($tenant, $client, $phone, $msg, $lang) : $this->reply($tenant, $phone, $msg);
+        };
+
+        if ($session->assisted_by_user_id) {
+            $refuse('Kuanzisha upya server hakupatikani kwenye hali ya staff.', 'Rebooting a server is not available in staff-assist mode.', 403, 'staff_assist', true);
+            return;
+        }
+
+        $account = \App\Models\LinodeAccount::withoutGlobalScopes()->where('id', $srv->linode_account_id)->where('tenant_id', $tenant->id)->first();
+        if (!$account || $account->status !== 'active') {
+            $refuse('Kuanzisha upya hakupatikani kwa server hii sasa. Tafadhali wasiliana nasi.', 'Reboot is not available for this server right now. Please contact us.', 422, 'account_inactive', true);
+            return;
+        }
+        if ($typed !== $srv->label) {
+            $refuse("Jina halilingani. Andika jina kamili la server: {$srv->label} (au 0 kughairi).", "That doesn't match. Type the exact server name: {$srv->label} (or 0 to cancel).", 422, 'wrong_confirm');
+            return;
+        }
+
+        $target = "{$srv->label} #{$srv->remote_id}";
+        $actions = ['portal.server_reboot', 'whatsapp.server_reboot', 'server.power'];
+        $hour = \App\Models\LinodeAuditLog::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('created_at', '>=', now()->subHour());
+        if ((clone $hour)->where('linode_account_id', $account->id)->where('target', $target)->whereIn('action', $actions)->count() >= self::SERVER_REBOOT_PER_SERVER_HOUR) {
+            $refuse('Kikomo kimefikiwa: server inaweza kuanzishwa upya mara ' . self::SERVER_REBOOT_PER_SERVER_HOUR . ' tu kwa saa. Jaribu tena baadaye.', 'Limit reached: at most ' . self::SERVER_REBOOT_PER_SERVER_HOUR . ' reboots per server per hour. Please try again later.', 429, 'server_hour_limit', true);
+            return;
+        }
+        $day = \App\Models\LinodeAuditLog::withoutGlobalScopes()->where('tenant_id', $tenant->id)->whereIn('action', ['portal.server_reboot', 'whatsapp.server_reboot'])
+            ->where('created_at', '>=', now()->subDay())->where('request->client_id', $client->id);
+        if ($day->count() >= self::SERVER_REBOOT_PER_CLIENT_DAY) {
+            $refuse('Kikomo kimefikiwa: mara ' . self::SERVER_REBOOT_PER_CLIENT_DAY . ' tu kwa siku. Tafadhali wasiliana nasi.', 'Limit reached: at most ' . self::SERVER_REBOOT_PER_CLIENT_DAY . ' reboots per day. Please contact us.', 429, 'client_day_limit', true);
+            return;
+        }
+        if ((clone $hour)->whereIn('action', $actions)->count() >= self::SERVER_REBOOT_PER_TENANT_HOUR) {
+            $refuse('Maombi ni mengi sasa hivi. Tafadhali jaribu tena baadaye.', 'Too many server actions right now. Please try again later.', 429, 'tenant_hour_limit', true);
+            return;
+        }
+
+        try {
+            $before = (new \App\Services\Linode\LinodeService($account))->powerAction($srv->remote_id, 'reboot');
+        } catch (\DomainException $e) {
+            // Live status is not "running" (offline/busy) — nothing was sent.
+            $refuse('Server haiwezi kuanzishwa upya sasa hivi — lazima iwe inafanya kazi (running). Jaribu tena baada ya muda.', "The server can't be rebooted right now — it must be running. Please try again in a minute.", 409, 'not_running', true);
+            return;
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp server reboot failed', ['server_id' => $srv->id, 'error' => $e->getMessage()]);
+            $this->auditServer($tenant, $client, $srv, 'whatsapp.server_reboot', ['result' => 'failed'], 502, $e->getMessage());
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Kuanzisha upya kumeshindikana. Tafadhali jaribu tena baada ya dakika moja au wasiliana nasi.',
+                'The reboot could not be started. Please try again in a minute or contact us.'
+            ), $lang);
+            return;
+        }
+
+        $srv->status = \App\Services\Linode\LinodeService::POWER_OPTIMISTIC['reboot'];
+        $srv->save();
+        $this->auditServer($tenant, $client, $srv, 'whatsapp.server_reboot', ['result' => 'success', 'status_before' => $before]);
+
+        $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+            "Server {$srv->label} inaanzishwa upya. Kwa kawaida huchukua dakika 1-2.",
+            "Reboot started for {$srv->label}. It usually takes 1-2 minutes."
+        ), $lang);
+    }
+
+    // ── Expiring soon ──
+
+    /** Renewal price for a domain, resolved exactly like DomainBillingService::createRenewalInvoice(). */
+    private function domainRenewPrice(Domain $domain): ?float
+    {
+        $tld = strtolower(explode('.', $domain->name, 2)[1] ?? '');
+        $pricing = DomainTld::priceFor($domain->tenant_id, $tld);
+        if (!$pricing && ($domain->meta['registrar'] ?? null) === 'namecom') {
+            $pricing = DomainTld::where('tenant_id', $domain->tenant_id)->where('registrar', 'namecom')->where('tld', $tld)->where('renew_price', '>', 0)->first();
+        }
+        return $pricing ? (float) $pricing->renew_price : null;
+    }
+
+    /** Domains, hosting and Cloud Servers expiring in the next 60 days or lapsed in the last 30, soonest first, max 10. */
+    private function expiringItems(Tenant $tenant, Client $client): array
+    {
+        $from = now()->subDays(self::EXPIRING_BEHIND_DAYS)->startOfDay();
+        $to = now()->addDays(self::EXPIRING_AHEAD_DAYS)->endOfDay();
+        $items = [];
+
+        $ownDomainNames = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereNotIn('status', ['cancelled', 'transferred_out'])->pluck('name')->all();
+
+        $domains = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereIn('status', ['active', 'expired'])->whereNotNull('expires_at')
+            ->whereBetween('expires_at', [$from, $to])->get();
+        foreach ($domains as $d) {
+            $items[] = ['kind' => 'domain', 'id' => $d->id, 'name' => $d->name, 'type' => 'Domain', 'expires' => $d->expires_at, 'price' => $this->domainRenewPrice($d)];
+        }
+
+        $subs = \App\Models\ClientSubscription::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereNull('deleted_at')->whereIn('status', ['active', 'expired'])->whereNotNull('expire_date')
+            ->whereBetween('expire_date', [$from, $to])
+            ->with(['productService' => fn ($q) => $q->withoutGlobalScopes()])->get();
+        $subIds = $subs->pluck('id');
+        $servers = \App\Models\LinodeResource::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereIn('client_subscription_id', $subIds)->get()->keyBy('client_subscription_id');
+        $hostings = HostingAccount::withoutGlobalScopes()->where('tenant_id', $tenant->id)
+            ->whereIn('client_subscription_id', $subIds)->get()->keyBy('client_subscription_id');
+
+        foreach ($subs as $sub) {
+            $category = (string) ($sub->productService?->category ?? '');
+            if ($category === 'Domain' && in_array($sub->label, $ownDomainNames, true)) {
+                continue; // already listed through the Domain record itself
+            }
+            $server = $servers->get($sub->id);
+            $hosting = $hostings->get($sub->id);
+            [$type, $name] = match (true) {
+                (bool) $server => ['Cloud Server', $server->label],
+                (bool) $hosting => ['Hosting', $hosting->domain],
+                $category === 'Domain' => ['Domain', $sub->label ?: ($sub->productService?->name ?? 'Domain')],
+                default => [$category !== '' ? $category : 'Service', $sub->label ?: ($sub->productService?->name ?? 'Service')],
+            };
+            try {
+                $price = (float) app(\App\Services\RecurringInvoiceService::class)->previewForSubscriptions([$sub])['total'];
+            } catch (\Throwable $e) {
+                $price = null;
+            }
+            $items[] = ['kind' => 'sub', 'id' => $sub->id, 'name' => $name, 'type' => $type, 'expires' => $sub->expire_date, 'price' => $price];
+        }
+
+        usort($items, fn ($a, $b) => $a['expires']->getTimestamp() <=> $b['expires']->getTimestamp());
+
+        return array_slice($items, 0, self::EXPIRING_MAX);
+    }
+
+    private function startExpiring(Tenant $tenant, Client $client, string $phone, string $lang): void
+    {
+        $items = $this->expiringItems($tenant, $client);
+
+        if (!$items) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Hakuna huduma inayokaribia kuisha (siku 60 zijazo) wala iliyoisha hivi karibuni. Asante!',
+                'Nothing is expiring in the next 60 days or lapsed recently. Thank you!'
+            ), $lang);
+            return;
+        }
+
+        $sw = $lang === 'sw';
+        $lines = [];
+        foreach ($items as $i => $it) {
+            $days = (int) now()->startOfDay()->diffInDays($it['expires']->copy()->startOfDay(), false);
+            $when = match (true) {
+                $days > 0 => $sw ? "siku {$days} zimebaki" : "{$days} days left",
+                $days === 0 => $sw ? 'inaisha leo' : 'expires today',
+                default => $sw ? 'imeisha siku ' . abs($days) . ' zilizopita' : 'expired ' . abs($days) . ' days ago',
+            };
+            $price = $it['price'] !== null ? 'TZS ' . number_format($it['price']) : ($sw ? 'bei: wasiliana nasi' : 'price: contact us');
+            $lines[] = ($i + 1) . ") {$it['name']} — {$it['type']} — " . $it['expires']->format('d M Y') . " ({$when}) — {$price}";
+        }
+
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'expiring', 'state' => ['step' => 'pick', 'items' => array_map(fn ($it) => ['kind' => $it['kind'], 'id' => $it['id']], $items)], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(15)],
+        );
+
+        $this->reply($tenant, $phone, $this->t($lang,
+            "*Zinazokaribia kuisha*\n" . implode("\n", $lines) . "\n0) Rudi\n\nJibu na namba kulipia/kuhuisha huduma hiyo.",
+            "*Expiring soon*\n" . implode("\n", $lines) . "\n0) Back\n\nReply with a number to renew and pay for that service."
+        ));
+    }
+
+    private function handleExpiringStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
+    {
+        if ($this->isBackWord($text)) {
+            $this->startMoreServices($tenant, $client, $phone, $lang);
+            return;
+        }
+
+        $state = $session->state ?? [];
+        $entry = null;
+        if (preg_match('/^\s*(\d{1,2})\s*$/', $text, $m)) {
+            $entry = $state['items'][(int) $m[1] - 1] ?? null;
+        }
+        if (!$entry) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, jibu na namba sahihi kutoka kwenye orodha (au 0 kurudi).', 'Sorry, reply with a valid number from the list (or 0 to go back).'));
+            return;
+        }
+
+        try {
+            $document = $entry['kind'] === 'domain'
+                ? $this->renewalInvoiceForDomain($tenant, $client, $entry['id'])
+                : $this->renewalInvoiceForSubscription($tenant, $client, $entry['id']);
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp expiring renewal failed', ['kind' => $entry['kind'], 'id' => $entry['id'], 'error' => $e->getMessage()]);
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang,
+                'Samahani, hatuwezi kutengeneza invoice ya huduma hii sasa hivi. Tafadhali wasiliana nasi.',
+                "Sorry, we can't create the invoice for this service right now. Please contact us."
+            ), $lang);
+            return;
+        }
+
+        if (!$document) {
+            $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, huduma hiyo haipatikani tena.', 'Sorry, that service is no longer available.'), $lang);
+            return;
+        }
+
+        $this->offerPayment($tenant, $client, $phone, $document, $lang);
+    }
+
+    private function openInvoice(Tenant $tenant, Client $client, ?string $documentId): ?Document
+    {
+        if (!$documentId) {
+            return null;
+        }
+        $doc = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('type', 'invoice')->whereIn('status', ['sent', 'overdue', 'partial'])->find($documentId);
+
+        return $doc && $doc->balance_due > 0 ? $doc : null;
+    }
+
+    /** Same invoice the portal's "Renew" makes (DomainBillingService); an already-open renewal invoice is reused, never duplicated. */
+    private function renewalInvoiceForDomain(Tenant $tenant, Client $client, string $domainId): ?Document
+    {
+        $domain = Domain::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereIn('status', ['active', 'expired'])->find($domainId);
+        if (!$domain) {
+            return null;
+        }
+
+        return $this->openInvoice($tenant, $client, $domain->meta['renewal_document_id'] ?? null)
+            ?? app(\App\Services\Registrar\DomainBillingService::class)->createRenewalInvoice($domain, 1);
+    }
+
+    /** Hosting / Cloud Server / other subscription: reuse its open invoice, else the same generator staff's "Generate invoice" uses. */
+    private function renewalInvoiceForSubscription(Tenant $tenant, Client $client, string $subId): ?Document
+    {
+        $sub = \App\Models\ClientSubscription::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->whereNull('deleted_at')->whereIn('status', ['active', 'expired'])
+            ->with(['productService' => fn ($q) => $q->withoutGlobalScopes()])->find($subId);
+        if (!$sub) {
+            return null;
+        }
+
+        $docIds = \App\Models\RecurringInvoiceLog::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+            ->where('client_subscription_id', $sub->id)->whereNotNull('document_id')->pluck('document_id');
+        if ($docIds->isNotEmpty()) {
+            $open = Document::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('client_id', $client->id)
+                ->where('type', 'invoice')->whereIn('id', $docIds)->whereIn('status', ['sent', 'overdue', 'partial'])
+                ->orderBy('due_date')->get()->first(fn ($d) => $d->balance_due > 0);
+            if ($open) {
+                return $open;
+            }
+        }
+
+        return app(\App\Services\RecurringInvoiceService::class)->generateForSubscriptions([$sub]);
+    }
+
     // ── Email accounts ───────────────────────────────────────────────────
 
     private function requireOwnActiveSession(Tenant $tenant, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang, string $what): bool
@@ -1758,7 +2208,7 @@ class WhatsappRenewalWebhookController extends Controller
             $tld = $this->extractTld($name);
             $pricing = $tld ? DomainTld::priceFor($tenant->id, $tld) : null;
 
-            if (!$pricing || $pricing->is_unmanaged) {
+            if (!$pricing || !$this->tldOrderable($pricing)) {
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang,
                     'Samahani, aina hii ya domain haiwezi kusajiliwa papo hapo kwa sasa. Tafadhali wasiliana nasi.',
                     "Sorry, this domain type can't be registered instantly right now. Please contact us."
@@ -1775,7 +2225,7 @@ class WhatsappRenewalWebhookController extends Controller
             }
 
             try {
-                $availability = app(DomainRegistrarManager::class)->driverFor($tenant->id)->check($name);
+                $availability = app(DomainRegistrarManager::class)->checkFor($tenant->id, $name, $pricing);
             } catch (\Throwable $e) {
                 Log::warning('WhatsApp order_domain availability check failed', ['name' => $name, 'error' => $e->getMessage()]);
                 $this->finishFlow($tenant, $client, $phone, $this->t($lang,
@@ -1853,8 +2303,12 @@ class WhatsappRenewalWebhookController extends Controller
     {
         $registrar = app(DomainRegistrarManager::class);
         $verb = $action === 'transfer' ? 'transfer' : 'registration';
+        // Same split as PortalDomainController::order(): a Name.com-sold TLD is fulfilled by staff
+        // (unmanaged, no FRED registrar account), everything else keeps the FRED path.
+        $tldPricing = $action === 'register' ? DomainTld::priceFor($tenant->id, $this->extractTld($name) ?? '') : null;
+        $viaNameCom = $tldPricing && $tldPricing->registrar === 'namecom';
 
-        return DB::transaction(function () use ($tenant, $client, $name, $price, $registrar, $action, $authInfo, $verb) {
+        return DB::transaction(function () use ($tenant, $client, $name, $price, $registrar, $action, $authInfo, $verb, $viaNameCom) {
             $document = Document::withoutGlobalScopes()->create([
                 'tenant_id' => $tenant->id,
                 'client_id' => $client->id,
@@ -1883,7 +2337,7 @@ class WhatsappRenewalWebhookController extends Controller
             Domain::reviveOrCreate([
                 'tenant_id' => $tenant->id,
                 'client_id' => $client->id,
-                'registrar_account_id' => $registrar->accountFor($tenant->id)->id,
+                'registrar_account_id' => $viaNameCom ? null : $registrar->accountFor($tenant->id)->id,
                 'name' => $name,
                 'status' => 'pending',
                 'auto_renew' => false,
@@ -1893,7 +2347,7 @@ class WhatsappRenewalWebhookController extends Controller
                     'pending_years' => 1,
                     'order_document_id' => $document->id,
                     'whatsapp_order' => true,
-                ],
+                ] + ($viaNameCom ? ['unmanaged' => true, 'registrar' => 'namecom', 'namecom_years' => 1] : []),
             ]);
 
             return $document;
@@ -2632,32 +3086,153 @@ class WhatsappRenewalWebhookController extends Controller
         );
 
         $this->reply($tenant, $phone, $this->t($lang,
-            'Andika jina la domain unalotaka kuangalia kama linapatikana (mfano: jinalako.co.tz).',
-            'Please reply with the domain name you want to check (e.g. yourname.co.tz).'
+            'Andika jina la domain unalotaka kuangalia (mfano: jinalako au jinalako.co.tz). Nitakuonyesha TLD kadhaa na bei.',
+            'Please reply with the domain name you want to check (e.g. yourname or yourname.co.tz). I will show several extensions with prices.'
         ));
     }
 
+    /** A TLD can be ordered instantly when Name.com sells it, or when it is a real (managed) registry TLD. */
+    private function tldOrderable(DomainTld $pricing): bool
+    {
+        return $pricing->registrar === 'namecom' || !$pricing->is_unmanaged;
+    }
+
+    private const AVAILABILITY_ROWS = 8;
+
     private function handleCheckAvailabilityStep(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, string $text, string $lang): void
     {
-        $name = strtolower(trim($text));
-        if (!preg_match('/^[a-z0-9][a-z0-9.-]+\.[a-z.]{2,}$/', $name)) {
+        $state = $session->state ?? [];
+
+        // A digit after a results list picks a row to order (list lives in the session state).
+        if (preg_match('/^\s*(\d{1,2})\s*$/', $text, $m)) {
+            if (($state['step'] ?? '') !== 'pick' || empty($state['rows'])) {
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Andika jina la domain unalotaka kuangalia (mfano: jinalako au jinalako.co.tz), au MENU kurudi.',
+                    'Please type the domain name you want to check (e.g. yourname or yourname.co.tz), or MENU to go back.'
+                ));
+                return;
+            }
+            $this->pickAvailabilityRow($tenant, $client, $phone, $session, (int) $m[1], $state, $lang);
+            return;
+        }
+
+        $parsed = DomainSuggestService::parse($text);
+        if (!$parsed) {
             $this->reply($tenant, $phone, $this->t($lang,
-                'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako.co.tz',
-                "Sorry, that doesn't look like a valid domain. Reply like: yourname.co.tz"
+                'Samahani, jina hilo halionekani sahihi. Andika kama: jinalako au jinalako.co.tz',
+                "Sorry, that doesn't look like a valid domain. Reply like: yourname or yourname.co.tz"
             ));
             return;
         }
 
+        $rows = null;
+        try {
+            $svc = app(DomainSuggestService::class);
+            $rows = $svc->check($tenant->id, $svc->plan($tenant->id, $parsed['label'], $parsed['tld'], 'portal', null, self::AVAILABILITY_ROWS));
+        } catch (\Throwable $e) {
+            Log::warning('WhatsApp check_availability suggestions failed', ['label' => $parsed['label'], 'error' => $e->getMessage()]);
+            $rows = null;
+        }
+
+        $usable = $rows ? array_filter($rows, fn ($r) => in_array($r['status'], ['available', 'taken', 'unavailable'], true)) : [];
+        if (!$usable) {
+            // Suggestions unavailable (or nothing checkable): keep the single-domain behaviour.
+            if ($parsed['tld']) {
+                $this->checkSingleDomain($tenant, $client, $phone, $parsed['label'] . '.' . $parsed['tld'], $lang);
+            } else {
+                $this->reply($tenant, $phone, $this->t($lang,
+                    'Samahani, imeshindikana kuangalia domain hii sasa hivi. Andika jina lenye TLD (mfano jinalako.co.tz) au jaribu tena baadaye.',
+                    "Sorry, we couldn't check this right now. Try a full name with its extension (e.g. yourname.co.tz) or try again later."
+                ));
+            }
+            return;
+        }
+
+        // A name we already hold is never orderable, whatever the registry says.
+        $names = array_column($rows, 'name');
+        $heldHere = Domain::withoutGlobalScopes()->whereIn('name', $names)->whereNotIn('status', ['cancelled', 'transferred_out'])->pluck('name')->all();
+
+        $sw = $lang === 'sw';
+        $lines = [$sw ? "*Matokeo ya domain: {$parsed['label']}*" : "*Domain search: {$parsed['label']}*"];
+        $stateRows = [];
+        $anyAvailable = false;
+        foreach ($rows as $i => $r) {
+            $n = $i + 1;
+            if ($r['status'] === 'available' && in_array($r['name'], $heldHere, true)) {
+                $r['status'] = 'taken';
+            }
+            $orderable = $r['status'] === 'available' && $r['register_price'] !== null;
+            $anyAvailable = $anyAvailable || $orderable;
+            $stateRows[] = ['name' => $r['name'], 'ok' => $orderable];
+            $label = match (true) {
+                $orderable => ($sw ? 'INAPATIKANA — TZS ' : 'Available — TZS ') . number_format((float) $r['register_price']) . ($sw ? '/mwaka' : '/yr'),
+                in_array($r['status'], ['taken', 'unavailable'], true) => $sw ? 'Imeshasajiliwa' : 'Taken',
+                $r['status'] === 'not_offered' => $sw ? 'Hatutoi TLD hii' : 'Not offered',
+                default => $sw ? 'Haiwezi kuangaliwa sasa' : "Can't check right now",
+            };
+            $lines[] = "{$n}) {$r['name']} — {$label}";
+        }
+        $lines[] = '';
+        $lines[] = $anyAvailable
+            ? ($sw ? 'Jibu na namba kuagiza domain, au andika jina lingine kutafuta tena. MENU kurudi.' : 'Reply with a number to order, or type another name to search again. MENU to go back.')
+            : ($sw ? 'Andika jina lingine kutafuta tena. MENU kurudi.' : 'Type another name to search again. MENU to go back.');
+
+        $session->update(['state' => ['step' => 'pick', 'rows' => $stateRows], 'expires_at' => now()->addMinutes(10)]);
+        $this->reply($tenant, $phone, implode("\n", $lines));
+    }
+
+    /** Ordering from a search result: hands the name to the existing registration flow at its confirm step. */
+    private function pickAvailabilityRow(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, int $n, array $state, string $lang): void
+    {
+        $row = $state['rows'][$n - 1] ?? null;
+        if (!$row) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Samahani, chagua namba sahihi kutoka kwenye orodha.', 'Sorry, please choose a valid number from the list.'));
+            return;
+        }
+        if (empty($row['ok'])) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Samahani, {$row['name']} haipatikani kuagizwa. Chagua namba nyingine au andika jina lingine.",
+                "Sorry, {$row['name']} can't be ordered. Choose another number or type another name."
+            ));
+            return;
+        }
+
+        $name = $row['name'];
+        $tld = $this->extractTld($name);
+        $pricing = $tld ? DomainTld::priceFor($tenant->id, $tld) : null;
+        if (!$pricing || !$this->tldOrderable($pricing)
+            || Domain::withoutGlobalScopes()->where('name', $name)->whereNotIn('status', ['cancelled', 'transferred_out'])->exists()) {
+            $this->reply($tenant, $phone, $this->t($lang,
+                "Samahani, {$name} haipatikani kuagizwa sasa. Chagua namba nyingine au andika jina lingine.",
+                "Sorry, {$name} can't be ordered right now. Choose another number or type another name."
+            ));
+            return;
+        }
+
+        $price = (float) $pricing->register_price;
+        WhatsappRenewalSession::updateOrCreate(
+            ['tenant_id' => $tenant->id, 'phone' => $phone],
+            ['client_id' => $client->id, 'flow' => 'order_domain', 'state' => ['step' => 'confirm', 'domain' => $name, 'price' => $price], 'items' => null, 'confirmed_at' => now(), 'expires_at' => now()->addMinutes(10)],
+        );
+        $this->reply($tenant, $phone, $this->t($lang,
+            "Domain {$name} inapatikana! Bei: TZS " . number_format($price) . ' kwa mwaka 1. Jibu NDIYO kuagiza.',
+            "Domain {$name} is available! Price: TZS " . number_format($price) . ' for 1 year. Reply YES to order.'
+        ));
+    }
+
+    /** The original single-domain check — kept as the fallback when multi-TLD suggestions are unavailable. */
+    private function checkSingleDomain(Tenant $tenant, Client $client, string $phone, string $name, string $lang): void
+    {
         $tld = $this->extractTld($name);
         $pricing = $tld ? DomainTld::priceFor($tenant->id, $tld) : null;
 
-        if (!$pricing || $pricing->is_unmanaged) {
+        if (!$pricing || !$this->tldOrderable($pricing)) {
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, hatuwezi kuangalia aina hii ya domain papo hapo. Tafadhali wasiliana nasi.', "Sorry, we can't check this domain type instantly. Please contact us."), $lang);
             return;
         }
 
         try {
-            $availability = app(DomainRegistrarManager::class)->driverFor($tenant->id)->check($name);
+            $availability = app(DomainRegistrarManager::class)->checkFor($tenant->id, $name, $pricing);
         } catch (\Throwable $e) {
             Log::warning('WhatsApp check_availability failed', ['name' => $name, 'error' => $e->getMessage()]);
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, imeshindikana kuangalia domain hii sasa hivi. Jaribu tena baadaye.', "Sorry, we couldn't check this domain right now. Please try again later."), $lang);
