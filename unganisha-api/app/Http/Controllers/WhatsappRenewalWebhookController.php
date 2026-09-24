@@ -132,6 +132,14 @@ class WhatsappRenewalWebhookController extends Controller
             ->where('phone', $phone)
             ->first();
 
+        // MoSMS forwards a marker instead of text for images/audio/documents/etc. The bot only reads
+        // text; tell the client, and make sure a human sees it (e.g. a bank-transfer receipt).
+        // Session state is deliberately left untouched.
+        if (in_array(mb_strtolower($text), ['[media]', '[unsupported]'], true)) {
+            $this->handleMediaMessage($tenant, $phone, $session);
+            return response('OK', 200);
+        }
+
         // Staff-assist: a staff member's OWN phone helping a client, not the client's own
         // self-service. Checked before anything else — STAFF always wins over whatever this
         // phone's session state happens to be, same as MoSMS's cold-start keywords.
@@ -229,6 +237,41 @@ class WhatsappRenewalWebhookController extends Controller
         $this->startLanguageSelect($tenant, $phone, $clientMatch);
 
         return response('OK', 200);
+    }
+
+    private function handleMediaMessage(Tenant $tenant, string $phone, ?WhatsappRenewalSession $session): void
+    {
+        $lang = ($session && !$session->isExpired() ? $session->language : null) ?? null;
+        $sw = 'Tunapokea ujumbe wa maandishi tu kwa sasa. Kwa risiti au picha, tafadhali wasiliana na staff wetu.';
+        $en = 'We only accept text messages for now. For receipts or photos, please contact our staff.';
+        $this->reply($tenant, $phone, $lang ? $this->t($lang, $sw, $en) : "{$sw}\n{$en}");
+
+        try {
+            $client = null;
+            if ($session && $session->client_id) {
+                $client = Client::withoutGlobalScopes()->whereNull('deleted_at')->find($session->client_id);
+            }
+            if (!$client) {
+                $q = Client::withoutGlobalScopes()->whereNull('deleted_at')->where('tenant_id', $tenant->id);
+                $client = PhoneHelper::wherePhone($q, 'phone', $phone)->first();
+            }
+            $who = $client ? "{$client->name} ({$phone})" : $phone;
+            $note = new \App\Notifications\WhatsappBotAlertNotification(
+                'media_received',
+                'WhatsApp media received',
+                "{$who} sent a photo/document/voice note on WhatsApp that the bot cannot read (possibly a payment receipt). Please check the WhatsApp inbox and follow up.",
+                $client ? "/clients/{$client->id}" : '/',
+            );
+            foreach (['tickets.manage', 'orders.create'] as $perm) {
+                $staff = User::withPermission($tenant->id, $perm);
+                if ($staff->isNotEmpty()) {
+                    \Illuminate\Support\Facades\Notification::send($staff, $note);
+                    break;
+                }
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     // ── Staff assist (own phone, helping a client) ──────────────────────

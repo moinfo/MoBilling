@@ -363,6 +363,33 @@ class WhatsappWorkflowFixesTest
         $one = str_repeat('a', 9000);
         $this->assertSame($one, implode('', $ref->invoke($ctl, $one)), 'single long line hard-cut');
     }
+
+    // ── Fix 6: media marker ──
+    public function test_h2_media_marker_replies_notifies_staff_and_keeps_state(): void
+    {
+        $c = $this->makeClientOnce();
+        $this->startSession($c, ['flow' => 'whois', 'state' => ['step' => 'ask_name'], 'language' => 'en']);
+        $before = $this->session()->only(['flow', 'state', 'language']);
+        foreach (['[media]', '[unsupported]'] as $m) {
+            $t = $this->say($m);
+            $this->assertContains('We only accept text messages for now', $t);
+            $this->assertSame($before, $this->session()->only(['flow', 'state', 'language']), 'state untouched');
+        }
+        $this->assertTrue(Notification::sent($this->user, \App\Notifications\WhatsappBotAlertNotification::class)->count() >= 2, 'staff notified');
+        $n = Notification::sent($this->user, \App\Notifications\WhatsappBotAlertNotification::class)->first();
+        $this->assertContains($c->name, $n->message);
+
+        $this->startSession($c, ['language' => 'sw']);
+        $this->assertContains('Tunapokea ujumbe wa maandishi tu kwa sasa. Kwa risiti au picha, tafadhali wasiliana na staff wetu.', $this->say('[media]'));
+    }
+
+    public function test_h2_media_with_no_session_never_crashes(): void
+    {
+        $t = $this->say('[MEDIA]');
+        $this->assertContains('Tunapokea ujumbe wa maandishi tu', $t);
+        $this->assertContains('We only accept text messages', $t);
+        $this->assertSame(null, $this->session());
+    }
 }
 
 class Wf extends WhatsAppService
