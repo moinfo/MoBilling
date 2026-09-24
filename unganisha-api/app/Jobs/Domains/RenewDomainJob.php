@@ -29,7 +29,7 @@ class RenewDomainJob extends BaseDomainJob
             $this->clearPending($domain);
             $this->syncFromRegistry($domain);
 
-            if ($domain->client?->email) {
+            if ($domain->client?->email || $domain->client?->phone) {
                 try {
                     $domain->client->notify(new DomainRenewedNotification($domain->fresh()));
                 } catch (\Throwable $e) {

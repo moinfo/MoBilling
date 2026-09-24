@@ -266,7 +266,7 @@ class NameComRegistrationService
 
         try { // customer-facing: neutral "your domain is ready" (mail + push only)
             $client = Client::withoutGlobalScopes()->find($d->client_id);
-            if ($client && $client->email) $client->notify(new \App\Notifications\DomainReadyNotification($d->fresh()));
+            if ($client && ($client->email || $client->phone)) $client->notify(new \App\Notifications\DomainReadyNotification($d->fresh()));
         } catch (\Throwable $e) {
             Log::warning("Domain ready notice failed for {$d->name}: {$e->getMessage()}");
         }

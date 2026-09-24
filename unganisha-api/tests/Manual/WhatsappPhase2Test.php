@@ -395,4 +395,29 @@ class WhatsappPhase2Test
         $this->assertTrue(!array_key_exists('auth_info', $state) && ($state['domain'] ?? null) === 'x.com', 'stale EPP removed, rest of state kept');
         $this->assertContains('FRESH-EPP', json_encode(WhatsappRenewalSession::withoutGlobalScopes()->find($eppFresh->id)->state));
     }
+
+    // ═══ H6: domain notifications reach WhatsApp-only clients ═══
+    public function test_h6_domain_notifications_whatsapp_channel_gating_and_neutral_text(): void
+    {
+        $c = $this->makeClient('Wa Only', '255700000201');
+        $d = \App\Models\Domain::withoutGlobalScopes()->create(['tenant_id' => $this->tenant->id, 'client_id' => $c->id, 'name' => 'wa-only-p2.com', 'status' => 'active', 'registrar' => 'namecom', 'expires_at' => now()->addYear(), 'meta' => ['namecom' => ['account_id' => 1]]]);
+        $wa = \App\Channels\WhatsAppChannel::class;
+        foreach ([\App\Notifications\DomainRegisteredNotification::class, \App\Notifications\DomainRenewedNotification::class, \App\Notifications\DomainReadyNotification::class] as $cls) {
+            $n = new $cls($d);
+            $this->tenant->forceFill(['whatsapp_enabled' => true])->save();
+            $this->assertTrue(in_array($wa, $n->via($c), true), "$cls includes WhatsApp when enabled + phone");
+            $this->assertTrue(in_array('mail', $n->via($c), true), 'mail leg unchanged');
+            $noPhone = new Client(['name' => 'No Phone', 'phone' => null]);
+            $this->assertTrue(!in_array($wa, $n->via($noPhone), true), 'no phone -> no WhatsApp');
+            $this->tenant->forceFill(['whatsapp_enabled' => false])->save();
+            $n = new $cls($d->fresh());
+            $this->assertTrue(!in_array($wa, $n->via($c), true), 'tenant whatsapp_enabled off -> no WhatsApp');
+            $text = $n->toWhatsApp($c);
+            $this->assertTrue(is_string($text), 'plain text, no invented template');
+            $this->assertContains('wa-only-p2.com', $text);
+            $this->assertContains('Habari', $text);
+            $this->assertContains('Hello', $text);
+            foreach (['name.com', 'namecom', 'linode', 'usd', '$', 'registrar'] as $bad) $this->assertNotContains($bad, strtolower($text));
+        }
+    }
 }

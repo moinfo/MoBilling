@@ -4,13 +4,14 @@ namespace App\Notifications;
 
 use App\Models\Domain;
 use App\Notifications\Concerns\HasTenantBranding;
+use App\Notifications\Concerns\SendsDomainWhatsApp;
 use Illuminate\Bus\Queueable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
 class DomainRegisteredNotification extends Notification
 {
-    use Queueable, HasTenantBranding;
+    use Queueable, HasTenantBranding, SendsDomainWhatsApp;
 
     public function __construct(public Domain $domain) {}
 
@@ -18,7 +19,7 @@ class DomainRegisteredNotification extends Notification
     {
         // Mobile push: FcmChannel no-ops when FCM_CREDENTIALS is unset and
         // when the client has no registered devices, so it is always safe on.
-        return ['mail', \App\Channels\FcmChannel::class];
+        return $this->withWhatsApp(['mail', \App\Channels\FcmChannel::class], $notifiable);
     }
 
     public function toFcm($notifiable): ?array
@@ -29,6 +30,14 @@ class DomainRegisteredNotification extends Notification
                 . ($this->domain->expires_at?->format('d M Y') ?? '—') . '.',
             'data'  => ['type' => 'domain', 'domain_id' => $this->domain->id],
         ];
+    }
+
+    public function toWhatsApp($notifiable): string
+    {
+        return $this->waText(
+            "Habari {$notifiable->name}, domain yako {$this->domain->name} imesajiliwa. Inaisha: {$this->waExpiry()}.",
+            "Hello {$notifiable->name}, your domain {$this->domain->name} has been registered. Expires: {$this->waExpiry()}."
+        );
     }
 
     public function toMail($notifiable): MailMessage

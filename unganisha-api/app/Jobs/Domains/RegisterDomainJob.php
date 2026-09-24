@@ -48,7 +48,7 @@ class RegisterDomainJob extends BaseDomainJob
                 }
             }
 
-            if ($domain->client?->email) {
+            if ($domain->client?->email || $domain->client?->phone) {
                 try {
                     $domain->client->notify(new DomainRegisteredNotification($domain->fresh()));
                 } catch (\Throwable $e) {
