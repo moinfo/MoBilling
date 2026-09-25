@@ -184,6 +184,7 @@ export interface PortalHostingAccount {
   cpanel_username: string;
   package: string | null;
   status: 'pending' | 'active' | 'suspended' | 'failed';
+  suspension_reason?: 'bandwidth' | 'billing' | 'other' | null;
   disk_used: string | null;
   disk_limit: string | null;
   server_hostname: string | null;

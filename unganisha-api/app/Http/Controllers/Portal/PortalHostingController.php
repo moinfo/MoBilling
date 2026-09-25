@@ -17,7 +17,7 @@ class PortalHostingController extends Controller
         $clientId = $request->user()->client_id;
         $tenantId = $request->user()->tenant_id;
 
-        $accounts = HostingAccount::with(['server:id,name,hostname', 'subscription:id,client_id,label,expire_date'])
+        $accounts = HostingAccount::with(['server:id,name,hostname', 'subscription:id,client_id,label,expire_date,status'])
             ->whereHas('subscription', fn ($q) => $q->where('client_id', $clientId))
             ->whereNotIn('status', ['terminated'])
             ->orderBy('domain')
@@ -54,6 +54,7 @@ class PortalHostingController extends Controller
                 'cpanel_username'          => $a->cpanel_username,
                 'package'                  => $a->meta['plan'] ?? $a->package,
                 'status'                   => $a->status,
+                'suspension_reason'        => $a->suspensionReason(),
                 'disk_used'                => $a->meta['disk_used'] ?? null,
                 'disk_limit'               => $a->meta['disk_limit'] ?? null,
                 'server_hostname'          => $a->server?->hostname,

@@ -141,7 +141,13 @@ export default function PortalHosting() {
                         </Button>
                       )}
                       {a.status === 'suspended' && (
-                        <Text size="xs" c="orange">Suspended — please settle any unpaid invoices.</Text>
+                        <Text size="xs" c="orange">
+                          {a.suspension_reason === 'bandwidth'
+                            ? 'Suspended — this account has reached its bandwidth limit. Please contact support or upgrade your package to restore it.'
+                            : a.suspension_reason === 'billing'
+                              ? 'Suspended — please settle any unpaid invoices.'
+                              : 'Suspended — please contact support for details.'}
+                        </Text>
                       )}
                     </Table.Td>
                   </Table.Tr>
