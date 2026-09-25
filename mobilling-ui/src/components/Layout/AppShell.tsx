@@ -32,7 +32,7 @@ export default function AppLayout() {
   const isActive = (path: string) => location.pathname === path;
 
   // Determine which section the current route belongs to
-  const billingPaths = ['/collection', '/followups', '/my-collections', '/clients', '/product-services', '/product-addons', '/config-options', '/coupons', '/quotations', '/proformas', '/invoices', '/credit-notes', '/payments-in', '/client-subscriptions', '/next-bills'];
+  const billingPaths = ['/collection', '/followups', '/my-collections', '/clients', '/product-services', '/product-addons', '/config-options', '/coupons', '/quotations', '/proformas', '/invoices', '/credit-notes', '/payments-in', '/receive-payments', '/client-subscriptions', '/next-bills'];
   const statutoryPaths = ['/statutories', '/statutory-schedule', '/bills', '/bill-categories', '/payments-out'];
   const expensePaths = ['/expense-categories', '/expenses', '/petty-cash'];
   const reportPaths = ['/reports/revenue', '/reports/aging', '/reports/client-statement', '/reports/payment-collection', '/reports/expenses', '/reports/system-records', '/reports/system-verifications', '/reports/profit-loss', '/reports/statutory', '/reports/subscriptions', '/reports/collection-effectiveness', '/reports/satisfaction-calls', '/reports/communication-log'];
@@ -153,6 +153,7 @@ export default function AppLayout() {
     { label: 'Unpaid Invoices', path: '/invoices?status=unpaid&range=all', group: 'Billing', visible: can('menu.invoices') },
     { label: 'Credit Notes', path: '/credit-notes', group: 'Billing', visible: can('menu.invoices') },
     { label: 'Payments', path: '/payments-in', group: 'Billing', visible: can('menu.payments_in') },
+    { label: 'Receive Payments', path: '/receive-payments', group: 'Billing', visible: can('menu.payments_in') && can('payments_in.create') },
     { label: 'Subscriptions', path: '/client-subscriptions', group: 'Billing', visible: can('menu.client_subscriptions') },
     { label: 'Client Billed', path: '/client-billed', group: 'Billing', visible: can('menu.client_subscriptions') },
     { label: 'Next Bills', path: '/next-bills', group: 'Billing', visible: can('menu.next_bills') },
@@ -510,6 +511,10 @@ export default function AppLayout() {
               {can('menu.payments_in') && (
                 <NavLink label="Payments" leftSection={<IconReceipt size={16} />}
                   active={isActive('/payments-in')} onClick={() => navigateAndClose('/payments-in')} />
+              )}
+              {can('menu.payments_in') && can('payments_in.create') && (
+                <NavLink label="Receive Payments" leftSection={<IconCash size={16} />}
+                  active={isActive('/receive-payments')} onClick={() => navigateAndClose('/receive-payments')} />
               )}
               {can('menu.client_subscriptions') && (
                 <NavLink label="Subscriptions" leftSection={<IconLink size={16} />}

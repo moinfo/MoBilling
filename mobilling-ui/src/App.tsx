@@ -33,6 +33,7 @@ import CreditNotes from './pages/CreditNotes';
 import BillCategories from './pages/BillCategories';
 import Bills from './pages/Bills';
 import PaymentsIn from './pages/PaymentsIn';
+import ReceivePayments from './pages/ReceivePayments';
 import NextBills from './pages/NextBills';
 import ClientSubscriptions from './pages/ClientSubscriptions';
 import RetainerBilling from './pages/RetainerBilling';
@@ -275,6 +276,7 @@ export default function App() {
                   <Route path="/orders" element={<Orders />} />
                   <Route path="/credit-notes" element={<CreditNotes />} />
                   <Route path="/payments-in" element={<PaymentsIn />} />
+                  <Route path="/receive-payments" element={<ReceivePayments />} />
                   <Route path="/client-subscriptions" element={<ClientSubscriptions />} />
                   <Route path="/client-billed" element={<RetainerBilling />} />
                   <Route path="/next-bills" element={<NextBills />} />
