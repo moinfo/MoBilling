@@ -37,11 +37,7 @@ class ReceivePaymentsController extends Controller
         ]);
         $tenantId = $request->user()->tenant_id;
         $bal = OfflinePaymentService::balanceSql();
-
-        $q = Document::withoutGlobalScopes()->where('documents.tenant_id', $tenantId)->whereNull('documents.deleted_at')
-            ->where('documents.type', 'invoice')->whereIn('documents.status', OfflinePaymentService::UNPAID)
-            ->whereRaw("({$bal}) > 0.005")
-            ->with(['client' => fn ($c) => $c->withoutGlobalScopes()->select('id', 'name', 'phone', 'credit_balance')]);
+        $q = OfflinePaymentService::unpaidQuery($tenantId);
 
         if ($request->filled('client_id')) {
             $q->where('documents.client_id', $request->client_id);
@@ -63,25 +59,10 @@ class ReceivePaymentsController extends Controller
             $q->whereHas('client', fn ($c) => PhoneHelper::wherePhone($c->withoutGlobalScopes()->where('clients.tenant_id', $tenantId), 'clients.phone', $request->phone));
         }
         if ($request->filled('search')) {
-            $s = trim($request->search);
-            $like = '%' . addcslashes($s, '%_\\') . '%';
-            $digits = preg_replace('/\D/', '', $s);
-            $numeric = preg_match('/^[\d,]+(\.\d+)?$/', $s) ? round((float) str_replace(',', '', $s), 2) : null;
-            $q->where(function ($w) use ($like, $digits, $numeric, $bal, $s, $tenantId) {
-                $w->where('documents.document_number', 'like', $like)
-                  ->orWhereHas('client', fn ($c) => $c->withoutGlobalScopes()->where('clients.tenant_id', $tenantId)->where('clients.name', 'like', $like));
-                if (strlen($digits) >= 7) {
-                    $w->orWhereHas('client', fn ($c) => PhoneHelper::wherePhone($c->withoutGlobalScopes()->where('clients.tenant_id', $tenantId), 'clients.phone', $s));
-                }
-                if ($numeric !== null && $numeric > 0) {
-                    $w->orWhereRaw("ROUND({$bal}, 2) = ?", [$numeric])->orWhere('documents.total', $numeric);
-                }
-            });
+            OfflinePaymentService::applySearch($q, $request->search, $tenantId);
         }
 
-        $page = $q->orderByRaw('documents.due_date IS NULL')->orderBy('documents.due_date')->orderBy('documents.date')
-            ->withSum('payments as paid_sum', 'amount')->withSum('refunds as refund_sum', 'amount')
-            ->paginate($request->integer('per_page', 20));
+        $page = $q->paginate($request->integer('per_page', 20));
 
         $today = now()->toDateString();
         $page->getCollection()->transform(function (Document $d) use ($today) {

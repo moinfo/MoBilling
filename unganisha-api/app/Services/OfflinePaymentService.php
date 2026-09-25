@@ -57,6 +57,52 @@ class OfflinePaymentService
             . ' + COALESCE((select sum(r.amount) from refunds r where r.document_id = documents.id), 0)';
     }
 
+    /** Unpaid, positive-balance invoices of one tenant, oldest due first, with client + paid/refund sums. */
+    public static function unpaidQuery(string $tenantId): \Illuminate\Database\Eloquent\Builder
+    {
+        $bal = self::balanceSql();
+
+        return Document::withoutGlobalScopes()->where('documents.tenant_id', $tenantId)->whereNull('documents.deleted_at')
+            ->where('documents.type', 'invoice')->whereIn('documents.status', self::UNPAID)
+            ->whereRaw("({$bal}) > 0.005")
+            ->with(['client' => fn ($c) => $c->withoutGlobalScopes()->select('id', 'name', 'phone', 'credit_balance')])
+            ->orderByRaw('documents.due_date IS NULL')->orderBy('documents.due_date')->orderBy('documents.date')
+            ->withSum('payments as paid_sum', 'amount')->withSum('refunds as refund_sum', 'amount');
+    }
+
+    /** Free-text search: invoice number, client name, phone digits, or an amount (balance/total). */
+    public static function applySearch($q, string $s, string $tenantId): void
+    {
+        $bal = self::balanceSql();
+        $s = trim($s);
+        $like = '%' . addcslashes($s, '%_\\') . '%';
+        $digits = preg_replace('/\D/', '', $s);
+        $numeric = preg_match('/^[\d,]+(\.\d+)?$/', $s) ? round((float) str_replace(',', '', $s), 2) : null;
+        $q->where(function ($w) use ($like, $digits, $numeric, $bal, $s, $tenantId) {
+            $w->where('documents.document_number', 'like', $like)
+              ->orWhereHas('client', fn ($c) => $c->withoutGlobalScopes()->where('clients.tenant_id', $tenantId)->where('clients.name', 'like', $like));
+            if (strlen($digits) >= 7) {
+                $w->orWhereHas('client', fn ($c) => \App\Helpers\PhoneHelper::wherePhone($c->withoutGlobalScopes()->where('clients.tenant_id', $tenantId), 'clients.phone', $s));
+            }
+            if ($numeric !== null && $numeric > 0) {
+                $w->orWhereRaw("ROUND({$bal}, 2) = ?", [$numeric])->orWhere('documents.total', $numeric);
+            }
+        });
+    }
+
+    public static function balanceOf(Document $d): float
+    {
+        return round((float) $d->total - ((float) ($d->paid_sum ?? 0) - (float) ($d->refund_sum ?? 0)), 2);
+    }
+
+    /** Existing payment with the same (trimmed, case-insensitive) reference + method in the last 90 days, or null. */
+    public static function findDuplicate(string $tenantId, string $method, string $reference): ?PaymentIn
+    {
+        return PaymentIn::withoutGlobalScopes()->where('tenant_id', $tenantId)->where('payment_method', $method)
+            ->whereRaw('LOWER(TRIM(reference)) = ?', [self::normRef($reference)])
+            ->where('created_at', '>=', now()->subDays(self::DUP_DAYS))->latest('created_at')->first();
+    }
+
     /**
      * @param string[] $invoiceIds
      * @param array $in method, payment_date, reference, notes, send_receipt, allow_excess, confirm_different, idempotency_key
@@ -151,10 +197,7 @@ class OfflinePaymentService
                     // ── duplicate guards (override with confirm_different)
                     if (empty($in['confirm_different'])) {
                         if ($reference) {
-                            $dup = PaymentIn::withoutGlobalScopes()->where('tenant_id', $tenantId)
-                                ->where('payment_method', $method)
-                                ->whereRaw('LOWER(TRIM(reference)) = ?', [self::normRef($reference)])
-                                ->where('created_at', '>=', now()->subDays(self::DUP_DAYS))->latest('created_at')->first();
+                            $dup = self::findDuplicate($tenantId, $method, $reference);
                             if ($dup) {
                                 $dd = Document::withoutGlobalScopes()->find($dup->document_id);
                                 throw new OfflinePaymentException('This reference was already recorded' . ($dd ? " against {$dd->document_number}" : '') . ' on ' . $dup->payment_date->format('d M Y') . '. It may be the same payment.', 409, 'duplicate_reference', [

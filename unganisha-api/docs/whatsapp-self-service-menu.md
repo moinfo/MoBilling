@@ -87,3 +87,21 @@ unaffected, security notices (cPanel password changed, EPP code shown) are still
 - Logs never contain what the client typed at EPP/PIN/OTP/password steps; error text is masked (SQL values, codes, long numbers).
 - Staff-assist sessions last 2 hours, show an "Assisting ..." banner, cannot change nameservers, and stamp every action with the staff user.
 - Clients never see the domain/cloud supplier names or USD prices; amounts are in TZS.
+
+## Staff menu: receive a payment (option 3)
+
+STAFF -> PIN -> staff menu: `1) Followups Zangu`, `2) Tafuta Mteja Kumsaidia`, `3) Pokea Malipo (Lipa Namba / Benki)`.
+Option 3 records an OFFLINE payment (mobile money / lipa namba / bank transfer) against an unpaid invoice. Same money path as the web
+page "Receive payments" (`App\Services\OfflinePaymentService`).
+
+1. Type a client name, phone or invoice number (or `LIST` for the 9 oldest unpaid invoices; a longer result shows a "9 of N" notice).
+2. Pick the invoice number -> card (total / paid / balance) -> pick the payment method (the tenant's configured methods, never Pesapal).
+3. Type the transaction ID / reference (4-40 letters/digits, no spaces) or paste the whole payment SMS: the bot shows what it understood
+   (reference, amount, sender) and asks `1) Yes 2) No` before using it.
+4. `1) Pay full balance  2) Other amount` (partial allowed; never more than the balance - over-payments and client credit are web-only).
+5. Summary (Client, Invoice, Method, Ref, Amount, New balance) -> `1) Yes, record`. Only then is it recorded; the client gets the normal receipt.
+
+Rules: needs the `payments_in.create` permission; a reference already used with the same method in the last 90 days is refused (no override
+on WhatsApp - use the web page); the same amount on the same invoice within 10 minutes is refused; paid/cancelled invoices are refused.
+`0` goes back one step (at the search step `0`/`LIST` lists invoices), `RUDI` returns to the staff menu, `MENU` leaves staff mode.
+The payment note says "Recorded via WhatsApp staff menu" and `received_by` is the staff user. A client session can never reach this flow.

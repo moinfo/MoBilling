@@ -54,6 +54,8 @@ use Illuminate\Support\Str;
  */
 class WhatsappRenewalWebhookController extends Controller
 {
+    use Concerns\HandlesStaffPayments;
+
     /** The sender's number exactly as received (digits, with country code) — session keys use the 9-digit form. */
     private string $inboundDigits = '';
 
@@ -229,7 +231,7 @@ class WhatsappRenewalWebhookController extends Controller
         // Staff-assist: a staff member's OWN phone helping a client, not the client's own
         // self-service. Checked before anything else — STAFF always wins over whatever this
         // phone's session state happens to be, same as MoSMS's cold-start keywords.
-        if ($session && !$session->isExpired() && in_array($session->flow, ['staff_pin', 'staff_menu', 'staff_search'], true)) {
+        if ($session && !$session->isExpired() && in_array($session->flow, ['staff_pin', 'staff_menu', 'staff_search', 'staff_pay'], true)) {
             $this->handleStaffAssistStep($tenant, $phone, $session, $text);
             return response('OK', 200);
         }
@@ -433,7 +435,7 @@ class WhatsappRenewalWebhookController extends Controller
             $note = new \App\Notifications\WhatsappBotAlertNotification(
                 'media_received',
                 'WhatsApp media received',
-                "{$who} sent a photo/document/voice note on WhatsApp that the bot cannot read (possibly a payment receipt). Please check the WhatsApp inbox and follow up.",
+                "{$who} sent a photo/document/voice note on WhatsApp that the bot cannot read (possibly a payment receipt). Please check the WhatsApp inbox and follow up. If it is a payment receipt, record it under Receive payments (/receive-payments).",
                 $client ? "/clients/{$client->id}" : '/',
             );
             foreach (['tickets.manage', 'orders.create'] as $perm) {
@@ -614,8 +616,17 @@ class WhatsappRenewalWebhookController extends Controller
                 $this->startStaffClientSearch($tenant, $phone, $session, $staff);
                 return;
             }
-            $this->reply($tenant, $phone, 'Samahani, jibu 1 au 2.');
+            if (preg_match('/^\s*3\s*$/', $text)) {
+                $this->startStaffPayments($tenant, $phone, $session, $staff);
+                return;
+            }
+            $this->reply($tenant, $phone, 'Samahani, jibu 1, 2 au 3.');
             $this->startStaffMenu($tenant, $phone, $session, $staff);
+            return;
+        }
+
+        if ($session->flow === 'staff_pay') {
+            $this->handleStaffPayStep($tenant, $phone, $session, $staff, $text);
             return;
         }
 
@@ -668,7 +679,8 @@ class WhatsappRenewalWebhookController extends Controller
         $session->update(['flow' => 'staff_menu', 'state' => ['staff_id' => $staff->id]]);
         $this->reply($tenant, $phone, "Habari {$staff->name}! Chagua:\n"
             . "1) Followups Zangu (Leo/Zilizochelewa)\n"
-            . "2) Tafuta Mteja Kumsaidia\n\n"
+            . "2) Tafuta Mteja Kumsaidia\n"
+            . "3) Pokea Malipo (Lipa Namba / Benki) - Receive Payment (Mobile money / Bank)\n\n"
             . 'Jibu na namba. MENU = ondoka.');
     }
 
