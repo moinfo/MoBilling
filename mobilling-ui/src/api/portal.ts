@@ -207,6 +207,7 @@ export interface PortalHostingDetail {
   domain: string;
   cpanel_username: string;
   status: string;
+  suspension_reason?: 'bandwidth' | 'billing' | 'other' | null;
   package: string | null;
   product_name: string | null;
   product_group: string | null;
@@ -306,6 +307,7 @@ export const requestPortalHostingCancellation = (id: string, reason: string, whe
 export interface UpgradePlanRow {
   id: string; name: string; price: number; billing_cycle: string | null;
   is_current: boolean; due_now: number; credit: number;
+  fixes_suspension?: boolean | null;
 }
 
 export const getPortalUpgradeOptions = (id: string) =>

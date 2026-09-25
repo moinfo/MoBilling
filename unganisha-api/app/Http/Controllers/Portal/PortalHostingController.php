@@ -102,6 +102,7 @@ class PortalHostingController extends Controller
             'domain'          => $hostingAccount->domain,
             'cpanel_username' => $hostingAccount->cpanel_username,
             'status'          => $hostingAccount->status,
+            'suspension_reason' => $hostingAccount->suspensionReason(),
             'package'         => $hostingAccount->meta['plan'] ?? $hostingAccount->package,
             'product_name'    => $p?->name,
             'product_group'   => $p?->category,
@@ -630,6 +631,11 @@ class PortalHostingController extends Controller
     public function upgradeOptions(Request $request, HostingAccount $hostingAccount)
     {
         $this->guardAccount($request, $hostingAccount, adminOnly: false);
+        $bwSvc = app(\App\Services\Hosting\BandwidthSuspensionService::class);
+        $refusal = $bwSvc->refusalMessage($hostingAccount);
+        abort_if($refusal !== null, 422, $refusal);
+        $bwSuspended = $bwSvc->isBandwidthSuspended($hostingAccount);
+        $bwUsed = (float) ($hostingAccount->meta['bw_used_bytes'] ?? 0);
 
         $sub = $hostingAccount->subscription?->load('productService');
         abort_unless($sub && $sub->productService, 422, 'Subscription data missing.');
@@ -648,20 +654,32 @@ class PortalHostingController extends Controller
             ->get()
             ->unique('name')
             ->values()
+            // A bandwidth-suspended account can only upgrade (higher price), never downgrade.
+            ->when($bwSuspended, fn ($c) => $c->filter(fn ($p) => $svc->direction($sub, $p) === 'upgrade')->values())
             ->map(fn ($p) => [
                 'id'            => $p->id,
                 'name'          => $p->name,
                 'price'         => (float) $p->price,
                 'billing_cycle' => $p->billing_cycle,
                 'is_current'    => $p->id === $sub->product_service_id,
+                // true/false only when WHM's package list states the limit; null = unknown (never guessed)
+                'fixes_suspension' => $bwSuspended
+                    ? (($lim = $bwSvc->planLimitBytes($p, $hostingAccount->server)) === null ? null : $lim > $bwUsed)
+                    : null,
                 'due_now'       => $p->id === $sub->product_service_id ? 0.0 : $svc->proratedCharge($sub, $p),
                 'credit'        => ($p->id === $sub->product_service_id || !config('whmcs.credit_on_downgrade'))
                     ? 0.0 : $svc->proratedCredit($sub, $p),
             ]);
 
+        if ($bwSuspended) {
+            // Plans known to bring usage under the limit first (stable: price order kept within groups).
+            $plans = $plans->sortBy(fn ($p) => $p['fixes_suspension'] === true ? 0 : ($p['fixes_suspension'] === null ? 1 : 2))->values();
+        }
+
         return response()->json(['data' => [
             'current_plan' => $sub->productService->name,
             'next_due'     => $sub->expire_date?->toDateString(),
+            'suspension_reason' => $hostingAccount->suspensionReason(),
             'plans'        => $plans,
         ]]);
     }
@@ -670,7 +688,10 @@ class PortalHostingController extends Controller
     public function upgrade(Request $request, HostingAccount $hostingAccount)
     {
         $this->guardAccount($request, $hostingAccount);
-        abort_unless($hostingAccount->status === 'active', 422, 'This hosting account is not active.');
+        $bwSvc = app(\App\Services\Hosting\BandwidthSuspensionService::class);
+        $refusal = $bwSvc->refusalMessage($hostingAccount);
+        abort_if($refusal !== null, 422, $refusal);
+        $bwSuspended = $bwSvc->isBandwidthSuspended($hostingAccount);
 
         $user = $request->user();
         $data = $request->validate([
@@ -692,6 +713,13 @@ class PortalHostingController extends Controller
             'Please choose a plan from the same group.');
 
         $svc = app(\App\Services\Hosting\PlanChangeService::class);
+        if ($bwSuspended) {
+            abort_unless($svc->direction($sub, $new) === 'upgrade', 422,
+                'This account is suspended for bandwidth — please choose a higher plan.');
+            $known = $bwSvc->planLimitBytes($new, $hostingAccount->server);
+            abort_if($known !== null && $known <= (float) ($hostingAccount->meta['bw_used_bytes'] ?? 0), 422,
+                'That plan\'s bandwidth allowance is still below your current usage — please choose a higher plan.');
+        }
         $charge = $svc->proratedCharge($sub, $new);
 
         if ($charge <= 0) {
@@ -760,7 +788,8 @@ class PortalHostingController extends Controller
 
         return response()->json([
             'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
-            'message' => "Upgrade invoice {$document->document_number} created (Tsh." . number_format($total, 2) . ' prorated) — the upgrade applies automatically when it is paid.',
+            'message' => "Upgrade invoice {$document->document_number} created (Tsh." . number_format($total, 2) . ' prorated) — the upgrade applies automatically when it is paid.'
+                . ($bwSuspended ? ' Your account will be restored automatically once the upgrade is applied.' : ''),
         ], 201);
     }
 

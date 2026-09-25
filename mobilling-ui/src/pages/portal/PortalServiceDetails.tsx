@@ -182,6 +182,14 @@ export default function PortalServiceDetails() {
   const bwLimit = d.bw_limit_bytes ?? 0;
   const bwPct   = bwLimit > 0 ? Math.min(100, (bwUsed / bwLimit) * 100) : 0;
 
+  const bwSuspended = d.status === 'suspended' && d.suspension_reason === 'bandwidth';
+  const canUpgrade = d.status === 'active' || bwSuspended;
+  const upgradeHint = d.status === 'suspended' && !bwSuspended
+    ? (d.suspension_reason === 'billing'
+      ? 'This account is suspended: please pay your unpaid invoices first.'
+      : 'This account is suspended: please contact support.')
+    : undefined;
+
   return (
     <Stack gap="lg">
       <Group gap="xs">
@@ -192,6 +200,18 @@ export default function PortalServiceDetails() {
         <Title order={3}>Service Details</Title>
         <Badge color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
       </Group>
+
+      {bwSuspended && (
+        <Alert color="blue" variant="light" title="Bandwidth limit reached">
+          <Group justify="space-between" align="center">
+            <Text size="sm">
+              This account is suspended because it reached its bandwidth limit ({fmtBytes(bwUsed)} of {fmtBytes(bwLimit)} used).
+              Upgrade your package to restore it.
+            </Text>
+            {isPortalAdmin && <Button size="xs" onClick={() => setUpgradeOpen(true)}>Upgrade now</Button>}
+          </Group>
+        </Alert>
+      )}
 
       <Grid gutter="lg">
         {/* ── Sidebar ── */}
@@ -214,9 +234,13 @@ export default function PortalServiceDetails() {
                 <NavLink label="Change Password" leftSection={<IconKey size={16} />}
                   disabled={d.status !== 'active'}
                   onClick={() => setPwOpen(true)} />
-                <NavLink label="Upgrade/Downgrade" leftSection={<IconArrowUp size={16} />}
-                  disabled={d.status !== 'active'}
-                  onClick={() => setUpgradeOpen(true)} />
+                <Tooltip label={upgradeHint} disabled={!upgradeHint} position="right">
+                  <div>
+                    <NavLink label="Upgrade/Downgrade" leftSection={<IconArrowUp size={16} />}
+                      disabled={!canUpgrade}
+                      onClick={() => setUpgradeOpen(true)} />
+                  </div>
+                </Tooltip>
                 <Tooltip label="No configurable options are available for this product" position="right">
                   <div>
                     <NavLink label="Upgrade/Downgrade Options" leftSection={<IconListDetails size={16} />} disabled />
@@ -533,7 +557,7 @@ export default function PortalServiceDetails() {
       )}
 
       <ChangePasswordModal id={d.id} opened={pwOpen} onClose={() => setPwOpen(false)} />
-      <UpgradeModal id={d.id} opened={upgradeOpen} onClose={() => setUpgradeOpen(false)}
+      <UpgradeModal id={d.id} bandwidthSuspended={bwSuspended} opened={upgradeOpen} onClose={() => setUpgradeOpen(false)}
         onInvoiced={() => navigate('/portal/invoices')} />
       <CancellationModal id={d.id} domain={d.domain} opened={cancelOpen} onClose={() => setCancelOpen(false)} />
 
@@ -894,8 +918,8 @@ function CancellationModal({ id, domain, opened, onClose }: {
   );
 }
 
-function UpgradeModal({ id, opened, onClose, onInvoiced }: {
-  id: string; opened: boolean; onClose: () => void; onInvoiced: () => void;
+function UpgradeModal({ id, bandwidthSuspended, opened, onClose, onInvoiced }: {
+  id: string; bandwidthSuspended?: boolean; opened: boolean; onClose: () => void; onInvoiced: () => void;
 }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
@@ -927,8 +951,13 @@ function UpgradeModal({ id, opened, onClose, onInvoiced }: {
   });
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Upgrade/Downgrade" centered size="lg">
+    <Modal opened={opened} onClose={onClose} title={bandwidthSuspended ? 'Upgrade package' : 'Upgrade/Downgrade'} centered size="lg">
       <Stack gap="sm" pos="relative">
+        {bandwidthSuspended && (
+          <Alert color="blue" variant="light">
+            Choose a higher package. Once the upgrade invoice is paid, your account is restored automatically.
+          </Alert>
+        )}
         <LoadingOverlay visible={isLoading} />
         {!isLoading && (error || !options) && (
           <Alert color="orange" variant="light">
@@ -949,7 +978,9 @@ function UpgradeModal({ id, opened, onClose, onInvoiced }: {
                 style={{ opacity: p.is_current ? 0.55 : 1 }}>
                 <Group justify="space-between" wrap="nowrap">
                   <Radio value={p.id} disabled={p.is_current}
-                    label={<Text fw={600}>{p.name}{p.is_current ? ' (current)' : ''}</Text>} />
+                    label={<Group gap="xs"><Text fw={600}>{p.name}{p.is_current ? ' (current)' : ''}</Text>
+                      {p.fixes_suspension === true && <Badge color="green" variant="light" size="sm">Restores your account</Badge>}
+                      {p.fixes_suspension === false && <Badge color="gray" variant="light" size="sm">Not enough bandwidth</Badge>}</Group>} />
                   <Stack gap={0} align="flex-end">
                     <Text size="sm" fw={600}>Tsh.{fmt(p.price)}/yr</Text>
                     {!p.is_current && (

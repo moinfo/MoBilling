@@ -201,7 +201,10 @@ class PlanChangeService
             return;
         }
         if ($new->provisioning_type === 'whm_cpanel' && $new->cpanel_package && $account->package !== $new->cpanel_package) {
-            ChangeHostingPackage::dispatch($account, $new->cpanel_package);
+            $bw = app(BandwidthSuspensionService::class);
+            // Bandwidth-suspended accounts: the job restores the account after the package switch.
+            $newLimit = $bw->isBandwidthSuspended($account) ? $bw->planLimitBytes($new, $account->server) : null;
+            ChangeHostingPackage::dispatch($account, $new->cpanel_package, $newLimit);
         } else {
             // Billing plan changed but the server package did not — surface it.
             \Illuminate\Support\Facades\Log::info(

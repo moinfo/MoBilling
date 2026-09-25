@@ -1856,6 +1856,11 @@ class WhatsappRenewalWebhookController extends Controller
             $add('upgrade', $this->t($lang, 'Boresha kifurushi', 'Upgrade package'));
             $add('email', $this->t($lang, 'Email zangu', 'My email accounts'));
             $add('connect', $this->t($lang, 'Unganisha domain na hosting', 'Connect domain to hosting'));
+        } elseif ($account->status === 'suspended' && $account->suspensionReason() === 'bandwidth') {
+            $lines[] = $sw
+                ? '• Imesimamishwa kwa sababu bandwidth imeisha. Boresha kifurushi ili irejeshwe kiotomatiki baada ya malipo.'
+                : '• Suspended: bandwidth limit reached. Upgrade your package and it is restored automatically once payment is received.';
+            $add('upgrade', $this->t($lang, 'Boresha kifurushi', 'Upgrade package'));
         } elseif ($account->status === 'suspended') {
             $invoices = $this->unpaidHostingInvoices($tenant, $client, $account);
             if ($invoices->isNotEmpty()) {
@@ -2198,11 +2203,13 @@ class WhatsappRenewalWebhookController extends Controller
                         "Kifurushi kipya: {$plan['plan']->name}",
                         'Utalipa sasa: TZS ' . number_format($plan['charge']) . ' (sehemu ya muda uliobaki)',
                         'Hosting haibadilishwi hadi malipo yapokelewe.',
+                        ...($account->status === 'suspended' ? ['Baada ya kuboresha, hosting itarejeshwa kiotomatiki.'] : []),
                     ], 'Unataka kupata invoice?'),
                     $this->confirmMessage('en', "Confirm upgrade for {$account->domain}", [
                         "New package: {$plan['plan']->name}",
                         'You pay now: TZS ' . number_format($plan['charge']) . ' (prorated for the remaining term)',
                         'Nothing changes until payment is received.',
+                        ...($account->status === 'suspended' ? ['Once the upgrade is applied, your hosting is restored automatically.'] : []),
                     ], 'Get the invoice?')
                 ));
             return;
@@ -2277,11 +2284,17 @@ class WhatsappRenewalWebhookController extends Controller
             ->take(8);
     }
 
+    /** Active accounts, or ones suspended purely because the bandwidth limit was reached. */
+    private function canUpgradeHosting(HostingAccount $account): bool
+    {
+        return app(\App\Services\Hosting\BandwidthSuspensionService::class)->refusalMessage($account) === null;
+    }
+
     private function showUpgradeOptions(Tenant $tenant, Client $client, string $phone, WhatsappRenewalSession $session, HostingAccount $account, string $lang): void
     {
         $sw = $lang === 'sw';
-        if ($account->status !== 'active') {
-            $this->reply($tenant, $phone, $this->t($lang, 'Kuboresha kifurushi kunawezekana kwa hosting inayofanya kazi tu.', 'Upgrades are only available for an active hosting account.'));
+        if (!$this->canUpgradeHosting($account)) {
+            $this->reply($tenant, $phone, $this->t($lang, 'Kuboresha kifurushi kunawezekana kwa hosting inayofanya kazi tu (au iliyosimamishwa kwa sababu ya bandwidth).', 'Upgrades are only available for an active hosting account (or one suspended because its bandwidth limit was reached).'));
             return;
         }
         $sub = $account->subscription;
@@ -2291,6 +2304,18 @@ class WhatsappRenewalWebhookController extends Controller
         }
 
         $plans = $this->upgradePlans($tenant, $account);
+        $bwSuspended = $account->status === 'suspended';
+        $bwUsed = (float) ($account->meta['bw_used_bytes'] ?? 0);
+        $bwSvc = app(\App\Services\Hosting\BandwidthSuspensionService::class);
+        $fixes = [];
+        if ($bwSuspended) {
+            // Drop plans WHM says are still below current usage; tag those known to fix it (unknown = untagged).
+            $plans = $plans->filter(function ($r) use ($bwSvc, $account, $bwUsed, &$fixes) {
+                $lim = $bwSvc->planLimitBytes($r['plan'], $account->server);
+                $fixes[$r['plan']->id] = $lim !== null && $lim > $bwUsed;
+                return $lim === null || $lim > $bwUsed;
+            })->values();
+        }
         if ($plans->isEmpty()) {
             $this->reply($tenant, $phone, $this->t($lang,
                 "Hakuna kifurushi cha juu zaidi kinachopatikana kwa hosting yako sasa.\n\n" . $this->menuFooter($lang),
@@ -2306,7 +2331,8 @@ class WhatsappRenewalWebhookController extends Controller
             $desc = mb_strlen($desc) > 90 ? mb_substr($desc, 0, 87) . '...' : $desc;
             $lines[] = ($i + 1) . ") {$p->name} — TZS " . number_format((float) $p->price) . ' ' . $this->cycleLabel($p->billing_cycle, $lang)
                 . ($desc !== '' ? " — {$desc}" : '')
-                . ($sw ? ' — malipo sasa: TZS ' : ' — pay now: TZS ') . number_format($r['charge']);
+                . ($sw ? ' — malipo sasa: TZS ' : ' — pay now: TZS ') . number_format($r['charge'])
+                . (!empty($fixes[$p->id]) ? ($sw ? ' — kinarejesha hosting yako' : ' — restores your hosting') : '');
         }
         $lines[] = '';
         $lines[] = $sw ? 'Jibu na namba ya kifurushi.' : 'Reply with the package number.';
@@ -2319,7 +2345,7 @@ class WhatsappRenewalWebhookController extends Controller
     private function createUpgradeInvoiceAndOfferPayment(Tenant $tenant, Client $client, string $phone, HostingAccount $account, string $lang, string $planId): void
     {
         $sub = $account->subscription;
-        $plan = ($account->status === 'active' && $sub) ? $this->upgradePlans($tenant, $account)->firstWhere('plan.id', $planId) : null;
+        $plan = ($this->canUpgradeHosting($account) && $sub) ? $this->upgradePlans($tenant, $account)->firstWhere('plan.id', $planId) : null;
         if (!$plan) {
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kifurushi hicho hakipatikani tena. Tafadhali jaribu tena.', 'Sorry, that package is no longer available. Please try again.'), $lang);
             return;
