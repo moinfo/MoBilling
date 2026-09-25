@@ -84,7 +84,7 @@ class PlanChangeService
      * plan/cPanel package switch is applied by DocumentObserver -> apply() once it is paid.
      * Any earlier unpaid (not partially paid) plan-change invoice for this subscription is cancelled.
      */
-    public function createUpgradeInvoice(ClientSubscription $sub, ProductService $new, float $charge, string $domain): \App\Models\Document
+    public function createUpgradeInvoice(ClientSubscription $sub, ProductService $new, float $charge, string $domain, int $dueInDays = 0, bool $recordPending = true, ?string $notesSuffix = null): \App\Models\Document
     {
         $oldName    = $sub->productService?->name ?? '—';
         $taxPercent = (float) ($new->tax_percent ?? 0);
@@ -92,7 +92,7 @@ class PlanChangeService
         $total      = round($charge + $taxAmount, 2);
         $label      = "Upgrade: {$oldName} → {$new->name} — {$domain}";
 
-        return \Illuminate\Support\Facades\DB::transaction(function () use ($sub, $new, $charge, $taxPercent, $taxAmount, $total, $label) {
+        return \Illuminate\Support\Facades\DB::transaction(function () use ($sub, $new, $charge, $taxPercent, $taxAmount, $total, $label, $dueInDays, $recordPending, $notesSuffix) {
             $priorDocId = $sub->metadata['pending_plan_change']['document_id'] ?? null;
             if ($priorDocId) {
                 \App\Models\Document::withoutGlobalScopes()->where('id', $priorDocId)
@@ -106,13 +106,13 @@ class PlanChangeService
                 'type'            => 'invoice',
                 'document_number' => app(\App\Services\DocumentNumberService::class)->generate('invoice', $sub->tenant_id),
                 'date'            => now()->toDateString(),
-                'due_date'        => now()->toDateString(),
+                'due_date'        => now()->addDays($dueInDays)->toDateString(),
                 'subtotal'        => $charge,
                 'discount_amount' => 0,
                 'tax_amount'      => $taxAmount,
                 'total'           => $total,
                 'status'          => 'sent',
-                'notes'           => $label,
+                'notes'           => $label . ($notesSuffix ? " — {$notesSuffix}" : ''),
             ]);
 
             $document->items()->create([
@@ -125,12 +125,13 @@ class PlanChangeService
                 'total'       => $total,
             ]);
 
-            $sub->update(['metadata' => array_merge($sub->metadata ?? [], [
-                'pending_plan_change' => [
-                    'product_service_id' => $new->id,
-                    'document_id'        => $document->id,
-                ],
-            ])]);
+            $meta = $sub->metadata ?? [];
+            if ($recordPending) {
+                $meta['pending_plan_change'] = ['product_service_id' => $new->id, 'document_id' => $document->id];
+            } else {
+                unset($meta['pending_plan_change']); // superseded above; pay-later records its own marker
+            }
+            $sub->update(['metadata' => $meta]);
 
             return $document;
         });
@@ -141,11 +142,11 @@ class PlanChangeService
      * The recurring amount is re-derived from the new product (WHMCS updates
      * the recurring on a plan change), so any manual override is cleared.
      */
-    public function apply(ClientSubscription $sub, ProductService $new): void
+    public function apply(ClientSubscription $sub, ProductService $new, bool $skipCredit = false): void
     {
         // Credit the unused difference on a downgrade BEFORE switching product
         // (proratedCredit reads the current product price).
-        $credit = config('whmcs.credit_on_downgrade') ? $this->proratedCredit($sub, $new) : 0.0;
+        $credit = (!$skipCredit && config('whmcs.credit_on_downgrade')) ? $this->proratedCredit($sub, $new) : 0.0;
 
         $meta = $sub->metadata ?? [];
         unset($meta['pending_plan_change']);

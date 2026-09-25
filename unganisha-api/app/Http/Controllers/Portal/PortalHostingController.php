@@ -116,7 +116,23 @@ class PortalHostingController extends Controller
             'bw_limit_bytes'  => $hostingAccount->meta['bw_limit_bytes'] ?? null,
             'last_synced_at'  => $hostingAccount->last_synced_at?->toISOString(),
             'shortcuts'       => array_keys(self::GOTO_MAP),
+            'pay_later_upgrade' => $this->payLaterSummary($sub),
         ]]);
+    }
+
+    /** Open "upgrade now, pay later" invoice of this service (null when none). */
+    private function payLaterSummary(?\App\Models\ClientSubscription $sub): ?array
+    {
+        $m = app(\App\Services\Hosting\PayLaterUpgradeService::class)->pending($sub);
+        if (!$m) {
+            return null;
+        }
+        $doc = \App\Models\Document::withoutGlobalScopes()->where('tenant_id', $sub->tenant_id)->find($m['document_id'] ?? null);
+
+        return $doc ? [
+            'document_id' => $doc->id, 'document_number' => $doc->document_number,
+            'total' => (float) $doc->total, 'due_date' => $m['due_date'] ?? null,
+        ] : null;
     }
 
     /**
@@ -641,6 +657,11 @@ class PortalHostingController extends Controller
         abort_unless($sub && $sub->productService, 422, 'Subscription data missing.');
 
         $svc = app(\App\Services\Hosting\PlanChangeService::class);
+        $pls = app(\App\Services\Hosting\PayLaterUpgradeService::class);
+        $user = $request->user();
+        $accountRefusal = $bwSuspended
+            ? ($user->role !== 'admin' ? 'Only portal administrators can do this.' : $pls->accountRefusal($hostingAccount, $sub))
+            : null;
 
         $plans = \App\Models\ProductService::withoutGlobalScopes()
             ->where('tenant_id', $request->user()->tenant_id)
@@ -667,6 +688,12 @@ class PortalHostingController extends Controller
                     ? (($lim = $bwSvc->planLimitBytes($p, $hostingAccount->server)) === null ? null : $lim > $bwUsed)
                     : null,
                 'due_now'       => $p->id === $sub->product_service_id ? 0.0 : $svc->proratedCharge($sub, $p),
+                // "Upgrade now, pay later" (bandwidth-suspended only): eligibility + why not, amount incl. tax, due date.
+                'pay_later'     => $bwSuspended ? (function () use ($pls, $hostingAccount, $sub, $p, $svc, $accountRefusal) {
+                    $charge = $svc->proratedCharge($sub, $p);
+                    $reason = $accountRefusal ?? $pls->planRefusal($hostingAccount, $sub, $p, $charge);
+                    return ['eligible' => $reason === null, 'reason' => $reason, 'total' => $pls->invoiceTotal($p, $charge), 'due_date' => $pls->dueDate()];
+                })() : null,
                 'credit'        => ($p->id === $sub->product_service_id || !config('whmcs.credit_on_downgrade'))
                     ? 0.0 : $svc->proratedCredit($sub, $p),
             ]);
@@ -680,6 +707,7 @@ class PortalHostingController extends Controller
             'current_plan' => $sub->productService->name,
             'next_due'     => $sub->expire_date?->toDateString(),
             'suspension_reason' => $hostingAccount->suspensionReason(),
+            'pay_later_upgrade' => $this->payLaterSummary($sub),
             'plans'        => $plans,
         ]]);
     }
@@ -699,6 +727,7 @@ class PortalHostingController extends Controller
                 \Illuminate\Validation\Rule::exists('product_services', 'id')
                     ->where('tenant_id', $user->tenant_id)->where('is_active', true)
                     ->where('provisioning_type', 'whm_cpanel')],
+            'mode' => 'nullable|in:pay_first,pay_later',
         ]);
 
         $sub = $hostingAccount->subscription?->load('productService');
@@ -721,6 +750,26 @@ class PortalHostingController extends Controller
                 'That plan\'s bandwidth allowance is still below your current usage — please choose a higher plan.');
         }
         $charge = $svc->proratedCharge($sub, $new);
+
+        // Bandwidth-suspended: upgrade first, the customer pays afterwards. Any guard that refuses (or a WHM
+        // failure, fully rolled back) falls through to the ordinary pay-first invoice below.
+        $payLaterNote = null;
+        if ($bwSuspended && ($data['mode'] ?? null) !== 'pay_first') {
+            try {
+                $r = app(\App\Services\Hosting\PayLaterUpgradeService::class)->apply($sub, $hostingAccount, $new);
+                $doc = $r['document'];
+                return response()->json([
+                    'data' => ['document_id' => $doc->id, 'document_number' => $doc->document_number, 'total' => (float) $doc->total,
+                        'due_date' => $r['due_date'], 'pay_later' => true, 'restored' => $r['restored'], 'account_status' => $r['account_status']],
+                    'message' => ($r['restored']
+                        ? 'Your account has been restored. '
+                        : 'Your plan was upgraded, but usage is still above the new limit; our team has been notified. ')
+                        . "Invoice {$doc->document_number} of TZS " . number_format((float) $doc->total) . " is due by {$r['due_date']}.",
+                ], 201);
+            } catch (\DomainException $e) {
+                $payLaterNote = $e->getMessage();
+            }
+        }
 
         if ($charge <= 0) {
             $svc->apply($sub, $new);
@@ -787,8 +836,9 @@ class PortalHostingController extends Controller
         );
 
         return response()->json([
-            'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total],
-            'message' => "Upgrade invoice {$document->document_number} created (Tsh." . number_format($total, 2) . ' prorated) — the upgrade applies automatically when it is paid.'
+            'data'    => ['document_id' => $document->id, 'document_number' => $document->document_number, 'total' => (float) $document->total,
+                'pay_later' => false, 'pay_later_reason' => $payLaterNote],
+            'message' => ($payLaterNote ? "{$payLaterNote} Please pay the invoice first to restore the account. " : '') . "Upgrade invoice {$document->document_number} created (Tsh." . number_format($total, 2) . ' prorated) — the upgrade applies automatically when it is paid.'
                 . ($bwSuspended ? ' Your account will be restored automatically once the upgrade is applied.' : ''),
         ], 201);
     }

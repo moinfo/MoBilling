@@ -24,11 +24,23 @@ class HostingBandwidthUpgradeNotification extends Notification implements Should
         return $this->restored ? 'Bandwidth-suspended account upgraded and reactivated' : 'Bandwidth-suspended account upgraded but still suspended';
     }
 
+    /** ' Upgrade pending payment (due <date>).' while a pay-later upgrade is open for this account. */
+    private function pendingNote(): string
+    {
+        try {
+            $sub = $this->hostingAccount->subscription()->withoutGlobalScopes()->first();
+            $due = $sub?->metadata['pay_later_upgrade']['due_date'] ?? null;
+            return $due ? " Upgrade pending payment (due {$due})." : '';
+        } catch (\Throwable $e) {
+            return '';
+        }
+    }
+
     private function message(): string
     {
         return "{$this->hostingAccount->domain}: " . ($this->restored
             ? 'the new plan brought usage under the limit and the account was reactivated.'
-            : 'usage is still at or above the new limit — please review the account.');
+            : 'usage is still at or above the new limit — please review the account.') . $this->pendingNote();
     }
 
     public function toFcm($notifiable): ?array

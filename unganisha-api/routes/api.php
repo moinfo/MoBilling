@@ -728,6 +728,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:client_subscriptions.update')->put('/hosting-services/{clientSubscription}', [\App\Http\Controllers\HostingServiceController::class, 'update']);
     Route::middleware('permission:client_subscriptions.read')->get('/hosting-services/{clientSubscription}/upgrade-options', [\App\Http\Controllers\HostingServiceController::class, 'upgradeOptions']);
     Route::middleware('permission:client_subscriptions.update')->post('/hosting-services/{clientSubscription}/upgrade', [\App\Http\Controllers\HostingServiceController::class, 'upgrade']);
+    Route::middleware('permission:client_subscriptions.update')->post('/hosting-services/{clientSubscription}/revert-pay-later-upgrade', [\App\Http\Controllers\HostingServiceController::class, 'revertPayLaterUpgrade']);
     Route::middleware('permission:client_subscriptions.update')->post('/hosting-services/{clientSubscription}/resend-welcome', [\App\Http\Controllers\HostingServiceController::class, 'resendWelcome']);
     Route::middleware('permission:client_subscriptions.update')->post('/hosting-services/{clientSubscription}/send-message', [\App\Http\Controllers\HostingServiceController::class, 'sendMessage']);
 

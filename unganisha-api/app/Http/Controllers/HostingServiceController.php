@@ -112,6 +112,7 @@ class HostingServiceController extends Controller
                 'expires_at' => $meta['ssl_expires_at'] ?? null,
             ],
             'metrics' => $this->metrics($ha),
+            'pay_later_upgrade' => $this->payLaterInfo($sub),
             // option lists
             'options' => [
                 'servers'         => $servers,
@@ -121,6 +122,38 @@ class HostingServiceController extends Controller
                 'payment_methods' => ['pesapal', 'bank', 'cash', 'cheque', 'mpesa', 'credit'],
             ],
         ]]);
+    }
+
+    /** Open "upgrade now, pay later" marker with its invoice (null when none). */
+    private function payLaterInfo(ClientSubscription $sub): ?array
+    {
+        $m = app(\App\Services\Hosting\PayLaterUpgradeService::class)->pending($sub);
+        if (!$m) {
+            return null;
+        }
+        $doc = \App\Models\Document::withoutGlobalScopes()->where('tenant_id', $sub->tenant_id)->find($m['document_id'] ?? null);
+
+        return [
+            'document_id' => $m['document_id'] ?? null, 'document_number' => $doc?->document_number,
+            'document_status' => $doc?->status, 'total' => $doc ? (float) $doc->total : null,
+            'due_date' => $m['due_date'] ?? null, 'applied_at' => $m['applied_at'] ?? null,
+            'overdue' => !empty($m['due_date']) && $doc && !in_array($doc->status, ['paid', 'cancelled'], true) && now()->startOfDay()->gt($m['due_date']),
+        ];
+    }
+
+    /**
+     * Staff: undo an unpaid "upgrade now, pay later" — restores the previous plan through the normal apply path
+     * and cancels the unpaid invoice. Account state (active/suspended) is left for staff to handle.
+     */
+    public function revertPayLaterUpgrade(ClientSubscription $clientSubscription)
+    {
+        try {
+            app(\App\Services\Hosting\PayLaterUpgradeService::class)->revert($clientSubscription);
+        } catch (\DomainException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'Upgrade reverted: the previous plan was restored and the unpaid invoice cancelled. Please review the account state.']);
     }
 
     /** Persist the edit form. `recalculate` re-derives recurring from product price. */

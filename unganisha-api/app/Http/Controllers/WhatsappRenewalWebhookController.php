@@ -2197,19 +2197,43 @@ class WhatsappRenewalWebhookController extends Controller
                 return;
             }
             $this->setHostingState($tenant, $client, $phone, ['step' => 'upgrade_confirm', 'account_id' => $account->id, 'plan_id' => $plan['plan']->id, 'account_ids' => [$account->id]]);
+            $bwSusp = app(\App\Services\Hosting\BandwidthSuspensionService::class)->isBandwidthSuspended($account);
+            $pls = app(\App\Services\Hosting\PayLaterUpgradeService::class);
+            $payLaterReason = $bwSusp && $account->subscription ? $pls->refusal($account, $account->subscription, $plan['plan'], $plan['charge']) : 'n/a';
+            if ($bwSusp && $payLaterReason === null) {
+                // Upgrade now, pay within a few days (same wording as the portal).
+                $total = number_format($pls->invoiceTotal($plan['plan'], $plan['charge']));
+                $due = $pls->dueDate();
+                $days = (int) config('hosting.pay_later_upgrade_due_days', 3);
+                $this->reply($tenant, $phone,
+                    $this->t($lang,
+                        $this->confirmMessage('sw', "Boresha sasa — lipa ndani ya siku {$days}: {$account->domain}", [
+                            "Kifurushi kipya: {$plan['plan']->name}",
+                            'Akaunti yako itarejeshwa mara moja.',
+                            "Invoice ya TZS {$total} inalipwa kabla ya {$due}.",
+                        ], 'Unataka kuboresha sasa?'),
+                        $this->confirmMessage('en', "Upgrade now — pay within {$days} days: {$account->domain}", [
+                            "New package: {$plan['plan']->name}",
+                            'Your account will be restored immediately.',
+                            "An invoice of TZS {$total} is due by {$due}.",
+                        ], 'Upgrade now?')
+                    ));
+                return;
+            }
+            $why = ($bwSusp && $payLaterReason && $payLaterReason !== 'n/a') ? " ({$payLaterReason})" : '';
             $this->reply($tenant, $phone,
                 $this->t($lang,
                     $this->confirmMessage('sw', "Thibitisha kuboresha {$account->domain}", [
                         "Kifurushi kipya: {$plan['plan']->name}",
                         'Utalipa sasa: TZS ' . number_format($plan['charge']) . ' (sehemu ya muda uliobaki)',
                         'Hosting haibadilishwi hadi malipo yapokelewe.',
-                        ...($account->status === 'suspended' ? ['Baada ya kuboresha, hosting itarejeshwa kiotomatiki.'] : []),
+                        ...($account->status === 'suspended' ? ["Tafadhali lipa invoice kwanza ili kurejesha akaunti{$why}. Baada ya kuboresha, hosting itarejeshwa kiotomatiki."] : []),
                     ], 'Unataka kupata invoice?'),
                     $this->confirmMessage('en', "Confirm upgrade for {$account->domain}", [
                         "New package: {$plan['plan']->name}",
                         'You pay now: TZS ' . number_format($plan['charge']) . ' (prorated for the remaining term)',
                         'Nothing changes until payment is received.',
-                        ...($account->status === 'suspended' ? ['Once the upgrade is applied, your hosting is restored automatically.'] : []),
+                        ...($account->status === 'suspended' ? ["Please pay the invoice first to restore the account{$why}. Once the upgrade is applied, your hosting is restored automatically."] : []),
                     ], 'Get the invoice?')
                 ));
             return;
@@ -2349,6 +2373,29 @@ class WhatsappRenewalWebhookController extends Controller
         if (!$plan) {
             $this->finishFlow($tenant, $client, $phone, $this->t($lang, 'Samahani, kifurushi hicho hakipatikani tena. Tafadhali jaribu tena.', 'Sorry, that package is no longer available. Please try again.'), $lang);
             return;
+        }
+
+        // Bandwidth-suspended and eligible: upgrade + restore NOW, invoice due in a few days. Re-checked here
+        // (never trusted from the confirm step); any refusal falls through to the pay-first invoice below.
+        if (app(\App\Services\Hosting\BandwidthSuspensionService::class)->isBandwidthSuspended($account)) {
+            try {
+                $r = app(\App\Services\Hosting\PayLaterUpgradeService::class)->apply($sub, $account, $plan['plan']);
+                $doc = $r['document'];
+                $total = number_format((float) $doc->total);
+                $this->reply($tenant, $phone, $this->t($lang,
+                    ($r['restored'] ? "✅ Akaunti yako imerejeshwa.\n" : "Kifurushi kimeboreshwa, lakini matumizi bado yako juu ya kikomo kipya; timu yetu imearifiwa.\n")
+                        . "Invoice {$doc->document_number} ya TZS {$total} inalipwa kabla ya {$r['due_date']}.",
+                    ($r['restored'] ? "✅ Your account has been restored.\n" : "Your package was upgraded, but usage is still above the new limit; our team has been notified.\n")
+                        . "Invoice {$doc->document_number} of TZS {$total} is due by {$r['due_date']}."
+                ));
+                $this->offerPayment($tenant, $client, $phone, $doc, $lang);
+                return;
+            } catch (\DomainException $e) {
+                $this->reply($tenant, $phone, $this->t($lang,
+                    "Kwa sasa hatuwezi kuboresha kabla ya malipo ({$e->getMessage()}). Tafadhali lipa invoice kwanza ili kurejesha akaunti.",
+                    "We can't upgrade before payment right now ({$e->getMessage()}). Please pay the invoice first to restore the account."
+                ));
+            }
         }
 
         try {

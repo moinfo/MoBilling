@@ -163,7 +163,7 @@ scenario('invoice -> pay -> changepackage + unsuspend (full path), idempotent', 
     global $whmCalls, $whmState;
     [$client, $acct] = mkAccount();
     $big = mkPlan('BW Big', 30000, 'pkg_big');
-    [$c, $d] = portal('upgrade', $client, $acct, ['product_service_id' => $big->id]);
+    [$c, $d] = portal('upgrade', $client, $acct, ['product_service_id' => $big->id, 'mode' => 'pay_first']);
     ok($c === 201 && str_contains($d['message'], 'restored automatically'), 'invoice created for bandwidth-suspended, client told account is restored automatically');
     $doc = Document::withoutGlobalScopes()->findOrFail($d['data']['document_id']);
     ok((float) $doc->total > 0 && $doc->status === 'sent', 'prorated invoice');
@@ -196,7 +196,7 @@ scenario('usage still >= new limit -> stays suspended, staff notified once', fun
     [$client, $acct] = mkAccount('suspended', 'active', (int) (6 * GB), 4 * GB);
     $whmState['used'] = 6 * GB;
     $unk = mkPlan('BW Unknown', 25000, 'pkg_unk'); // limit not knowable ahead of time; WHM reports 5000 MB after the change
-    [$c, $d] = portal('upgrade', $client, $acct, ['product_service_id' => $unk->id]);
+    [$c, $d] = portal('upgrade', $client, $acct, ['product_service_id' => $unk->id, 'mode' => 'pay_first']);
     ok($c === 201, 'unknown-limit plan is allowed (not guessed)');
     $doc = Document::withoutGlobalScopes()->findOrFail($d['data']['document_id']);
     $doc->update(['status' => 'paid']);
@@ -287,8 +287,9 @@ function wa_open(Client $c) {
 }
 function wa_text(): string { return implode("\n---\n", array_column(FakeWa::$sent, 'text')); }
 
-scenario('WhatsApp: bandwidth-suspended account shows reason + upgrade, completes upgrade invoice', function () {
+scenario('WhatsApp: bandwidth-suspended account shows reason + upgrade, completes upgrade invoice (pay-first fallback)', function () {
     wa_boot();
+    config(['hosting.pay_later_upgrade_max' => 1]); // amount cap exceeded -> pay-later refused -> classic pay-first
     [$client, $acct] = mkAccount('suspended', 'active', null, null, 'bwtest.example.test', '255700000001');
     $big = mkPlan('BW Big', 30000, 'pkg_big'); $mid = mkPlan('BW Mid', 20000, 'pkg_mid'); $low = mkPlan('BW Low', 5000, 'pkg_low');
     wa_open($client);

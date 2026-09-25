@@ -79,6 +79,20 @@ class DocumentObserver
             }
         }
 
+        // "Upgrade now, pay later": the plan was ALREADY applied when this invoice was issued, so payment
+        // only clears the pending marker — never applies the change a second time.
+        $payLaterSubs = \App\Models\ClientSubscription::withoutGlobalScopes()
+            ->where('tenant_id', $document->tenant_id)
+            ->where('metadata->pay_later_upgrade->document_id', $document->id)
+            ->get();
+        foreach ($payLaterSubs as $sub) {
+            try {
+                app(\App\Services\Hosting\PayLaterUpgradeService::class)->onPaid($sub, $document);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         // Paid product add-ons: attach ordered add-ons to the service once its
         // invoice is paid, snapshotting name/price/cycle so later catalog edits
         // don't change what an existing service renews at.
