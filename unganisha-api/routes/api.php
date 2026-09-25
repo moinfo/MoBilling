@@ -363,6 +363,14 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:payments_in.create')->post('/payments-in', [PaymentInController::class, 'store']);
     Route::middleware('permission:payments_in.update')->put('/payments-in/{payments_in}', [PaymentInController::class, 'update']);
     Route::middleware('permission:payments_in.delete')->delete('/payments-in/{payments_in}', [PaymentInController::class, 'destroy']);
+    // Receive payments (staff: offline bank / mobile-money / lipa namba against unpaid invoices)
+    Route::middleware('permission:payments_in.read')->get('/receive-payments/options', [\App\Http\Controllers\ReceivePaymentsController::class, 'options']);
+    Route::middleware('permission:payments_in.read')->get('/receive-payments/invoices', [\App\Http\Controllers\ReceivePaymentsController::class, 'invoices']);
+    Route::middleware('permission:payments_in.read')->get('/receive-payments/recent', [\App\Http\Controllers\ReceivePaymentsController::class, 'recent']);
+    Route::middleware('permission:payments_in.read')->get('/receive-payments/{payment}/proof', [\App\Http\Controllers\ReceivePaymentsController::class, 'proof']);
+    Route::middleware('permission:payments_in.create')->post('/receive-payments/parse', [\App\Http\Controllers\ReceivePaymentsController::class, 'parse']);
+    Route::middleware('permission:payments_in.create')->post('/receive-payments', [\App\Http\Controllers\ReceivePaymentsController::class, 'store']);
+    Route::middleware('permission:payments_in.delete')->delete('/receive-payments/{payment}', [\App\Http\Controllers\ReceivePaymentsController::class, 'undo']);
     Route::middleware('permission:payments_in.resend_receipt')->post('/payments-in/{payments_in}/resend-receipt', [PaymentInController::class, 'resendReceipt']);
     Route::middleware('permission:payments_in.read')->get('/payments-in/{payments_in}/receipt-pdf', [PaymentInController::class, 'downloadReceipt']);
 

@@ -18,9 +18,11 @@ class PaymentInResource extends JsonResource
             'payment_method' => $this->payment_method,
             'reference' => $this->reference,
             'notes' => $this->notes,
-            'attachment_url' => $this->attachment_path
+            // Proofs recorded via Receive Payments live on the private disk (served by an authenticated endpoint).
+            'attachment_url' => $this->attachment_path && !str_starts_with($this->attachment_path, 'payment-proofs/')
                 ? url('storage/' . $this->attachment_path)
                 : null,
+            'has_private_proof' => (bool) ($this->attachment_path && str_starts_with($this->attachment_path, 'payment-proofs/')),
             'client' => $this->whenLoaded('client', fn () => [
                 'name' => $this->client->name,
                 'email' => $this->client->email,
