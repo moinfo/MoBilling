@@ -19,7 +19,7 @@ import {
 import { getClients, getClientCommunications, ClientCommunicationLog } from '../api/clients';
 import {
   getClientServices, getServiceDetail, updateService, changeHostingPassword, changeHostingContactEmail,
-  clearBandwidthSuspension, refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
+  clearBandwidthSuspension, revertPayLaterUpgrade, refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
   getUpgradeOptions, applyUpgrade, resendWelcomeEmail, sendClientMessage, resetPasswordAndWelcome,
   ServiceListItem, ServiceDetail, UpgradePlan,
@@ -72,7 +72,7 @@ export default function ServiceManagement() {
   });
   const services: ServiceListItem[] = servicesData?.data?.data ?? [];
   const serviceOptions = services.map((s) => ({
-    value: s.id, label: `${s.product_name} - ${s.domain ?? '—'} (${s.status})`,
+    value: s.id, label: `${s.product_name} - ${s.domain ?? '—'} (${s.status})${s.pay_later_due ? ` — upgrade pending payment (due ${s.pay_later_due})` : ''}`,
   }));
 
   // auto-select first service when a client is picked
@@ -347,6 +347,37 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
           </Menu>
         </Group>
       </Group>
+
+      {d?.pay_later_upgrade && (
+        <Alert color={d.pay_later_upgrade.overdue ? 'red' : 'yellow'} variant="light" icon={<IconAlertTriangle size={16} />}
+          p="xs" m="sm" title={`Upgrade pending payment (due ${d.pay_later_upgrade.due_date ?? '—'})`}>
+          <Stack gap={4}>
+            <Text size="xs">
+              The plan was upgraded before payment. Invoice {d.pay_later_upgrade.document_number ?? ''}
+              {d.pay_later_upgrade.total != null ? ` of TZS ${Number(d.pay_later_upgrade.total).toLocaleString()}` : ''} is unpaid.
+              Nothing is reverted automatically.
+            </Text>
+            <Button size="compact-xs" variant="light" color="red" mt={4} style={{ alignSelf: 'flex-start' }}
+              onClick={() => modals.openConfirmModal({
+                title: 'Revert pay-later upgrade',
+                children: <Text size="sm">Restore the previous plan and cancel the unpaid upgrade invoice? The account state (active/suspended) is left as it is for you to handle.</Text>,
+                labels: { confirm: 'Revert upgrade', cancel: 'Keep' }, confirmProps: { color: 'red' },
+                onConfirm: async () => {
+                  try {
+                    const r = await revertPayLaterUpgrade(subId);
+                    qc.invalidateQueries({ queryKey: ['service-detail', subId] });
+                    qc.invalidateQueries({ queryKey: ['client-services'] });
+                    notifications.show({ message: r.data.message, color: 'green' });
+                  } catch (e: any) {
+                    notifications.show({ message: e?.response?.data?.message ?? 'Revert failed.', color: 'red' });
+                  }
+                },
+              })}>
+              Revert pay-later upgrade
+            </Button>
+          </Stack>
+        </Alert>
+      )}
 
       {ha?.status === 'suspended' && (ha.suspend_reason || ha.suspend_time) && (
         <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />}

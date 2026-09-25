@@ -208,6 +208,7 @@ export interface PortalHostingDetail {
   cpanel_username: string;
   status: string;
   suspension_reason?: 'bandwidth' | 'billing' | 'other' | null;
+  pay_later_upgrade?: PayLaterUpgradeInfo | null;
   package: string | null;
   product_name: string | null;
   product_group: string | null;
@@ -308,13 +309,22 @@ export interface UpgradePlanRow {
   id: string; name: string; price: number; billing_cycle: string | null;
   is_current: boolean; due_now: number; credit: number;
   fixes_suspension?: boolean | null;
+  /** Bandwidth-suspended only: "upgrade now, pay within N days" eligibility. */
+  pay_later?: { eligible: boolean; reason: string | null; total: number; due_date: string } | null;
+}
+
+export interface PayLaterUpgradeInfo { document_id: string; document_number: string; total: number; due_date: string | null }
+
+export interface UpgradeResult {
+  document_id?: string; document_number?: string; total?: number; due_date?: string;
+  pay_later?: boolean; pay_later_reason?: string | null; restored?: boolean; account_status?: string;
 }
 
 export const getPortalUpgradeOptions = (id: string) =>
-  api.get<{ data: { current_plan: string; next_due: string | null; plans: UpgradePlanRow[] } }>(`/portal/hosting/${id}/upgrade-options`);
+  api.get<{ data: { current_plan: string; next_due: string | null; pay_later_upgrade?: PayLaterUpgradeInfo | null; plans: UpgradePlanRow[] } }>(`/portal/hosting/${id}/upgrade-options`);
 
-export const requestPortalUpgrade = (id: string, productServiceId: string) =>
-  api.post(`/portal/hosting/${id}/upgrade`, { product_service_id: productServiceId });
+export const requestPortalUpgrade = (id: string, productServiceId: string, mode?: 'pay_first' | 'pay_later') =>
+  api.post<{ data?: UpgradeResult; message: string }>(`/portal/hosting/${id}/upgrade`, { product_service_id: productServiceId, ...(mode ? { mode } : {}) });
 
 // ── Domains ───────────────────────────────────────────────────────────────────
 

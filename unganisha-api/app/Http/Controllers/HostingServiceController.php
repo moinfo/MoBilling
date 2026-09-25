@@ -33,6 +33,7 @@ class HostingServiceController extends Controller
                 'domain'       => $s->hostingAccount?->domain ?? $s->label,
                 'status'       => $s->status,
                 'has_account'  => (bool) $s->hostingAccount,
+                'pay_later_due' => app(\App\Services\Hosting\PayLaterUpgradeService::class)->pending($s)['due_date'] ?? null,
             ]);
 
         return response()->json(['data' => $subs]);

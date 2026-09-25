@@ -18,7 +18,7 @@ import {
 import {
   getPortalHostingDetail, portalHostingSso, refreshPortalHostingUsage,
   changePortalHostingPassword, requestPortalHostingCancellation,
-  getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow,
+  getPortalUpgradeOptions, requestPortalUpgrade, UpgradePlanRow, UpgradeResult,
   getPortalHostingSubdomains, getPortalHostingEmailAccounts, getPortalHostingMysqlDatabases,
   getPortalHostingBackupSettings, updatePortalHostingBackupSettings, getPortalHostingBackups,
   getPortalHostingPhpVersions, updatePortalHostingPhpVersion, PortalPhpVhost,
@@ -200,6 +200,17 @@ export default function PortalServiceDetails() {
         <Title order={3}>Service Details</Title>
         <Badge color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
       </Group>
+
+      {d.pay_later_upgrade && (
+        <Alert color="orange" variant="light" title="Upgrade pending payment">
+          <Group justify="space-between" align="center">
+            <Text size="sm">
+              Your upgrade is active. Invoice {d.pay_later_upgrade.document_number} of TZS {fmt(d.pay_later_upgrade.total)} is due by {d.pay_later_upgrade.due_date}.
+            </Text>
+            <Button size="xs" variant="light" onClick={() => navigate(`/portal/invoices/${d.pay_later_upgrade!.document_id}`)}>View invoice</Button>
+          </Group>
+        </Alert>
+      )}
 
       {bwSuspended && (
         <Alert color="blue" variant="light" title="Bandwidth limit reached">
@@ -558,7 +569,7 @@ export default function PortalServiceDetails() {
 
       <ChangePasswordModal id={d.id} opened={pwOpen} onClose={() => setPwOpen(false)} />
       <UpgradeModal id={d.id} bandwidthSuspended={bwSuspended} opened={upgradeOpen} onClose={() => setUpgradeOpen(false)}
-        onInvoiced={() => navigate('/portal/invoices')} />
+        onInvoiced={(docId) => navigate(docId ? `/portal/invoices/${docId}` : '/portal/invoices')} />
       <CancellationModal id={d.id} domain={d.domain} opened={cancelOpen} onClose={() => setCancelOpen(false)} />
 
       <AddEmailAccountModal id={d.id} domain={d.domain} opened={addEmailOpen}
@@ -919,10 +930,12 @@ function CancellationModal({ id, domain, opened, onClose }: {
 }
 
 function UpgradeModal({ id, bandwidthSuspended, opened, onClose, onInvoiced }: {
-  id: string; bandwidthSuspended?: boolean; opened: boolean; onClose: () => void; onInvoiced: () => void;
+  id: string; bandwidthSuspended?: boolean; opened: boolean; onClose: () => void; onInvoiced: (documentId?: string) => void;
 }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<string | null>(null);
+  const [payFirst, setPayFirst] = useState(false);
+  const [done, setDone] = useState<{ message: string; data?: UpgradeResult } | null>(null);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['portal-upgrade-options', id],
@@ -936,26 +949,58 @@ function UpgradeModal({ id, bandwidthSuspended, opened, onClose, onInvoiced }: {
   const chosen = plans.find((p) => p.id === selected);
 
   const mutation = useMutation({
-    mutationFn: () => requestPortalUpgrade(id, selected!),
+    mutationFn: () => requestPortalUpgrade(id, selected!, bandwidthSuspended && payFirst ? 'pay_first' : undefined),
     onSuccess: (res: any) => {
       qc.invalidateQueries({ queryKey: ['portal-hosting-detail', id] });
       qc.invalidateQueries({ queryKey: ['portal-subscriptions'] });
+      const result: UpgradeResult | undefined = res?.data?.data;
+      if (result?.pay_later) {
+        // Upgraded and restored before payment: stay on a result panel with the invoice link.
+        setDone({ message: res?.data?.message, data: result });
+        return;
+      }
       notifications.show({ title: 'Plan change', message: res?.data?.message, color: 'green', autoClose: 9000 });
       setSelected(null);
       onClose();
-      if (res?.data?.data?.document_id) onInvoiced();
+      if (result?.document_id) onInvoiced(result.document_id);
     },
     onError: (e: any) => notifications.show({
       message: e?.response?.data?.message ?? 'Plan change failed.', color: 'red',
     }),
   });
 
+  const payLater = bandwidthSuspended && !payFirst && chosen?.pay_later?.eligible === true;
+  const closeAll = () => { setDone(null); setSelected(null); setPayFirst(false); onClose(); };
+
+  if (done) {
+    return (
+      <Modal opened={opened} onClose={closeAll} title="Upgrade applied" centered size="lg">
+        <Stack gap="sm">
+          <Alert color={done.data?.restored ? 'green' : 'orange'} variant="light"
+            title={done.data?.restored ? 'Your account is active again' : 'Upgrade applied'}>
+            {done.message}
+          </Alert>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={closeAll}>Close</Button>
+            {done.data?.document_id && (
+              <Button onClick={() => { const docId = done.data!.document_id; closeAll(); onInvoiced(docId); }}>
+                View invoice {done.data.document_number}
+              </Button>
+            )}
+          </Group>
+        </Stack>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal opened={opened} onClose={onClose} title={bandwidthSuspended ? 'Upgrade package' : 'Upgrade/Downgrade'} centered size="lg">
+    <Modal opened={opened} onClose={closeAll} title={bandwidthSuspended ? 'Upgrade package' : 'Upgrade/Downgrade'} centered size="lg">
       <Stack gap="sm" pos="relative">
         {bandwidthSuspended && (
           <Alert color="blue" variant="light">
-            Choose a higher package. Once the upgrade invoice is paid, your account is restored automatically.
+            Choose a higher package. {chosen?.pay_later?.eligible
+              ? 'Your account is restored right away and you pay the invoice afterwards.'
+              : 'Once the upgrade invoice is paid, your account is restored automatically.'}
           </Alert>
         )}
         <LoadingOverlay visible={isLoading} />
@@ -1006,12 +1051,24 @@ function UpgradeModal({ id, bandwidthSuspended, opened, onClose, onInvoiced }: {
               : 'Downgrades apply immediately.'}
           </Text>
         )}
+        {bandwidthSuspended && chosen && chosen.pay_later?.eligible && !payFirst && (
+          <Alert color="green" variant="light">
+            Your account will be restored immediately. An invoice of TZS {fmt(chosen.pay_later.total)} is due by {chosen.pay_later.due_date}.
+            {' '}<Anchor size="sm" component="button" type="button" onClick={() => setPayFirst(true)}>Pay first instead</Anchor>
+          </Alert>
+        )}
+        {bandwidthSuspended && chosen && (payFirst || chosen.pay_later?.eligible === false) && chosen.fixes_suspension !== false && (
+          <Alert color="orange" variant="light">
+            {chosen.pay_later?.reason ? `${chosen.pay_later.reason} ` : ''}Please pay the invoice first to restore the account.
+          </Alert>
+        )}
         <Group justify="flex-end">
-          <Button variant="default" onClick={onClose}>{options ? 'Cancel' : 'Close'}</Button>
+          <Button variant="default" onClick={closeAll}>{options ? 'Cancel' : 'Close'}</Button>
           {options && (
             <Button disabled={!selected || chosen?.is_current} loading={mutation.isPending}
               onClick={() => mutation.mutate()}>
-              {chosen && chosen.due_now > 0 ? `Upgrade — Pay Tsh.${fmt(chosen.due_now)}` : 'Change Plan'}
+              {payLater ? 'Upgrade now — pay within 3 days'
+                : chosen && chosen.due_now > 0 ? `Upgrade — Pay Tsh.${fmt(chosen.due_now)}` : 'Change Plan'}
             </Button>
           )}
         </Group>

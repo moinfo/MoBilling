@@ -332,6 +332,7 @@ export interface ServiceListItem {
   domain: string | null;
   status: string;
   has_account: boolean;
+  pay_later_due?: string | null;
 }
 
 export interface ServiceMetric {
@@ -361,6 +362,10 @@ export interface ServiceDetail {
   billing_cycle: string | null;
   payment_method: string | null;
   promo_code: string | null;
+  pay_later_upgrade?: {
+    document_id: string | null; document_number: string | null; document_status: string | null;
+    total: number | null; due_date: string | null; applied_at: string | null; overdue: boolean;
+  } | null;
   hosting_account: {
     id: string; status: string; server_id: string | null; server_host: string | null;
     last_synced_at: string | null; not_on_whm: boolean;
@@ -391,6 +396,9 @@ export const changeHostingPassword = (accountId: string, password: string) =>
 
 export const changeHostingContactEmail = (accountId: string, email: string) =>
   api.post<{ message: string }>(`/hosting-accounts/${accountId}/contact-email`, { email });
+
+export const revertPayLaterUpgrade = (subscriptionId: string) =>
+  api.post<{ message: string }>(`/hosting-services/${subscriptionId}/revert-pay-later-upgrade`);
 
 export const clearBandwidthSuspension = (accountId: string, unlimited: boolean, limitMb?: number) =>
   api.post<{ message: string }>(`/hosting-accounts/${accountId}/clear-bandwidth-suspension`, { unlimited, limit_mb: limitMb });
