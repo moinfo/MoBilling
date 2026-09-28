@@ -35,8 +35,8 @@ const statusColor: Record<string, string> = {
 function Row({ label, children, alt }: { label: string; children: React.ReactNode; alt?: boolean }) {
   return (
     <Group gap={0} wrap="nowrap" align="stretch"
-      style={{ background: alt ? 'var(--mantine-color-gray-0)' : undefined, borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
-      <Box p={8} w={170} style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, background: 'var(--mantine-color-gray-1)', borderRight: '1px solid var(--mantine-color-gray-2)' }}>
+      style={{ background: alt ? 'var(--mantine-color-default-hover)' : undefined, borderBottom: '1px solid var(--mantine-color-default-border)' }}>
+      <Box p={8} w={170} style={{ flexShrink: 0, fontSize: 13, fontWeight: 600, background: 'var(--mantine-color-gray-light)', borderRight: '1px solid var(--mantine-color-default-border)' }}>
         {label}
       </Box>
       <Box p={6} style={{ flex: 1 }}>{children}</Box>
@@ -288,7 +288,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   return (
     <Paper withBorder radius="sm">
       {/* action bar */}
-      <Group justify="space-between" p="sm" wrap="wrap" style={{ borderBottom: '1px solid var(--mantine-color-gray-2)' }}>
+      <Group justify="space-between" p="sm" wrap="wrap" style={{ borderBottom: '1px solid var(--mantine-color-default-border)' }}>
         <Group gap="xs">
           <Text fw={600} size="sm">{d.domain ?? d.client.name}</Text>
           <Badge size="sm" color={statusColor[d.status] ?? 'gray'} variant="light">{d.status}</Badge>
@@ -397,7 +397,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
 
       {/* edit form — two columns */}
       <Grid gutter={0}>
-        <Grid.Col span={{ base: 12, md: 6 }} style={{ borderRight: '1px solid var(--mantine-color-gray-2)' }}>
+        <Grid.Col span={{ base: 12, md: 6 }} style={{ borderRight: '1px solid var(--mantine-color-default-border)' }}>
           <Row label="Product/Service">
             <Select size="xs" data={productOpts} value={form.product_service_id}
               onChange={(v) => set('product_service_id', v as string)} searchable />
@@ -503,7 +503,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       </Grid>
 
       {/* module commands */}
-      <Box p="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+      <Box p="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
         <Text size="xs" fw={700} c="dimmed" mb={6} tt="uppercase">Module Commands</Text>
         <Group gap="xs" wrap="wrap">
           <Button size="xs" variant="light" color="green" loading={busy === 'Create'} disabled={!!ha}
@@ -522,7 +522,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       </Box>
 
       {/* metrics */}
-      <Box p="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+      <Box p="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
         <Group justify="space-between" mb={6}>
           <Text size="xs" fw={700} c="dimmed" tt="uppercase">Metric Statistics</Text>
           <Button size="compact-xs" variant="subtle" leftSection={<IconRefresh size={13} />}
@@ -549,7 +549,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       </Box>
 
       {/* messages */}
-      <Box p="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+      <Box p="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
         <Group justify="space-between" mb={6}>
           <Text size="xs" fw={700} c="dimmed" tt="uppercase">Messages Sent</Text>
           <Button size="compact-xs" variant="subtle" leftSection={<IconRefresh size={13} />}
@@ -559,7 +559,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       </Box>
 
       {/* save bar */}
-      <Group justify="flex-end" p="sm" style={{ borderTop: '1px solid var(--mantine-color-gray-2)' }}>
+      <Group justify="flex-end" p="sm" style={{ borderTop: '1px solid var(--mantine-color-default-border)' }}>
         <Button variant="default" size="sm" onClick={() => setForm(d)}>Cancel</Button>
         <Button size="sm" leftSection={<IconDeviceFloppy size={15} />} loading={saveMutation.isPending}
           onClick={() => saveMutation.mutate()}>Save Changes</Button>
