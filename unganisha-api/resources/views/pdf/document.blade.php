@@ -31,6 +31,11 @@
         .bank-details p { margin: 2px 0; }
         .payment-instructions { clear: both; margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 4px; }
         .payment-instructions h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; color: #666; }
+        .payment-history { clear: both; margin-top: 15px; }
+        .payment-history h3 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; color: #666; }
+        .payment-history-table { width: 100%; border-collapse: collapse; }
+        .payment-history-table th, .payment-history-table td { padding: 5px 8px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+        .payment-history-table th { background: #f8f9fa; font-size: 10px; text-transform: uppercase; color: #666; }
         .footer { margin-top: 40px; text-align: center; font-size: 10px; color: #999; border-top: 1px solid #eee; padding-top: 10px; }
         .badge { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 10px; color: white; }
         .badge-product { background: #3b82f6; }
@@ -214,6 +219,16 @@
                 <td><strong>{{ $isCreditNote ? 'Credit Total:' : 'Total:' }}</strong></td>
                 <td class="text-right"><strong>{{ $tenant->currency }} {{ number_format($document->total, 2) }}</strong></td>
             </tr>
+            @if(!$isCreditNote && $document->paid_amount > 0)
+            <tr>
+                <td>Paid:</td>
+                <td class="text-right">{{ $tenant->currency }} {{ number_format($document->paid_amount, 2) }}</td>
+            </tr>
+            <tr>
+                <td><strong>Balance:</strong></td>
+                <td class="text-right"><strong>{{ $tenant->currency }} {{ number_format($document->balance_due, 2) }}</strong></td>
+            </tr>
+            @endif
         </table>
     </div>
 
@@ -261,6 +276,32 @@
     <div class="payment-instructions">
         <h3>Payment Instructions</h3>
         <p>{{ $tenant->payment_instructions }}</p>
+    </div>
+    @endif
+
+    @if(!$isCreditNote && isset($payments) && $payments->isNotEmpty())
+    <div class="payment-history">
+        <h3>Payment History</h3>
+        <table class="payment-history-table">
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th class="text-right">Amount</th>
+                    <th>Method</th>
+                    <th>Reference</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($payments as $payment)
+                <tr>
+                    <td>{{ optional($payment->payment_date)->format('d M Y') }}</td>
+                    <td class="text-right">{{ $tenant->currency }} {{ number_format($payment->amount, 2) }}</td>
+                    <td>{{ ucfirst(str_replace('_', ' ', $payment->payment_method)) }}</td>
+                    <td>{{ $payment->reference ?: '—' }}</td>
+                </tr>
+                @endforeach
+            </tbody>
+        </table>
     </div>
     @endif
 

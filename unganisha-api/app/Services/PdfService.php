@@ -13,7 +13,7 @@ class PdfService
 {
     public function generate(Document $document)
     {
-        $document->load('items', 'client', 'tenant');
+        $document->load(['items', 'client', 'tenant', 'payments' => fn ($q) => $q->orderBy('payment_date')]);
 
         $tenant = $document->tenant;
         $paymentMethods = $tenant->payment_methods ?? [];
@@ -23,6 +23,7 @@ class PdfService
             'tenant' => $tenant,
             'client' => $document->client,
             'items' => $document->items,
+            'payments' => $document->payments,
             'paymentMethods' => $paymentMethods,
         ])->setPaper('a4');
     }
