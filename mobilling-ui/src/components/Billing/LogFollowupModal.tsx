@@ -39,7 +39,7 @@ export default function LogFollowupModal({ opened, onClose, document, summary, o
   const { data: usersRes } = useQuery({
     queryKey: ['assignable-users'],
     queryFn: getAssignableUsers,
-    enabled: opened && can('documents.approve_collection'),
+    enabled: opened && can('followups.reassign'),
   });
   const staffOptions = (usersRes?.data?.data ?? []).map((u) => ({ value: u.id, label: u.name }));
 
@@ -125,7 +125,7 @@ export default function LogFollowupModal({ opened, onClose, document, summary, o
         size="lg"
       >
         <Stack gap="md">
-          {can('documents.approve_collection') && followupId && (
+          {can('followups.reassign') && followupId && (
             <Paper withBorder p="sm" radius="sm">
               <Group gap="sm" mb={reassignNote || staffOptions.length ? 6 : 0} wrap="nowrap">
                 <IconExchange size={16} style={{ flexShrink: 0 }} />

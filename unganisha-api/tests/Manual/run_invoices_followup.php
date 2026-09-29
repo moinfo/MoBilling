@@ -405,11 +405,11 @@ scenario('reassign: no-op refusal when the new user is already the current assig
 });
 
 // ---------------------------------------------------------------------------
-scenario('reassign: gated by documents.approve_collection (the admin-assignment gate), not the broader menu.followups bulkAssign uses', function () {
+scenario('reassign: gated by its own admin-only followups.reassign permission, not the broader menu.followups bulkAssign uses or documents.approve_collection (which nearly every role holds)', function () {
     global $admin;
-    $collectorNoApprove = mkStaff('No Approve', mkRole('collector-no-approve', ['menu.followups', 'field_visits.log']));
-    ok(permCheck($collectorNoApprove, 'documents.approve_collection') === 403, 'ordinary collector (has menu.followups, lacks documents.approve_collection): 403');
-    ok(permCheck($admin, 'documents.approve_collection') === 200, 'admin (has documents.approve_collection): 200');
+    $collectorNoApprove = mkStaff('No Approve', mkRole('collector-no-approve', ['menu.followups', 'field_visits.log', 'documents.approve_collection']));
+    ok(permCheck($collectorNoApprove, 'followups.reassign') === 403, 'ordinary collector (has menu.followups + documents.approve_collection, lacks followups.reassign): 403');
+    ok(permCheck($admin, 'followups.reassign') === 200, 'admin (has followups.reassign): 200');
 });
 
 // ---------------------------------------------------------------------------
