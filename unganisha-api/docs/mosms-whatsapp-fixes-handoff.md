@@ -79,3 +79,13 @@ session expiry); consult it first in `handleInbound()` and fall back to the most
 uses a stop-gap: an identical (phone, text) within 3 seconds is ignored, and each phone's messages are processed one at a time (per-phone lock)
 so a retried "YES" cannot create a second order/invoice/reboot. Once `message_id` arrives, MoBilling will dedupe on (tenant, message_id) with a 24h
 TTL instead, which is exact and does not swallow a client who genuinely sends the same digit twice quickly.
+
+## 11. Document/media-send endpoint (invoice PDFs)
+MoBilling now attaches the invoice PDF itself to the "Send WhatsApp" action, but only for tenants with their own direct Meta
+credentials (`WhatsAppService::sendDocument()`, `app/Services/WhatsAppService.php`) — it uploads the binary to Meta's
+`/{phone-number-id}/media` then sends `type: document` referencing the returned media id. MoSMS-routed tenants (`MosmsService.php`)
+still get the old text-only send: the MoSMS token API (`/whatsapp/send`, `/whatsapp/send-session`, `/whatsapp/send-cta-url`,
+`/whatsapp/templates`) has no document/media-send call today, and we did not want to guess one into existence. Please confirm
+whether MoSMS has (or could add) an endpoint like `POST /whatsapp/send-document` accepting either a binary upload (multipart
+`file`) or a pre-uploaded media reference, plus `to`, `filename`, and an optional `caption` — mirroring the shape of the existing
+`/whatsapp/send-cta-url` call. If/when that exists, MoSMS-routed tenants can get the same PDF-attachment upgrade.

@@ -133,7 +133,7 @@ class DocumentController extends Controller
 
     public function show(Document $document)
     {
-        return new DocumentResource($document->load('items', 'client', 'payments', 'refunds', 'children', 'collectionReviewedBy'));
+        return new DocumentResource($document->load('items', 'client', 'payments', 'refunds', 'children', 'collectionReviewedBy', 'tenant'));
     }
 
     public function update(StoreDocumentRequest $request, Document $document)
@@ -305,6 +305,16 @@ class DocumentController extends Controller
      * (with a Pay Now button when payable), independent of the tenant's
      * reminder-channel toggles. Requires WhatsApp to be configured and the
      * client to have a phone number.
+     *
+     * Direct-Meta tenants with an unpaid, Pesapal-enabled invoice get the PDF itself
+     * attached (uploaded + sent via WhatsAppService::sendDocument()) with a short
+     * pay-online caption instead of the plain-text InvoiceSentNotification — a real
+     * "pay this" document beats a text summary when there's an actual balance to pay
+     * online. MoSMS-routed tenants (their token API has no document-send endpoint —
+     * see docs/mosms-whatsapp-fixes-handoff.md), already-settled invoices, tenants
+     * without Pesapal, and any failure of the upload/send step all fall back to
+     * exactly today's behaviour: the text-only InvoiceSentNotification. The client
+     * is never left with nothing.
      */
     public function sendWhatsApp(Request $request, Document $document)
     {
@@ -331,23 +341,116 @@ class DocumentController extends Controller
             $statusAdvanced = true;
         }
 
-        try {
-            $document->client->notifyNow(
-                new \App\Notifications\InvoiceSentNotification($document),
-                [\App\Channels\WhatsAppChannel::class]
-            );
-        } catch (\Throwable $e) {
-            if ($statusAdvanced) {
-                $document->update(['status' => $priorStatus]);
-            }
-            Log::error('Document WhatsApp send failed', ['document_id' => $document->id, 'exception' => $e]);
+        $whatsAppService = app(\App\Services\WhatsAppService::class);
 
-            return response()->json(['message' => 'Could not send via WhatsApp: '.$e->getMessage()], 502);
+        $eligibleForPdf = $document->type === 'invoice'
+            && $tenant->pesapal_enabled
+            && (float) $document->balance_due > 0
+            && $whatsAppService->isDirectMeta($tenant);
+
+        $pdfAttached = false;
+        if ($eligibleForPdf) {
+            try {
+                $pdfBinary = app(\App\Services\PdfService::class)->generate($document)->output();
+                $shortCaption = "{$document->document_number} — {$tenant->currency} "
+                    . number_format((float) $document->total, 2);
+
+                // Document first (the thing to download/keep), then a full itemized companion
+                // message right after — the caption stays short because Meta's document caption
+                // has a ~1024-char limit that a long item list could exceed, and a real free-form
+                // text message (not a caption, not a template) is where real newlines survive, so
+                // it can read as multi-line the way a human-typed message would.
+                $whatsAppService->sendDocument(
+                    $tenant,
+                    $document->client->phone,
+                    $pdfBinary,
+                    "{$document->document_number}.pdf",
+                    $shortCaption
+                );
+                $whatsAppService->sendText(
+                    $tenant,
+                    $document->client->phone,
+                    $this->buildInvoiceDetailMessage($document, $tenant)
+                );
+                $pdfAttached = true;
+            } catch (\Throwable $e) {
+                // Fall back to the text notification below — never leave the client with nothing.
+                Log::warning('WhatsApp PDF attachment failed, falling back to text', [
+                    'document_id' => $document->id,
+                    'exception' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if (!$pdfAttached) {
+            try {
+                $document->client->notifyNow(
+                    new \App\Notifications\InvoiceSentNotification($document),
+                    [\App\Channels\WhatsAppChannel::class]
+                );
+            } catch (\Throwable $e) {
+                if ($statusAdvanced) {
+                    $document->update(['status' => $priorStatus]);
+                }
+                Log::error('Document WhatsApp send failed', ['document_id' => $document->id, 'exception' => $e]);
+
+                return response()->json(['message' => 'Could not send via WhatsApp: '.$e->getMessage()], 502);
+            }
         }
 
         $request->user()->notify(new \App\Notifications\DocumentSentConfirmation($document));
 
-        return response()->json(['message' => "Sent via WhatsApp to {$document->client->phone}"]);
+        $how = $pdfAttached ? 'with the PDF attached' : 'as text';
+        return response()->json(['message' => "Sent via WhatsApp to {$document->client->phone} ({$how})"]);
+    }
+
+    /**
+     * Full itemized WhatsApp detail message sent as a companion to the PDF attachment
+     * (direct-Meta path only, see sendWhatsApp()). Matches the level of detail the
+     * frontend's ad-hoc "copy" Pay Link text already builds client-side
+     * (mobilling-ui/src/components/Billing/DocumentView.tsx, the copyLines array): invoice
+     * number, from/to, one line per item, Total, Paid (if any), Balance Due, Due Date, the
+     * pay link, and — reusing InvoiceSentNotification::offlinePaymentMethodsText() rather
+     * than re-deriving payment-method formatting a third time — the tenant's configured
+     * bank/mobile-money details. Sent as a real free-form text message (not a document
+     * caption, so it's never subject to Meta's ~1024-char caption limit; not a template
+     * parameter, so real newlines survive instead of the semicolon-joined single-line
+     * summary InvoiceSentNotification::toWhatsApp() uses there for template-safety).
+     */
+    private function buildInvoiceDetailMessage(Document $document, Tenant $tenant): string
+    {
+        $document->loadMissing('items', 'client');
+        $currency = $tenant->currency;
+
+        $lines = [
+            strtoupper($document->type) . ' ' . $document->document_number,
+            "From: {$tenant->name}",
+            "To: {$document->client->name}",
+            '',
+            'Items:',
+        ];
+
+        foreach ($document->items as $item) {
+            $lines[] = '  - ' . $item->description . ': '
+                . number_format((float) $item->quantity, 2) . ' x ' . $currency . ' ' . number_format((float) $item->price, 2)
+                . ' = ' . $currency . ' ' . number_format((float) $item->total, 2);
+        }
+
+        $lines[] = '';
+        $lines[] = "Total: {$currency} " . number_format((float) $document->total, 2);
+        if ((float) $document->paid_amount > 0) {
+            $lines[] = "Paid: {$currency} " . number_format((float) $document->paid_amount, 2);
+        }
+        $lines[] = "Balance Due: {$currency} " . number_format((float) $document->balance_due, 2);
+        if ($document->due_date) {
+            $lines[] = "Due Date: {$document->due_date->format('d M Y')}";
+        }
+        $lines[] = '';
+        $lines[] = 'Pay Online: ' . $tenant->portalUrl("/pay/{$document->id}");
+        $lines[] = '';
+        $lines[] = (new \App\Notifications\InvoiceSentNotification($document))->offlinePaymentMethodsText($tenant);
+
+        return implode("\n", $lines);
     }
 
     public function submitForApproval(Document $document)

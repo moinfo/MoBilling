@@ -190,6 +190,87 @@ class WhatsAppService
         return $response->json();
     }
 
+    /**
+     * Send a document (e.g. an invoice PDF) as a WhatsApp attachment — direct-Meta path only.
+     * MoSMS's token API has no document/media-send endpoint today (see
+     * docs/mosms-whatsapp-fixes-handoff.md), so this is never routed through MosmsService;
+     * a MoSMS-only tenant has no whatsapp_phone_number_id/whatsapp_access_token and
+     * validateCredentials() below rejects it the same way every other direct-Meta method does.
+     *
+     * Two-step Cloud API flow: upload the binary to Meta's media library to get a media id,
+     * then reference that id in a `type: document` message — this keeps the PDF (which sits
+     * behind our own auth) from ever needing a public unauthenticated URL for Meta to fetch.
+     */
+    public function sendDocument(Tenant $tenant, string $recipient, string $binary, string $filename, ?string $caption = null): array
+    {
+        $this->validateCredentials($tenant);
+
+        $mediaId = $this->uploadMedia($tenant, $binary, $filename);
+
+        $response = $this->postWithRateLimitRetry($tenant, "/{$tenant->whatsapp_phone_number_id}/messages", [
+            'messaging_product' => 'whatsapp',
+            'recipient_type' => 'individual',
+            'to' => $this->formatPhone($recipient),
+            'type' => 'document',
+            'document' => array_filter([
+                'id' => $mediaId,
+                'filename' => $filename,
+                'caption' => $caption,
+            ], fn ($v) => $v !== null),
+        ]);
+
+        if (!$response->successful()) {
+            $error = $response->json('error.message') ?? $response->body();
+            Log::error('WhatsApp document send failed', [
+                'tenant_id' => $tenant->id,
+                'recipient' => $recipient,
+                'filename' => $filename,
+                'error' => $error,
+            ]);
+            throw new \RuntimeException("WhatsApp document send failed: {$error}");
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Upload a binary to Meta's media library (POST /{phone-number-id}/media, multipart) and
+     * return the resulting media id — valid for a single subsequent message send (Meta keeps
+     * it for 30 days, but we never revisit it after the one send).
+     */
+    private function uploadMedia(Tenant $tenant, string $binary, string $filename): string
+    {
+        $response = Http::baseUrl("https://graph.facebook.com/{$this->apiVersion}")
+            ->timeout($this->timeout)
+            ->withToken($tenant->whatsapp_access_token)
+            ->attach('file', $binary, $filename, ['Content-Type' => 'application/pdf'])
+            ->post("/{$tenant->whatsapp_phone_number_id}/media", [
+                'messaging_product' => 'whatsapp',
+                'type' => 'application/pdf',
+            ]);
+
+        if (!$response->successful() || !$response->json('id')) {
+            $error = $response->json('error.message') ?? $response->body();
+            Log::error('WhatsApp media upload failed', [
+                'tenant_id' => $tenant->id,
+                'filename' => $filename,
+                'error' => $error,
+            ]);
+            throw new \RuntimeException("WhatsApp media upload failed: {$error}");
+        }
+
+        return (string) $response->json('id');
+    }
+
+    /**
+     * True when this tenant sends over its own Meta WhatsApp credentials rather than being
+     * routed via MoSMS — the only path sendDocument() supports (see its docblock).
+     */
+    public function isDirectMeta(Tenant $tenant): bool
+    {
+        return !$this->useMosms($tenant);
+    }
+
     /** POST to the Graph API, retrying with backoff on a 429 (rate limited) before giving up. */
     private function postWithRateLimitRetry(Tenant $tenant, string $path, array $payload): \Illuminate\Http\Client\Response
     {
