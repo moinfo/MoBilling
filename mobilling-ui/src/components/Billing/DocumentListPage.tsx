@@ -50,7 +50,7 @@ export default function DocumentListPage({ type, title }: Props) {
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
   const [dueDateDoc, setDueDateDoc] = useState<Document | null>(null);
   const [newDueDate, setNewDueDate] = useState<Date | null>(null);
-  const [followupOverdueOnly, setFollowupOverdueOnly] = useState(false);
+  const [followupOverdueOnly, setFollowupOverdueOnly] = useState(searchParams.get('followup') === 'overdue');
   const [followupDoc, setFollowupDoc] = useState<Document | null>(null);
 
   // Auto-open preview from URL query param (?preview=documentId)
@@ -61,14 +61,19 @@ export default function DocumentListPage({ type, title }: Props) {
       searchParams.delete('preview');
       setSearchParams(searchParams, { replace: true });
     }
-    // ?status= / ?range=all only seed the initial filter state (above) — drop
-    // them from the URL so they don't look "stuck" once the user changes filters.
-    if (searchParams.has('status') || searchParams.has('range')) {
-      searchParams.delete('status');
-      searchParams.delete('range');
-      setSearchParams(searchParams, { replace: true });
-    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Keep ?status= and ?followup= in the URL as the filters change — so a filtered
+  // view (e.g. "Unpaid Invoices") has its own shareable/bookmarkable link and
+  // survives a page refresh, instead of only ever seeding the initial state and
+  // then vanishing from the address bar.
+  useEffect(() => {
+    const next = new URLSearchParams(searchParams);
+    if (statusFilter !== 'all') next.set('status', statusFilter); else next.delete('status');
+    if (type === 'invoice' && followupOverdueOnly) next.set('followup', 'overdue'); else next.delete('followup');
+    if (next.toString() !== searchParams.toString()) setSearchParams(next, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, followupOverdueOnly, type]);
 
   // Selection state for merge
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
