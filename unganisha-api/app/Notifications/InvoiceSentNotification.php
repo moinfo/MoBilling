@@ -89,17 +89,22 @@ class InvoiceSentNotification extends Notification implements ShouldQueue
             "*Jumla: {$amount}*" . ($due !== '—' ? " (malipo: {$due})" : ''),
         ], fn ($line) => $line !== null);
 
+        // Always show configured bank/mobile-money details, even when a pay-online link is also
+        // available — a client may prefer a direct bank transfer or their mobile money app over
+        // tapping the link, and the web invoice view + PDF always show both, so the WhatsApp
+        // summary shouldn't silently drop offline details just because Pesapal is on (bug: this
+        // used to be either/or, which meant a payable invoice's WhatsApp message showed nothing
+        // but the pay link — no bank/lipa-namba details at all).
         if ($payable) {
             $lines[] = 'Bonyeza kulipa: ' . $this->tenantPortalUrl($tenant, "/pay/{$this->document->id}");
-        } else {
-            $lines[] = $this->offlinePaymentMethodsText($tenant);
         }
+        $lines[] = $this->offlinePaymentMethodsText($tenant);
 
         return implode("\n", $lines);
     }
 
     /** Same payment_methods JSON the tenant configures for the public pay page — bank AND mobile money, not just one bank account. */
-    private function offlinePaymentMethodsText($tenant): string
+    public function offlinePaymentMethodsText($tenant): string
     {
         $methods = collect($tenant->payment_methods ?? [])
             ->reject(fn ($m) => in_array($m['value'] ?? '', ['pesapal', 'cash', 'cheque'], true))
