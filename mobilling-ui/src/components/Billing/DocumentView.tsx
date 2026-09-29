@@ -389,6 +389,7 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
             <Text size="sm" c="dimmed">Client</Text>
             <Text fw={500}>{doc.client?.name}</Text>
             {doc.client?.email && <Text size="sm" c="dimmed">{doc.client.email}</Text>}
+            {doc.client?.phone && <Text size="sm" c="dimmed">{doc.client.phone}</Text>}
           </div>
           <div style={{ textAlign: 'right' }}>
             <Text size="sm" c="dimmed">Date: {formatDate(doc.date)}</Text>
