@@ -214,9 +214,13 @@ export default function SatisfactionCalls() {
   const users: AssignableUser[] = usersData?.data?.data ?? [];
   const userSelectData = users.map((u) => ({ value: u.id, label: u.name }));
 
-  // Generate last 12 months for filter
+  // Generate last 12 months for filter. Pinned to day 1 before subtracting months —
+  // setMonth() on e.g. the 31st can overflow into the next month when the target
+  // month is shorter (31st - 1 month = Feb 31st doesn't exist -> rolls into March),
+  // which previously produced the same "YYYY-MM" value twice and crashed the Select.
   const monthOptions = Array.from({ length: 12 }, (_, i) => {
     const d = new Date();
+    d.setDate(1);
     d.setMonth(d.getMonth() - i);
     const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const label = d.toLocaleString('default', { month: 'long', year: 'numeric' });
