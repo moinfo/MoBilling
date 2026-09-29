@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { Modal, Stack, Text, Group, Alert, Button, Center, Loader, Select, Textarea, Paper } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconPhoneCall, IconUserExchange } from '@tabler/icons-react';
+import { IconPhoneCall, IconExchange } from '@tabler/icons-react';
 import { createFollowup, reassignFollowup, FollowupEntry, FollowupSummary } from '../../api/followups';
 import { getAssignableUsers } from '../../api/users';
 import { Document } from '../../api/documents';
@@ -128,7 +128,7 @@ export default function LogFollowupModal({ opened, onClose, document, summary, o
           {can('documents.approve_collection') && followupId && (
             <Paper withBorder p="sm" radius="sm">
               <Group gap="sm" mb={reassignNote || staffOptions.length ? 6 : 0} wrap="nowrap">
-                <IconUserExchange size={16} style={{ flexShrink: 0 }} />
+                <IconExchange size={16} style={{ flexShrink: 0 }} />
                 <Select
                   size="xs"
                   placeholder="Reassign to..."
