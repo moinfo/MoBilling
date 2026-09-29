@@ -587,6 +587,9 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/followups', [FollowupController::class, 'store']);
         Route::post('/followups/{followup}/log-call', [FollowupController::class, 'logCall'])->middleware('permission:field_visits.log');
         Route::patch('/followups/{followup}/cancel', [FollowupController::class, 'cancel']);
+        // Reassign is a true admin action (takes work away from whoever has it) — gated behind
+        // documents.approve_collection on top of the group's menu.followups, same double-gate pattern as log-call.
+        Route::patch('/followups/{followup}/reassign', [FollowupController::class, 'reassign'])->middleware('permission:documents.approve_collection');
         Route::get('/followups/client/{clientId}', [FollowupController::class, 'clientHistory']);
         Route::get('/collection-assignments', [\App\Http\Controllers\CollectionAssignmentController::class, 'index']);
         Route::post('/collection-assignments/bulk-mark-paid', [\App\Http\Controllers\CollectionAssignmentController::class, 'bulkMarkPaid']);

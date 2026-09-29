@@ -8,6 +8,7 @@ use App\Models\Followup;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class FollowupController extends Controller
 {
@@ -634,6 +635,95 @@ class FollowupController extends Controller
     }
 
     /**
+     * Change who is working an invoice's active follow-up. A true admin action — gated by
+     * documents.approve_collection (not the broader menu.followups group bulkAssign uses), because unlike
+     * bulkAssign (which only ever assigns previously UNASSIGNED invoices, so nobody loses anything),
+     * reassign takes work away from whoever currently has it. Resolves the active row the same way
+     * summary() does (not necessarily the $followup route-bound row itself, though today they're always
+     * the same document's active row), updates its user_id, and keeps a linked active CollectionAssignment
+     * in sync (never creates a second one). Notifies the new assignee (FollowupAssignedNotification, same
+     * as a fresh assignment) and, when different, the previous assignee (FollowupUnassignedNotification) —
+     * skipping whichever side the reassignment doesn't actually change for (self-reassign, or nobody was
+     * previously assigned).
+     */
+    public function reassign(Request $request, Followup $followup)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $data = $request->validate([
+            'user_id' => ['required', 'uuid', Rule::exists('users', 'id')->where('tenant_id', $tenantId)->where('is_active', true)],
+            'notes' => 'nullable|string|max:1000',
+        ]);
+
+        $active = Followup::where('document_id', $followup->document_id)
+            ->whereIn('status', ['pending', 'open', 'broken'])
+            ->whereNotNull('next_followup')
+            ->orderBy('next_followup')
+            ->first();
+
+        if (!$active) {
+            return response()->json(['message' => 'This invoice has no active follow-up to reassign.'], 422);
+        }
+
+        $document = $active->document;
+        if (!$document || !in_array($document->status, ['sent', 'overdue', 'partial'], true)) {
+            return response()->json(['message' => 'This invoice is settled or cancelled — nothing to reassign.'], 422);
+        }
+
+        $newUserId = $data['user_id'];
+        $previousUserId = $active->user_id;
+        if ($newUserId === $previousUserId) {
+            return response()->json(['message' => 'This invoice is already assigned to that staff member.'], 422);
+        }
+
+        $newUser = \App\Models\User::find($newUserId);
+        $previousUser = $previousUserId ? \App\Models\User::find($previousUserId) : null;
+        $actorName = auth()->user()?->name ?? 'Admin';
+        $auditLine = 'Reassigned from ' . ($previousUser?->name ?? 'unassigned') . " to {$newUser?->name} by {$actorName} on " . now()->format('d M Y H:i') . '.';
+        $customNote = trim((string) ($data['notes'] ?? ''));
+        $newNotes = $customNote !== '' ? "{$customNote}\n\n{$auditLine}" : $auditLine;
+
+        DB::transaction(function () use ($active, $newUserId, $newNotes) {
+            $active->update(['user_id' => $newUserId, 'notes' => $newNotes]);
+
+            CollectionAssignment::where('document_id', $active->document_id)
+                ->where('status', 'active')
+                ->update(['user_id' => $newUserId]);
+        });
+
+        if ($newUserId !== auth()->id()) {
+            $this->notifyAssignment($newUserId, [$document], $active->next_followup?->format('d M Y') ?? now()->format('d M Y'));
+        }
+        if ($previousUserId && $previousUserId !== $newUserId && $previousUserId !== auth()->id()) {
+            $this->notifyUnassigned($previousUserId, $document, $newUser?->name ?? '-', $actorName);
+        }
+
+        return response()->json([
+            'data' => $active->fresh(),
+            'message' => "Reassigned {$document->document_number} to {$newUser?->name}.",
+        ]);
+    }
+
+    /**
+     * Tell whoever previously had an invoice that it was just reassigned to someone else. Never allowed
+     * to break the reassignment itself. Mirrors notifyAssignment's try/catch shape.
+     */
+    private function notifyUnassigned(string $userId, Document $document, string $newAssigneeName, string $reassignerName): void
+    {
+        try {
+            $user = \App\Models\User::find($userId);
+            $tenant = $user?->tenant;
+            if (!$user || !$tenant) {
+                return;
+            }
+            $user->notify(new \App\Notifications\FollowupUnassignedNotification(
+                $tenant, $reassignerName, $document->client?->name ?? '-', $document->document_number ?? '-', $newAssigneeName,
+            ));
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Followup unassignment notification failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Get follow-up history for a specific client.
      */
     public function clientHistory(string $clientId)
@@ -702,6 +792,9 @@ class FollowupController extends Controller
                 'has_followup' => true,
                 'followup_id' => $active?->id,
                 'assigned_to' => $assignedUserId ? ($userNames[$assignedUserId] ?? null) : null,
+                // Raw id of the ACTIVE row's assignee specifically (not the lastCalled fallback above) —
+                // reassign() only ever acts on the active row, so this is what a Reassign control prefills.
+                'assigned_user_id' => $active?->user_id,
                 'last_outcome' => $lastCalled?->outcome,
                 'last_call_date' => $lastCalled?->call_date?->toISOString(),
                 'last_notes' => $lastCalled?->notes,

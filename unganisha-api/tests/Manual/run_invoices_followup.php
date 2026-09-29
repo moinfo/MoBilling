@@ -15,7 +15,7 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\FollowupController;
 use App\Http\Middleware\CheckPermission;
 use App\Models\{Client, CollectionAssignment, Document, Followup, Permission, Role, Tenant, User};
-use App\Notifications\{FollowupReminderDigestNotification, FollowupResponseLoggedNotification};
+use App\Notifications\{FollowupAssignedNotification, FollowupReminderDigestNotification, FollowupResponseLoggedNotification, FollowupUnassignedNotification};
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\{Artisan, DB, Http, Notification};
@@ -60,6 +60,11 @@ function call(callable $f): array {
         return [422, ['message' => json_encode($e->errors())]];
     } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
         return [$e->getStatusCode(), ['message' => $e->getMessage()]];
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        // Mirrors what the real HTTP kernel does with a failed implicit route-model bind (e.g. a
+        // Followup filtered out by another tenant's BelongsToTenant scope) — these tests call
+        // controller methods directly, so nothing else converts this to a 404 for us.
+        return [404, ['message' => 'Not found.']];
     }
 }
 
@@ -357,6 +362,148 @@ scenario('staff performance aggregation math', function () {
     ok(abs($row['on_time_pct'] - 66.7) < 0.05, 'on_time_pct rounds to 66.7');
     ok(abs($row['avg_days_late'] - 4.0) < 0.05, 'avg_days_late = 4.0 (average of the late rows only)');
     ok($row['still_overdue'] === 1, 'still_overdue counts the un-actioned overdue row');
+});
+
+// ---------------------------------------------------------------------------
+scenario('reassign: happy path — active followup user_id changes, linked CollectionAssignment stays in sync, custom note + audit trail recorded', function () {
+    global $admin;
+    $client = mkClient(); $doc = mkInvoice($client);
+    approve($doc, $admin);
+    $collectorA = mkStaff('Reassign A', mkRole('collector', ['menu.followups', 'field_visits.log']));
+    $collectorB = mkStaff('Reassign B', mkRole('collector', ['menu.followups', 'field_visits.log']));
+
+    [$c, $d] = call(fn () => fc()->store(Request::create('/x', 'POST', ['document_id' => $doc->id, 'next_followup' => now()->addDay()->toDateString(), 'user_id' => $collectorA->id])));
+    ok($c === 201, 'store: 201');
+    $followup = Followup::find($d['data']['id']);
+    $assignment = CollectionAssignment::where('document_id', $doc->id)->where('status', 'active')->first();
+    ok($assignment && $assignment->user_id === $collectorA->id, 'precondition: CollectionAssignment starts with collector A');
+
+    [$c, $d] = call(fn () => fc()->reassign(Request::create('/x', 'PATCH', ['user_id' => $collectorB->id, 'notes' => 'Call after 3pm, speaks Swahili only']), $followup));
+    ok($c === 200, 'reassign: 200');
+    $followup = $followup->fresh();
+    ok($followup->user_id === $collectorB->id, 'active followup row now assigned to collector B');
+    ok(str_starts_with($followup->notes, 'Call after 3pm, speaks Swahili only'), 'custom note kept as the primary, readable text');
+    ok(str_contains($followup->notes, 'Reassigned from Reassign A to Reassign B by'), 'audit trail (from/to/by) appended');
+    $assignment = $assignment->fresh();
+    ok($assignment->user_id === $collectorB->id, 'linked CollectionAssignment user_id kept in sync');
+    ok(CollectionAssignment::where('document_id', $doc->id)->count() === 1, 'no duplicate CollectionAssignment created');
+});
+
+// ---------------------------------------------------------------------------
+scenario('reassign: no-op refusal when the new user is already the current assignee', function () {
+    global $admin;
+    $client = mkClient(); $doc = mkInvoice($client);
+    approve($doc, $admin);
+    $collector = mkStaff('Noop Collector', mkRole('collector', ['menu.followups', 'field_visits.log']));
+
+    [, $d] = call(fn () => fc()->store(Request::create('/x', 'POST', ['document_id' => $doc->id, 'next_followup' => now()->addDay()->toDateString(), 'user_id' => $collector->id])));
+    $followup = Followup::find($d['data']['id']);
+
+    [$c, $d] = call(fn () => fc()->reassign(Request::create('/x', 'PATCH', ['user_id' => $collector->id]), $followup));
+    ok($c === 422 && str_contains($d['message'], 'already assigned'), 'reassigning to the same current assignee: 422 no-op');
+    ok($followup->fresh()->user_id === $collector->id, 'nothing changed');
+});
+
+// ---------------------------------------------------------------------------
+scenario('reassign: gated by documents.approve_collection (the admin-assignment gate), not the broader menu.followups bulkAssign uses', function () {
+    global $admin;
+    $collectorNoApprove = mkStaff('No Approve', mkRole('collector-no-approve', ['menu.followups', 'field_visits.log']));
+    ok(permCheck($collectorNoApprove, 'documents.approve_collection') === 403, 'ordinary collector (has menu.followups, lacks documents.approve_collection): 403');
+    ok(permCheck($admin, 'documents.approve_collection') === 200, 'admin (has documents.approve_collection): 200');
+});
+
+// ---------------------------------------------------------------------------
+scenario('reassign: tenant isolation — cannot resolve another tenant\'s followup (404)', function () {
+    global $admin;
+    auth()->logout();
+    $otherTenant = Tenant::create(['name' => 'Followup Reassign Isolation Tenant ' . uniqid(), 'email' => uniqid() . '@example.test', 'is_active' => true]);
+    $otherUser = User::withoutGlobalScopes()->create(['tenant_id' => $otherTenant->id, 'name' => 'Other Admin', 'email' => uniqid() . '@example.test', 'password' => 'x', 'role' => 'user', 'is_active' => true]);
+    auth()->login($otherUser);
+    $otherClient = Client::create(['tenant_id' => $otherTenant->id, 'name' => 'Other Client', 'phone' => '255700000299', 'email' => uniqid() . '@example.test', 'status' => 'active']);
+    $otherDoc = Document::create(['tenant_id' => $otherTenant->id, 'client_id' => $otherClient->id, 'type' => 'invoice', 'document_number' => 'OTH2-' . uniqid(), 'date' => now()->toDateString(), 'due_date' => now()->subDays(5)->toDateString(), 'subtotal' => 50000, 'tax_amount' => 0, 'total' => 50000, 'status' => 'overdue']);
+    $otherDoc->update(['collection_reviewed_at' => now(), 'collection_reviewed_by' => $otherUser->id]);
+    $otherFollowup = Followup::create(['tenant_id' => $otherTenant->id, 'document_id' => $otherDoc->id, 'client_id' => $otherClient->id, 'user_id' => $otherUser->id, 'next_followup' => now()->toDateString(), 'status' => 'pending']);
+
+    auth()->login($admin);
+    [$c, $d] = call(fn () => fc()->reassign(Request::create('/x', 'PATCH', ['user_id' => $admin->id]), Followup::findOrFail($otherFollowup->id)));
+    ok($c === 404, 'a different tenant\'s followup id cannot be resolved/reassigned (404)');
+});
+
+// ---------------------------------------------------------------------------
+scenario('reassign: notifies the new assignee and the previous assignee; never self-notifies', function () {
+    global $admin;
+    $client = mkClient(); $doc = mkInvoice($client);
+    approve($doc, $admin);
+    $collectorA = mkStaff('Notify A', mkRole('collector', ['menu.followups', 'field_visits.log']));
+    $collectorB = mkStaff('Notify B', mkRole('collector', ['menu.followups', 'field_visits.log']));
+
+    [, $d] = call(fn () => fc()->store(Request::create('/x', 'POST', ['document_id' => $doc->id, 'next_followup' => now()->addDay()->toDateString(), 'user_id' => $collectorA->id])));
+    $followup = Followup::find($d['data']['id']);
+
+    // A: admin reassigns from collector A to collector B.
+    call(fn () => fc()->reassign(Request::create('/x', 'PATCH', ['user_id' => $collectorB->id]), $followup));
+    ok(Notification::sent($collectorB, FollowupAssignedNotification::class)->count() === 1, 'A: new assignee (B) gets FollowupAssignedNotification');
+    ok(Notification::sent($collectorA, FollowupUnassignedNotification::class)->count() === 1, 'A: previous assignee (A) gets FollowupUnassignedNotification');
+    ok(Notification::sent($collectorB, FollowupUnassignedNotification::class)->count() === 0, 'A: new assignee never gets the unassigned notification');
+    // Collector A already got ONE FollowupAssignedNotification from the earlier store() call above (the
+    // original assignment) — the reassignment away from them must not add a second one.
+    ok(Notification::sent($collectorA, FollowupAssignedNotification::class)->count() === 1, 'A: previous assignee gets no NEW assigned notification from being reassigned away');
+
+    // B: admin reassigns the same invoice to THEMSELVES -> no self-notification; collector B (just replaced) is notified.
+    call(fn () => fc()->reassign(Request::create('/x', 'PATCH', ['user_id' => $admin->id]), $followup->fresh()));
+    ok(Notification::sent($admin, FollowupAssignedNotification::class)->count() === 0, 'B: admin reassigning to themselves: no self-notification');
+    ok(Notification::sent($collectorB, FollowupUnassignedNotification::class)->count() === 1, 'B: collector B (just replaced) notified of unassignment');
+});
+
+// ---------------------------------------------------------------------------
+scenario('reassign: refused once the invoice is settled/cancelled (terminal state)', function () {
+    global $admin;
+    $client = mkClient(); $doc = mkInvoice($client);
+    approve($doc, $admin);
+    $collectorA = mkStaff('Terminal A', mkRole('collector', ['menu.followups', 'field_visits.log']));
+    $collectorB = mkStaff('Terminal B', mkRole('collector', ['menu.followups', 'field_visits.log']));
+    [, $d] = call(fn () => fc()->store(Request::create('/x', 'POST', ['document_id' => $doc->id, 'next_followup' => now()->addDay()->toDateString(), 'user_id' => $collectorA->id])));
+    $followup = Followup::find($d['data']['id']);
+
+    $doc->update(['status' => 'paid']);
+    [$c, $d] = call(fn () => fc()->reassign(Request::create('/x', 'PATCH', ['user_id' => $collectorB->id]), $followup->fresh()));
+    ok($c === 422 && str_contains($d['message'], 'settled or cancelled'), 'paid invoice: reassign refused, 422');
+
+    $doc->update(['status' => 'cancelled']);
+    [$c, $d] = call(fn () => fc()->reassign(Request::create('/x', 'PATCH', ['user_id' => $collectorB->id]), $followup->fresh()));
+    ok($c === 422, 'cancelled invoice: reassign refused, 422');
+    ok($followup->fresh()->user_id === $collectorA->id, 'nothing changed by either refused attempt');
+});
+
+// ---------------------------------------------------------------------------
+scenario('client history on MyCollections: a staff member sees their assigned client\'s prior follow-up history and notes; tenant-isolated', function () {
+    global $admin;
+    $client = mkClient('MyCollections History Client'); $doc = mkInvoice($client);
+    approve($doc, $admin);
+    $collector = mkStaff('History Collector', mkRole('collector', ['menu.followups', 'field_visits.log']));
+
+    [, $d] = call(fn () => fc()->store(Request::create('/x', 'POST', ['document_id' => $doc->id, 'next_followup' => now()->toDateString(), 'user_id' => $collector->id])));
+    auth()->login($collector);
+    call(fn () => fc()->logCall(Request::create('/x', 'POST', ['outcome' => 'promised', 'notes' => 'Atalipa Ijumaa', 'promise_date' => now()->addDays(2)->toDateString(), 'promise_amount' => 20000]), Followup::find($d['data']['id'])));
+
+    // This is the exact call MyCollections.tsx's LogCallModal now makes automatically (via ClientFollowupHistory) before the staff member dials.
+    [$c, $d2] = call(fn () => fc()->clientHistory($client->id));
+    ok($c === 200, 'clientHistory: 200 for the assigned collector');
+    $entry = collect($d2['data'])->firstWhere('outcome', 'promised');
+    ok($entry && $entry['document_number'] === $doc->document_number && str_contains($entry['notes'], 'Ijumaa'), 'collector sees the call they just logged, correct invoice + notes');
+
+    // Tenant isolation: a client id belonging to another tenant returns nothing (same BelongsToTenant scope clientHistory has always relied on).
+    auth()->logout();
+    $otherTenant = Tenant::create(['name' => 'Client History Isolation Tenant ' . uniqid(), 'email' => uniqid() . '@example.test', 'is_active' => true]);
+    $otherUser = User::withoutGlobalScopes()->create(['tenant_id' => $otherTenant->id, 'name' => 'Other Admin', 'email' => uniqid() . '@example.test', 'password' => 'x', 'role' => 'user', 'is_active' => true]);
+    auth()->login($otherUser);
+    $otherClient = Client::create(['tenant_id' => $otherTenant->id, 'name' => 'Other Client', 'phone' => '255700000399', 'email' => uniqid() . '@example.test', 'status' => 'active']);
+    $otherDoc = Document::create(['tenant_id' => $otherTenant->id, 'client_id' => $otherClient->id, 'type' => 'invoice', 'document_number' => 'OTH3-' . uniqid(), 'date' => now()->toDateString(), 'due_date' => now()->subDays(5)->toDateString(), 'subtotal' => 30000, 'tax_amount' => 0, 'total' => 30000, 'status' => 'overdue']);
+    Followup::create(['tenant_id' => $otherTenant->id, 'document_id' => $otherDoc->id, 'client_id' => $otherClient->id, 'user_id' => $otherUser->id, 'next_followup' => now()->toDateString(), 'status' => 'pending']);
+
+    auth()->login($collector);
+    [$c, $d3] = call(fn () => fc()->clientHistory($otherClient->id));
+    ok($c === 200 && $d3['data'] === [], 'a collector in one tenant sees no rows for a client id belonging to another tenant');
 });
 
 echo $fail ? "FAILED $fail\n" : "ALL PASSED\n";

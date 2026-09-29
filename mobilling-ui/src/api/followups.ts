@@ -50,6 +50,8 @@ export interface FollowupSummary {
   /** The active (pending/open/broken) follow-up to log a call against — null if none active. */
   followup_id: string | null;
   assigned_to: string | null;
+  /** Raw user id of the ACTIVE row's assignee — what a Reassign control prefills/compares against. */
+  assigned_user_id?: string | null;
   last_outcome: FollowupEntry['outcome'];
   last_call_date: string | null;
   last_notes: string | null;
@@ -113,6 +115,10 @@ export const logCall = (
 
 export const cancelFollowup = (followupId: string) =>
   api.patch(`/followups/${followupId}/cancel`);
+
+/** Change who is working an invoice's active follow-up (admin action; gated by documents.approve_collection). */
+export const reassignFollowup = (followupId: string, userId: string, notes?: string) =>
+  api.patch<{ data: FollowupEntry; message: string }>(`/followups/${followupId}/reassign`, { user_id: userId, notes });
 
 export interface ClientFollowupHistoryEntry {
   id: string;

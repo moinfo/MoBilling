@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Modal, Stack, Text, Group, Paper, Badge, Alert, Button, Divider, Center, Loader, ScrollArea } from '@mantine/core';
+import { Modal, Stack, Text, Group, Alert, Button, Center, Loader, Select, Textarea, Paper } from '@mantine/core';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { IconPhoneCall } from '@tabler/icons-react';
-import { createFollowup, getClientFollowups, FollowupEntry, FollowupSummary } from '../../api/followups';
+import { notifications } from '@mantine/notifications';
+import { IconPhoneCall, IconUserExchange } from '@tabler/icons-react';
+import { createFollowup, reassignFollowup, FollowupEntry, FollowupSummary } from '../../api/followups';
+import { getAssignableUsers } from '../../api/users';
 import { Document } from '../../api/documents';
 import { usePermissions } from '../../hooks/usePermissions';
-import { formatDate } from '../../utils/formatDate';
-import { outcomeColors, outcomeLabels, statusColors } from '../../utils/followupColors';
 import LogCallForm from '../Collections/LogCallForm';
+import ClientFollowupHistory from '../Collections/ClientFollowupHistory';
 import ApproveCollectionModal from '../Collections/ApproveCollectionModal';
 
 interface Props {
@@ -32,13 +33,15 @@ export default function LogFollowupModal({ opened, onClose, document, summary, o
   const [needsApproval, setNeedsApproval] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [approveOpen, setApproveOpen] = useState(false);
+  const [reassignTo, setReassignTo] = useState<string | null>(null);
+  const [reassignNote, setReassignNote] = useState('');
 
-  const { data: historyRes, isLoading: historyLoading } = useQuery({
-    queryKey: ['client-followups', document?.client_id],
-    queryFn: () => getClientFollowups(document!.client_id),
-    enabled: opened && !!document?.client_id,
+  const { data: usersRes } = useQuery({
+    queryKey: ['assignable-users'],
+    queryFn: getAssignableUsers,
+    enabled: opened && can('documents.approve_collection'),
   });
-  const history = historyRes?.data?.data ?? [];
+  const staffOptions = (usersRes?.data?.data ?? []).map((u) => ({ value: u.id, label: u.name }));
 
   const createMutation = useMutation({
     mutationFn: () => createFollowup({ document_id: document!.id, next_followup: new Date().toISOString().slice(0, 10) }),
@@ -60,6 +63,8 @@ export default function LogFollowupModal({ opened, onClose, document, summary, o
     if (!opened || !document) return;
     setErrorMsg(null);
     setNeedsApproval(false);
+    setReassignTo(summary?.assigned_user_id ?? null);
+    setReassignNote('');
     if (summary?.followup_id) {
       setFollowupId(summary.followup_id);
     } else {
@@ -68,6 +73,20 @@ export default function LogFollowupModal({ opened, onClose, document, summary, o
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, document?.id]);
+
+  const reassignMutation = useMutation({
+    mutationFn: () => reassignFollowup(followupId as string, reassignTo as string, reassignNote.trim() || undefined),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Reassigned', message: res.data.message, color: 'green' });
+      setReassignNote('');
+      qc.invalidateQueries({ queryKey: ['followup-summary'] });
+      qc.invalidateQueries({ queryKey: ['followup-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['followups'] });
+    },
+    onError: (err: any) => {
+      notifications.show({ title: 'Error', message: err?.response?.data?.message ?? 'Failed to reassign.', color: 'red' });
+    },
+  });
 
   if (!document) return null;
 
@@ -106,38 +125,42 @@ export default function LogFollowupModal({ opened, onClose, document, summary, o
         size="lg"
       >
         <Stack gap="md">
-          {history.length > 0 && (
+          {can('documents.approve_collection') && followupId && (
             <Paper withBorder p="sm" radius="sm">
-              <Text size="xs" fw={600} c="dimmed" tt="uppercase" mb="xs">Previous follow-ups for this client</Text>
-              <ScrollArea.Autosize mah={180}>
-                <Stack gap={6}>
-                  {history.map((h) => (
-                    <Group key={h.id} justify="space-between" wrap="nowrap" gap="xs"
-                      opacity={h.document_number === document.document_number ? 1 : 0.65}>
-                      <div style={{ minWidth: 0 }}>
-                        <Group gap={6}>
-                          <Text size="xs" c="dimmed">{h.call_date ? formatDate(h.call_date) : (h.created_at ? formatDate(h.created_at) : '—')}</Text>
-                          <Text size="xs" fw={500}>{h.document_number}</Text>
-                          {h.outcome && (
-                            <Badge color={outcomeColors[h.outcome] || 'gray'} size="xs" variant="light">
-                              {outcomeLabels[h.outcome] || h.outcome}
-                            </Badge>
-                          )}
-                          <Badge color={statusColors[h.status] || 'gray'} size="xs">{h.status}</Badge>
-                        </Group>
-                        {h.notes && <Text size="xs" c="dimmed" truncate>{h.notes}</Text>}
-                      </div>
-                      <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>{h.assigned_to || '—'}</Text>
-                    </Group>
-                  ))}
-                </Stack>
-              </ScrollArea.Autosize>
-              <Divider mt="sm" />
+              <Group gap="sm" mb={reassignNote || staffOptions.length ? 6 : 0} wrap="nowrap">
+                <IconUserExchange size={16} style={{ flexShrink: 0 }} />
+                <Select
+                  size="xs"
+                  placeholder="Reassign to..."
+                  data={staffOptions}
+                  value={reassignTo}
+                  onChange={setReassignTo}
+                  searchable
+                  style={{ flex: 1 }}
+                />
+                <Button
+                  size="xs"
+                  variant="light"
+                  loading={reassignMutation.isPending}
+                  disabled={!reassignTo || reassignTo === summary?.assigned_user_id}
+                  onClick={() => reassignMutation.mutate()}
+                >
+                  Reassign
+                </Button>
+              </Group>
+              <Textarea
+                size="xs"
+                placeholder="Optional note for the new assignee (e.g. call after 3pm)"
+                value={reassignNote}
+                onChange={(e) => setReassignNote(e.currentTarget.value)}
+                maxLength={1000}
+                autosize
+                minRows={1}
+              />
             </Paper>
           )}
-          {historyLoading && !history.length && (
-            <Center py="xs"><Loader size="xs" /></Center>
-          )}
+
+          <ClientFollowupHistory clientId={document.client_id} currentDocumentNumber={document.document_number} />
 
           {errorMsg ? (
             <Alert color={needsApproval ? 'orange' : 'red'} title={needsApproval ? 'Approval required' : 'Error'}>
