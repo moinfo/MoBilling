@@ -745,6 +745,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/domains/stats',            [\App\Http\Controllers\DomainController::class, 'stats']);
         Route::get('/domains/registrar-credit', [\App\Http\Controllers\DomainController::class, 'registrarCredit']);
         Route::get('/domains/ssl-expiry',       [\App\Http\Controllers\DomainController::class, 'sslExpiry']);
+        Route::get('/domains/dns-servers',      [\App\Http\Controllers\DomainController::class, 'dnsServers']);
         Route::get('/registrar-credit-transfers', [\App\Http\Controllers\RegistrarCreditTransferController::class, 'index']);
         Route::get('/domains',                  [\App\Http\Controllers\DomainController::class, 'index']);
         Route::get('/domains/{domain}',         [\App\Http\Controllers\DomainController::class, 'show']);
@@ -811,6 +812,13 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:domains.renew')->put('/domains/{domain}/auto-renew', [\App\Http\Controllers\DomainController::class, 'setAutoRenew']);
     Route::middleware('permission:domains.read')->get('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'nameservers']);
     Route::middleware('permission:domains.manage_dns')->put('/domains/{domain}/nameservers', [\App\Http\Controllers\DomainController::class, 'updateNameservers']);
+    // WHM DNS for a domain with no hosting account of its own (see DomainController's "WHM DNS" section).
+    Route::middleware('permission:domains.manage_dns')->group(function () {
+        Route::get('/domains/{domain}/dns-zone-status', [\App\Http\Controllers\DomainController::class, 'dnsZoneStatus']);
+        Route::get('/domains/{domain}/dns-zone',         [\App\Http\Controllers\DomainController::class, 'dnsZone']);
+        Route::post('/domains/{domain}/dns-zone',        [\App\Http\Controllers\DomainController::class, 'createDnsZone']);
+        Route::post('/domains/{domain}/dns-zone/records', [\App\Http\Controllers\DomainController::class, 'addDnsRecord']);
+    });
     // Linode integration (tenant's own Linode account). Token is write-only.
     Route::middleware('permission:linode.read')->prefix('linode')->group(function () {
         Route::get('/accounts', [\App\Http\Controllers\LinodeController::class, 'accounts']);

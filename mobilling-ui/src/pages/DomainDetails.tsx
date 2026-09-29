@@ -2,11 +2,12 @@ import NameComNameservers from '../components/NameComNameservers';
 import DomainTransferCard from '../components/DomainTransferCard';
 import NameComRegisterModal from '../components/NameComRegisterModal';
 import NameComRegistrarCard from '../components/NameComRegistrarCard';
+import WhmDnsSection from '../components/Hosting/WhmDnsSection';
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Button, Grid, Anchor, Code,
   CopyButton, Modal, NumberInput, Center, Loader, Switch, Tooltip, Timeline,
-  ActionIcon, TextInput, Alert,
+  ActionIcon, TextInput, Alert, Select, Checkbox,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
@@ -18,6 +19,7 @@ import {
 import {
   getDomain, getDomainLogs, renewDomain, retryDomain, syncDomain, confirmManualRegistration, getDomainAuthInfo, setDomainAutoRenew,
   getDomainNameservers, getDomainTransfer, lockDomainTransfer, unlockDomainTransfer, getDomainTransferCode, updateDomainNameservers, describeDomainAction, getDomainRegistrarInfo,
+  getDomainDnsServers, getDomainDnsZoneStatus, createDomainDnsZone, getDomainDnsZone, addDomainDnsRecord,
   DomainRecord, DomainLogRow, DOMAIN_STATUS_COLORS,
 } from '../api/domains';
 import { usePermissions } from '../hooks/usePermissions';
@@ -341,6 +343,11 @@ export default function DomainDetails() {
             <NameserversCard domainId={d.id} domainStatus={d.status} />
           </Grid.Col>
         )}
+        {!isNC && (
+          <Grid.Col span={12}>
+            <WhmDnsCard domainId={d.id} domainName={d.name} canManage={can('domains.manage_dns')} />
+          </Grid.Col>
+        )}
 
         <Grid.Col span={12}>
           <Paper withBorder radius="md" p="lg">
@@ -471,6 +478,116 @@ function NameserversCard({ domainId, domainStatus }: { domainId: string; domainS
               Save to Registry
             </Button>
           </Group>
+        </Stack>
+      )}
+    </Paper>
+  );
+}
+
+/**
+ * DNS on our own WHM server for a domain with no hosting account of its
+ * own here — mainly FRED/.tz domains, per the owner's "we have WHM, we can
+ * add [a zone] and manage [DNS] there" request. Creation is a one-time
+ * step (WHM's `adddns`); the records table/add-record modal below it is
+ * the exact same add-only WhmDnsSection used on the hosting-account DNS
+ * page — reused rather than duplicated.
+ */
+function WhmDnsCard({ domainId, domainName, canManage }: { domainId: string; domainName: string; canManage: boolean }) {
+  const qc = useQueryClient();
+  const [serverId, setServerId] = useState<string | null>(null);
+  const [ip, setIp] = useState('');
+  const [pointToServer, setPointToServer] = useState(true);
+
+  const { data: statusData, isLoading: statusLoading } = useQuery({
+    queryKey: ['domain-dns-zone-status', domainId],
+    queryFn: () => getDomainDnsZoneStatus(domainId),
+  });
+  const status = statusData?.data?.data;
+
+  const { data: serversData, isLoading: serversLoading } = useQuery({
+    queryKey: ['domain-dns-servers'],
+    queryFn: () => getDomainDnsServers(),
+    enabled: canManage && status?.exists === false,
+  });
+  const servers = serversData?.data?.data ?? [];
+
+  const createMutation = useMutation({
+    mutationFn: () => createDomainDnsZone(domainId, { server_id: serverId!, ip: ip.trim(), point_to_server: pointToServer }),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domain-dns-zone-status', domainId] });
+      qc.invalidateQueries({ queryKey: ['domain-dns-zone', domainId] });
+      notifications.show({ title: 'DNS zone created', message: res.data.message, color: 'green' });
+    },
+    onError: (e: any) => notifications.show({ title: 'Error', message: e?.response?.data?.message ?? 'Could not create the DNS zone.', color: 'red' }),
+  });
+
+  const { data: zoneData, isLoading: zoneLoading, isError: zoneError } = useQuery({
+    queryKey: ['domain-dns-zone', domainId],
+    queryFn: () => getDomainDnsZone(domainId),
+    enabled: !!status?.exists,
+  });
+  const records = zoneData?.data?.data ?? [];
+
+  const handleAddRecord = async (v: Parameters<typeof addDomainDnsRecord>[1]) => {
+    const res = await addDomainDnsRecord(domainId, v);
+    qc.invalidateQueries({ queryKey: ['domain-dns-zone', domainId] });
+    return res;
+  };
+
+  return (
+    <Paper withBorder radius="md" p="lg">
+      <Group gap="xs" mb="md"><IconServer size={18} /><Title order={5}>Manage DNS (our server)</Title></Group>
+
+      {statusLoading ? (
+        <Center py="md"><Loader size="sm" /></Center>
+      ) : !status?.exists ? (
+        canManage ? (
+          <Stack gap="sm">
+            <Text size="sm" c="dimmed">
+              This creates a new, empty DNS zone for <b>{domainName}</b> on one of our own servers — not at
+              the registry. Records added here are add-only (no delete or edit), the same as our other
+              registrar integrations. If this domain's nameservers don't already point at that server, records
+              added here won't take effect until they do — use "Change Nameservers" above once you're ready.
+            </Text>
+            <Select
+              label="Server" placeholder="Pick a server" required
+              data={servers.map((s) => ({ value: s.id, label: `${s.name} (${s.hostname})` }))}
+              value={serverId} onChange={setServerId}
+              disabled={serversLoading} maw={420}
+            />
+            <TextInput
+              label="IPv4 Address" placeholder="203.0.113.5" required
+              value={ip} onChange={(e) => setIp(e.currentTarget.value)} maw={420}
+              description="The server's own IP — check the server's control panel if you're not sure."
+            />
+            <Checkbox
+              label="Also point A and www at this IP"
+              checked={pointToServer} onChange={(e) => setPointToServer(e.currentTarget.checked)}
+            />
+            <Group justify="flex-end">
+              <Button size="xs" disabled={!serverId || !ip.trim()} loading={createMutation.isPending}
+                onClick={() => createMutation.mutate()}>
+                Create DNS Zone
+              </Button>
+            </Group>
+          </Stack>
+        ) : (
+          <Text size="sm" c="dimmed">No DNS zone has been created on our servers for this domain yet.</Text>
+        )
+      ) : (
+        <Stack gap="sm">
+          <Text size="xs" c="dimmed">
+            Zone hosted on <b>{status.server_name}</b>{status.ip ? ` (${status.ip})` : ''}. If this domain's
+            nameservers don't already point here, these records won't take effect until they do.
+          </Text>
+          <WhmDnsSection
+            domain={domainName}
+            records={records}
+            isLoading={zoneLoading}
+            isError={zoneError}
+            canAdd={canManage}
+            onAddRecord={handleAddRecord}
+          />
         </Stack>
       )}
     </Paper>

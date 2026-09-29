@@ -331,3 +331,33 @@ export const getDomainTransfer = (id: string) => api.get<{ data: any }>(`/domain
 export const lockDomainTransfer = (id: string) => api.post<{ data: any; message: string }>(`/domains/${id}/transfer/lock`);
 export const unlockDomainTransfer = (id: string) => api.post<{ data: any; message: string }>(`/domains/${id}/transfer/unlock`);
 export const getDomainTransferCode = (id: string) => api.post<{ auth_code: string }>(`/domains/${id}/transfer/auth-code`);
+
+// ── WHM DNS for a domain with no hosting account of its own (FRED/.tz domains mainly) ──
+export interface DomainDnsServerOption { id: string; name: string; hostname: string }
+export const getDomainDnsServers = () => api.get<{ data: DomainDnsServerOption[] }>('/domains/dns-servers');
+
+export interface DomainDnsZoneStatus {
+  exists: boolean;
+  server_id?: string;
+  server_name?: string;
+  ip?: string;
+}
+export const getDomainDnsZoneStatus = (domainId: string) =>
+  api.get<{ data: DomainDnsZoneStatus }>(`/domains/${domainId}/dns-zone-status`);
+
+export const createDomainDnsZone = (domainId: string, data: { server_id: string; ip: string; point_to_server?: boolean }) =>
+  api.post<{ message: string; data: { server_id: string; server_name: string; www_record_added: boolean } }>(`/domains/${domainId}/dns-zone`, data);
+
+export interface DomainDnsZoneRecord { type: string; name: string; ttl: number; data: string[] }
+export const getDomainDnsZone = (domainId: string) =>
+  api.get<{ data: DomainDnsZoneRecord[] }>(`/domains/${domainId}/dns-zone`);
+
+export interface DomainAddDnsRecordPayload {
+  type: 'A' | 'AAAA' | 'CNAME' | 'TXT' | 'MX';
+  name: string;
+  ttl: number;
+  value?: string;
+  priority?: number;
+}
+export const addDomainDnsRecord = (domainId: string, data: DomainAddDnsRecordPayload) =>
+  api.post<{ message: string }>(`/domains/${domainId}/dns-zone/records`, data);

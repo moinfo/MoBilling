@@ -493,6 +493,41 @@ class WhmService
     }
 
     /**
+     * Creates a new DNS-only zone (WHM API 1 `adddns` — confirmed against
+     * the official spec, api.docs.cpanel.net/specifications/whm.openapi/
+     * dns-zones/dns-adddns.md: `GET /adddns`, params `domain`/`ip`
+     * required, `ipv6`/`template`/`trueowner` optional, response is
+     * metadata-only exactly like every other call() here, no extra
+     * `data.*` payload). WHM's standard template auto-generates the new
+     * zone's own MX, PTR and A record(s) for the bare domain from
+     * $domain/$ip alone — nothing else needs seeding right after this
+     * succeeds. $trueowner left null means WHM attributes the zone to the
+     * currently-authenticated (reseller) user rather than a cPanel account,
+     * which is exactly right for a domain with no hosting account of its
+     * own here.
+     *
+     * A zone created this way is a completely ordinary WHM DNS zone —
+     * dnsZone()/addDnsRecord() below (parse_dns_zone/addzonerecord) already
+     * take just a bare $domain name with no cPanel-account context, so they
+     * work on it identically to a hosting account's zone; WHM's zone
+     * storage doesn't distinguish "DNS-only" from "came bundled with a
+     * cPanel account" at all.
+     *
+     * Deliberately no companion deletedns()/killdns — same add-only policy
+     * as addDnsRecord() below, for the same reason (see its doc comment).
+     * This method only ever creates a new zone; it never touches an
+     * existing one.
+     */
+    public function createDnsZone(string $domain, string $ip, ?string $trueowner = null): array
+    {
+        return $this->call('adddns', array_filter([
+            'domain'    => $domain,
+            'ip'        => $ip,
+            'trueowner' => $trueowner,
+        ]));
+    }
+
+    /**
      * Adds one DNS zone record. `$data` is type-specific — verified live
      * against a disposable test record for each shape (added, then
      * removed again):

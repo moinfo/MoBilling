@@ -3,14 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Exceptions\RegistrarApiException;
+use App\Exceptions\WhmApiException;
 use App\Models\Client;
 use App\Models\Document;
 use App\Models\Domain;
 use App\Models\DomainLog;
 use App\Models\DomainTld;
+use App\Models\Server;
 use App\Services\DocumentNumberService;
 use App\Services\Registrar\DomainRegistrarManager;
 use App\Services\TznicWhoisService;
+use App\Services\WhmService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -819,5 +822,187 @@ class DomainController extends Controller
     private function tldOf(string $name): string
     {
         return strtolower(explode('.', $name, 2)[1] ?? '');
+    }
+
+    // ── WHM DNS for domains with no hosting account of their own ────────────
+    //
+    // For a domain that DOES have a hosting_accounts row on one of our WHM
+    // servers, HostingAccountController::dnsZone()/addDnsRecord() already
+    // cover it (its zone was created automatically when the account was
+    // provisioned). This section is only for a domain with no such account
+    // — mainly FRED-registered .tz domains — where staff explicitly asks us
+    // to create a standalone DNS-only zone on one of our servers and manage
+    // it here. Add-only, same as everywhere else WHM DNS is touched in this
+    // codebase: see WhmService::addDnsRecord()'s doc comment for why
+    // edit/delete are deliberately never exposed.
+    //
+    // Deliberately domain-centric, not a loop over every server: rather than
+    // silently probing parse_dns_zone against each of the tenant's servers
+    // (which could find a same-named zone that happens to exist on a server
+    // for an unrelated reason, or hide a slow/erroring server behind a
+    // false "no zone" result), staff explicitly picks the server once, and
+    // that choice is remembered on the domain itself (meta.whm_dns) — a
+    // nullable dns_server_id column would work as well, but Domain already
+    // keeps this kind of "which external thing manages this" fact in meta
+    // (whmcs_registrar, sponsoring_registrar, namecom, unmanaged, …), so
+    // meta keeps this consistent with that existing convention rather than
+    // adding a schema column for one more fact of the same shape.
+
+    /** Tenant's active WHM servers for the "create DNS zone" picker — no credentials in the response. */
+    public function dnsServers()
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $servers = Server::where('tenant_id', $tenantId)->where('is_active', true)
+            ->orderBy('name')->get(['id', 'name', 'hostname']);
+
+        return response()->json(['data' => $servers]);
+    }
+
+    /**
+     * Whether a WHM DNS zone already exists for this domain — true only if
+     * staff created one through createDnsZone() below (meta.whm_dns.server_id
+     * recorded then). We never guess by probing servers; see this section's
+     * header comment for why.
+     */
+    public function dnsZoneStatus(Domain $domain)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $serverId = data_get($domain->meta, 'whm_dns.server_id');
+
+        if (!$serverId) {
+            return response()->json(['data' => ['exists' => false]]);
+        }
+
+        $server = Server::where('tenant_id', $tenantId)->find($serverId);
+        if (!$server) {
+            // The server was removed/reassigned since — treat as "not set up" rather than error.
+            return response()->json(['data' => ['exists' => false]]);
+        }
+
+        return response()->json(['data' => [
+            'exists'      => true,
+            'server_id'   => $server->id,
+            'server_name' => $server->name,
+            'ip'          => data_get($domain->meta, 'whm_dns.ip'),
+        ]]);
+    }
+
+    /**
+     * Creates a new DNS-only zone on a server staff picks explicitly
+     * (WhmService::createDnsZone() — WHM's `adddns`). Records which server
+     * now hosts this domain's DNS in meta.whm_dns so every later read/add
+     * call knows where to go without staff re-picking it. Optionally also
+     * adds a "www" A record pointing at the same IP (root is already
+     * covered — WHM's own zone template auto-generates the bare domain's A
+     * record as part of adddns itself, so adding another here would just
+     * create a duplicate).
+     */
+    public function createDnsZone(Request $request, Domain $domain)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        if (data_get($domain->meta, 'whm_dns.server_id')) {
+            return response()->json(['message' => 'A DNS zone is already set up for this domain here.'], 422);
+        }
+
+        $data = $request->validate([
+            'server_id'       => ['required', 'uuid', Rule::exists('servers', 'id')->where('tenant_id', $tenantId)],
+            'ip'              => ['required', 'ip'],
+            'point_to_server' => ['nullable', 'boolean'],
+        ]);
+
+        $server = Server::where('tenant_id', $tenantId)->findOrFail($data['server_id']);
+        $whm = new WhmService($server);
+
+        try {
+            $whm->createDnsZone($domain->name, $data['ip']);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the request: ' . $e->getMessage()], 422);
+        }
+
+        $domain->update(['meta' => array_merge($domain->meta ?? [], [
+            'whm_dns' => [
+                'server_id'  => $server->id,
+                'ip'         => $data['ip'],
+                'created_at' => now()->toIso8601String(),
+                'created_by' => auth()->id(),
+            ],
+        ])]);
+
+        $wwwAdded = false;
+        if (!array_key_exists('point_to_server', $data) || $data['point_to_server']) {
+            try {
+                $whm->addDnsRecord($domain->name, 'A', "www.{$domain->name}.", 14400, ['address' => $data['ip']]);
+                $wwwAdded = true;
+            } catch (WhmApiException) {
+                // Non-fatal — the zone itself was created successfully; staff can add it by hand from the records table.
+            }
+        }
+
+        return response()->json([
+            'message' => 'DNS zone created on ' . $server->name . '.',
+            'data'    => ['server_id' => $server->id, 'server_name' => $server->name, 'www_record_added' => $wwwAdded],
+        ]);
+    }
+
+    /** Reads this domain's DNS zone from whichever server createDnsZone() recorded it on. */
+    public function dnsZone(Domain $domain)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $serverId = data_get($domain->meta, 'whm_dns.server_id');
+        abort_unless($serverId, 404, 'No DNS zone has been created for this domain yet.');
+
+        $server = Server::where('tenant_id', $tenantId)->find($serverId);
+        abort_unless($server, 404, 'The server this domain\'s DNS zone was created on is no longer available.');
+
+        try {
+            $records = (new WhmService($server))->dnsZone($domain->name);
+        } catch (WhmApiException) {
+            return response()->json(['message' => 'Could not reach the server right now — please try again shortly.'], 422);
+        }
+
+        return response()->json(['data' => $records]);
+    }
+
+    /**
+     * Adds one DNS zone record for this domain. Add-only, deliberately —
+     * see WhmService::addDnsRecord()'s doc comment for why edit/delete
+     * aren't exposed (WHM's line-number-based edit/remove calls proved
+     * unreliable during live verification elsewhere in this codebase).
+     */
+    public function addDnsRecord(Request $request, Domain $domain)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $serverId = data_get($domain->meta, 'whm_dns.server_id');
+        abort_unless($serverId, 404, 'No DNS zone has been created for this domain yet.');
+
+        $server = Server::where('tenant_id', $tenantId)->find($serverId);
+        abort_unless($server, 404, 'The server this domain\'s DNS zone was created on is no longer available.');
+
+        $data = $request->validate([
+            'type'     => ['required', Rule::in(['A', 'AAAA', 'CNAME', 'TXT', 'MX'])],
+            'name'     => 'required|string|max:255',
+            'ttl'      => 'required|integer|min:60|max:2592000',
+            'value'    => 'required_unless:type,MX|nullable|string|max:1024',
+            'priority' => 'required_if:type,MX|nullable|integer|min:0|max:65535',
+        ]);
+
+        $name = str_ends_with($data['name'], '.') ? $data['name'] : "{$data['name']}.";
+
+        $fields = match ($data['type']) {
+            'A', 'AAAA' => ['address' => $data['value']],
+            'CNAME' => ['cname' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
+            'TXT' => ['txtdata' => $data['value']],
+            'MX' => ['preference' => $data['priority'], 'exchange' => str_ends_with($data['value'], '.') ? $data['value'] : "{$data['value']}."],
+        };
+
+        try {
+            (new WhmService($server))->addDnsRecord($domain->name, $data['type'], $name, $data['ttl'], $fields);
+        } catch (WhmApiException $e) {
+            return response()->json(['message' => 'Server rejected the record: ' . $e->getMessage()], 422);
+        }
+
+        return response()->json(['message' => 'DNS record added.']);
     }
 }
