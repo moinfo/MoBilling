@@ -735,6 +735,7 @@ class FollowupController extends Controller
             ->get()
             ->map(fn ($f) => [
                 'id' => $f->id,
+                'document_id' => $f->document_id,
                 'document_number' => $f->document?->document_number,
                 'assigned_to' => $f->user?->name,
                 'call_date' => $f->call_date?->toISOString(),

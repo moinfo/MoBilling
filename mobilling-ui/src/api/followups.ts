@@ -122,6 +122,7 @@ export const reassignFollowup = (followupId: string, userId: string, notes?: str
 
 export interface ClientFollowupHistoryEntry {
   id: string;
+  document_id: string;
   document_number: string | null;
   assigned_to: string | null;
   call_date: string | null;

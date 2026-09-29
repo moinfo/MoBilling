@@ -53,7 +53,9 @@ export default function DocumentListPage({ type, title }: Props) {
   const [followupOverdueOnly, setFollowupOverdueOnly] = useState(searchParams.get('followup') === 'overdue');
   const [followupDoc, setFollowupDoc] = useState<Document | null>(null);
 
-  // Auto-open preview from URL query param (?preview=documentId)
+  // Auto-open preview from URL query param (?preview=documentId) — watches searchParams
+  // (not just mount) so a link clicked while already on this page (e.g. from the
+  // follow-up history's invoice links) also opens it, not just a fresh page load.
   useEffect(() => {
     const previewId = searchParams.get('preview');
     if (previewId) {
@@ -61,7 +63,8 @@ export default function DocumentListPage({ type, title }: Props) {
       searchParams.delete('preview');
       setSearchParams(searchParams, { replace: true });
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Keep ?status= and ?followup= in the URL as the filters change — so a filtered
   // view (e.g. "Unpaid Invoices") has its own shareable/bookmarkable link and

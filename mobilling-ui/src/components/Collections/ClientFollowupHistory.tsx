@@ -1,5 +1,6 @@
-import { Paper, Text, ScrollArea, Stack, Group, Badge, Divider, Center, Loader } from '@mantine/core';
+import { Paper, Text, ScrollArea, Stack, Group, Badge, Divider, Center, Loader, Anchor } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { getClientFollowups } from '../../api/followups';
 import { formatDate } from '../../utils/formatDate';
 import { outcomeColors, outcomeLabels, statusColors } from '../../utils/followupColors';
@@ -18,6 +19,7 @@ interface Props {
  * LogCallModal (Follow-ups / My Collections pages), extracted from LogFollowupModal's original inline block.
  */
 export default function ClientFollowupHistory({ clientId, currentDocumentNumber, maxHeight = 180 }: Props) {
+  const navigate = useNavigate();
   const { data, isLoading } = useQuery({
     queryKey: ['client-followups', clientId],
     queryFn: () => getClientFollowups(clientId as string),
@@ -41,7 +43,13 @@ export default function ClientFollowupHistory({ clientId, currentDocumentNumber,
               <div style={{ minWidth: 0 }}>
                 <Group gap={6}>
                   <Text size="xs" c="dimmed">{h.call_date ? formatDate(h.call_date) : (h.created_at ? formatDate(h.created_at) : '—')}</Text>
-                  <Text size="xs" fw={500}>{h.document_number}</Text>
+                  {h.document_number ? (
+                    <Anchor size="xs" fw={500} onClick={() => navigate(`/invoices?preview=${h.document_id}`)}>
+                      {h.document_number}
+                    </Anchor>
+                  ) : (
+                    <Text size="xs" fw={500}>{h.document_number}</Text>
+                  )}
                   {h.outcome && (
                     <Badge color={outcomeColors[h.outcome] || 'gray'} size="xs" variant="light">
                       {outcomeLabels[h.outcome] || h.outcome}
