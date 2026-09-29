@@ -1,4 +1,4 @@
-import { TextInput, Textarea, Button, Group, Stack, Accordion, SimpleGrid } from '@mantine/core';
+import { TextInput, Textarea, Button, Group, Stack, Accordion, SimpleGrid, SegmentedControl, Alert } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { ClientFormData } from '../../api/clients';
 
@@ -15,8 +15,10 @@ const EMPTY: ClientFormData = {
 };
 
 export default function ClientForm({ initialValues, onSubmit, loading }: Props) {
+  const isEditing = !!initialValues;
+  const isMerged = initialValues?.status === 'merged';
   const form = useForm<ClientFormData>({
-    initialValues: initialValues ? { ...EMPTY, ...initialValues } : EMPTY,
+    initialValues: initialValues ? { ...EMPTY, ...initialValues, status: initialValues.status === 'merged' ? undefined : (initialValues.status ?? 'active') } : EMPTY,
     validate: {
       name: (v) => (v.length > 0 ? null : 'Name is required'),
       email: (v) => (v && !/^\S+@\S+$/.test(v) ? 'Invalid email' : null),
@@ -37,6 +39,19 @@ export default function ClientForm({ initialValues, onSubmit, loading }: Props) 
         <TextInput label="Phone" placeholder="+254 7xx xxx xxx" {...form.getInputProps('phone')} />
         <Textarea label="Address" placeholder="Client address" {...form.getInputProps('address')} />
         <TextInput label="Tax ID / KRA PIN" placeholder="e.g., A123456789B" {...form.getInputProps('tax_id')} />
+
+        {isEditing && (
+          isMerged ? (
+            <Alert color="gray" variant="light">
+              This client was merged into another client and can no longer be edited here.
+            </Alert>
+          ) : (
+            <SegmentedControl
+              data={[{ label: 'Active', value: 'active' }, { label: 'Inactive', value: 'inactive' }]}
+              {...form.getInputProps('status')}
+            />
+          )
+        )}
 
         <Accordion variant="contained" defaultValue={hasDetailedAddress ? 'detailed' : null}>
           <Accordion.Item value="detailed">

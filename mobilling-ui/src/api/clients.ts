@@ -29,6 +29,10 @@ export interface ClientFormData {
   phone: string;
   address: string;
   tax_id: string;
+  /** Only meaningful when editing (new clients are always created active). 'merged' is a
+   * system-set terminal state from the client-merge feature — the form reads it to show a
+   * read-only notice, but never sends it back; only 'active'/'inactive' are ever submitted. */
+  status?: 'active' | 'inactive' | 'merged';
   first_name?: string;
   last_name?: string;
   company_name?: string;

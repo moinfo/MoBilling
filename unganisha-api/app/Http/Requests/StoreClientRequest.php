@@ -29,6 +29,9 @@ class StoreClientRequest extends FormRequest
             ],
             'address' => 'nullable|string|max:1000',
             'tax_id'  => 'nullable|string|max:50',
+            // 'merged' is a terminal state only ClientMergeService may set — never accepted here,
+            // so a merged client's status can't be revived (or a new client marked merged) via this form.
+            'status'  => ['sometimes', Rule::in(['active', 'inactive'])],
 
             // WHMCS-style structured fields — all optional, purely additive
             // alongside the flat name/address above (see migration docblock).

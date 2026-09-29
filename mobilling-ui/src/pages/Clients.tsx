@@ -324,6 +324,7 @@ export default function Clients() {
             state: editing.state || '',
             postcode: editing.postcode || '',
             country: editing.country || '',
+            status: editing.status as 'active' | 'inactive' | 'merged',
           } : undefined}
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}
