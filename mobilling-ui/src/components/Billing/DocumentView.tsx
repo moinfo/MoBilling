@@ -38,7 +38,13 @@ export default function DocumentView({ document: doc, onRefresh, onClose: _onClo
   const { user } = useAuth();
   const { can } = usePermissions();
   const navigate = useNavigate();
-  const tenant = user?.tenant;
+  // The document's own tenant (from GET /documents/{id}) is the authoritative source for
+  // outbound branding (company name, late-fee/payment terms) — it's what the WhatsApp
+  // "Pay Link" text below is actually about, and it's correct regardless of who's viewing
+  // (the logged-in user's own cached tenant object could be stale, or absent entirely for
+  // a super-admin impersonation edge case). Fall back to the auth user's tenant only if the
+  // document wasn't fetched with it (e.g. an older cached object).
+  const tenant = doc.tenant ?? user?.tenant;
   const [showPayment, setShowPayment] = useState(false);
   const [showRefund, setShowRefund] = useState(false);
   const [showApproveCollection, setShowApproveCollection] = useState(false);

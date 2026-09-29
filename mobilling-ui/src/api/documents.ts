@@ -62,6 +62,17 @@ export interface Document {
   collection_reviewed_at?: string | null;
   collection_review_notes?: string | null;
   created_at: string;
+  /** The document's own tenant (whitelisted fields only) — present on a single-document fetch
+   * (GET /documents/{id}), not on list rows. Authoritative source for outbound branding (company
+   * name, payment terms) — prefer this over the logged-in user's own cached tenant object. */
+  tenant?: {
+    name: string;
+    currency: string;
+    late_fee_enabled: boolean;
+    late_fee_percent: number;
+    late_fee_days: number;
+    payment_instructions: string | null;
+  };
 }
 
 export interface Payment {

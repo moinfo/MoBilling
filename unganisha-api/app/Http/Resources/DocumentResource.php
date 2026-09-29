@@ -14,6 +14,21 @@ class DocumentResource extends JsonResource
             'type' => $this->type,
             'document_number' => $this->document_number,
             'client' => new ClientResource($this->whenLoaded('client')),
+            // Whitelisted, not the raw model — Tenant carries secrets (pesapal keys, SMTP/WhatsApp
+            // credentials) that must never reach the frontend. This is the document's OWN tenant
+            // (authoritative), not the viewing user's — the two are almost always the same tenant,
+            // but this is what invoice PDFs/emails/WhatsApp sends already source their branding from
+            // (PdfService, InvoiceSentNotification), so the client-side "Pay Link" WhatsApp-text
+            // builder in DocumentView.tsx should read from here rather than the logged-in user's own
+            // (possibly stale/impersonation-edge-case) cached tenant object.
+            'tenant' => $this->whenLoaded('tenant', fn () => [
+                'name' => $this->tenant->name,
+                'currency' => $this->tenant->currency,
+                'late_fee_enabled' => $this->tenant->late_fee_enabled,
+                'late_fee_percent' => $this->tenant->late_fee_percent,
+                'late_fee_days' => $this->tenant->late_fee_days,
+                'payment_instructions' => $this->tenant->payment_instructions,
+            ]),
             'client_id' => $this->client_id,
             'parent_id' => $this->parent_id,
             'date' => $this->date?->format('Y-m-d'),
