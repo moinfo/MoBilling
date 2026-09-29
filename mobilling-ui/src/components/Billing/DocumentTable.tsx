@@ -1,10 +1,12 @@
 import { Table, Badge, ActionIcon, Text, Menu, Group, Tooltip, Loader, Center, Checkbox } from '@mantine/core';
 import { IconEye, IconEdit, IconTrash, IconDots, IconBell, IconX, IconRefresh, IconSend, IconCheck, IconArrowBack, IconCalendarEvent } from '@tabler/icons-react';
 import { Document } from '../../api/documents';
+import { FollowupSummary } from '../../api/followups';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
 import { usePermissions } from '../../hooks/usePermissions';
 import CollectionReviewBadge from '../Collections/CollectionReviewBadge';
+import FollowupCell from './FollowupCell';
 
 interface Props {
   documents: Document[];
@@ -19,6 +21,9 @@ interface Props {
   onReject?: (doc: Document) => void;
   onExtendDueDate?: (doc: Document) => void;
   onReturnToDraft?: (doc: Document) => void;
+  /** Invoices only: opens the Follow-up modal for this invoice. Presence of this prop shows the column. */
+  onFollowup?: (doc: Document) => void;
+  followupSummaries?: Record<string, FollowupSummary>;
   startIndex?: number;
   loading?: boolean;
   selectable?: boolean;
@@ -48,8 +53,9 @@ const stageLabels: Record<string, string> = {
   termination_warning: 'Termination warning sent',
 };
 
-export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, onSubmitForApproval, onApprove, onReject, onExtendDueDate, onReturnToDraft, startIndex = 1, loading, selectable, selectedIds = [], onSelectionChange }: Props) {
+export default function DocumentTable({ documents, onView, onEdit, onDelete, onRemind, onCancel, onUncancel, onSubmitForApproval, onApprove, onReject, onExtendDueDate, onReturnToDraft, onFollowup, followupSummaries, startIndex = 1, loading, selectable, selectedIds = [], onSelectionChange }: Props) {
   const { can } = usePermissions();
+  const showFollowup = !!onFollowup && can('menu.followups');
   if (loading) {
     return <Center py="xl"><Loader /></Center>;
   }
@@ -101,6 +107,7 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
             <Table.Th>Date</Table.Th>
             <Table.Th>Total</Table.Th>
             <Table.Th>Status</Table.Th>
+            {showFollowup && <Table.Th>Follow-up</Table.Th>}
             <Table.Th w={80}>Actions</Table.Th>
           </Table.Tr>
         </Table.Thead>
@@ -154,6 +161,13 @@ export default function DocumentTable({ documents, onView, onEdit, onDelete, onR
                   )}
                 </Group>
               </Table.Td>
+              {showFollowup && (
+                <Table.Td onClick={(e) => e.stopPropagation()}>
+                  {isUnpaid ? (
+                    <FollowupCell summary={followupSummaries?.[doc.id]} onClick={() => onFollowup!(doc)} />
+                  ) : null}
+                </Table.Td>
+              )}
               <Table.Td onClick={(e) => e.stopPropagation()}>
                 <Menu shadow="md" width={180}>
                   <Menu.Target>

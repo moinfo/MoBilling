@@ -291,6 +291,65 @@ class FollowupController extends Controller
     }
 
     /**
+     * Who assigned this invoice for collection — CollectionAssignment::assigned_by on its most recent
+     * active assignment, else its most recent assignment of any status. Null when the invoice was never
+     * formally assigned (e.g. an auto-created follow-up from followups:process).
+     */
+    private function findAssigner(string $documentId): ?string
+    {
+        $a = CollectionAssignment::where('document_id', $documentId)->where('status', 'active')->latest('created_at')->first()
+            ?? CollectionAssignment::where('document_id', $documentId)->latest('created_at')->first();
+
+        return $a?->assigned_by;
+    }
+
+    /**
+     * Tell whoever assigned this invoice (or, failing that, tenant admins who can approve invoices for
+     * collection) that a call was just logged against it. Never notifies the caller about their own call.
+     */
+    private function notifyResponseLogged(Followup $followup, array $data, bool $escalated): void
+    {
+        try {
+            $callerId = auth()->id();
+            $assignerId = $this->findAssigner($followup->document_id);
+
+            if ($assignerId) {
+                if ($assignerId === $callerId) {
+                    return; // the assigner logged their own call — nothing to notify
+                }
+                $recipients = collect([\App\Models\User::find($assignerId)])->filter();
+            } else {
+                $recipients = \App\Models\User::withPermission($followup->tenant_id, 'documents.approve_collection')
+                    ->reject(fn ($u) => $u->id === $callerId);
+            }
+            if ($recipients->isEmpty()) {
+                return;
+            }
+
+            $tenant = auth()->user()?->tenant;
+            if (!$tenant) {
+                return;
+            }
+            $notification = new \App\Notifications\FollowupResponseLoggedNotification(
+                $tenant,
+                auth()->user()?->name ?? 'Staff',
+                $followup->client?->name ?? '-',
+                $followup->document?->document_number ?? '-',
+                $data['outcome'],
+                $data['notes'],
+                $data['promise_date'] ?? null,
+                isset($data['promise_amount']) ? (float) $data['promise_amount'] : null,
+                $escalated,
+            );
+            foreach ($recipients as $u) {
+                $u->notify($notification);
+            }
+        } catch (\Throwable $e) {
+            \Illuminate\Support\Facades\Log::warning('Followup response notification failed', ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
      * Shared rules for assigning an invoice to staff. Returns an error message, or null when assignable.
      * An admin must have reviewed/approved the invoice (DocumentController::approveForCollection),
      * and at most 3 logged calls are allowed per invoice.
@@ -495,6 +554,12 @@ class FollowupController extends Controller
 
         $today = Carbon::today();
 
+        // On-time / late tracking: compare against the due date THIS row already carried (the date the
+        // call was scheduled for), before it gets overwritten below.
+        $dueDate = $followup->next_followup;
+        $onTime = $dueDate ? !$today->gt($dueDate) : null;
+        $daysLate = ($dueDate && $today->gt($dueDate)) ? abs($today->diffInDays($dueDate)) : ($dueDate ? 0 : null);
+
         // Update this follow-up with call details
         $followup->update([
             'call_date' => now(),
@@ -504,12 +569,16 @@ class FollowupController extends Controller
             'promise_date' => $data['promise_date'] ?? null,
             'promise_amount' => $data['promise_amount'] ?? null,
             'status' => 'open',
+            'completed_on_time' => $onTime,
+            'days_late' => $daysLate,
         ]);
 
         // Count total calls for this invoice
         $callCount = Followup::where('document_id', $followup->document_id)
             ->whereNotNull('call_date')
             ->count();
+
+        $this->notifyResponseLogged($followup->fresh(), $data, $callCount >= 3);
 
         // If max calls reached, escalate instead of scheduling more
         if ($callCount >= 3) {
@@ -523,10 +592,10 @@ class FollowupController extends Controller
         }
 
         // Auto-schedule next follow-up based on outcome
-        $nextDate = $data['next_followup_override']
+        $nextDate = ($data['next_followup_override'] ?? null)
             ? Carbon::parse($data['next_followup_override'])
             : match ($data['outcome']) {
-                'promised' => $data['promise_date']
+                'promised' => ($data['promise_date'] ?? null)
                     ? Carbon::parse($data['promise_date'])->addDay()
                     : $today->copy()->addDays(3),
                 'no_answer' => $today->copy()->addDays(2),
@@ -589,5 +658,107 @@ class FollowupController extends Controller
             ]);
 
         return response()->json(['data' => $followups]);
+    }
+
+    /**
+     * Batch "at a glance" follow-up info for a set of invoices — powers the Invoices list column.
+     * For each document: its latest CALLED follow-up (outcome/call_date/notes) and its latest ACTIVE
+     * follow-up (pending/open/broken — the one a "Follow-up" button acts on, and its next_followup date).
+     * Documents with no follow-up row at all are simply absent from the response.
+     */
+    public function summary(Request $request)
+    {
+        $data = $request->validate([
+            'document_ids' => 'required|array|max:200',
+            'document_ids.*' => 'uuid',
+        ]);
+        $ids = array_values(array_unique($data['document_ids']));
+        if (!$ids) {
+            return response()->json(['data' => []]);
+        }
+
+        $rows = Followup::whereIn('document_id', $ids)
+            ->orderByDesc('created_at')
+            ->get(['id', 'document_id', 'user_id', 'call_date', 'outcome', 'notes', 'next_followup', 'status', 'created_at']);
+
+        $userNames = \App\Models\User::withoutGlobalScopes()
+            ->whereIn('id', $rows->pluck('user_id')->filter()->unique()->values())
+            ->pluck('name', 'id');
+
+        $today = Carbon::today();
+        $out = [];
+        foreach ($rows->groupBy('document_id') as $docId => $group) {
+            $lastCalled = $group->filter(fn ($f) => $f->call_date)->sortByDesc('call_date')->first();
+            // The row actually awaiting a call always carries a next_followup date; an 'open' row (just
+            // called) has its next_followup cleared to null, so filtering on it — rather than trusting
+            // created_at ordering, which can tie when rows are created in the same second — is what
+            // reliably picks the scheduled row over a same-second stale 'open' one.
+            $active = $group->filter(fn ($f) => in_array($f->status, ['pending', 'open', 'broken'], true) && $f->next_followup !== null)
+                ->sortBy('next_followup')->first();
+            $next = $active?->next_followup;
+            $assignedUserId = $active?->user_id ?? $lastCalled?->user_id;
+            $out[] = [
+                'document_id' => $docId,
+                'has_followup' => true,
+                'followup_id' => $active?->id,
+                'assigned_to' => $assignedUserId ? ($userNames[$assignedUserId] ?? null) : null,
+                'last_outcome' => $lastCalled?->outcome,
+                'last_call_date' => $lastCalled?->call_date?->toISOString(),
+                'last_notes' => $lastCalled?->notes,
+                'next_followup' => $next?->toDateString(),
+                'next_followup_overdue' => $next ? $next->lt($today) : false,
+                'status' => $active?->status,
+                'call_count' => $group->filter(fn ($f) => $f->call_date)->count(),
+            ];
+        }
+
+        return response()->json(['data' => $out]);
+    }
+
+    /**
+     * Per-staff on-time/late performance for logged calls, plus how many of their follow-ups are
+     * currently overdue and unactioned. date_from/date_to filter on when the call was logged.
+     */
+    public function staffPerformance(Request $request)
+    {
+        $data = $request->validate([
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date',
+        ]);
+
+        $logged = Followup::whereNotNull('call_date')
+            ->when($data['date_from'] ?? null, fn ($q, $v) => $q->whereDate('call_date', '>=', $v))
+            ->when($data['date_to'] ?? null, fn ($q, $v) => $q->whereDate('call_date', '<=', $v))
+            ->with('user:id,name')
+            ->get(['id', 'user_id', 'call_date', 'completed_on_time', 'days_late']);
+
+        $overdueNow = Followup::overdue()->whereNotNull('user_id')
+            ->selectRaw('user_id, COUNT(*) as aggregate')
+            ->groupBy('user_id')
+            ->pluck('aggregate', 'user_id');
+
+        $out = [];
+        foreach ($logged->groupBy('user_id') as $userId => $rows) {
+            if (!$userId) {
+                continue;
+            }
+            $total = $rows->count();
+            $onTime = $rows->where('completed_on_time', true)->count();
+            $late = $rows->where('completed_on_time', false)->count();
+            $lateDays = $rows->where('completed_on_time', false)->pluck('days_late')->filter(fn ($d) => $d !== null);
+            $out[] = [
+                'user_id' => $userId,
+                'user_name' => $rows->first()->user?->name,
+                'calls_logged' => $total,
+                'on_time' => $onTime,
+                'late' => $late,
+                'on_time_pct' => $total > 0 ? round(($onTime / $total) * 100, 1) : null,
+                'avg_days_late' => $lateDays->count() ? round($lateDays->avg(), 1) : null,
+                'still_overdue' => (int) ($overdueNow[$userId] ?? 0),
+            ];
+        }
+        usort($out, fn ($a, $b) => $b['calls_logged'] <=> $a['calls_logged']);
+
+        return response()->json(['data' => array_values($out)]);
     }
 }

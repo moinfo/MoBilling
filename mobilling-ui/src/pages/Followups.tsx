@@ -27,23 +27,8 @@ import CallScriptDrawer from '../components/CallScriptDrawer';
 import UnassignedInvoicesPanel from '../components/Collections/UnassignedInvoicesPanel';
 import CommissionsPanel from '../components/Collections/CommissionsPanel';
 import DocumentView from '../components/Billing/DocumentView';
-
-const outcomeColors: Record<string, string> = {
-  promised: 'blue',
-  declined: 'red',
-  no_answer: 'gray',
-  disputed: 'orange',
-  partial_payment: 'yellow',
-};
-
-const statusColors: Record<string, string> = {
-  pending: 'blue',
-  open: 'cyan',
-  fulfilled: 'green',
-  broken: 'red',
-  escalated: 'orange',
-  cancelled: 'gray',
-};
+import StaffPerformancePanel from '../components/Collections/StaffPerformancePanel';
+import { outcomeColors, statusColors } from '../utils/followupColors';
 
 export default function Followups() {
   const queryClient = useQueryClient();
@@ -156,12 +141,16 @@ export default function Followups() {
           <Tabs.Tab value="active">Follow-ups</Tabs.Tab>
           <Tabs.Tab value="unassigned">Unassigned (Hazijapangiwa)</Tabs.Tab>
           {(can('staff_targets.manage') || can('staff_targets.verify')) && <Tabs.Tab value="commissions">Commissions</Tabs.Tab>}
+          <Tabs.Tab value="performance">Staff Performance</Tabs.Tab>
         </Tabs.List>
         <Tabs.Panel value="commissions">
           <CommissionsPanel onOpenInvoice={openPreview} />
         </Tabs.Panel>
         <Tabs.Panel value="unassigned">
           <UnassignedInvoicesPanel onOpenInvoice={openPreview} />
+        </Tabs.Panel>
+        <Tabs.Panel value="performance">
+          <StaffPerformancePanel />
         </Tabs.Panel>
         <Tabs.Panel value="active">
           <Stack gap="lg">

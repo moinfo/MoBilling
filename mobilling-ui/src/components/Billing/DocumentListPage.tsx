@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   Title, Group, Button, TextInput, Pagination, Drawer,
-  SegmentedControl, Modal, Stack, Text, Radio,
+  SegmentedControl, Modal, Stack, Text, Radio, Chip,
 } from '@mantine/core';
 import { DateInput } from '@mantine/dates';
 import { useDisclosure, useDebouncedValue } from '@mantine/hooks';
@@ -14,9 +14,11 @@ import { useSearchParams } from 'react-router-dom';
 import { getDocuments, getDocument, createDocument, updateDocument, deleteDocument, cancelDocument, uncancelDocument, remindUnpaid, mergeInvoices, submitForApproval, approveDocument, rejectDocument, updateDocumentDueDate, returnDocumentToDraft, Document, DocumentFormData } from '../../api/documents';
 import { getClients, Client } from '../../api/clients';
 import { getProductServices, ProductService } from '../../api/productServices';
+import { getFollowupSummary, FollowupSummary } from '../../api/followups';
 import DocumentTable from './DocumentTable';
 import DocumentForm from './DocumentForm';
 import DocumentView from './DocumentView';
+import LogFollowupModal from './LogFollowupModal';
 import { usePermissions } from '../../hooks/usePermissions';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
@@ -48,6 +50,8 @@ export default function DocumentListPage({ type, title }: Props) {
   const [viewDoc, setViewDoc] = useState<Document | null>(null);
   const [dueDateDoc, setDueDateDoc] = useState<Document | null>(null);
   const [newDueDate, setNewDueDate] = useState<Date | null>(null);
+  const [followupOverdueOnly, setFollowupOverdueOnly] = useState(false);
+  const [followupDoc, setFollowupDoc] = useState<Document | null>(null);
 
   // Auto-open preview from URL query param (?preview=documentId)
   useEffect(() => {
@@ -83,7 +87,7 @@ export default function DocumentListPage({ type, title }: Props) {
     : statusFilter; // 'paid', 'overdue', 'draft'
 
   const { data: docsData, isLoading } = useQuery({
-    queryKey: ['documents', type, debouncedSearch, page, statusParam, dateFrom, dateTo],
+    queryKey: ['documents', type, debouncedSearch, page, statusParam, dateFrom, dateTo, followupOverdueOnly],
     queryFn: () => getDocuments({
       type,
       search: debouncedSearch || undefined,
@@ -91,6 +95,7 @@ export default function DocumentListPage({ type, title }: Props) {
       status: statusParam,
       date_from: dateFrom || undefined,
       date_to: dateTo || undefined,
+      followup: isInvoice && followupOverdueOnly ? 'overdue' : undefined,
     }),
   });
 
@@ -108,6 +113,17 @@ export default function DocumentListPage({ type, title }: Props) {
   const meta = docsData?.data?.meta;
   const clients: Client[] = clientsData?.data?.data || [];
   const productServices: ProductService[] = psData?.data?.data || [];
+
+  // Batch "at a glance" follow-up info for the invoices on this page — for the Follow-up column.
+  const invoiceIds = isInvoice ? documents.map((d: Document) => d.id) : [];
+  const { data: followupSummaryData } = useQuery({
+    queryKey: ['followup-summary', invoiceIds],
+    queryFn: () => getFollowupSummary(invoiceIds),
+    enabled: isInvoice && invoiceIds.length > 0,
+  });
+  const followupSummaries: Record<string, FollowupSummary> = Object.fromEntries(
+    (followupSummaryData?.data?.data ?? []).map((s) => [s.document_id, s]),
+  );
 
   // Unpaid invoices for "Remind All" — only sent, overdue, partial
   const unpaidDocs = documents.filter((d: Document) => ['sent', 'overdue', 'partial'].includes(d.status));
@@ -448,6 +464,16 @@ export default function DocumentListPage({ type, title }: Props) {
               ]}
             />
           )}
+          {isInvoice && (
+            <Chip
+              size="sm"
+              color="red"
+              checked={followupOverdueOnly}
+              onChange={(v) => { setFollowupOverdueOnly(v); setPage(1); }}
+            >
+              Overdue follow-ups
+            </Chip>
+          )}
         </Group>
         <Group gap="sm">
           {isInvoice && selectedIds.length >= 2 && (
@@ -487,6 +513,8 @@ export default function DocumentListPage({ type, title }: Props) {
         onReject={handleReject}
         onExtendDueDate={isInvoice ? handleExtendDueDate : undefined}
         onReturnToDraft={isInvoice ? handleReturnToDraft : undefined}
+        onFollowup={isInvoice ? setFollowupDoc : undefined}
+        followupSummaries={isInvoice ? followupSummaries : undefined}
         startIndex={meta ? (meta.current_page - 1) * meta.per_page + 1 : 1}
         loading={isLoading}
         selectable={isInvoice}
@@ -634,6 +662,19 @@ export default function DocumentListPage({ type, title }: Props) {
           </Group>
         </Stack>
       </Modal>
+
+      {isInvoice && (
+        <LogFollowupModal
+          opened={!!followupDoc}
+          onClose={() => setFollowupDoc(null)}
+          document={followupDoc}
+          summary={followupDoc ? followupSummaries[followupDoc.id] : null}
+          onLogged={() => {
+            queryClient.invalidateQueries({ queryKey: ['followup-summary'] });
+            queryClient.invalidateQueries({ queryKey: ['documents'] });
+          }}
+        />
+      )}
     </>
   );
 }

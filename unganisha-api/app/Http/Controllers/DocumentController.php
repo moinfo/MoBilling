@@ -59,6 +59,12 @@ class DocumentController extends Controller
             $query->where('date', '<=', $request->date_to);
         }
 
+        // "Overdue follow-ups" quick filter (Invoices page) — reuses Followup::scopeOverdue() and the
+        // existing followups(document_id, status) index; no new migration needed.
+        if ($request->get('followup') === 'overdue') {
+            $query->whereHas('followups', fn ($q) => $q->overdue());
+        }
+
         // Add reminder count for invoices (count from communication_logs by document_id in metadata)
         if ($request->type === 'invoice') {
             $query->addSelect([

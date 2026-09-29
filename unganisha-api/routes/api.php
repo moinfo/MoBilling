@@ -581,6 +581,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/followups/dashboard', [FollowupController::class, 'dashboard']);
         Route::get('/followups/unassigned', [FollowupController::class, 'unassigned']);
         Route::post('/followups/bulk-assign', [FollowupController::class, 'bulkAssign']);
+        Route::post('/followups/summary', [FollowupController::class, 'summary']);
+        Route::get('/followups/staff-performance', [FollowupController::class, 'staffPerformance']);
         Route::get('/followups', [FollowupController::class, 'index']);
         Route::post('/followups', [FollowupController::class, 'store']);
         Route::post('/followups/{followup}/log-call', [FollowupController::class, 'logCall'])->middleware('permission:field_visits.log');

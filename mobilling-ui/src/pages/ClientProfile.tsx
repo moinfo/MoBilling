@@ -28,7 +28,7 @@ import {
   getClientContacts, createClientContact, updateClientContact, deleteClientContact, ClientContact,
   mergeClients, getClients,
 } from '../api/clients';
-import { getClientFollowups, FollowupEntry } from '../api/followups';
+import { getClientFollowups, ClientFollowupHistoryEntry } from '../api/followups';
 import { getClientSatisfactionHistory, SatisfactionCallEntry } from '../api/satisfactionCalls';
 import { formatCurrency } from '../utils/formatCurrency';
 import { formatDate } from '../utils/formatDate';
@@ -159,7 +159,7 @@ export default function ClientProfile() {
     enabled: !!clientId,
   });
 
-  const clientFollowups: FollowupEntry[] = followupData?.data?.data ?? [];
+  const clientFollowups: ClientFollowupHistoryEntry[] = followupData?.data?.data ?? [];
   const clientSatisfaction: SatisfactionCallEntry[] = satisfactionData?.data?.data ?? [];
   const [selectedLog, setSelectedLog] = useState<ClientCommunicationLog | null>(null);
   const [invoiceSortBy, setInvoiceSortBy] = useState<string>('date');

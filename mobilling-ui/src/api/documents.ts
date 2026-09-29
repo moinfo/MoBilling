@@ -88,7 +88,7 @@ export interface DocumentFormData {
   items: DocumentItem[];
 }
 
-export const getDocuments = (params?: { type?: string; search?: string; page?: number; status?: string; per_page?: number; date_from?: string; date_to?: string; client_id?: string }) =>
+export const getDocuments = (params?: { type?: string; search?: string; page?: number; status?: string; per_page?: number; date_from?: string; date_to?: string; client_id?: string; followup?: 'overdue' }) =>
   api.get('/documents', { params });
 
 export const getDocument = (id: string) =>

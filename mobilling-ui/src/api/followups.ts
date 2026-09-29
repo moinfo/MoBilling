@@ -44,6 +44,39 @@ export interface FollowupEntry {
   assignment?: AssignmentBrief | null;
 }
 
+export interface FollowupSummary {
+  document_id: string;
+  has_followup: boolean;
+  /** The active (pending/open/broken) follow-up to log a call against — null if none active. */
+  followup_id: string | null;
+  assigned_to: string | null;
+  last_outcome: FollowupEntry['outcome'];
+  last_call_date: string | null;
+  last_notes: string | null;
+  next_followup: string | null;
+  next_followup_overdue: boolean;
+  status: FollowupEntry['status'] | null;
+  call_count: number;
+}
+
+/** Batch "at a glance" follow-up info for a page of invoices — powers the Invoices list column. */
+export const getFollowupSummary = (documentIds: string[]) =>
+  api.post<{ data: FollowupSummary[] }>('/followups/summary', { document_ids: documentIds });
+
+export interface StaffPerformanceRow {
+  user_id: string;
+  user_name: string | null;
+  calls_logged: number;
+  on_time: number;
+  late: number;
+  on_time_pct: number | null;
+  avg_days_late: number | null;
+  still_overdue: number;
+}
+
+export const getStaffPerformance = (params?: { date_from?: string; date_to?: string }) =>
+  api.get<{ data: StaffPerformanceRow[] }>('/followups/staff-performance', { params });
+
 export interface FollowupDashboard {
   due_today: FollowupEntry[];
   overdue_followups: FollowupEntry[];
@@ -81,8 +114,22 @@ export const logCall = (
 export const cancelFollowup = (followupId: string) =>
   api.patch(`/followups/${followupId}/cancel`);
 
+export interface ClientFollowupHistoryEntry {
+  id: string;
+  document_number: string | null;
+  assigned_to: string | null;
+  call_date: string | null;
+  outcome: FollowupEntry['outcome'];
+  notes: string | null;
+  promise_date: string | null;
+  promise_amount: number | null;
+  next_followup: string | null;
+  status: FollowupEntry['status'];
+  created_at: string;
+}
+
 export const getClientFollowups = (clientId: string) =>
-  api.get(`/followups/client/${clientId}`);
+  api.get<{ data: ClientFollowupHistoryEntry[] }>(`/followups/client/${clientId}`);
 
 export interface UnassignedInvoice {
   id: string;
