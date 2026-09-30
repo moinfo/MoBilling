@@ -57,3 +57,6 @@ export const updateProductService = (id: string, data: ProductServiceFormData) =
 
 export const deleteProductService = (id: string) =>
   api.delete(`/product-services/${id}`);
+
+export const bulkMarginProductServices = (margin: number) =>
+  api.post<{ updated: number; skipped: number }>('/product-services/bulk-margin', { margin });

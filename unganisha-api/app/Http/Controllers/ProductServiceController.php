@@ -80,4 +80,36 @@ class ProductServiceController extends Controller
         $request->merge(['type' => 'service']);
         return $this->index($request);
     }
+
+    /**
+     * Set the retail price on every one of the tenant's own hosting/email
+     * products to "my real cost + this margin" in one go — same convenience
+     * as DomainTldController::bulkMargin(), for a wallet-gated reseller whose
+     * hosting/email products start out priced exactly at cost (no margin)
+     * when provisioned. cost_price is $hidden on the model and never
+     * returned to the client — only used here, server-side, to compute the
+     * new price. A product with no cost_price set has nothing to add a
+     * margin to, so it's left alone and counted in `skipped`.
+     */
+    public function bulkMargin(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $data = $request->validate(['margin' => 'required|numeric|min:0']);
+
+        $rows = ProductService::where('tenant_id', $tenantId)
+            ->where('type', 'product')->where('is_active', true)->get();
+        $updated = 0;
+        $skipped = 0;
+
+        foreach ($rows as $row) {
+            if ($row->cost_price === null) {
+                $skipped++;
+                continue;
+            }
+            $row->update(['price' => round((float) $row->cost_price + $data['margin'], 2)]);
+            $updated++;
+        }
+
+        return response()->json(['updated' => $updated, 'skipped' => $skipped]);
+    }
 }

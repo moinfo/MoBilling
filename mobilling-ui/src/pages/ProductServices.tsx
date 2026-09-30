@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Tabs, Pagination } from '@mantine/core';
+import { Title, Group, Button, TextInput, Modal, Tabs, Pagination, Paper, Text, NumberInput } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
@@ -7,13 +7,33 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch } from '@tabler/icons-react';
 import {
   getProductServices, createProductService, updateProductService,
-  deleteProductService, ProductService, ProductServiceFormData,
+  deleteProductService, bulkMarginProductServices, ProductService, ProductServiceFormData,
 } from '../api/productServices';
 import ProductServiceTable from '../components/Billing/ProductServiceTable';
 import ProductServiceForm from '../components/Billing/ProductServiceForm';
+import { useAuth } from '../context/AuthContext';
 
 export default function ProductServices() {
   const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const walletGated = !!user?.tenant?.is_wallet_gated;
+  const [margin, setMargin] = useState<number | ''>('');
+  const bulkMutation = useMutation({
+    mutationFn: () => bulkMarginProductServices(Number(margin)),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['product-services'] });
+      const { updated, skipped } = res.data;
+      notifications.show({
+        color: 'green',
+        message: skipped > 0
+          ? `Updated ${updated} product price(s). ${skipped} skipped (no cost set for them yet).`
+          : `Updated ${updated} product price(s).`,
+      });
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not apply margin.', color: 'red',
+    }),
+  });
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
   const [typeFilter, setTypeFilter] = useState<string | null>('all');
@@ -91,6 +111,25 @@ export default function ProductServices() {
           Add New
         </Button>
       </Group>
+
+      {walletGated && (
+        <Paper withBorder radius="md" p="sm" mb="md">
+          <Text fw={600} size="sm" mb={4}>Set your profit margin</Text>
+          <Text size="xs" c="dimmed" mb="xs">
+            Enter how much you want to earn per product, per billing cycle — we'll set your
+            prices to cost + this amount across every product in one go. You can still
+            fine-tune individual prices afterwards.
+          </Text>
+          <Group align="flex-end">
+            <NumberInput label="Margin (TZS)" min={0} placeholder="e.g. 20,000" thousandSeparator=","
+              value={margin} onChange={(v) => setMargin(typeof v === 'number' ? v : '')} w={200} />
+            <Button loading={bulkMutation.isPending} disabled={!margin || Number(margin) < 0}
+              onClick={() => bulkMutation.mutate()}>
+              Apply to all my products
+            </Button>
+          </Group>
+        </Paper>
+      )}
 
       <Group mb="md">
         <TextInput

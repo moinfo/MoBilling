@@ -318,6 +318,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::middleware('permission:products.read')->get('/services', [ProductServiceController::class, 'services']);
     Route::middleware('permission:products.create')->post('/product-services', [ProductServiceController::class, 'store']);
     Route::middleware('permission:products.update')->put('/product-services/{product_service}', [ProductServiceController::class, 'update']);
+    Route::middleware('permission:products.update')->post('/product-services/bulk-margin', [ProductServiceController::class, 'bulkMargin']);
     Route::middleware('permission:products.delete')->delete('/product-services/{product_service}', [ProductServiceController::class, 'destroy']);
 
     // Product Add-ons (paid upsell attachable to products)
