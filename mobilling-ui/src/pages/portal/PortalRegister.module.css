@@ -1,0 +1,214 @@
+/* Matches the reseller storefront's own design language (WhiteLabelLanding) —
+   navy/accent palette, Archivo + Instrument Sans + JetBrains Mono — so a
+   visitor moving from "Create account" on the storefront doesn't land on a
+   visually unrelated page. Same FIXED-vs-ADAPTIVE token split as the
+   storefront: this page has no dark hero band, so almost everything here is
+   adaptive by design (the one exception is the CTA button, which is filled
+   with --accent and always needs a fixed-contrast label). */
+
+.page {
+  --navy: #0b1b33;
+  --ink: #0b1b33;
+  --ink-soft: #5b6472;
+  --line: #e3e8ef;
+  --surface: #ffffff;
+  --surface-alt: #f5f7fa;
+  --accent: #1f63b0;
+  --good: #157a4a;
+  --good-tint: #eaf7f0;
+  --danger: #a5321f;
+  --danger-tint: #fbeeec;
+
+  color-scheme: light dark;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: var(--surface-alt);
+  color: var(--ink);
+  font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  padding: 24px;
+  box-sizing: border-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page:not([data-theme="light"]) {
+    --ink: #eef2f7;
+    --ink-soft: #aab6c4;
+    --line: rgba(255, 255, 255, 0.12);
+    --surface: #101b2c;
+    --surface-alt: #0a1220;
+    --accent: #5b9be0;
+  }
+}
+.page[data-theme="dark"] {
+  --ink: #eef2f7;
+  --ink-soft: #aab6c4;
+  --line: rgba(255, 255, 255, 0.12);
+  --surface: #101b2c;
+  --surface-alt: #0a1220;
+  --accent: #5b9be0;
+}
+
+.topbar {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 0 16px;
+}
+
+.themeToggle {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 1.5px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.themeToggle:hover { border-color: var(--accent); color: var(--accent); }
+
+.wrap { width: 100%; max-width: 560px; }
+
+.brandRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.logo { height: 36px; max-width: 180px; object-fit: contain; }
+
+.avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Archivo', sans-serif;
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.brandName { font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 20px; letter-spacing: -0.01em; }
+
+.title {
+  font-family: 'Archivo', sans-serif;
+  font-weight: 800;
+  font-size: 26px;
+  letter-spacing: -0.015em;
+  text-align: center;
+  margin: 0 0 6px;
+}
+
+.subtitle { text-align: center; color: var(--ink-soft); font-size: 14.5px; margin: 0 0 26px; }
+.subtitle b { color: var(--ink); }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 28px;
+}
+
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+.field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+
+.label { font-size: 13px; font-weight: 600; color: var(--ink); }
+.labelOptional { font-weight: 400; color: var(--ink-soft); }
+
+.input {
+  border: 1.5px solid var(--line);
+  border-radius: 9px;
+  padding: 11px 12px;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  background: var(--surface);
+  outline: none;
+}
+.input:focus { border-color: var(--accent); }
+.input::placeholder { color: #a7b0bc; }
+
+.error { font-size: 12.5px; color: var(--danger); margin-top: 2px; }
+
+.submit {
+  width: 100%;
+  border: none;
+  border-radius: 10px;
+  padding: 13px;
+  margin-top: 6px;
+  background: var(--accent);
+  color: #fff;
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 15px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.submit:hover { filter: brightness(0.94); }
+.submit:disabled { opacity: 0.65; cursor: default; }
+
+.footNote { text-align: center; color: var(--ink-soft); font-size: 14px; margin-top: 18px; }
+.footNote a, .link { color: var(--accent); font-weight: 600; cursor: pointer; }
+.footNote a:hover, .link:hover { text-decoration: underline; }
+
+.alert {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  background: #eaf1f8;
+  color: var(--navy);
+  border-radius: 10px;
+  padding: 13px 14px;
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.alert svg { flex-shrink: 0; margin-top: 1px; }
+
+.pinRow { display: flex; justify-content: center; gap: 8px; margin-bottom: 18px; }
+
+.pinInput {
+  width: 46px;
+  height: 54px;
+  text-align: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 22px;
+  font-weight: 600;
+  border: 1.5px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  outline: none;
+}
+.pinInput:focus { border-color: var(--accent); }
+
+.verifyLinks { display: flex; justify-content: space-between; margin-top: 16px; font-size: 13.5px; }
+
+.doneWrap { text-align: center; padding: 20px 0; }
+
+.doneIcon {
+  width: 56px; height: 56px; border-radius: 50%;
+  background: var(--good-tint); color: var(--good);
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 18px;
+}
+
+@media (max-width: 520px) {
+  .grid2 { grid-template-columns: 1fr; }
+  .card { padding: 20px; }
+}

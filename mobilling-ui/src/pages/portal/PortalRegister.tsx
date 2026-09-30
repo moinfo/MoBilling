@@ -1,39 +1,107 @@
-import { useEffect, useState } from 'react';
-import {
-  TextInput, PasswordInput, Button, Paper, Title, Text, Anchor, Stack,
-  Image, Group, Box, rem, useMantineColorScheme, useComputedColorScheme,
-  ActionIcon, PinInput, Alert, ThemeIcon, Grid,
-} from '@mantine/core';
+import { useEffect, useRef, useState } from 'react';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { safeNext } from '../../utils/safeNext';
-import { IconSun, IconMoon, IconArrowLeft, IconCheck, IconUserPlus } from '@tabler/icons-react';
 import { requestPortalOtp, verifyAndRegisterPortal } from '../../api/auth';
 import { useBranding } from '../../branding';
+import styles from './PortalRegister.module.css';
+
+const SunIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </svg>
+);
+const MoonIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.6A9 9 0 1 1 11.4 3a7 7 0 0 0 9.6 9.6Z" />
+  </svg>
+);
+const InfoIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="9" /><path d="M12 16v-5M12 8h.01" />
+  </svg>
+);
+const CheckIcon = () => (
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12.5 10 17 19 7" />
+  </svg>
+);
+const BackIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 12H5M11 18l-6-6 6-6" />
+  </svg>
+);
+
+function PinInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const digits = value.split('').concat(Array(6).fill('')).slice(0, 6);
+
+  const setDigit = (i: number, d: string) => {
+    const next = digits.slice();
+    next[i] = d;
+    onChange(next.join('').trimEnd());
+    if (d && i < 5) refs.current[i + 1]?.focus();
+  };
+
+  return (
+    <div className={styles.pinRow}>
+      {digits.map((d, i) => (
+        <input
+          key={i}
+          ref={(el) => { refs.current[i] = el; }}
+          className={styles.pinInput}
+          inputMode="numeric"
+          maxLength={1}
+          value={d}
+          autoFocus={i === 0}
+          onChange={(e) => setDigit(i, e.currentTarget.value.replace(/\D/g, '').slice(-1))}
+          onKeyDown={(e) => { if (e.key === 'Backspace' && !d && i > 0) refs.current[i - 1]?.focus(); }}
+          onPaste={(e) => {
+            const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+            if (text) { e.preventDefault(); onChange(text); refs.current[Math.min(text.length, 5)]?.focus(); }
+          }}
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function PortalRegister() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  // Preserved through the OTP flow so an /order/* visitor lands back on their plan.
   const next = safeNext(window.location.search);
-  const { toggleColorScheme } = useMantineColorScheme();
-  const computedColorScheme = useComputedColorScheme('light');
-  const isDark = computedColorScheme === 'dark';
   const branding = useBranding();
   const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
-  const brandLogo = branding.branded ? branding.logo_url : '/moinfotech-logo.png';
+  const brandLogo = branding.branded ? branding.logo_url : null;
+  const initial = brandName.trim().charAt(0).toUpperCase() || '?';
+
+  const THEME_KEY = 'wl_theme';
+  const [theme, setTheme] = useState<'light' | 'dark' | null>(() => {
+    try { const s = localStorage.getItem(THEME_KEY); return s === 'light' || s === 'dark' ? s : null; } catch { return null; }
+  });
+  const [systemDark, setSystemDark] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    setSystemDark(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  const isDark = theme ? theme === 'dark' : systemDark;
+  const toggleTheme = () => {
+    const cur = theme ?? (systemDark ? 'dark' : 'light');
+    const nextTheme = cur === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    try { localStorage.setItem(THEME_KEY, nextTheme); } catch { /* ignore */ }
+  };
 
   const [step, setStep] = useState<'details' | 'verify' | 'done'>('details');
   const [otpValue, setOtpValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [clientName, setClientName] = useState<string | null>(null);
   const [isNewClient, setIsNewClient] = useState(true);
-  // Whether the verify step needs to collect name/password itself — true for
-  // the "claim an imported account" flow, which skips the details step and
-  // arrives with those fields empty. Set once per flow entry, NOT derived
-  // from the live form values: doing that made the fields disappear the
-  // moment both had something typed into them, mid-entry.
   const [needsDetails, setNeedsDetails] = useState(false);
 
   const form = useForm({
@@ -49,15 +117,13 @@ export default function PortalRegister() {
     },
   });
 
-  // Arriving from login with ?sent=1: the OTP email is already on its way
-  // (imported client claiming their account) — go straight to the code step.
   useEffect(() => {
     if (searchParams.get('email') && searchParams.get('sent')) {
       setStep('verify');
       setIsNewClient(false);
       setNeedsDetails(true);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sendOtp = async (silent = false) => {
@@ -76,14 +142,10 @@ export default function PortalRegister() {
       setClientName(res.data.client_name ?? null);
       setIsNewClient(res.data.new_client ?? !res.data.client_name);
       setStep('verify');
-      if (!silent) {
-        notifications.show({ message: 'Verification code sent to your email.', color: 'green' });
-      }
+      if (!silent) notifications.show({ message: 'Verification code sent to your email.', color: 'green' });
     } catch (e: any) {
       notifications.show({
-        message: e?.response?.data?.message
-          ?? e?.response?.data?.errors?.email?.[0]
-          ?? 'Could not send the verification code.',
+        message: e?.response?.data?.message ?? e?.response?.data?.errors?.email?.[0] ?? 'Could not send the verification code.',
         color: 'red',
       });
     } finally {
@@ -98,7 +160,6 @@ export default function PortalRegister() {
       notifications.show({ message: 'Enter the 6-digit code from your email.', color: 'red' });
       return;
     }
-    // Claim flow arrives with empty details — require them before submitting.
     if (!form.values.name.trim() || form.values.password.length < 8
       || form.values.password !== form.values.password_confirmation) {
       notifications.show({ message: 'Fill in your name and a matching password (min 8 characters) below.', color: 'red' });
@@ -130,134 +191,138 @@ export default function PortalRegister() {
     }
   };
 
-  return (
-    <Box style={{
-      minHeight: '100vh', display: 'flex', flexDirection: 'column',
-      justifyContent: 'center', alignItems: 'center', padding: rem(24), position: 'relative',
-    }}>
-      <Group style={{ position: 'absolute', top: rem(20), right: rem(20) }} gap="xs">
-        <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle color scheme">
-          {isDark ? <IconSun size={18} /> : <IconMoon size={18} />}
-        </ActionIcon>
-      </Group>
+  const err = (field: keyof typeof form.values) => (form.errors as any)[field] as string | undefined;
 
-      <Box w="100%" maw={560}>
-        <Group justify="center" gap={8} mb="md">
-          {brandLogo && <Image src={brandLogo} h={40} w="auto" alt={brandName} />}
-          <Text size="xl" fw={800}>{brandName}</Text>
-        </Group>
+  return (
+    <div className={styles.page} data-theme={theme ?? undefined}>
+      <div className={styles.topbar}>
+        <button type="button" className={styles.themeToggle} onClick={toggleTheme}
+          aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+          {isDark ? <SunIcon /> : <MoonIcon />}
+        </button>
+      </div>
+
+      <div className={styles.wrap}>
+        <div className={styles.brandRow}>
+          {brandLogo ? <img src={brandLogo} alt="" className={styles.logo} /> : <span className={styles.avatar}>{initial}</span>}
+          <span className={styles.brandName}>{brandName}</span>
+        </div>
 
         {step === 'done' ? (
-          <Paper withBorder shadow="sm" p="xl" radius="md">
-            <Stack gap="md" align="center" py="lg">
-              <ThemeIcon size={60} radius="xl" color="green" variant="light">
-                <IconCheck size={32} />
-              </ThemeIcon>
-              <Title order={3}>Welcome aboard!</Title>
-              <Text c="dimmed" ta="center">Your account is ready — taking you to your client area…</Text>
-            </Stack>
-          </Paper>
+          <div className={styles.card}>
+            <div className={styles.doneWrap}>
+              <div className={styles.doneIcon}><CheckIcon /></div>
+              <div className={styles.title}>Welcome aboard!</div>
+              <p className={styles.subtitle}>Your account is ready — taking you to your client area…</p>
+            </div>
+          </div>
         ) : step === 'details' ? (
           <>
-            <Title order={2} ta="center" mb={4}>Create an Account</Title>
-            <Text c="dimmed" size="sm" ta="center" mb={rem(28)}>
-              Register to order hosting & domains, pay invoices and get support
-            </Text>
+            <h1 className={styles.title}>Create an account</h1>
+            <p className={styles.subtitle}>Register to order hosting &amp; domains, pay invoices and get support.</p>
 
-            <Paper withBorder shadow="sm" p="xl" radius="md">
-              <form onSubmit={handleDetails}>
-                <Stack gap="sm">
-                  <Grid>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <TextInput label="Full Name" required {...form.getInputProps('name')} />
-                    </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <TextInput label="Company (optional)" placeholder="Business or organisation"
-                        {...form.getInputProps('company')} />
-                    </Grid.Col>
-                  </Grid>
-                  <Grid>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <TextInput label="Email Address" required type="email" {...form.getInputProps('email')} />
-                    </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <TextInput label="Phone" placeholder="0712 345 678" {...form.getInputProps('phone')} />
-                    </Grid.Col>
-                  </Grid>
-                  <TextInput label="Address (optional)" placeholder="Street, city" {...form.getInputProps('address')} />
-                  <Grid>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <PasswordInput label="Password" required {...form.getInputProps('password')} />
-                    </Grid.Col>
-                    <Grid.Col span={{ base: 12, sm: 6 }}>
-                      <PasswordInput label="Confirm Password" required {...form.getInputProps('password_confirmation')} />
-                    </Grid.Col>
-                  </Grid>
+            <form className={styles.card} onSubmit={handleDetails}>
+              <div className={styles.grid2}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Full name</label>
+                  <input className={styles.input} required {...form.getInputProps('name', { withError: false })} />
+                  {err('name') && <span className={styles.error}>{err('name')}</span>}
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Company <span className={styles.labelOptional}>(optional)</span></label>
+                  <input className={styles.input} placeholder="Business or organisation" {...form.getInputProps('company', { withError: false })} />
+                </div>
+              </div>
+              <div className={styles.grid2}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Email address</label>
+                  <input className={styles.input} required type="email" {...form.getInputProps('email', { withError: false })} />
+                  {err('email') && <span className={styles.error}>{err('email')}</span>}
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Phone <span className={styles.labelOptional}>(optional)</span></label>
+                  <input className={styles.input} placeholder="0712 345 678" {...form.getInputProps('phone', { withError: false })} />
+                </div>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.label}>Address <span className={styles.labelOptional}>(optional)</span></label>
+                <input className={styles.input} placeholder="Street, city" {...form.getInputProps('address', { withError: false })} />
+              </div>
+              <div className={styles.grid2}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Password</label>
+                  <input className={styles.input} required type="password" {...form.getInputProps('password', { withError: false })} />
+                  {err('password') && <span className={styles.error}>{err('password')}</span>}
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.label}>Confirm password</label>
+                  <input className={styles.input} required type="password" {...form.getInputProps('password_confirmation', { withError: false })} />
+                  {err('password_confirmation') && <span className={styles.error}>{err('password_confirmation')}</span>}
+                </div>
+              </div>
 
-                  <Button fullWidth type="submit" size="md" mt="xs" loading={loading}
-                    leftSection={<IconUserPlus size={17} />}>
-                    Continue — Verify Email
-                  </Button>
-                </Stack>
-              </form>
-            </Paper>
+              <button className={styles.submit} type="submit" disabled={loading}>
+                {loading ? 'Sending…' : 'Continue — verify email'}
+              </button>
+            </form>
 
-            <Text c="dimmed" size="sm" ta="center" mt="lg">
-              Already registered?{' '}
-              <Anchor component={Link} to="/portal/login" size="sm" fw={600}>Sign in</Anchor>
-            </Text>
+            <p className={styles.footNote}>
+              Already registered? <Link to="/portal/login">Sign in</Link>
+            </p>
           </>
         ) : (
           <>
-            <Title order={2} ta="center" mb={4}>Verify Your Email</Title>
-            <Text c="dimmed" size="sm" ta="center" mb={rem(28)}>
-              Enter the 6-digit code we sent to <b>{form.values.email}</b>
-            </Text>
+            <h1 className={styles.title}>Verify your email</h1>
+            <p className={styles.subtitle}>Enter the 6-digit code we sent to <b>{form.values.email}</b></p>
 
-            <Paper withBorder shadow="sm" p="xl" radius="md">
-              <Stack gap="md">
-                {!isNewClient && (
-                  <Alert color="blue" variant="light">
-                    Welcome back{clientName ? <>, <b>{clientName}</b></> : ''}! We found your existing
-                    client account — verify your email and set a password to activate portal access.
-                  </Alert>
-                )}
+            <div className={styles.card}>
+              {!isNewClient && (
+                <div className={styles.alert}>
+                  <InfoIcon />
+                  <span>Welcome back{clientName ? <>, <b>{clientName}</b></> : ''}! We found your existing
+                    client account — verify your email and set a password to activate portal access.</span>
+                </div>
+              )}
 
-                <Group justify="center">
-                  <PinInput length={6} type="number" size="lg" value={otpValue} onChange={setOtpValue} autoFocus />
-                </Group>
+              <PinInput value={otpValue} onChange={setOtpValue} />
 
-                {/* Claim flow (from login) arrives without details — collect them here */}
-                {needsDetails && (
-                  <Stack gap="sm">
-                    <TextInput label="Your Name" required {...form.getInputProps('name')} />
-                    <TextInput label="Phone" {...form.getInputProps('phone')} />
-                    <Grid>
-                      <Grid.Col span={{ base: 12, sm: 6 }}>
-                        <PasswordInput label="Set Password" required {...form.getInputProps('password')} />
-                      </Grid.Col>
-                      <Grid.Col span={{ base: 12, sm: 6 }}>
-                        <PasswordInput label="Confirm Password" required {...form.getInputProps('password_confirmation')} />
-                      </Grid.Col>
-                    </Grid>
-                  </Stack>
-                )}
+              {needsDetails && (
+                <>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Your name</label>
+                    <input className={styles.input} required {...form.getInputProps('name', { withError: false })} />
+                  </div>
+                  <div className={styles.field}>
+                    <label className={styles.label}>Phone <span className={styles.labelOptional}>(optional)</span></label>
+                    <input className={styles.input} {...form.getInputProps('phone', { withError: false })} />
+                  </div>
+                  <div className={styles.grid2}>
+                    <div className={styles.field}>
+                      <label className={styles.label}>Set password</label>
+                      <input className={styles.input} required type="password" {...form.getInputProps('password', { withError: false })} />
+                    </div>
+                    <div className={styles.field}>
+                      <label className={styles.label}>Confirm password</label>
+                      <input className={styles.input} required type="password" {...form.getInputProps('password_confirmation', { withError: false })} />
+                    </div>
+                  </div>
+                </>
+              )}
 
-                <Button fullWidth size="md" loading={loading} onClick={handleVerify}>
-                  Create Account
-                </Button>
+              <button className={styles.submit} type="button" disabled={loading} onClick={handleVerify}>
+                {loading ? 'Creating…' : 'Create account'}
+              </button>
 
-                <Group justify="space-between">
-                  <Anchor size="sm" onClick={() => { setStep('details'); setOtpValue(''); }}>
-                    <Group gap={4}><IconArrowLeft size={13} /> Edit details</Group>
-                  </Anchor>
-                  <Anchor size="sm" onClick={() => sendOtp()}>Resend code</Anchor>
-                </Group>
-              </Stack>
-            </Paper>
+              <div className={styles.verifyLinks}>
+                <a className={styles.link} onClick={() => { setStep('details'); setOtpValue(''); }}>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><BackIcon /> Edit details</span>
+                </a>
+                <a className={styles.link} onClick={() => sendOtp()}>Resend code</a>
+              </div>
+            </div>
           </>
         )}
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 }
