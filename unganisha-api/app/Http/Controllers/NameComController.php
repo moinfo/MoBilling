@@ -7,6 +7,7 @@ use App\Exceptions\RegistrarApiException;
 use App\Models\Domain;
 use App\Models\NameComAccount;
 use App\Models\NameComAuditLog;
+use App\Models\Tenant;
 use App\Services\Registrar\NameComDomainService;
 use App\Services\Registrar\NameComDriver;
 use Illuminate\Http\JsonResponse;
@@ -148,7 +149,7 @@ class NameComController extends Controller
         // would silently break their own domain search/registration with no
         // self-service way to restore it (they can't re-duplicate it themselves).
         abort_if(
-            \App\Models\Tenant::withoutGlobalScopes()->find($a->tenant_id)?->is_wallet_gated,
+            Tenant::withoutGlobalScopes()->find($a->tenant_id)?->is_wallet_gated,
             403,
             'This account is managed for you — contact support if you need it changed.'
         );
@@ -257,6 +258,16 @@ class NameComController extends Controller
 
         $ours = Domain::with('client:id,name')->whereIn('name', array_keys($remote))
             ->whereNotIn('status', ['cancelled', 'transferred_out'])->get()->keyBy('name');
+
+        // A wallet-gated reseller tenant's Name.com account is a duplicate of
+        // Moinfotech's own real one (see ResellerProvisioningService) — the
+        // real account holds every domain Moinfotech has ever registered
+        // through it, across every other client. He can still REGISTER new
+        // domains on it (that's the whole point of sharing the account); he
+        // just must never see domain names that aren't already his own.
+        if (Tenant::withoutGlobalScopes()->find($this->tenantId())?->is_wallet_gated) {
+            $remote = array_intersect_key($remote, $ours->all());
+        }
         $labels = $this->accounts()->keyBy('id');
         $default = $this->accounts()->first();
 
