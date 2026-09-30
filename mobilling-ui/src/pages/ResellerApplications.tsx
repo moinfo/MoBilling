@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, Button, Modal, Textarea, Tabs,
-  ScrollArea, LoadingOverlay, Alert, SimpleGrid, Divider, List,
+  ScrollArea, LoadingOverlay, Alert, SimpleGrid, Divider, List, NumberInput, TextInput,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconBuildingStore, IconCheck, IconX, IconInfoCircle, IconRocket, IconAlertTriangle } from '@tabler/icons-react';
+import { IconBuildingStore, IconCheck, IconX, IconInfoCircle, IconRocket, IconAlertTriangle, IconWallet } from '@tabler/icons-react';
 import {
   listResellerApplications, approveResellerApplication, rejectResellerApplication,
   previewResellerProvision, provisionResellerApplication,
+  getResellerWallet, topupResellerWallet,
   ResellerApplicationStaffRecord,
 } from '../api/resellerApplications';
 
@@ -29,6 +30,10 @@ export default function ResellerApplications() {
   const [approveNote, setApproveNote] = useState('');
   const [approveOpen, setApproveOpen] = useState(false);
   const [provisionOpen, setProvisionOpen] = useState(false);
+  const [topupOpen, setTopupOpen] = useState(false);
+  const [topupAmount, setTopupAmount] = useState<number | ''>('');
+  const [topupReference, setTopupReference] = useState('');
+  const [topupNotes, setTopupNotes] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['reseller-applications', status],
@@ -76,6 +81,30 @@ export default function ResellerApplications() {
       setSelected(null);
     },
     onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not provision.', color: 'red' }),
+  });
+
+  const walletQuery = useQuery({
+    queryKey: ['reseller-wallet', selected?.id],
+    queryFn: () => getResellerWallet(selected!.id),
+    enabled: !!selected && selected.status === 'provisioned',
+  });
+  const wallet = walletQuery.data?.data?.data;
+
+  const topupMut = useMutation({
+    mutationFn: (id: string) => topupResellerWallet(id, {
+      amount: Number(topupAmount),
+      reference: topupReference || undefined,
+      notes: topupNotes || undefined,
+    }),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Wallet topped up', message: res.data.message, color: 'green' });
+      qc.invalidateQueries({ queryKey: ['reseller-wallet', selected?.id] });
+      setTopupOpen(false);
+      setTopupAmount('');
+      setTopupReference('');
+      setTopupNotes('');
+    },
+    onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not top up.', color: 'red' }),
   });
 
   return (
@@ -180,9 +209,43 @@ export default function ResellerApplications() {
               </Alert>
             )}
             {selected.status === 'provisioned' && (
-              <Alert icon={<IconCheck size={16} />} color="green" title="Provisioned">
-                This application's tenant has been created ({selected.provisioned_tenant?.custom_domain ?? selected.provisioned_tenant?.name}).
-              </Alert>
+              <>
+                <Alert icon={<IconCheck size={16} />} color="green" title="Provisioned">
+                  This application's tenant has been created ({selected.provisioned_tenant?.custom_domain ?? selected.provisioned_tenant?.name}).
+                </Alert>
+
+                <Divider label="Wallet" />
+                <Group justify="space-between" pos="relative" mih={40}>
+                  <LoadingOverlay visible={walletQuery.isLoading} />
+                  <Text size="lg" fw={600}>
+                    {wallet ? `TZS ${wallet.balance.toLocaleString()}` : '—'}
+                  </Text>
+                  <Button size="xs" leftSection={<IconWallet size={14} />} onClick={() => setTopupOpen(true)}>
+                    Top up (paid outside)
+                  </Button>
+                </Group>
+
+                {wallet && wallet.ledger.length > 0 && (
+                  <ScrollArea mah={220}>
+                    <Table striped fz="sm">
+                      <Table.Thead>
+                        <Table.Tr><Table.Th>Date</Table.Th><Table.Th>Type</Table.Th><Table.Th>Amount</Table.Th><Table.Th>Balance after</Table.Th><Table.Th>Reference / notes</Table.Th></Table.Tr>
+                      </Table.Thead>
+                      <Table.Tbody>
+                        {wallet.ledger.map((t) => (
+                          <Table.Tr key={t.id}>
+                            <Table.Td>{new Date(t.created_at).toLocaleString()}</Table.Td>
+                            <Table.Td><Badge size="xs" color={t.type === 'topup' ? 'green' : 'red'} variant="light">{t.type}</Badge></Table.Td>
+                            <Table.Td c={t.amount < 0 ? 'red' : 'green'}>{t.amount.toLocaleString()}</Table.Td>
+                            <Table.Td>{t.balance_after.toLocaleString()}</Table.Td>
+                            <Table.Td>{[t.reference, t.notes].filter(Boolean).join(' — ') || '—'}</Table.Td>
+                          </Table.Tr>
+                        ))}
+                      </Table.Tbody>
+                    </Table>
+                  </ScrollArea>
+                )}
+              </>
             )}
           </Stack>
         )}
@@ -210,6 +273,24 @@ export default function ResellerApplications() {
             <Button color="red" loading={rejectMut.isPending} disabled={!rejectReason.trim()}
               onClick={() => selected && rejectMut.mutate(selected.id)}>
               Confirm reject
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Modal opened={topupOpen} onClose={() => setTopupOpen(false)} title={`Top up wallet — ${selected?.brand_name}`}>
+        <Stack gap="sm">
+          <Text size="sm" c="dimmed">Record a top-up the reseller paid outside the system (bank, cash, mobile money). Their wallet balance is credited immediately.</Text>
+          <NumberInput label="Amount (TZS)" required min={1} thousandSeparator="," value={topupAmount}
+            onChange={(v) => setTopupAmount(typeof v === 'number' ? v : '')} />
+          <TextInput label="Reference (optional)" placeholder="e.g. bank slip / transaction ref"
+            value={topupReference} onChange={(e) => setTopupReference(e.currentTarget.value)} />
+          <Textarea label="Notes (optional)" value={topupNotes} onChange={(e) => setTopupNotes(e.currentTarget.value)} />
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setTopupOpen(false)}>Cancel</Button>
+            <Button color="green" loading={topupMut.isPending} disabled={!topupAmount || Number(topupAmount) <= 0}
+              onClick={() => selected && topupMut.mutate(selected.id)}>
+              Confirm top-up
             </Button>
           </Group>
         </Stack>

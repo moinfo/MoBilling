@@ -46,3 +46,19 @@ export const provisionResellerApplication = (id: string, admin_password?: string
   api.post<{ data: { tenant_id: string; tenant_name: string; custom_domain: string; admin_email: string }; message: string }>(
     `/reseller-applications/${id}/provision`, { admin_password }
   );
+
+export interface ResellerWalletTransaction {
+  id: string;
+  type: 'topup' | 'debit';
+  amount: number;
+  balance_after: number;
+  reference: string | null;
+  notes: string | null;
+  created_at: string;
+}
+
+export const getResellerWallet = (id: string) =>
+  api.get<{ data: { balance: number; ledger: ResellerWalletTransaction[] } }>(`/reseller-applications/${id}/wallet`);
+
+export const topupResellerWallet = (id: string, payload: { amount: number; reference?: string; notes?: string }) =>
+  api.post<{ data: { balance: number }; message: string }>(`/reseller-applications/${id}/wallet/topup`, payload);
