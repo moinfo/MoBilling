@@ -37,3 +37,33 @@ export const renewResellerDomain = (domainId: string, years: number) =>
   api.post<{ data: { document_id: string; document_number: string; total: number }; message: string }>(
     `/portal/reseller/domains/${domainId}/renew`, { years }
   );
+
+// White-label reseller TENANT application — a much bigger upgrade than the
+// wholesale-domain membership above: a whole separate branded Tenant.
+export type ResellerApplicationCategory = 'domain' | 'hosting' | 'email' | 'linode';
+
+export interface ResellerApplicationRecord {
+  id: string;
+  requested_domain: string;
+  brand_name: string;
+  categories: ResellerApplicationCategory[];
+  contact_name: string;
+  contact_email: string;
+  contact_phone: string | null;
+  status: 'pending' | 'approved' | 'rejected' | 'provisioned';
+  staff_note: string | null;
+  created_at: string;
+}
+
+export const getResellerApplication = () =>
+  api.get<{ data: ResellerApplicationRecord | null }>('/portal/reseller-application');
+
+export const submitResellerApplication = (data: {
+  requested_domain: string;
+  brand_name: string;
+  categories: ResellerApplicationCategory[];
+  contact_name: string;
+  contact_email: string;
+  contact_phone?: string;
+}) =>
+  api.post<{ data: ResellerApplicationRecord; message: string }>('/portal/reseller-application', data);

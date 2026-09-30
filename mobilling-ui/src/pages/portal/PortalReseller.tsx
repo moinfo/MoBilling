@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, LoadingOverlay, Button, SimpleGrid,
-  TextInput, NumberInput, Select, Table, ThemeIcon, List,
+  TextInput, NumberInput, Select, Table, ThemeIcon, List, Checkbox, Alert,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,13 +9,136 @@ import { notifications } from '@mantine/notifications';
 import { useNavigate } from 'react-router-dom';
 import {
   IconWorldWww, IconWallet, IconSearch, IconRefresh,
-  IconDiscount2, IconBolt, IconCheck,
+  IconDiscount2, IconBolt, IconCheck, IconBuildingStore, IconInfoCircle,
 } from '@tabler/icons-react';
 import {
   getResellerStatus, subscribeReseller, checkResellerDomain, orderResellerDomain, renewResellerDomain,
+  getResellerApplication, submitResellerApplication, ResellerApplicationCategory,
 } from '../../api/reseller';
-import { getPortalDomains, PortalDomain } from '../../api/portal';
+import { getPortalDomains, PortalDomain, getPortalProfile } from '../../api/portal';
 import { formatCurrency } from '../../utils/formatCurrency';
+
+const CATEGORY_OPTIONS: { value: ResellerApplicationCategory; label: string }[] = [
+  { value: 'domain', label: 'Domain registration' },
+  { value: 'hosting', label: 'Website hosting' },
+  { value: 'email', label: 'Business email hosting' },
+  { value: 'linode', label: 'Cloud servers (Linode)' },
+];
+
+function WhiteLabelResellerCard() {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({ queryKey: ['reseller-application'], queryFn: getResellerApplication });
+  const { data: profileData } = useQuery({ queryKey: ['portal-profile-for-reseller-app'], queryFn: getPortalProfile });
+  const application = data?.data?.data ?? null;
+
+  const form = useForm({
+    initialValues: {
+      brand_name: '',
+      requested_domain: '',
+      categories: [] as ResellerApplicationCategory[],
+      contact_name: '',
+      contact_email: '',
+      contact_phone: '',
+    },
+    validate: {
+      brand_name: (v) => (v.trim() ? null : 'Brand name is required'),
+      requested_domain: (v) => (/^(?!-)[a-z0-9-]{1,63}(?<!-)(\.(?!-)[a-z0-9-]{1,63}(?<!-))+$/i.test(v.trim()) ? null : 'Enter a valid domain, e.g. shop.example.com'),
+      categories: (v) => (v.length ? null : 'Select at least one'),
+      contact_name: (v) => (v.trim() ? null : 'Contact name is required'),
+      contact_email: (v) => (/^\S+@\S+\.\S+$/.test(v) ? null : 'Enter a valid email'),
+    },
+  });
+
+  useEffect(() => {
+    const user = (profileData?.data as any)?.user;
+    if (user && !form.values.contact_name && !application) {
+      form.setValues({
+        contact_name: user.name ?? '',
+        contact_email: user.email ?? '',
+        contact_phone: user.phone ?? '',
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileData, application]);
+
+  const submitMut = useMutation({
+    mutationFn: () => submitResellerApplication({
+      ...form.values,
+      requested_domain: form.values.requested_domain.trim().toLowerCase(),
+      contact_phone: form.values.contact_phone || undefined,
+    }),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Application submitted', message: res.data.message, color: 'green' });
+      qc.invalidateQueries({ queryKey: ['reseller-application'] });
+    },
+    onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not submit your application.', color: 'red' }),
+  });
+
+  if (isLoading) {
+    return <Stack pos="relative" mih={120}><LoadingOverlay visible /></Stack>;
+  }
+
+  return (
+    <Paper withBorder p="lg" radius="md">
+      <Group gap="xs" mb="sm">
+        <IconBuildingStore size={20} />
+        <Title order={4}>White-Label Reseller Program</Title>
+      </Group>
+      <Text size="sm" c="dimmed" mb="md">
+        Get your own fully-branded billing platform — your own domain, your own admin login, your own clients and
+        pricing — selling domains, hosting, email and cloud servers. You buy at our cost price through a prepaid
+        wallet; your customers pay you at whatever price you set.
+      </Text>
+
+      {application ? (
+        <Alert
+          icon={<IconInfoCircle size={16} />}
+          color={application.status === 'pending' ? 'yellow' : application.status === 'rejected' ? 'red' : 'green'}
+          title={
+            application.status === 'pending' ? 'Application pending review'
+              : application.status === 'approved' ? 'Application approved'
+              : application.status === 'provisioned' ? 'Your reseller account is live'
+              : 'Application not approved'
+          }
+        >
+          <Text size="sm">
+            Brand: <b>{application.brand_name}</b> &middot; Domain: <b>{application.requested_domain}</b>
+          </Text>
+          {application.staff_note && application.status === 'rejected' && (
+            <Text size="sm" mt={4}>Reason: {application.staff_note}</Text>
+          )}
+          {application.status === 'provisioned' && (
+            <Text size="sm" mt={4}>Your team will share your login details separately.</Text>
+          )}
+        </Alert>
+      ) : (
+        <form onSubmit={form.onSubmit(() => submitMut.mutate())}>
+          <Stack gap="sm">
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              <TextInput label="Brand name" placeholder="e.g. Acme Hosting" required {...form.getInputProps('brand_name')} />
+              <TextInput label="Domain you'll use" placeholder="e.g. billing.acme.com" required {...form.getInputProps('requested_domain')} />
+            </SimpleGrid>
+            <Checkbox.Group label="What will you sell?" {...form.getInputProps('categories')}>
+              <Group mt="xs" gap="md">
+                {CATEGORY_OPTIONS.map((c) => (
+                  <Checkbox key={c.value} value={c.value} label={c.label} />
+                ))}
+              </Group>
+            </Checkbox.Group>
+            <SimpleGrid cols={{ base: 1, sm: 3 }}>
+              <TextInput label="Contact name" required {...form.getInputProps('contact_name')} />
+              <TextInput label="Contact email" required {...form.getInputProps('contact_email')} />
+              <TextInput label="Contact phone" {...form.getInputProps('contact_phone')} />
+            </SimpleGrid>
+            <Button type="submit" color="grape" leftSection={<IconBuildingStore size={16} />} loading={submitMut.isPending} mt="xs">
+              Submit application
+            </Button>
+          </Stack>
+        </form>
+      )}
+    </Paper>
+  );
+}
 
 export default function PortalReseller() {
   const qc = useQueryClient();
@@ -156,6 +279,8 @@ export default function PortalReseller() {
             </SimpleGrid>
           )}
         </Paper>
+
+        <WhiteLabelResellerCard />
       </Stack>
     );
   }
@@ -289,6 +414,8 @@ export default function PortalReseller() {
           </Table>
         )}
       </Paper>
+
+      <WhiteLabelResellerCard />
     </Stack>
   );
 }

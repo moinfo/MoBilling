@@ -1226,6 +1226,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/reseller/domains/check', [\App\Http\Controllers\Portal\PortalResellerController::class, 'check']);
     Route::post('/reseller/domains/order', [\App\Http\Controllers\Portal\PortalResellerController::class, 'order']);
     Route::post('/reseller/domains/{domain}/renew', [\App\Http\Controllers\Portal\PortalResellerController::class, 'renew']);
+    Route::get('/reseller-application', [\App\Http\Controllers\Portal\PortalResellerApplicationController::class, 'show']);
+    Route::post('/reseller-application', [\App\Http\Controllers\Portal\PortalResellerApplicationController::class, 'store']);
     Route::get('/tickets',                  [\App\Http\Controllers\Portal\PortalTicketController::class, 'index']);
     Route::post('/tickets',                 [\App\Http\Controllers\Portal\PortalTicketController::class, 'store']);
     Route::get('/tickets/{ticket}',         [\App\Http\Controllers\Portal\PortalTicketController::class, 'show']);
