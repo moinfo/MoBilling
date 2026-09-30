@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DomainTld;
 use App\Models\ProductService;
 use App\Models\Tenant;
 use Illuminate\Http\Request;
@@ -22,7 +23,7 @@ class PublicCatalogController extends Controller
     {
         $tenantId = $this->storefrontTenantId($request);
         if (!$tenantId) {
-            return response()->json(['hosting' => [], 'email' => [], 'linode' => []]);
+            return response()->json(['hosting' => [], 'email' => [], 'linode' => [], 'tlds' => []]);
         }
 
         $plan = fn (ProductService $p) => [
@@ -36,8 +37,12 @@ class PublicCatalogController extends Controller
             'description'   => $p->description,
         ];
 
+        // Excludes category "mail" so a cPanel-provisioned email product (which
+        // also matches provisioning_type=whm_cpanel) lists once, under email
+        // only — see ResellerProvisioningService's own dedup for the same case.
         $hosting = ProductService::withoutGlobalScopes()->where('tenant_id', $tenantId)
-            ->where('type', 'product')->where('provisioning_type', 'whm_cpanel')->where('is_active', true)
+            ->where('type', 'product')->where('provisioning_type', 'whm_cpanel')
+            ->where('category', 'not like', '%mail%')->where('is_active', true)
             ->orderBy('price')->get()->map($plan)->values();
 
         $email = ProductService::withoutGlobalScopes()->where('tenant_id', $tenantId)
@@ -48,7 +53,15 @@ class PublicCatalogController extends Controller
             ->where('provisioning_type', 'linode')->where('is_active', true)
             ->orderBy('price')->get()->map($plan)->values();
 
-        return response()->json(['hosting' => $hosting, 'email' => $email, 'linode' => $linode]);
+        // A handful of popular TLDs with their real retail price, for the
+        // hero's TLD chips — a local lookup (DomainTld::priceFor's own table),
+        // never a live registrar call.
+        $tlds = DomainTld::onSaleCatalog($tenantId)->take(5)->map(fn (DomainTld $t) => [
+            'tld'   => $t->tld,
+            'price' => (float) $t->register_price,
+        ])->values();
+
+        return response()->json(['hosting' => $hosting, 'email' => $email, 'linode' => $linode, 'tlds' => $tlds]);
     }
 
     private function storefrontTenantId(Request $request): ?string

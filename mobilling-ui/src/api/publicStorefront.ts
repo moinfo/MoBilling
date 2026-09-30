@@ -29,10 +29,16 @@ export interface CatalogPlan {
   description: string | null;
 }
 
+export interface CatalogTld {
+  tld: string;
+  price: number;
+}
+
 export interface PublicCatalog {
   hosting: CatalogPlan[];
   email: CatalogPlan[];
   linode: CatalogPlan[];
+  tlds: CatalogTld[];
 }
 
 export const getPublicCatalog = () => api.get<PublicCatalog>('/public/catalog');
