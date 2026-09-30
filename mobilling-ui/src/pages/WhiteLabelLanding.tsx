@@ -415,6 +415,7 @@ export default function WhiteLabelLanding() {
           {tab === 'email' && emailPlans.length > 0 && (
             <div className={styles.planGrid5}>
               {emailPlans.map((p) => {
+                const specs = parseSpecs(p.description);
                 const popular = p.name === popularEmail?.name;
                 return (
                   <div key={p.name} className={`${styles.planCard} ${popular ? styles.planCardDark : ''}`}>
@@ -425,6 +426,16 @@ export default function WhiteLabelLanding() {
                     </div>
                     <div className={styles.planCycle}>per {p.billing_cycle}</div>
                     <Link to={orderHref(p.name)} className={`${styles.planCta} ${popular ? styles.planCtaLight : ''}`}>Get started</Link>
+                    {specs.length > 0 && (
+                      <ul className={`${styles.planSpecs} ${popular ? styles.planSpecsDark : ''}`}>
+                        {specs.map((s) => (
+                          <li key={s.label}>
+                            <CheckIcon color={popular ? '#3fcf8e' : accent} />
+                            <span><b>{s.value}</b> {s.label}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                 );
               })}
