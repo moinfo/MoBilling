@@ -53,6 +53,30 @@ export function loadBranding(): Promise<Branding> {
   return inFlight;
 }
 
+/**
+ * Swap the browser-tab favicon on a branded host. Never falls back to
+ * Moinfotech's own logo (the whole white-label point) — with no custom
+ * logo_url set, uses a neutral initial-letter icon instead. Unbranded hosts
+ * keep the static Moinfotech favicon declared in index.html untouched.
+ */
+function applyFavicon(b: Branding) {
+  if (!b.branded) return;
+  const link = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+  if (!link) return;
+
+  if (b.logo_url) {
+    link.href = b.logo_url;
+    return;
+  }
+
+  const initial = (b.name ?? '').trim().charAt(0).toUpperCase() || '?';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">`
+    + `<rect width="64" height="64" rx="12" fill="#1e293b"/>`
+    + `<text x="32" y="43" font-family="sans-serif" font-size="30" fill="#fff" text-anchor="middle">${initial}</text>`
+    + `</svg>`;
+  link.href = `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
 export function useBranding(): Branding {
   // Seed synchronously from a fresh cache so a branded portal never flashes
   // the default MoBilling brand on navigation.
@@ -64,6 +88,7 @@ export function useBranding(): Branding {
       if (!alive) return;
       setBranding(b);
       if (b.branded && b.name) document.title = `${b.name} — Client Area`;
+      applyFavicon(b);
     });
     return () => { alive = false; };
   }, []);
