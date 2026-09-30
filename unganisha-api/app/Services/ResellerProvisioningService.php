@@ -279,7 +279,10 @@ class ResellerProvisioningService
         foreach ($servers as $source) {
             $new = Server::withoutGlobalScopes()->create([
                 'tenant_id'   => $newTenantId,
-                'name'        => $source->name . ' (Shared — same as Moinfotech)',
+                // Real connection for the reseller's own tenant to actually host on
+                // — but the name they'd see anywhere it surfaces must never say
+                // "same as Moinfotech" (see the identical Name.com/Linode fixes).
+                'name'        => 'Default Server',
                 'hostname'    => $source->hostname,
                 'port'        => $source->port,
                 'username'    => $source->username,
@@ -302,7 +305,10 @@ class ResellerProvisioningService
         }
         LinodeAccount::withoutGlobalScopes()->create([
             'tenant_id'  => $newTenantId,
-            'label'      => $source->label . ' (Shared — same as Moinfotech)',
+            // Real credentials for the reseller's own tenant to actually manage
+            // servers — but the label they see must never say "same as
+            // Moinfotech" (see the identical Name.com account fix above).
+            'label'      => 'Default Account',
             'token'      => $source->token, // decrypted on read, re-encrypted on save
             'token_hint' => $source->token_hint,
             'soa_email'  => $source->soa_email,
@@ -317,7 +323,7 @@ class ResellerProvisioningService
     private function duplicateProducts($products, string $newTenantId, array $serverIdMap): void
     {
         foreach ($products as $source) {
-            ProductService::withoutGlobalScopes()->create([
+            $new = ProductService::withoutGlobalScopes()->create([
                 'tenant_id'             => $newTenantId,
                 'type'                  => $source->type,
                 'name'                  => $source->name,
@@ -340,6 +346,9 @@ class ResellerProvisioningService
                 'auto_provision'        => $source->auto_provision,
                 'portal_visible'        => $source->portal_visible,
             ]);
+            // Real shared infra (server + cPanel package) — not fillable from
+            // request input by design; see the model and ProductServiceController.
+            $new->forceFill(['managed_by_platform' => true])->save();
         }
     }
 }

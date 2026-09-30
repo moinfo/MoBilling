@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Table, Badge, ActionIcon, Group, Switch, Text, Tooltip, Modal, Stack, Center, Loader } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { IconEdit, IconTrash, IconServer } from '@tabler/icons-react';
+import { IconEdit, IconTrash, IconServer, IconLock } from '@tabler/icons-react';
 import { ProductService } from '../../api/productServices';
 import { getClientSubscriptions } from '../../api/clientSubscriptions';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { formatDate } from '../../utils/formatDate';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../context/AuthContext';
 
 interface Props {
   items: ProductService[];
@@ -18,7 +19,9 @@ const statusColors: Record<string, string> = { active: 'green', pending: 'blue',
 
 export default function ProductServiceTable({ items, onEdit, onDelete }: Props) {
   const { can } = usePermissions();
+  const { user } = useAuth();
   const canSeeSubscribers = can('client_subscriptions.read');
+  const walletGated = !!user?.tenant?.is_wallet_gated;
   const [viewing, setViewing] = useState<ProductService | null>(null);
 
   if (items.length === 0) {
@@ -88,14 +91,20 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
             </Table.Td>
             <Table.Td><Switch checked={item.is_active} readOnly size="xs" /></Table.Td>
             <Table.Td>
-              <Group gap="xs">
-                <ActionIcon variant="light" onClick={() => onEdit(item)}>
-                  <IconEdit size={16} />
-                </ActionIcon>
-                <ActionIcon variant="light" color="red" onClick={() => onDelete(item)}>
-                  <IconTrash size={16} />
-                </ActionIcon>
-              </Group>
+              {walletGated && item.managed_by_platform ? (
+                <Tooltip label='Managed for you — use "Set your profit margin" to adjust its price'>
+                  <IconLock size={16} color="var(--mantine-color-gray-6)" />
+                </Tooltip>
+              ) : (
+                <Group gap="xs">
+                  <ActionIcon variant="light" onClick={() => onEdit(item)}>
+                    <IconEdit size={16} />
+                  </ActionIcon>
+                  <ActionIcon variant="light" color="red" onClick={() => onDelete(item)}>
+                    <IconTrash size={16} />
+                  </ActionIcon>
+                </Group>
+              )}
             </Table.Td>
           </Table.Tr>
         ))}

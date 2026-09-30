@@ -21,6 +21,7 @@ export interface ProductService {
   clients_count?: number;
   auto_provision: boolean;
   portal_visible: boolean;
+  managed_by_platform: boolean;
   created_at: string;
 }
 

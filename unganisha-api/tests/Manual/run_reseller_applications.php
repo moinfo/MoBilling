@@ -163,7 +163,7 @@ try {
     ok($application->status === 'provisioned' && $application->provisioned_tenant_id === $tenant->id, 'application marked provisioned, linked to tenant');
 
     $newServers = Server::withoutGlobalScopes()->where('tenant_id', $tenant->id)->get();
-    ok($newServers->count() === 1 && $newServers->first()->hostname === $srcServer->hostname && str_contains($newServers->first()->name, 'Shared'), 'server duplicated (same hostname), labeled shared');
+    ok($newServers->count() === 1 && $newServers->first()->hostname === $srcServer->hostname && !str_contains($newServers->first()->name, 'Moinfotech'), 'server duplicated (same hostname), neutral label (never names Moinfotech to the reseller)');
     ok($newServers->first()->api_token === 'FAKE_WHM_TOKEN_abc123', 'server credential round-trips (decrypt-then-resave via cast)');
 
     $newNc = NameComAccount::withoutGlobalScopes()->where('tenant_id', $tenant->id)->get();
@@ -178,9 +178,36 @@ try {
     $newProducts = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->get();
     ok($newProducts->count() === 11, 'exactly 11 products created (6 hosting + 4 email + 1 linode), no legacy junk: ' . $newProducts->count());
     ok($newProducts->every(fn ($p) => (float) $p->cost_price === (float) $p->price), 'every new product cost_price = its own price at duplication time — Moinfotech\'s retail price is the reseller\'s cost, set automatically, no manual owner step needed');
+    ok($newProducts->every(fn ($p) => $p->managed_by_platform === true), 'every duplicated product is managed_by_platform — not directly editable/deletable by the reseller, only their own margin via bulkMargin()');
     $newHostingProduct = $newProducts->firstWhere('name', 'System Web Hosting Package');
     ok($newHostingProduct && $newHostingProduct->server_id === $newServers->first()->id, 'hosting product server_id remapped to the NEW duplicated server');
     ok((float) $newHostingProduct->price === 100000.0, 'hosting product retail price copied from source');
+
+    // managed_by_platform enforcement: the reseller's own admin cannot edit/delete
+    // a duplicated (staff-managed) product, but can freely manage one they create themselves.
+    // app()->call() mirrors the real HTTP kernel: it resolves StoreProductServiceRequest
+    // from the bound Request instance (req() below), running its validation for real.
+    $productCtl = app(\App\Http\Controllers\ProductServiceController::class);
+
+    req(Request::create('/x', 'PUT', ['type' => 'product', 'name' => $newHostingProduct->name, 'price' => 999]), $adminUser);
+    $rRejectUpdate = trap(fn () => app()->call([$productCtl, 'update'], ['productService' => $newHostingProduct]));
+    ok($rRejectUpdate->getStatusCode() === 403, 'reseller admin cannot edit a managed_by_platform product: ' . $rRejectUpdate->getStatusCode());
+    ok((float) $newHostingProduct->fresh()->price === 100000.0, 'its price is unchanged after the rejected edit attempt');
+
+    req(Request::create('/x', 'DELETE'), $adminUser);
+    $rRejectDelete = trap(fn () => $productCtl->destroy($newHostingProduct));
+    ok($rRejectDelete->getStatusCode() === 403, 'reseller admin cannot delete a managed_by_platform product: ' . $rRejectDelete->getStatusCode());
+    ok(ProductService::withoutGlobalScopes()->whereKey($newHostingProduct->id)->exists(), 'it still exists after the rejected delete attempt');
+
+    $ownProduct = ProductService::withoutGlobalScopes()->create([
+        'tenant_id' => $tenant->id, 'type' => 'product', 'name' => 'My Own Reseller Product',
+        'price' => 5000, 'unit' => 'pcs', 'is_active' => true,
+    ]);
+    ok($ownProduct->fresh()->managed_by_platform === false, 'a product the reseller creates themselves defaults to managed_by_platform = false');
+    req(Request::create('/x', 'PUT', ['type' => 'product', 'name' => 'My Own Reseller Product', 'price' => 7000]), $adminUser);
+    trap(fn () => app()->call([$productCtl, 'update'], ['productService' => $ownProduct]));
+    ok((float) $ownProduct->fresh()->price === 7000.0, 'reseller admin CAN edit their own (non-managed) product — no exception, price updated');
+    auth()->setUser($staff); // restore ambient auth for the rest of this part
 
     $newTlds = DomainTld::where('tenant_id', $tenant->id)->get();
     ok($newTlds->count() === 3, 'all three TLD rows duplicated: ' . $newTlds->count());

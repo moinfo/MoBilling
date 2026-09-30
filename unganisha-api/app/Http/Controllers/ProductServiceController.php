@@ -6,10 +6,30 @@ use App\Http\Requests\StoreProductServiceRequest;
 use App\Http\Resources\ProductServiceResource;
 use App\Models\ClientSubscription;
 use App\Models\ProductService;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
 
 class ProductServiceController extends Controller
 {
+    /**
+     * A product duplicated onto a wallet-gated reseller tenant at
+     * provisioning (managed_by_platform) is real shared infrastructure they
+     * never set up themselves — editing it (any field, not just the
+     * provisioning ones) or deleting it outright is staff-only. Their own
+     * price margin on these is set through the dedicated bulkMargin() tool
+     * instead, which only ever writes price = cost_price + margin. A
+     * product they create themselves has managed_by_platform = false and is
+     * fully theirs to manage.
+     */
+    private function assertEditable(ProductService $p): void
+    {
+        if (!$p->managed_by_platform) {
+            return;
+        }
+        $walletGated = (bool) Tenant::withoutGlobalScopes()->find(auth()->user()->tenant_id)?->is_wallet_gated;
+        abort_if($walletGated, 403, 'This product is managed for you — use "Set your profit margin" to adjust its price, or contact support for anything else.');
+    }
+
     public function index(Request $request)
     {
         // Lets staff spot true duplicates (never subscribed) vs. legacy price
@@ -59,12 +79,14 @@ class ProductServiceController extends Controller
 
     public function update(StoreProductServiceRequest $request, ProductService $productService)
     {
+        $this->assertEditable($productService);
         $productService->update($request->validated());
         return new ProductServiceResource($productService);
     }
 
     public function destroy(ProductService $productService)
     {
+        $this->assertEditable($productService);
         $productService->delete();
         return response()->json(['message' => 'Deleted successfully']);
     }

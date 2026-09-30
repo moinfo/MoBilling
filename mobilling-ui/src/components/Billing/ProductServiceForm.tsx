@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ProductServiceFormData } from '../../api/productServices';
 import { getServers, getServerPackagesDetailed, ServerPackageDetails } from '../../api/hosting';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../context/AuthContext';
 
 interface Props {
   initialValues?: ProductServiceFormData;
@@ -60,8 +61,17 @@ function packageSpecsText(p: ServerPackageDetails): string {
 
 export default function ProductServiceForm({ initialValues, onSubmit, loading }: Props) {
   const { can } = usePermissions();
-  const canHosting = can('hosting.settings');
-  const canLinode = can('linode.manage');
+  const { user } = useAuth();
+  // The server/cPanel-package wiring behind a wallet-gated reseller's own
+  // products is a duplicate of Moinfotech's real shared infrastructure
+  // (real hostname, real WHM package name) — set correctly at provisioning
+  // and never theirs to reconfigure; showing it here would leak the same
+  // "same as Moinfotech" detail the Hosting Servers settings tab already
+  // hides from them. Existing values stay in the submitted form state
+  // untouched even though the controls aren't rendered.
+  const walletGated = !!user?.tenant?.is_wallet_gated;
+  const canHosting = can('hosting.settings') && !walletGated;
+  const canLinode = can('linode.manage') && !walletGated;
 
   const form = useForm<ProductServiceFormData>({
     initialValues: initialValues || {

@@ -27,7 +27,16 @@ class ProductService extends Model
         'cost_price' => 'decimal:2',
         'tax_percent' => 'decimal:2',
         'is_active' => 'boolean',
+        'managed_by_platform' => 'boolean',
     ];
+
+    /**
+     * Deliberately NOT in $fillable: set only via forceFill() from trusted
+     * server-side code (ResellerProvisioningService), never from request
+     * input. True for a row duplicated onto a wallet-gated reseller tenant
+     * at provisioning — real shared infrastructure wiring they must never
+     * edit or delete; see ProductServiceController.
+     */
 
     /** Wholesale cost (reseller wallet gate only) — never client-facing; staff views opt in with makeVisible(). */
     protected $hidden = ['cost_price'];

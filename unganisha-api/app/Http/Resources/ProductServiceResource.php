@@ -27,6 +27,7 @@ class ProductServiceResource extends JsonResource
             'cpanel_package' => $this->cpanel_package,
             'auto_provision' => $this->auto_provision,
             'portal_visible' => $this->portal_visible,
+            'managed_by_platform' => (bool) $this->managed_by_platform,
             // Only present on the index listing (withCount/addSelect there);
             // null here just means "not computed for this request", not zero.
             'subscriptions_count' => $this->when(isset($this->subscriptions_count), fn () => (int) $this->subscriptions_count),
