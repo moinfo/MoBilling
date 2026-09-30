@@ -267,6 +267,15 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
 // Tenant-scoped routes
 Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function () {
 
+    // White-label reseller applications (staff review) + tenant wallet (money in/out for reseller tenants)
+    Route::middleware('permission:reseller_applications.manage')->prefix('reseller-applications')->group(function () {
+        Route::get('/', [\App\Http\Controllers\ResellerApplicationController::class, 'index']);
+        Route::get('/{resellerApplication}', [\App\Http\Controllers\ResellerApplicationController::class, 'show']);
+        Route::post('/{resellerApplication}/approve', [\App\Http\Controllers\ResellerApplicationController::class, 'approve']);
+        Route::post('/{resellerApplication}/reject', [\App\Http\Controllers\ResellerApplicationController::class, 'reject']);
+        Route::post('/{resellerApplication}/provision', [\App\Http\Controllers\ResellerApplicationController::class, 'provision']);
+    });
+
     // Clients
     Route::middleware('permission:clients.read')->get('/clients', [ClientController::class, 'index']);
     Route::middleware('permission:clients.read')->get('/clients/stats', [ClientController::class, 'stats']);
