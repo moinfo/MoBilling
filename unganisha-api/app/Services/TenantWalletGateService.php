@@ -75,11 +75,19 @@ class TenantWalletGateService
         return true;
     }
 
+    /**
+     * Writes via a plain query-builder update (bypassing Eloquent's save()/model events) and
+     * only then syncs the in-memory attribute — calling $sub->update() here would re-fire
+     * ClientSubscriptionObserver::updated() while the OUTER save() that got us here hasn't
+     * finished (Eloquent only syncs $original in finishSave(), after 'updated' fires), so
+     * wasChanged('status') would still read true on the nested call and recurse forever.
+     */
     private function holdHosting(ClientSubscription $sub, string $reason, ?float $amount = null): void
     {
         $meta = $sub->metadata ?? [];
         $meta['wallet_hold'] = ['reason' => $reason, 'amount_needed' => $amount, 'at' => now()->toIso8601String()];
-        $sub->update(['metadata' => $meta]);
+        ClientSubscription::withoutGlobalScopes()->whereKey($sub->id)->update(['metadata' => $meta]);
+        $sub->metadata = $meta;
     }
 
     private function clearHostingHold(ClientSubscription $sub): void
@@ -87,7 +95,8 @@ class TenantWalletGateService
         if (!empty($sub->metadata['wallet_hold'] ?? null)) {
             $meta = $sub->metadata;
             unset($meta['wallet_hold']);
-            $sub->update(['metadata' => $meta]);
+            ClientSubscription::withoutGlobalScopes()->whereKey($sub->id)->update(['metadata' => $meta]);
+            $sub->metadata = $meta;
         }
     }
 
@@ -163,11 +172,15 @@ class TenantWalletGateService
         return round((float) $usd * (float) $settings->usd_rate, 2);
     }
 
+    // Same plain query-builder-update pattern as holdHosting()/clearHostingHold() above — no
+    // Domain observer exists today, but this keeps the two symmetric and safe against one
+    // being added later while this is called from within another model's 'updated' event.
     private function holdDomain(Domain $domain, string $reason, ?float $amount = null): void
     {
         $meta = $domain->meta ?? [];
         $meta['wallet_hold'] = ['reason' => $reason, 'amount_needed' => $amount, 'at' => now()->toIso8601String()];
-        $domain->update(['meta' => $meta]);
+        Domain::withoutGlobalScopes()->whereKey($domain->id)->update(['meta' => $meta]);
+        $domain->meta = $meta;
     }
 
     private function clearDomainHold(Domain $domain): void
@@ -175,7 +188,8 @@ class TenantWalletGateService
         if (!empty($domain->meta['wallet_hold'] ?? null)) {
             $meta = $domain->meta;
             unset($meta['wallet_hold']);
-            $domain->update(['meta' => $meta]);
+            Domain::withoutGlobalScopes()->whereKey($domain->id)->update(['meta' => $meta]);
+            $domain->meta = $meta;
         }
     }
 
