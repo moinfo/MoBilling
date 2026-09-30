@@ -7,6 +7,7 @@ import { IconPlus } from '@tabler/icons-react';
 import {
   listNameComAccounts, createNameComAccount, updateNameComAccount, deleteNameComAccountById, testNameComAccountById, NameComAccountRow,
 } from '../api/namecomAccounts';
+import { useAuth } from '../context/AuthContext';
 
 const errMsg = (e: any): string =>
   e?.response?.data?.message
@@ -16,6 +17,11 @@ const errMsg = (e: any): string =>
 /** Connection tab: several Name.com API logins (e.g. the owner and a second user). Tokens are write-only. */
 export default function NameComAccountsPanel() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // A wallet-gated reseller tenant's account is managed for them (duplicated
+  // real credentials at provisioning) — removing it would break their own
+  // domain search/registration with no self-service way back.
+  const walletGated = !!user?.tenant?.is_wallet_gated;
   const { data, isLoading } = useQuery({ queryKey: ['namecom-accounts'], queryFn: listNameComAccounts });
   const accounts = data?.data?.data ?? [];
   const [editing, setEditing] = useState<NameComAccountRow | 'new' | null>(null);
@@ -69,7 +75,7 @@ export default function NameComAccountsPanel() {
                 <Badge color={a.status === 'active' ? 'green' : 'red'} variant="light">{a.status}</Badge>
                 {a.is_sandbox && <Badge color="orange" variant="light">sandbox</Badge>}
               </Group>
-              <Text size="sm">Name.com username: <b>{a.username}</b></Text>
+              {a.username && <Text size="sm">Name.com username: <b>{a.username}</b></Text>}
               <Text size="xs" c="dimmed">Token <Code>{a.token_hint}</Code>
                 {a.last_verified_at ? ` - verified ${new Date(a.last_verified_at).toLocaleString()}` : ''} - {a.linked_domains} linked domain{a.linked_domains === 1 ? '' : 's'}</Text>
               {a.status_message && <Text size="xs" c="red">{a.status_message}</Text>}
@@ -78,7 +84,7 @@ export default function NameComAccountsPanel() {
               <Button size="xs" variant="light" loading={test.isPending && test.variables === a.id} onClick={() => test.mutate(a.id)}>Test</Button>
               <Button size="xs" variant="light" onClick={() => setEditing(a)}>Edit / rotate token</Button>
               {!a.is_default && <Button size="xs" variant="subtle" loading={makeDefault.isPending && makeDefault.variables === a.id} onClick={() => makeDefault.mutate(a.id)}>Make default</Button>}
-              <Button size="xs" variant="subtle" color="red" onClick={() => remove.mutate(a)}>Remove</Button>
+              {!walletGated && <Button size="xs" variant="subtle" color="red" onClick={() => remove.mutate(a)}>Remove</Button>}
             </Group>
           </Group>
         </Paper>

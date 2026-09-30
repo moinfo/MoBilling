@@ -142,6 +142,17 @@ class NameComController extends Controller
     public function destroyAccount(Request $request, string $account): JsonResponse
     {
         $a = NameComAccount::findOrFail($account);
+
+        // A wallet-gated reseller tenant's account is a duplicate of Moinfotech's
+        // own real credentials, set up for them at provisioning — deleting it
+        // would silently break their own domain search/registration with no
+        // self-service way to restore it (they can't re-duplicate it themselves).
+        abort_if(
+            \App\Models\Tenant::withoutGlobalScopes()->find($a->tenant_id)?->is_wallet_gated,
+            403,
+            'This account is managed for you — contact support if you need it changed.'
+        );
+
         $accounts = $this->accounts();
         $used = $this->linkedCounts($accounts)[$a->id] ?? 0;
         if ($used > 0 && !$request->boolean('confirm_linked')) {
