@@ -16,6 +16,7 @@ import {
 } from '../../api/portal';
 import { portalCheckoutInvoice } from '../../api/payment';
 import { useAuth } from '../../context/AuthContext';
+import { useBranding } from '../../branding';
 
 const CANCELLABLE_STATUSES = ['sent', 'overdue', 'partial', 'pending_approval'];
 
@@ -50,6 +51,7 @@ export default function PortalInvoiceView() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useAuth();
+  const branding = useBranding();
   const isPortalAdmin = (user as any)?.role === 'admin';
   const [paying, setPaying] = useState(false);
   const [applyingCredit, setApplyingCredit] = useState(false);
@@ -365,7 +367,7 @@ export default function PortalInvoiceView() {
         </Paper>
       )}
 
-      <Text size="xs" c="dimmed" ta="center">Powered by MoBilling</Text>
+      {!branding.branded && <Text size="xs" c="dimmed" ta="center">Powered by MoBilling</Text>}
 
       <Modal opened={cancelOpen} onClose={() => setCancelOpen(false)} title="Request Cancellation" centered>
         <Stack gap="sm">

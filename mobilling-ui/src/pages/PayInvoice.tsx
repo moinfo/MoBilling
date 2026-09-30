@@ -7,6 +7,7 @@ import { notifications } from '@mantine/notifications';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { IconCheck, IconCreditCard, IconBuildingBank, IconReceipt, IconCalendar, IconUser, IconAlertTriangle } from '@tabler/icons-react';
 import { getInvoiceForPayment, checkoutInvoice, getPaymentStatusByTracking, type InvoicePaymentInfo } from '../api/payment';
+import { useBranding } from '../branding';
 
 const fmt = (n: number, currency = 'TZS') =>
   `${currency} ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -18,6 +19,7 @@ export default function PayInvoice() {
   const [searchParams] = useSearchParams();
   const { colorScheme } = useMantineColorScheme();
   const isDark = colorScheme === 'dark';
+  const branding = useBranding();
   const [data, setData] = useState<InvoicePaymentInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
@@ -330,9 +332,11 @@ export default function PayInvoice() {
           </Paper>
         )}
 
-        <Text size="xs" c="dimmed" ta="center" mt="xl" mb="md">
-          Powered by MoBilling
-        </Text>
+        {!branding.branded && (
+          <Text size="xs" c="dimmed" ta="center" mt="xl" mb="md">
+            Powered by MoBilling
+          </Text>
+        )}
       </Box>
     </Box>
   );

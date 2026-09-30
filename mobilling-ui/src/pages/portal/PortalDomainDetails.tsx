@@ -21,6 +21,7 @@ import {
   getPortalDomainNameservers, updatePortalDomainNameservers, getPortalDomainDnsZone, PortalDomainDetail,
 } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
+import { useBranding } from '../../branding';
 
 const fmtFull = (d: string | null | undefined) =>
   d ? new Date(d).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : '—';
@@ -60,6 +61,7 @@ export default function PortalDomainDetails() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useAuth();
+  const branding = useBranding();
   const isPortalAdmin = (user as any)?.role === 'admin';
 
   const [section, setSection] = useState<Section>('overview');
@@ -443,7 +445,7 @@ export default function PortalDomainDetails() {
             )}
           </Paper>
 
-          <Text size="xs" c="dimmed" ta="center" mt="md">Powered by MoBilling</Text>
+          {!branding.branded && <Text size="xs" c="dimmed" ta="center" mt="md">Powered by MoBilling</Text>}
         </Grid.Col>
       </Grid>
 
