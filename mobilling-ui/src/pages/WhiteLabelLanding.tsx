@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useBranding } from '../branding';
@@ -76,6 +76,17 @@ const MailIcon = ({ color }: { color: string }) => (
     <rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" />
   </svg>
 );
+const SunIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </svg>
+);
+const MoonIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.6A9 9 0 1 1 11.4 3a7 7 0 0 0 9.6 9.6Z" />
+  </svg>
+);
 
 const FEATURES = [
   { Icon: BoltIcon, title: 'Automatic setup', desc: 'Most orders provision themselves — no waiting on a technician.' },
@@ -94,7 +105,32 @@ export default function WhiteLabelLanding() {
   const branding = useBranding();
   const name = branding.name ?? 'Client Area';
   const initial = name.trim().charAt(0).toUpperCase() || '?';
-  const accent = '#1f63b0';
+  const accent = 'var(--accent)';
+
+  const THEME_KEY = 'wl_theme';
+  const [theme, setTheme] = useState<'light' | 'dark' | null>(() => {
+    try {
+      const saved = localStorage.getItem(THEME_KEY);
+      return saved === 'light' || saved === 'dark' ? saved : null;
+    } catch { return null; }
+  });
+  const toggleTheme = () => {
+    const current = theme ?? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    const next = current === 'dark' ? 'light' : 'dark';
+    setTheme(next);
+    try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
+  };
+  // Effective theme for the toggle icon only — null (no explicit choice) still
+  // follows the system preference via CSS alone, this just picks the right icon.
+  const [systemPrefersDark, setSystemPrefersDark] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    setSystemPrefersDark(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setSystemPrefersDark(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  const isDark = theme ? theme === 'dark' : systemPrefersDark;
 
   const [tab, setTab] = useState<'hosting' | 'email'>('hosting');
   const [domainInput, setDomainInput] = useState('');
@@ -145,7 +181,7 @@ export default function WhiteLabelLanding() {
     : (exampleHosting ? `Billed ${exampleHosting.billing_cycle}` : '');
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-theme={theme ?? undefined}>
       <div className={styles.hero}>
         <div className={styles.container}>
           <header className={styles.navRow}>
@@ -164,6 +200,10 @@ export default function WhiteLabelLanding() {
               <a className={styles.navlink} href="#how">How it works</a>
             </nav>
             <div className={styles.navActions}>
+              <button type="button" className={styles.themeToggle} onClick={toggleTheme}
+                aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+                {isDark ? <SunIcon /> : <MoonIcon />}
+              </button>
               <Link to="/portal/login" className={styles.btnGhost}>Sign in</Link>
               <Link to="/portal/register" className={styles.btnLight}>Create account</Link>
             </div>

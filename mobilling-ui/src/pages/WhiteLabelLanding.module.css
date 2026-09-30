@@ -45,8 +45,10 @@
   -webkit-font-smoothing: antialiased;
 }
 
+/* System preference — only when the viewer hasn't made an explicit choice
+   with the header toggle (that sets data-theme, below, and always wins). */
 @media (prefers-color-scheme: dark) {
-  .page {
+  .page:not([data-theme="light"]) {
     --ink: #eef2f7;
     --ink-soft: #aab6c4;
     --ink-2: #c7d0da;
@@ -57,7 +59,28 @@
   }
 }
 
-.page a { color: inherit; text-decoration: none; }
+/* Explicit choice from the header toggle — wins over the system preference
+   either way (light here, dark below). Kept in sync with the block above. */
+.page[data-theme="dark"] {
+  --ink: #eef2f7;
+  --ink-soft: #aab6c4;
+  --ink-2: #c7d0da;
+  --line: rgba(255, 255, 255, 0.12);
+  --surface: #0f1a2b;
+  --surface-alt: #0a1220;
+  --accent: #5b9be0;
+}
+
+/* Anchors deliberately do NOT get a blanket `color: inherit` here — every
+   button/link class below sets its own explicit colour, and a blanket rule
+   on `.page a` would outrank those single-class rules on specificity alone
+   (element+class beats class), silently overriding them. That exact bug
+   made "Create account" and the popular plan's "Get started" render white
+   text on their own white background — invisible. The one spot that
+   genuinely wants inherited colour (.brand, the logo/name link) opts in
+   explicitly instead. */
+.page a { text-decoration: none; }
+.brand { color: inherit; }
 
 .container {
   max-width: 1200px;
@@ -108,6 +131,21 @@
 .navlink:hover { color: #fff; }
 
 .navActions { display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+
+.themeToggle {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.themeToggle:hover { border-color: #fff; }
 
 .btnGhost {
   padding: 10px 18px;
