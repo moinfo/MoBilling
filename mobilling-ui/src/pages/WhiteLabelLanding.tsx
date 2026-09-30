@@ -500,6 +500,8 @@ export default function WhiteLabelLanding() {
             <div className={styles.footerCol}>
               <span className={styles.footerColTitle}>Help</span>
               <a className={styles.flink} href="#how">How it works</a>
+              {branding.phone && <a className={styles.flink} href={`tel:${branding.phone}`}>{branding.phone}</a>}
+              {branding.email && <a className={styles.flink} href={`mailto:${branding.email}`}>{branding.email}</a>}
             </div>
           </div>
           <div className={styles.footerCopy}>© {new Date().getFullYear()} {name}</div>

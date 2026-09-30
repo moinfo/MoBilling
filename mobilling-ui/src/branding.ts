@@ -11,6 +11,9 @@ export interface Branding {
   name?: string;
   logo_url?: string | null;
   website?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: string | null;
 }
 
 const DEFAULT_HOSTS = ['mobilling.co.tz', 'www.mobilling.co.tz', 'localhost', '127.0.0.1'];
