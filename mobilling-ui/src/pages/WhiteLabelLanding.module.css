@@ -1,278 +1,351 @@
-/* Light, professional hosting-storefront look (moinfo.co.tz-style) — separate
-   from the rest of the app's dark "Control Room" theme on purpose, since
-   this page is the reseller's own public storefront, not an admin surface. */
+/* Registry-console concept: a domain/hosting storefront framed as a network
+   record lookup, not a generic SaaS marketing page. One accent (amber, the
+   colour of a status light on real networking hardware) used only for
+   actionable/available states and price figures — everything else stays
+   quiet. Deliberately its own surface: not the app's internal "Control
+   Room" dark theme, not the moinfo.co.tz marketing site's light/blue theme. */
 
 .page {
+  --ink: #0e1b18;
+  --panel: #14211e;
+  --panel-hover: #182722;
+  --line: rgba(243, 239, 228, 0.11);
+  --paper: #f3efe4;
+  --muted: #8fa39b;
+  --signal: #e8a23d;
+  --signal-deep: #241705;
+  --alert: #d66a52;
+
   min-height: 100vh;
-  background: #ffffff;
-  color: #16202a;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-}
-
-/* ── Top bar ─────────────────────────────────────────────────────────── */
-.topbar {
-  border-bottom: 1px solid #e7ebef;
-  position: sticky;
-  top: 0;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(6px);
-  z-index: 10;
-}
-
-.topbarInner {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 14px 24px;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  background: var(--ink);
+  color: var(--paper);
+  font-family: 'Instrument Sans', -apple-system, sans-serif;
 }
 
-.brandRow {
+.mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────── */
+.topbar {
   display: flex;
   align-items: center;
   gap: 10px;
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 24px 0;
 }
 
-.logoSm { height: 30px; max-width: 160px; object-fit: contain; }
+.logoSm { height: 26px; max-width: 140px; object-fit: contain; }
 
 .avatarSm {
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: #1a68b0;
-  color: #fff;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--signal);
+  color: var(--signal-deep);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
-.brandNameSm { font-weight: 700; font-size: 16px; }
-
-.navSignIn {
-  color: #1a68b0;
+.brandNameSm {
   font-weight: 600;
   font-size: 14px;
-  text-decoration: none;
+  letter-spacing: 0.01em;
 }
 
-.navSignIn:hover { text-decoration: underline; }
+.navSignIn {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 14px;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+
+.navSignIn:hover { color: var(--paper); border-color: var(--line); }
 
 /* ── Hero ────────────────────────────────────────────────────────────── */
 .hero {
-  max-width: 720px;
+  max-width: 640px;
+  width: 100%;
   margin: 0 auto;
-  padding: 72px 24px 48px;
+  padding: 56px 24px 40px;
   text-align: center;
 }
 
 .heroTitle {
-  font-size: 36px;
-  line-height: 1.2;
+  font-family: 'Archivo', sans-serif;
   font-weight: 800;
-  margin: 0 0 12px;
-  color: #0d1621;
+  font-size: 34px;
+  line-height: 1.18;
+  letter-spacing: -0.01em;
+  margin: 0 0 14px;
+  color: var(--paper);
 }
 
 .heroSub {
-  font-size: 17px;
-  color: #55636f;
-  margin: 0 0 32px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--muted);
+  margin: 0 0 36px;
+  max-width: 46ch;
+  margin-left: auto;
+  margin-right: auto;
 }
 
-.searchBar {
+/* ── Domain lookup ───────────────────────────────────────────────────── */
+.lookup {
+  text-align: left;
+}
+
+.lookupLabel {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.lookupRow {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1.5px solid #d7dee4;
-  border-radius: 12px;
-  padding: 6px 6px 6px 16px;
-  background: #fff;
-  box-shadow: 0 1px 2px rgba(16, 24, 32, 0.04);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: hidden;
 }
 
-.searchIcon { color: #8a97a3; flex-shrink: 0; }
+.lookupRow:focus-within {
+  border-color: var(--signal);
+}
 
-.searchInput {
+.lookupInput {
   flex: 1;
+  min-width: 0;
   border: none;
   outline: none;
+  background: transparent;
+  color: var(--paper);
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 16px;
-  padding: 10px 0;
-  color: #16202a;
+  padding: 15px 16px;
 }
 
-.searchBtn {
-  background: #1a68b0;
-  color: #fff;
+.lookupInput::placeholder { color: var(--muted); opacity: 0.7; }
+
+.lookupBtn {
   border: none;
-  border-radius: 8px;
-  padding: 12px 22px;
+  background: var(--signal);
+  color: var(--signal-deep);
+  font-family: 'Instrument Sans', sans-serif;
   font-weight: 600;
   font-size: 14px;
+  padding: 0 22px;
   cursor: pointer;
+}
+
+.lookupBtn:hover { filter: brightness(1.08); }
+.lookupBtn:disabled { opacity: 0.6; cursor: default; }
+
+/* Result "record" line — reads like a lookup output, not an alert box. */
+.record {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 14px;
+  text-align: left;
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.dotOk { background: var(--signal); }
+.dotBad { background: var(--alert); }
+
+.recordName {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--paper);
+}
+
+.recordStatusOk { color: var(--signal); }
+.recordStatusBad { color: var(--alert); }
+.recordMsg { color: var(--muted); }
+
+.recordPrice {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  color: var(--signal);
+  margin-left: auto;
+}
+
+.recordCta {
+  color: var(--ink);
+  background: var(--signal);
+  font-weight: 600;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  text-decoration: none;
+}
+
+.recordCta:hover { filter: brightness(1.08); }
+
+/* ── Plan ledgers ────────────────────────────────────────────────────── */
+.ledger {
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 24px;
+  border-top: 1px solid var(--line);
+}
+
+.ledgerTitle {
+  font-family: 'Archivo', sans-serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--paper);
+  margin: 0 0 12px;
+}
+
+.ledgerRows {
+  display: flex;
+  flex-direction: column;
+}
+
+.ledgerRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 10px;
+  margin: 0 -10px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: inherit;
+  border-bottom: 1px solid var(--line);
+}
+
+.ledgerRow:last-child { border-bottom: none; }
+.ledgerRow:hover { background: var(--panel-hover); }
+
+.rowName {
+  font-size: 15px;
+  color: var(--paper);
+}
+
+.ledgerRow:hover .rowName { text-decoration: underline; text-underline-offset: 3px; }
+
+.rowPrice {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 14px;
+  color: var(--signal);
   white-space: nowrap;
 }
 
-.searchBtn:hover { background: #15568f; }
-.searchBtn:disabled { opacity: 0.6; cursor: default; }
+.rowCycle { color: var(--muted); font-size: 12px; }
 
-.searchResult {
-  margin-top: 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 10px;
-  padding: 14px 18px;
-  border-radius: 10px;
+/* ── Trust lines ─────────────────────────────────────────────────────── */
+.trust {
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 24px;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px 32px;
+}
+
+.trustLine {
+  margin: 0;
   font-size: 14px;
+  line-height: 1.5;
+  color: var(--muted);
 }
-
-.searchResultOk { background: #eafaf1; color: #0f7a45; }
-.searchResultBad { background: #fdeeee; color: #b3261e; }
-
-.resultCta {
-  background: #1a68b0;
-  color: #fff;
-  padding: 6px 14px;
-  border-radius: 8px;
-  font-weight: 600;
-  font-size: 13px;
-  text-decoration: none;
-}
-
-/* ── Plans ───────────────────────────────────────────────────────────── */
-.plans {
-  max-width: 1080px;
-  margin: 0 auto;
-  padding: 32px 24px;
-}
-
-.sectionTitle {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 20px;
-  font-weight: 700;
-  color: #0d1621;
-  margin: 0 0 20px;
-}
-
-.planGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 16px;
-}
-
-.planCard {
-  border: 1px solid #e7ebef;
-  border-radius: 12px;
-  padding: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.planName { font-weight: 600; font-size: 15px; }
-
-.planPrice {
-  font-size: 20px;
-  font-weight: 800;
-  color: #0d1621;
-}
-
-.planPrice span {
-  font-size: 13px;
-  font-weight: 500;
-  color: #8a97a3;
-}
-
-.planCta {
-  margin-top: auto;
-  text-align: center;
-  border: 1.5px solid #1a68b0;
-  color: #1a68b0;
-  border-radius: 8px;
-  padding: 8px 0;
-  font-weight: 600;
-  font-size: 13px;
-  text-decoration: none;
-}
-
-.planCta:hover { background: #1a68b0; color: #fff; }
-
-/* ── Features ────────────────────────────────────────────────────────── */
-.features {
-  background: #f7f9fb;
-  padding: 48px 24px;
-  margin-top: 24px;
-}
-
-.featureGrid {
-  max-width: 1080px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 24px;
-}
-
-.featureCard { color: #16202a; }
-.featureCard svg { color: #1a68b0; margin-bottom: 10px; }
-
-.featureTitle { font-weight: 700; font-size: 15px; margin-bottom: 4px; }
-.featureDesc { font-size: 13px; color: #64717c; line-height: 1.5; }
 
 /* ── Final CTA ───────────────────────────────────────────────────────── */
 .cta {
+  max-width: 640px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 44px 24px;
+  border-top: 1px solid var(--line);
   text-align: center;
-  padding: 56px 24px;
 }
 
-.cta h2 { font-size: 26px; margin: 0 0 20px; color: #0d1621; }
+.ctaTitle {
+  font-family: 'Archivo', sans-serif;
+  font-weight: 700;
+  font-size: 22px;
+  margin: 0 0 20px;
+  color: var(--paper);
+}
 
 .ctaActions {
   display: flex;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
 .primaryBtn {
-  background: #1a68b0;
-  color: #fff;
-  padding: 12px 24px;
-  border-radius: 10px;
+  background: var(--signal);
+  color: var(--signal-deep);
+  padding: 12px 22px;
+  border-radius: 8px;
   font-weight: 600;
+  font-size: 14px;
   text-decoration: none;
 }
 
-.primaryBtn:hover { background: #15568f; }
+.primaryBtn:hover { filter: brightness(1.08); }
 
 .secondaryBtn {
-  border: 1.5px solid #d7dee4;
-  color: #16202a;
-  padding: 12px 24px;
-  border-radius: 10px;
+  border: 1px solid var(--line);
+  color: var(--paper);
+  padding: 12px 22px;
+  border-radius: 8px;
   font-weight: 600;
+  font-size: 14px;
   text-decoration: none;
 }
 
-.secondaryBtn:hover { background: #f7f9fb; }
+.secondaryBtn:hover { background: var(--panel); }
 
 /* ── Footer ──────────────────────────────────────────────────────────── */
 .footer {
   text-align: center;
-  padding: 24px;
-  font-size: 12px;
-  color: #8a97a3;
-  border-top: 1px solid #e7ebef;
+  padding: 22px 24px;
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+  margin-top: auto;
 }
 
-@media (max-width: 560px) {
-  .heroTitle { font-size: 28px; }
-  .searchBar { flex-wrap: wrap; }
-  .searchBtn { width: 100%; }
+@media (max-width: 520px) {
+  .heroTitle { font-size: 27px; }
+  .trust { grid-template-columns: 1fr; }
+  .record { font-size: 13px; }
+  .recordPrice { margin-left: 0; }
+  .recordCta { width: 100%; text-align: center; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page * { transition: none !important; }
 }
