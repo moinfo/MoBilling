@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { Title, Group, Button, TextInput, Modal, Pagination, Anchor, Text } from '@mantine/core';
+import { Title, Group, Button, TextInput, Modal, Pagination, Anchor, Text, Stack, Alert, CopyButton, ActionIcon, Tooltip } from '@mantine/core';
 import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconSearch, IconArrowLeft } from '@tabler/icons-react';
+import { IconPlus, IconSearch, IconArrowLeft, IconCopy, IconCheck, IconAlertTriangle } from '@tabler/icons-react';
 import { useParams, Link } from 'react-router-dom';
 import {
   getTenantUsers, createTenantUser, updateTenantUser, toggleTenantUserActive,
@@ -21,6 +21,7 @@ export default function TenantUsers() {
   const [page, setPage] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<TenantUser | null>(null);
+  const [revealed, setRevealed] = useState<{ user: TenantUser; password: string; emailSent: boolean } | null>(null);
 
   const { data: tenantData } = useQuery({
     queryKey: ['admin-tenants'],
@@ -71,9 +72,9 @@ export default function TenantUsers() {
   });
 
   const resetPasswordMutation = useMutation({
-    mutationFn: (userId: string) => resetTenantUserPassword(tenantId!, userId),
-    onSuccess: (res) => {
-      notifications.show({ title: 'Password reset', message: res.data.message, color: 'green' });
+    mutationFn: (user: TenantUser) => resetTenantUserPassword(tenantId!, user.id).then((res) => ({ user, res })),
+    onSuccess: ({ user, res }) => {
+      setRevealed({ user, password: res.data.password, emailSent: res.data.email_sent });
     },
     onError: (err: any) => notifications.show({
       title: 'Error',
@@ -92,8 +93,8 @@ export default function TenantUsers() {
   };
 
   const handleResetPassword = (user: TenantUser) => {
-    if (window.confirm(`Reset ${user.name}'s password and email the new one to ${user.email}?`)) {
-      resetPasswordMutation.mutate(user.id);
+    if (window.confirm(`Reset ${user.name}'s password? You'll get the new password to copy, and we'll also try emailing it to them.`)) {
+      resetPasswordMutation.mutate(user);
     }
   };
 
@@ -137,7 +138,7 @@ export default function TenantUsers() {
         onEdit={handleEdit}
         onToggleActive={handleToggleActive}
         onResetPassword={handleResetPassword}
-        resetPasswordLoadingId={resetPasswordMutation.isPending ? resetPasswordMutation.variables : undefined}
+        resetPasswordLoadingId={resetPasswordMutation.isPending ? resetPasswordMutation.variables?.id : undefined}
       />
 
       {meta && meta.last_page > 1 && (
@@ -163,6 +164,41 @@ export default function TenantUsers() {
           onSubmit={handleSubmit}
           loading={createMutation.isPending || updateMutation.isPending}
         />
+      </Modal>
+
+      <Modal opened={!!revealed} onClose={() => setRevealed(null)} title="New password" size="sm">
+        {revealed && (
+          <Stack gap="sm">
+            <Text size="sm">
+              New password for <b>{revealed.user.name}</b> ({revealed.user.email}):
+            </Text>
+            <TextInput
+              value={revealed.password}
+              readOnly
+              styles={{ input: { fontFamily: 'monospace', fontWeight: 600 } }}
+              rightSection={
+                <CopyButton value={revealed.password} timeout={1500}>
+                  {({ copied, copy }) => (
+                    <Tooltip label={copied ? 'Copied' : 'Copy'}>
+                      <ActionIcon color={copied ? 'teal' : 'gray'} variant="subtle" onClick={copy}>
+                        {copied ? <IconCheck size={16} /> : <IconCopy size={16} />}
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </CopyButton>
+              }
+            />
+            {revealed.emailSent ? (
+              <Text size="xs" c="dimmed">Also emailed to {revealed.user.email} — in case it doesn't arrive, copy it above and send it manually.</Text>
+            ) : (
+              <Alert color="orange" variant="light" icon={<IconAlertTriangle size={16} />} p="xs">
+                {revealed.user.email
+                  ? "Couldn't send the email — copy the password above and send it manually."
+                  : 'This user has no email on file — copy the password above and send it manually.'}
+              </Alert>
+            )}
+          </Stack>
+        )}
       </Modal>
     </>
   );

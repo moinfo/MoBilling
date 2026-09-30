@@ -106,9 +106,13 @@ class AdminUserController extends Controller
     }
 
     /**
-     * Superadmin support action: generate a fresh password for this user and
-     * email it to them directly — no self-service token/link step, since the
-     * admin (not the user) is the one initiating this.
+     * Superadmin support action: generate a fresh password for this user.
+     * Returned in the response (not just emailed) so the admin can copy it
+     * and send it manually — e.g. over WhatsApp — when email delivery is
+     * unreliable (self-hosted SMTP landing in spam, no email on file, etc).
+     * Email is still attempted best-effort when the user has one; a failure
+     * there never blocks the reset itself, since the password is already
+     * in hand either way.
      */
     public function resetPassword(Tenant $tenant, User $user)
     {
@@ -117,12 +121,24 @@ class AdminUserController extends Controller
         if ($user->tenant_id !== $tenant->id) {
             abort(404);
         }
-        abort_if(!$user->email, 422, 'This user has no email address on file to send the new password to.');
 
         $newPassword = Str::password(14);
         $user->forceFill(['password' => Hash::make($newPassword)])->save();
-        $user->notify(new AdminPasswordResetNotification($tenant, $newPassword));
 
-        return response()->json(['message' => "New password sent to {$user->email}."]);
+        $emailSent = false;
+        if ($user->email) {
+            try {
+                $user->notify(new AdminPasswordResetNotification($tenant, $newPassword));
+                $emailSent = true;
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        return response()->json([
+            'message' => $emailSent ? "New password sent to {$user->email}." : 'New password generated.',
+            'password' => $newPassword,
+            'email_sent' => $emailSent,
+        ]);
     }
 }
