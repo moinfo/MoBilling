@@ -60,7 +60,8 @@ class ResellerProvisioningService
 
             $tldRows = DomainTld::where('tenant_id', $sourceTenantId)->get();
             foreach ($tldRows as $row) {
-                $hasCost = $row->registrar === 'namecom' && $row->usd_register !== null;
+                $hasCost = ($row->registrar === 'namecom' && $row->usd_register !== null)
+                    || ($row->registrar === 'fred' && $row->reseller_price !== null);
                 if (!$hasCost) {
                     $warnings[] = ".{$row->tld} ({$row->registrar}) has no wholesale-cost source — reseller sales of it will be held until the owner sets one up manually.";
                 }
@@ -234,6 +235,10 @@ class ResellerProvisioningService
                 'usd_register'     => $row->usd_register,
                 'usd_renew'        => $row->usd_renew,
                 'usd_transfer'     => $row->usd_transfer,
+                // FRED (.tz) TLDs have no usd_* cost — reseller_price is the established
+                // wholesale-cost field for those (see PortalResellerController's own
+                // domain-reseller feature and TenantWalletGateService::domainCostBasis()).
+                'reseller_price'   => $row->reseller_price,
             ]);
         }
     }

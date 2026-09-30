@@ -57,8 +57,10 @@ try {
 
     $rtld = 'rsvctd' . random_int(100, 999); // namecom TLD with real wholesale cost
     $ftld = 'rsvcfd' . random_int(100, 999); // FRED TLD, no wholesale cost anywhere
+    $ftldPriced = 'rsvcfdp' . random_int(100, 999); // FRED TLD WITH reseller_price set (mirrors real co.tz/tz)
     DomainTld::create(['tenant_id' => $sourceTenant->id, 'tld' => $rtld, 'registrar' => 'namecom', 'register_price' => 45000, 'renew_price' => 45000, 'transfer_price' => 45000, 'years_min' => 1, 'years_max' => 10, 'is_active' => true, 'is_unmanaged' => true, 'usd_register' => 10.0, 'usd_renew' => 10.0]);
     DomainTld::create(['tenant_id' => $sourceTenant->id, 'tld' => $ftld, 'registrar' => 'fred', 'register_price' => 19999, 'renew_price' => 19999, 'transfer_price' => 19999, 'years_min' => 1, 'years_max' => 10, 'is_active' => true, 'is_unmanaged' => false]);
+    DomainTld::create(['tenant_id' => $sourceTenant->id, 'tld' => $ftldPriced, 'registrar' => 'fred', 'register_price' => 19999, 'renew_price' => 19999, 'transfer_price' => 0, 'reseller_price' => 18750, 'years_min' => 1, 'years_max' => 10, 'is_active' => true, 'is_unmanaged' => false]);
     NameComSettings::create(['tenant_id' => $sourceTenant->id, 'usd_rate' => 3000, 'fixed_markup' => 10000, 'auto_register' => false, 'auto_cap_usd' => 50, 'auto_daily_limit' => 10]);
 
     $client = Client::create(['name' => 'Applicant Co', 'phone' => '25570' . random_int(1000000, 9999999), 'email' => 'applicant-' . random_int(1000, 9999) . '@example.test', 'status' => 'active']);
@@ -127,6 +129,7 @@ try {
     $preview = $provisionSvc->preview($application);
     ok(count($preview['products']) === (1 + 6 + 4 + 1), 'preview product count = domain summary + 6 hosting + 4 email + 1 linode: ' . count($preview['products']));
     ok(collect($preview['warnings'])->contains(fn ($w) => str_contains($w, ".$ftld")), 'preview flags the FRED TLD with no cost source');
+    ok(!collect($preview['warnings'])->contains(fn ($w) => str_contains($w, ".$ftldPriced")), 'preview does NOT flag the FRED TLD that has reseller_price set');
     ok(!collect($preview['products'])->pluck('name')->contains('Legacy Junk Hosting Row'), 'preview does not include the non-canonical legacy product row');
 
     // rollback-on-failure: pre-collide the admin email with an existing staff user so User::create()
@@ -178,11 +181,13 @@ try {
     ok((float) $newHostingProduct->price === 100000.0, 'hosting product retail price copied from source');
 
     $newTlds = DomainTld::where('tenant_id', $tenant->id)->get();
-    ok($newTlds->count() === 2, 'both TLD rows duplicated: ' . $newTlds->count());
+    ok($newTlds->count() === 3, 'all three TLD rows duplicated: ' . $newTlds->count());
     $newRtld = $newTlds->firstWhere('tld', $rtld);
     ok($newRtld && (float) $newRtld->usd_register === 10.0, 'namecom TLD wholesale usd cost carried over');
     $newFtld = $newTlds->firstWhere('tld', $ftld);
     ok($newFtld && $newFtld->usd_register === null, 'FRED TLD has no wholesale cost — carried over as null, not invented');
+    $newFtldPriced = $newTlds->firstWhere('tld', $ftldPriced);
+    ok($newFtldPriced && (float) $newFtldPriced->reseller_price === 18750.0, 'FRED TLD reseller_price (wholesale) carried over, mirrors real co.tz (18,750)');
 
     // idempotency: cannot provision twice
     try {
@@ -286,6 +291,25 @@ try {
     $allowedFred = $gate->allowDomainFulfillment($fdomain->fresh());
     ok($allowedFred === false, 'FRED (.tz-style) domain fulfillment always held — no wholesale cost source exists');
     ok(Bus::dispatched(RegisterDomainJob::class, fn ($j) => $j->domain->is($fdomain))->count() === 0, 'no RegisterDomainJob dispatched for the FRED domain (unknown cost)');
+
+    // -- domain: FRED TLD WITH reseller_price set (mirrors real co.tz/tz) — allowed + debited correctly
+    $walletSvc->topUp($tenant->fresh(), 50000, 'TEST-TOPUP-FRED-PRICED', 'test harness');
+    $balBeforeFredPriced = (float) $tenant->fresh()->wallet_balance;
+    $fpdomain = Domain::create(['client_id' => $resellerClient->id, 'name' => 'gatecheck-fredpriced.' . $ftldPriced, 'status' => 'pending', 'auto_renew' => false, 'meta' => ['pending_action' => 'register', 'pending_years' => 1, 'order_document_id' => null]]);
+    $allowedFredPriced = $gate->allowDomainFulfillment($fpdomain->fresh(), 'register', 1);
+    ok($allowedFredPriced === true, 'FRED domain with reseller_price set + sufficient balance is allowed (real .tz-style cost source works)');
+    ok((float) $tenant->fresh()->wallet_balance === round($balBeforeFredPriced - 18750, 2), 'domain wallet debit = reseller_price (18,750) exactly, no FX conversion applied');
+    ok($walletSvc->alreadyDebited(Domain::class, $fpdomain->id), 'priced FRED domain debited exactly once (idempotency ledger) — actual RegisterDomainJob dispatch happens elsewhere (DocumentObserver), not from the gate check itself');
+
+    // insufficient balance -> held, no registrar call
+    $tenant->update(['wallet_balance' => 1000]);
+    $fpdomain2 = Domain::create(['client_id' => $resellerClient->id, 'name' => 'gatecheck-fredpriced2.' . $ftldPriced, 'status' => 'pending', 'auto_renew' => false, 'meta' => ['pending_action' => 'register', 'pending_years' => 1, 'order_document_id' => null]]);
+    $allowedFredPriced2 = $gate->allowDomainFulfillment($fpdomain2->fresh(), 'register', 1);
+    ok($allowedFredPriced2 === false, 'FRED domain with reseller_price set but insufficient balance is held');
+    ok((float) $tenant->fresh()->wallet_balance === 1000.0, 'balance untouched when held (no partial debit)');
+    ok(Bus::dispatched(RegisterDomainJob::class, fn ($j) => $j->domain->is($fpdomain2))->count() === 0, 'no RegisterDomainJob dispatched when balance insufficient');
+    // restore a healthy balance before the next block, which expects enough to cover its own cost
+    $walletSvc->topUp($tenant->fresh(), 100000, 'TEST-TOPUP-RESTORE', 'test harness');
 
     // -- domain: Name.com TLD with a known cost, via the manual-queue auto-register path
     NameComSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->delete();

@@ -147,29 +147,43 @@ class TenantWalletGateService
 
     /**
      * Wholesale unit cost (per year, local currency) for a domain action, or
-     * null when no real cost source exists — Name.com TLDs have real usd
-     * cost fields (usd_register/usd_renew) converted at the tenant's own
-     * Name.com FX rate; FRED (.tz) TLDs have no wholesale-cost field
-     * anywhere in this codebase, so they always return null here (the gate
-     * then holds rather than ever guessing or provisioning for free).
+     * null when no real cost source exists.
+     *
+     * Name.com TLDs: real usd cost fields (usd_register/usd_renew) converted
+     * at the tenant's own Name.com FX rate.
+     *
+     * FRED (.tz) TLDs: no usd_* field exists for these (Name.com's API never
+     * prices them), but this codebase already has an established wholesale
+     * field for exactly this registrar — domain_tlds.reseller_price, the
+     * same number PortalResellerController's own domain-reseller feature
+     * already charges a client-level domain reseller, already in TZS
+     * (no FX conversion needed). Only used when set (nullable) — a FRED TLD
+     * with no reseller_price configured still returns null and holds,
+     * exactly as before; nothing here ever guesses a number.
      */
     private function domainCostBasis(string $tenantId, string $domainName, ?string $action): ?float
     {
         $tld = strtolower(explode('.', $domainName, 2)[1] ?? '');
-        $row = DomainTld::where('tenant_id', $tenantId)->where('tld', $tld)->where('registrar', 'namecom')->first()
+
+        $ncRow = DomainTld::where('tenant_id', $tenantId)->where('tld', $tld)->where('registrar', 'namecom')->first()
             ?? DomainTld::whereNull('tenant_id')->where('tld', $tld)->where('registrar', 'namecom')->first();
 
-        if (!$row) {
-            return null; // FRED / unmanaged — no wholesale-cost field exists
+        if ($ncRow) {
+            $usd = $action === 'renew' ? $ncRow->usd_renew : $ncRow->usd_register;
+            if ($usd !== null) {
+                $settings = NameComSettings::forTenant($tenantId);
+                return round((float) $usd * (float) $settings->usd_rate, 2);
+            }
         }
 
-        $usd = $action === 'renew' ? $row->usd_renew : $row->usd_register;
-        if ($usd === null) {
-            return null;
+        $fredRow = DomainTld::where('tenant_id', $tenantId)->where('tld', $tld)->where('registrar', 'fred')->first()
+            ?? DomainTld::whereNull('tenant_id')->where('tld', $tld)->where('registrar', 'fred')->first();
+
+        if ($fredRow && $fredRow->reseller_price !== null) {
+            return round((float) $fredRow->reseller_price, 2);
         }
 
-        $settings = NameComSettings::forTenant($tenantId);
-        return round((float) $usd * (float) $settings->usd_rate, 2);
+        return null; // no wholesale-cost source configured for this TLD — never guess
     }
 
     // Same plain query-builder-update pattern as holdHosting()/clearHostingHold() above — no
