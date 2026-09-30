@@ -115,10 +115,16 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
                             <IconMessageCircle size={14} />
                           </ActionIcon>
                         </Tooltip>
-                      ) : flagged ? (
+                      ) : flagged && d.explainable ? (
                         <Tooltip label="Explain this day — request approval">
                           <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setExplainDay(d)}>
                             <IconMessageCircle size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      ) : flagged ? (
+                        <Tooltip label="Dirisha la kueleza siku hii limefungwa au bado halijafunguka">
+                          <ActionIcon variant="subtle" color="gray" size="sm" style={{ cursor: 'default' }}>
+                            <IconMessageCircle size={14} style={{ opacity: 0.35 }} />
                           </ActionIcon>
                         </Tooltip>
                       ) : null}

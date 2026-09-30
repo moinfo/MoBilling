@@ -330,6 +330,7 @@ class AttendanceController extends Controller
                 // Absent only matters on a working day.
                 'absent'       => $working && (($f['absent'] ?? true) && !($f['status'] ?? null)),
                 'deduction'    => round((float) ($penalties->get($key)?->sum('amount') ?? 0), 2),
+                'explainable'  => $working && $this->attendanceService->isWithinExplainWindow($key, $s),
             ];
             $days[] = $row;
             $totals['deduction_total'] += $row['deduction'];
@@ -428,6 +429,7 @@ class AttendanceController extends Controller
             'penalty_no_checkout' => 'nullable|numeric|min:0',
             'working_days'        => 'nullable|array',
             'working_days.*'      => 'integer|min:1|max:7',
+            'exception_window_days' => 'nullable|integer|min:1|max:28',
         ]);
         $s = $this->attendanceService->settings();
         $s->update($data);

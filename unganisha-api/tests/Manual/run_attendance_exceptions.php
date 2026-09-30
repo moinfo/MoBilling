@@ -5,7 +5,8 @@ $app = require __DIR__ . '/../../bootstrap/app.php';
 $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Http\Controllers\AttendanceExceptionController;
-use App\Models\{Attendance, AttendanceExceptionRequest, AttendancePenalty, Tenant, User};
+use App\Models\{Attendance, AttendanceExceptionRequest, AttendancePenalty, AttendanceSettings, Tenant, User};
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 
@@ -19,6 +20,11 @@ function trap(callable $f) {
     catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) { return response()->json(['message' => $e->getMessage()], $e->getStatusCode()); }
 }
 
+// Explanation window is date-math sensitive (1st–Nth of the month AFTER the
+// flagged day), so freeze "now" at a fixed point where the window math is
+// unambiguous regardless of which real-world day this script runs on.
+Carbon::setTestNow('2026-10-03 10:00:00'); // within Sept's window (Oct 1–5, default 5 days)
+
 DB::beginTransaction();
 try {
     $tenant = Tenant::find('019c8f39-679e-70d2-af92-ac72a25b0d9c'); // Moinfotech Company Limited — real multi-staff tenant
@@ -28,8 +34,12 @@ try {
         ?? $activeUsers->first(fn ($u) => $u->id !== $owner?->id);
     ok($staff && $owner && $staff->id !== $owner->id, 'have two distinct active users to test with (owner has attendance.manage, staff does not)');
 
+    // Pin the window to the documented default so the test isn't at the
+    // mercy of whatever an admin last saved in production settings.
+    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_window_days' => 5]);
+
     $ctl = app(AttendanceExceptionController::class);
-    $date = now()->subDays(5)->toDateString();
+    $date = '2026-09-27'; // September — explainable now that "now" is Oct 3
     AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $date)->delete();
     Attendance::where('user_id', $staff->id)->whereDate('date', $date)->delete();
     AttendancePenalty::where('user_id', $staff->id)->whereDate('date', $date)->delete();
@@ -76,7 +86,7 @@ try {
     ok($r5->status() === 422, 're-reviewing an already-decided request is rejected (422): got ' . $r5->status());
 
     // 6. A rejected request does NOT touch the day.
-    $date2 = now()->subDays(6)->toDateString();
+    $date2 = '2026-09-26';
     AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $date2)->delete();
     Attendance::where('user_id', $staff->id)->whereDate('date', $date2)->delete();
     $r6 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
@@ -92,7 +102,7 @@ try {
 
     // 6b. 'other' type on approval: waives the deduction but does NOT
     // touch the Attendance row/status (unlike leave/field).
-    $date2b = now()->subDays(8)->toDateString();
+    $date2b = '2026-09-25';
     AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $date2b)->delete();
     Attendance::where('user_id', $staff->id)->whereDate('date', $date2b)->delete();
     AttendancePenalty::where('user_id', $staff->id)->whereDate('date', $date2b)->delete();
@@ -123,7 +133,7 @@ try {
     ok(collect($ownerRows)->contains(fn ($row) => $row['id'] === $excId), 'attendance.manage holder sees the staff member\'s request too');
 
     // 8. cancel() by someone else is blocked; cancel() of a pending-own request works.
-    $date3 = now()->subDays(7)->toDateString();
+    $date3 = '2026-09-24';
     AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $date3)->delete();
     $r10 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
         'date' => $date3, 'type' => 'leave', 'comment' => 'Cancel-path test',
@@ -138,8 +148,37 @@ try {
     ok($r12->status() === 200, 'the requester can cancel their own pending request');
     ok(AttendanceExceptionRequest::find($excId3) === null, 'cancelled request row is deleted');
 
+    // 9. Explanation window: "now" is frozen at 2026-10-03 — September's
+    // window (Oct 1–5) is open, but August's already closed and October's
+    // own (not-yet-elapsed) month hasn't opened its window yet.
+    $tooOld = '2026-08-15'; // August's window was Sep 1–5, long closed
+    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $tooOld)->delete();
+    $r13 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
+        'date' => $tooOld, 'type' => 'leave', 'comment' => 'Too late to explain',
+    ]), $staff)));
+    ok($r13->status() === 422, "explaining an August day on Oct 3 is rejected — window closed (422): got " . $r13->status());
+
+    $tooNew = '2026-10-02'; // October's own window (Nov 1–5) hasn't opened
+    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $tooNew)->delete();
+    $r14 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
+        'date' => $tooNew, 'type' => 'leave', 'comment' => 'Too early to explain',
+    ]), $staff)));
+    ok($r14->status() === 422, "explaining an October day on Oct 3 is rejected — window not open yet (422): got " . $r14->status());
+
+    // A tighter admin-configured window (2 days) closes the same September
+    // window earlier — Oct 3 is then already past it.
+    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_window_days' => 2]);
+    $dateTight = '2026-09-20';
+    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $dateTight)->delete();
+    $r15 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
+        'date' => $dateTight, 'type' => 'leave', 'comment' => 'Window now only 2 days',
+    ]), $staff)));
+    ok($r15->status() === 422, "a 2-day configured window closes by Oct 3 too — respects the setting (422): got " . $r15->status());
+    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_window_days' => 5]);
+
     echo $fail === 0 ? "\nALL PASS\n" : "\n{$fail} FAILURE(S)\n";
 } finally {
     DB::rollBack();
+    Carbon::setTestNow();
     echo "Rolled back — no permanent changes.\n";
 }

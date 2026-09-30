@@ -61,6 +61,13 @@ class AttendanceExceptionController extends Controller
             ->where('date', $data['date'])->where('status', 'pending')->exists();
         abort_if($exists, 422, 'You already have a pending explanation for this day.');
 
+        $settings = $this->attendanceService->settings();
+        abort_unless(
+            $this->attendanceService->isWithinExplainWindow($data['date'], $settings),
+            422,
+            'The explanation window for this day is closed or not open yet.'
+        );
+
         $exception = AttendanceExceptionRequest::create([
             'tenant_id' => $user->tenant_id,
             'user_id' => $user->id,

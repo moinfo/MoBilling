@@ -973,6 +973,7 @@ function SettingsTab() {
       check_in_time: '07:30', check_out_time: '17:00', penalties_enabled: true,
       penalty_absent: 5000, penalty_late: 2000, penalty_left_early: 2000, penalty_no_checkout: 2000,
       working_days: [1, 2, 3, 4, 5, 6],
+      exception_window_days: 5,
     },
   });
 
@@ -1027,6 +1028,20 @@ function SettingsTab() {
             <NumberInput label="Left early" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled} {...form.getInputProps('penalty_left_early')} />
             <NumberInput label="No check-out" min={0} thousandSeparator="," disabled={!form.values.penalties_enabled} {...form.getInputProps('penalty_no_checkout')} />
           </SimpleGrid>
+        </div>
+
+        <Divider />
+
+        <div>
+          <Group gap="xs" mb="xs">
+            <ThemeIcon size="sm" variant="light" color="grape" radius="xl"><IconMessageCircle size={14} /></ThemeIcon>
+            <Text size="sm" fw={700}>Explanations window</Text>
+          </Group>
+          <Text size="xs" c="dimmed" mb="sm">
+            A staff member may explain a flagged day from month M only from the 1st through this many days into month M+1 — after that the window closes for good.
+          </Text>
+          <NumberInput label="Window (days into the next month)" min={1} max={28} w={220}
+            {...form.getInputProps('exception_window_days')} />
         </div>
 
         <Alert color="blue" variant="light" p="xs">

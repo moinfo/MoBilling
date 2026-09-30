@@ -6,6 +6,7 @@ use App\Models\Attendance;
 use App\Models\AttendancePenalty;
 use App\Models\AttendanceSettings;
 use App\Models\User;
+use Carbon\Carbon;
 
 /**
  * `formatDay()`/`settings()` moved here verbatim from AttendanceController
@@ -78,6 +79,24 @@ class AttendanceService
             'penalty_left_early'  => 2000,
             'penalty_no_checkout' => 2000,
             'working_days'        => [1, 2, 3, 4, 5, 6],
+            'exception_window_days' => 5,
         ]);
+    }
+
+    /**
+     * A day in month M may only be self-service explained from the 1st
+     * through settings' exception_window_days of month M+1 — a payroll
+     * dispute-window cutoff. Shared by AttendanceController::buildReport()
+     * (to show/hide the "explain" action) and
+     * AttendanceExceptionController::store() (to actually enforce it) so
+     * the two never drift apart.
+     */
+    public function isWithinExplainWindow(string $date, AttendanceSettings $s): bool
+    {
+        $days = max(1, (int) ($s->exception_window_days ?: 5));
+        $start = Carbon::parse($date)->startOfMonth()->addMonthNoOverflow()->startOfDay();
+        $end = $start->copy()->addDays($days - 1)->endOfDay();
+
+        return now()->between($start, $end);
     }
 }
