@@ -131,6 +131,8 @@ try {
     ok(collect($preview['warnings'])->contains(fn ($w) => str_contains($w, ".$ftld")), 'preview flags the FRED TLD with no cost source');
     ok(!collect($preview['warnings'])->contains(fn ($w) => str_contains($w, ".$ftldPriced")), 'preview does NOT flag the FRED TLD that has reseller_price set');
     ok(!collect($preview['products'])->pluck('name')->contains('Legacy Junk Hosting Row'), 'preview does not include the non-canonical legacy product row');
+    $hostingPreview = collect($preview['products'])->firstWhere('category', 'hosting');
+    ok($hostingPreview && $hostingPreview['cost_flagged'] === false && (float) $hostingPreview['cost_price'] === (float) $hostingPreview['retail_price'], 'preview: hosting cost_price = our own retail price (no manual gap) — Moinfotech\'s own sale price IS the reseller\'s cost');
 
     // rollback-on-failure: pre-collide the admin email with an existing staff user so User::create()
     // throws mid-transaction — nothing must persist.
@@ -175,7 +177,7 @@ try {
 
     $newProducts = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->get();
     ok($newProducts->count() === 11, 'exactly 11 products created (6 hosting + 4 email + 1 linode), no legacy junk: ' . $newProducts->count());
-    ok($newProducts->every(fn ($p) => $p->cost_price === null), 'every new product cost_price is null (flagged, no auto source) — never silently free');
+    ok($newProducts->every(fn ($p) => (float) $p->cost_price === (float) $p->price), 'every new product cost_price = its own price at duplication time — Moinfotech\'s retail price is the reseller\'s cost, set automatically, no manual owner step needed');
     $newHostingProduct = $newProducts->firstWhere('name', 'System Web Hosting Package');
     ok($newHostingProduct && $newHostingProduct->server_id === $newServers->first()->id, 'hosting product server_id remapped to the NEW duplicated server');
     ok((float) $newHostingProduct->price === 100000.0, 'hosting product retail price copied from source');
@@ -246,16 +248,24 @@ try {
     auth()->setUser($adminUser); // acting as the reseller tenant's own admin now
     $resellerClient = Client::create(['name' => 'Reseller Own Client', 'phone' => '25570' . random_int(1000000, 9999999), 'email' => 'rclient-' . random_int(1000, 9999) . '@example.test', 'status' => 'active']);
 
-    // -- hosting: unknown cost (fresh product has cost_price = null) -> always held, never free
+    // -- hosting: cost_price is auto-set at provisioning time (= Moinfotech's own retail price for
+    // this product) — no manual owner step needed before the gate can be trusted.
     $hostingProduct = ProductService::withoutGlobalScopes()->where('tenant_id', $tenant->id)->where('name', 'System Web Hosting Package')->first();
+    ok((float) $hostingProduct->cost_price === 100000.0, 'duplicated hosting product already has a real cost_price (100,000 — Moinfotech\'s own price), set automatically');
+
+    // defensive: still holds (never falls back to free) if cost_price is ever manually cleared
+    $hostingProduct->update(['cost_price' => null]);
     $sub1 = ClientSubscription::create(['client_id' => $resellerClient->id, 'product_service_id' => $hostingProduct->id, 'label' => 'System Web Hosting Package', 'quantity' => 1, 'start_date' => now(), 'status' => 'pending']);
     $sub1->update(['status' => 'active']);
     ok(Bus::dispatched(ProvisionHostingAccount::class)->count() === 0, 'no ProvisionHostingAccount dispatched (unknown cost)');
-    ok($sub1->fresh()->metadata['wallet_hold']['reason'] === 'unknown_cost', 'hosting held: unknown_cost (cost_price not set yet)');
+    ok($sub1->fresh()->metadata['wallet_hold']['reason'] === 'unknown_cost', 'hosting held: unknown_cost when cost_price is manually cleared');
     ok(Notification::sent($adminUser, TenantWalletHoldNotification::class)->count() >= 1, 'reseller admin notified of the unknown-cost hold');
 
-    // owner now sets a real cost for this product (as instructed they must, before trusting the gate)
-    $hostingProduct->update(['cost_price' => 60000]);
+    // restore the real (auto-set) cost, and resolve sub1's hold right away (deterministically)
+    // so it doesn't silently get swept up by a LATER top-up's retryHeld() and throw off the
+    // balance arithmetic the sub2/sub3 assertions below depend on.
+    $hostingProduct->update(['cost_price' => 100000]);
+    ok($gate->allowHostingProvision($sub1->fresh()) === true, 'sub1 resolves once cost_price is restored (balance sufficient at this point)');
 
     // -- hosting: insufficient balance (wallet currently has 150,000 across topups; drain it first)
     $tenant->update(['wallet_balance' => 10000]); // force a small balance for this scenario
@@ -269,7 +279,7 @@ try {
 
     // -- hosting: sufficient balance -> debit happens, existing dispatch proceeds unmodified
     $topupBalance = $walletSvc->topUp($tenant->fresh(), 200000, 'TEST-TOPUP', 'test harness');
-    ok($topupBalance >= 60000, 'top-up brought balance above the 60,000 hosting cost');
+    ok($topupBalance >= 100000, 'top-up brought balance above the 100,000 hosting cost');
     // retryHeld() (called inline from topUp) should already have fulfilled sub2 — verify it was dispatched and cleared
     ok(Bus::dispatched(ProvisionHostingAccount::class, fn ($j) => $j->subscription->is($sub2))->count() === 1, 'ProvisionHostingAccount dispatched for sub2 after top-up retry');
     ok(empty($sub2->fresh()->metadata['wallet_hold'] ?? null), 'sub2 hold cleared after top-up (auto-retry)');
@@ -279,7 +289,7 @@ try {
     $balBeforeSub3 = (float) $tenant->fresh()->wallet_balance;
     $sub3->update(['status' => 'active']);
     ok(Bus::dispatched(ProvisionHostingAccount::class, fn ($j) => $j->subscription->is($sub3))->count() === 1, 'ProvisionHostingAccount dispatched for sub3 on the sufficient-balance path');
-    ok((float) $tenant->fresh()->wallet_balance === round($balBeforeSub3 - 60000, 2), 'wallet debited exactly the cost (60,000) on the sufficient-balance path');
+    ok((float) $tenant->fresh()->wallet_balance === round($balBeforeSub3 - 100000, 2), 'wallet debited exactly the cost (100,000) on the sufficient-balance path');
 
     // idempotency: re-running the gate for the same already-debited subscription must not double-charge
     $balBeforeRetry = (float) $tenant->fresh()->wallet_balance;

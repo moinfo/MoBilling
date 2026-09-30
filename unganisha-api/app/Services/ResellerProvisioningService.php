@@ -74,14 +74,13 @@ class ResellerProvisioningService
             $infra[] = ['category' => 'hosting', 'label' => $server ? "Server — {$server->name} (Shared — same as Moinfotech)" : 'No active WHM server found on Moinfotech\'s own tenant'];
 
             foreach ($this->hostingProducts($sourceTenantId) as $p) {
-                $products[] = ['category' => 'hosting', 'name' => $p->name, 'retail_price' => (float) $p->price, 'cost_price' => null, 'cost_flagged' => true];
-                $warnings[] = "\"{$p->name}\" has no wholesale-cost source — set product_services.cost_price manually before trusting the wallet gate for it.";
+                $products[] = ['category' => 'hosting', 'name' => $p->name, 'retail_price' => (float) $p->price, 'cost_price' => (float) $p->price, 'cost_flagged' => false];
             }
         }
 
         if (in_array('email', $categories, true)) {
             foreach ($this->emailProducts($sourceTenantId) as $p) {
-                $products[] = ['category' => 'email', 'name' => $p->name, 'retail_price' => (float) $p->price, 'cost_price' => null, 'cost_flagged' => true];
+                $products[] = ['category' => 'email', 'name' => $p->name, 'retail_price' => (float) $p->price, 'cost_price' => (float) $p->price, 'cost_flagged' => false];
             }
         }
 
@@ -90,7 +89,7 @@ class ResellerProvisioningService
             $infra[] = ['category' => 'linode', 'label' => $linode ? "Linode account — {$linode->label} (Shared — same as Moinfotech)" : 'No Linode account found on Moinfotech\'s own tenant'];
 
             foreach ($this->linodeProducts($sourceTenantId) as $p) {
-                $products[] = ['category' => 'linode', 'name' => $p->name, 'retail_price' => (float) $p->price, 'cost_price' => null, 'cost_flagged' => true];
+                $products[] = ['category' => 'linode', 'name' => $p->name, 'retail_price' => (float) $p->price, 'cost_price' => (float) $p->price, 'cost_flagged' => false];
             }
             $warnings[] = 'Linode servers are billed manually in this app (no auto-provisioning) — the wallet gate does not apply to them.';
         }
@@ -295,7 +294,11 @@ class ResellerProvisioningService
                 'name'                  => $source->name,
                 'description'           => $source->description,
                 'price'                 => $source->price, // retail — reseller's own starting price, edit in Settings
-                'cost_price'            => null,           // no real-cost source found automatically — see report
+                // Moinfotech's own retail price IS the reseller's wholesale cost (hosting/email/
+                // Linode run on our own shared infra — there is no external vendor cost to look
+                // up). The reseller then raises `price` above this to set their own margin; the
+                // wallet gate always debits at `cost_price`, i.e. what THEY owe Moinfotech.
+                'cost_price'            => $source->price,
                 'tax_percent'           => $source->tax_percent,
                 'unit'                  => $source->unit,
                 'category'              => $source->category,
