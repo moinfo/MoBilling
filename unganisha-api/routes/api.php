@@ -98,6 +98,7 @@ Route::post('/auth/2fa/verify-login', [\App\Http\Controllers\Auth\TwoFactorAuthC
 
 // White-label branding by hostname (public)
 Route::get('/public/branding', [\App\Http\Controllers\PublicBrandingController::class, 'show']);
+Route::get('/public/catalog', [\App\Http\Controllers\PublicCatalogController::class, 'show']);
 
 // Public domain availability search for the moinfo.co.tz search box. Each hit
 // costs a live registry call, so it is throttled per IP.

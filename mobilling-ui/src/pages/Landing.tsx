@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Drawer, Loader, Center, Burger } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useMantineColorScheme, useComputedColorScheme } from '@mantine/core';
-import { Link, Navigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import {
   IconFileInvoice, IconFileText, IconBuildingBank, IconCash, IconLayoutDashboard,
@@ -14,6 +14,7 @@ import {
 } from '@tabler/icons-react';
 import { getPublicPlans, getPublicLicensePlans, SubscriptionPlan } from '../api/subscription';
 import { isBrandedHost } from '../branding';
+import WhiteLabelLanding from './WhiteLabelLanding';
 import { useReveal } from '../hooks/useReveal';
 import '../theme/marketing.css';
 import styles from './Landing.module.css';
@@ -425,9 +426,10 @@ function PricingSection() {
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Landing() {
-  // White-label domains never show the MoBilling marketing site.
-  // Checked before any hook so hook order stays stable (rules of hooks).
-  if (isBrandedHost()) return <Navigate to="/portal/login" replace />;
+  // White-label domains never show the MoBilling marketing site — they get
+  // a generic, content-free landing of their own instead. Checked before
+  // any hook so hook order stays stable (rules of hooks).
+  if (isBrandedHost()) return <WhiteLabelLanding />;
   return <LandingContent />;
 }
 

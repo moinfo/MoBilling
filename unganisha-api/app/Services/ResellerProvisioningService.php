@@ -53,6 +53,9 @@ class ResellerProvisioningService
         $infra = [];
         $products = [];
         $warnings = [];
+        // Mirror provision()'s dedup — a product can match more than one category
+        // filter (e.g. cPanel-provisioned email), and must only be listed once.
+        $seenProductIds = [];
 
         if (in_array('domain', $categories, true)) {
             $namecom = NameComAccount::defaultFor($sourceTenantId);
@@ -74,12 +77,16 @@ class ResellerProvisioningService
             $infra[] = ['category' => 'hosting', 'label' => $server ? "Server — {$server->name} (Shared — same as Moinfotech)" : 'No active WHM server found on Moinfotech\'s own tenant'];
 
             foreach ($this->hostingProducts($sourceTenantId) as $p) {
+                if (in_array($p->id, $seenProductIds, true)) continue;
+                $seenProductIds[] = $p->id;
                 $products[] = ['category' => 'hosting', 'name' => $p->name, 'retail_price' => (float) $p->price, 'cost_price' => (float) $p->price, 'cost_flagged' => false];
             }
         }
 
         if (in_array('email', $categories, true)) {
             foreach ($this->emailProducts($sourceTenantId) as $p) {
+                if (in_array($p->id, $seenProductIds, true)) continue;
+                $seenProductIds[] = $p->id;
                 $products[] = ['category' => 'email', 'name' => $p->name, 'retail_price' => (float) $p->price, 'cost_price' => (float) $p->price, 'cost_flagged' => false];
             }
         }
@@ -167,19 +174,30 @@ class ResellerProvisioningService
                 $categories = $application->categories;
                 $serverIdMap = [];
 
+                // A single product can satisfy more than one category filter (e.g. a
+                // cPanel-provisioned "Business Email" product matches both hostingProducts()
+                // and emailProducts()) — dedupe across the calls below so it's only ever
+                // duplicated into the new tenant once, not once per matching category.
+                $seenProductIds = [];
+                $dedupe = function ($products) use (&$seenProductIds) {
+                    return $products->reject(fn ($p) => in_array($p->id, $seenProductIds, true))
+                        ->each(function ($p) use (&$seenProductIds) { $seenProductIds[] = $p->id; })
+                        ->values();
+                };
+
                 if (in_array('domain', $categories, true)) {
                     $this->duplicateDomainInfra($sourceTenantId, $tenant->id);
                 }
                 if (in_array('hosting', $categories, true)) {
                     $serverIdMap = $this->duplicateServer($sourceTenantId, $tenant->id);
-                    $this->duplicateProducts($this->hostingProducts($sourceTenantId), $tenant->id, $serverIdMap);
+                    $this->duplicateProducts($dedupe($this->hostingProducts($sourceTenantId)), $tenant->id, $serverIdMap);
                 }
                 if (in_array('email', $categories, true)) {
-                    $this->duplicateProducts($this->emailProducts($sourceTenantId), $tenant->id, $serverIdMap);
+                    $this->duplicateProducts($dedupe($this->emailProducts($sourceTenantId)), $tenant->id, $serverIdMap);
                 }
                 if (in_array('linode', $categories, true)) {
                     $this->duplicateLinodeAccount($sourceTenantId, $tenant->id);
-                    $this->duplicateProducts($this->linodeProducts($sourceTenantId), $tenant->id, $serverIdMap);
+                    $this->duplicateProducts($dedupe($this->linodeProducts($sourceTenantId)), $tenant->id, $serverIdMap);
                 }
 
                 $application->update([
