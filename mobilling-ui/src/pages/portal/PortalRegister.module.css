@@ -135,6 +135,31 @@
 .label { font-size: 13px; font-weight: 600; color: var(--ink); }
 .labelOptional { font-weight: 400; color: var(--ink-soft); }
 
+.labelRow { display: flex; align-items: center; justify-content: space-between; }
+.forgot { font-size: 12.5px; font-weight: 600; color: var(--accent); }
+.forgot:hover { text-decoration: underline; }
+
+.pwWrap { position: relative; display: flex; }
+.pwInput { flex: 1; padding-right: 64px; }
+.pwToggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  border: none; background: transparent; color: var(--ink-soft);
+  font-size: 12.5px; font-weight: 600; cursor: pointer; padding: 6px 8px;
+}
+.pwToggle:hover { color: var(--accent); }
+
+.checkRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; font-size: 13px; }
+
+.checkLabel { display: flex; align-items: center; gap: 8px; color: var(--ink-soft); background: none; border: none; cursor: pointer; font-family: inherit; font-size: 13px; padding: 0; }
+
+.checkbox {
+  width: 17px; height: 17px; border-radius: 5px; border: 1.5px solid var(--line);
+  display: flex; align-items: center; justify-content: center; font-size: 11px; color: #fff; flex-shrink: 0;
+}
+.checkboxOn { background: var(--accent); border-color: var(--accent); }
+
+.securityNote { color: var(--ink-soft); font-size: 12px; }
+
 .input {
   border: 1.5px solid var(--line);
   border-radius: 9px;
@@ -187,6 +212,26 @@
   margin-bottom: 16px;
 }
 .alert svg { flex-shrink: 0; margin-top: 1px; }
+
+.channelToggle {
+  display: flex; gap: 6px; background: var(--surface-alt); border: 1px solid var(--line);
+  border-radius: 10px; padding: 4px; margin-bottom: 16px;
+}
+.channelBtn {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px;
+  border: none; border-radius: 8px; padding: 9px; background: transparent;
+  color: var(--ink-soft); font-family: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer;
+}
+.channelBtnActive { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+
+.otpInput {
+  width: 100%; text-align: center; letter-spacing: 0.5em; font-family: 'JetBrains Mono', monospace;
+  font-size: 22px; font-weight: 600; padding: 13px 0 13px 0.5em;
+  border: 1.5px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); outline: none;
+}
+.otpInput:focus { border-color: var(--accent); }
+
+.center { text-align: center; }
 
 .pinRow { display: flex; justify-content: center; gap: 8px; margin-bottom: 18px; }
 

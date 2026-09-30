@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMantineColorScheme, useComputedColorScheme, ActionIcon } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -9,6 +9,7 @@ import { safeNext } from '../../utils/safeNext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { IconSun, IconMoon } from '@tabler/icons-react';
 import classes from './PortalLogin.module.css';
+import reg from './PortalRegister.module.css';
 
 /**
  * The four things a customer signs in to do. The mono keys on the left mirror
@@ -35,6 +36,29 @@ export default function PortalLogin() {
   // root ("/", WhiteLabelLanding) — never to Moinfotech's own site, which
   // the reseller's customers should never see.
   const backHref = branding.branded ? '/' : 'https://moinfo.co.tz';
+
+  // Same localStorage key as the storefront/register pages, so a reseller's
+  // dark/light choice carries over across their whole client-facing flow.
+  const THEME_KEY = 'wl_theme';
+  const [wlTheme, setWlTheme] = useState<'light' | 'dark' | null>(() => {
+    try { const s = localStorage.getItem(THEME_KEY); return s === 'light' || s === 'dark' ? s : null; } catch { return null; }
+  });
+  const [systemDark, setSystemDark] = useState(false);
+  useEffect(() => {
+    if (!branding.branded) return;
+    const mq = window.matchMedia('(prefers-color-scheme: dark)');
+    setSystemDark(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [branding.branded]);
+  const wlIsDark = wlTheme ? wlTheme === 'dark' : systemDark;
+  const toggleWlTheme = () => {
+    const cur = wlTheme ?? (systemDark ? 'dark' : 'light');
+    const nextTheme = cur === 'dark' ? 'light' : 'dark';
+    setWlTheme(nextTheme);
+    try { localStorage.setItem(THEME_KEY, nextTheme); } catch { /* ignore */ }
+  };
 
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -119,6 +143,116 @@ export default function PortalLogin() {
       setTwoFaSubmitting(false);
     }
   };
+
+  // A white-label reseller's login matches the storefront's own design
+  // language (WhiteLabelLanding / PortalRegister) — the rich two-column
+  // "Control Room" layout below is Moinfotech's own default portal only.
+  if (branding.branded) {
+    const initial = brandName.trim().charAt(0).toUpperCase() || '?';
+    return (
+      <div className={reg.page} data-theme={wlTheme ?? undefined}>
+        <div className={reg.topbar}>
+          <Link className={reg.back} to={backHref}>← {t('login.backTo')} {t('login.backToHome')}</Link>
+          <button type="button" className={reg.themeToggle} onClick={toggleWlTheme}
+            aria-label={wlIsDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+            {wlIsDark ? <IconSun size={16} /> : <IconMoon size={16} />}
+          </button>
+        </div>
+
+        <div className={reg.wrap}>
+          <div className={reg.brandRow}>
+            {branding.logo_url ? <img src={branding.logo_url} alt="" className={reg.logo} /> : <span className={reg.avatar}>{initial}</span>}
+            <span className={reg.brandName}>{brandName}</span>
+          </div>
+
+          {twoFaChallengeId ? (
+            <>
+              <h1 className={reg.title}>Two-factor verification</h1>
+              <p className={reg.subtitle}>
+                {twoFaUseRecovery ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}
+              </p>
+              <div className={reg.card}>
+                <div className={reg.field}>
+                  <label className={reg.label}>{twoFaUseRecovery ? 'Recovery code' : 'Authentication code'}</label>
+                  <input
+                    className={reg.input}
+                    placeholder={twoFaUseRecovery ? 'XXXX-XXXX' : '123456'}
+                    inputMode={twoFaUseRecovery ? 'text' : 'numeric'}
+                    autoFocus
+                    value={twoFaUseRecovery ? twoFaRecoveryCode : twoFaCode}
+                    onChange={(e) => (twoFaUseRecovery ? setTwoFaRecoveryCode(e.target.value) : setTwoFaCode(e.target.value))}
+                    onKeyDown={(e) => e.key === 'Enter' && handleTwoFactorVerify()}
+                  />
+                </div>
+                <button className={reg.submit} type="button" disabled={twoFaSubmitting} onClick={handleTwoFactorVerify}>
+                  {twoFaSubmitting ? t('login.submitting') : 'Verify'}
+                </button>
+                <p className={reg.footNote}>
+                  <a className={reg.link} onClick={() => { setTwoFaUseRecovery(!twoFaUseRecovery); setTwoFaCode(''); setTwoFaRecoveryCode(''); }}>
+                    {twoFaUseRecovery ? 'Use authenticator code instead' : 'Lost your device? Use a recovery code'}
+                  </a>
+                </p>
+                <p className={reg.footNote}>
+                  <a className={reg.link} onClick={() => { setTwoFaChallengeId(null); setTwoFaCode(''); setTwoFaRecoveryCode(''); setTwoFaUseRecovery(false); }}>
+                    Back to sign in
+                  </a>
+                </p>
+              </div>
+            </>
+          ) : (
+            <>
+              <h1 className={reg.title}>{t('login.heading')}</h1>
+              <p className={reg.subtitle}>{t('login.sub')}</p>
+
+              <form className={reg.card} onSubmit={form.onSubmit(handleSubmit)}>
+                <div className={reg.field}>
+                  <label className={reg.label}>{t('login.identifier')}</label>
+                  <input className={reg.input} placeholder={t('login.identifierPlaceholder')} autoComplete="username"
+                    {...form.getInputProps('identifier', { withError: false })} />
+                </div>
+                <div className={reg.field}>
+                  <div className={reg.labelRow}>
+                    <label className={reg.label}>{t('login.password')}</label>
+                    <Link className={reg.forgot} to="/portal/forgot-password">{t('login.forgot')}</Link>
+                  </div>
+                  <div className={reg.pwWrap}>
+                    <input
+                      className={`${reg.input} ${reg.pwInput}`}
+                      type={showPw ? 'text' : 'password'}
+                      placeholder={t('login.passwordPlaceholder')}
+                      autoComplete="current-password"
+                      {...form.getInputProps('password', { withError: false })}
+                    />
+                    <button type="button" className={reg.pwToggle} onClick={() => setShowPw((v) => !v)}
+                      aria-label={showPw ? 'Hide password' : 'Show password'}>
+                      {showPw ? t('login.hide') : t('login.show')}
+                    </button>
+                  </div>
+                </div>
+
+                <div className={reg.checkRow}>
+                  <button type="button" className={reg.checkLabel} onClick={() => setRemember((v) => !v)} aria-pressed={remember}>
+                    <span className={`${reg.checkbox} ${remember ? reg.checkboxOn : ''}`}>{remember ? '✓' : ''}</span>
+                    {t('login.remember')}
+                  </button>
+                  <span className={reg.securityNote}>{t('login.security')}</span>
+                </div>
+
+                <button className={reg.submit} type="submit" disabled={submitting}>
+                  {submitting ? t('login.submitting') : t('login.submit')}
+                </button>
+              </form>
+
+              <p className={reg.footNote}>
+                {t('login.newHere')} {brandName}?{' '}
+                <Link to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}>{t('login.createAccount')}</Link>
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={classes.page}>
