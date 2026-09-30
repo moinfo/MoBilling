@@ -31,6 +31,8 @@ export interface User {
     late_fee_percent: number;
     late_fee_days: number;
     is_self_hosted?: boolean;
+    is_wallet_gated?: boolean;
+    wallet_balance?: number;
   };
   // Client portal fields (only present when user_type === 'client')
   client_id?: string;

@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import {
   Stack, Paper, Title, Text, Group, Badge, Table, Button, Modal, Textarea, Tabs,
-  ScrollArea, LoadingOverlay, Alert, SimpleGrid, Divider,
+  ScrollArea, LoadingOverlay, Alert, SimpleGrid, Divider, List,
 } from '@mantine/core';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconBuildingStore, IconCheck, IconX, IconInfoCircle, IconRocket } from '@tabler/icons-react';
+import { IconBuildingStore, IconCheck, IconX, IconInfoCircle, IconRocket, IconAlertTriangle } from '@tabler/icons-react';
 import {
   listResellerApplications, approveResellerApplication, rejectResellerApplication,
+  previewResellerProvision, provisionResellerApplication,
   ResellerApplicationStaffRecord,
 } from '../api/resellerApplications';
 
@@ -27,6 +28,7 @@ export default function ResellerApplications() {
   const [rejectReason, setRejectReason] = useState('');
   const [approveNote, setApproveNote] = useState('');
   const [approveOpen, setApproveOpen] = useState(false);
+  const [provisionOpen, setProvisionOpen] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['reseller-applications', status],
@@ -56,6 +58,24 @@ export default function ResellerApplications() {
       setRejectReason('');
     },
     onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not reject.', color: 'red' }),
+  });
+
+  const previewQuery = useQuery({
+    queryKey: ['reseller-provision-preview', selected?.id],
+    queryFn: () => previewResellerProvision(selected!.id),
+    enabled: provisionOpen && !!selected,
+  });
+  const preview = previewQuery.data?.data?.data;
+
+  const provisionMut = useMutation({
+    mutationFn: (id: string) => provisionResellerApplication(id),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Provisioned', message: res.data.message, color: 'green', autoClose: 12000 });
+      qc.invalidateQueries({ queryKey: ['reseller-applications'] });
+      setProvisionOpen(false);
+      setSelected(null);
+    },
+    onError: (e: any) => notifications.show({ message: e.response?.data?.message || 'Could not provision.', color: 'red' }),
   });
 
   return (
@@ -153,8 +173,15 @@ export default function ResellerApplications() {
             )}
             {selected.status === 'approved' && (
               <Alert icon={<IconRocket size={16} />} color="blue" title="Ready to provision">
-                This application is approved. Go to Provision to review the plan (infrastructure, products,
-                cost prices) and create the tenant.
+                <Text size="sm" mb="sm">This application is approved. Review the plan (infrastructure, products, cost prices) before creating the tenant.</Text>
+                <Button size="xs" color="blue" leftSection={<IconRocket size={14} />} onClick={() => setProvisionOpen(true)}>
+                  Review & Provision
+                </Button>
+              </Alert>
+            )}
+            {selected.status === 'provisioned' && (
+              <Alert icon={<IconCheck size={16} />} color="green" title="Provisioned">
+                This application's tenant has been created ({selected.provisioned_tenant?.custom_domain ?? selected.provisioned_tenant?.name}).
               </Alert>
             )}
           </Stack>
@@ -185,6 +212,59 @@ export default function ResellerApplications() {
               Confirm reject
             </Button>
           </Group>
+        </Stack>
+      </Modal>
+
+      <Modal opened={provisionOpen} onClose={() => setProvisionOpen(false)} title={`Provision — ${selected?.brand_name}`} size="lg">
+        <Stack gap="sm" pos="relative" mih={120}>
+          <LoadingOverlay visible={previewQuery.isLoading} />
+          {preview && (
+            <>
+              <Text size="sm">
+                This will create a new tenant "<b>{selected?.brand_name}</b>" at <b>{selected?.requested_domain}</b>,
+                a new admin login for {selected?.contact_email}, and duplicate the infrastructure and products below.
+              </Text>
+
+              <Divider label="Infrastructure (shared with Moinfotech)" />
+              <List size="sm">
+                {preview.infra.map((i, idx) => <List.Item key={idx}>{i.label}</List.Item>)}
+              </List>
+
+              <Divider label="Products to create" />
+              <Table>
+                <Table.Thead>
+                  <Table.Tr><Table.Th>Product</Table.Th><Table.Th>Retail price</Table.Th><Table.Th>Cost price</Table.Th></Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {preview.products.map((p, idx) => (
+                    <Table.Tr key={idx}>
+                      <Table.Td>{p.name}</Table.Td>
+                      <Table.Td>{p.retail_price != null ? p.retail_price.toLocaleString() : '—'}</Table.Td>
+                      <Table.Td>
+                        {p.cost_flagged ? <Badge color="orange" variant="light" size="sm">not set — will hold</Badge> : (p.cost_price ?? '—')}
+                      </Table.Td>
+                    </Table.Tr>
+                  ))}
+                </Table.Tbody>
+              </Table>
+
+              {preview.warnings.length > 0 && (
+                <Alert icon={<IconAlertTriangle size={16} />} color="orange" title="Before you provision">
+                  <List size="sm">
+                    {preview.warnings.map((w, idx) => <List.Item key={idx}>{w}</List.Item>)}
+                  </List>
+                </Alert>
+              )}
+
+              <Group justify="flex-end" mt="sm">
+                <Button variant="default" onClick={() => setProvisionOpen(false)}>Cancel</Button>
+                <Button color="blue" leftSection={<IconRocket size={14} />} loading={provisionMut.isPending}
+                  onClick={() => selected && provisionMut.mutate(selected.id)}>
+                  Create tenant now
+                </Button>
+              </Group>
+            </>
+          )}
         </Stack>
       </Modal>
     </Stack>

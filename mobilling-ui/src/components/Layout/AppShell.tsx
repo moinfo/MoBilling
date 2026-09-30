@@ -84,7 +84,7 @@ export default function AppLayout() {
   const headerHeight = (isImpersonating ? 96 : 60) + (showSubscriptionBanner ? 36 : 0);
 
   // Check if any billing sub-items are visible
-  const showBilling = canAny(['menu.collection', 'menu.followups', 'menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills', 'reseller_applications.manage']);
+  const showBilling = canAny(['menu.collection', 'menu.followups', 'menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills', 'reseller_applications.manage', 'credit.manage']);
   const showStatutory = canAny(['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out']);
   const showExpenses = canAny(['menu.expense_categories', 'menu.expenses', 'menu.petty_cash']);
   // The three reference CRUDs (Systems / Bank Accounts / System Properties)
@@ -143,6 +143,7 @@ export default function AppLayout() {
     { label: 'Clients', path: '/clients', group: 'Billing', visible: can('menu.clients') },
     { label: 'Portal Users', path: '/portal-users', group: 'Billing', visible: can('menu.portal_users') },
     { label: 'Reseller Applications', path: '/reseller-applications', group: 'Billing', visible: can('reseller_applications.manage') },
+    { label: 'Wallet', path: '/wallet', group: 'Billing', visible: !!user?.tenant?.is_wallet_gated && can('credit.manage') },
     { label: 'Add Order', path: '/orders', group: 'Billing', visible: can('orders.create') },
     { label: 'Products & Services', path: '/product-services', group: 'Billing', visible: can('menu.products') },
     { label: 'Product Add-ons', path: '/product-addons', group: 'Billing', visible: can('menu.product_addons') },
@@ -472,6 +473,10 @@ export default function AppLayout() {
               {can('reseller_applications.manage') && (
                 <NavLink label="Reseller Applications" leftSection={<IconBuildingStore size={16} />}
                   active={isActive('/reseller-applications')} onClick={() => navigateAndClose('/reseller-applications')} />
+              )}
+              {!!user?.tenant?.is_wallet_gated && can('credit.manage') && (
+                <NavLink label="Wallet" leftSection={<IconWallet size={16} />}
+                  active={isActive('/wallet')} onClick={() => navigateAndClose('/wallet')} />
               )}
               {can('orders.create') && (
                 <NavLink label="Add Order" leftSection={<IconShoppingCart size={16} />}

@@ -116,6 +116,7 @@ import Payroll from './pages/Payroll';
 import Collection from './pages/Collection';
 import Followups from './pages/Followups';
 import ResellerApplications from './pages/ResellerApplications';
+import Wallet from './pages/Wallet';
 import MyCollections from './pages/MyCollections';
 import SatisfactionCalls from './pages/SatisfactionCalls';
 import Appointments from './pages/Appointments';
@@ -307,6 +308,7 @@ export default function App() {
                   <Route path="/collection" element={<Collection />} />
                   <Route path="/followups" element={<Followups />} />
                   <Route path="/reseller-applications" element={<ResellerApplications />} />
+                  <Route path="/wallet" element={<Wallet />} />
                   <Route path="/my-collections" element={<MyCollections />} />
                   <Route path="/satisfaction-calls" element={<SatisfactionCalls />} />
                   <Route path="/appointments" element={<Appointments />} />

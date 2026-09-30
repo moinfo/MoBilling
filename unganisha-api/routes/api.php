@@ -273,7 +273,17 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/{resellerApplication}', [\App\Http\Controllers\ResellerApplicationController::class, 'show']);
         Route::post('/{resellerApplication}/approve', [\App\Http\Controllers\ResellerApplicationController::class, 'approve']);
         Route::post('/{resellerApplication}/reject', [\App\Http\Controllers\ResellerApplicationController::class, 'reject']);
+        Route::get('/{resellerApplication}/provision', [\App\Http\Controllers\ResellerApplicationController::class, 'provisionPreview']);
         Route::post('/{resellerApplication}/provision', [\App\Http\Controllers\ResellerApplicationController::class, 'provision']);
+        Route::get('/{resellerApplication}/wallet', [\App\Http\Controllers\ResellerApplicationController::class, 'walletShow']);
+        Route::post('/{resellerApplication}/wallet/topup', [\App\Http\Controllers\ResellerApplicationController::class, 'walletTopup']);
+    });
+
+    // A reseller tenant's OWN admin managing their OWN wallet (self-service Pesapal top-up)
+    Route::middleware('permission:credit.manage')->prefix('wallet')->group(function () {
+        Route::get('/', [\App\Http\Controllers\TenantWalletController::class, 'show']);
+        Route::post('/topup/pesapal', [\App\Http\Controllers\TenantWalletController::class, 'topupPesapal']);
+        Route::get('/topup/{topup}/status', [\App\Http\Controllers\TenantWalletController::class, 'topupStatus']);
     });
 
     // Clients
