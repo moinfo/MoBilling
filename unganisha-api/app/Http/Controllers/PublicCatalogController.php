@@ -29,6 +29,11 @@ class PublicCatalogController extends Controller
             'name'          => $p->name,
             'price'         => (float) $p->price,
             'billing_cycle' => $p->billing_cycle,
+            // "Disk Space: 10 GB · Bandwidth: Unlimited · ..." when staff have
+            // filled it in (often auto-pulled from the real WHM package specs
+            // — see ProductServiceForm's packageSpecsText()); null otherwise,
+            // never invented here.
+            'description'   => $p->description,
         ];
 
         $hosting = ProductService::withoutGlobalScopes()->where('tenant_id', $tenantId)

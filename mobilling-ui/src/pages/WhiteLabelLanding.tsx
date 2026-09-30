@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { useBranding } from '../branding';
-import { checkPublicDomain, getPublicCatalog, DomainCheckResult } from '../api/publicStorefront';
+import { checkPublicDomain, getPublicCatalog, DomainCheckResult, CatalogPlan } from '../api/publicStorefront';
 import styles from './WhiteLabelLanding.module.css';
 
 /**
@@ -59,22 +59,30 @@ export default function WhiteLabelLanding() {
   const popularName = (plans: { name: string; price: number }[]) =>
     plans.length >= 3 ? plans[Math.floor(plans.length / 2)].name : null;
 
-  const renderPlans = (title: string, plans: { name: string; price: number; billing_cycle: string }[]) => {
+  const renderPlans = (title: string, plans: CatalogPlan[]) => {
     if (!plans.length) return null;
     const popular = popularName(plans);
     return (
       <section className={styles.plans} key={title}>
         <h2 className={styles.sectionTitle}>{title}</h2>
         <div className={styles.planGrid}>
-          {plans.map((p) => (
-            <Link key={p.name} to={orderHref(p.name)}
-              className={`${styles.planCard} ${p.name === popular ? styles.planCardPopular : ''}`}>
-              {p.name === popular && <span className={styles.planBadge}>Most chosen</span>}
-              <div className={styles.planName}>{p.name}</div>
-              <div className={styles.planPrice}>{money(p.price)}<span>/{p.billing_cycle}</span></div>
-              <span className={styles.planCta}>Get started</span>
-            </Link>
-          ))}
+          {plans.map((p) => {
+            const specs = p.description ? p.description.split(' · ').filter(Boolean) : [];
+            return (
+              <Link key={p.name} to={orderHref(p.name)}
+                className={`${styles.planCard} ${p.name === popular ? styles.planCardPopular : ''}`}>
+                {p.name === popular && <span className={styles.planBadge}>Most chosen</span>}
+                <div className={styles.planName}>{p.name}</div>
+                <div className={styles.planPrice}>{money(p.price)}<span>/{p.billing_cycle}</span></div>
+                {specs.length > 0 && (
+                  <ul className={styles.planSpecs}>
+                    {specs.map((s) => <li key={s}>{s}</li>)}
+                  </ul>
+                )}
+                <span className={styles.planCta}>Get started</span>
+              </Link>
+            );
+          })}
         </div>
       </section>
     );

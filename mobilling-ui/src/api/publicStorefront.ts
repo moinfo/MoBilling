@@ -26,6 +26,7 @@ export interface CatalogPlan {
   name: string;
   price: number;
   billing_cycle: string;
+  description: string | null;
 }
 
 export interface PublicCatalog {
