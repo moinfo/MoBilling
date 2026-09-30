@@ -7,7 +7,7 @@ import { IconPlus, IconSearch, IconArrowLeft } from '@tabler/icons-react';
 import { useParams, Link } from 'react-router-dom';
 import {
   getTenantUsers, createTenantUser, updateTenantUser, toggleTenantUserActive,
-  getTenants,
+  resetTenantUserPassword, getTenants,
 } from '../../api/admin';
 import { TenantUser, UserFormData } from '../../api/users';
 import UserTable from '../../components/Settings/UserTable';
@@ -70,6 +70,18 @@ export default function TenantUsers() {
     },
   });
 
+  const resetPasswordMutation = useMutation({
+    mutationFn: (userId: string) => resetTenantUserPassword(tenantId!, userId),
+    onSuccess: (res) => {
+      notifications.show({ title: 'Password reset', message: res.data.message, color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to reset password',
+      color: 'red',
+    }),
+  });
+
   const handleEdit = (user: TenantUser) => {
     setEditing(user);
     setModalOpen(true);
@@ -77,6 +89,12 @@ export default function TenantUsers() {
 
   const handleToggleActive = (user: TenantUser) => {
     toggleMutation.mutate(user.id);
+  };
+
+  const handleResetPassword = (user: TenantUser) => {
+    if (window.confirm(`Reset ${user.name}'s password and email the new one to ${user.email}?`)) {
+      resetPasswordMutation.mutate(user.id);
+    }
   };
 
   const handleSubmit = (values: UserFormData) => {
@@ -118,6 +136,8 @@ export default function TenantUsers() {
         currentUserId=""
         onEdit={handleEdit}
         onToggleActive={handleToggleActive}
+        onResetPassword={handleResetPassword}
+        resetPasswordLoadingId={resetPasswordMutation.isPending ? resetPasswordMutation.variables : undefined}
       />
 
       {meta && meta.last_page > 1 && (

@@ -152,6 +152,9 @@ export const updateTenantUser = (tenantId: string, userId: string, data: import(
 export const toggleTenantUserActive = (tenantId: string, userId: string) =>
   api.patch(`/admin/tenants/${tenantId}/users/${userId}/toggle-active`);
 
+export const resetTenantUserPassword = (tenantId: string, userId: string) =>
+  api.post<{ message: string }>(`/admin/tenants/${tenantId}/users/${userId}/reset-password`);
+
 // --- Tenant Email Settings (Super Admin) ---
 
 export interface SmtpSettings {

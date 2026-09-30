@@ -1,5 +1,5 @@
 import { Table, ActionIcon, Group, Text, Badge, Tooltip } from '@mantine/core';
-import { IconEdit, IconLogin, IconUserCheck, IconUserOff, IconId, IconDeviceMobileOff } from '@tabler/icons-react';
+import { IconEdit, IconLogin, IconUserCheck, IconUserOff, IconId, IconDeviceMobileOff, IconKey } from '@tabler/icons-react';
 import { TenantUser } from '../../api/users';
 
 interface Props {
@@ -12,9 +12,11 @@ interface Props {
   showLoginAs?: boolean;
   onViewProfile?: (user: TenantUser) => void;
   onResetDevice?: (user: TenantUser) => void;
+  onResetPassword?: (user: TenantUser) => void;
+  resetPasswordLoadingId?: string;
 }
 
-export default function UserTable({ users, isAdmin, currentUserId, onEdit, onToggleActive, onLoginAs, showLoginAs, onViewProfile, onResetDevice }: Props) {
+export default function UserTable({ users, isAdmin, currentUserId, onEdit, onToggleActive, onLoginAs, showLoginAs, onViewProfile, onResetDevice, onResetPassword, resetPasswordLoadingId }: Props) {
   if (users.length === 0) {
     return <Text c="dimmed" ta="center" py="xl">No team members found</Text>;
   }
@@ -82,6 +84,14 @@ export default function UserTable({ users, isAdmin, currentUserId, onEdit, onTog
                     <Tooltip label={`Bound to ${user.attendance_device_model} — clear so they can check in from a new phone`}>
                       <ActionIcon variant="light" color="orange" onClick={() => onResetDevice(user)}>
                         <IconDeviceMobileOff size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                  {onResetPassword && user.email && (
+                    <Tooltip label={`Reset password and email it to ${user.email}`}>
+                      <ActionIcon variant="light" color="grape" loading={resetPasswordLoadingId === user.id}
+                        onClick={() => onResetPassword(user)}>
+                        <IconKey size={16} />
                       </ActionIcon>
                     </Tooltip>
                   )}

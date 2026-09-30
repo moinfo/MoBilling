@@ -7,7 +7,10 @@ use App\Http\Resources\UserResource;
 use App\Models\Role;
 use App\Models\Tenant;
 use App\Models\User;
+use App\Notifications\AdminPasswordResetNotification;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class AdminUserController extends Controller
@@ -100,5 +103,26 @@ class AdminUserController extends Controller
         $user->update(['is_active' => !$user->is_active]);
 
         return new UserResource($user);
+    }
+
+    /**
+     * Superadmin support action: generate a fresh password for this user and
+     * email it to them directly — no self-service token/link step, since the
+     * admin (not the user) is the one initiating this.
+     */
+    public function resetPassword(Tenant $tenant, User $user)
+    {
+        $this->authorize();
+
+        if ($user->tenant_id !== $tenant->id) {
+            abort(404);
+        }
+        abort_if(!$user->email, 422, 'This user has no email address on file to send the new password to.');
+
+        $newPassword = Str::password(14);
+        $user->forceFill(['password' => Hash::make($newPassword)])->save();
+        $user->notify(new AdminPasswordResetNotification($tenant, $newPassword));
+
+        return response()->json(['message' => "New password sent to {$user->email}."]);
     }
 }

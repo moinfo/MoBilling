@@ -193,6 +193,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'super_admin'])->prefix('admi
     Route::post('/tenants/{tenant}/users', [AdminUserController::class, 'store']);
     Route::put('/tenants/{tenant}/users/{user}', [AdminUserController::class, 'update']);
     Route::patch('/tenants/{tenant}/users/{user}/toggle-active', [AdminUserController::class, 'toggleActive']);
+    Route::post('/tenants/{tenant}/users/{user}/reset-password', [AdminUserController::class, 'resetPassword']);
 
     // Tenant email settings (super admin)
     Route::get('/tenants/{tenant}/email-settings', [AdminEmailSettingsController::class, 'show']);
