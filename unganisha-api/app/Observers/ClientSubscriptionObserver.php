@@ -37,9 +37,13 @@ class ClientSubscriptionObserver
         $account = $sub->hostingAccount;
 
         match ($sub->status) {
+            // White-label reseller tenants (Tenant::is_wallet_gated) only: a fresh
+            // provision must be paid for at cost from the tenant's wallet first —
+            // see TenantWalletGateService. Every other tenant's allowHostingProvision()
+            // returns true immediately, so this changes nothing for them.
             'active'    => $account
                             ? ReactivateHostingAccount::dispatch($account)
-                            : ($product->auto_provision ? ProvisionHostingAccount::dispatch($sub) : null),
+                            : (($product->auto_provision && app(\App\Services\TenantWalletGateService::class)->allowHostingProvision($sub)) ? ProvisionHostingAccount::dispatch($sub) : null),
             'suspended' => $account ? SuspendHostingAccount::dispatch($account, 'Unpaid invoice') : null,
             'cancelled' => $account ? SuspendHostingAccount::dispatch($account, 'Subscription cancelled') : null,
             default     => null,

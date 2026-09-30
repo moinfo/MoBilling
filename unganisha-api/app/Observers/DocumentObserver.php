@@ -221,6 +221,14 @@ class DocumentObserver
                 continue;
             }
 
+            // White-label reseller tenants (Tenant::is_wallet_gated) only: pay at
+            // cost from the tenant's wallet before EPP fires — see
+            // TenantWalletGateService. Every other tenant's allowDomainFulfillment()
+            // returns true immediately, so this changes nothing for them.
+            if (!app(\App\Services\TenantWalletGateService::class)->allowDomainFulfillment($domain)) {
+                continue;
+            }
+
             match ($domain->meta['pending_action'] ?? null) {
                 'register' => RegisterDomainJob::dispatch($domain),
                 'transfer' => TransferDomainJob::dispatch($domain),

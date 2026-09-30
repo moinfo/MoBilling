@@ -48,6 +48,8 @@ class Tenant extends Model
         'auto_suspend_enabled',
         // Late fee settings
         'late_fee_enabled', 'late_fee_percent', 'late_fee_days',
+        // White-label reseller wallet gate
+        'is_wallet_gated', 'wallet_balance',
     ];
 
     protected $hidden = [
@@ -83,6 +85,8 @@ class Tenant extends Model
         'late_fee_enabled' => 'boolean',
         'late_fee_percent' => 'decimal:2',
         'late_fee_days' => 'integer',
+        'is_wallet_gated' => 'boolean',
+        'wallet_balance' => 'decimal:2',
     ];
 
     protected $appends = ['logo_url'];
