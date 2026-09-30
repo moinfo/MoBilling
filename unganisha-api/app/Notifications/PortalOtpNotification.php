@@ -44,6 +44,6 @@ class PortalOtpNotification extends Notification implements ShouldQueue
             ->line("**{$this->otp}**")
             ->line('This code expires in 10 minutes.')
             ->line('If you did not request this, please ignore this email.')
-            ->salutation('Regards, The MoBilling Team');
+            ->salutation("Regards, {$this->tenantName}");
     }
 }
