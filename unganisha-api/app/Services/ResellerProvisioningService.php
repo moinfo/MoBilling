@@ -228,7 +228,11 @@ class ResellerProvisioningService
         if ($source) {
             NameComAccount::withoutGlobalScopes()->create([
                 'tenant_id'   => $newTenantId,
-                'label'       => trim(($source->label ?: $source->username) . ' (Shared — same as Moinfotech)'),
+                // Real credentials for the reseller's own tenant to actually check/register
+                // domains — but the label a reseller sees for their own account must never
+                // say "same as Moinfotech" (that phrasing is for staff-only previews, e.g.
+                // preview() below, which the reseller never sees).
+                'label'       => 'Default Account',
                 'is_default'  => true,
                 'username'    => $source->username,
                 'token'       => $source->token, // decrypted on read via the cast, re-encrypted on save for the new row

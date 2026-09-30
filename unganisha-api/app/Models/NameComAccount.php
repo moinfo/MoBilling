@@ -28,11 +28,20 @@ class NameComAccount extends Model
 
     public function toSafeArray(): array
     {
+        // A wallet-gated reseller tenant's default account is a duplicate of
+        // Moinfotech's own real credentials (see ResellerProvisioningService)
+        // — it has to be, for their tenant to actually check/register
+        // domains — but the reseller has no operational reason to see the
+        // real Name.com username behind it, and every reason not to: it
+        // identifies the actual supplier account, which a white-label
+        // reseller's own view should never reveal.
+        $isWalletGated = (bool) Tenant::withoutGlobalScopes()->find($this->tenant_id)?->is_wallet_gated;
+
         return [
             'id'               => $this->id,
             'label'            => $this->label ?: $this->username,
             'is_default'       => (bool) $this->is_default,
-            'username'         => $this->username,
+            'username'         => $isWalletGated ? null : $this->username,
             'token_hint'       => $this->token_hint ? '••••' . $this->token_hint : null,
             'is_sandbox'       => $this->is_sandbox,
             'status'           => $this->status,

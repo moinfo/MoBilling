@@ -16,6 +16,7 @@ import {
 import { modals } from '@mantine/modals';
 import { formatCurrency } from '../../utils/formatCurrency';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../context/AuthContext';
 import { NameComTabs } from '../NameComManager';
 
 export default function DomainsTab() {
@@ -308,6 +309,12 @@ function RegistrarAccountModal({ account, onClose, onSaved }: {
 
 function TldPricingSection() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // A wallet-gated reseller tenant's reseller_price is what THEY owe
+  // Moinfotech — set by us, not something they can edit (enforced
+  // server-side too; see DomainTldController). Hide the field entirely
+  // rather than show a control that would just 422.
+  const walletGated = !!user?.tenant?.is_wallet_gated;
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<DomainTldRow | null>(null);
 
@@ -385,7 +392,7 @@ function TldPricingSection() {
                 <Table.Th>Register/yr</Table.Th>
                 <Table.Th>Renew/yr</Table.Th>
                 <Table.Th>Transfer</Table.Th>
-                <Table.Th>Reseller (wholesale)</Table.Th>
+                {!walletGated && <Table.Th>Reseller (wholesale)</Table.Th>}
                 <Table.Th>Source</Table.Th>
                 <Table.Th>Active</Table.Th>
                 <Table.Th></Table.Th>
@@ -398,11 +405,13 @@ function TldPricingSection() {
                   <Table.Td>{formatCurrency(t.register_price)}</Table.Td>
                   <Table.Td>{formatCurrency(t.renew_price)}</Table.Td>
                   <Table.Td>{formatCurrency(t.transfer_price)}</Table.Td>
-                  <Table.Td>
-                    {t.reseller_price !== null
-                      ? <Text size="sm" c="grape" fw={500}>{formatCurrency(t.reseller_price)}</Text>
-                      : <Text size="sm" c="dimmed">—</Text>}
-                  </Table.Td>
+                  {!walletGated && (
+                    <Table.Td>
+                      {t.reseller_price !== null
+                        ? <Text size="sm" c="grape" fw={500}>{formatCurrency(t.reseller_price)}</Text>
+                        : <Text size="sm" c="dimmed">—</Text>}
+                    </Table.Td>
+                  )}
                   <Table.Td>
                     <Badge size="xs" variant="light" color={t.is_platform ? 'blue' : 'grape'}>
                       {t.is_platform ? 'Platform' : 'My price'}
@@ -450,8 +459,10 @@ function TldPricingSection() {
               <NumberInput label="Min years" min={1} max={10} {...form.getInputProps('years_min')} />
               <NumberInput label="Max years" min={1} max={10} {...form.getInputProps('years_max')} />
             </Group>
-            <NumberInput label="Reseller (wholesale) price / year" description="What we pay TZNIC — leave blank to keep this TLD unavailable to resellers"
-              min={0} placeholder="Not set" {...form.getInputProps('reseller_price')} />
+            {!walletGated && (
+              <NumberInput label="Reseller (wholesale) price / year" description="What we pay TZNIC — leave blank to keep this TLD unavailable to resellers"
+                min={0} placeholder="Not set" {...form.getInputProps('reseller_price')} />
+            )}
             <Switch label="Active" {...form.getInputProps('is_active', { type: 'checkbox' })} />
             <Group justify="flex-end">
               <Button variant="default" onClick={() => setModalOpen(false)}>Cancel</Button>

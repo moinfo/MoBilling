@@ -3,11 +3,25 @@
 namespace App\Http\Controllers;
 
 use App\Models\DomainTld;
+use App\Models\Tenant;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 
 class DomainTldController extends Controller
 {
+    /**
+     * A wallet-gated reseller tenant's reseller_price is what THEY owe US —
+     * TenantWalletGateService::domainCostBasis() debits their wallet by this
+     * exact field. Letting them set it themselves would let them set their
+     * own cost, e.g. to zero. Only a non-wallet-gated tenant may set it (that
+     * tenant is then acting as the *supplier* to its own domain-reseller
+     * clients — see PortalResellerController — a different, legitimate use).
+     */
+    private function callerIsWalletGated(): bool
+    {
+        return (bool) Tenant::withoutGlobalScopes()->find(auth()->user()->tenant_id)?->is_wallet_gated;
+    }
+
     public function index()
     {
         $tenantId = auth()->user()->tenant_id;
@@ -41,6 +55,7 @@ class DomainTldController extends Controller
     public function store(Request $request)
     {
         $tenantId = auth()->user()->tenant_id;
+        $walletGated = $this->callerIsWalletGated();
 
         $data = $request->validate([
             'tld'            => ['required', 'string', 'max:30', 'regex:/^[a-z.]+$/',
@@ -48,7 +63,7 @@ class DomainTldController extends Controller
             'register_price' => 'required|numeric|min:0',
             'renew_price'    => 'required|numeric|min:0',
             'transfer_price' => 'nullable|numeric|min:0',
-            'reseller_price' => 'nullable|numeric|min:0',
+            'reseller_price' => [$walletGated ? 'prohibited' : 'nullable', 'numeric', 'min:0'],
             'years_min'      => 'nullable|integer|min:1|max:10',
             'years_max'      => 'nullable|integer|min:1|max:10',
             'is_active'      => 'boolean',
@@ -63,12 +78,13 @@ class DomainTldController extends Controller
     {
         abort_unless($domainTld->tenant_id === auth()->user()->tenant_id, 403);
         abort_if($domainTld->registrar === 'namecom', 422, 'Name.com TLDs are edited in the Name.com section.');
+        $walletGated = $this->callerIsWalletGated();
 
         $data = $request->validate([
             'register_price' => 'sometimes|numeric|min:0',
             'renew_price'    => 'sometimes|numeric|min:0',
             'transfer_price' => 'nullable|numeric|min:0',
-            'reseller_price' => 'nullable|numeric|min:0',
+            'reseller_price' => [$walletGated ? 'prohibited' : 'nullable', 'numeric', 'min:0'],
             'years_min'      => 'nullable|integer|min:1|max:10',
             'years_max'      => 'nullable|integer|min:1|max:10',
             'is_active'      => 'boolean',
