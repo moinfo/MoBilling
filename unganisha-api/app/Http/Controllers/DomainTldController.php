@@ -102,4 +102,35 @@ class DomainTldController extends Controller
         $domainTld->delete();
         return response()->json(null, 204);
     }
+
+    /**
+     * Set the retail price on every one of the tenant's own TLD rows to
+     * "my real cost + this margin" in one go — for a wallet-gated reseller,
+     * cost = reseller_price (their wallet debit basis, hidden from them
+     * elsewhere; never returned here either — only used server-side to
+     * compute the new retail price). A row with no reseller_price set has
+     * no real cost to add a margin to, so it's left alone and counted in
+     * `skipped` rather than guessed at.
+     */
+    public function bulkMargin(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $data = $request->validate(['margin' => 'required|numeric|min:0']);
+
+        $rows = DomainTld::where('tenant_id', $tenantId)->where('is_active', true)->get();
+        $updated = 0;
+        $skipped = 0;
+
+        foreach ($rows as $row) {
+            if ($row->reseller_price === null) {
+                $skipped++;
+                continue;
+            }
+            $price = round((float) $row->reseller_price + $data['margin'], 2);
+            $row->update(['register_price' => $price, 'renew_price' => $price]);
+            $updated++;
+        }
+
+        return response()->json(['updated' => $updated, 'skipped' => $skipped]);
+    }
 }

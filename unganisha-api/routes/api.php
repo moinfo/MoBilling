@@ -897,6 +897,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::post('/domain-tlds',                 [\App\Http\Controllers\DomainTldController::class, 'store']);
         Route::put('/domain-tlds/{domainTld}',      [\App\Http\Controllers\DomainTldController::class, 'update']);
         Route::delete('/domain-tlds/{domainTld}',   [\App\Http\Controllers\DomainTldController::class, 'destroy']);
+        Route::post('/domain-tlds/bulk-margin',     [\App\Http\Controllers\DomainTldController::class, 'bulkMargin']);
     });
 
     // ── Support Tickets ──────────────────────────────────────────────────────

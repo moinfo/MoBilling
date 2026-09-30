@@ -299,6 +299,9 @@ export const updateDomainTld = (id: string, data: Partial<DomainTldRow>) =>
 export const deleteDomainTld = (id: string) =>
   api.delete(`/domain-tlds/${id}`);
 
+export const bulkMarginDomainTlds = (margin: number) =>
+  api.post<{ updated: number; skipped: number }>('/domain-tlds/bulk-margin', { margin });
+
 export interface SslExpiryRow {
   id: string;
   name: string;

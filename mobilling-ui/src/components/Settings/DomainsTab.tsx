@@ -9,7 +9,7 @@ import { notifications } from '@mantine/notifications';
 import { IconPlus, IconEdit, IconTrash, IconPlugConnected, IconWorldWww, IconAlertCircle } from '@tabler/icons-react';
 import {
   getRegistrarAccounts, testRegistrarAccount, getDomainTlds,
-  createDomainTld, updateDomainTld, deleteDomainTld,
+  createDomainTld, updateDomainTld, deleteDomainTld, bulkMarginDomainTlds,
   createRegistrarAccount, updateRegistrarAccount, deleteRegistrarAccount,
   RegistrarAccountRow, DomainTldRow,
 } from '../../api/domains';
@@ -350,6 +350,24 @@ function TldPricingSection() {
     },
   });
 
+  const [margin, setMargin] = useState<number | ''>('');
+  const bulkMutation = useMutation({
+    mutationFn: () => bulkMarginDomainTlds(Number(margin)),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['domain-tlds'] });
+      const { updated, skipped } = res.data;
+      notifications.show({
+        color: 'green',
+        message: skipped > 0
+          ? `Updated ${updated} TLD price(s). ${skipped} skipped (no cost set for them yet).`
+          : `Updated ${updated} TLD price(s).`,
+      });
+    },
+    onError: (e: any) => notifications.show({
+      message: e?.response?.data?.message ?? 'Could not apply margin.', color: 'red',
+    }),
+  });
+
   const form = useForm({
     initialValues: {
       tld: '', register_price: 0, renew_price: 0, transfer_price: 0, reseller_price: null as number | null,
@@ -379,6 +397,25 @@ function TldPricingSection() {
           Add TLD
         </Button>
       </Group>
+
+      {walletGated && (
+        <Paper withBorder radius="md" p="sm">
+          <Text fw={600} size="sm" mb={4}>Set your profit margin</Text>
+          <Text size="xs" c="dimmed" mb="xs">
+            Enter how much you want to earn per domain, per year — we'll set your prices to
+            cost + this amount across every domain below in one go. You can still fine-tune
+            individual prices afterwards.
+          </Text>
+          <Group align="flex-end">
+            <NumberInput label="Margin (TZS / year)" min={0} placeholder="e.g. 5,000" thousandSeparator=","
+              value={margin} onChange={(v) => setMargin(typeof v === 'number' ? v : '')} w={200} />
+            <Button loading={bulkMutation.isPending} disabled={!margin || Number(margin) < 0}
+              onClick={() => bulkMutation.mutate()}>
+              Apply to all my domains
+            </Button>
+          </Group>
+        </Paper>
+      )}
 
       <Alert icon={<IconAlertCircle size={16} />} color="blue" variant="light">
         Prices are per year, charged to your clients when registering, renewing or transferring
