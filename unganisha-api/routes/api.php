@@ -1047,6 +1047,11 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'showSettings']);
     Route::put('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'updateSettings']);
 
+    Route::get('/attendance-exceptions',                  [\App\Http\Controllers\AttendanceExceptionController::class, 'index']);
+    Route::post('/attendance-exceptions',                 [\App\Http\Controllers\AttendanceExceptionController::class, 'store']);
+    Route::post('/attendance-exceptions/{attendanceExceptionRequest}/cancel', [\App\Http\Controllers\AttendanceExceptionController::class, 'cancel']);
+    Route::post('/attendance-exceptions/{attendanceExceptionRequest}/review', [\App\Http\Controllers\AttendanceExceptionController::class, 'review']);
+
     // Geofenced self-check-in — no vendor device, no clerk; the phone's own
     // GPS + a device binding stand in for both.
     Route::post('/attendance/check-in',   [\App\Http\Controllers\AttendanceController::class, 'checkIn']);

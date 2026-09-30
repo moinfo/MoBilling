@@ -1,16 +1,24 @@
 import { useState } from 'react';
-import { Group, Text, Badge, Stack, Modal, Table, Center, Loader } from '@mantine/core';
+import { Group, Text, Badge, Stack, Modal, Table, Center, Loader, ActionIcon, Tooltip, Select, Textarea, Button } from '@mantine/core';
 import { MonthPickerInput } from '@mantine/dates';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { notifications } from '@mantine/notifications';
+import { IconMessageCircle, IconClock, IconCircleCheck, IconCircleX } from '@tabler/icons-react';
 import dayjs from 'dayjs';
-import { getMyAttendanceReport, AttendanceReport } from '../../api/attendance';
+import {
+  getMyAttendanceReport, AttendanceReport, ReportDay,
+  getAttendanceExceptions, submitAttendanceException, AttendanceExceptionRequest,
+} from '../../api/attendance';
+import { useAuth } from '../../context/AuthContext';
 
 const statusLabelFull: Record<string, string> = {
   leave: 'Ruhusa', sick: 'Mgonjwa', field: 'Kazi za nje',
 };
 
 export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+  const { user } = useAuth();
   const [month, setMonth] = useState<Date>(new Date());
+  const [explainDay, setExplainDay] = useState<ReportDay | null>(null);
   const m = month.getMonth() + 1;
   const y = month.getFullYear();
   const { data, isLoading } = useQuery({
@@ -19,6 +27,15 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
     enabled: opened,
   });
   const r: AttendanceReport | undefined = data?.data?.data;
+
+  const { data: excRes } = useQuery({
+    queryKey: ['my-attendance-exceptions', user?.id],
+    queryFn: () => getAttendanceExceptions({ user_id: user!.id }),
+    enabled: opened && !!user,
+  });
+  const exceptionsByDate = new Map<string, AttendanceExceptionRequest>(
+    (excRes?.data?.data ?? []).map((e) => [e.date, e])
+  );
 
   return (
     <Modal opened={opened} onClose={onClose} size="lg" title="My Attendance Report">
@@ -55,10 +72,14 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
                   <Table.Th ta="center">Out</Table.Th>
                   <Table.Th>Status</Table.Th>
                   <Table.Th ta="right">Deduction</Table.Th>
+                  <Table.Th w={36} />
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {r.days.map((d) => (
+                {r.days.map((d) => {
+                  const flagged = d.working && !d.status && (d.absent || d.late || d.no_checkout || d.left_early);
+                  const exception = exceptionsByDate.get(d.date);
+                  return (
                   <Table.Tr key={d.date} style={{ opacity: d.working ? 1 : 0.5 }}>
                     <Table.Td fw={500}>{dayjs(d.date).format('DD MMM')} <Text span size="xs" c="dimmed">{d.weekday}</Text></Table.Td>
                     <Table.Td ta="center" fw={600} c={d.check_in_at ? (d.late ? 'orange' : undefined) : 'dimmed'}>{d.check_in_at ?? '—'}</Table.Td>
@@ -75,18 +96,71 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
                         {d.check_in_at && !d.late && !d.left_early && !d.no_checkout && !d.status && (
                           <Badge size="xs" variant="light" color="teal">present</Badge>
                         )}
+                        {exception && (
+                          <Tooltip label={exception.status === 'pending' ? 'Waiting for approval' : exception.status === 'approved' ? 'Approved' : `Rejected${exception.review_note ? ': ' + exception.review_note : ''}`}>
+                            {exception.status === 'pending' ? <IconClock size={14} color="var(--mantine-color-yellow-6)" />
+                              : exception.status === 'approved' ? <IconCircleCheck size={14} color="var(--mantine-color-teal-6)" />
+                              : <IconCircleX size={14} color="var(--mantine-color-red-6)" />}
+                          </Tooltip>
+                        )}
                       </Group>
                     </Table.Td>
                     <Table.Td ta="right" fw={600} c={d.deduction > 0 ? 'red' : 'dimmed'}>
                       {d.deduction > 0 ? `−${d.deduction.toLocaleString()}` : '—'}
                     </Table.Td>
+                    <Table.Td>
+                      {flagged && !exception && (
+                        <Tooltip label="Explain this day — request approval">
+                          <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setExplainDay(d)}>
+                            <IconMessageCircle size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
+                    </Table.Td>
                   </Table.Tr>
-                ))}
+                  );
+                })}
               </Table.Tbody>
             </Table>
           </Table.ScrollContainer>
           </>
         )}
+      </Stack>
+      <ExplainDayModal day={explainDay} onClose={() => setExplainDay(null)} />
+    </Modal>
+  );
+}
+
+function ExplainDayModal({ day, onClose }: { day: ReportDay | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [type, setType] = useState<'leave' | 'field' | null>(null);
+  const [comment, setComment] = useState('');
+
+  const submitMut = useMutation({
+    mutationFn: () => submitAttendanceException({ date: day!.date, type: type!, comment: comment.trim() }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['my-attendance-exceptions'] });
+      notifications.show({ message: 'Sent — waiting for approval.', color: 'green' });
+      setType(null); setComment(''); onClose();
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Failed to send.', color: 'red' }),
+  });
+
+  return (
+    <Modal opened={!!day} onClose={onClose} title={day ? `Explain ${dayjs(day.date).format('ddd, D MMM YYYY')}` : ''} size="sm">
+      <Stack gap="sm">
+        <Select label="What happened" placeholder="Chagua" data={[
+          { value: 'leave', label: 'Nilikuwa na ruhusa (I had permission)' },
+          { value: 'field', label: 'Nilikuwa nje ya kazi (I was out of office)' },
+        ]} value={type} onChange={(v) => setType(v as 'leave' | 'field' | null)} />
+        <Textarea label="Comment" placeholder="Eleza kwa ufupi..." minRows={3} required
+          value={comment} onChange={(e) => setComment(e.currentTarget.value)} />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button disabled={!type || !comment.trim()} loading={submitMut.isPending} onClick={() => submitMut.mutate()}>
+            Send for approval
+          </Button>
+        </Group>
       </Stack>
     </Modal>
   );

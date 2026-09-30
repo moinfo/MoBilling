@@ -7,8 +7,8 @@ import { DatePickerInput, TimeInput, MonthPickerInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff, IconDotsVertical, IconFileDownload } from '@tabler/icons-react';
-import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput, FileButton, SegmentedControl } from '@mantine/core';
+import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff, IconDotsVertical, IconFileDownload, IconX, IconMessageCircle } from '@tabler/icons-react';
+import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput, FileButton, SegmentedControl, Textarea } from '@mantine/core';
 import { IconUpload, IconFileSpreadsheet } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
@@ -17,7 +17,9 @@ import {
   getDeviceConfig, getDeviceEvents, regenerateDeviceToken,
   getDeviceMappings, saveDeviceMapping, importDeviceEvents,
   previewAttendanceSheet, commitAttendanceSheet, getAttendanceReport, exportAttendanceReport,
+  getAttendanceExceptions, reviewAttendanceException,
   AttendanceSettings, ExcusedStatus, DeviceMappingStaff, SheetMapping, SheetPreview, SheetImportResult, AttendanceReport,
+  AttendanceExceptionRequest,
 } from '../api/attendance';
 
 export default function Attendance() {
@@ -30,6 +32,7 @@ export default function Attendance() {
           <Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>
           <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>Deductions</Tabs.Tab>
           <Tabs.Tab value="report" leftSection={<IconClipboardCheck size={15} />}>Report</Tabs.Tab>
+          <Tabs.Tab value="requests" leftSection={<IconMessageCircle size={15} />}>Requests</Tabs.Tab>
           <Tabs.Tab value="import" leftSection={<IconFileSpreadsheet size={15} />}>Import (iVMS)</Tabs.Tab>
           <Tabs.Tab value="device" leftSection={<IconDeviceDesktop size={15} />}>Device</Tabs.Tab>
           <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>
@@ -38,6 +41,7 @@ export default function Attendance() {
         <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>
         <Tabs.Panel value="deductions" pt="md"><DeductionsTab /></Tabs.Panel>
         <Tabs.Panel value="report" pt="md"><ReportTab /></Tabs.Panel>
+        <Tabs.Panel value="requests" pt="md"><RequestsTab /></Tabs.Panel>
         <Tabs.Panel value="import" pt="md"><ImportTab /></Tabs.Panel>
         <Tabs.Panel value="device" pt="md"><DeviceTab /></Tabs.Panel>
         <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>
@@ -527,6 +531,92 @@ function ReportTab() {
           </Paper>
           <Text size="xs" c="dimmed">Punches before 15:00 count as check-in; from 15:00 onwards as check-out. A missing check-out means the person forgot to punch out.</Text>
         </>
+      )}
+    </Stack>
+  );
+}
+
+const exceptionTypeLabel: Record<string, string> = { leave: 'Ruhusa', field: 'Kazi za nje' };
+const exceptionStatusColor: Record<string, string> = { pending: 'yellow', approved: 'teal', rejected: 'red' };
+
+function RequestsTab() {
+  const qc = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<string | null>('pending');
+  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['attendance-exceptions', statusFilter],
+    queryFn: () => getAttendanceExceptions(statusFilter ? { status: statusFilter } : undefined),
+  });
+  const rows = data?.data?.data ?? [];
+
+  const reviewMut = useMutation({
+    mutationFn: ({ id, decision, note }: { id: string; decision: 'approved' | 'rejected'; note?: string }) =>
+      reviewAttendanceException(id, decision, note),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['attendance-exceptions'] });
+      qc.invalidateQueries({ queryKey: ['attendance-report'] });
+      qc.invalidateQueries({ queryKey: ['attendance-dashboard'] });
+      qc.invalidateQueries({ queryKey: ['attendance-penalties'] });
+      notifications.show({ message: 'Decision saved.', color: 'green' });
+    },
+    onError: (e) => notifications.show({ message: apiErr(e, 'Failed to save decision.'), color: 'red' }),
+  });
+
+  return (
+    <Stack>
+      <Group justify="space-between" wrap="wrap">
+        <Text size="sm" c="dimmed">Explanations staff submitted for flagged days — approve marks the day excused and drops its deduction.</Text>
+        <SegmentedControl size="xs" value={statusFilter ?? 'all'}
+          onChange={(v) => setStatusFilter(v === 'all' ? null : v)}
+          data={[{ value: 'pending', label: 'Pending' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }, { value: 'all', label: 'All' }]} />
+      </Group>
+
+      {isLoading ? <Center py="xl"><Loader /></Center> : rows.length === 0 ? (
+        <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">No {statusFilter ?? ''} explanations.</Text></Paper>
+      ) : (
+        <Stack gap="xs">
+          {rows.map((r: AttendanceExceptionRequest) => (
+            <Paper key={r.id} withBorder radius="md" p="sm">
+              <Group justify="space-between" align="flex-start" wrap="nowrap">
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <Group gap={8} wrap="wrap">
+                    <Text fw={600} size="sm">{r.user.name}</Text>
+                    <Text size="sm" c="dimmed">{dayjs(r.date).format('ddd, D MMM YYYY')}</Text>
+                    <Badge size="sm" variant="light" color="grape">{exceptionTypeLabel[r.type] ?? r.type}</Badge>
+                    <Badge size="sm" variant="light" color={exceptionStatusColor[r.status]}>{r.status}</Badge>
+                  </Group>
+                  <Text size="sm" mt={4}>{r.comment}</Text>
+                  {r.status !== 'pending' && (
+                    <Text size="xs" c="dimmed" mt={4}>
+                      {r.status === 'approved' ? 'Approved' : 'Rejected'} by {r.reviewer?.name ?? '—'}
+                      {r.review_note ? ` · ${r.review_note}` : ''}
+                    </Text>
+                  )}
+                  {r.status === 'pending' && (
+                    <Textarea mt="xs" size="xs" placeholder="Optional note to the staff member"
+                      autosize minRows={1} value={noteDraft[r.id] ?? ''}
+                      onChange={(e) => setNoteDraft((s) => ({ ...s, [r.id]: e.currentTarget.value }))} />
+                  )}
+                </div>
+                {r.status === 'pending' && (
+                  <Group gap="xs" wrap="nowrap">
+                    <Button size="compact-sm" color="teal" leftSection={<IconCheck size={14} />}
+                      loading={reviewMut.isPending && reviewMut.variables?.id === r.id && reviewMut.variables?.decision === 'approved'}
+                      onClick={() => reviewMut.mutate({ id: r.id, decision: 'approved', note: noteDraft[r.id] || undefined })}>
+                      Approve
+                    </Button>
+                    <Button size="compact-sm" color="red" variant="light" leftSection={<IconX size={14} />}
+                      loading={reviewMut.isPending && reviewMut.variables?.id === r.id && reviewMut.variables?.decision === 'rejected'}
+                      onClick={() => reviewMut.mutate({ id: r.id, decision: 'rejected', note: noteDraft[r.id] || undefined })}>
+                      Reject
+                    </Button>
+                  </Group>
+                )}
+              </Group>
+            </Paper>
+          ))}
+        </Stack>
       )}
     </Stack>
   );

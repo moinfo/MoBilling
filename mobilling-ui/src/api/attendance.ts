@@ -186,6 +186,32 @@ export interface SheetImportResult {
   linked?: number;
 }
 
+// ── Self-service attendance explanations (approve/reject) ──────────────────
+export interface AttendanceExceptionRequest {
+  id: string;
+  date: string;
+  type: 'leave' | 'field';
+  comment: string;
+  status: 'pending' | 'approved' | 'rejected';
+  review_note: string | null;
+  reviewed_at: string | null;
+  user: { id: string; name: string };
+  reviewer?: { id: string; name: string } | null;
+  created_at: string;
+}
+
+export const getAttendanceExceptions = (params?: { status?: string; user_id?: string }) =>
+  api.get<{ data: AttendanceExceptionRequest[] }>('/attendance-exceptions', { params });
+
+export const submitAttendanceException = (payload: { date: string; type: 'leave' | 'field'; comment: string }) =>
+  api.post<{ data: AttendanceExceptionRequest }>('/attendance-exceptions', payload);
+
+export const cancelAttendanceException = (id: string) =>
+  api.post(`/attendance-exceptions/${id}/cancel`);
+
+export const reviewAttendanceException = (id: string, decision: 'approved' | 'rejected', review_note?: string) =>
+  api.post<{ data: AttendanceExceptionRequest }>(`/attendance-exceptions/${id}/review`, { decision, review_note });
+
 export const previewAttendanceSheet = (file: File) => {
   const fd = new FormData();
   fd.append('file', file);
