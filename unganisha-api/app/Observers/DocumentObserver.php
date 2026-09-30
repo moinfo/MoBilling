@@ -205,13 +205,21 @@ class DocumentObserver
                         report($e);
                     }
                 } else {
+                    $pendingYears = $domain->meta['pending_years'] ?? 1;
                     $meta['awaiting_manual_registration'] = true;
                     $domain->update(['meta' => $meta]);
 
                     // Name.com TLD: never auto-buys by default. Notify staff (and, only if the tenant
                     // enabled it, queue the guarded auto-registration - same service as the manual button).
+                    // White-label reseller tenants only: gate this exactly like the FRED path below —
+                    // NameComRegistrationService::onOrderPaid() only ever QUEUES the real registrar call
+                    // (AutoRegisterNameComDomainJob), so blocking it here means the job is never even
+                    // dispatched for an unfunded reseller wallet, not just never run. pending_action/years
+                    // are passed explicitly since they were just stripped from meta above.
                     if (($meta['registrar'] ?? null) === 'namecom' && $pendingAction === 'register') {
-                        \App\Services\Registrar\NameComRegistrationService::onOrderPaid($domain->fresh());
+                        if (app(\App\Services\TenantWalletGateService::class)->allowDomainFulfillment($domain->fresh(), $pendingAction, (int) $pendingYears)) {
+                            \App\Services\Registrar\NameComRegistrationService::onOrderPaid($domain->fresh());
+                        }
                     }
 
                     \Illuminate\Support\Facades\Log::info(

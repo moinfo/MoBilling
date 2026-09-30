@@ -93,8 +93,14 @@ class TenantWalletGateService
 
     // ─────────────────────────────── domains ───────────────────────────────
 
-    /** True = the caller may proceed with Register/Transfer/RenewDomainJob::dispatch($domain) exactly as before. */
-    public function allowDomainFulfillment(Domain $domain): bool
+    /**
+     * True = the caller may proceed with Register/Transfer/RenewDomainJob::dispatch($domain)
+     * (or, for the Name.com manual-queue path, NameComRegistrationService::onOrderPaid())
+     * exactly as before. $action/$years default to reading $domain->meta, but DocumentObserver's
+     * Name.com branch strips pending_action/pending_years from meta before this can run, so it
+     * passes the pre-strip values explicitly instead.
+     */
+    public function allowDomainFulfillment(Domain $domain, ?string $action = null, ?int $years = null): bool
     {
         $tenant = Tenant::withoutGlobalScopes()->find($domain->tenant_id);
         if (!$tenant || !$this->isGated($tenant)) {
@@ -106,8 +112,8 @@ class TenantWalletGateService
             return true;
         }
 
-        $action = $domain->meta['pending_action'] ?? null;
-        $years = max(1, (int) ($domain->meta['pending_years'] ?? 1));
+        $action ??= $domain->meta['pending_action'] ?? null;
+        $years = max(1, (int) ($years ?? $domain->meta['pending_years'] ?? 1));
         $cost = $this->domainCostBasis($tenant->id, $domain->name, $action);
 
         if ($cost === null) {
@@ -222,6 +228,20 @@ class TenantWalletGateService
             ->get();
 
         foreach ($domains as $domain) {
+            // Name.com domains take the "unmanaged" manual-queue path in DocumentObserver, which
+            // strips pending_action from meta before this hold could even be set — so a held one
+            // is only ever recognisable by unmanaged + awaiting_manual_registration + registrar.
+            $isNameComQueued = ($domain->meta['unmanaged'] ?? false)
+                && ($domain->meta['awaiting_manual_registration'] ?? false)
+                && ($domain->meta['registrar'] ?? null) === 'namecom';
+
+            if ($isNameComQueued) {
+                if ($this->allowDomainFulfillment($domain, 'register', 1)) {
+                    \App\Services\Registrar\NameComRegistrationService::onOrderPaid($domain->fresh());
+                }
+                continue;
+            }
+
             if (!$this->allowDomainFulfillment($domain)) {
                 continue;
             }
