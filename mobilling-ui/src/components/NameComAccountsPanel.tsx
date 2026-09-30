@@ -82,7 +82,7 @@ export default function NameComAccountsPanel() {
             </div>
             <Group gap="xs" wrap="wrap">
               <Button size="xs" variant="light" loading={test.isPending && test.variables === a.id} onClick={() => test.mutate(a.id)}>Test</Button>
-              <Button size="xs" variant="light" onClick={() => setEditing(a)}>Edit / rotate token</Button>
+              {!walletGated && <Button size="xs" variant="light" onClick={() => setEditing(a)}>Edit / rotate token</Button>}
               {!a.is_default && <Button size="xs" variant="subtle" loading={makeDefault.isPending && makeDefault.variables === a.id} onClick={() => makeDefault.mutate(a.id)}>Make default</Button>}
               {!walletGated && <Button size="xs" variant="subtle" color="red" onClick={() => remove.mutate(a)}>Remove</Button>}
             </Group>

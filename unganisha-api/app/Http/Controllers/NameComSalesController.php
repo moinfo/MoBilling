@@ -8,6 +8,7 @@ use App\Models\Domain;
 use App\Models\DomainTld;
 use App\Models\NameComAuditLog;
 use App\Models\NameComSettings;
+use App\Models\Tenant;
 use App\Services\Registrar\DomainRegistrarManager;
 use App\Services\Registrar\NameComPricingService;
 use App\Services\Registrar\NameComRegistrationService;
@@ -36,7 +37,9 @@ class NameComSalesController extends Controller
 
     public function settings(): JsonResponse
     {
-        return response()->json(['data' => $this->settingsArray(NameComSettings::forTenant($this->tenant()))]);
+        $data = $this->maskSettingsForWalletGated($this->settingsArray(NameComSettings::forTenant($this->tenant())));
+
+        return response()->json(['data' => $data]);
     }
 
     public function saveSettings(Request $request): JsonResponse
@@ -48,6 +51,17 @@ class NameComSalesController extends Controller
             'auto_cap_usd'     => 'required|numeric|min:0|max:100000',
             'auto_daily_limit' => 'required|integer|min:0|max:1000',
         ]);
+
+        // A wallet-gated reseller only ever sets their own margin (fixed_markup)
+        // — see docblock above, USD costs/rate are a staff-only concept, and
+        // "auto-register" spends real money on Moinfotech's own shared Name.com
+        // account balance, which a reseller must never be able to switch on.
+        if ($this->callerIsWalletGated()) {
+            $platformTenantId = config('portal.storefront_tenant_id');
+            $data['usd_rate'] = $platformTenantId ? NameComSettings::forTenant($platformTenantId)->usd_rate : $data['usd_rate'];
+            $data['auto_register'] = false;
+        }
+
         $s = NameComSettings::withoutGlobalScopes()->firstOrNew(['tenant_id' => $this->tenant()]);
         $before = $this->settingsArray(NameComSettings::forTenant($this->tenant()));
         $s->fill($data)->save();
@@ -55,17 +69,42 @@ class NameComSalesController extends Controller
         NameComAuditLog::create(['tenant_id' => $this->tenant(), 'user_id' => auth()->id(), 'action' => 'settings.update',
             'target' => null, 'request' => ['from' => $before, 'to' => $this->settingsArray($s)], 'response_status' => 200]);
 
-        return response()->json(['data' => $this->settingsArray($s), 'message' => 'Name.com settings saved. Use "Apply to all TLDs" to re-price existing rows with the new rate.']);
+        return response()->json([
+            'data'    => $this->maskSettingsForWalletGated($this->settingsArray($s)),
+            'message' => 'Name.com settings saved. Use "Apply to all TLDs" to re-price existing rows with the new rate.',
+        ]);
     }
 
-    private function row(DomainTld $t): array
+    /** True wholesale USD cost is a staff-only concept — never shown to a wallet-gated reseller. */
+    private function callerIsWalletGated(): bool
+    {
+        return (bool) Tenant::withoutGlobalScopes()->find($this->tenant())?->is_wallet_gated;
+    }
+
+    /** Scrubs the staff-only fields (real FX rate, real-money auto-register) for a wallet-gated reseller. */
+    private function maskSettingsForWalletGated(array $data): array
+    {
+        if ($this->callerIsWalletGated()) {
+            $data['usd_rate'] = null;
+            $data['auto_register'] = false;
+        }
+        return $data;
+    }
+
+    private function row(DomainTld $t, bool $walletGated = false): array
     {
         return [
             'tld' => $t->tld,
-            'usd_register' => $t->usd_register, 'usd_renew' => $t->usd_renew, 'usd_transfer' => $t->usd_transfer,
+            'usd_register' => $walletGated ? null : $t->usd_register,
+            'usd_renew'    => $walletGated ? null : $t->usd_renew,
+            'usd_transfer' => $walletGated ? null : $t->usd_transfer,
+            // Computed before masking, so the frontend can still tell "not offered for
+            // registration at all" apart from "cost hidden from you" — usd_register
+            // alone can no longer carry that meaning once it's masked to null either way.
+            'offers_registration' => $t->usd_register !== null,
             'register_price' => (float) $t->register_price, 'renew_price' => (float) $t->renew_price, 'transfer_price' => (float) $t->transfer_price,
             'is_active' => $t->is_active, 'is_popular' => (bool) $t->is_popular, 'sort_order' => (int) $t->sort_order, 'price_overridden' => $t->price_overridden, 'overridden_ops' => $t->overridden_ops ?? [],
-            'usd_changed' => $t->usd_changed, 'usd_prev' => $t->usd_prev,
+            'usd_changed' => $walletGated ? false : $t->usd_changed, 'usd_prev' => $walletGated ? null : $t->usd_prev,
             'synced_at' => $t->usd_synced_at?->toIso8601String(),
         ];
     }
@@ -93,11 +132,13 @@ class NameComSalesController extends Controller
         else $q->orderByDesc('is_popular')->orderBy('sort_order');
         $page = $q->orderBy('tld')->paginate(min(max((int) $request->query('per_page', 50), 10), 200));
 
+        $walletGated = $this->callerIsWalletGated();
+
         return response()->json([
-            'data' => collect($page->items())->map(fn ($t) => $this->row($t))->values(),
+            'data' => collect($page->items())->map(fn ($t) => $this->row($t, $walletGated))->values(),
             'meta' => ['current_page' => $page->currentPage(), 'last_page' => $page->lastPage(), 'total' => $page->total()],
             'counts' => $counts,
-            'settings' => $this->settingsArray(NameComSettings::forTenant($this->tenant())),
+            'settings' => $this->maskSettingsForWalletGated($this->settingsArray(NameComSettings::forTenant($this->tenant()))),
         ]);
     }
 
@@ -157,7 +198,7 @@ class NameComSalesController extends Controller
         $t->update($upd);
         NameComAuditLog::create(['tenant_id' => $this->tenant(), 'user_id' => auth()->id(), 'action' => 'tld.update', 'target' => $t->tld, 'request' => $upd, 'response_status' => 200]);
 
-        return response()->json(['data' => $this->row($t->fresh()), 'message' => ".{$t->tld} updated."]);
+        return response()->json(['data' => $this->row($t->fresh(), $this->callerIsWalletGated()), 'message' => ".{$t->tld} updated."]);
     }
 
     /** Acknowledge the "USD cost changed" flags (all, or the given TLDs). */

@@ -35,10 +35,11 @@ export const linkNameComDomain = (domain_name: string, client_id: string) =>
   api.post<{ message: string }>('/namecom/link', { domain_name, client_id });
 
 // ── selling Name.com TLDs (staff only; USD costs never reach the client portal) ──
-export interface NameComSettingsData { usd_rate: number; fixed_markup: number; auto_register: boolean; auto_cap_usd: number; auto_daily_limit: number }
+export interface NameComSettingsData { usd_rate: number | null; fixed_markup: number; auto_register: boolean; auto_cap_usd: number; auto_daily_limit: number }
 export interface NameComTldRow {
   tld: string;
   usd_register: number | null; usd_renew: number | null; usd_transfer: number | null;
+  offers_registration: boolean;
   register_price: number; renew_price: number; transfer_price: number;
   is_active: boolean; is_popular: boolean; sort_order: number; price_overridden: boolean; usd_changed: boolean;
   usd_prev: { register: number | null; renew: number | null; transfer: number | null; at?: string } | null;

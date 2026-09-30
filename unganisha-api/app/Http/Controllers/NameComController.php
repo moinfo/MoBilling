@@ -76,6 +76,18 @@ class NameComController extends Controller
     public function updateAccount(Request $request, string $account): JsonResponse
     {
         $a = NameComAccount::findOrFail($account);
+
+        // Rotating credentials on a wallet-gated reseller's DEFAULT account
+        // would touch the real duplicated Moinfotech credentials it's set up
+        // with — block that specifically, but still allow harmless changes
+        // (renaming the label, or flipping is_default when they've added
+        // their own separate account) to go through.
+        if (($request->has('username') || $request->has('token'))
+            && $a->is_default
+            && Tenant::withoutGlobalScopes()->find($a->tenant_id)?->is_wallet_gated) {
+            abort(403, 'This account is managed for you — contact support if you need it changed.');
+        }
+
         $data = $request->validate([
             'label'      => ['sometimes', 'string', 'min:2', 'max:60'],
             'username'   => ['sometimes', 'string', 'max:100', 'regex:/^\S+$/'],

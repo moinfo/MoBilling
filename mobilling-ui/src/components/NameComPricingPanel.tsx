@@ -10,6 +10,7 @@ import { IconRefresh, IconEdit, IconAlertTriangle, IconStar, IconStarFilled } fr
 import {
   listNameComTlds, syncNameComTlds, recomputeNameComTlds, ackNameComTlds, updateNameComTld, saveNameComSettings, NameComTldRow, NameComSettingsData,
 } from '../api/namecom';
+import { useAuth } from '../context/AuthContext';
 
 const errMsg = (e: any): string =>
   e?.response?.data?.message || (e?.response?.data?.errors ? Object.values(e.response.data.errors).flat().join(' ') : null) || e?.message || 'Something went wrong';
@@ -18,6 +19,12 @@ const tzs = (v: number | null) => (v === null || v === undefined ? '-' : Number(
 
 export default function NameComPricingPanel() {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // Real USD wholesale cost and the FX rate/auto-register (real money on
+  // Moinfotech's own shared Name.com balance) are staff-only concepts — the
+  // backend already withholds them for a wallet-gated reseller, so these
+  // just drive which columns/fields this page bothers to render.
+  const walletGated = !!user?.tenant?.is_wallet_gated;
   const [search, setSearch] = useState('');
   const [debounced] = useDebouncedValue(search, 300);
   const [filter, setFilter] = useState<string | null>(null);
@@ -60,7 +67,7 @@ export default function NameComPricingPanel() {
 
   return (
     <Stack>
-      <SettingsCard settings={list?.settings} onSaved={refresh} onRecompute={() => recompute.mutate()} recomputing={recompute.isPending} />
+      <SettingsCard settings={list?.settings} onSaved={refresh} onRecompute={() => recompute.mutate()} recomputing={recompute.isPending} walletGated={walletGated} />
 
       <Group justify="space-between" wrap="wrap">
         <Group gap="xs">
@@ -92,7 +99,7 @@ export default function NameComPricingPanel() {
             <Table.Thead>
               <Table.Tr>
                 <Table.Th>TLD</Table.Th>
-                <Table.Th>USD reg / renew / transfer</Table.Th>
+                {!walletGated && <Table.Th>USD reg / renew / transfer</Table.Th>}
                 <Table.Th>Selling TZS: register</Table.Th>
                 <Table.Th>renew</Table.Th>
                 <Table.Th>transfer</Table.Th>
@@ -115,7 +122,7 @@ export default function NameComPricingPanel() {
                       .{r.tld}
                     </Group>
                   </Table.Td>
-                  <Table.Td>{usd(r.usd_register)} / {usd(r.usd_renew)} / {usd(r.usd_transfer)}</Table.Td>
+                  {!walletGated && <Table.Td>{usd(r.usd_register)} / {usd(r.usd_renew)} / {usd(r.usd_transfer)}</Table.Td>}
                   <Table.Td>{tzs(r.register_price)}</Table.Td>
                   <Table.Td>{tzs(r.renew_price)}</Table.Td>
                   <Table.Td>{tzs(r.transfer_price)}</Table.Td>
@@ -127,7 +134,7 @@ export default function NameComPricingPanel() {
                         </Tooltip>
                       )}
                       {r.price_overridden && <Badge color="grape" variant="light">manual</Badge>}
-                      {r.usd_register === null && <Badge color="gray" variant="light">no registration</Badge>}
+                      {!r.offers_registration && <Badge color="gray" variant="light">no registration</Badge>}
                     </Group>
                   </Table.Td>
                   <Table.Td>
@@ -142,28 +149,54 @@ export default function NameComPricingPanel() {
         </ScrollArea>
       )}
       {list && list.meta.last_page > 1 && <Pagination value={page} onChange={setPage} total={list.meta.last_page} size="sm" />}
-      {editing && <EditModal row={editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
+      {editing && <EditModal row={editing} walletGated={walletGated} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); refresh(); }} />}
     </Stack>
   );
 }
 
-function SettingsCard({ settings, onSaved, onRecompute, recomputing }: { settings?: NameComSettingsData; onSaved: () => void; onRecompute: () => void; recomputing: boolean }) {
+function SettingsCard({ settings, onSaved, onRecompute, recomputing, walletGated }: {
+  settings?: NameComSettingsData; onSaved: () => void; onRecompute: () => void; recomputing: boolean; walletGated: boolean;
+}) {
   const [draft, setDraft] = useState<Partial<NameComSettingsData>>({});
   const v = { ...(settings ?? { usd_rate: 3000, fixed_markup: 10000, auto_register: false, auto_cap_usd: 50, auto_daily_limit: 10 }), ...draft } as NameComSettingsData;
   const set = (k: keyof NameComSettingsData, val: any) => setDraft((d) => ({ ...d, [k]: val }));
   const save = useMutation({
-    mutationFn: () => saveNameComSettings(v),
+    // usd_rate/auto_register are pinned server-side for a wallet-gated tenant
+    // regardless of what's sent — these are just placeholders to satisfy the
+    // "required" validation; the real cost/FX rate is never theirs to set.
+    mutationFn: () => saveNameComSettings(walletGated ? { ...v, usd_rate: 1, auto_register: false } : v),
     onSuccess: (r) => { notifications.show({ color: 'green', message: r.data.message }); setDraft({}); onSaved(); },
     onError: (e) => notifications.show({ color: 'red', message: errMsg(e) }),
   });
-  const example = Math.round(10 * v.usd_rate) + Math.round(v.fixed_markup);
+
+  if (walletGated) {
+    return (
+      <Paper withBorder p="md" radius="md">
+        <Stack gap="sm">
+          <Text fw={600}>Your profit margin</Text>
+          <Text size="xs" c="dimmed">
+            We add this on top of our own cost automatically to set your selling price for every
+            domain — register, renew and transfer.
+          </Text>
+          <NumberInput label="Margin per domain (TZS)" min={0} value={v.fixed_markup}
+            onChange={(x) => set('fixed_markup', Number(x) || 0)} thousandSeparator="," maw={280} />
+          <Group>
+            <Button loading={save.isPending} disabled={Object.keys(draft).length === 0} onClick={() => save.mutate()}>Save margin</Button>
+            <Button variant="light" loading={recomputing} onClick={onRecompute}>Apply to all TLDs (keeps manual prices)</Button>
+          </Group>
+        </Stack>
+      </Paper>
+    );
+  }
+
+  const example = Math.round(10 * (v.usd_rate ?? 0)) + Math.round(v.fixed_markup);
   return (
     <Paper withBorder p="md" radius="md">
       <Stack gap="sm">
         <Text fw={600}>Pricing rule &amp; registration</Text>
         <Text size="xs" c="dimmed">Selling price (TZS) = ROUND(USD cost x rate) + fixed markup, applied separately to register, renew and transfer. Example: a $10.00 TLD sells at {tzs(example)} TZS.</Text>
         <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <NumberInput label="USD rate (TZS per 1 USD)" min={1} value={v.usd_rate} onChange={(x) => set('usd_rate', Number(x) || 0)} thousandSeparator="," />
+          <NumberInput label="USD rate (TZS per 1 USD)" min={1} value={v.usd_rate ?? 0} onChange={(x) => set('usd_rate', Number(x) || 0)} thousandSeparator="," />
           <NumberInput label="Fixed markup per domain (TZS)" min={0} value={v.fixed_markup} onChange={(x) => set('fixed_markup', Number(x) || 0)} thousandSeparator="," />
         </SimpleGrid>
         <Switch checked={v.auto_register} onChange={(e) => set('auto_register', e.currentTarget.checked)} color="red"
@@ -183,7 +216,7 @@ function SettingsCard({ settings, onSaved, onRecompute, recomputing }: { setting
   );
 }
 
-function EditModal({ row, onClose, onSaved }: { row: NameComTldRow; onClose: () => void; onSaved: () => void }) {
+function EditModal({ row, walletGated, onClose, onSaved }: { row: NameComTldRow; walletGated: boolean; onClose: () => void; onSaved: () => void }) {
   const [reg, setReg] = useState<number>(row.register_price);
   const [ren, setRen] = useState<number>(row.renew_price);
   const [tr, setTr] = useState<number>(row.transfer_price);
@@ -202,7 +235,11 @@ function EditModal({ row, onClose, onSaved }: { row: NameComTldRow; onClose: () 
     <Modal opened onClose={onClose} title={`Selling price for .${row.tld}`} centered zIndex={400}>
       <Stack>
         {error && <Alert color="red">{error}</Alert>}
-        <Text size="sm" c="dimmed">Name.com cost: {usd(row.usd_register)} register, {usd(row.usd_renew)} renew, {usd(row.usd_transfer)} transfer. Setting a price here keeps it fixed - syncing will not change it.</Text>
+        <Text size="sm" c="dimmed">
+          {walletGated
+            ? 'Setting a price here keeps it fixed - syncing will not change it.'
+            : <>Name.com cost: {usd(row.usd_register)} register, {usd(row.usd_renew)} renew, {usd(row.usd_transfer)} transfer. Setting a price here keeps it fixed - syncing will not change it.</>}
+        </Text>
         <NumberInput label="Register (TZS per year)" min={0} value={reg} onChange={(x) => setReg(Number(x) || 0)} thousandSeparator="," />
         <NumberInput label="Renew (TZS per year)" min={0} value={ren} onChange={(x) => setRen(Number(x) || 0)} thousandSeparator="," />
         <NumberInput label="Transfer (TZS)" min={0} value={tr} onChange={(x) => setTr(Number(x) || 0)} thousandSeparator="," />
