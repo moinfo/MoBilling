@@ -34,9 +34,13 @@ try {
         ?? $activeUsers->first(fn ($u) => $u->id !== $owner?->id);
     ok($staff && $owner && $staff->id !== $owner->id, 'have two distinct active users to test with (owner has attendance.manage, staff does not)');
 
-    // Pin the window to the documented default so the test isn't at the
-    // mercy of whatever an admin last saved in production settings.
-    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_window_days' => 5]);
+    // Admin opens a window: Oct 1–5, reviewing September. "Now" is frozen
+    // at Oct 3 below, so this window is open for the rest of this script.
+    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update([
+        'exception_window_from' => '2026-10-01',
+        'exception_window_to' => '2026-10-05',
+        'exception_review_month' => '2026-09-01',
+    ]);
 
     $ctl = app(AttendanceExceptionController::class);
     $date = '2026-09-27'; // September — explainable now that "now" is Oct 3
@@ -148,33 +152,43 @@ try {
     ok($r12->status() === 200, 'the requester can cancel their own pending request');
     ok(AttendanceExceptionRequest::find($excId3) === null, 'cancelled request row is deleted');
 
-    // 9. Explanation window: "now" is frozen at 2026-10-03 — September's
-    // window (Oct 1–5) is open, but August's already closed and October's
-    // own (not-yet-elapsed) month hasn't opened its window yet.
-    $tooOld = '2026-08-15'; // August's window was Sep 1–5, long closed
-    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $tooOld)->delete();
+    // 9. Explanation window: "now" is frozen at 2026-10-03, admin opened
+    // Oct 1–5 reviewing September — an August day is out of the reviewed
+    // month, and an October day is out of the reviewed month too (even
+    // though "now" is inside the open date range).
+    $wrongMonthOld = '2026-08-15';
+    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $wrongMonthOld)->delete();
     $r13 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
-        'date' => $tooOld, 'type' => 'leave', 'comment' => 'Too late to explain',
+        'date' => $wrongMonthOld, 'type' => 'leave', 'comment' => 'Wrong month — August',
     ]), $staff)));
-    ok($r13->status() === 422, "explaining an August day on Oct 3 is rejected — window closed (422): got " . $r13->status());
+    ok($r13->status() === 422, "explaining an August day while reviewing September is rejected (422): got " . $r13->status());
 
-    $tooNew = '2026-10-02'; // October's own window (Nov 1–5) hasn't opened
-    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $tooNew)->delete();
+    $wrongMonthNew = '2026-10-02';
+    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $wrongMonthNew)->delete();
     $r14 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
-        'date' => $tooNew, 'type' => 'leave', 'comment' => 'Too early to explain',
+        'date' => $wrongMonthNew, 'type' => 'leave', 'comment' => 'Wrong month — October',
     ]), $staff)));
-    ok($r14->status() === 422, "explaining an October day on Oct 3 is rejected — window not open yet (422): got " . $r14->status());
+    ok($r14->status() === 422, "explaining an October day while reviewing September is rejected (422): got " . $r14->status());
 
-    // A tighter admin-configured window (2 days) closes the same September
-    // window earlier — Oct 3 is then already past it.
-    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_window_days' => 2]);
-    $dateTight = '2026-09-20';
-    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $dateTight)->delete();
+    // Right month, but "now" is outside the open date range.
+    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_window_to' => '2026-10-02']);
+    $dateOutsideRange = '2026-09-20';
+    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $dateOutsideRange)->delete();
     $r15 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
-        'date' => $dateTight, 'type' => 'leave', 'comment' => 'Window now only 2 days',
+        'date' => $dateOutsideRange, 'type' => 'leave', 'comment' => 'Window narrowed to close before today',
     ]), $staff)));
-    ok($r15->status() === 422, "a 2-day configured window closes by Oct 3 too — respects the setting (422): got " . $r15->status());
-    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_window_days' => 5]);
+    ok($r15->status() === 422, "right month but 'now' (Oct 3) is past the narrowed window (to Oct 2) — rejected (422): got " . $r15->status());
+    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_window_to' => '2026-10-05']);
+
+    // No window configured at all (any field null) = closed, not open.
+    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_review_month' => null]);
+    $dateNoWindow = '2026-09-19';
+    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $dateNoWindow)->delete();
+    $r16 = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
+        'date' => $dateNoWindow, 'type' => 'leave', 'comment' => 'No window configured',
+    ]), $staff)));
+    ok($r16->status() === 422, "an unconfigured window (null review month) defaults to closed (422): got " . $r16->status());
+    AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_review_month' => '2026-09-01']);
 
     echo $fail === 0 ? "\nALL PASS\n" : "\n{$fail} FAILURE(S)\n";
 } finally {

@@ -56,7 +56,9 @@ export interface AttendanceSettings {
   penalty_left_early: number;
   penalty_no_checkout: number;
   working_days?: number[];
-  exception_window_days?: number;
+  exception_window_from?: string | null;
+  exception_window_to?: string | null;
+  exception_review_month?: string | null;
 }
 
 export const getMyAttendance = () => api.get<{ data: MyAttendance }>('/attendance/mine');

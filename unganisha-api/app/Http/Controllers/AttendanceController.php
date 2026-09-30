@@ -429,7 +429,9 @@ class AttendanceController extends Controller
             'penalty_no_checkout' => 'nullable|numeric|min:0',
             'working_days'        => 'nullable|array',
             'working_days.*'      => 'integer|min:1|max:7',
-            'exception_window_days' => 'nullable|integer|min:1|max:28',
+            'exception_window_from'   => 'nullable|date',
+            'exception_window_to'     => 'nullable|date|after_or_equal:exception_window_from',
+            'exception_review_month' => 'nullable|date',
         ]);
         $s = $this->attendanceService->settings();
         $s->update($data);

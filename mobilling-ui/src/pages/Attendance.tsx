@@ -963,6 +963,20 @@ function DeviceTab() {
   );
 }
 
+/** Client-side hint only — the server is the real gate (AttendanceService::isWithinExplainWindow). */
+function ExplainWindowStatusBadge({ from, to, month }: { from?: string | null; to?: string | null; month?: string | null }) {
+  if (!from || !to || !month) {
+    return <Badge size="sm" variant="light" color="gray">Closed</Badge>;
+  }
+  const today = dayjs().format('YYYY-MM-DD');
+  const open = today >= from && today <= to;
+  return (
+    <Badge size="sm" variant="light" color={open ? 'teal' : 'gray'}>
+      {open ? `Open now — reviewing ${dayjs(month).format('MMMM YYYY')}` : `Closed (opens ${dayjs(from).format('D MMM')})`}
+    </Badge>
+  );
+}
+
 function SettingsTab() {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ['attendance-settings'], queryFn: getAttendanceSettings });
@@ -973,7 +987,7 @@ function SettingsTab() {
       check_in_time: '07:30', check_out_time: '17:00', penalties_enabled: true,
       penalty_absent: 5000, penalty_late: 2000, penalty_left_early: 2000, penalty_no_checkout: 2000,
       working_days: [1, 2, 3, 4, 5, 6],
-      exception_window_days: 5,
+      exception_window_from: null, exception_window_to: null, exception_review_month: null,
     },
   });
 
@@ -1033,15 +1047,31 @@ function SettingsTab() {
         <Divider />
 
         <div>
-          <Group gap="xs" mb="xs">
-            <ThemeIcon size="sm" variant="light" color="grape" radius="xl"><IconMessageCircle size={14} /></ThemeIcon>
-            <Text size="sm" fw={700}>Explanations window</Text>
+          <Group gap="xs" mb="xs" justify="space-between">
+            <Group gap="xs">
+              <ThemeIcon size="sm" variant="light" color="grape" radius="xl"><IconMessageCircle size={14} /></ThemeIcon>
+              <Text size="sm" fw={700}>Explanations window</Text>
+            </Group>
+            <ExplainWindowStatusBadge
+              from={form.values.exception_window_from} to={form.values.exception_window_to}
+              month={form.values.exception_review_month}
+            />
           </Group>
           <Text size="xs" c="dimmed" mb="sm">
-            A staff member may explain a flagged day from month M only from the 1st through this many days into month M+1 — after that the window closes for good.
+            Closed by default. Open it briefly each month — e.g. 1–5 Oct, reviewing September — so staff can explain flagged days from that month before payroll. Leave any field blank to keep it closed.
           </Text>
-          <NumberInput label="Window (days into the next month)" min={1} max={28} w={220}
-            {...form.getInputProps('exception_window_days')} />
+          <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
+            <MonthPickerInput label="Reviewing month" placeholder="e.g. September" clearable
+              value={form.values.exception_review_month ? new Date(form.values.exception_review_month) : null}
+              onChange={(v) => form.setFieldValue('exception_review_month', v ? dayjs(v as unknown as string).format('YYYY-MM-01') : null)} />
+            <DatePickerInput label="Window opens" placeholder="From" clearable valueFormat="DD MMM YYYY"
+              value={form.values.exception_window_from ? new Date(form.values.exception_window_from) : null}
+              onChange={(v) => form.setFieldValue('exception_window_from', v ? dayjs(v as unknown as string).format('YYYY-MM-DD') : null)} />
+            <DatePickerInput label="Window closes" placeholder="To" clearable valueFormat="DD MMM YYYY"
+              minDate={form.values.exception_window_from ? new Date(form.values.exception_window_from) : undefined}
+              value={form.values.exception_window_to ? new Date(form.values.exception_window_to) : null}
+              onChange={(v) => form.setFieldValue('exception_window_to', v ? dayjs(v as unknown as string).format('YYYY-MM-DD') : null)} />
+          </SimpleGrid>
         </div>
 
         <Alert color="blue" variant="light" p="xs">

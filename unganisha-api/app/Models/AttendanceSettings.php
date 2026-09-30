@@ -10,11 +10,14 @@ class AttendanceSettings extends Model
         'tenant_id', 'check_in_time', 'check_out_time', 'penalties_enabled',
         'penalties_from',
         'penalty_absent', 'penalty_late', 'penalty_left_early', 'penalty_no_checkout', 'working_days',
-        'exception_window_days',
+        'exception_window_from', 'exception_window_to', 'exception_review_month',
     ];
     protected $casts = [
         'penalties_enabled' => 'boolean',
         'penalties_from' => 'date',
         'working_days'      => 'array',
+        'exception_window_from' => 'date:Y-m-d',
+        'exception_window_to' => 'date:Y-m-d',
+        'exception_review_month' => 'date:Y-m-d',
     ];
 }

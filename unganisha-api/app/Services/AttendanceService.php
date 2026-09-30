@@ -79,24 +79,36 @@ class AttendanceService
             'penalty_left_early'  => 2000,
             'penalty_no_checkout' => 2000,
             'working_days'        => [1, 2, 3, 4, 5, 6],
-            'exception_window_days' => 5,
         ]);
     }
 
     /**
-     * A day in month M may only be self-service explained from the 1st
-     * through settings' exception_window_days of month M+1 — a payroll
-     * dispute-window cutoff. Shared by AttendanceController::buildReport()
-     * (to show/hide the "explain" action) and
-     * AttendanceExceptionController::store() (to actually enforce it) so
-     * the two never drift apart.
+     * Admin-opened review window: staff may only self-service explain a
+     * flagged day while (a) today falls inside settings'
+     * exception_window_from/to AND (b) the flagged day falls in
+     * exception_review_month — e.g. "Oct 1–5, reviewing September". All
+     * three are null until an admin explicitly opens a window (Attendance
+     * Settings), so the default is closed, not open. Shared by
+     * AttendanceController::buildReport() (to show/hide the "explain"
+     * action) and AttendanceExceptionController::store() (to actually
+     * enforce it) so the two never drift apart.
+     *
+     * Replaces an earlier auto-computed "1st–Nth of next month" rule that
+     * left every day unexplainable on most real calendar dates (e.g. on
+     * the 30th, last month's window had already closed and this month's
+     * hadn't opened yet) — this version is admin-controlled instead.
      */
     public function isWithinExplainWindow(string $date, AttendanceSettings $s): bool
     {
-        $days = max(1, (int) ($s->exception_window_days ?: 5));
-        $start = Carbon::parse($date)->startOfMonth()->addMonthNoOverflow()->startOfDay();
-        $end = $start->copy()->addDays($days - 1)->endOfDay();
+        if (!$s->exception_window_from || !$s->exception_window_to || !$s->exception_review_month) {
+            return false;
+        }
 
-        return now()->between($start, $end);
+        $today = now()->toDateString();
+        if ($today < $s->exception_window_from->toDateString() || $today > $s->exception_window_to->toDateString()) {
+            return false;
+        }
+
+        return Carbon::parse($date)->format('Y-m') === $s->exception_review_month->format('Y-m');
     }
 }
