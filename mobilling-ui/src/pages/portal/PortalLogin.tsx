@@ -31,7 +31,10 @@ export default function PortalLogin() {
   const branding = useBranding();
   const { t } = useLanguage();
   const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
-  const backHref = branding.branded && branding.website ? branding.website : 'https://moinfo.co.tz';
+  // On a white-label domain, never fall back to Moinfotech's own site — the
+  // reseller's customers should never see the supplier. Only link back when
+  // the reseller has set their own website; otherwise show no back link.
+  const backHref = branding.branded ? (branding.website || null) : 'https://moinfo.co.tz';
 
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -125,7 +128,9 @@ export default function PortalLogin() {
         <div className={classes.brandOrb} aria-hidden="true" />
 
         <div className={classes.brandRow}>
-          <img src={branding.branded && branding.logo_url ? branding.logo_url : '/moinfotech-logo.png'} alt="" height={40} />
+          {(!branding.branded || branding.logo_url) && (
+            <img src={branding.branded ? branding.logo_url! : '/moinfotech-logo.png'} alt="" height={40} />
+          )}
           <span className={classes.brandLockup}>
             <span className={classes.brandName}>
               {branding.branded ? brandName : <>Moinfo<span className={classes.brandNameAccent}>Tech</span></>}
@@ -166,7 +171,7 @@ export default function PortalLogin() {
             </div>
           </div>
           <div className={classes.copyright}>
-            © {new Date().getFullYear()} MOINFOTECH COMPANY LIMITED
+            © {new Date().getFullYear()} {branding.branded ? brandName.toUpperCase() : 'MOINFOTECH COMPANY LIMITED'}
           </div>
         </div>
       </div>
@@ -174,9 +179,11 @@ export default function PortalLogin() {
       {/* ── Form column ─────────────────────────────────────────────── */}
       <div className={classes.formCol}>
         <div className={classes.topBar}>
-          <a className={classes.back} href={backHref}>
-            ← {t('login.backTo')} {backHref.replace(/^https?:\/\//, '')}
-          </a>
+          {backHref ? (
+            <a className={classes.back} href={backHref}>
+              ← {t('login.backTo')} {backHref.replace(/^https?:\/\//, '')}
+            </a>
+          ) : <span />}
           <div className={classes.topRight}>
             <ActionIcon
               variant="default"
@@ -186,14 +193,16 @@ export default function PortalLogin() {
             >
               {isDark ? <IconSun size={18} /> : <IconMoon size={18} />}
             </ActionIcon>
-            <a
-              className={classes.help}
-              href="https://wa.me/255689011111"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {t('login.needHelp')}
-            </a>
+            {!branding.branded && (
+              <a
+                className={classes.help}
+                href="https://wa.me/255689011111"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {t('login.needHelp')}
+              </a>
+            )}
           </div>
         </div>
 
@@ -332,12 +341,14 @@ export default function PortalLogin() {
         </div>
 
         <div className={classes.legal}>
-          <span>© {new Date().getFullYear()} MOINFOTECH</span>
-          <span>
-            <a href="https://moinfo.co.tz/privacy">{t('login.privacy')}</a>
-            {' · '}
-            <a href="https://moinfo.co.tz/terms">{t('login.terms')}</a>
-          </span>
+          <span>© {new Date().getFullYear()} {branding.branded ? brandName.toUpperCase() : 'MOINFOTECH'}</span>
+          {!branding.branded && (
+            <span>
+              <a href="https://moinfo.co.tz/privacy">{t('login.privacy')}</a>
+              {' · '}
+              <a href="https://moinfo.co.tz/terms">{t('login.terms')}</a>
+            </span>
+          )}
         </div>
       </div>
     </div>

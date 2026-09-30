@@ -31,7 +31,11 @@ export default function PortalForgotPassword() {
   const isDark = useComputedColorScheme('dark') === 'dark';
   const branding = useBranding();
   const { t } = useLanguage();
-  const backHref = branding.branded && branding.website ? branding.website : 'https://moinfo.co.tz';
+  const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
+  // On a white-label domain, never fall back to Moinfotech's own site — the
+  // reseller's customers should never see the supplier. Only link back when
+  // the reseller has set their own website; otherwise show no back link.
+  const backHref = branding.branded ? (branding.website || null) : 'https://moinfo.co.tz';
 
   const [step, setStep] = useState<Step>('request');
   const [loading, setLoading] = useState(false);
@@ -130,12 +134,14 @@ export default function PortalForgotPassword() {
         <div className={classes.brandOrb} aria-hidden="true" />
 
         <div className={classes.brandRow}>
-          <img src="/moinfotech-logo.png" alt="" height={40} />
+          {(!branding.branded || branding.logo_url) && (
+            <img src={branding.branded ? branding.logo_url! : '/moinfotech-logo.png'} alt="" height={40} />
+          )}
           <span className={classes.brandLockup}>
             <span className={classes.brandName}>
-              Moinfo<span className={classes.brandNameAccent}>Tech</span>
+              {branding.branded ? brandName : <>Moinfo<span className={classes.brandNameAccent}>Tech</span></>}
             </span>
-            <span className={classes.brandKicker}>TCRA REGISTRAR · TZ</span>
+            {!branding.branded && <span className={classes.brandKicker}>TCRA REGISTRAR · TZ</span>}
           </span>
         </div>
 
@@ -145,7 +151,7 @@ export default function PortalForgotPassword() {
 
         <div className={classes.brandFoot}>
           <div className={classes.copyright}>
-            © {new Date().getFullYear()} MOINFOTECH COMPANY LIMITED
+            © {new Date().getFullYear()} {branding.branded ? brandName.toUpperCase() : 'MOINFOTECH COMPANY LIMITED'}
           </div>
         </div>
       </div>
@@ -153,9 +159,11 @@ export default function PortalForgotPassword() {
       {/* ── Form column ─────────────────────────────────────────────── */}
       <div className={classes.formCol}>
         <div className={classes.topBar}>
-          <a className={classes.back} href={backHref}>
-            ← {t('login.backTo')} {backHref.replace(/^https?:\/\//, '')}
-          </a>
+          {backHref ? (
+            <a className={classes.back} href={backHref}>
+              ← {t('login.backTo')} {backHref.replace(/^https?:\/\//, '')}
+            </a>
+          ) : <span />}
           <ActionIcon variant="default" size="lg" onClick={toggleColorScheme} aria-label="Toggle colour scheme">
             {isDark ? <IconSun size={18} /> : <IconMoon size={18} />}
           </ActionIcon>
@@ -318,12 +326,14 @@ export default function PortalForgotPassword() {
         </div>
 
         <div className={classes.legal}>
-          <span>© {new Date().getFullYear()} MOINFOTECH</span>
-          <span>
-            <a href="https://moinfo.co.tz/privacy">{t('login.privacy')}</a>
-            {' · '}
-            <a href="https://moinfo.co.tz/terms">{t('login.terms')}</a>
-          </span>
+          <span>© {new Date().getFullYear()} {branding.branded ? brandName.toUpperCase() : 'MOINFOTECH'}</span>
+          {!branding.branded && (
+            <span>
+              <a href="https://moinfo.co.tz/privacy">{t('login.privacy')}</a>
+              {' · '}
+              <a href="https://moinfo.co.tz/terms">{t('login.terms')}</a>
+            </span>
+          )}
         </div>
       </div>
     </div>
