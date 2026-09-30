@@ -21,15 +21,22 @@ import { NameComTabs } from '../NameComManager';
 
 export default function DomainsTab() {
   const { can } = usePermissions();
+  const { user } = useAuth();
   const showNameCom = can('domains.settings');
+  // The FRED (.tz) registrar accreditation tab is for a tenant that is
+  // itself an accredited registrar, or for staff managing the shared
+  // platform one — not relevant to a wallet-gated reseller, who always
+  // fulfils .tz domains through that same shared platform connection
+  // (via the wallet-gate cost model) and has no accreditation of their own.
+  const walletGated = !!user?.tenant?.is_wallet_gated;
   return (
-    <Tabs defaultValue="registrars" keepMounted={false}>
+    <Tabs defaultValue={walletGated ? 'tlds' : 'registrars'} keepMounted={false}>
       <Tabs.List mb="md">
-        <Tabs.Tab value="registrars">Registrar accounts</Tabs.Tab>
+        {!walletGated && <Tabs.Tab value="registrars">Registrar accounts</Tabs.Tab>}
         <Tabs.Tab value="tlds">TLD pricing</Tabs.Tab>
         {showNameCom && <Tabs.Tab value="namecom" leftSection={<IconWorldWww size={14} />}>Name.com</Tabs.Tab>}
       </Tabs.List>
-      <Tabs.Panel value="registrars"><RegistrarAccountsSection /></Tabs.Panel>
+      {!walletGated && <Tabs.Panel value="registrars"><RegistrarAccountsSection /></Tabs.Panel>}
       <Tabs.Panel value="tlds"><TldPricingSection /></Tabs.Panel>
       {showNameCom && <Tabs.Panel value="namecom"><NameComSection /></Tabs.Panel>}
     </Tabs>
