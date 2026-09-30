@@ -3,26 +3,58 @@
    order summary, a light plans section with tabbed hosting/business-email
    cards plus a full spec comparison table, a 3-step "how it works", and a
    dark footer. Deliberately its own surface — not the app's internal dark
-   "Control Room" theme, not the moinfo.co.tz marketing site. */
+   "Control Room" theme, not the moinfo.co.tz marketing site.
+
+   Two kinds of colour token here, and they must not be mixed up:
+   - FIXED tokens (--navy, --fixed-*, --good*, --bad*) never change with the
+     viewer's colour scheme — they belong to the hero/footer/CTA bands and
+     the bright white cards that deliberately float on top of them
+     (search bar, order-summary card), which stay the same in both modes.
+   - ADAPTIVE tokens (--ink, --ink-soft, --ink-2, --line, --surface,
+     --surface-alt, --accent) belong to the plain page-body sections
+     (features, plans, compare table, how-it-works) and flip under
+     `prefers-color-scheme: dark` below. Reusing a fixed colour's role for
+     an adaptive token (or vice versa) is exactly how text goes invisible —
+     e.g. dark ink text on a fixed-white search box, once ink itself turns
+     near-white for dark-mode readers. */
 
 .page {
-  --ink: #0b1b33;
-  --ink-soft: #5b6472;
-  --ink-2: #3d4757;
-  --line: #e3e8ef;
-  --surface-alt: #f5f7fa;
-  --accent: #1f63b0;
-  --accent-deep: #163f73;
+  /* Fixed — the dark bands and the light "cards" floating on them */
+  --navy: #0b1b33;
+  --fixed-ink-soft: #5b6472;
+  --fixed-line: #e3e8ef;
   --good: #157a4a;
   --good-tint: #eaf7f0;
   --bad: #a5321f;
   --bad-tint: #fbeeec;
   --footer-muted: #8fa1b8;
 
-  background: #ffffff;
+  /* Adaptive — the plain page-body sections (light by default) */
+  --ink: #0b1b33;
+  --ink-soft: #5b6472;
+  --ink-2: #3d4757;
+  --line: #e3e8ef;
+  --surface: #ffffff;
+  --surface-alt: #f5f7fa;
+  --accent: #1f63b0;
+
+  color-scheme: light dark;
+  background: var(--surface);
   color: var(--ink);
   font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+@media (prefers-color-scheme: dark) {
+  .page {
+    --ink: #eef2f7;
+    --ink-soft: #aab6c4;
+    --ink-2: #c7d0da;
+    --line: rgba(255, 255, 255, 0.12);
+    --surface: #0f1a2b;
+    --surface-alt: #0a1220;
+    --accent: #5b9be0;
+  }
 }
 
 .page a { color: inherit; text-decoration: none; }
@@ -34,9 +66,9 @@
   box-sizing: border-box;
 }
 
-/* ── Hero ────────────────────────────────────────────────────────────── */
+/* ── Hero (fixed dark) ───────────────────────────────────────────────── */
 .hero {
-  background-color: var(--ink);
+  background-color: var(--navy);
   background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
   background-size: 24px 24px;
   color: #fff;
@@ -90,7 +122,7 @@
 .btnLight {
   padding: 11px 18px;
   background: #fff;
-  color: var(--ink);
+  color: var(--navy);
   border-radius: 10px;
   font-weight: 700;
   font-size: 14px;
@@ -118,7 +150,7 @@
   margin-bottom: 26px;
 }
 
-.pillTag { background: #3fcf8e; color: var(--ink); font-weight: 700; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
+.pillTag { background: #3fcf8e; color: var(--navy); font-weight: 700; font-size: 11px; padding: 3px 8px; border-radius: 999px; }
 
 .heroTitle {
   font-family: 'Archivo', sans-serif;
@@ -131,6 +163,7 @@
 
 .heroSub { font-size: 18px; line-height: 1.5; color: #c3cfdd; margin: 0 0 32px; max-width: 32em; }
 
+/* Fixed white — floats on the dark hero in both colour schemes */
 .searchBar {
   display: flex;
   align-items: center;
@@ -152,7 +185,7 @@
   font-family: 'JetBrains Mono', ui-monospace, monospace;
   font-size: 16px;
   padding: 13px 8px;
-  color: var(--ink);
+  color: var(--navy);
   background: transparent;
 }
 
@@ -206,9 +239,10 @@
 
 .tldPrice { color: #8fa1b8; }
 
+/* Fixed white — the illustrative order card, same reasoning as searchBar */
 .orderCard {
   background: #fff;
-  color: var(--ink);
+  color: var(--navy);
   border-radius: 20px;
   padding: 26px;
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.4);
@@ -218,7 +252,7 @@
 
 .orderTitle { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 16px; }
 
-.orderBadge { font-size: 12px; font-weight: 600; color: var(--ink-soft); background: #f1f4f8; padding: 5px 10px; border-radius: 999px; }
+.orderBadge { font-size: 12px; font-weight: 600; color: var(--fixed-ink-soft); background: #f1f4f8; padding: 5px 10px; border-radius: 999px; }
 
 .orderRow {
   display: flex;
@@ -226,7 +260,7 @@
   gap: 12px;
   padding: 13px;
   border-radius: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--fixed-line);
   margin-bottom: 10px;
 }
 
@@ -246,16 +280,16 @@
 
 .orderRowName { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 14px; }
 
-.orderRowSub { font-size: 12.5px; color: var(--ink-soft); }
+.orderRowSub { font-size: 12.5px; color: var(--fixed-ink-soft); }
 
 .orderRowPrice { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 13px; white-space: nowrap; }
 
 .orderTotal {
   display: flex; justify-content: space-between; align-items: baseline;
   margin-top: 18px; padding-top: 16px; border-top: 1px dashed #d5dce6;
-  font-size: 14px; color: var(--ink-soft);
+  font-size: 14px; color: var(--fixed-ink-soft);
 }
-.orderTotal span:last-child { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; color: var(--ink); }
+.orderTotal span:last-child { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 22px; color: var(--navy); }
 
 .orderCta {
   display: block;
@@ -270,7 +304,7 @@
 }
 .orderCta:hover { filter: brightness(0.92); }
 
-/* ── Features ────────────────────────────────────────────────────────── */
+/* ── Features (adaptive) ─────────────────────────────────────────────── */
 .features { border-bottom: 1px solid var(--line); }
 
 .featureGrid {
@@ -290,11 +324,11 @@
   display: flex; align-items: center; justify-content: center; flex-shrink: 0;
 }
 
-.featureTitle { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 4px; }
+.featureTitle { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 15px; margin-bottom: 4px; color: var(--ink); }
 
 .featureDesc { font-size: 13.5px; line-height: 1.5; color: var(--ink-soft); }
 
-/* ── Plans ───────────────────────────────────────────────────────────── */
+/* ── Plans (adaptive) ────────────────────────────────────────────────── */
 .plansSection { background: var(--surface-alt); }
 
 .plansSection .container { padding-top: 80px; padding-bottom: 80px; }
@@ -310,9 +344,9 @@
 
 .eyebrow { font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
 
-.plansTitle { font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 36px; line-height: 1.1; letter-spacing: -0.02em; margin: 0; }
+.plansTitle { font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 36px; line-height: 1.1; letter-spacing: -0.02em; margin: 0; color: var(--ink); }
 
-.tabs { display: flex; gap: 4px; background: #fff; border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
+.tabs { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; }
 
 .tab {
   border: none;
@@ -326,7 +360,8 @@
   cursor: pointer;
 }
 
-.tabActive { background: var(--ink); color: #fff; font-weight: 700; }
+/* Fixed navy pill — a brand accent, stays the same in both modes */
+.tabActive { background: var(--navy); color: #fff; font-weight: 700; }
 
 .planGrid4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; align-items: stretch; }
 .planGrid5 { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
@@ -335,25 +370,27 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 18px;
   padding: 24px;
+  color: var(--ink);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 .planCard:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(11, 27, 51, 0.1); }
 
-.planCardDark { background: var(--ink); color: #fff; border-color: var(--ink); }
+/* Fixed navy card — the "most chosen" highlight, stays the same in both modes */
+.planCardDark { background: var(--navy); color: #fff; border-color: var(--navy); }
 
 .planBadge {
   position: absolute; top: 18px; right: 18px;
-  background: #3fcf8e; color: var(--ink); font-size: 11px; font-weight: 700;
+  background: #3fcf8e; color: var(--navy); font-size: 11px; font-weight: 700;
   padding: 4px 10px; border-radius: 999px;
 }
 
 .planBadgeInline {
   align-self: flex-start;
-  background: #3fcf8e; color: var(--ink); font-size: 11px; font-weight: 700;
+  background: #3fcf8e; color: var(--navy); font-size: 11px; font-weight: 700;
   padding: 4px 10px; border-radius: 999px; margin-bottom: 10px;
 }
 
@@ -378,7 +415,7 @@
 }
 .planCta:hover { filter: brightness(0.92); }
 
-.planCtaLight { background: #fff; color: var(--ink); }
+.planCtaLight { background: #fff; color: var(--navy); }
 
 .planSpecs {
   list-style: none;
@@ -395,7 +432,7 @@
 
 .planSpecsDark { border-top-color: rgba(255, 255, 255, 0.14); }
 
-.compareCard { margin-top: 44px; background: #fff; border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.compareCard { margin-top: 44px; background: var(--surface); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
 
 .compareHead {
   display: flex;
@@ -406,6 +443,7 @@
   font-family: 'Archivo', sans-serif;
   font-weight: 700;
   font-size: 16px;
+  color: var(--ink);
 }
 
 .compareNote { font-family: 'Instrument Sans', sans-serif; font-size: 12.5px; font-weight: 400; color: var(--ink-soft); }
@@ -424,16 +462,16 @@
   font-weight: 600;
 }
 
-.compareTable td { padding: 13px 16px; border-top: 1px solid #eef1f5; color: var(--ink-2); }
+.compareTable td { padding: 13px 16px; border-top: 1px solid var(--line); color: var(--ink-2); }
 
 .compareName { font-weight: 600; color: var(--ink); }
 
 .comparePrice { font-family: 'JetBrains Mono', monospace; font-weight: 600; color: var(--ink); }
 
-/* ── How it works ────────────────────────────────────────────────────── */
+/* ── How it works (adaptive) ─────────────────────────────────────────── */
 .howSection .container { padding: 80px 32px; }
 
-.howTitle { font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 36px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 44px; max-width: 16em; }
+.howTitle { font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 36px; line-height: 1.1; letter-spacing: -0.02em; margin: 0 0 44px; max-width: 16em; color: var(--ink); }
 
 .howGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 
@@ -441,13 +479,13 @@
 
 .howNum { font-family: 'JetBrains Mono', monospace; font-weight: 600; font-size: 13px; color: var(--accent); margin-bottom: 32px; }
 
-.howCardTitle { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 19px; margin-bottom: 8px; }
+.howCardTitle { font-family: 'Archivo', sans-serif; font-weight: 700; font-size: 19px; margin-bottom: 8px; color: var(--ink); }
 
 .howCardDesc { font-size: 14px; line-height: 1.5; color: var(--ink-soft); }
 
-/* ── Final CTA ───────────────────────────────────────────────────────── */
+/* ── Final CTA (fixed dark) ──────────────────────────────────────────── */
 .ctaPanel {
-  background-color: var(--ink);
+  background-color: var(--navy);
   background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
   background-size: 24px 24px;
   border-radius: 24px;
@@ -466,8 +504,8 @@
 
 .ctaActions { display: flex; gap: 12px; flex-shrink: 0; }
 
-/* ── Footer ──────────────────────────────────────────────────────────── */
-.footer { background: var(--ink); color: #fff; }
+/* ── Footer (fixed dark) ─────────────────────────────────────────────── */
+.footer { background: var(--navy); color: #fff; }
 
 .footer .container { padding: 56px 32px 28px; }
 
