@@ -52,7 +52,13 @@ export default function Settings() {
   const canBankAccounts = can('menu.bank_accounts');
   const canSystemProperties = can('menu.system_properties');
   const canSystemVerifications = can('menu.system_verifications');
-  const canHosting = can('hosting.settings');
+  // The real server hostname + API token live here — a wallet-gated
+  // reseller's own row is a duplicate of Moinfotech's real shared server
+  // (see ResellerProvisioningService), so this tab would show them the
+  // real hostname behind their white-label tenant. They never manage
+  // hosting servers themselves either way (fulfilment is on our shared
+  // infra via the wallet-gate cost model).
+  const canHosting = can('hosting.settings') && !user?.tenant?.is_wallet_gated;
   const canDomains = can('domains.settings');
   const isSelfHosted = !!user?.tenant?.is_self_hosted;
 

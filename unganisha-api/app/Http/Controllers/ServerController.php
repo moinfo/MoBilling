@@ -4,11 +4,29 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\WhmApiException;
 use App\Models\Server;
+use App\Models\Tenant;
 use App\Services\WhmService;
 use Illuminate\Http\Request;
 
 class ServerController extends Controller
 {
+    public function __construct()
+    {
+        // A wallet-gated reseller tenant's Server row is a duplicate of
+        // Moinfotech's real shared WHM server (ResellerProvisioningService)
+        // — real hostname and API token. They never manage hosting servers
+        // directly (fulfilment runs on our shared infra via the wallet-gate
+        // cost model), so there is no legitimate reason for them to reach
+        // this controller at all; the frontend already hides the tab.
+        if (auth()->check()) {
+            abort_if(
+                Tenant::withoutGlobalScopes()->find(auth()->user()->tenant_id)?->is_wallet_gated,
+                403,
+                'Hosting servers are managed for you — contact support if you need anything changed.'
+            );
+        }
+    }
+
     public function index()
     {
         return response()->json([
