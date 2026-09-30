@@ -17,7 +17,12 @@ class AttendanceExceptionRequest extends Model
     ];
 
     protected $casts = [
-        'date' => 'date',
+        // Formatted explicitly (not just 'date') so it serializes as plain
+        // "Y-m-d" — the frontend matches this against AttendanceReport's
+        // day.date (also plain Y-m-d) to show the status icon on the right
+        // row; the default 'date' cast serializes as a full ISO datetime,
+        // which silently never matches.
+        'date' => 'date:Y-m-d',
         'reviewed_at' => 'datetime',
     ];
 
