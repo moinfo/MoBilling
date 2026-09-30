@@ -20,6 +20,7 @@ export const sw: Translations = {
   'login.submitting': 'Inaingia…',
   'login.needHelp': 'Unahitaji msaada?',
   'login.backTo': 'Rudi',
+  'login.backToHome': 'mwanzoni',
   'login.newHere': 'Mgeni kwa',
   'login.createAccount': 'Fungua akaunti',
   'login.failed': 'Kuingia kumeshindikana',

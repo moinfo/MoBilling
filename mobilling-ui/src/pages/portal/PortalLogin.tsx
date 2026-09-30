@@ -31,10 +31,10 @@ export default function PortalLogin() {
   const branding = useBranding();
   const { t } = useLanguage();
   const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
-  // On a white-label domain, never fall back to Moinfotech's own site — the
-  // reseller's customers should never see the supplier. Only link back when
-  // the reseller has set their own website; otherwise show no back link.
-  const backHref = branding.branded ? (branding.website || null) : 'https://moinfo.co.tz';
+  // On a white-label domain, "back" goes to the reseller's own storefront
+  // root ("/", WhiteLabelLanding) — never to Moinfotech's own site, which
+  // the reseller's customers should never see.
+  const backHref = branding.branded ? '/' : 'https://moinfo.co.tz';
 
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -179,11 +179,11 @@ export default function PortalLogin() {
       {/* ── Form column ─────────────────────────────────────────────── */}
       <div className={classes.formCol}>
         <div className={classes.topBar}>
-          {backHref ? (
-            <a className={classes.back} href={backHref}>
-              ← {t('login.backTo')} {backHref.replace(/^https?:\/\//, '')}
-            </a>
-          ) : <span />}
+          {branding.branded ? (
+            <Link className={classes.back} to={backHref}>← {t('login.backTo')} {t('login.backToHome')}</Link>
+          ) : (
+            <a className={classes.back} href={backHref}>← {t('login.backTo')} {backHref.replace(/^https?:\/\//, '')}</a>
+          )}
           <div className={classes.topRight}>
             <ActionIcon
               variant="default"

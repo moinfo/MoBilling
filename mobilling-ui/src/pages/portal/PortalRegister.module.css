@@ -55,9 +55,17 @@
   width: 100%;
   max-width: 560px;
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
   padding: 4px 0 16px;
 }
+
+.back {
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 500;
+}
+.back:hover { color: var(--accent); }
 
 .themeToggle {
   width: 34px;

@@ -76,6 +76,10 @@ export default function PortalRegister() {
   const brandName = branding.branded ? (branding.name ?? 'Client Area') : 'Moinfotech';
   const brandLogo = branding.branded ? branding.logo_url : null;
   const initial = brandName.trim().charAt(0).toUpperCase() || '?';
+  // On a white-label domain, "back" goes to the reseller's own storefront
+  // root ("/", WhiteLabelLanding) — never to Moinfotech's own site, which
+  // the reseller's customers should never see.
+  const backHref = branding.branded ? '/' : 'https://moinfo.co.tz';
 
   const THEME_KEY = 'wl_theme';
   const [theme, setTheme] = useState<'light' | 'dark' | null>(() => {
@@ -196,6 +200,11 @@ export default function PortalRegister() {
   return (
     <div className={styles.page} data-theme={theme ?? undefined}>
       <div className={styles.topbar}>
+        {branding.branded ? (
+          <Link className={styles.back} to={backHref}>← Back to home</Link>
+        ) : (
+          <a className={styles.back} href={backHref}>← Back to moinfo.co.tz</a>
+        )}
         <button type="button" className={styles.themeToggle} onClick={toggleTheme}
           aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
           {isDark ? <SunIcon /> : <MoonIcon />}

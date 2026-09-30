@@ -26,6 +26,7 @@ export const en: Translations = {
   'login.submitting': 'Signing in…',
   'login.needHelp': 'Need help?',
   'login.backTo': 'Back to',
+  'login.backToHome': 'home',
   'login.newHere': 'New to',
   'login.createAccount': 'Create an account',
   'login.failed': 'Login failed',
