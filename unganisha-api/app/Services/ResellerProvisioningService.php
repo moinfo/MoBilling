@@ -158,6 +158,13 @@ class ResellerProvisioningService
                         'trial_ends_at'   => now()->addDays(7),
                         'is_wallet_gated' => true,
                         'wallet_balance'  => 0,
+                        // Every notification the app sends a client (invoice, hosting-ready,
+                        // reminders...) is gated on this — it defaults to false for every new
+                        // tenant, which would otherwise leave a reseller's own customers
+                        // getting no email at all until someone finds this Settings toggle.
+                        // Uses the shared platform mailer with the reseller's own branding
+                        // applied (HasTenantBranding) — no SMTP setup required to start.
+                        'email_enabled'   => true,
                     ],
                     [
                         'name'     => $application->contact_name,
