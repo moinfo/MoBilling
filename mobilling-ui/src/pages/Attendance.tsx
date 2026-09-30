@@ -536,7 +536,7 @@ function ReportTab() {
   );
 }
 
-const exceptionTypeLabel: Record<string, string> = { leave: 'Ruhusa', field: 'Kazi za nje' };
+const exceptionTypeLabel: Record<string, string> = { leave: 'Ruhusa', field: 'Kazi za nje', other: 'Nyingine' };
 const exceptionStatusColor: Record<string, string> = { pending: 'yellow', approved: 'teal', rejected: 'red' };
 
 function RequestsTab() {
@@ -592,6 +592,9 @@ function RequestsTab() {
                       {r.status === 'approved' ? 'Approved' : 'Rejected'} by {r.reviewer?.name ?? '—'}
                       {r.review_note ? ` · ${r.review_note}` : ''}
                     </Text>
+                  )}
+                  {r.status === 'pending' && r.type === 'other' && (
+                    <Text size="xs" c="dimmed" mt={4}>Approve = the day's deduction is waived (attendance record stays as recorded). Reject = deduction stays.</Text>
                   )}
                   {r.status === 'pending' && (
                     <Textarea mt="xs" size="xs" placeholder="Optional note to the staff member"

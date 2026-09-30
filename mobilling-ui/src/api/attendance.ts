@@ -190,7 +190,7 @@ export interface SheetImportResult {
 export interface AttendanceExceptionRequest {
   id: string;
   date: string;
-  type: 'leave' | 'field';
+  type: 'leave' | 'field' | 'other';
   comment: string;
   status: 'pending' | 'approved' | 'rejected';
   review_note: string | null;
@@ -203,7 +203,7 @@ export interface AttendanceExceptionRequest {
 export const getAttendanceExceptions = (params?: { status?: string; user_id?: string }) =>
   api.get<{ data: AttendanceExceptionRequest[] }>('/attendance-exceptions', { params });
 
-export const submitAttendanceException = (payload: { date: string; type: 'leave' | 'field'; comment: string }) =>
+export const submitAttendanceException = (payload: { date: string; type: 'leave' | 'field' | 'other'; comment: string }) =>
   api.post<{ data: AttendanceExceptionRequest }>('/attendance-exceptions', payload);
 
 export const cancelAttendanceException = (id: string) =>

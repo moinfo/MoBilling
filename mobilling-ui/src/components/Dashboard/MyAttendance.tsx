@@ -3,7 +3,7 @@ import { Group, Text, Badge, Stack, Modal, Table, Center, Loader, ActionIcon, To
 import { MonthPickerInput } from '@mantine/dates';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
-import { IconMessageCircle, IconClock, IconCircleCheck, IconCircleX } from '@tabler/icons-react';
+import { IconMessageCircle } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
   getMyAttendanceReport, AttendanceReport, ReportDay,
@@ -14,6 +14,8 @@ import { useAuth } from '../../context/AuthContext';
 const statusLabelFull: Record<string, string> = {
   leave: 'Ruhusa', sick: 'Mgonjwa', field: 'Kazi za nje',
 };
+const exceptionTypeLabel: Record<string, string> = { leave: 'Ruhusa', field: 'Kazi za nje', other: 'Nyingine' };
+const exceptionIconColor: Record<string, string> = { pending: 'yellow', approved: 'teal', rejected: 'red' };
 
 export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
   const { user } = useAuth();
@@ -96,26 +98,30 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
                         {d.check_in_at && !d.late && !d.left_early && !d.no_checkout && !d.status && (
                           <Badge size="xs" variant="light" color="teal">present</Badge>
                         )}
-                        {exception && (
-                          <Tooltip label={exception.status === 'pending' ? 'Waiting for approval' : exception.status === 'approved' ? 'Approved' : `Rejected${exception.review_note ? ': ' + exception.review_note : ''}`}>
-                            {exception.status === 'pending' ? <IconClock size={14} color="var(--mantine-color-yellow-6)" />
-                              : exception.status === 'approved' ? <IconCircleCheck size={14} color="var(--mantine-color-teal-6)" />
-                              : <IconCircleX size={14} color="var(--mantine-color-red-6)" />}
-                          </Tooltip>
-                        )}
                       </Group>
                     </Table.Td>
                     <Table.Td ta="right" fw={600} c={d.deduction > 0 ? 'red' : 'dimmed'}>
                       {d.deduction > 0 ? `−${d.deduction.toLocaleString()}` : '—'}
                     </Table.Td>
                     <Table.Td>
-                      {flagged && !exception && (
+                      {exception ? (
+                        <Tooltip multiline w={240} label={
+                          `${exceptionTypeLabel[exception.type] ?? exception.type}: "${exception.comment}" — `
+                          + (exception.status === 'pending' ? 'inasubiri idhini (pending)'
+                            : exception.status === 'approved' ? 'imeidhinishwa (approved)'
+                            : `imekataliwa (rejected)${exception.review_note ? ' — ' + exception.review_note : ''}`)
+                        }>
+                          <ActionIcon variant="subtle" color={exceptionIconColor[exception.status]} size="sm">
+                            <IconMessageCircle size={14} />
+                          </ActionIcon>
+                        </Tooltip>
+                      ) : flagged ? (
                         <Tooltip label="Explain this day — request approval">
                           <ActionIcon variant="subtle" color="gray" size="sm" onClick={() => setExplainDay(d)}>
                             <IconMessageCircle size={14} />
                           </ActionIcon>
                         </Tooltip>
-                      )}
+                      ) : null}
                     </Table.Td>
                   </Table.Tr>
                   );
@@ -133,7 +139,7 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
 
 function ExplainDayModal({ day, onClose }: { day: ReportDay | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [type, setType] = useState<'leave' | 'field' | null>(null);
+  const [type, setType] = useState<'leave' | 'field' | 'other' | null>(null);
   const [comment, setComment] = useState('');
 
   const submitMut = useMutation({
@@ -152,9 +158,13 @@ function ExplainDayModal({ day, onClose }: { day: ReportDay | null; onClose: () 
         <Select label="What happened" placeholder="Chagua" data={[
           { value: 'leave', label: 'Nilikuwa na ruhusa (I had permission)' },
           { value: 'field', label: 'Nilikuwa nje ya kazi (I was out of office)' },
-        ]} value={type} onChange={(v) => setType(v as 'leave' | 'field' | null)} />
+          { value: 'other', label: 'Nyingine (eleza mwenyewe)' },
+        ]} value={type} onChange={(v) => setType(v as 'leave' | 'field' | 'other' | null)} />
         <Textarea label="Comment" placeholder="Eleza kwa ufupi..." minRows={3} required
           value={comment} onChange={(e) => setComment(e.currentTarget.value)} />
+        {type === 'other' && (
+          <Text size="xs" c="dimmed">Msimamizi wako ndiye ataamua kama siku hii itakatwa au la, baada ya kusoma maelezo yako.</Text>
+        )}
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button disabled={!type || !comment.trim()} loading={submitMut.isPending} onClick={() => submitMut.mutate()}>

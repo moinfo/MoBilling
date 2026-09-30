@@ -90,6 +90,29 @@ try {
     ok($r7->status() === 200, 'review() reject returns 200');
     ok(Attendance::where('user_id', $staff->id)->whereDate('date', $date2)->doesntExist(), 'a rejected request creates no Attendance row');
 
+    // 6b. 'other' type on approval: waives the deduction but does NOT
+    // touch the Attendance row/status (unlike leave/field).
+    $date2b = now()->subDays(8)->toDateString();
+    AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $date2b)->delete();
+    Attendance::where('user_id', $staff->id)->whereDate('date', $date2b)->delete();
+    AttendancePenalty::where('user_id', $staff->id)->whereDate('date', $date2b)->delete();
+    $att2b = Attendance::create(['tenant_id' => $tenant->id, 'user_id' => $staff->id, 'date' => $date2b, 'check_in_at' => null, 'check_out_at' => null]);
+    $pen2b = AttendancePenalty::create(['tenant_id' => $tenant->id, 'user_id' => $staff->id, 'date' => $date2b, 'penalty_type' => 'absent', 'amount' => 5000, 'notes' => 'test', 'waived' => false]);
+    $r6b = trap(fn () => $ctl->store(req(Request::create('/api/attendance-exceptions', 'POST', [
+        'date' => $date2b, 'type' => 'other', 'comment' => 'Car broke down on the way',
+    ]), $staff)));
+    ok($r6b->status() === 201, "'other' type is accepted by store(): got " . $r6b->status());
+    $excId2b = j($r6b)['data']['id'];
+    $exc2b = AttendanceExceptionRequest::find($excId2b);
+    $r7b = trap(fn () => $ctl->review(req(Request::create("/api/attendance-exceptions/{$excId2b}/review", 'POST', [
+        'decision' => 'approved', 'review_note' => 'One-off, approved',
+    ]), $owner), $exc2b));
+    ok($r7b->status() === 200, "'other' approve returns 200: got " . $r7b->status());
+    ok($att2b->fresh()->status === null, "'other' approval leaves Attendance::status untouched (still null, not excused)");
+    $pen2b->refresh();
+    ok($pen2b->waived === true && $pen2b->waived_by === $owner->id, "'other' approval waives the penalty (waived=true, waived_by=owner)");
+    ok($pen2b->waive_reason === 'One-off, approved', "'other' approval uses the review_note as the waive_reason");
+
     // 7. index() visibility: staff sees only their own; owner sees all (including staff's).
     $r8 = trap(fn () => $ctl->index(req(Request::create('/api/attendance-exceptions', 'GET'), $staff)));
     $staffRows = j($r8)['data'];

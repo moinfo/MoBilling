@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceExceptionRequest;
+use App\Models\AttendancePenalty;
 use App\Notifications\AttendanceExceptionDecidedNotification;
 use App\Notifications\AttendanceExceptionSubmittedNotification;
 use App\Services\AttendanceService;
@@ -52,7 +53,7 @@ class AttendanceExceptionController extends Controller
 
         $data = $request->validate([
             'date' => 'required|date|before_or_equal:today',
-            'type' => 'required|in:leave,field',
+            'type' => 'required|in:leave,field,other',
             'comment' => 'required|string|max:2000',
         ]);
 
@@ -116,12 +117,29 @@ class AttendanceExceptionController extends Controller
         $attendanceExceptionRequest->load(['user', 'reviewer']);
 
         if ($data['decision'] === 'approved') {
-            $this->attendanceService->markExcused(
-                $attendanceExceptionRequest->user,
-                $attendanceExceptionRequest->date->toDateString(),
-                $attendanceExceptionRequest->type,
-                $attendanceExceptionRequest->comment,
-            );
+            if ($attendanceExceptionRequest->type === 'other') {
+                // No real leave/field category fits, so the attendance
+                // record stays exactly as it happened — only the day's
+                // unwaived deduction(s) are forgiven, same paper trail
+                // (waived_by/waived_at/waive_reason) a manual waive leaves
+                // via AttendanceController::waivePenalty().
+                AttendancePenalty::where('user_id', $attendanceExceptionRequest->user_id)
+                    ->whereDate('date', $attendanceExceptionRequest->date->toDateString())
+                    ->where('waived', false)
+                    ->update([
+                        'waived' => true,
+                        'waived_by' => auth()->id(),
+                        'waived_at' => now(),
+                        'waive_reason' => $data['review_note'] ?? ('Explanation approved: ' . $attendanceExceptionRequest->comment),
+                    ]);
+            } else {
+                $this->attendanceService->markExcused(
+                    $attendanceExceptionRequest->user,
+                    $attendanceExceptionRequest->date->toDateString(),
+                    $attendanceExceptionRequest->type,
+                    $attendanceExceptionRequest->comment,
+                );
+            }
         }
 
         $attendanceExceptionRequest->user->notify(
