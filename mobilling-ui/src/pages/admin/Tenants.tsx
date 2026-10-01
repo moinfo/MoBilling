@@ -75,9 +75,15 @@ export default function Tenants() {
   });
 
   const impersonateMutation = useMutation({
-    mutationFn: (tenantId: string) => impersonateTenant(tenantId),
-    onSuccess: (res) => {
-      impersonate(res.data.user, res.data.token, res.data.subscription_status, res.data.days_remaining);
+    mutationFn: async (tenant: Tenant) => {
+      const res = await impersonateTenant(tenant.id);
+      // Same cross-domain handoff as TenantUsers' "Login As" — a tenant
+      // with their own white-label domain serves this same app there too.
+      if (tenant.custom_domain) {
+        window.location.href = `https://${tenant.custom_domain}/impersonate-bridge?token=${encodeURIComponent(res.data.token)}`;
+        return;
+      }
+      await impersonate(res.data.user, res.data.token, res.data.subscription_status, res.data.days_remaining);
       navigate('/dashboard');
     },
     onError: (err: any) => notifications.show({
@@ -140,7 +146,7 @@ export default function Tenants() {
   };
 
   const handleImpersonate = (tenant: Tenant) => {
-    impersonateMutation.mutate(tenant.id);
+    impersonateMutation.mutate(tenant);
   };
 
   const handleSubmit = (values: TenantFormData | CreateTenantData) => {
@@ -171,7 +177,7 @@ export default function Tenants() {
           <Group justify="space-between" align="center" wrap="wrap">
             <Text size="sm">Log in as this tenant now to finish branding and product setup?</Text>
             <Button size="xs" loading={impersonateMutation.isPending}
-              onClick={() => impersonateMutation.mutate(promotedTenant.id)}>
+              onClick={() => impersonateMutation.mutate(promotedTenant)}>
               Log in as {promotedTenant.name}
             </Button>
           </Group>

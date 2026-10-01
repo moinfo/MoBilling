@@ -16,6 +16,7 @@ import LicenseAgreement from './pages/LicenseAgreement';
 import BuyLicense from './pages/BuyLicense';
 import ForgotPassword from './pages/ForgotPassword';
 import ResetPassword from './pages/ResetPassword';
+import ImpersonateBridge from './pages/ImpersonateBridge';
 import Dashboard from './pages/Dashboard';
 import Landing from './pages/Landing';
 import Clients from './pages/Clients';
@@ -202,6 +203,7 @@ export default function App() {
                 <Route path="/portal/register" element={<PortalRegister />} />
                 <Route path="/forgot-password" element={<ForgotPassword />} />
                 <Route path="/reset-password" element={<ResetPassword />} />
+                <Route path="/impersonate-bridge" element={<ImpersonateBridge />} />
                 <Route path="/pesapal/callback" element={<PesapalCallback />} />
                 <Route path="/pay/:id" element={<PayInvoice />} />
                 <Route path="/wifi/:routerId" element={<WifiCheckout />} />

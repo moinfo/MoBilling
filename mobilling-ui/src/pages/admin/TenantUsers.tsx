@@ -30,7 +30,8 @@ export default function TenantUsers() {
     queryKey: ['admin-tenants'],
     queryFn: () => getTenants(),
   });
-  const tenantName = tenantData?.data?.data?.find((t: { id: string }) => t.id === tenantId)?.name;
+  const tenant = tenantData?.data?.data?.find((t: { id: string }) => t.id === tenantId);
+  const tenantName = tenant?.name;
 
   const { data } = useQuery({
     queryKey: ['admin-tenant-users', tenantId, debouncedSearch, page],
@@ -90,12 +91,23 @@ export default function TenantUsers() {
     mutationFn: async (user: TenantUser) => {
       const res = await impersonateUser(tenantId!, user.id);
       const { user: impUser, token, subscription_status, days_remaining } = res.data;
+
+      // A tenant with their own white-label domain serves this same app
+      // there too (just a different Host header) — land the admin on
+      // THAT origin, logged in, instead of staying on mobilling.co.tz.
+      if (tenant?.custom_domain) {
+        window.location.href = `https://${tenant.custom_domain}/impersonate-bridge?token=${encodeURIComponent(token)}`;
+        return impUser;
+      }
+
       await impersonate(impUser, token, subscription_status, days_remaining);
       return impUser;
     },
     onSuccess: (impUser) => {
-      navigate('/dashboard');
-      notifications.show({ title: 'Impersonating', message: `Logged in as ${impUser.name}`, color: 'violet' });
+      if (!tenant?.custom_domain) {
+        navigate('/dashboard');
+        notifications.show({ title: 'Impersonating', message: `Logged in as ${impUser.name}`, color: 'violet' });
+      }
     },
     onError: (err: any) => notifications.show({
       title: 'Error',
