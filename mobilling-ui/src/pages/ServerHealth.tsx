@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import {
-  Stack, Paper, Title, Text, Group, Select, Center, Loader, SimpleGrid, Badge,
+  Stack, Paper, Title, Text, Group, Select, Center, Loader, SimpleGrid, Badge, Alert,
 } from '@mantine/core';
 import { useQuery } from '@tanstack/react-query';
-import { IconServer2, IconTag, IconWorldWww } from '@tabler/icons-react';
+import { IconServer2, IconTag, IconWorldWww, IconInfoCircle } from '@tabler/icons-react';
 import { getServers, getServerHealth } from '../api/hosting';
 import StatCard from '../components/Reports/StatCard';
+import { useAuth } from '../context/AuthContext';
 
 // Rough visual cue only — WHM doesn't report core count here, so this
 // isn't "load per core", just a coarse flag for "worth a look".
@@ -22,9 +23,11 @@ const loadColor = (v: number | null) => {
  * nightly snapshot like SSL Expiry.
  */
 export default function ServerHealth() {
+  const { user } = useAuth();
+  const walletGated = !!user?.tenant?.is_wallet_gated;
   const [serverId, setServerId] = useState<string | null>(null);
 
-  const { data: serversData, isLoading: serversLoading } = useQuery({ queryKey: ['servers-for-discover'], queryFn: getServers });
+  const { data: serversData, isLoading: serversLoading } = useQuery({ queryKey: ['servers-for-discover'], queryFn: getServers, enabled: !walletGated });
   const servers = serversData?.data?.data ?? [];
 
   useEffect(() => {
@@ -34,10 +37,18 @@ export default function ServerHealth() {
   const { data, isLoading, isError } = useQuery({
     queryKey: ['server-health', serverId],
     queryFn: () => getServerHealth(serverId!),
-    enabled: !!serverId,
+    enabled: !!serverId && !walletGated,
     staleTime: 30_000,
   });
   const health = data?.data?.data;
+
+  if (walletGated) {
+    return (
+      <Alert color="blue" variant="light" icon={<IconInfoCircle size={18} />}>
+        Hosting servers are managed for you — contact support if you need anything changed.
+      </Alert>
+    );
+  }
 
   return (
     <Stack gap="md">

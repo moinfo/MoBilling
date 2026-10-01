@@ -1,5 +1,5 @@
 import { Table, ActionIcon, Group, Text, Badge, Tooltip } from '@mantine/core';
-import { IconEdit, IconPlayerPlay, IconPlayerPause, IconUsers, IconEye, IconId, IconCalendarPlus } from '@tabler/icons-react';
+import { IconEdit, IconPlayerPlay, IconPlayerPause, IconUsers, IconEye, IconId, IconCalendarPlus, IconWorldWww } from '@tabler/icons-react';
 import { useNavigate } from 'react-router-dom';
 import { Tenant } from '../../api/admin';
 
@@ -100,6 +100,14 @@ export default function TenantTable({ tenants, onEdit, onToggleActive, onImperso
                   <Tooltip label="View as tenant">
                     <ActionIcon variant="light" color="teal" onClick={() => onImpersonate(tenant)}>
                       <IconEye size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                )}
+                {tenant.custom_domain && (
+                  <Tooltip label={`Open their domain (${tenant.custom_domain})`}>
+                    <ActionIcon variant="light" color="grape" component="a"
+                      href={`https://${tenant.custom_domain}`} target="_blank" rel="noopener noreferrer">
+                      <IconWorldWww size={16} />
                     </ActionIcon>
                   </Tooltip>
                 )}

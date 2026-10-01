@@ -13,6 +13,7 @@ import {
   ServerPackageDetails,
 } from '../api/hosting';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 
 const limit = (v: number | null, unit: string) => (v === null ? <Badge size="sm" variant="light" color="teal">Unlimited</Badge> : `${v} ${unit}`);
 
@@ -53,13 +54,15 @@ const emptyForm: FormValues = {
  */
 export default function HostingPackages() {
   const { can } = usePermissions();
-  const canManage = can('hosting.settings');
+  const { user } = useAuth();
+  const walletGated = !!user?.tenant?.is_wallet_gated;
+  const canManage = can('hosting.settings') && !walletGated;
   const qc = useQueryClient();
   const [serverId, setServerId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<ServerPackageDetails | null>(null);
 
-  const { data: serversData, isLoading: serversLoading } = useQuery({ queryKey: ['servers-for-discover'], queryFn: getServers });
+  const { data: serversData, isLoading: serversLoading } = useQuery({ queryKey: ['servers-for-discover'], queryFn: getServers, enabled: !walletGated });
   const servers = serversData?.data?.data ?? [];
 
   useEffect(() => {
@@ -69,7 +72,7 @@ export default function HostingPackages() {
   const { data, isLoading } = useQuery({
     queryKey: ['server-packages-detailed', serverId],
     queryFn: () => getServerPackagesDetailed(serverId!),
-    enabled: !!serverId,
+    enabled: !!serverId && !walletGated,
   });
   const packages = data?.data?.data ?? [];
 
@@ -135,6 +138,14 @@ export default function HostingPackages() {
     confirmProps: { color: 'red' },
     onConfirm: () => deleteMutation.mutate(p.name),
   });
+
+  if (walletGated) {
+    return (
+      <Alert color="blue" variant="light" icon={<IconInfoCircle size={18} />}>
+        Hosting packages are managed for you — contact support if you need anything changed.
+      </Alert>
+    );
+  }
 
   return (
     <Stack gap="md">

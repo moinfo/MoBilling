@@ -119,8 +119,8 @@ export default function AppLayout() {
     { label: 'Hosting — Backup Status', path: '/hosting/backup-status', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Email Accounts', path: '/hosting/email-accounts', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — MySQL Databases', path: '/hosting/mysql-databases', group: 'Web Services', visible: can('menu.hosting') },
-    { label: 'Hosting — Packages', path: '/hosting/packages', group: 'Web Services', visible: can('hosting.settings') },
-    { label: 'Hosting — Server Health', path: '/hosting/health', group: 'Web Services', visible: can('hosting.settings') },
+    { label: 'Hosting — Packages', path: '/hosting/packages', group: 'Web Services', visible: can('hosting.settings') && !user?.tenant?.is_wallet_gated },
+    { label: 'Hosting — Server Health', path: '/hosting/health', group: 'Web Services', visible: can('hosting.settings') && !user?.tenant?.is_wallet_gated },
     { label: 'Hosting — DNS Zone', path: '/hosting/dns-zone', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — Cron Jobs', path: '/hosting/cron-jobs', group: 'Web Services', visible: can('menu.hosting') },
     { label: 'Hosting — PHP Version', path: '/hosting/php-versions', group: 'Web Services', visible: can('menu.hosting') },
@@ -365,11 +365,11 @@ export default function AppLayout() {
                     onClick={() => navigateAndClose('/hosting/email-accounts')} />
                   <NavLink label="MySQL Databases" active={location.pathname === '/hosting/mysql-databases'}
                     onClick={() => navigateAndClose('/hosting/mysql-databases')} />
-                  {can('hosting.settings') && (
+                  {can('hosting.settings') && !user?.tenant?.is_wallet_gated && (
                     <NavLink label="Packages" active={location.pathname === '/hosting/packages'}
                       onClick={() => navigateAndClose('/hosting/packages')} />
                   )}
-                  {can('hosting.settings') && (
+                  {can('hosting.settings') && !user?.tenant?.is_wallet_gated && (
                     <NavLink label="Server Health" active={location.pathname === '/hosting/health'}
                       onClick={() => navigateAndClose('/hosting/health')} />
                   )}

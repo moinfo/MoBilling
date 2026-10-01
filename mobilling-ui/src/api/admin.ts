@@ -15,6 +15,7 @@ export interface Tenant {
   expires_at?: string | null;
   email_enabled: boolean;
   smtp_host: string | null;
+  custom_domain: string | null;
   users_count: number;
   allowed_permissions_count?: number;
   created_at: string;
