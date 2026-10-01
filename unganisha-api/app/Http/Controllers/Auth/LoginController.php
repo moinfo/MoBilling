@@ -19,26 +19,55 @@ class LoginController extends Controller
         $request->validate([
             'identifier' => 'required|string',
             'password' => 'required',
+            // Set on the second request, once the caller has picked which
+            // of two matching accounts they meant (see the "both match"
+            // branch below) — skips straight to that account.
+            'account_type' => 'nullable|in:staff,client',
         ]);
 
         $identifier = $request->identifier;
         $isEmail = filter_var($identifier, FILTER_VALIDATE_EMAIL);
 
-        // Try tenant/admin user first
         $user = $isEmail
             ? User::where('email', $identifier)->first()
             : PhoneHelper::wherePhone(User::query(), 'phone', $identifier)->first();
+        $userMatches = $user && Hash::check($request->password, $user->password);
 
-        if ($user && Hash::check($request->password, $user->password)) {
-            return $this->loginTenantUser($user);
-        }
-
-        // Try client portal user
         $clientUser = $isEmail
             ? ClientUser::where('email', $identifier)->first()
             : PhoneHelper::wherePhone(ClientUser::query(), 'phone', $identifier)->first();
+        $clientUserMatches = $clientUser && Hash::check($request->password, $clientUser->password);
 
-        if ($clientUser && Hash::check($request->password, $clientUser->password)) {
+        // The same identifier+password is valid for both a staff account and
+        // a client/portal account — two genuinely different people/
+        // businesses who happen to share an email or phone (e.g. a reseller
+        // who is ALSO a regular client of ours). Previously this silently
+        // always picked the staff account and the client account was
+        // unreachable through login at all. Let the caller say which one
+        // they meant instead.
+        if ($userMatches && $clientUserMatches && !$request->account_type) {
+            return response()->json([
+                'requires_account_choice' => true,
+                'message' => 'This email/phone matches two accounts — choose which to sign into.',
+                'accounts' => [
+                    ['type' => 'staff', 'label' => $user->tenant?->name ? "Staff — {$user->tenant->name}" : 'Staff account'],
+                    ['type' => 'client', 'label' => $clientUser->tenant?->name ? "Client — {$clientUser->tenant->name}" : 'Client account'],
+                ],
+            ], 300);
+        }
+
+        if ($request->account_type === 'client' && $clientUserMatches) {
+            return $this->loginClientUser($clientUser);
+        }
+        if ($request->account_type === 'staff' && $userMatches) {
+            return $this->loginTenantUser($user);
+        }
+
+        if ($userMatches) {
+            return $this->loginTenantUser($user);
+        }
+
+        if ($clientUserMatches) {
             return $this->loginClientUser($clientUser);
         }
 

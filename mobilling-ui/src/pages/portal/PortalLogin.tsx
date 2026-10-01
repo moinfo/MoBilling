@@ -94,6 +94,26 @@ export default function PortalLogin() {
         navigate(user.role === 'super_admin' ? '/admin/tenants' : '/dashboard');
       }
     } catch (err: any) {
+      // Same identifier+password also matches a staff account — but they're
+      // on the PORTAL login page, so there's no real ambiguity: they want
+      // their client account. Resolve it silently instead of asking.
+      if (err.response?.status === 300 && err.response?.data?.requires_account_choice) {
+        try {
+          const result = await login({ ...values, account_type: 'client' });
+          if ('requires_2fa' in result) {
+            setTwoFaChallengeId(result.challenge_id);
+            return;
+          }
+          navigate(next ?? '/portal/dashboard');
+        } catch (err2: any) {
+          notifications.show({
+            title: t('login.failed'),
+            message: err2.response?.data?.message || t('login.invalid'),
+            color: 'red',
+          });
+        }
+        return;
+      }
       // Known client (e.g. imported from WHMCS) with no portal password set
       // yet — they already have a real account, they just need to verify
       // (email, SMS, or WhatsApp) and set a password, not "sign up".

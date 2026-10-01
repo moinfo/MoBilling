@@ -73,6 +73,11 @@ export default function Login() {
   const [twoFaUseRecovery, setTwoFaUseRecovery] = useState(false);
   const [twoFaLoading, setTwoFaLoading] = useState(false);
 
+  // Same identifier+password matches both a staff and a client account —
+  // ask which one, instead of always silently picking staff.
+  const [accountChoice, setAccountChoice] = useState<{ type: 'staff' | 'client'; label: string }[] | null>(null);
+  const [accountChoiceLoading, setAccountChoiceLoading] = useState<string | null>(null);
+
   const setupForm = useForm({
     initialValues: { name: '', password: '', password_confirmation: '', phone: '' },
     validate: {
@@ -121,9 +126,33 @@ export default function Login() {
         });
         return;
       }
+      // 300 means this identifier+password matches two accounts.
+      if (err.response?.status === 300 && err.response?.data?.requires_account_choice) {
+        setAccountChoice(err.response.data.accounts);
+        return;
+      }
       setError(err.response?.data?.message || 'We could not sign you in. Check your details and try again.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChooseAccount = async (type: 'staff' | 'client') => {
+    setAccountChoiceLoading(type);
+    setError('');
+    try {
+      const result = await login({ identifier, password, account_type: type });
+      if ('requires_2fa' in result) {
+        setAccountChoice(null);
+        setTwoFaChallengeId(result.challenge_id);
+        return;
+      }
+      goAfterLogin(result.userType, result.user.role);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'We could not sign you in. Check your details and try again.');
+      setAccountChoice(null);
+    } finally {
+      setAccountChoiceLoading(null);
     }
   };
 
@@ -311,6 +340,40 @@ export default function Login() {
                     setTwoFaRecoveryCode('');
                     setTwoFaUseRecovery(false);
                   }}
+                >
+                  Back to sign in
+                </button>
+              </>
+            ) : accountChoice ? (
+              <>
+                <h2 className={styles.formTitle}>Which account?</h2>
+                <p className={styles.formSub}>This email/phone matches two accounts — pick the one you meant.</p>
+
+                {error && (
+                  <div className={styles.errorBanner} role="alert">
+                    <IconAlertCircle size={16} />
+                    <span>{error}</span>
+                  </div>
+                )}
+
+                <Stack gap="sm">
+                  {accountChoice.map((acc) => (
+                    <button
+                      key={acc.type}
+                      type="button"
+                      className={styles.submit}
+                      disabled={!!accountChoiceLoading}
+                      onClick={() => handleChooseAccount(acc.type)}
+                    >
+                      {accountChoiceLoading === acc.type ? 'Signing in…' : acc.label}
+                    </button>
+                  ))}
+                </Stack>
+
+                <button
+                  type="button"
+                  className={styles.centerLink}
+                  onClick={() => setAccountChoice(null)}
                 >
                   Back to sign in
                 </button>

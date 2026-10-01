@@ -68,6 +68,15 @@ export interface MeResponse {
 export interface LoginData {
   identifier: string;
   password: string;
+  // Set on the second call once the user has picked which of two matching
+  // accounts (staff vs. client) they meant — see AccountChoice below.
+  account_type?: 'staff' | 'client';
+}
+
+export interface AccountChoice {
+  requires_account_choice: true;
+  message: string;
+  accounts: { type: 'staff' | 'client'; label: string }[];
 }
 
 export interface TwoFactorChallenge {
