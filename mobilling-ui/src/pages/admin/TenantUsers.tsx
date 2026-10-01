@@ -4,17 +4,20 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconSearch, IconArrowLeft, IconCopy, IconCheck, IconAlertTriangle } from '@tabler/icons-react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   getTenantUsers, createTenantUser, updateTenantUser, toggleTenantUserActive,
-  resetTenantUserPassword, getTenants,
+  resetTenantUserPassword, impersonateUser, getTenants,
 } from '../../api/admin';
 import { TenantUser, UserFormData } from '../../api/users';
 import UserTable from '../../components/Settings/UserTable';
 import UserForm from '../../components/Settings/UserForm';
+import { useAuth } from '../../context/AuthContext';
 
 export default function TenantUsers() {
   const { tenantId } = useParams<{ tenantId: string }>();
+  const navigate = useNavigate();
+  const { impersonate } = useAuth();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState('');
   const [debouncedSearch] = useDebouncedValue(search, 300);
@@ -83,6 +86,24 @@ export default function TenantUsers() {
     }),
   });
 
+  const loginAsMutation = useMutation({
+    mutationFn: async (user: TenantUser) => {
+      const res = await impersonateUser(tenantId!, user.id);
+      const { user: impUser, token, subscription_status, days_remaining } = res.data;
+      await impersonate(impUser, token, subscription_status, days_remaining);
+      return impUser;
+    },
+    onSuccess: (impUser) => {
+      navigate('/dashboard');
+      notifications.show({ title: 'Impersonating', message: `Logged in as ${impUser.name}`, color: 'violet' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to login as user',
+      color: 'red',
+    }),
+  });
+
   const handleEdit = (user: TenantUser) => {
     setEditing(user);
     setModalOpen(true);
@@ -96,6 +117,10 @@ export default function TenantUsers() {
     if (window.confirm(`Reset ${user.name}'s password? You'll get the new password to copy, and we'll also try emailing it to them.`)) {
       resetPasswordMutation.mutate(user);
     }
+  };
+
+  const handleLoginAs = (user: TenantUser) => {
+    loginAsMutation.mutate(user);
   };
 
   const handleSubmit = (values: UserFormData) => {
@@ -139,6 +164,8 @@ export default function TenantUsers() {
         onToggleActive={handleToggleActive}
         onResetPassword={handleResetPassword}
         resetPasswordLoadingId={resetPasswordMutation.isPending ? resetPasswordMutation.variables?.id : undefined}
+        showLoginAs
+        onLoginAs={handleLoginAs}
       />
 
       {meta && meta.last_page > 1 && (
