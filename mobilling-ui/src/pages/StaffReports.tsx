@@ -3,7 +3,7 @@ import {
   Title, Tabs, Stack, Group, Button, Badge, Text, Paper, ActionIcon,
   Textarea, Modal, Loader, Center, ThemeIcon, Select, Divider, Switch,
   SegmentedControl, Avatar, ScrollArea, RingProgress, SimpleGrid,
-  NumberInput, Alert, TextInput, Table, Drawer, Chip,
+  NumberInput, Alert, TextInput, Table, Drawer, Chip, Checkbox,
 } from '@mantine/core';
 import { DatePickerInput, MonthPickerInput, TimeInput } from '@mantine/dates';
 import { useDisclosure } from '@mantine/hooks';
@@ -25,7 +25,7 @@ import {
   getReports, createReport, updateReport, deleteReport, reviewReport, replyToReport,
   getDashboard, getSettings, updateSettings, getSupervisors, updateSupervisor,
   getHolidays, addHoliday, deleteHoliday,
-  getPenalties, waivePenalty, unwaivePenalty,
+  getPenalties, waivePenalty, unwaivePenalty, bulkWaivePenalties,
   type StaffReport, type ReportSettings, type MonthStats, type StaffStat,
   type StaffWithSupervisor,
   getStaffList, getStaffReportMatrix, exportStaffReportMatrix, type StaffReportMatrix,
@@ -603,6 +603,7 @@ function DeductionsTab() {
   const qc = useQueryClient();
   const [month, setMonth] = useState<Date>(new Date());
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const m = month.getMonth() + 1;
   const y = month.getFullYear();
 
@@ -612,6 +613,9 @@ function DeductionsTab() {
   });
   const res = data?.data?.data;
   const detail = res?.staff.find((s) => s.user.id === detailId) ?? null;
+  const unwaivedIds = (detail?.items ?? []).filter((i) => !i.waived).map((i) => i.id);
+
+  const openDetail = (id: string) => { setDetailId(id); setSelected(new Set()); };
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['staff-penalties'] });
   const waiveMut = useMutation({
@@ -621,6 +625,19 @@ function DeductionsTab() {
   const unwaiveMut = useMutation({
     mutationFn: (id: string) => unwaivePenalty(id),
     onSuccess: () => { invalidate(); notifications.show({ message: 'Deduction reinstated.', color: 'gray' }); },
+  });
+  const bulkWaiveMut = useMutation({
+    mutationFn: (ids: string[]) => bulkWaivePenalties(ids),
+    onSuccess: (res) => {
+      invalidate();
+      setSelected(new Set());
+      notifications.show({ message: `${res.data.waived} waived.`, color: 'green' });
+    },
+  });
+  const toggleSelected = (id: string) => setSelected((s) => {
+    const next = new Set(s);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
   });
 
   return (
@@ -660,7 +677,7 @@ function DeductionsTab() {
                     <Table.Td ta="center">{s.late || '—'}</Table.Td>
                     <Table.Td ta="right" fw={700} c="red">TZS {s.total.toLocaleString()}</Table.Td>
                     <Table.Td ta="right">
-                      <Button size="compact-xs" variant="light" onClick={() => setDetailId(s.user.id)}>View / waive</Button>
+                      <Button size="compact-xs" variant="light" onClick={() => openDetail(s.user.id)}>View / waive</Button>
                     </Table.Td>
                   </Table.Tr>
                 ))}
@@ -674,19 +691,38 @@ function DeductionsTab() {
         title={detail ? `${detail.user.name} — ${res?.month_label}` : ''}>
         {detail && (
           <Stack gap="xs">
+            {unwaivedIds.length > 0 && (
+              <Paper withBorder radius="sm" p="xs">
+                <Group justify="space-between" wrap="wrap">
+                  <Checkbox
+                    label={selected.size > 0 ? `${selected.size} of ${unwaivedIds.length} selected` : `Select all ${unwaivedIds.length} unwaived`}
+                    checked={selected.size === unwaivedIds.length}
+                    indeterminate={selected.size > 0 && selected.size < unwaivedIds.length}
+                    onChange={() => setSelected(selected.size === unwaivedIds.length ? new Set() : new Set(unwaivedIds))}
+                  />
+                  <Button size="compact-sm" color="teal" disabled={selected.size === 0}
+                    loading={bulkWaiveMut.isPending} onClick={() => bulkWaiveMut.mutate([...selected])}>
+                    Waive selected
+                  </Button>
+                </Group>
+              </Paper>
+            )}
             {detail.items.map((it) => (
               <Paper key={it.id} withBorder p="xs" radius="sm" style={{ opacity: it.waived ? 0.55 : 1 }}>
                 <Group justify="space-between" wrap="nowrap" align="flex-start">
-                  <div style={{ minWidth: 0 }}>
-                    <Group gap={6} wrap="nowrap">
-                      <Badge size="xs" variant="light" color={it.penalty_type === 'late' ? 'orange' : 'red'}>{it.penalty_type}</Badge>
-                      <Text size="sm" truncate>{it.notes ?? it.report_type}</Text>
-                    </Group>
-                    <Text size="xs" c="dimmed">
-                      {dayjs(it.period_date).format('D MMM YYYY')}
-                      {it.waived && it.waive_reason ? ` · waived: ${it.waive_reason}` : it.waived ? ' · waived' : ''}
-                    </Text>
-                  </div>
+                  <Group gap={8} wrap="nowrap" align="flex-start" style={{ minWidth: 0, flex: 1 }}>
+                    {!it.waived && <Checkbox mt={2} checked={selected.has(it.id)} onChange={() => toggleSelected(it.id)} />}
+                    <div style={{ minWidth: 0 }}>
+                      <Group gap={6} wrap="nowrap">
+                        <Badge size="xs" variant="light" color={it.penalty_type === 'late' ? 'orange' : 'red'}>{it.penalty_type}</Badge>
+                        <Text size="sm" truncate>{it.notes ?? it.report_type}</Text>
+                      </Group>
+                      <Text size="xs" c="dimmed">
+                        {dayjs(it.period_date).format('D MMM YYYY')}
+                        {it.waived && it.waive_reason ? ` · waived: ${it.waive_reason}` : it.waived ? ' · waived' : ''}
+                      </Text>
+                    </div>
+                  </Group>
                   <Group gap="xs" wrap="nowrap">
                     <Text size="sm" fw={600} c={it.waived ? 'dimmed' : 'red'} td={it.waived ? 'line-through' : undefined}>
                       −TZS {it.amount.toLocaleString()}

@@ -115,6 +115,8 @@ export const waivePenalty = (id: string, reason?: string) =>
   api.post(`/staff-reports/penalties/${id}/waive`, { reason });
 export const unwaivePenalty = (id: string) =>
   api.post(`/staff-reports/penalties/${id}/unwaive`);
+export const bulkWaivePenalties = (ids: string[], reason?: string) =>
+  api.post<{ waived: number; skipped: number }>('/staff-reports/penalties/bulk-waive', { ids, reason });
 
 export const getHolidays = () =>
   api.get<{ data: Holiday[] }>('/staff-reports/holidays');

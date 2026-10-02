@@ -331,6 +331,42 @@ class StaffReportsController extends Controller
         return response()->json(['message' => 'Deduction reinstated.']);
     }
 
+    /** Waive several penalties at once — e.g. every "missing report" line for a staff member's month. Out-of-scope or already-waived ids are skipped, not errored. */
+    public function bulkWaivePenalty(Request $request)
+    {
+        $this->authorizePermission('staff_reports.review');
+
+        $data = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|uuid',
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $scopeIds = $this->penaltyScopeUserIds(auth()->user());
+        $rows = \App\Models\StaffReportPenalty::whereIn('id', $data['ids'])
+            ->whereIn('user_id', $scopeIds)
+            ->get();
+
+        $waived = 0;
+        $skipped = 0;
+        foreach ($rows as $penalty) {
+            if ($penalty->waived) {
+                $skipped++;
+                continue;
+            }
+            $penalty->update([
+                'waived' => true,
+                'waived_by' => auth()->id(),
+                'waived_at' => now(),
+                'waive_reason' => $data['reason'] ?? null,
+            ]);
+            $waived++;
+        }
+        $skipped += count($data['ids']) - $rows->count(); // ids that didn't resolve at all (wrong tenant/out of scope)
+
+        return response()->json(['waived' => $waived, 'skipped' => $skipped]);
+    }
+
     /** Users whose deductions this reviewer may see (all, or their subordinates). */
     private function penaltyScopeUserIds($user)
     {
