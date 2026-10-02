@@ -168,6 +168,23 @@ export const generatePayrollRun = (monthKey: string) => api.post<{ data: Payroll
 export const finalizePayrollRun = (id: string) => api.post<{ data: PayrollRun }>(`/payroll-runs/${id}/finalize`);
 export const deletePayrollRun = (id: string) => api.delete(`/payroll-runs/${id}`);
 
+export interface PayslipDeductionItem {
+  id: string;
+  date: string; // attendance: the day itself; reports: period_date
+  penalty_type: string;
+  amount: number;
+  waived: boolean;
+  waive_reason: string | null;
+  report_type?: 'daily' | 'weekly' | 'monthly';
+  notes?: string | null;
+}
+export const getPayslipDeductionItems = (runId: string, payslipId: string) =>
+  api.get<{ data: { attendance: PayslipDeductionItem[]; reports: (Omit<PayslipDeductionItem, 'date'> & { period_date: string })[] } }>(
+    `/payroll-runs/${runId}/payslips/${payslipId}/deduction-items`
+  );
+export const recomputePayslip = (runId: string, payslipId: string) =>
+  api.post<{ data: Payslip }>(`/payroll-runs/${runId}/payslips/${payslipId}/recompute`);
+
 // Payslips
 export const getPayslip = (id: string) => api.get<{ data: Payslip }>(`/payslips/${id}`);
 export const downloadPayslipPdf = (id: string) => api.get(`/payslips/${id}/pdf`, { responseType: 'blob' });

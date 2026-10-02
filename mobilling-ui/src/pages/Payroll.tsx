@@ -2,6 +2,7 @@ import { useState } from 'react';
 import {
   Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack, SimpleGrid, Accordion,
   Modal, TextInput, Select, NumberInput, ActionIcon, Switch, Center, Loader, Alert, SegmentedControl, Textarea,
+  Drawer, Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,6 +10,7 @@ import { notifications } from '@mantine/notifications';
 import { modals } from '@mantine/modals';
 import {
   IconPlayerPlay, IconLock, IconDownload, IconTrash, IconEdit, IconPlus, IconAlertTriangle,
+  IconReceiptOff, IconCheck,
 } from '@tabler/icons-react';
 import {
   getPayrollSettings, updatePayrollSettings, getStaffSalaries, createStaffSalary, deleteStaffSalary,
@@ -23,11 +25,15 @@ import {
   getMyPayslips, downloadMyPayslipPdf,
   getLoans, createLoan, getLoanPayments, cancelLoan,
   getSalaryAdvances, createSalaryAdvance, cancelSalaryAdvance,
+  getPayslipDeductionItems, recomputePayslip,
   PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance, Payslip,
 } from '../api/payroll';
+import { waiveAttendancePenalty, unwaiveAttendancePenalty } from '../api/attendance';
+import { waivePenalty as waiveReportPenalty, unwaivePenalty as unwaiveReportPenalty } from '../api/staffReports';
 import { getAssignableUsers } from '../api/users';
 import { formatCurrency } from '../utils/formatCurrency';
 import { usePermissions } from '../hooks/usePermissions';
+import dayjs from 'dayjs';
 
 function downloadBlob(data: BlobPart, filename: string) {
   const url = window.URL.createObjectURL(new Blob([data]));
@@ -90,6 +96,7 @@ function RunsTab({ canManage }: { canManage: boolean }) {
   const queryClient = useQueryClient();
   const [monthKey, setMonthKey] = useState(new Date().toISOString().slice(0, 7));
   const [expandedRun, setExpandedRun] = useState<string | null>(null);
+  const [breakdownPayslip, setBreakdownPayslip] = useState<Payslip | null>(null);
 
   const { data, isLoading } = useQuery({ queryKey: ['payroll-runs'], queryFn: getPayrollRuns });
   const runs = data?.data?.data ?? [];
@@ -273,9 +280,18 @@ function RunsTab({ canManage }: { canManage: boolean }) {
                       ))}
                       <Table.Td fw={600}>{formatCurrency(p.net_pay)}</Table.Td>
                       <Table.Td>
-                        <ActionIcon variant="subtle" size="sm" onClick={() => downloadPdf(p.id, p.user?.name ?? 'payslip', runDetail.data!.data.month_key)}>
-                          <IconDownload size={14} />
-                        </ActionIcon>
+                        <Group gap={4} wrap="nowrap">
+                          {canManage && (
+                            <Tooltip label="View / waive attendance & report deductions">
+                              <ActionIcon variant="subtle" size="sm" color="orange" onClick={() => setBreakdownPayslip(p)}>
+                                <IconReceiptOff size={14} />
+                              </ActionIcon>
+                            </Tooltip>
+                          )}
+                          <ActionIcon variant="subtle" size="sm" onClick={() => downloadPdf(p.id, p.user?.name ?? 'payslip', runDetail.data!.data.month_key)}>
+                            <IconDownload size={14} />
+                          </ActionIcon>
+                        </Group>
                       </Table.Td>
                     </Table.Tr>
                   ))}
@@ -373,7 +389,153 @@ function RunsTab({ canManage }: { canManage: boolean }) {
           </Paper>
         </>);
       })()}
+
+      <PayslipDeductionDrawer
+        payslip={breakdownPayslip}
+        runStatus={runs.find((r) => r.id === breakdownPayslip?.payroll_run_id)?.status}
+        onClose={() => setBreakdownPayslip(null)}
+      />
     </Stack>
+  );
+}
+
+/** Drill into one payslip's real attendance/report penalty rows and waive/reinstate them right here, then refresh just this payslip. */
+function PayslipDeductionDrawer({ payslip, runStatus, onClose }: {
+  payslip: Payslip | null; runStatus?: string; onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const locked = runStatus === 'finalized';
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['payslip-deduction-items', payslip?.payroll_run_id, payslip?.id],
+    queryFn: () => getPayslipDeductionItems(payslip!.payroll_run_id, payslip!.id),
+    enabled: !!payslip,
+  });
+  const items = data?.data?.data;
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['payslip-deduction-items', payslip?.payroll_run_id, payslip?.id] });
+    qc.invalidateQueries({ queryKey: ['payroll-run', payslip?.payroll_run_id] });
+  };
+
+  const recomputeMut = useMutation({
+    mutationFn: () => recomputePayslip(payslip!.payroll_run_id, payslip!.id),
+    onSuccess: () => { invalidate(); notifications.show({ message: 'Payslip refreshed.', color: 'green' }); },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Failed to refresh payslip.', color: 'red' }),
+  });
+
+  const waiveAttMut = useMutation({
+    mutationFn: (id: string) => waiveAttendancePenalty(id),
+    onSuccess: () => { invalidate(); recomputeMut.mutate(); },
+  });
+  const unwaiveAttMut = useMutation({
+    mutationFn: (id: string) => unwaiveAttendancePenalty(id),
+    onSuccess: () => { invalidate(); recomputeMut.mutate(); },
+  });
+  const waiveReportMut = useMutation({
+    mutationFn: (id: string) => waiveReportPenalty(id),
+    onSuccess: () => { invalidate(); recomputeMut.mutate(); },
+  });
+  const unwaiveReportMut = useMutation({
+    mutationFn: (id: string) => unwaiveReportPenalty(id),
+    onSuccess: () => { invalidate(); recomputeMut.mutate(); },
+  });
+
+  return (
+    <Drawer opened={!!payslip} onClose={onClose} position="right" size="lg"
+      title={payslip ? `${payslip.user?.name ?? ''} — attendance & report deductions` : ''}>
+      {locked && (
+        <Alert color="gray" variant="light" mb="sm">This payroll has been finalized — deductions here are historical and can no longer be changed.</Alert>
+      )}
+      {isLoading ? <Center py="xl"><Loader /></Center> : items && (
+        <Stack gap="md">
+          <div>
+            <Text size="sm" fw={700} mb="xs">Attendance Penalties</Text>
+            {items.attendance.length === 0 ? (
+              <Text size="xs" c="dimmed">None this month.</Text>
+            ) : (
+              <Stack gap="xs">
+                {items.attendance.map((it) => (
+                  <Paper key={it.id} withBorder p="xs" radius="sm" style={{ opacity: it.waived ? 0.55 : 1 }}>
+                    <Group justify="space-between" wrap="nowrap" align="flex-start">
+                      <div style={{ minWidth: 0 }}>
+                        <Group gap={6} wrap="nowrap">
+                          <Badge size="xs" variant="light" color="red">{it.penalty_type}</Badge>
+                          <Text size="sm">{dayjs(it.date).format('D MMM YYYY')}</Text>
+                        </Group>
+                        {it.waived && (
+                          <Text size="xs" c="dimmed">waived{it.waive_reason ? `: ${it.waive_reason}` : ''}</Text>
+                        )}
+                      </div>
+                      <Group gap="xs" wrap="nowrap">
+                        <Text size="sm" fw={600} c={it.waived ? 'dimmed' : 'red'} td={it.waived ? 'line-through' : undefined}>
+                          −TZS {it.amount.toLocaleString()}
+                        </Text>
+                        {!locked && (it.waived ? (
+                          <Button size="compact-xs" variant="subtle" color="gray"
+                            loading={unwaiveAttMut.isPending && unwaiveAttMut.variables === it.id}
+                            onClick={() => unwaiveAttMut.mutate(it.id)}>Reinstate</Button>
+                        ) : (
+                          <Button size="compact-xs" variant="light" color="teal" leftSection={<IconCheck size={12} />}
+                            loading={waiveAttMut.isPending && waiveAttMut.variables === it.id}
+                            onClick={() => waiveAttMut.mutate(it.id)}>Waive</Button>
+                        ))}
+                      </Group>
+                    </Group>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </div>
+
+          <div>
+            <Text size="sm" fw={700} mb="xs">Late Report Penalties</Text>
+            {items.reports.length === 0 ? (
+              <Text size="xs" c="dimmed">None this month.</Text>
+            ) : (
+              <Stack gap="xs">
+                {items.reports.map((it) => (
+                  <Paper key={it.id} withBorder p="xs" radius="sm" style={{ opacity: it.waived ? 0.55 : 1 }}>
+                    <Group justify="space-between" wrap="nowrap" align="flex-start">
+                      <div style={{ minWidth: 0 }}>
+                        <Group gap={6} wrap="nowrap">
+                          <Badge size="xs" variant="light" color="orange">{it.penalty_type}</Badge>
+                          <Text size="sm" truncate>{it.notes ?? it.report_type}</Text>
+                        </Group>
+                        <Text size="xs" c="dimmed">
+                          {dayjs(it.period_date).format('D MMM YYYY')}
+                          {it.waived ? ` · waived${it.waive_reason ? ': ' + it.waive_reason : ''}` : ''}
+                        </Text>
+                      </div>
+                      <Group gap="xs" wrap="nowrap">
+                        <Text size="sm" fw={600} c={it.waived ? 'dimmed' : 'red'} td={it.waived ? 'line-through' : undefined}>
+                          −TZS {it.amount.toLocaleString()}
+                        </Text>
+                        {!locked && (it.waived ? (
+                          <Button size="compact-xs" variant="subtle" color="gray"
+                            loading={unwaiveReportMut.isPending && unwaiveReportMut.variables === it.id}
+                            onClick={() => unwaiveReportMut.mutate(it.id)}>Reinstate</Button>
+                        ) : (
+                          <Button size="compact-xs" variant="light" color="teal" leftSection={<IconCheck size={12} />}
+                            loading={waiveReportMut.isPending && waiveReportMut.variables === it.id}
+                            onClick={() => waiveReportMut.mutate(it.id)}>Waive</Button>
+                        ))}
+                      </Group>
+                    </Group>
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </div>
+
+          {!locked && (
+            <Button variant="default" size="xs" loading={recomputeMut.isPending} onClick={() => recomputeMut.mutate()}>
+              Refresh this payslip now
+            </Button>
+          )}
+        </Stack>
+      )}
+    </Drawer>
   );
 }
 

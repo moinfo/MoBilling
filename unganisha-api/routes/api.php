@@ -1141,6 +1141,8 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::post('/payroll-runs/generate',          [\App\Http\Controllers\PayrollRunController::class, 'generate']);
     Route::get('/payroll-runs/{payrollRun}',       [\App\Http\Controllers\PayrollRunController::class, 'show']);
     Route::post('/payroll-runs/{payrollRun}/finalize', [\App\Http\Controllers\PayrollRunController::class, 'finalize']);
+    Route::get('/payroll-runs/{payrollRun}/payslips/{payslip}/deduction-items', [\App\Http\Controllers\PayrollRunController::class, 'payslipDeductionItems']);
+    Route::post('/payroll-runs/{payrollRun}/payslips/{payslip}/recompute',      [\App\Http\Controllers\PayrollRunController::class, 'recomputePayslip']);
     Route::delete('/payroll-runs/{payrollRun}',    [\App\Http\Controllers\PayrollRunController::class, 'destroy']);
 
     Route::get('/payslips/mine',                   [\App\Http\Controllers\PayslipController::class, 'mine']);
