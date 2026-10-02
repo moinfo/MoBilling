@@ -208,6 +208,34 @@ try {
     ok($r16->status() === 422, "an unconfigured window (null review month) defaults to closed (422): got " . $r16->status());
     AttendanceSettings::withoutGlobalScopes()->where('tenant_id', $tenant->id)->update(['exception_review_month' => '2026-09-01']);
 
+    // 10. bulkReview(): attendance.manage-only, decides every pending id in
+    // one call and skips (without erroring) any already-decided one.
+    $bulkDates = ['2026-09-10', '2026-09-11', '2026-09-12'];
+    foreach ($bulkDates as $bd) {
+        AttendanceExceptionRequest::where('user_id', $staff->id)->where('date', $bd)->delete();
+    }
+    $b1 = AttendanceExceptionRequest::create(['tenant_id' => $tenant->id, 'user_id' => $staff->id, 'date' => $bulkDates[0], 'type' => 'leave', 'comment' => 'bulk a', 'status' => 'pending']);
+    $b2 = AttendanceExceptionRequest::create(['tenant_id' => $tenant->id, 'user_id' => $staff->id, 'date' => $bulkDates[1], 'type' => 'field', 'comment' => 'bulk b', 'status' => 'pending']);
+    $b3 = AttendanceExceptionRequest::create(['tenant_id' => $tenant->id, 'user_id' => $staff->id, 'date' => $bulkDates[2], 'type' => 'leave', 'comment' => 'bulk c', 'status' => 'approved', 'reviewed_by' => $owner->id, 'reviewed_at' => now()]);
+
+    $r17 = trap(fn () => $ctl->bulkReview(req(Request::create('/api/attendance-exceptions/bulk-review', 'POST', [
+        'ids' => [$b1->id, $b2->id], 'decision' => 'approved',
+    ]), $staff)));
+    ok($r17->status() === 403, 'a non-attendance.manage user cannot bulk-review (403): got ' . $r17->status());
+
+    $r18 = trap(fn () => $ctl->bulkReview(req(Request::create('/api/attendance-exceptions/bulk-review', 'POST', [
+        'ids' => [$b1->id, $b2->id, $b3->id], 'decision' => 'approved', 'review_note' => 'bulk ok',
+    ]), $owner)));
+    ok($r18->status() === 200, 'bulkReview returns 200: got ' . $r18->status());
+    $bulkData = j($r18);
+    ok(($bulkData['decided'] ?? null) === 2 && ($bulkData['skipped'] ?? null) === 1, 'bulkReview decided=2, skipped=1 (the already-approved one): got ' . json_encode($bulkData));
+    ok($b1->fresh()->status === 'approved' && $b2->fresh()->status === 'approved', 'both pending ids are now approved');
+    ok(
+        Attendance::where('user_id', $staff->id)->whereDate('date', $bulkDates[0])->first()?->status === 'leave'
+        && Attendance::where('user_id', $staff->id)->whereDate('date', $bulkDates[1])->first()?->status === 'field',
+        'bulkReview applies each item\'s own type correctly (leave vs field)'
+    );
+
     echo $fail === 0 ? "\nALL PASS\n" : "\n{$fail} FAILURE(S)\n";
 } finally {
     DB::rollBack();

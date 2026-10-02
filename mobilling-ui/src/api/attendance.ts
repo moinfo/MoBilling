@@ -220,6 +220,9 @@ export const cancelAttendanceException = (id: string) =>
 export const reviewAttendanceException = (id: string, decision: 'approved' | 'rejected', review_note?: string) =>
   api.post<{ data: AttendanceExceptionRequest }>(`/attendance-exceptions/${id}/review`, { decision, review_note });
 
+export const bulkReviewAttendanceExceptions = (ids: string[], decision: 'approved' | 'rejected', review_note?: string) =>
+  api.post<{ decided: number; skipped: number }>('/attendance-exceptions/bulk-review', { ids, decision, review_note });
+
 export const previewAttendanceSheet = (file: File) => {
   const fd = new FormData();
   fd.append('file', file);

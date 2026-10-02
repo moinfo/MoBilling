@@ -1050,6 +1050,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
 
     Route::get('/attendance-exceptions',                  [\App\Http\Controllers\AttendanceExceptionController::class, 'index']);
     Route::post('/attendance-exceptions',                 [\App\Http\Controllers\AttendanceExceptionController::class, 'store']);
+    Route::post('/attendance-exceptions/bulk-review',     [\App\Http\Controllers\AttendanceExceptionController::class, 'bulkReview']);
     Route::put('/attendance-exceptions/{attendanceExceptionRequest}',  [\App\Http\Controllers\AttendanceExceptionController::class, 'update']);
     Route::post('/attendance-exceptions/{attendanceExceptionRequest}/cancel', [\App\Http\Controllers\AttendanceExceptionController::class, 'cancel']);
     Route::post('/attendance-exceptions/{attendanceExceptionRequest}/review', [\App\Http\Controllers\AttendanceExceptionController::class, 'review']);

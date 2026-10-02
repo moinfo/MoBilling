@@ -136,15 +136,57 @@ class AttendanceExceptionController extends Controller
             'review_note' => 'nullable|string|max:2000',
         ]);
 
+        $this->decide($attendanceExceptionRequest, $data['decision'], $data['review_note'] ?? null);
+
+        return response()->json(['data' => $attendanceExceptionRequest]);
+    }
+
+    /**
+     * Approve or reject several at once — e.g. a reviewer who has already
+     * read every reason in a staff member's drawer and is confident in all
+     * of them. Each one gets the exact same per-item logic review() uses
+     * (so a mixed batch of leave/field/other types is handled correctly),
+     * just looped; one bad id doesn't abort the rest, it's reported back.
+     */
+    public function bulkReview(Request $request)
+    {
+        $this->authorizePermission('attendance.manage');
+
+        $data = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|uuid',
+            'decision' => ['required', Rule::in(['approved', 'rejected'])],
+            'review_note' => 'nullable|string|max:2000',
+        ]);
+
+        $requests = AttendanceExceptionRequest::whereIn('id', $data['ids'])->get();
+
+        $decided = 0;
+        $skipped = 0;
+        foreach ($requests as $exceptionRequest) {
+            if ($exceptionRequest->status !== 'pending') {
+                $skipped++;
+                continue;
+            }
+            $this->decide($exceptionRequest, $data['decision'], $data['review_note'] ?? null);
+            $decided++;
+        }
+
+        return response()->json(['decided' => $decided, 'skipped' => $skipped]);
+    }
+
+    /** The actual decision logic shared by review() and bulkReview() — assumes the request is still pending. */
+    private function decide(AttendanceExceptionRequest $attendanceExceptionRequest, string $decision, ?string $reviewNote): void
+    {
         $attendanceExceptionRequest->update([
-            'status' => $data['decision'],
+            'status' => $decision,
             'reviewed_by' => auth()->id(),
             'reviewed_at' => now(),
-            'review_note' => $data['review_note'] ?? null,
+            'review_note' => $reviewNote,
         ]);
         $attendanceExceptionRequest->load(['user', 'reviewer']);
 
-        if ($data['decision'] === 'approved') {
+        if ($decision === 'approved') {
             if ($attendanceExceptionRequest->type === 'other') {
                 // No real leave/field category fits, so the attendance
                 // record stays exactly as it happened — only the day's
@@ -158,7 +200,7 @@ class AttendanceExceptionController extends Controller
                         'waived' => true,
                         'waived_by' => auth()->id(),
                         'waived_at' => now(),
-                        'waive_reason' => $data['review_note'] ?? ('Explanation approved: ' . $attendanceExceptionRequest->comment),
+                        'waive_reason' => $reviewNote ?? ('Explanation approved: ' . $attendanceExceptionRequest->comment),
                     ]);
             } else {
                 $this->attendanceService->markExcused(
@@ -173,7 +215,5 @@ class AttendanceExceptionController extends Controller
         $attendanceExceptionRequest->user->notify(
             new AttendanceExceptionDecidedNotification($attendanceExceptionRequest->user->tenant, $attendanceExceptionRequest)
         );
-
-        return response()->json(['data' => $attendanceExceptionRequest]);
     }
 }

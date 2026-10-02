@@ -8,7 +8,7 @@ import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { notifications } from '@mantine/notifications';
 import { IconClipboardCheck, IconSettings, IconDeviceFloppy, IconClock, IconAlertTriangle, IconReceiptOff, IconChartBar, IconUserCheck, IconUserOff, IconLogout2, IconDeviceDesktop, IconCopy, IconCheck, IconRefresh, IconCalendarOff, IconDotsVertical, IconFileDownload, IconX, IconMessageCircle } from '@tabler/icons-react';
-import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput, FileButton, SegmentedControl, Textarea } from '@mantine/core';
+import { Drawer, Text as MText, Card, SimpleGrid as MGrid, Code, CopyButton, Tooltip, Collapse, TextInput, FileButton, SegmentedControl, Textarea, Checkbox } from '@mantine/core';
 import { IconUpload, IconFileSpreadsheet } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
@@ -17,7 +17,7 @@ import {
   getDeviceConfig, getDeviceEvents, regenerateDeviceToken,
   getDeviceMappings, saveDeviceMapping, importDeviceEvents,
   previewAttendanceSheet, commitAttendanceSheet, getAttendanceReport, exportAttendanceReport,
-  getAttendanceExceptions, reviewAttendanceException,
+  getAttendanceExceptions, reviewAttendanceException, bulkReviewAttendanceExceptions,
   AttendanceSettings, ExcusedStatus, DeviceMappingStaff, SheetMapping, SheetPreview, SheetImportResult, AttendanceReport,
   AttendanceExceptionRequest,
 } from '../api/attendance';
@@ -592,6 +592,7 @@ function RequestsTab() {
       )}
 
       <StaffReviewDrawer
+        key={openStaff?.id ?? 'none'}
         userId={openStaff?.id ?? null}
         userName={openStaff?.name ?? ''}
         items={openStaff ? groups[openStaff.id]?.items ?? [] : []}
@@ -609,6 +610,7 @@ function StaffReviewDrawer({ userId, userName, items, reviewMonthStr, onClose }:
 }) {
   const qc = useQueryClient();
   const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // Default to the month under review; fall back to the first request's own
   // month if no window is currently configured (so this still works for
@@ -624,18 +626,37 @@ function StaffReviewDrawer({ userId, userName, items, reviewMonthStr, onClose }:
   });
   const r: AttendanceReport | undefined = data?.data?.data;
   const itemsByDate = new Map(items.map((i) => [i.date, i]));
+  const pendingIds = items.filter((i) => i.status === 'pending').map((i) => i.id);
+
+  const invalidateAll = () => {
+    qc.invalidateQueries({ queryKey: ['attendance-exceptions'] });
+    qc.invalidateQueries({ queryKey: ['attendance-report'] });
+    qc.invalidateQueries({ queryKey: ['attendance-dashboard'] });
+    qc.invalidateQueries({ queryKey: ['attendance-penalties'] });
+  };
 
   const reviewMut = useMutation({
     mutationFn: ({ id, decision, note }: { id: string; decision: 'approved' | 'rejected'; note?: string }) =>
       reviewAttendanceException(id, decision, note),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['attendance-exceptions'] });
-      qc.invalidateQueries({ queryKey: ['attendance-report'] });
-      qc.invalidateQueries({ queryKey: ['attendance-dashboard'] });
-      qc.invalidateQueries({ queryKey: ['attendance-penalties'] });
-      notifications.show({ message: 'Decision saved.', color: 'green' });
-    },
+    onSuccess: () => { invalidateAll(); notifications.show({ message: 'Decision saved.', color: 'green' }); },
     onError: (e) => notifications.show({ message: apiErr(e, 'Failed to save decision.'), color: 'red' }),
+  });
+
+  const bulkMut = useMutation({
+    mutationFn: ({ ids, decision }: { ids: string[]; decision: 'approved' | 'rejected' }) =>
+      bulkReviewAttendanceExceptions(ids, decision),
+    onSuccess: (res) => {
+      invalidateAll();
+      setSelected(new Set());
+      notifications.show({ message: `${res.data.decided} decided.`, color: 'green' });
+    },
+    onError: (e) => notifications.show({ message: apiErr(e, 'Bulk decision failed.'), color: 'red' }),
+  });
+
+  const toggleSelected = (id: string) => setSelected((s) => {
+    const next = new Set(s);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
   });
 
   return (
@@ -652,6 +673,31 @@ function StaffReviewDrawer({ userId, userName, items, reviewMonthStr, onClose }:
               Deductions: TZS {r.totals.deduction_total.toLocaleString()}
             </Badge>
           </Group>
+
+          {pendingIds.length > 0 && (
+            <Paper withBorder radius="sm" p="xs">
+              <Group justify="space-between" wrap="wrap">
+                <Checkbox
+                  label={selected.size > 0 ? `${selected.size} of ${pendingIds.length} selected` : `Select all ${pendingIds.length} pending`}
+                  checked={selected.size === pendingIds.length}
+                  indeterminate={selected.size > 0 && selected.size < pendingIds.length}
+                  onChange={() => setSelected(selected.size === pendingIds.length ? new Set() : new Set(pendingIds))}
+                />
+                <Group gap="xs">
+                  <Button size="compact-sm" color="teal" leftSection={<IconCheck size={14} />}
+                    disabled={selected.size === 0} loading={bulkMut.isPending && bulkMut.variables?.decision === 'approved'}
+                    onClick={() => bulkMut.mutate({ ids: [...selected], decision: 'approved' })}>
+                    Approve selected
+                  </Button>
+                  <Button size="compact-sm" color="red" variant="light" leftSection={<IconX size={14} />}
+                    disabled={selected.size === 0} loading={bulkMut.isPending && bulkMut.variables?.decision === 'rejected'}
+                    onClick={() => bulkMut.mutate({ ids: [...selected], decision: 'rejected' })}>
+                    Reject selected
+                  </Button>
+                </Group>
+              </Group>
+            </Paper>
+          )}
 
           <Table.ScrollContainer minWidth={520}>
             <Table highlightOnHover verticalSpacing="xs" fz="sm">
@@ -694,6 +740,9 @@ function StaffReviewDrawer({ userId, userName, items, reviewMonthStr, onClose }:
                           <Table.Td colSpan={5} style={{ paddingTop: 0 }}>
                             <Paper withBorder radius="sm" p="xs" bg="var(--mantine-color-default-hover)">
                               <Group justify="space-between" align="flex-start" wrap="nowrap">
+                                {item.status === 'pending' && (
+                                  <Checkbox mt={2} checked={selected.has(item.id)} onChange={() => toggleSelected(item.id)} />
+                                )}
                                 <div style={{ minWidth: 0, flex: 1 }}>
                                   <Group gap={6} wrap="wrap">
                                     <Badge size="xs" variant="light" color="grape">{exceptionTypeLabel[item.type] ?? item.type}</Badge>
