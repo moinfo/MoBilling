@@ -410,6 +410,39 @@ class AttendanceController extends Controller
         return response()->json(['message' => 'Deduction reinstated.']);
     }
 
+    /** Waive several attendance penalties at once — e.g. every "absent" line for a staff member's month. Already-waived or out-of-tenant ids are skipped, not errored. */
+    public function bulkWaivePenalty(Request $request)
+    {
+        $this->authorizePermission('attendance.manage');
+
+        $data = $request->validate([
+            'ids' => 'required|array|min:1',
+            'ids.*' => 'required|uuid',
+            'reason' => 'nullable|string|max:255',
+        ]);
+
+        $rows = AttendancePenalty::whereIn('id', $data['ids'])->get();
+
+        $waived = 0;
+        $skipped = 0;
+        foreach ($rows as $penalty) {
+            if ($penalty->waived) {
+                $skipped++;
+                continue;
+            }
+            $penalty->update([
+                'waived' => true,
+                'waived_by' => auth()->id(),
+                'waived_at' => now(),
+                'waive_reason' => $data['reason'] ?? null,
+            ]);
+            $waived++;
+        }
+        $skipped += count($data['ids']) - $rows->count();
+
+        return response()->json(['waived' => $waived, 'skipped' => $skipped]);
+    }
+
     public function showSettings()
     {
         $s = $this->attendanceService->settings();

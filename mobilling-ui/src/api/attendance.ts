@@ -92,6 +92,8 @@ export const waiveAttendancePenalty = (id: string, reason?: string) =>
   api.post(`/attendance/penalties/${id}/waive`, { reason });
 export const unwaiveAttendancePenalty = (id: string) =>
   api.post(`/attendance/penalties/${id}/unwaive`);
+export const bulkWaiveAttendancePenalties = (ids: string[], reason?: string) =>
+  api.post<{ waived: number; skipped: number }>('/attendance/penalties/bulk-waive', { ids, reason });
 
 export interface AttendanceOverview {
   today: { total: number; present: number; late: number; left_early: number; excused: number; not_recorded: number };

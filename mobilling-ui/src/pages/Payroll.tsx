@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   Title, Text, Tabs, Paper, Table, Badge, Button, Group, Stack, SimpleGrid, Accordion,
   Modal, TextInput, Select, NumberInput, ActionIcon, Switch, Center, Loader, Alert, SegmentedControl, Textarea,
-  Drawer, Tooltip,
+  Drawer, Tooltip, Checkbox,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -28,8 +28,8 @@ import {
   getPayslipDeductionItems, recomputePayslip,
   PayeBracket, Allowance, Deduction, StatutoryRate, PayrollRun, Loan, SalaryAdvance, Payslip,
 } from '../api/payroll';
-import { waiveAttendancePenalty, unwaiveAttendancePenalty } from '../api/attendance';
-import { waivePenalty as waiveReportPenalty, unwaivePenalty as unwaiveReportPenalty } from '../api/staffReports';
+import { waiveAttendancePenalty, unwaiveAttendancePenalty, bulkWaiveAttendancePenalties } from '../api/attendance';
+import { waivePenalty as waiveReportPenalty, unwaivePenalty as unwaiveReportPenalty, bulkWaivePenalties as bulkWaiveReportPenalties } from '../api/staffReports';
 import { getAssignableUsers } from '../api/users';
 import { formatCurrency } from '../utils/formatCurrency';
 import { usePermissions } from '../hooks/usePermissions';
@@ -391,6 +391,7 @@ function RunsTab({ canManage }: { canManage: boolean }) {
       })()}
 
       <PayslipDeductionDrawer
+        key={breakdownPayslip?.id ?? 'none'}
         payslip={breakdownPayslip}
         runStatus={runs.find((r) => r.id === breakdownPayslip?.payroll_run_id)?.status}
         onClose={() => setBreakdownPayslip(null)}
@@ -405,6 +406,8 @@ function PayslipDeductionDrawer({ payslip, runStatus, onClose }: {
 }) {
   const qc = useQueryClient();
   const locked = runStatus === 'finalized';
+  const [selectedAtt, setSelectedAtt] = useState<Set<string>>(new Set());
+  const [selectedReports, setSelectedReports] = useState<Set<string>>(new Set());
 
   const { data, isLoading } = useQuery({
     queryKey: ['payslip-deduction-items', payslip?.payroll_run_id, payslip?.id],
@@ -412,6 +415,8 @@ function PayslipDeductionDrawer({ payslip, runStatus, onClose }: {
     enabled: !!payslip,
   });
   const items = data?.data?.data;
+  const unwaivedAttIds = (items?.attendance ?? []).filter((i) => !i.waived).map((i) => i.id);
+  const unwaivedReportIds = (items?.reports ?? []).filter((i) => !i.waived).map((i) => i.id);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['payslip-deduction-items', payslip?.payroll_run_id, payslip?.id] });
@@ -440,6 +445,26 @@ function PayslipDeductionDrawer({ payslip, runStatus, onClose }: {
     mutationFn: (id: string) => unwaiveReportPenalty(id),
     onSuccess: () => { invalidate(); recomputeMut.mutate(); },
   });
+  const bulkWaiveAttMut = useMutation({
+    mutationFn: (ids: string[]) => bulkWaiveAttendancePenalties(ids),
+    onSuccess: (res) => {
+      invalidate(); recomputeMut.mutate(); setSelectedAtt(new Set());
+      notifications.show({ message: `${res.data.waived} waived.`, color: 'green' });
+    },
+  });
+  const bulkWaiveReportMut = useMutation({
+    mutationFn: (ids: string[]) => bulkWaiveReportPenalties(ids),
+    onSuccess: (res) => {
+      invalidate(); recomputeMut.mutate(); setSelectedReports(new Set());
+      notifications.show({ message: `${res.data.waived} waived.`, color: 'green' });
+    },
+  });
+
+  const toggle = (set: Set<string>, setSet: (s: Set<string>) => void, id: string) => {
+    const next = new Set(set);
+    next.has(id) ? next.delete(id) : next.add(id);
+    setSet(next);
+  };
 
   return (
     <Drawer opened={!!payslip} onClose={onClose} position="right" size="lg"
@@ -450,23 +475,44 @@ function PayslipDeductionDrawer({ payslip, runStatus, onClose }: {
       {isLoading ? <Center py="xl"><Loader /></Center> : items && (
         <Stack gap="md">
           <div>
-            <Text size="sm" fw={700} mb="xs">Attendance Penalties</Text>
+            <Group justify="space-between" mb="xs">
+              <Text size="sm" fw={700}>Attendance Penalties</Text>
+              {!locked && unwaivedAttIds.length > 0 && (
+                <Button size="compact-xs" color="teal" disabled={selectedAtt.size === 0}
+                  loading={bulkWaiveAttMut.isPending} onClick={() => bulkWaiveAttMut.mutate([...selectedAtt])}>
+                  Waive selected ({selectedAtt.size})
+                </Button>
+              )}
+            </Group>
             {items.attendance.length === 0 ? (
               <Text size="xs" c="dimmed">None this month.</Text>
             ) : (
               <Stack gap="xs">
+                {!locked && unwaivedAttIds.length > 1 && (
+                  <Checkbox
+                    label={`Select all ${unwaivedAttIds.length} unwaived`}
+                    checked={selectedAtt.size === unwaivedAttIds.length}
+                    indeterminate={selectedAtt.size > 0 && selectedAtt.size < unwaivedAttIds.length}
+                    onChange={() => setSelectedAtt(selectedAtt.size === unwaivedAttIds.length ? new Set() : new Set(unwaivedAttIds))}
+                  />
+                )}
                 {items.attendance.map((it) => (
                   <Paper key={it.id} withBorder p="xs" radius="sm" style={{ opacity: it.waived ? 0.55 : 1 }}>
                     <Group justify="space-between" wrap="nowrap" align="flex-start">
-                      <div style={{ minWidth: 0 }}>
-                        <Group gap={6} wrap="nowrap">
-                          <Badge size="xs" variant="light" color="red">{it.penalty_type}</Badge>
-                          <Text size="sm">{dayjs(it.date).format('D MMM YYYY')}</Text>
-                        </Group>
-                        {it.waived && (
-                          <Text size="xs" c="dimmed">waived{it.waive_reason ? `: ${it.waive_reason}` : ''}</Text>
+                      <Group gap={8} wrap="nowrap" align="flex-start" style={{ minWidth: 0 }}>
+                        {!locked && !it.waived && (
+                          <Checkbox mt={2} checked={selectedAtt.has(it.id)} onChange={() => toggle(selectedAtt, setSelectedAtt, it.id)} />
                         )}
-                      </div>
+                        <div style={{ minWidth: 0 }}>
+                          <Group gap={6} wrap="nowrap">
+                            <Badge size="xs" variant="light" color="red">{it.penalty_type}</Badge>
+                            <Text size="sm">{dayjs(it.date).format('D MMM YYYY')}</Text>
+                          </Group>
+                          {it.waived && (
+                            <Text size="xs" c="dimmed">waived{it.waive_reason ? `: ${it.waive_reason}` : ''}</Text>
+                          )}
+                        </div>
+                      </Group>
                       <Group gap="xs" wrap="nowrap">
                         <Text size="sm" fw={600} c={it.waived ? 'dimmed' : 'red'} td={it.waived ? 'line-through' : undefined}>
                           −TZS {it.amount.toLocaleString()}
@@ -489,24 +535,45 @@ function PayslipDeductionDrawer({ payslip, runStatus, onClose }: {
           </div>
 
           <div>
-            <Text size="sm" fw={700} mb="xs">Late Report Penalties</Text>
+            <Group justify="space-between" mb="xs">
+              <Text size="sm" fw={700}>Late Report Penalties</Text>
+              {!locked && unwaivedReportIds.length > 0 && (
+                <Button size="compact-xs" color="teal" disabled={selectedReports.size === 0}
+                  loading={bulkWaiveReportMut.isPending} onClick={() => bulkWaiveReportMut.mutate([...selectedReports])}>
+                  Waive selected ({selectedReports.size})
+                </Button>
+              )}
+            </Group>
             {items.reports.length === 0 ? (
               <Text size="xs" c="dimmed">None this month.</Text>
             ) : (
               <Stack gap="xs">
+                {!locked && unwaivedReportIds.length > 1 && (
+                  <Checkbox
+                    label={`Select all ${unwaivedReportIds.length} unwaived`}
+                    checked={selectedReports.size === unwaivedReportIds.length}
+                    indeterminate={selectedReports.size > 0 && selectedReports.size < unwaivedReportIds.length}
+                    onChange={() => setSelectedReports(selectedReports.size === unwaivedReportIds.length ? new Set() : new Set(unwaivedReportIds))}
+                  />
+                )}
                 {items.reports.map((it) => (
                   <Paper key={it.id} withBorder p="xs" radius="sm" style={{ opacity: it.waived ? 0.55 : 1 }}>
                     <Group justify="space-between" wrap="nowrap" align="flex-start">
-                      <div style={{ minWidth: 0 }}>
-                        <Group gap={6} wrap="nowrap">
-                          <Badge size="xs" variant="light" color="orange">{it.penalty_type}</Badge>
-                          <Text size="sm" truncate>{it.notes ?? it.report_type}</Text>
-                        </Group>
-                        <Text size="xs" c="dimmed">
-                          {dayjs(it.period_date).format('D MMM YYYY')}
-                          {it.waived ? ` · waived${it.waive_reason ? ': ' + it.waive_reason : ''}` : ''}
-                        </Text>
-                      </div>
+                      <Group gap={8} wrap="nowrap" align="flex-start" style={{ minWidth: 0 }}>
+                        {!locked && !it.waived && (
+                          <Checkbox mt={2} checked={selectedReports.has(it.id)} onChange={() => toggle(selectedReports, setSelectedReports, it.id)} />
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <Group gap={6} wrap="nowrap">
+                            <Badge size="xs" variant="light" color="orange">{it.penalty_type}</Badge>
+                            <Text size="sm" truncate>{it.notes ?? it.report_type}</Text>
+                          </Group>
+                          <Text size="xs" c="dimmed">
+                            {dayjs(it.period_date).format('D MMM YYYY')}
+                            {it.waived ? ` · waived${it.waive_reason ? ': ' + it.waive_reason : ''}` : ''}
+                          </Text>
+                        </div>
+                      </Group>
                       <Group gap="xs" wrap="nowrap">
                         <Text size="sm" fw={600} c={it.waived ? 'dimmed' : 'red'} td={it.waived ? 'line-through' : undefined}>
                           −TZS {it.amount.toLocaleString()}

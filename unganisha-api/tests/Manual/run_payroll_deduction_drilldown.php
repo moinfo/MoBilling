@@ -58,6 +58,26 @@ try {
     $newTotal = collect($updated['deductions_breakdown'])->firstWhere('name', 'Attendance Penalties')['amount'] ?? 0;
     ok($newTotal == $oldTotal - $target['amount'], "the total dropped by exactly the waived amount: {$oldTotal} -> {$newTotal}");
 
+    // 3b. bulkWaivePenalty() on AttendanceController waives several at once
+    // (the UI equivalent: select-all in the payroll drawer, then "Waive selected").
+    $bulkDates = ['2026-09-10', '2026-09-11', '2026-09-12'];
+    foreach ($bulkDates as $bd) {
+        AttendancePenalty::where('user_id', $slip->user_id)->where('date', $bd)->delete();
+    }
+    $b1 = AttendancePenalty::create(['tenant_id' => $tenant->id, 'user_id' => $slip->user_id, 'date' => $bulkDates[0], 'penalty_type' => 'absent', 'amount' => 5000, 'waived' => false]);
+    $b2 = AttendancePenalty::create(['tenant_id' => $tenant->id, 'user_id' => $slip->user_id, 'date' => $bulkDates[1], 'penalty_type' => 'absent', 'amount' => 5000, 'waived' => false]);
+    $b3 = AttendancePenalty::create(['tenant_id' => $tenant->id, 'user_id' => $slip->user_id, 'date' => $bulkDates[2], 'penalty_type' => 'absent', 'amount' => 5000, 'waived' => true]);
+
+    $rBulkBlocked = trap(fn () => $attCtl->bulkWaivePenalty(req(Request::create('/x', 'POST', ['ids' => [$b1->id, $b2->id]]), $slip->user)));
+    ok($rBulkBlocked->status() === 403, 'a non-attendance.manage user cannot bulk-waive (403): got ' . $rBulkBlocked->status());
+
+    $rBulk = trap(fn () => $attCtl->bulkWaivePenalty(req(Request::create('/x', 'POST', ['ids' => [$b1->id, $b2->id, $b3->id], 'reason' => 'payroll drawer bulk test']), $owner)));
+    ok($rBulk->status() === 200, 'bulkWaivePenalty from the payroll drawer flow returns 200: got ' . $rBulk->status());
+    $bulkData = $rBulk->getData(true);
+    ok(($bulkData['waived'] ?? null) === 2 && ($bulkData['skipped'] ?? null) === 1, 'waived=2, skipped=1 (the already-waived one): got ' . json_encode($bulkData));
+    ok($b1->fresh()->waived === true && $b2->fresh()->waived === true, 'both unwaived ones are now waived');
+    ok($b1->fresh()->waive_reason === 'payroll drawer bulk test', 'waive_reason stored on each');
+
     // 4. A finalized run cannot be recomputed.
     $run->status = 'finalized'; // in-memory only inside this transaction, never saved beyond rollback
     $run->save();

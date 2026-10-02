@@ -1045,6 +1045,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     Route::get('/attendance/day',         [\App\Http\Controllers\AttendanceController::class, 'day']);
     Route::post('/attendance/record',     [\App\Http\Controllers\AttendanceController::class, 'record']);
     Route::get('/attendance/penalties',   [\App\Http\Controllers\AttendanceController::class, 'penalties']);
+    Route::post('/attendance/penalties/bulk-waive', [\App\Http\Controllers\AttendanceController::class, 'bulkWaivePenalty']);
     Route::post('/attendance/penalties/{attendancePenalty}/waive',   [\App\Http\Controllers\AttendanceController::class, 'waivePenalty']);
     Route::post('/attendance/penalties/{attendancePenalty}/unwaive', [\App\Http\Controllers\AttendanceController::class, 'unwaivePenalty']);
     Route::get('/attendance/settings',    [\App\Http\Controllers\AttendanceController::class, 'showSettings']);
