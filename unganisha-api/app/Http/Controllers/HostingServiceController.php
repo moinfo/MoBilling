@@ -220,6 +220,50 @@ class HostingServiceController extends Controller
         return $this->show($clientSubscription->fresh());
     }
 
+    /**
+     * Move this hosting service to a different client of the same tenant
+     * — e.g. the client sold their site/business to someone else. Pure
+     * billing/ownership reassignment inside MoBilling: the cPanel account
+     * itself is untouched (it's tied to the server, not to our client
+     * record). If this service's domain is also a registered Domain owned
+     * by the SAME old client, it moves along with it automatically — a
+     * domain is rarely meaningful ownership-wise separated from the
+     * hosting it sits on.
+     */
+    public function transferOwnership(Request $request, ClientSubscription $clientSubscription)
+    {
+        $tenantId = auth()->user()->tenant_id;
+
+        $data = $request->validate([
+            'client_id' => ['required', 'uuid', Rule::exists('clients', 'id')->where('tenant_id', $tenantId)],
+        ]);
+        abort_if($data['client_id'] === $clientSubscription->client_id, 422, 'That is already the current client.');
+
+        $newClient = \App\Models\Client::findOrFail($data['client_id']);
+        $oldClientId = $clientSubscription->client_id;
+        $domainMoved = null;
+
+        \Illuminate\Support\Facades\DB::transaction(function () use ($clientSubscription, $data, $oldClientId, &$domainMoved) {
+            $clientSubscription->update(['client_id' => $data['client_id']]);
+
+            $domainName = $clientSubscription->hostingAccount?->domain;
+            if ($domainName) {
+                $domain = \App\Models\Domain::where('name', $domainName)->where('client_id', $oldClientId)->first();
+                if ($domain) {
+                    $domain->update(['client_id' => $data['client_id']]);
+                    $domainMoved = $domain->name;
+                }
+            }
+        });
+
+        return response()->json([
+            'message' => $domainMoved
+                ? "Service transferred to {$newClient->name}. Also moved domain {$domainMoved}."
+                : "Service transferred to {$newClient->name}.",
+            'domain_moved' => $domainMoved,
+        ]);
+    }
+
     /** WHMCS-style upgrade/downgrade options: every product + prorated charge. */
     public function upgradeOptions(ClientSubscription $clientSubscription)
     {

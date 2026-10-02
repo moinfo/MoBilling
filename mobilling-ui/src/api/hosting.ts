@@ -391,6 +391,9 @@ export const getServiceDetail = (subscriptionId: string) =>
 export const updateService = (subscriptionId: string, data: Record<string, unknown>) =>
   api.put<{ data: ServiceDetail }>(`/hosting-services/${subscriptionId}`, data);
 
+export const transferServiceOwnership = (subscriptionId: string, clientId: string) =>
+  api.post<{ message: string; domain_moved: string | null }>(`/hosting-services/${subscriptionId}/transfer-ownership`, { client_id: clientId });
+
 export const changeHostingPassword = (accountId: string, password: string) =>
   api.post<{ message: string }>(`/hosting-accounts/${accountId}/password`, { password });
 

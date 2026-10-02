@@ -12,7 +12,7 @@ import dayjs from 'dayjs';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   IconLock, IconLockOpen, IconExternalLink, IconChevronDown,
-  IconFileInvoice, IconArrowsUpDown, IconUserShare, IconTrash,
+  IconFileInvoice, IconArrowsUpDown, IconUserShare, IconTrash, IconExchange,
   IconRefresh, IconDeviceFloppy, IconMail, IconMailForward, IconKey, IconCopy,
   IconMessage, IconBrandWhatsapp, IconEye, IconAlertTriangle,
 } from '@tabler/icons-react';
@@ -22,6 +22,7 @@ import {
   clearBandwidthSuspension, revertPayLaterUpgrade, refreshHostingUsage, provisionSubscription, suspendHosting, unsuspendHosting,
   terminateHosting, changeHostingPackage, getHostingSso, getServerPackages,
   getUpgradeOptions, applyUpgrade, resendWelcomeEmail, sendClientMessage, resetPasswordAndWelcome,
+  transferServiceOwnership,
   ServiceListItem, ServiceDetail, UpgradePlan,
 } from '../api/hosting';
 import { deleteClientSubscription } from '../api/clientSubscriptions';
@@ -127,14 +128,15 @@ export default function ServiceManagement() {
             </Group>
           </Paper>
 
-          {subId && <ServiceEditor key={subId} subId={subId} onDeleted={() => { setSubId(null); qc.invalidateQueries({ queryKey: ['client-services', clientId] }); }} navigate={navigate} />}
+          {subId && <ServiceEditor key={subId} subId={subId} onDeleted={() => { setSubId(null); qc.invalidateQueries({ queryKey: ['client-services', clientId] }); }} navigate={navigate}
+            onClientChanged={(newClientId) => { setClientId(newClientId); setSelectPick(subId); }} />}
         </>
       )}
     </Stack>
   );
 }
 
-function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDeleted: () => void; navigate: (p: string) => void }) {
+function ServiceEditor({ subId, onDeleted, navigate, onClientChanged }: { subId: string; onDeleted: () => void; navigate: (p: string) => void; onClientChanged: (clientId: string) => void }) {
   const qc = useQueryClient();
   const [form, setForm] = useState<Partial<ServiceDetail>>({});
   const [recalc, setRecalc] = useState('no');
@@ -144,6 +146,7 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
   const [bwModal, setBwModal] = useState(false);
   const [upgradeOpen, setUpgradeOpen] = useState(false);
   const [msgOpen, setMsgOpen] = useState(false);
+  const [transferOpen, setTransferOpen] = useState(false);
   const [resetPw, setResetPw] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
@@ -319,6 +322,9 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
               </Menu.Item>
               <Menu.Item leftSection={<IconUserShare size={14} />} onClick={() => navigate(`/clients/${d.client.id}`)}>
                 Client Profile
+              </Menu.Item>
+              <Menu.Item leftSection={<IconExchange size={14} />} onClick={() => setTransferOpen(true)}>
+                Transfer Ownership
               </Menu.Item>
               <Menu.Divider />
               <Menu.Item leftSection={<IconMail size={14} />} onClick={() => setMsgOpen(true)}>
@@ -573,6 +579,13 @@ function ServiceEditor({ subId, onDeleted, navigate }: { subId: string; onDelete
       <UpgradeModal opened={upgradeOpen} onClose={() => setUpgradeOpen(false)} subId={subId}
         navigate={navigate} onApplied={() => { qc.invalidateQueries({ queryKey: ['service-detail', subId] }); qc.invalidateQueries({ queryKey: ['client-services'] }); }} />
       <SendMessageModal opened={msgOpen} onClose={() => setMsgOpen(false)} subId={subId} clientId={d.client.id} clientName={d.client.name} />
+      <TransferOwnershipModal opened={transferOpen} onClose={() => setTransferOpen(false)} subId={subId}
+        currentClientId={d.client.id} currentClientName={d.client.name} domain={d.domain}
+        onTransferred={(newClientId) => {
+          qc.invalidateQueries({ queryKey: ['service-detail', subId] });
+          qc.invalidateQueries({ queryKey: ['client-services'] });
+          onClientChanged(newClientId);
+        }} />
 
       <Modal opened={!!resetPw} onClose={() => setResetPw(null)} title="New cPanel Password" centered size="sm">
         <Stack>
@@ -699,6 +712,76 @@ function MessagesLog({ clientId }: { clientId: string }) {
         )}
       </Modal>
     </>
+  );
+}
+
+/** Moves this hosting service (and, if it matches, its domain) to a different client — pure MoBilling ownership reassignment, never touches the server/registrar. */
+function TransferOwnershipModal({ opened, onClose, subId, currentClientId, currentClientName, domain, onTransferred }: {
+  opened: boolean; onClose: () => void; subId: string;
+  currentClientId: string; currentClientName: string; domain: string | null;
+  onTransferred: (newClientId: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [targetClientId, setTargetClientId] = useState<string | null>(null);
+
+  const { data } = useQuery({
+    queryKey: ['transfer-clients', search],
+    queryFn: () => getClients({ search: search || undefined, per_page: 50 }),
+    enabled: opened,
+  });
+  const options = (data?.data?.data ?? [])
+    .filter((c: any) => c.id !== currentClientId)
+    .map((c: any) => ({ value: c.id, label: `${c.name}${c.email ? ` (${c.email})` : ''}` }));
+
+  const mutation = useMutation({
+    mutationFn: () => transferServiceOwnership(subId, targetClientId!),
+    onSuccess: (res) => {
+      notifications.show({ message: res.data.message, color: 'green' });
+      onTransferred(targetClientId!);
+      setTargetClientId(null);
+      onClose();
+    },
+    onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Transfer failed.', color: 'red' }),
+  });
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Transfer Ownership" size="md" centered>
+      <Stack gap="sm">
+        <Text size="sm" c="dimmed">
+          Moves this service from <b>{currentClientName}</b> to a different client of yours — e.g. they sold their
+          site/business to someone else. This only reassigns who owns it in MoBilling; the cPanel account and server
+          are untouched.
+        </Text>
+        {domain && (
+          <Alert color="blue" variant="light" p="xs">
+            If <b>{domain}</b> is also a registered domain currently owned by {currentClientName}, it will move with it automatically.
+          </Alert>
+        )}
+        <Select
+          label="Transfer to"
+          placeholder="Search clients…"
+          searchable
+          searchValue={search}
+          onSearchChange={setSearch}
+          data={options}
+          value={targetClientId}
+          onChange={setTargetClientId}
+        />
+        <Group justify="flex-end" mt="sm">
+          <Button variant="default" onClick={onClose}>Cancel</Button>
+          <Button color="orange" disabled={!targetClientId} loading={mutation.isPending}
+            onClick={() => modals.openConfirmModal({
+              title: 'Transfer Ownership',
+              children: <Text size="sm">Transfer this service{domain ? ` and ${domain} (if owned by the same client)` : ''} to the selected client? This takes effect immediately.</Text>,
+              labels: { confirm: 'Transfer', cancel: 'Cancel' },
+              confirmProps: { color: 'orange' },
+              onConfirm: () => mutation.mutate(),
+            })}>
+            Transfer
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
   );
 }
 
