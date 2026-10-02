@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Fragment } from 'react';
 import {
   Title, Tabs, Stack, Group, Text, Paper, Table, Badge, Button, ActionIcon,
   Loader, Center, ThemeIcon, NumberInput, Switch, Chip, SimpleGrid, Divider, Alert, Select, Menu,
@@ -540,15 +540,90 @@ const exceptionTypeLabel: Record<string, string> = { leave: 'Ruhusa', field: 'Ka
 const exceptionStatusColor: Record<string, string> = { pending: 'yellow', approved: 'teal', rejected: 'red' };
 
 function RequestsTab() {
-  const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string | null>('pending');
-  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+  const [openStaff, setOpenStaff] = useState<{ id: string; name: string } | null>(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['attendance-exceptions', statusFilter],
     queryFn: () => getAttendanceExceptions(statusFilter ? { status: statusFilter } : undefined),
   });
   const rows = data?.data?.data ?? [];
+
+  const { data: settingsRes } = useQuery({ queryKey: ['attendance-settings'], queryFn: getAttendanceSettings });
+  const reviewMonthStr = settingsRes?.data?.data?.exception_review_month;
+
+  const groups = rows.reduce<Record<string, { user: AttendanceExceptionRequest['user']; items: AttendanceExceptionRequest[] }>>((acc, r) => {
+    acc[r.user.id] ??= { user: r.user, items: [] };
+    acc[r.user.id].items.push(r);
+    return acc;
+  }, {});
+  const staffList = Object.values(groups).sort((a, b) => b.items.length - a.items.length);
+
+  return (
+    <Stack>
+      <Group justify="space-between" wrap="wrap">
+        <Text size="sm" c="dimmed">Explanations staff submitted for flagged days, grouped by staff — click one to review their month alongside their reasons.</Text>
+        <SegmentedControl size="xs" value={statusFilter ?? 'all'}
+          onChange={(v) => setStatusFilter(v === 'all' ? null : v)}
+          data={[{ value: 'pending', label: 'Pending' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }, { value: 'all', label: 'All' }]} />
+      </Group>
+
+      {isLoading ? <Center py="xl"><Loader /></Center> : staffList.length === 0 ? (
+        <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">No {statusFilter ?? ''} explanations.</Text></Paper>
+      ) : (
+        <Stack gap="xs">
+          {staffList.map(({ user, items }) => {
+            const pendingCount = items.filter((i) => i.status === 'pending').length;
+            return (
+              <Paper key={user.id} withBorder radius="md" p="sm" style={{ cursor: 'pointer' }}
+                onClick={() => setOpenStaff({ id: user.id, name: user.name })}>
+                <Group justify="space-between" wrap="wrap">
+                  <Group gap={8} wrap="wrap">
+                    <Text fw={600} size="sm">{user.name}</Text>
+                    <Badge size="sm" variant="light" color="gray">{items.length} {items.length === 1 ? 'request' : 'requests'}</Badge>
+                    {pendingCount > 0 && <Badge size="sm" variant="light" color="yellow">{pendingCount} pending</Badge>}
+                  </Group>
+                  <Text size="xs" c="dimmed">View month & reasons →</Text>
+                </Group>
+              </Paper>
+            );
+          })}
+        </Stack>
+      )}
+
+      <StaffReviewDrawer
+        userId={openStaff?.id ?? null}
+        userName={openStaff?.name ?? ''}
+        items={openStaff ? groups[openStaff.id]?.items ?? [] : []}
+        reviewMonthStr={reviewMonthStr}
+        onClose={() => setOpenStaff(null)}
+      />
+    </Stack>
+  );
+}
+
+/** A staff member's month report, with each flagged day's submitted reason (if any) shown inline for a quick approve/reject. */
+function StaffReviewDrawer({ userId, userName, items, reviewMonthStr, onClose }: {
+  userId: string | null; userName: string; items: AttendanceExceptionRequest[];
+  reviewMonthStr?: string | null; onClose: () => void;
+}) {
+  const qc = useQueryClient();
+  const [noteDraft, setNoteDraft] = useState<Record<string, string>>({});
+
+  // Default to the month under review; fall back to the first request's own
+  // month if no window is currently configured (so this still works for
+  // already-decided items viewed outside any open window).
+  const base = reviewMonthStr ? dayjs(reviewMonthStr) : (items[0] ? dayjs(items[0].date) : dayjs());
+  const m = base.month() + 1;
+  const y = base.year();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['attendance-report', userId, m, y],
+    queryFn: () => getAttendanceReport(userId!, m, y),
+    enabled: !!userId,
+  });
+  const r: AttendanceReport | undefined = data?.data?.data;
+  const itemsByDate = new Map(items.map((i) => [i.date, i]));
 
   const reviewMut = useMutation({
     mutationFn: ({ id, decision, note }: { id: string; decision: 'approved' | 'rejected'; note?: string }) =>
@@ -564,64 +639,107 @@ function RequestsTab() {
   });
 
   return (
-    <Stack>
-      <Group justify="space-between" wrap="wrap">
-        <Text size="sm" c="dimmed">Explanations staff submitted for flagged days — approve marks the day excused and drops its deduction.</Text>
-        <SegmentedControl size="xs" value={statusFilter ?? 'all'}
-          onChange={(v) => setStatusFilter(v === 'all' ? null : v)}
-          data={[{ value: 'pending', label: 'Pending' }, { value: 'approved', label: 'Approved' }, { value: 'rejected', label: 'Rejected' }, { value: 'all', label: 'All' }]} />
-      </Group>
+    <Drawer opened={!!userId} onClose={onClose} position="right" size="xl" title={`${userName} — ${base.format('MMMM YYYY')}`}>
+      {isLoading ? <Center py="xl"><Loader /></Center> : r && (
+        <Stack gap="sm">
+          <Group gap="xs" wrap="wrap">
+            <Badge variant="light" color="teal">Present: {r.totals.present}</Badge>
+            <Badge variant="light" color="orange">Late: {r.totals.late}</Badge>
+            <Badge variant="light" color="yellow">No check-out: {r.totals.no_checkout}</Badge>
+            <Badge variant="light" color="red">Absent: {r.totals.absent}</Badge>
+            {r.totals.excused > 0 && <Badge variant="light" color="grape">Excused: {r.totals.excused}</Badge>}
+            <Badge variant="filled" color={r.totals.deduction_total > 0 ? 'red' : 'gray'}>
+              Deductions: TZS {r.totals.deduction_total.toLocaleString()}
+            </Badge>
+          </Group>
 
-      {isLoading ? <Center py="xl"><Loader /></Center> : rows.length === 0 ? (
-        <Paper withBorder p="xl" radius="md"><Text c="dimmed" ta="center">No {statusFilter ?? ''} explanations.</Text></Paper>
-      ) : (
-        <Stack gap="xs">
-          {rows.map((r: AttendanceExceptionRequest) => (
-            <Paper key={r.id} withBorder radius="md" p="sm">
-              <Group justify="space-between" align="flex-start" wrap="nowrap">
-                <div style={{ minWidth: 0, flex: 1 }}>
-                  <Group gap={8} wrap="wrap">
-                    <Text fw={600} size="sm">{r.user.name}</Text>
-                    <Text size="sm" c="dimmed">{dayjs(r.date).format('ddd, D MMM YYYY')}</Text>
-                    <Badge size="sm" variant="light" color="grape">{exceptionTypeLabel[r.type] ?? r.type}</Badge>
-                    <Badge size="sm" variant="light" color={exceptionStatusColor[r.status]}>{r.status}</Badge>
-                  </Group>
-                  <Text size="sm" mt={4}>{r.comment}</Text>
-                  {r.status !== 'pending' && (
-                    <Text size="xs" c="dimmed" mt={4}>
-                      {r.status === 'approved' ? 'Approved' : 'Rejected'} by {r.reviewer?.name ?? '—'}
-                      {r.review_note ? ` · ${r.review_note}` : ''}
-                    </Text>
-                  )}
-                  {r.status === 'pending' && r.type === 'other' && (
-                    <Text size="xs" c="dimmed" mt={4}>Approve = the day's deduction is waived (attendance record stays as recorded). Reject = deduction stays.</Text>
-                  )}
-                  {r.status === 'pending' && (
-                    <Textarea mt="xs" size="xs" placeholder="Optional note to the staff member"
-                      autosize minRows={1} value={noteDraft[r.id] ?? ''}
-                      onChange={(e) => setNoteDraft((s) => ({ ...s, [r.id]: e.currentTarget.value }))} />
-                  )}
-                </div>
-                {r.status === 'pending' && (
-                  <Group gap="xs" wrap="nowrap">
-                    <Button size="compact-sm" color="teal" leftSection={<IconCheck size={14} />}
-                      loading={reviewMut.isPending && reviewMut.variables?.id === r.id && reviewMut.variables?.decision === 'approved'}
-                      onClick={() => reviewMut.mutate({ id: r.id, decision: 'approved', note: noteDraft[r.id] || undefined })}>
-                      Approve
-                    </Button>
-                    <Button size="compact-sm" color="red" variant="light" leftSection={<IconX size={14} />}
-                      loading={reviewMut.isPending && reviewMut.variables?.id === r.id && reviewMut.variables?.decision === 'rejected'}
-                      onClick={() => reviewMut.mutate({ id: r.id, decision: 'rejected', note: noteDraft[r.id] || undefined })}>
-                      Reject
-                    </Button>
-                  </Group>
-                )}
-              </Group>
-            </Paper>
-          ))}
+          <Table.ScrollContainer minWidth={520}>
+            <Table highlightOnHover verticalSpacing="xs" fz="sm">
+              <Table.Thead>
+                <Table.Tr>
+                  <Table.Th>Date</Table.Th>
+                  <Table.Th ta="center">In</Table.Th>
+                  <Table.Th ta="center">Out</Table.Th>
+                  <Table.Th>Status</Table.Th>
+                  <Table.Th ta="right">Deduction</Table.Th>
+                </Table.Tr>
+              </Table.Thead>
+              <Table.Tbody>
+                {r.days.map((d) => {
+                  const item = itemsByDate.get(d.date);
+                  return (
+                    <Fragment key={d.date}>
+                      <Table.Tr style={{ opacity: d.working ? 1 : 0.5 }}>
+                        <Table.Td fw={500}>{dayjs(d.date).format('DD MMM')} <Text span size="xs" c="dimmed">{d.weekday}</Text></Table.Td>
+                        <Table.Td ta="center" fw={600} c={d.check_in_at ? (d.late ? 'orange' : undefined) : 'dimmed'}>{d.check_in_at ?? '—'}</Table.Td>
+                        <Table.Td ta="center" fw={600} c={d.check_out_at ? (d.left_early ? 'orange' : undefined) : 'dimmed'}>{d.check_out_at ?? '—'}</Table.Td>
+                        <Table.Td>
+                          <Group gap={4}>
+                            {!d.working && !d.holiday && <Badge size="xs" variant="light" color="gray">off</Badge>}
+                            {d.holiday && <Badge size="xs" variant="light" color="cyan">holiday</Badge>}
+                            {d.status && <Badge size="xs" variant="light" color="grape">{statusLabel[d.status] ?? d.status}</Badge>}
+                            {d.absent && <Badge size="xs" variant="light" color="red">absent</Badge>}
+                            {d.late && <Badge size="xs" variant="light" color="orange">late</Badge>}
+                            {d.left_early && <Badge size="xs" variant="light" color="orange">early</Badge>}
+                            {d.no_checkout && <Badge size="xs" variant="light" color="yellow">no out</Badge>}
+                            {item && <Badge size="xs" variant="light" color={exceptionStatusColor[item.status]}>{item.status}</Badge>}
+                          </Group>
+                        </Table.Td>
+                        <Table.Td ta="right" fw={600} c={d.deduction > 0 ? 'red' : 'dimmed'}>
+                          {d.deduction > 0 ? `−${d.deduction.toLocaleString()}` : '—'}
+                        </Table.Td>
+                      </Table.Tr>
+                      {item && (
+                        <Table.Tr key={`${d.date}-reason`}>
+                          <Table.Td colSpan={5} style={{ paddingTop: 0 }}>
+                            <Paper withBorder radius="sm" p="xs" bg="var(--mantine-color-default-hover)">
+                              <Group justify="space-between" align="flex-start" wrap="nowrap">
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <Group gap={6} wrap="wrap">
+                                    <Badge size="xs" variant="light" color="grape">{exceptionTypeLabel[item.type] ?? item.type}</Badge>
+                                    <Text size="xs" c="dimmed">{item.status === 'pending' ? 'Reason given' : `${item.status} by ${item.reviewer?.name ?? '—'}`}</Text>
+                                  </Group>
+                                  <Text size="sm" mt={2}>{item.comment}</Text>
+                                  {item.status !== 'pending' && item.review_note && (
+                                    <Text size="xs" c="dimmed" mt={2}>Note: {item.review_note}</Text>
+                                  )}
+                                  {item.status === 'pending' && item.type === 'other' && (
+                                    <Text size="xs" c="dimmed" mt={2}>Approve = deduction waived (record stays as-is). Reject = deduction stays.</Text>
+                                  )}
+                                  {item.status === 'pending' && (
+                                    <Textarea mt="xs" size="xs" placeholder="Optional note to the staff member"
+                                      autosize minRows={1} value={noteDraft[item.id] ?? ''}
+                                      onChange={(e) => setNoteDraft((s) => ({ ...s, [item.id]: e.currentTarget.value }))} />
+                                  )}
+                                </div>
+                                {item.status === 'pending' && (
+                                  <Group gap="xs" wrap="nowrap">
+                                    <Button size="compact-xs" color="teal" leftSection={<IconCheck size={14} />}
+                                      loading={reviewMut.isPending && reviewMut.variables?.id === item.id && reviewMut.variables?.decision === 'approved'}
+                                      onClick={() => reviewMut.mutate({ id: item.id, decision: 'approved', note: noteDraft[item.id] || undefined })}>
+                                      Approve
+                                    </Button>
+                                    <Button size="compact-xs" color="red" variant="light" leftSection={<IconX size={14} />}
+                                      loading={reviewMut.isPending && reviewMut.variables?.id === item.id && reviewMut.variables?.decision === 'rejected'}
+                                      onClick={() => reviewMut.mutate({ id: item.id, decision: 'rejected', note: noteDraft[item.id] || undefined })}>
+                                      Reject
+                                    </Button>
+                                  </Group>
+                                )}
+                              </Group>
+                            </Paper>
+                          </Table.Td>
+                        </Table.Tr>
+                      )}
+                    </Fragment>
+                  );
+                })}
+              </Table.Tbody>
+            </Table>
+          </Table.ScrollContainer>
         </Stack>
       )}
-    </Stack>
+    </Drawer>
   );
 }
 
