@@ -422,6 +422,7 @@ class AttendanceController extends Controller
         $data = $request->validate([
             'check_in_time'       => 'required|date_format:H:i',
             'check_out_time'      => 'required|date_format:H:i',
+            'saturday_check_out_time' => 'nullable|date_format:H:i',
             'penalties_enabled'   => 'boolean',
             'penalty_absent'      => 'nullable|numeric|min:0',
             'penalty_late'        => 'nullable|numeric|min:0',

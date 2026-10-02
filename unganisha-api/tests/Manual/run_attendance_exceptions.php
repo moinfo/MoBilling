@@ -63,8 +63,26 @@ try {
     ]), $staff)));
     ok($r2->status() === 422, 'a second pending request for the same day is rejected (422): got ' . $r2->status());
 
-    // 3. review() by a user without attendance.manage is blocked.
+    // 2b. update() lets the requester edit their own still-pending
+    // explanation (comment/type) before it's decided — but no one else
+    // can, and not once it's been decided.
     $exc = AttendanceExceptionRequest::find($excId);
+    $r2b = trap(fn () => $ctl->update(req(Request::create("/api/attendance-exceptions/{$excId}", 'PUT', [
+        'type' => 'field', 'comment' => 'Edited: actually it was something else',
+    ]), $owner), $exc));
+    ok($r2b->status() === 403, "a non-owner cannot edit someone else's pending request (403): got " . $r2b->status());
+    ok($exc->fresh()->comment === 'Test: client site visit', 'comment unchanged after the blocked edit attempt');
+
+    // Keep type=field so downstream steps (which assert the approved day
+    // ends up status=field) are unaffected — only the comment changes here.
+    $r2c = trap(fn () => $ctl->update(req(Request::create("/api/attendance-exceptions/{$excId}", 'PUT', [
+        'type' => 'field', 'comment' => 'Edited: actually it was something else',
+    ]), $staff), $exc));
+    ok($r2c->status() === 200, 'the requester can edit their own pending request: got ' . $r2c->status());
+    $exc->refresh();
+    ok($exc->comment === 'Edited: actually it was something else', 'edit actually changed the comment');
+
+    // 3. review() by a user without attendance.manage is blocked.
     $r3 = trap(fn () => $ctl->review(req(Request::create("/api/attendance-exceptions/{$excId}/review", 'POST', [
         'decision' => 'approved',
     ]), $staff), $exc));

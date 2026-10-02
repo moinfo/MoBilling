@@ -50,6 +50,7 @@ export interface AttendanceDayResponse {
 export interface AttendanceSettings {
   check_in_time: string;
   check_out_time: string;
+  saturday_check_out_time?: string | null;
   penalties_enabled: boolean;
   penalty_absent: number;
   penalty_late: number;
@@ -209,6 +210,9 @@ export const getAttendanceExceptions = (params?: { status?: string; user_id?: st
 
 export const submitAttendanceException = (payload: { date: string; type: 'leave' | 'field' | 'other'; comment: string }) =>
   api.post<{ data: AttendanceExceptionRequest }>('/attendance-exceptions', payload);
+
+export const updateAttendanceException = (id: string, payload: { type: 'leave' | 'field' | 'other'; comment: string }) =>
+  api.put<{ data: AttendanceExceptionRequest }>(`/attendance-exceptions/${id}`, payload);
 
 export const cancelAttendanceException = (id: string) =>
   api.post(`/attendance-exceptions/${id}/cancel`);

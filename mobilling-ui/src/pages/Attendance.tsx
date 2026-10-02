@@ -984,7 +984,7 @@ function SettingsTab() {
 
   const form = useForm<AttendanceSettings>({
     initialValues: {
-      check_in_time: '07:30', check_out_time: '17:00', penalties_enabled: true,
+      check_in_time: '07:30', check_out_time: '17:00', saturday_check_out_time: null, penalties_enabled: true,
       penalty_absent: 5000, penalty_late: 2000, penalty_left_early: 2000, penalty_no_checkout: 2000,
       working_days: [1, 2, 3, 4, 5, 6],
       exception_window_from: null, exception_window_to: null, exception_review_month: null,
@@ -1013,6 +1013,9 @@ function SettingsTab() {
             <TimeInput label="Check-in time" {...form.getInputProps('check_in_time')} />
             <TimeInput label="Check-out time" {...form.getInputProps('check_out_time')} />
           </SimpleGrid>
+          <TimeInput mt="sm" label="Saturday check-out (half-day)" description="Leave blank to use the same check-out time as other days"
+            value={form.values.saturday_check_out_time ?? ''}
+            onChange={(e) => form.setFieldValue('saturday_check_out_time', e.currentTarget.value || null)} />
           <Text size="xs" fw={600} mt="sm" mb={4}>Working days</Text>
           <Chip.Group multiple value={(form.values.working_days ?? []).map(String)}
             onChange={(v) => form.setFieldValue('working_days', v.map(Number).sort())}>

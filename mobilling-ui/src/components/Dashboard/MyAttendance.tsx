@@ -7,7 +7,7 @@ import { IconMessageCircle } from '@tabler/icons-react';
 import dayjs from 'dayjs';
 import {
   getMyAttendanceReport, AttendanceReport, ReportDay,
-  getAttendanceExceptions, submitAttendanceException, AttendanceExceptionRequest,
+  getAttendanceExceptions, submitAttendanceException, updateAttendanceException, AttendanceExceptionRequest,
 } from '../../api/attendance';
 import { useAuth } from '../../context/AuthContext';
 
@@ -21,6 +21,7 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
   const { user } = useAuth();
   const [month, setMonth] = useState<Date>(new Date());
   const [explainDay, setExplainDay] = useState<ReportDay | null>(null);
+  const [editingException, setEditingException] = useState<AttendanceExceptionRequest | null>(null);
   const m = month.getMonth() + 1;
   const y = month.getFullYear();
   const { data, isLoading } = useQuery({
@@ -107,11 +108,13 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
                       {exception ? (
                         <Tooltip multiline w={240} label={
                           `${exceptionTypeLabel[exception.type] ?? exception.type}: "${exception.comment}" — `
-                          + (exception.status === 'pending' ? 'inasubiri idhini (pending)'
+                          + (exception.status === 'pending' ? 'inasubiri idhini — bofya kuhariri (pending — click to edit)'
                             : exception.status === 'approved' ? 'imeidhinishwa (approved)'
                             : `imekataliwa (rejected)${exception.review_note ? ' — ' + exception.review_note : ''}`)
                         }>
-                          <ActionIcon variant="subtle" color={exceptionIconColor[exception.status]} size="sm">
+                          <ActionIcon variant="subtle" color={exceptionIconColor[exception.status]} size="sm"
+                            style={exception.status === 'pending' ? undefined : { cursor: 'default' }}
+                            onClick={exception.status === 'pending' ? () => setEditingException(exception) : undefined}>
                             <IconMessageCircle size={14} />
                           </ActionIcon>
                         </Tooltip>
@@ -139,27 +142,47 @@ export function MyReportModal({ opened, onClose }: { opened: boolean; onClose: (
         )}
       </Stack>
       <ExplainDayModal day={explainDay} onClose={() => setExplainDay(null)} />
+      <ExplainDayModal existing={editingException} onClose={() => setEditingException(null)} />
     </Modal>
   );
 }
 
-function ExplainDayModal({ day, onClose }: { day: ReportDay | null; onClose: () => void }) {
+/** Either a NEW explanation for `day`, or an EDIT of a still-pending `existing` one — never both. */
+function ExplainDayModal({ day, existing, onClose }: { day?: ReportDay | null; existing?: AttendanceExceptionRequest | null; onClose: () => void }) {
   const qc = useQueryClient();
-  const [type, setType] = useState<'leave' | 'field' | 'other' | null>(null);
-  const [comment, setComment] = useState('');
+  const [type, setType] = useState<'leave' | 'field' | 'other' | null>(existing?.type ?? null);
+  const [comment, setComment] = useState(existing?.comment ?? '');
+  const opened = !!day || !!existing;
+  const date = existing?.date ?? day?.date;
+
+  // Resync the form whenever a different day/exception is opened.
+  const key = existing?.id ?? day?.date ?? null;
+  const [lastKey, setLastKey] = useState(key);
+  if (key !== lastKey) {
+    setLastKey(key);
+    setType(existing?.type ?? null);
+    setComment(existing?.comment ?? '');
+  }
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['my-attendance-exceptions'] });
+    qc.invalidateQueries({ queryKey: ['my-attendance-report'] });
+  };
 
   const submitMut = useMutation({
-    mutationFn: () => submitAttendanceException({ date: day!.date, type: type!, comment: comment.trim() }),
+    mutationFn: () => existing
+      ? updateAttendanceException(existing.id, { type: type!, comment: comment.trim() })
+      : submitAttendanceException({ date: day!.date, type: type!, comment: comment.trim() }),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['my-attendance-exceptions'] });
-      notifications.show({ message: 'Sent — waiting for approval.', color: 'green' });
-      setType(null); setComment(''); onClose();
+      invalidate();
+      notifications.show({ message: existing ? 'Saved.' : 'Sent — waiting for approval.', color: 'green' });
+      onClose();
     },
     onError: (e: any) => notifications.show({ message: e?.response?.data?.message ?? 'Failed to send.', color: 'red' }),
   });
 
   return (
-    <Modal opened={!!day} onClose={onClose} title={day ? `Explain ${dayjs(day.date).format('ddd, D MMM YYYY')}` : ''} size="sm">
+    <Modal opened={opened} onClose={onClose} title={date ? `${existing ? 'Edit explanation for' : 'Explain'} ${dayjs(date).format('ddd, D MMM YYYY')}` : ''} size="sm">
       <Stack gap="sm">
         <Select label="What happened" placeholder="Chagua" data={[
           { value: 'leave', label: 'Nilikuwa na ruhusa (I had permission)' },
@@ -174,7 +197,7 @@ function ExplainDayModal({ day, onClose }: { day: ReportDay | null; onClose: () 
         <Group justify="flex-end">
           <Button variant="default" onClick={onClose}>Cancel</Button>
           <Button disabled={!type || !comment.trim()} loading={submitMut.isPending} onClick={() => submitMut.mutate()}>
-            Send for approval
+            {existing ? 'Save changes' : 'Send for approval'}
           </Button>
         </Group>
       </Stack>

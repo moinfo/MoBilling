@@ -52,7 +52,7 @@ class AttendanceService
         $late = !$excused && $a->check_in_at
             && $a->check_in_at->gt($a->date->copy()->setTimeFromTimeString($s->check_in_time));
         $leftEarly = !$excused && $a->check_out_at
-            && $a->check_out_at->lt($a->date->copy()->setTimeFromTimeString($s->check_out_time));
+            && $a->check_out_at->lt($a->date->copy()->setTimeFromTimeString($this->checkOutTimeFor($a->date, $s)));
 
         return [
             'id'           => $a->id,
@@ -66,6 +66,16 @@ class AttendanceService
             'left_early'   => (bool) $leftEarly,
             'no_checkout'  => !$excused && $a->check_in_at && !$a->check_out_at,
         ];
+    }
+
+    /** Saturday's own (typically earlier, half-day) check-out target when set, else the normal one. */
+    private function checkOutTimeFor(Carbon $date, AttendanceSettings $s): string
+    {
+        if ($date->dayOfWeekIso === 6 && $s->saturday_check_out_time) {
+            return $s->saturday_check_out_time;
+        }
+
+        return $s->check_out_time;
     }
 
     public function settings(): AttendanceSettings

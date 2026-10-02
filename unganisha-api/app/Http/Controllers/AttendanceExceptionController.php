@@ -86,6 +86,27 @@ class AttendanceExceptionController extends Controller
         return response()->json(['data' => $exception], 201);
     }
 
+    /** Requester can edit their own still-pending explanation before it's decided. */
+    public function update(Request $request, AttendanceExceptionRequest $attendanceExceptionRequest)
+    {
+        if ($attendanceExceptionRequest->user_id !== auth()->id()) {
+            abort(403);
+        }
+        if ($attendanceExceptionRequest->status !== 'pending') {
+            abort(422, 'Only a pending explanation can be edited.');
+        }
+
+        $data = $request->validate([
+            'type' => 'required|in:leave,field,other',
+            'comment' => 'required|string|max:2000',
+        ]);
+
+        $attendanceExceptionRequest->update($data);
+        $attendanceExceptionRequest->load('user');
+
+        return response()->json(['data' => $attendanceExceptionRequest]);
+    }
+
     /** Requester can cancel their own still-pending explanation. */
     public function cancel(AttendanceExceptionRequest $attendanceExceptionRequest)
     {
