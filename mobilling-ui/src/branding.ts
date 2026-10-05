@@ -111,3 +111,14 @@ export function useAppBrandingHead() {
     return () => { alive = false; };
   }, []);
 }
+
+/** The tenant's brand for the current host (or {branded:false}), without touching the tab title. */
+export function useBrandingInfo(): Branding {
+  const [branding, setBranding] = useState<Branding>(() => cachedBranding() ?? { branded: false });
+  useEffect(() => {
+    let alive = true;
+    loadBranding().then((b) => { if (alive) setBranding(b); });
+    return () => { alive = false; };
+  }, []);
+  return branding;
+}

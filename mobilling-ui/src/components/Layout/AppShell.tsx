@@ -19,10 +19,12 @@ import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { usePermissions } from '../../hooks/usePermissions';
 import NotificationBell from './NotificationBell';
+import { useBrandingInfo } from '../../branding';
 
 export default function AppLayout() {
   const [opened, { toggle, close }] = useDisclosure();
   const { user, logout, isImpersonating, exitImpersonation, subscriptionStatus, daysRemaining } = useAuth();
+  const branding = useBrandingInfo();
   const { can, canAny } = usePermissions();
   const { toggleColorScheme } = useMantineColorScheme();
   const computedColorScheme = useComputedColorScheme('light');
@@ -259,8 +261,19 @@ export default function AppLayout() {
         <Group h={60} px="md" justify="space-between">
           <Group>
             <Burger opened={opened} onClick={toggle} hiddenFrom="sm" size="sm" />
-            <Image src="/moinfotech-logo.png" h={32} w="auto" alt="MoBilling" />
-            <Text size="lg" fw={700}>MoBilling</Text>
+            {branding.branded ? (
+              <>
+                {branding.logo_url
+                  ? <Image src={branding.logo_url} h={32} w="auto" alt={branding.name} />
+                  : <Avatar radius="sm" size={32} color="dark">{(branding.name ?? '?').charAt(0).toUpperCase()}</Avatar>}
+                <Text size="lg" fw={700}>{branding.name}</Text>
+              </>
+            ) : (
+              <>
+                <Image src="/moinfotech-logo.png" h={32} w="auto" alt="MoBilling" />
+                <Text size="lg" fw={700}>MoBilling</Text>
+              </>
+            )}
           </Group>
           <Group gap="sm">
             <SubscriptionBadge
