@@ -9,7 +9,7 @@ import { safeNext } from '../../utils/safeNext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { IconSun, IconMoon } from '@tabler/icons-react';
 import classes from './PortalLogin.module.css';
-import reg from './PortalRegister.module.css';
+import bl from './PortalLoginBranded.module.css';
 
 /**
  * The four things a customer signs in to do. The mono keys on the left mirror
@@ -169,33 +169,37 @@ export default function PortalLogin() {
   // "Control Room" layout below is Moinfotech's own default portal only.
   if (branding.branded) {
     const initial = brandName.trim().charAt(0).toUpperCase() || '?';
+    const year = new Date().getFullYear();
     return (
-      <div className={reg.page} data-theme={wlTheme ?? undefined}>
-        <div className={reg.topbar}>
-          <Link className={reg.back} to={backHref}>← {t('login.backTo')} {t('login.backToHome')}</Link>
-          <button type="button" className={reg.themeToggle} onClick={toggleWlTheme}
+      <div className={bl.page} data-theme={wlTheme ?? undefined}>
+        <header className={bl.topbar}>
+          <Link className={bl.back} to={backHref}>← {t('login.backTo')} {t('login.backToHome')}</Link>
+          <button type="button" className={bl.themeToggle} onClick={toggleWlTheme}
             aria-label={wlIsDark ? 'Switch to light mode' : 'Switch to dark mode'}>
             {wlIsDark ? <IconSun size={16} /> : <IconMoon size={16} />}
           </button>
-        </div>
+        </header>
 
-        <div className={reg.wrap}>
-          <div className={reg.brandRow}>
-            {branding.logo_url ? <img src={branding.logo_url} alt="" className={reg.logo} /> : <span className={reg.avatar}>{initial}</span>}
-            <span className={reg.brandName}>{brandName}</span>
+        <main className={bl.main}>
+          <div className={bl.identity}>
+            {branding.logo_url
+              ? <img src={branding.logo_url} alt={brandName} className={bl.logo} />
+              : <span className={bl.mark} aria-hidden="true">{initial}</span>}
+            <span className={bl.name}>{brandName}</span>
+            <span className={bl.accentBar} aria-hidden="true" />
           </div>
 
           {twoFaChallengeId ? (
             <>
-              <h1 className={reg.title}>Two-factor verification</h1>
-              <p className={reg.subtitle}>
+              <h1 className={bl.title}>Two-factor verification</h1>
+              <p className={bl.subtitle}>
                 {twoFaUseRecovery ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}
               </p>
-              <div className={reg.card}>
-                <div className={reg.field}>
-                  <label className={reg.label}>{twoFaUseRecovery ? 'Recovery code' : 'Authentication code'}</label>
+              <div className={bl.form}>
+                <div className={bl.field}>
+                  <label className={bl.label}>{twoFaUseRecovery ? 'Recovery code' : 'Authentication code'}</label>
                   <input
-                    className={reg.input}
+                    className={bl.input}
                     placeholder={twoFaUseRecovery ? 'XXXX-XXXX' : '123456'}
                     inputMode={twoFaUseRecovery ? 'text' : 'numeric'}
                     autoFocus
@@ -204,16 +208,16 @@ export default function PortalLogin() {
                     onKeyDown={(e) => e.key === 'Enter' && handleTwoFactorVerify()}
                   />
                 </div>
-                <button className={reg.submit} type="button" disabled={twoFaSubmitting} onClick={handleTwoFactorVerify}>
+                <button className={bl.submit} type="button" disabled={twoFaSubmitting} onClick={handleTwoFactorVerify}>
                   {twoFaSubmitting ? t('login.submitting') : 'Verify'}
                 </button>
-                <p className={reg.footNote}>
-                  <a className={reg.link} onClick={() => { setTwoFaUseRecovery(!twoFaUseRecovery); setTwoFaCode(''); setTwoFaRecoveryCode(''); }}>
+                <p className={bl.footNote}>
+                  <a className={bl.link} onClick={() => { setTwoFaUseRecovery(!twoFaUseRecovery); setTwoFaCode(''); setTwoFaRecoveryCode(''); }}>
                     {twoFaUseRecovery ? 'Use authenticator code instead' : 'Lost your device? Use a recovery code'}
                   </a>
                 </p>
-                <p className={reg.footNote}>
-                  <a className={reg.link} onClick={() => { setTwoFaChallengeId(null); setTwoFaCode(''); setTwoFaRecoveryCode(''); setTwoFaUseRecovery(false); }}>
+                <p className={bl.footNote}>
+                  <a className={bl.link} onClick={() => { setTwoFaChallengeId(null); setTwoFaCode(''); setTwoFaRecoveryCode(''); setTwoFaUseRecovery(false); }}>
                     Back to sign in
                   </a>
                 </p>
@@ -221,55 +225,57 @@ export default function PortalLogin() {
             </>
           ) : (
             <>
-              <h1 className={reg.title}>{t('login.heading')}</h1>
-              <p className={reg.subtitle}>{t('login.sub')}</p>
+              <h1 className={bl.title}>{t('login.heading')}</h1>
+              <p className={bl.subtitle}>{t('login.sub')}</p>
 
-              <form className={reg.card} onSubmit={form.onSubmit(handleSubmit)}>
-                <div className={reg.field}>
-                  <label className={reg.label}>{t('login.identifier')}</label>
-                  <input className={reg.input} placeholder={t('login.identifierPlaceholder')} autoComplete="username"
+              <form className={bl.form} onSubmit={form.onSubmit(handleSubmit)}>
+                <div className={bl.field}>
+                  <label className={bl.label}>{t('login.identifier')}</label>
+                  <input className={bl.input} placeholder={t('login.identifierPlaceholder')} autoComplete="username"
                     {...form.getInputProps('identifier', { withError: false })} />
                 </div>
-                <div className={reg.field}>
-                  <div className={reg.labelRow}>
-                    <label className={reg.label}>{t('login.password')}</label>
-                    <Link className={reg.forgot} to="/portal/forgot-password">{t('login.forgot')}</Link>
+                <div className={bl.field}>
+                  <div className={bl.labelRow}>
+                    <label className={bl.label}>{t('login.password')}</label>
+                    <Link className={bl.forgot} to="/portal/forgot-password">{t('login.forgot')}</Link>
                   </div>
-                  <div className={reg.pwWrap}>
+                  <div className={bl.pwWrap}>
                     <input
-                      className={`${reg.input} ${reg.pwInput}`}
+                      className={`${bl.input} ${bl.pwInput}`}
                       type={showPw ? 'text' : 'password'}
                       placeholder={t('login.passwordPlaceholder')}
                       autoComplete="current-password"
                       {...form.getInputProps('password', { withError: false })}
                     />
-                    <button type="button" className={reg.pwToggle} onClick={() => setShowPw((v) => !v)}
+                    <button type="button" className={bl.pwToggle} onClick={() => setShowPw((v) => !v)}
                       aria-label={showPw ? 'Hide password' : 'Show password'}>
                       {showPw ? t('login.hide') : t('login.show')}
                     </button>
                   </div>
                 </div>
 
-                <div className={reg.checkRow}>
-                  <button type="button" className={reg.checkLabel} onClick={() => setRemember((v) => !v)} aria-pressed={remember}>
-                    <span className={`${reg.checkbox} ${remember ? reg.checkboxOn : ''}`}>{remember ? '✓' : ''}</span>
+                <div className={bl.checkRow}>
+                  <button type="button" className={bl.checkLabel} onClick={() => setRemember((v) => !v)} aria-pressed={remember}>
+                    <span className={`${bl.checkbox} ${remember ? bl.checkboxOn : ''}`}>{remember ? '✓' : ''}</span>
                     {t('login.remember')}
                   </button>
-                  <span className={reg.securityNote}>{t('login.security')}</span>
+                  <span className={bl.securityNote}>{t('login.security')}</span>
                 </div>
 
-                <button className={reg.submit} type="submit" disabled={submitting}>
+                <button className={bl.submit} type="submit" disabled={submitting}>
                   {submitting ? t('login.submitting') : t('login.submit')}
                 </button>
               </form>
 
-              <p className={reg.footNote}>
+              <p className={bl.footNote}>
                 {t('login.newHere')} {brandName}?{' '}
-                <Link to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}>{t('login.createAccount')}</Link>
+                <Link className={bl.link} to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}>{t('login.createAccount')}</Link>
               </p>
             </>
           )}
-        </div>
+        </main>
+
+        <footer className={bl.footer}>© {year} {brandName}</footer>
       </div>
     );
   }
