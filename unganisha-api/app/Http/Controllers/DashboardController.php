@@ -633,8 +633,11 @@ class DashboardController extends Controller
                 // Registrar prepaid credit — served from the shared cache; on a
                 // cold cache do ONE live read so the card isn't blank, and cache
                 // only on success (a registry hiccup must not stick for 15 min).
-                $creditCache = \Illuminate\Support\Facades\Cache::get('registrar_credit');
-                if ($creditCache === null) {
+                // Moinfotech's own TZNIC balance is never shown to a wallet-gated
+                // reseller tenant — it's our money, not theirs.
+                $walletGated = (bool) \App\Models\Tenant::withoutGlobalScopes()->find(auth()->user()->tenant_id)?->is_wallet_gated;
+                $creditCache = $walletGated ? null : \Illuminate\Support\Facades\Cache::get('registrar_credit');
+                if (!$walletGated && $creditCache === null) {
                     try {
                         $acct = \App\Models\RegistrarAccount::whereNull('tenant_id')->where('is_active', true)->first();
                         if ($acct) {
@@ -648,7 +651,7 @@ class DashboardController extends Controller
                     }
                 }
                 $registrarCredit = collect($creditCache['zones'] ?? [])->filter(fn ($z) => ($z['credit'] ?? 0) > 0);
-                $hostingDomains['registrar_credit_total'] = $registrarCredit->isEmpty() ? null : round((float) $registrarCredit->sum('credit'), 2);
+                $hostingDomains['registrar_credit_total'] = $walletGated || $registrarCredit->isEmpty() ? null : round((float) $registrarCredit->sum('credit'), 2);
             }
 
             if ($canTickets) {

@@ -16,6 +16,19 @@ use Illuminate\Support\Facades\Cache;
  */
 class RegistrarCreditTransferController extends Controller
 {
+    public function __construct()
+    {
+        // Moinfotech's own TZNIC balance and inter-zone moves — a wallet-gated
+        // reseller tenant has no business reaching any of this at all.
+        if (auth()->check()) {
+            abort_if(
+                \App\Models\Tenant::withoutGlobalScopes()->find(auth()->user()->tenant_id)?->is_wallet_gated,
+                403,
+                'Registrar credit is not available for this account.'
+            );
+        }
+    }
+
     public function index()
     {
         $transfers = RegistrarCreditTransfer::orderByRaw("status = 'pending' desc")

@@ -6,6 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import type { HostingDomainsSummary } from '../../api/dashboard';
 import { usePermissions } from '../../hooks/usePermissions';
+import { useAuth } from '../../context/AuthContext';
 import classes from './Dashboard.module.css';
 
 function Stat({ icon, color, label, value, hint, onClick }: {
@@ -31,6 +32,8 @@ function Stat({ icon, color, label, value, hint, onClick }: {
 export default function HostingDomains({ data }: { data: HostingDomainsSummary }) {
   const navigate = useNavigate();
   const { can } = usePermissions();
+  const { user: dashUser } = useAuth();
+  const walletGated = !!dashUser?.tenant?.is_wallet_gated;
   const credit = data.registrar_credit_total;
   const expiring = data.expiring_domains ?? [];
   // Only link a card through to its page if the viewer can actually open it
@@ -60,9 +63,11 @@ export default function HostingDomains({ data }: { data: HostingDomainsSummary }
               onClick={go('menu.domains', '/domains')} />
             <Stat icon={<IconClockExclamation size={20} />} color="red" label="Expiring ≤ 45d"
               value={data.domains.expiring_soon} onClick={go('menu.domains', '/domains')} />
-            <Stat icon={<IconWallet size={20} />} color="grape" label="Registrar Credit"
-              value={credit == null ? '—' : `${credit.toLocaleString()}`}
-              hint={credit == null ? undefined : 'TZS'} onClick={go('menu.domains', '/domains')} />
+            {!walletGated && (
+              <Stat icon={<IconWallet size={20} />} color="grape" label="Registrar Credit"
+                value={credit == null ? '—' : `${credit.toLocaleString()}`}
+                hint={credit == null ? undefined : 'TZS'} onClick={go('menu.domains', '/domains')} />
+            )}
           </>
         )}
         {data.can.tickets && data.open_tickets != null && (

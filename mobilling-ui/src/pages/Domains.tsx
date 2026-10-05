@@ -26,6 +26,7 @@ import NameComManager from '../components/NameComManager';
 import NameComBulkRunModal from '../components/NameComBulkRunModal';
 import NameComRegisterModal from '../components/NameComRegisterModal';
 import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/formatCurrency';
 import { DateInput } from '@mantine/dates';
 import dayjs from 'dayjs';
@@ -139,12 +140,15 @@ export default function Domains() {
   });
   const stats = statsData?.data?.data;
 
+  const { user: domainsUser } = useAuth();
+  const walletGated = !!domainsUser?.tenant?.is_wallet_gated;
   const { data: creditData } = useQuery({
     queryKey: ['registrar-credit'],
     queryFn: getRegistrarCredit,
     staleTime: 5 * 60 * 1000,
+    enabled: !walletGated,
   });
-  const registrarCredit = creditData?.data?.data;
+  const registrarCredit = walletGated ? undefined : creditData?.data?.data;
   const [transferOpen, setTransferOpen] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
 

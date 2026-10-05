@@ -308,6 +308,12 @@ class DomainController extends Controller
      */
     public function registrarCredit(Request $request)
     {
+        abort_if(
+            (bool) \App\Models\Tenant::withoutGlobalScopes()->find(auth()->user()->tenant_id)?->is_wallet_gated,
+            403,
+            'Registrar credit is not available for this account.'
+        );
+
         $threshold = (float) $request->get('threshold', 50000);
 
         $data = \Illuminate\Support\Facades\Cache::remember('registrar_credit', now()->addMinutes(5), function () {
