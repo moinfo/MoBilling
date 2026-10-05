@@ -6,6 +6,7 @@ import { safeNext } from '../../utils/safeNext';
 import { requestPortalOtp, verifyAndRegisterPortal } from '../../api/auth';
 import { useBranding } from '../../branding';
 import styles from './PortalRegister.module.css';
+import wl from './WhiteLabelAuth.module.css';
 
 const SunIcon = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -34,7 +35,7 @@ const BackIcon = () => (
   </svg>
 );
 
-function PinInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+function PinInput({ value, onChange, s }: { value: string; onChange: (v: string) => void; s: Record<string, string> }) {
   const refs = useRef<(HTMLInputElement | null)[]>([]);
   const digits = value.split('').concat(Array(6).fill('')).slice(0, 6);
 
@@ -46,12 +47,12 @@ function PinInput({ value, onChange }: { value: string; onChange: (v: string) =>
   };
 
   return (
-    <div className={styles.pinRow}>
+    <div className={s.pinRow}>
       {digits.map((d, i) => (
         <input
           key={i}
           ref={(el) => { refs.current[i] = el; }}
-          className={styles.pinInput}
+          className={s.pinInput}
           inputMode="numeric"
           maxLength={1}
           value={d}
@@ -80,6 +81,7 @@ export default function PortalRegister() {
   // root ("/", WhiteLabelLanding) — never to Moinfotech's own site, which
   // the reseller's customers should never see.
   const backHref = branding.branded ? '/' : 'https://moinfo.co.tz';
+  const s: Record<string, string> = branding.branded ? wl : styles;
 
   const THEME_KEY = 'wl_theme';
   const [theme, setTheme] = useState<'light' | 'dark' | null>(() => {
@@ -197,140 +199,179 @@ export default function PortalRegister() {
 
   const err = (field: keyof typeof form.values) => (form.errors as any)[field] as string | undefined;
 
+  const stepNo = step === 'details' ? 1 : step === 'verify' ? 2 : 3;
+  const dotClass = (n: number) => `${s.stepDot}${stepNo >= n ? ` ${s.stepDotOn}` : ''}`;
   return (
-    <div className={styles.page} data-theme={theme ?? undefined}>
-      <div className={styles.topbar}>
-        {branding.branded ? (
-          <Link className={styles.back} to={backHref}>← Back to home</Link>
-        ) : (
-          <a className={styles.back} href={backHref}>← Back to moinfo.co.tz</a>
-        )}
-        <button type="button" className={styles.themeToggle} onClick={toggleTheme}
-          aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
-          {isDark ? <SunIcon /> : <MoonIcon />}
-        </button>
-      </div>
+    <div className={s.page} data-theme={theme ?? undefined}>
+      {branding.branded ? (
+        <aside className={wl.panel}>
+          <Link className={wl.brandRow} to={backHref} aria-label={brandName}>
+            {brandLogo ? <img src={brandLogo} alt="" className={wl.logo} /> : <span className={wl.mark} aria-hidden="true">{initial}</span>}
+            <span className={wl.brandName}>{brandName}</span>
+          </Link>
 
-      <div className={styles.wrap}>
-        <div className={styles.brandRow}>
-          {brandLogo ? <img src={brandLogo} alt="" className={styles.logo} /> : <span className={styles.avatar}>{initial}</span>}
-          <span className={styles.brandName}>{brandName}</span>
+          <div className={wl.hero}>
+            <h1 className={wl.heroTitle}>Your business online, today.</h1>
+            <p className={wl.heroText}>Create your account, then finish your order. Most orders set themselves up automatically.</p>
+            <div className={wl.panelBox}>
+              <div className={wl.panelLabel}>What happens next</div>
+              <ul className={wl.perks}>
+                {['Confirm your email with a 6-digit code', 'Add your details and set a password', 'Order a domain or hosting and pay online'].map((line) => (
+                  <li key={line}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3fcf8e" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 12.5 10 17 19 7" />
+                    </svg>
+                    <span>{line}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <Link className={wl.panelBack} to={backHref}>← Back to {brandName}</Link>
+        </aside>
+      ) : (
+        <div className={s.topbar}>
+          <a className={s.back} href={backHref}>← Back to moinfo.co.tz</a>
+          <button type="button" className={s.themeToggle} onClick={toggleTheme}
+            aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}>
+            {isDark ? <SunIcon /> : <MoonIcon />}
+          </button>
         </div>
+      )}
+
+      <div className={s.wrap}>
+        <div className={s.inner}>
+        {branding.branded ? (
+          <div className={s.stepper}>
+            <span className={dotClass(1)}>1</span> Account
+            <span className={s.stepRule} />
+            <span className={dotClass(2)}>2</span> Verify email
+            <span className={s.stepRule} />
+            <span className={dotClass(3)}>3</span> Live
+          </div>
+        ) : (
+          <div className={s.brandRow}>
+            {brandLogo ? <img src={brandLogo} alt="" className={s.logo} /> : <span className={s.avatar}>{initial}</span>}
+            <span className={s.brandName}>{brandName}</span>
+          </div>
+        )}
 
         {step === 'done' ? (
-          <div className={styles.card}>
-            <div className={styles.doneWrap}>
-              <div className={styles.doneIcon}><CheckIcon /></div>
-              <div className={styles.title}>Welcome aboard!</div>
-              <p className={styles.subtitle}>Your account is ready — taking you to your client area…</p>
+          <div className={s.card}>
+            <div className={s.doneWrap}>
+              <div className={s.doneIcon}><CheckIcon /></div>
+              <div className={s.title}>Welcome aboard!</div>
+              <p className={s.subtitle}>Your account is ready — taking you to your client area…</p>
             </div>
           </div>
         ) : step === 'details' ? (
           <>
-            <h1 className={styles.title}>Create an account</h1>
-            <p className={styles.subtitle}>Register to order hosting &amp; domains, pay invoices and get support.</p>
+            <h1 className={s.title}>Create an account</h1>
+            <p className={s.subtitle}>Register to order hosting &amp; domains, pay invoices and get support.</p>
 
-            <form className={styles.card} onSubmit={handleDetails}>
-              <div className={styles.grid2}>
-                <div className={styles.field}>
-                  <label className={styles.label}>Full name</label>
-                  <input className={styles.input} required {...form.getInputProps('name', { withError: false })} />
-                  {err('name') && <span className={styles.error}>{err('name')}</span>}
+            <form className={s.card} onSubmit={handleDetails}>
+              <div className={s.grid2}>
+                <div className={s.field}>
+                  <label className={s.label}>Full name</label>
+                  <input className={s.input} required {...form.getInputProps('name', { withError: false })} />
+                  {err('name') && <span className={s.error}>{err('name')}</span>}
                 </div>
-                <div className={styles.field}>
-                  <label className={styles.label}>Company <span className={styles.labelOptional}>(optional)</span></label>
-                  <input className={styles.input} placeholder="Business or organisation" {...form.getInputProps('company', { withError: false })} />
-                </div>
-              </div>
-              <div className={styles.grid2}>
-                <div className={styles.field}>
-                  <label className={styles.label}>Email address</label>
-                  <input className={styles.input} required type="email" {...form.getInputProps('email', { withError: false })} />
-                  {err('email') && <span className={styles.error}>{err('email')}</span>}
-                </div>
-                <div className={styles.field}>
-                  <label className={styles.label}>Phone <span className={styles.labelOptional}>(optional)</span></label>
-                  <input className={styles.input} placeholder="0712 345 678" {...form.getInputProps('phone', { withError: false })} />
+                <div className={s.field}>
+                  <label className={s.label}>Company <span className={s.labelOptional}>(optional)</span></label>
+                  <input className={s.input} placeholder="Business or organisation" {...form.getInputProps('company', { withError: false })} />
                 </div>
               </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Address <span className={styles.labelOptional}>(optional)</span></label>
-                <input className={styles.input} placeholder="Street, city" {...form.getInputProps('address', { withError: false })} />
-              </div>
-              <div className={styles.grid2}>
-                <div className={styles.field}>
-                  <label className={styles.label}>Password</label>
-                  <input className={styles.input} required type="password" {...form.getInputProps('password', { withError: false })} />
-                  {err('password') && <span className={styles.error}>{err('password')}</span>}
+              <div className={s.grid2}>
+                <div className={s.field}>
+                  <label className={s.label}>Email address</label>
+                  <input className={s.input} required type="email" {...form.getInputProps('email', { withError: false })} />
+                  {err('email') && <span className={s.error}>{err('email')}</span>}
                 </div>
-                <div className={styles.field}>
-                  <label className={styles.label}>Confirm password</label>
-                  <input className={styles.input} required type="password" {...form.getInputProps('password_confirmation', { withError: false })} />
-                  {err('password_confirmation') && <span className={styles.error}>{err('password_confirmation')}</span>}
+                <div className={s.field}>
+                  <label className={s.label}>Phone <span className={s.labelOptional}>(optional)</span></label>
+                  <input className={s.input} placeholder="0712 345 678" {...form.getInputProps('phone', { withError: false })} />
+                </div>
+              </div>
+              <div className={s.field}>
+                <label className={s.label}>Address <span className={s.labelOptional}>(optional)</span></label>
+                <input className={s.input} placeholder="Street, city" {...form.getInputProps('address', { withError: false })} />
+              </div>
+              <div className={s.grid2}>
+                <div className={s.field}>
+                  <label className={s.label}>Password</label>
+                  <input className={s.input} required type="password" {...form.getInputProps('password', { withError: false })} />
+                  {err('password') && <span className={s.error}>{err('password')}</span>}
+                </div>
+                <div className={s.field}>
+                  <label className={s.label}>Confirm password</label>
+                  <input className={s.input} required type="password" {...form.getInputProps('password_confirmation', { withError: false })} />
+                  {err('password_confirmation') && <span className={s.error}>{err('password_confirmation')}</span>}
                 </div>
               </div>
 
-              <button className={styles.submit} type="submit" disabled={loading}>
+              <button className={s.submit} type="submit" disabled={loading}>
                 {loading ? 'Sending…' : 'Continue — verify email'}
               </button>
             </form>
 
-            <p className={styles.footNote}>
+            <p className={s.footNote}>
               Already registered? <Link to="/portal/login">Sign in</Link>
             </p>
           </>
         ) : (
           <>
-            <h1 className={styles.title}>Verify your email</h1>
-            <p className={styles.subtitle}>Enter the 6-digit code we sent to <b>{form.values.email}</b></p>
+            <h1 className={s.title}>Verify your email</h1>
+            <p className={s.subtitle}>Enter the 6-digit code we sent to <b>{form.values.email}</b></p>
 
-            <div className={styles.card}>
+            <div className={s.card}>
               {!isNewClient && (
-                <div className={styles.alert}>
+                <div className={s.alert}>
                   <InfoIcon />
                   <span>Welcome back{clientName ? <>, <b>{clientName}</b></> : ''}! We found your existing
                     client account — verify your email and set a password to activate portal access.</span>
                 </div>
               )}
 
-              <PinInput value={otpValue} onChange={setOtpValue} />
+              <PinInput value={otpValue} onChange={setOtpValue} s={s} />
 
               {needsDetails && (
                 <>
-                  <div className={styles.field}>
-                    <label className={styles.label}>Your name</label>
-                    <input className={styles.input} required {...form.getInputProps('name', { withError: false })} />
+                  <div className={s.field}>
+                    <label className={s.label}>Your name</label>
+                    <input className={s.input} required {...form.getInputProps('name', { withError: false })} />
                   </div>
-                  <div className={styles.field}>
-                    <label className={styles.label}>Phone <span className={styles.labelOptional}>(optional)</span></label>
-                    <input className={styles.input} {...form.getInputProps('phone', { withError: false })} />
+                  <div className={s.field}>
+                    <label className={s.label}>Phone <span className={s.labelOptional}>(optional)</span></label>
+                    <input className={s.input} {...form.getInputProps('phone', { withError: false })} />
                   </div>
-                  <div className={styles.grid2}>
-                    <div className={styles.field}>
-                      <label className={styles.label}>Set password</label>
-                      <input className={styles.input} required type="password" {...form.getInputProps('password', { withError: false })} />
+                  <div className={s.grid2}>
+                    <div className={s.field}>
+                      <label className={s.label}>Set password</label>
+                      <input className={s.input} required type="password" {...form.getInputProps('password', { withError: false })} />
                     </div>
-                    <div className={styles.field}>
-                      <label className={styles.label}>Confirm password</label>
-                      <input className={styles.input} required type="password" {...form.getInputProps('password_confirmation', { withError: false })} />
+                    <div className={s.field}>
+                      <label className={s.label}>Confirm password</label>
+                      <input className={s.input} required type="password" {...form.getInputProps('password_confirmation', { withError: false })} />
                     </div>
                   </div>
                 </>
               )}
 
-              <button className={styles.submit} type="button" disabled={loading} onClick={handleVerify}>
+              <button className={s.submit} type="button" disabled={loading} onClick={handleVerify}>
                 {loading ? 'Creating…' : 'Create account'}
               </button>
 
-              <div className={styles.verifyLinks}>
-                <a className={styles.link} onClick={() => { setStep('details'); setOtpValue(''); }}>
+              <div className={s.verifyLinks}>
+                <a className={s.link} onClick={() => { setStep('details'); setOtpValue(''); }}>
                   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><BackIcon /> Edit details</span>
                 </a>
-                <a className={styles.link} onClick={() => sendOtp()}>Resend code</a>
+                <a className={s.link} onClick={() => sendOtp()}>Resend code</a>
               </div>
             </div>
           </>
         )}
+        </div>
       </div>
     </div>
   );

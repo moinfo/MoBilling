@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useMantineColorScheme, useComputedColorScheme, ActionIcon } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
@@ -9,7 +9,7 @@ import { safeNext } from '../../utils/safeNext';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { IconSun, IconMoon } from '@tabler/icons-react';
 import classes from './PortalLogin.module.css';
-import bl from './PortalLoginBranded.module.css';
+import wl from './WhiteLabelAuth.module.css';
 
 /**
  * The four things a customer signs in to do. The mono keys on the left mirror
@@ -36,29 +36,6 @@ export default function PortalLogin() {
   // root ("/", WhiteLabelLanding) — never to Moinfotech's own site, which
   // the reseller's customers should never see.
   const backHref = branding.branded ? '/' : 'https://moinfo.co.tz';
-
-  // Same localStorage key as the storefront/register pages, so a reseller's
-  // dark/light choice carries over across their whole client-facing flow.
-  const THEME_KEY = 'wl_theme';
-  const [wlTheme, setWlTheme] = useState<'light' | 'dark' | null>(() => {
-    try { const s = localStorage.getItem(THEME_KEY); return s === 'light' || s === 'dark' ? s : null; } catch { return null; }
-  });
-  const [systemDark, setSystemDark] = useState(false);
-  useEffect(() => {
-    if (!branding.branded) return;
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    setSystemDark(mq.matches);
-    const onChange = (e: MediaQueryListEvent) => setSystemDark(e.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, [branding.branded]);
-  const wlIsDark = wlTheme ? wlTheme === 'dark' : systemDark;
-  const toggleWlTheme = () => {
-    const cur = wlTheme ?? (systemDark ? 'dark' : 'light');
-    const nextTheme = cur === 'dark' ? 'light' : 'dark';
-    setWlTheme(nextTheme);
-    try { localStorage.setItem(THEME_KEY, nextTheme); } catch { /* ignore */ }
-  };
 
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(true);
@@ -164,118 +141,136 @@ export default function PortalLogin() {
     }
   };
 
-  // A white-label reseller's login matches the storefront's own design
-  // language (WhiteLabelLanding / PortalRegister) — the rich two-column
+  // A white-label reseller's sign-in uses the Lucham Cloud design (navy brand
+  // panel + white form column, see WhiteLabelAuth.module.css). The two-column
   // "Control Room" layout below is Moinfotech's own default portal only.
   if (branding.branded) {
     const initial = brandName.trim().charAt(0).toUpperCase() || '?';
     const year = new Date().getFullYear();
+    const registerHref = `/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`;
     return (
-      <div className={bl.page} data-theme={wlTheme ?? undefined}>
-        <header className={bl.topbar}>
-          <Link className={bl.back} to={backHref}>← {t('login.backTo')} {t('login.backToHome')}</Link>
-          <button type="button" className={bl.themeToggle} onClick={toggleWlTheme}
-            aria-label={wlIsDark ? 'Switch to light mode' : 'Switch to dark mode'}>
-            {wlIsDark ? <IconSun size={16} /> : <IconMoon size={16} />}
-          </button>
-        </header>
-
-        <main className={bl.main}>
-          <div className={bl.identity}>
+      <div className={wl.page}>
+        <aside className={wl.panel}>
+          <Link className={wl.brandRow} to={backHref} aria-label={brandName}>
             {branding.logo_url
-              ? <img src={branding.logo_url} alt={brandName} className={bl.logo} />
-              : <span className={bl.mark} aria-hidden="true">{initial}</span>}
-            <span className={bl.name}>{brandName}</span>
-            <span className={bl.accentBar} aria-hidden="true" />
+              ? <img src={branding.logo_url} alt="" className={wl.logo} />
+              : <span className={wl.mark} aria-hidden="true">{initial}</span>}
+            <span className={wl.brandName}>{brandName}</span>
+          </Link>
+
+          <div className={wl.hero}>
+            <h1 className={wl.heroTitle}>Welcome back.</h1>
+            <p className={wl.heroText}>Manage your domains, hosting and business email from one account.</p>
+            <ul className={wl.perks}>
+              {['Renew or upgrade any plan yourself', 'Add mailboxes and subdomains in seconds', 'Reach local support from your dashboard'].map((line) => (
+                <li key={line}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3fcf8e" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12.5 10 17 19 7" />
+                  </svg>
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
           </div>
 
-          {twoFaChallengeId ? (
-            <>
-              <h1 className={bl.title}>Two-factor verification</h1>
-              <p className={bl.subtitle}>
-                {twoFaUseRecovery ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}
-              </p>
-              <div className={bl.form}>
-                <div className={bl.field}>
-                  <label className={bl.label}>{twoFaUseRecovery ? 'Recovery code' : 'Authentication code'}</label>
-                  <input
-                    className={bl.input}
-                    placeholder={twoFaUseRecovery ? 'XXXX-XXXX' : '123456'}
-                    inputMode={twoFaUseRecovery ? 'text' : 'numeric'}
-                    autoFocus
-                    value={twoFaUseRecovery ? twoFaRecoveryCode : twoFaCode}
-                    onChange={(e) => (twoFaUseRecovery ? setTwoFaRecoveryCode(e.target.value) : setTwoFaCode(e.target.value))}
-                    onKeyDown={(e) => e.key === 'Enter' && handleTwoFactorVerify()}
-                  />
+          <Link className={wl.panelBack} to={backHref}>← Back to {brandName}</Link>
+        </aside>
+
+        <main className={wl.wrap}>
+          <div className={wl.inner}>
+            {twoFaChallengeId ? (
+              <>
+                <h2 className={wl.title}>Two-factor verification</h2>
+                <p className={wl.subtitle}>
+                  {twoFaUseRecovery ? 'Enter one of your recovery codes.' : 'Enter the 6-digit code from your authenticator app.'}
+                </p>
+                <div className={wl.form}>
+                  <div className={wl.field}>
+                    <label className={wl.label} htmlFor="wl-2fa">{twoFaUseRecovery ? 'Recovery code' : 'Authentication code'}</label>
+                    <input
+                      id="wl-2fa"
+                      className={wl.input}
+                      placeholder={twoFaUseRecovery ? 'XXXX-XXXX' : '123456'}
+                      inputMode={twoFaUseRecovery ? 'text' : 'numeric'}
+                      autoFocus
+                      value={twoFaUseRecovery ? twoFaRecoveryCode : twoFaCode}
+                      onChange={(e) => (twoFaUseRecovery ? setTwoFaRecoveryCode(e.target.value) : setTwoFaCode(e.target.value))}
+                      onKeyDown={(e) => e.key === 'Enter' && handleTwoFactorVerify()}
+                    />
+                  </div>
+                  <button className={wl.submit} type="button" disabled={twoFaSubmitting} onClick={handleTwoFactorVerify}>
+                    {twoFaSubmitting ? t('login.submitting') : 'Verify'}
+                  </button>
                 </div>
-                <button className={bl.submit} type="button" disabled={twoFaSubmitting} onClick={handleTwoFactorVerify}>
-                  {twoFaSubmitting ? t('login.submitting') : 'Verify'}
-                </button>
-                <p className={bl.footNote}>
-                  <a className={bl.link} onClick={() => { setTwoFaUseRecovery(!twoFaUseRecovery); setTwoFaCode(''); setTwoFaRecoveryCode(''); }}>
+                <p className={wl.footNote}>
+                  <a className={wl.link} onClick={() => { setTwoFaUseRecovery(!twoFaUseRecovery); setTwoFaCode(''); setTwoFaRecoveryCode(''); }}>
                     {twoFaUseRecovery ? 'Use authenticator code instead' : 'Lost your device? Use a recovery code'}
                   </a>
                 </p>
-                <p className={bl.footNote}>
-                  <a className={bl.link} onClick={() => { setTwoFaChallengeId(null); setTwoFaCode(''); setTwoFaRecoveryCode(''); setTwoFaUseRecovery(false); }}>
+                <p className={wl.footNote}>
+                  <a className={wl.link} onClick={() => { setTwoFaChallengeId(null); setTwoFaCode(''); setTwoFaRecoveryCode(''); setTwoFaUseRecovery(false); }}>
                     Back to sign in
                   </a>
                 </p>
-              </div>
-            </>
-          ) : (
-            <>
-              <h1 className={bl.title}>{t('login.heading')}</h1>
-              <p className={bl.subtitle}>{t('login.sub')}</p>
+              </>
+            ) : (
+              <>
+                <h2 className={wl.title}>Sign in</h2>
+                <p className={wl.subtitle}>
+                  New to {brandName}? <Link className={wl.link} to={registerHref}>Create an account</Link>
+                </p>
 
-              <form className={bl.form} onSubmit={form.onSubmit(handleSubmit)}>
-                <div className={bl.field}>
-                  <label className={bl.label}>{t('login.identifier')}</label>
-                  <input className={bl.input} placeholder={t('login.identifierPlaceholder')} autoComplete="username"
-                    {...form.getInputProps('identifier', { withError: false })} />
-                </div>
-                <div className={bl.field}>
-                  <div className={bl.labelRow}>
-                    <label className={bl.label}>{t('login.password')}</label>
-                    <Link className={bl.forgot} to="/portal/forgot-password">{t('login.forgot')}</Link>
+                <form className={wl.form} onSubmit={form.onSubmit(handleSubmit)}>
+                  <div className={wl.field}>
+                    <label className={wl.label} htmlFor="wl-identifier">{t('login.identifier')}</label>
+                    <input id="wl-identifier" className={wl.input} placeholder={t('login.identifierPlaceholder')} autoComplete="username"
+                      {...form.getInputProps('identifier', { withError: false })} />
+                    {form.errors.identifier && <span className={wl.error}>{form.errors.identifier}</span>}
                   </div>
-                  <div className={bl.pwWrap}>
-                    <input
-                      className={`${bl.input} ${bl.pwInput}`}
-                      type={showPw ? 'text' : 'password'}
-                      placeholder={t('login.passwordPlaceholder')}
-                      autoComplete="current-password"
-                      {...form.getInputProps('password', { withError: false })}
-                    />
-                    <button type="button" className={bl.pwToggle} onClick={() => setShowPw((v) => !v)}
-                      aria-label={showPw ? 'Hide password' : 'Show password'}>
-                      {showPw ? t('login.hide') : t('login.show')}
-                    </button>
-                  </div>
-                </div>
 
-                <div className={bl.checkRow}>
-                  <button type="button" className={bl.checkLabel} onClick={() => setRemember((v) => !v)} aria-pressed={remember}>
-                    <span className={`${bl.checkbox} ${remember ? bl.checkboxOn : ''}`}>{remember ? '✓' : ''}</span>
+                  <div className={wl.field}>
+                    <div className={wl.labelRow}>
+                      <label className={wl.label} htmlFor="wl-password">{t('login.password')}</label>
+                      <Link className={wl.link} style={{ fontSize: 13 }} to="/portal/forgot-password">{t('login.forgot')}</Link>
+                    </div>
+                    <div className={wl.pwWrap}>
+                      <input
+                        id="wl-password"
+                        className={`${wl.input} ${wl.pwInput}`}
+                        type={showPw ? 'text' : 'password'}
+                        placeholder={t('login.passwordPlaceholder')}
+                        autoComplete="current-password"
+                        {...form.getInputProps('password', { withError: false })}
+                      />
+                      <button type="button" className={wl.eye} onClick={() => setShowPw((v) => !v)}
+                        aria-label={showPw ? 'Hide password' : 'Show password'}>
+                        {showPw ? t('login.hide') : t('login.show')}
+                      </button>
+                    </div>
+                    {form.errors.password && <span className={wl.error}>{form.errors.password}</span>}
+                  </div>
+
+                  <label className={wl.checkRow}>
+                    <input type="checkbox" className={wl.checkbox} checked={remember} onChange={(e) => setRemember(e.currentTarget.checked)} />
                     {t('login.remember')}
+                  </label>
+
+                  <button className={wl.submit} type="submit" disabled={submitting}>
+                    {submitting ? t('login.submitting') : t('login.submit')}
                   </button>
-                  <span className={bl.securityNote}>{t('login.security')}</span>
-                </div>
+                </form>
 
-                <button className={bl.submit} type="submit" disabled={submitting}>
-                  {submitting ? t('login.submitting') : t('login.submit')}
-                </button>
-              </form>
-
-              <p className={bl.footNote}>
-                {t('login.newHere')} {brandName}?{' '}
-                <Link className={bl.link} to={`/portal/register${next ? `?next=${encodeURIComponent(next)}` : ''}`}>{t('login.createAccount')}</Link>
-              </p>
-            </>
-          )}
+                {branding.email && (
+                  <p className={wl.footSmall}>
+                    Trouble signing in? <a className={wl.link} href={`mailto:${branding.email}`}>Contact support</a>
+                  </p>
+                )}
+              </>
+            )}
+          </div>
         </main>
 
-        <footer className={bl.footer}>© {year} {brandName}</footer>
+        <footer className={wl.footer}>© {year} {brandName}</footer>
       </div>
     );
   }
