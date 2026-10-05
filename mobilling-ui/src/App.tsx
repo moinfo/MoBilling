@@ -1,3 +1,4 @@
+import { useAppBrandingHead } from './branding';
 import { MantineProvider } from '@mantine/core';
 import { theme } from './theme';
 import { LanguageProvider } from './i18n/LanguageContext';
@@ -182,6 +183,11 @@ const queryClient = new QueryClient({
   },
 });
 
+function AppBrandingHead() {
+  useAppBrandingHead();
+  return null;
+}
+
 export default function App() {
   return (
     <MantineProvider theme={theme} defaultColorScheme="auto">
@@ -191,6 +197,7 @@ export default function App() {
         <QueryClientProvider client={queryClient}>
           <BrowserRouter>
             <AuthProvider>
+              <AppBrandingHead />
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />

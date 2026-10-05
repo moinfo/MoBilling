@@ -98,3 +98,16 @@ export function useBranding(): Branding {
 
   return branding;
 }
+
+/** Brands the tab title and favicon on every page of a white-label host, not just the client portal. */
+export function useAppBrandingHead() {
+  useEffect(() => {
+    let alive = true;
+    loadBranding().then((b) => {
+      if (!alive || !b.branded) return;
+      if (b.name) document.title = b.name;
+      applyFavicon(b);
+    });
+    return () => { alive = false; };
+  }, []);
+}
