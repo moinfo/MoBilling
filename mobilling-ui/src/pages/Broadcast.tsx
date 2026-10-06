@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import {
   Title, Group, Paper, Stack, SegmentedControl, TextInput, Textarea,
-  MultiSelect, Button, Table, Badge, Text, Pagination, Loader, Select,
+  MultiSelect, Button, Table, Badge, Text, Pagination, Loader, Select, Alert,
   ActionIcon, Tooltip, Drawer,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat } from '@tabler/icons-react';
+import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat, IconInfoCircle } from '@tabler/icons-react';
 import {
   getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast,
   type Broadcast as BroadcastType, type SendBroadcastPayload, type BroadcastRecipient,
@@ -176,6 +176,15 @@ export default function Broadcast() {
   const showSms = ['sms', 'both'].includes(channel);
   const showWhatsapp = channel === 'whatsapp';
 
+  // What an SMS send will actually produce: one text per selected client
+  // (or every client if none selected) who has a phone number on file.
+  const allClients: any[] = clientsData?.data?.data || [];
+  const selectedIds: string[] = form.values.client_ids ?? [];
+  const smsPool = selectedIds.length > 0 ? allClients.filter((c) => selectedIds.includes(c.id)) : allClients;
+  const smsRecipients = smsPool.filter((c) => c.phone).length;
+  const clientListTruncated = (clientsData?.data?.total ?? 0) > allClients.length;
+  const smsLength = form.values.sms_body?.length || 0;
+
   return (
     <Stack>
       <Title order={2}>Broadcast</Title>
@@ -230,7 +239,7 @@ export default function Broadcast() {
                 placeholder="Type your SMS message..."
                 minRows={2}
                 maxRows={3}
-                description={`${form.values.sms_body?.length || 0}/160 characters`}
+                description={`${smsLength}/160 characters · each recipient gets 1 SMS`}
                 {...form.getInputProps('sms_body')}
               />
             )}
@@ -253,6 +262,28 @@ export default function Broadcast() {
               clearable
               {...form.getInputProps('client_ids')}
             />
+
+            {showSms && (
+              <Alert
+                variant="light"
+                color={smsRecipients === 0 ? 'red' : 'blue'}
+                icon={<IconInfoCircle size={16} />}
+              >
+                {smsRecipients === 0 ? (
+                  'No recipients on this list have a phone number, so no SMS will be sent.'
+                ) : (
+                  <>
+                    This will send <b>{smsRecipients}</b> SMS{smsRecipients === 1 ? '' : ' messages'}
+                    {' '}(one per client with a phone number).
+                  </>
+                )}
+                {clientListTruncated && selectedIds.length === 0 && (
+                  <Text size="xs" mt={4}>
+                    Only the first {allClients.length} clients are counted here; the final number is shown after sending.
+                  </Text>
+                )}
+              </Alert>
+            )}
 
             <Group>
               <Button
