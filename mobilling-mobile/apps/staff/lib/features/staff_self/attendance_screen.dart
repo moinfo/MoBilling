@@ -5,6 +5,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:mobilling_api/mobilling_api.dart';
 import 'package:mobilling_ui/mobilling_ui.dart';
 import 'package:path_provider/path_provider.dart';
@@ -50,6 +51,7 @@ class AttendanceScreen extends ConsumerWidget {
       ('Today', _MeTab(canRecord: canManage)),
       ('My month', const _MyReportTab()),
       if (canManage) ('Team', const _TeamTab()),
+      if (canManage) ('Exceptions', const _ExceptionsTab()),
       if (canManage) ('Deductions', const _DeductionsTab()),
       if (canManage) ('Report', const _StaffReportTab()),
       if (canManage) ('Import', const _ImportTab()),
@@ -738,10 +740,24 @@ class _MyReportTab extends ConsumerStatefulWidget {
 class _MyReportTabState extends ConsumerState<_MyReportTab> {
   DateTime _month = DateTime.now();
 
+  Future<void> _explain(
+    AttendanceReportDay day,
+    AttendanceExceptionRequest? existing,
+  ) async {
+    final saved = await showCrmSheet<bool>(
+      context: context,
+      builder: (_) => _ExplainDaySheet(day: day, existing: existing),
+    );
+    if (saved == true && mounted) {
+      ref.invalidate(_myExceptionsProvider);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final key = monthKeyOf(_month);
     final report = ref.watch(myAttendanceReportProvider(key));
+    final exceptions = ref.watch(_myExceptionsProvider);
 
     return Column(
       children: [
@@ -759,7 +775,17 @@ class _MyReportTabState extends ConsumerState<_MyReportTab> {
                 ref.invalidate(myAttendanceReportProvider(key));
                 await ref.read(myAttendanceReportProvider(key).future);
               },
-              child: _ReportBody(data: data),
+              child: _ReportBody(
+                data: data,
+                exceptionsByDate: {
+                  for (final e in exceptions.valueOrNull ?? const [])
+                    e.date: e,
+                },
+                onExplain: (day) => _explain(
+                  day,
+                  exceptions.valueOrNull?.where((e) => e.date == day.dateKey).firstOrNull,
+                ),
+              ),
             ),
           ),
         ),
@@ -773,10 +799,20 @@ class _MyReportTabState extends ConsumerState<_MyReportTab> {
 /// (which runs the same view for an arbitrary staff member and adds the
 /// export buttons via [actions]).
 class _ReportBody extends StatelessWidget {
-  const _ReportBody({required this.data, this.actions});
+  const _ReportBody({
+    required this.data,
+    this.actions,
+    this.exceptionsByDate,
+    this.onExplain,
+  });
 
   final AttendanceReport data;
   final Widget? actions;
+
+  /// Keyed by `Y-m-d`. Only "My month" passes these — the clerk's report for
+  /// someone else has no explain action.
+  final Map<String, AttendanceExceptionRequest>? exceptionsByDate;
+  final void Function(AttendanceReportDay day)? onExplain;
 
   @override
   Widget build(BuildContext context) {
@@ -845,7 +881,13 @@ class _ReportBody extends StatelessWidget {
               children: [
                 for (final (i, day) in data.days.indexed) ...[
                   if (i > 0) const Divider(height: 1),
-                  _ReportDayTile(day: day),
+                  _ReportDayTile(
+                    day: day,
+                    exception: exceptionsByDate?[day.dateKey],
+                    onExplain: onExplain == null
+                        ? null
+                        : () => onExplain!(day),
+                  ),
                 ],
               ],
             ),
@@ -857,16 +899,27 @@ class _ReportBody extends StatelessWidget {
 }
 
 class _ReportDayTile extends StatelessWidget {
-  const _ReportDayTile({required this.day});
+  const _ReportDayTile({required this.day, this.exception, this.onExplain});
 
   final AttendanceReportDay day;
+
+  /// This staff member's own explanation for the day, if one was filed.
+  final AttendanceExceptionRequest? exception;
+
+  /// Set only on "My month": opens the explain/edit sheet for this day.
+  final VoidCallback? onExplain;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = context.statusColors;
     // Off days and holidays are context, not news.
     final quiet = !day.working && !day.isPresent && !day.isExcused;
+    final showAction =
+        onExplain != null &&
+        ((exception == null && day.explainable) ||
+            (exception?.isPending ?? false));
 
     return Opacity(
       opacity: quiet ? 0.55 : 1,
@@ -890,20 +943,32 @@ class _ReportDayTile extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.labelSmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color: scheme.onSurfaceVariant,
                   ),
                 ),
               ),
             ],
           ),
         ),
-        trailing: day.deduction > 0
-            ? Money(
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (day.deduction > 0)
+              Money(
                 day.deduction,
                 scale: MoneyScale.dense,
                 color: status.overdue,
-              )
-            : null,
+              ),
+            if (showAction) ...[
+              if (day.deduction > 0) const SizedBox(width: Spacing.xs),
+              TextButton(
+                onPressed: onExplain,
+                child: Text(exception == null ? 'Explain' : 'Edit'),
+              ),
+            ],
+          ],
+        ),
+        onTap: showAction ? onExplain : null,
       ),
     );
   }
@@ -2825,6 +2890,11 @@ class _AttendanceSettingsTabState
   final _late = TextEditingController();
   final _leftEarly = TextEditingController();
   final _noCheckout = TextEditingController();
+  // The admin-opened explain window. Null means closed; it is sent back on
+  // every save so the form can't silently clear it.
+  DateTime? _windowFrom;
+  DateTime? _windowTo;
+  DateTime? _reviewMonth;
   bool _saving = false;
 
   @override
@@ -2847,7 +2917,13 @@ class _AttendanceSettingsTabState
     _late.text = _moneyText(s.penaltyLate);
     _leftEarly.text = _moneyText(s.penaltyLeftEarly);
     _noCheckout.text = _moneyText(s.penaltyNoCheckout);
+    _windowFrom = _parseDay(s.exceptionWindowFrom);
+    _windowTo = _parseDay(s.exceptionWindowTo);
+    _reviewMonth = _parseDay(s.exceptionReviewMonth);
   }
+
+  static DateTime? _parseDay(String? value) =>
+      value == null || value.isEmpty ? null : DateTime.tryParse(value);
 
   static String _moneyText(double? v) {
     if (v == null) return '';
@@ -3055,12 +3131,71 @@ class _AttendanceSettingsTabState
         ),
       ),
       const SizedBox(height: Spacing.lg),
+      const SectionHeader('Explain window'),
+      const SizedBox(height: Spacing.xs),
+      Text(
+        'Staff may explain a flagged day only while today is inside this '
+        'window, and only for days in the review month. Leave it empty to keep it closed.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: Spacing.sm),
+      CrmPickerField(
+        label: 'Review month',
+        icon: Icons.event_note_outlined,
+        value: _reviewMonth == null ? 'Not set' : DateFormat('MMMM yyyy').format(_reviewMonth!),
+        placeholder: _reviewMonth == null,
+        onTap: () => _pickWindowDay(_reviewMonth, (d) => _reviewMonth = d == null
+            ? null
+            : DateTime(d.year, d.month, 1)),
+      ),
+      const SizedBox(height: Spacing.sm),
+      Row(
+        children: [
+          Expanded(
+            child: CrmPickerField(
+              label: 'Window opens',
+              icon: Icons.play_arrow_outlined,
+              value: _windowFrom == null ? 'Not set' : Formatting.date(_windowFrom),
+              placeholder: _windowFrom == null,
+              onTap: () => _pickWindowDay(_windowFrom, (d) => _windowFrom = d),
+            ),
+          ),
+          const SizedBox(width: Spacing.sm),
+          Expanded(
+            child: CrmPickerField(
+              label: 'Window closes',
+              icon: Icons.stop_outlined,
+              value: _windowTo == null ? 'Not set' : Formatting.date(_windowTo),
+              placeholder: _windowTo == null,
+              onTap: () => _pickWindowDay(_windowTo, (d) => _windowTo = d),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: Spacing.lg),
       PrimaryButton(
         label: _saving ? 'Saving…' : 'Save settings',
         busy: _saving,
         onPressed: _saving ? null : _save,
       ),
     ];
+  }
+
+  /// Opens a date picker; [assign] receives the chosen day, or null when the
+  /// person clears it (the picker's own "remove" path is a dismiss-to-clear).
+  Future<void> _pickWindowDay(
+    DateTime? current,
+    void Function(DateTime? day) assign,
+  ) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? now,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (picked == null) return;
+    setState(() => assign(picked));
   }
 
   Future<void> _pickTime({required bool out}) async {
@@ -3101,6 +3236,10 @@ class _AttendanceSettingsTabState
                 ? double.tryParse(_noCheckout.text.trim())
                 : null,
             workingDays: _workingDays.toList()..sort(),
+            exceptionWindowFrom: _windowFrom == null ? null : _ymd(_windowFrom!),
+            exceptionWindowTo: _windowTo == null ? null : _ymd(_windowTo!),
+            exceptionReviewMonth:
+                _reviewMonth == null ? null : _ymd(_reviewMonth!),
           );
       ref
         ..invalidate(_attendanceSettingsProvider)
@@ -3283,3 +3422,520 @@ TimeOfDay? _parse(String? hhmm) {
   if (hour == null || minute == null) return null;
   return TimeOfDay(hour: hour, minute: minute);
 }
+
+// ---------------------------------------------------------------------------
+// Explanations — a staff member explains a flagged day; a reviewer decides
+// ---------------------------------------------------------------------------
+
+/// My own explanations (the server returns only mine for non-reviewers).
+final AutoDisposeFutureProvider<List<AttendanceExceptionRequest>>
+_myExceptionsProvider = FutureProvider.autoDispose<List<AttendanceExceptionRequest>>(
+  (ref) => ref
+      .watch(staffSelfServiceProvider)
+      .attendanceExceptions(userId: ref.watch(currentUserProvider)?.id),
+);
+
+/// The review queue, filtered by status (null = every status).
+final AutoDisposeFutureProviderFamily<List<AttendanceExceptionRequest>, String?>
+_exceptionQueueProvider = FutureProvider.autoDispose
+    .family<List<AttendanceExceptionRequest>, String?>(
+      (ref, status) => ref
+          .watch(staffSelfServiceProvider)
+          .attendanceExceptions(status: status),
+    );
+
+const _exceptionTypes = <(String, String)>[
+  ('leave', 'Ruhusa (leave)'),
+  ('field', 'Kazi za nje (field)'),
+  ('other', 'Nyingine (other)'),
+];
+
+/// Explain one flagged day, or edit / withdraw an explanation still pending.
+/// Returns true once something was saved, so the caller refreshes.
+class _ExplainDaySheet extends ConsumerStatefulWidget {
+  const _ExplainDaySheet({required this.day, this.existing});
+
+  final AttendanceReportDay day;
+  final AttendanceExceptionRequest? existing;
+
+  @override
+  ConsumerState<_ExplainDaySheet> createState() => _ExplainDaySheetState();
+}
+
+class _ExplainDaySheetState extends ConsumerState<_ExplainDaySheet> {
+  late String _type;
+  late final TextEditingController _comment;
+  bool _busy = false;
+  String? _error;
+
+  bool get _editing => widget.existing != null;
+
+  @override
+  void initState() {
+    super.initState();
+    _type = widget.existing?.type ?? 'leave';
+    _comment = TextEditingController(text: widget.existing?.comment ?? '');
+  }
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final text = _comment.text.trim();
+    if (text.isEmpty) {
+      setState(() => _error = 'Write a reason — your reviewer reads it.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final navigator = Navigator.of(context);
+    try {
+      final service = ref.read(staffSelfServiceProvider);
+      if (_editing) {
+        await service.updateAttendanceException(
+          widget.existing!.id,
+          type: _type,
+          comment: text,
+        );
+      } else {
+        await service.submitAttendanceException(
+          date: widget.day.dateKey,
+          type: _type,
+          comment: text,
+        );
+      }
+      navigator.pop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+    }
+  }
+
+  Future<void> _withdraw() async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final navigator = Navigator.of(context);
+    try {
+      await ref
+          .read(staffSelfServiceProvider)
+          .cancelAttendanceException(widget.existing!.id);
+      navigator.pop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+
+    return CrmSheet(
+      eyebrow: Formatting.date(widget.day.date),
+      title: _editing ? 'Your explanation' : 'Explain this day',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        Text(
+          '${widget.day.summary}. Your reviewer decides whether it excuses the day.',
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: scheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Reason type',
+          child: DropdownButtonFormField<String>(
+            initialValue: _type,
+            items: [
+              for (final (value, label) in _exceptionTypes)
+                DropdownMenuItem(value: value, child: Text(label)),
+            ],
+            onChanged: _busy ? null : (v) => setState(() => _type = v ?? _type),
+          ),
+        ),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'What happened',
+          child: TextField(
+            controller: _comment,
+            enabled: !_busy,
+            minLines: 3,
+            maxLines: 6,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'Be specific — your reviewer reads this',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        PrimaryButton(
+          label: _editing ? 'Save changes' : 'Send explanation',
+          busy: _busy,
+          onPressed: _busy ? null : _submit,
+        ),
+        if (_editing) ...[
+          const SizedBox(height: Spacing.sm),
+          OutlinedButton.icon(
+            icon: Icon(Icons.undo_rounded, size: 18, color: scheme.error),
+            label: Text(
+              'Withdraw explanation',
+              style: TextStyle(color: scheme.error),
+            ),
+            onPressed: _busy ? null : _withdraw,
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// The reviewer's queue: everyone's explanations, grouped by person, with
+/// approve/reject per item and "approve/reject all pending" per person.
+class _ExceptionsTab extends ConsumerStatefulWidget {
+  const _ExceptionsTab();
+
+  @override
+  ConsumerState<_ExceptionsTab> createState() => _ExceptionsTabState();
+}
+
+class _ExceptionsTabState extends ConsumerState<_ExceptionsTab> {
+  /// null = every status. Pending is what needs a decision, so it's first.
+  String? _status = 'pending';
+
+  static const _statuses = <(String?, String)>[
+    ('pending', 'Pending'),
+    ('approved', 'Approved'),
+    ('rejected', 'Rejected'),
+    (null, 'All'),
+  ];
+
+  void _refresh() => ref.invalidate(_exceptionQueueProvider(_status));
+
+  Future<void> _bulk(
+    List<AttendanceExceptionRequest> items,
+    String decision,
+  ) async {
+    final scheme = Theme.of(context).colorScheme;
+    final sure = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          '${decision == 'approved' ? 'Approve' : 'Reject'} ${items.length} explanation${items.length == 1 ? '' : 's'}?',
+        ),
+        content: const Text('Each one is decided the same way a single review would decide it.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: decision == 'rejected' ? scheme.error : null,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(decision == 'approved' ? 'Approve all' : 'Reject all'),
+          ),
+        ],
+      ),
+    );
+    if (sure != true || !mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final result = await ref
+          .read(staffSelfServiceProvider)
+          .bulkReviewAttendanceExceptions(
+            ids: [for (final e in items) e.id],
+            decision: decision,
+          );
+      _refresh();
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${result.decided} decided'
+            '${result.skipped == 0 ? '' : ', ${result.skipped} already decided'}.',
+          ),
+        ),
+      );
+    } on ApiException catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final status = context.statusColors;
+    final canReview =
+        ref
+            .watch(sessionControllerProvider)
+            .session
+            ?.can(StaffSelfPermissions.attendanceManage) ??
+        false;
+    final queue = ref.watch(_exceptionQueueProvider(_status));
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            Spacing.md,
+            Spacing.sm,
+            Spacing.md,
+            0,
+          ),
+          child: Wrap(
+            spacing: Spacing.sm,
+            children: [
+              for (final (value, label) in _statuses)
+                ChoiceChip(
+                  label: Text(label),
+                  selected: _status == value,
+                  onSelected: (_) => setState(() => _status = value),
+                ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: CrmAsyncView(
+            value: queue,
+            errorTitle: 'Could not load explanations',
+            onRetry: _refresh,
+            builder: (items) {
+              if (items.isEmpty) {
+                return const StateMessage(
+                  icon: Icons.fact_check_outlined,
+                  title: 'Nothing here',
+                  message: 'No explanations in this list.',
+                );
+              }
+              final byPerson = <String, List<AttendanceExceptionRequest>>{};
+              for (final e in items) {
+                byPerson.putIfAbsent(e.userName, () => []).add(e);
+              }
+              return RefreshIndicator(
+                onRefresh: () async {
+                  _refresh();
+                  await ref.read(_exceptionQueueProvider(_status).future);
+                },
+                child: ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  padding: const EdgeInsets.all(Spacing.md),
+                  children: [
+                    for (final entry in byPerson.entries) ...[
+                      Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: Column(
+                          children: [
+                            ListTile(
+                              dense: true,
+                              title: Text(entry.key, style: theme.textTheme.titleSmall),
+                              subtitle: Text(
+                                '${entry.value.length} '
+                                '${_status == null ? 'EXPLANATION(S)' : _status!.toUpperCase()}',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: scheme.onSurfaceVariant,
+                                ),
+                              ),
+                              trailing: canReview && _status == 'pending'
+                                  ? Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        TextButton(
+                                          onPressed: () => _bulk(
+                                            entry.value.where((e) => e.isPending).toList(),
+                                            'rejected',
+                                          ),
+                                          child: const Text('Reject all'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => _bulk(
+                                            entry.value.where((e) => e.isPending).toList(),
+                                            'approved',
+                                          ),
+                                          child: const Text('Approve all'),
+                                        ),
+                                      ],
+                                    )
+                                  : null,
+                            ),
+                            for (final e in entry.value) ...[
+                              const Divider(height: 1),
+                              ListTile(
+                                dense: true,
+                                onTap: canReview && e.isPending
+                                    ? () async {
+                                        final done = await showCrmSheet<bool>(
+                                          context: context,
+                                          builder: (_) => _ReviewExceptionSheet(exception: e),
+                                        );
+                                        if (done == true) _refresh();
+                                      }
+                                    : null,
+                                title: Text(
+                                  '${Formatting.date(DateTime.tryParse(e.date))} · '
+                                  '${_exceptionTypes.firstWhere((t) => t.$1 == e.type, orElse: () => (e.type, e.type)).$2}',
+                                  style: theme.textTheme.bodyMedium,
+                                ),
+                                subtitle: Text(
+                                  e.comment,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                trailing: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: Spacing.sm,
+                                    vertical: 2,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: scheme.surfaceContainerHighest,
+                                    borderRadius: BorderRadius.circular(Radii.sm),
+                                  ),
+                                  child: Text(
+                                    e.status.toUpperCase(),
+                                    style: theme.textTheme.labelSmall?.copyWith(
+                                      color: e.status == 'pending'
+                                          ? status.attention
+                                          : e.status == 'approved'
+                                              ? status.settled
+                                              : status.overdue,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: Spacing.sm),
+                    ],
+                    const SizedBox(height: Spacing.xl),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Approve or reject one explanation, with an optional note the staff member
+/// will see. Returns true once the decision is saved.
+class _ReviewExceptionSheet extends ConsumerStatefulWidget {
+  const _ReviewExceptionSheet({required this.exception});
+
+  final AttendanceExceptionRequest exception;
+
+  @override
+  ConsumerState<_ReviewExceptionSheet> createState() =>
+      _ReviewExceptionSheetState();
+}
+
+class _ReviewExceptionSheetState extends ConsumerState<_ReviewExceptionSheet> {
+  final _note = TextEditingController();
+  bool _busy = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _note.dispose();
+    super.dispose();
+  }
+
+  Future<void> _decide(String decision) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final navigator = Navigator.of(context);
+    final note = _note.text.trim();
+    try {
+      await ref.read(staffSelfServiceProvider).reviewAttendanceException(
+            widget.exception.id,
+            decision: decision,
+            reviewNote: note.isEmpty ? null : note,
+          );
+      navigator.pop(true);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = e.message;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final e = widget.exception;
+
+    return CrmSheet(
+      eyebrow: '${e.userName} · ${Formatting.date(DateTime.tryParse(e.date))}',
+      title: 'Review explanation',
+      children: [
+        if (_error != null) ...[
+          ErrorBanner(message: _error!),
+          const SizedBox(height: Spacing.md),
+        ],
+        Text(e.comment, style: theme.textTheme.bodyLarge),
+        const SizedBox(height: Spacing.md),
+        CrmField(
+          label: 'Note to staff (optional)',
+          child: TextField(
+            controller: _note,
+            enabled: !_busy,
+            minLines: 2,
+            maxLines: 4,
+            textCapitalization: TextCapitalization.sentences,
+            decoration: const InputDecoration(
+              hintText: 'Why it was approved or rejected',
+            ),
+          ),
+        ),
+        const SizedBox(height: Spacing.lg),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: scheme.error,
+                ),
+                onPressed: _busy ? null : () => _decide('rejected'),
+                child: const Text('Reject'),
+              ),
+            ),
+            const SizedBox(width: Spacing.sm),
+            Expanded(
+              child: PrimaryButton(
+                label: 'Approve',
+                busy: _busy,
+                onPressed: _busy ? null : () => _decide('approved'),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+

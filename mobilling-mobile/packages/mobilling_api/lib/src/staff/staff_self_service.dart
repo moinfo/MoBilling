@@ -214,6 +214,9 @@ class StaffSelfService {
     double? penaltyLeftEarly,
     double? penaltyNoCheckout,
     List<int>? workingDays,
+    String? exceptionWindowFrom,
+    String? exceptionWindowTo,
+    String? exceptionReviewMonth,
   }) async {
     final body = await _api.put<dynamic>(
       '/attendance/settings',
@@ -226,9 +229,100 @@ class StaffSelfService {
         'penalty_left_early': penaltyLeftEarly,
         'penalty_no_checkout': penaltyNoCheckout,
         'working_days': ?workingDays,
+        // Sent explicitly (null included) so the form can clear the window.
+        // The server only updates keys present in the request, so callers
+        // that omit these are unaffected.
+        'exception_window_from': exceptionWindowFrom,
+        'exception_window_to': exceptionWindowTo,
+        'exception_review_month': exceptionReviewMonth,
       },
     );
     return AttendanceSettings.fromJson(_data(body));
+  }
+
+  /// GET /attendance-exceptions — attendance.manage sees everyone's (filter
+  /// with [userId]/[status]); everyone else sees only their own.
+  Future<List<AttendanceExceptionRequest>> attendanceExceptions({
+    String? status,
+    String? userId,
+  }) async {
+    final body = await _api.get<dynamic>(
+      '/attendance-exceptions',
+      query: {'status': status, 'user_id': userId},
+    );
+    final rows = _map(body)['data'];
+    return rows is List
+        ? rows
+              .whereType<Map>()
+              .map((e) => AttendanceExceptionRequest.fromJson(
+                    Map<String, dynamic>.from(e),
+                  ))
+              .toList()
+        : const <AttendanceExceptionRequest>[];
+  }
+
+  /// POST /attendance-exceptions — explain one of my flagged days. The server
+  /// enforces the admin-opened window and one pending explanation per day.
+  Future<AttendanceExceptionRequest> submitAttendanceException({
+    required String date,
+    required String type,
+    required String comment,
+  }) async {
+    final body = await _api.post<dynamic>(
+      '/attendance-exceptions',
+      body: {'date': date, 'type': type, 'comment': comment},
+    );
+    return AttendanceExceptionRequest.fromJson(_data(body));
+  }
+
+  /// PUT /attendance-exceptions/{id} — edit my own still-pending explanation.
+  Future<AttendanceExceptionRequest> updateAttendanceException(
+    String id, {
+    required String type,
+    required String comment,
+  }) async {
+    final body = await _api.put<dynamic>(
+      '/attendance-exceptions/$id',
+      body: {'type': type, 'comment': comment},
+    );
+    return AttendanceExceptionRequest.fromJson(_data(body));
+  }
+
+  /// POST /attendance-exceptions/{id}/cancel — withdraw my own pending one.
+  Future<String> cancelAttendanceException(String id) async {
+    final body = await _api.post<dynamic>('/attendance-exceptions/$id/cancel');
+    return _message(body, 'Cancelled.');
+  }
+
+  /// POST /attendance-exceptions/{id}/review — needs attendance.manage.
+  Future<AttendanceExceptionRequest> reviewAttendanceException(
+    String id, {
+    required String decision,
+    String? reviewNote,
+  }) async {
+    final body = await _api.post<dynamic>(
+      '/attendance-exceptions/$id/review',
+      body: {'decision': decision, 'review_note': reviewNote},
+    );
+    return AttendanceExceptionRequest.fromJson(_data(body));
+  }
+
+  /// POST /attendance-exceptions/bulk-review — decides many at once; already
+  /// decided ones are reported as [skipped], not errored.
+  Future<({int decided, int skipped})> bulkReviewAttendanceExceptions({
+    required List<String> ids,
+    required String decision,
+    String? reviewNote,
+  }) async {
+    final body = await _api.post<dynamic>(
+      '/attendance-exceptions/bulk-review',
+      body: {'ids': ids, 'decision': decision, 'review_note': reviewNote},
+    );
+    final json = _map(body);
+    return (
+      decided: readInt(json['decided']),
+      skipped: readInt(json['skipped']),
+    );
   }
 
   /// POST /attendance/import/preview — multipart. Needs `attendance.manage`.

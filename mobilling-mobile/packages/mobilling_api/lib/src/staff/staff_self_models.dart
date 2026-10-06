@@ -176,11 +176,19 @@ class AttendanceSettings {
     this.penaltyLate,
     this.penaltyLeftEarly,
     this.penaltyNoCheckout,
+    this.exceptionWindowFrom,
+    this.exceptionWindowTo,
+    this.exceptionReviewMonth,
   });
 
   final bool penaltiesEnabled;
   final String? checkInTime;
   final String? checkOutTime;
+
+  /// Admin-opened explain window (`Y-m-d`). All three null means closed.
+  final String? exceptionWindowFrom;
+  final String? exceptionWindowTo;
+  final String? exceptionReviewMonth;
 
   /// ISO weekdays, 1 = Monday. Only present on `GET/PUT /attendance/settings`
   /// — [MyAttendance]'s embedded settings omit it.
@@ -211,6 +219,9 @@ class AttendanceSettings {
       penaltyNoCheckout: json['penalty_no_checkout'] == null
           ? null
           : json.money('penalty_no_checkout'),
+      exceptionWindowFrom: json.str('exception_window_from'),
+      exceptionWindowTo: json.str('exception_window_to'),
+      exceptionReviewMonth: json.str('exception_review_month'),
     );
   }
 }
@@ -621,6 +632,7 @@ class AttendanceReportDay {
     this.status,
     this.checkInAt,
     this.checkOutAt,
+    this.explainable = false,
   });
 
   /// `Y-m-d` exactly as the API returned it — what `POST /attendance/record`
@@ -640,6 +652,10 @@ class AttendanceReportDay {
   final String? status;
   final String? checkInAt;
   final String? checkOutAt;
+
+  /// Server-decided: a flagged working day the staff member may still explain
+  /// (inside the admin-opened review window). Gates the "Explain" action.
+  final bool explainable;
 
   bool get isExcused => status != null && status!.isNotEmpty;
   bool get isPresent => checkInAt != null && checkInAt!.isNotEmpty;
@@ -682,6 +698,7 @@ class AttendanceReportDay {
         status: json.str('status'),
         checkInAt: json.str('check_in_at'),
         checkOutAt: json.str('check_out_at'),
+        explainable: json.flag('explainable'),
       );
 }
 
@@ -1938,4 +1955,57 @@ class SystemOption {
     name: json.strOr('name', '—'),
     isActive: json.flag('is_active', fallback: true),
   );
+}
+
+/// A staff member's explanation for one flagged day (`attendance-exceptions`).
+/// Staff see their own; attendance.manage holders see everyone's and decide them.
+class AttendanceExceptionRequest {
+  const AttendanceExceptionRequest({
+    required this.id,
+    required this.date,
+    required this.type,
+    required this.comment,
+    required this.status,
+    required this.userId,
+    required this.userName,
+    this.reviewNote,
+    this.reviewedAt,
+    this.reviewerName,
+  });
+
+  final String id;
+
+  /// `Y-m-d` — matched against [AttendanceReportDay.dateKey] to put the
+  /// explanation on the right row.
+  final String date;
+
+  /// leave | field | other.
+  final String type;
+  final String comment;
+
+  /// pending | approved | rejected.
+  final String status;
+  final String? reviewNote;
+  final DateTime? reviewedAt;
+  final String userId;
+  final String userName;
+  final String? reviewerName;
+
+  bool get isPending => status == 'pending';
+
+  factory AttendanceExceptionRequest.fromJson(Map<String, dynamic> json) {
+    final user = json.object('user');
+    return AttendanceExceptionRequest(
+      id: json.id(),
+      date: json.strOr('date', ''),
+      type: json.strOr('type', 'other'),
+      comment: json.strOr('comment', ''),
+      status: json.strOr('status', 'pending'),
+      reviewNote: json.str('review_note'),
+      reviewedAt: json.date('reviewed_at'),
+      userId: user?.str('id') ?? '',
+      userName: user?.strOr('name', '—') ?? '—',
+      reviewerName: json.object('reviewer')?.str('name'),
+    );
+  }
 }
