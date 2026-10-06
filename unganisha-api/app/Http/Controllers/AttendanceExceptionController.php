@@ -36,7 +36,7 @@ class AttendanceExceptionController extends Controller
             ->whereHas('user', fn ($q) => $q->where('is_active', true))
             ->orderByDesc('date');
 
-        if (!$user->hasPermission('attendance.manage')) {
+        if (!$user->hasPermission('attendance.requests')) {
             $query->where('user_id', $user->id);
         }
 
@@ -49,6 +49,7 @@ class AttendanceExceptionController extends Controller
     /** Self-service: explain one of my own flagged days. Any authenticated user may call this. */
     public function store(Request $request)
     {
+        $this->authorizePermission('attendance.request');
         $user = auth()->user();
 
         $data = $request->validate([
@@ -89,6 +90,7 @@ class AttendanceExceptionController extends Controller
     /** Requester can edit their own still-pending explanation before it's decided. */
     public function update(Request $request, AttendanceExceptionRequest $attendanceExceptionRequest)
     {
+        $this->authorizePermission('attendance.request');
         if ($attendanceExceptionRequest->user_id !== auth()->id()) {
             abort(403);
         }
@@ -110,6 +112,7 @@ class AttendanceExceptionController extends Controller
     /** Requester can cancel their own still-pending explanation. */
     public function cancel(AttendanceExceptionRequest $attendanceExceptionRequest)
     {
+        $this->authorizePermission('attendance.request');
         if ($attendanceExceptionRequest->user_id !== auth()->id()) {
             abort(403);
         }
@@ -125,7 +128,7 @@ class AttendanceExceptionController extends Controller
     /** Approve or reject — attendance.manage only. */
     public function review(Request $request, AttendanceExceptionRequest $attendanceExceptionRequest)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.requests');
 
         if ($attendanceExceptionRequest->status !== 'pending') {
             abort(422, 'This explanation has already been decided.');
@@ -150,7 +153,7 @@ class AttendanceExceptionController extends Controller
      */
     public function bulkReview(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.requests');
 
         $data = $request->validate([
             'ids' => 'required|array|min:1',

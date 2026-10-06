@@ -94,7 +94,7 @@ export default function AppLayout() {
   // top-level data-entry CRUD (System Records) appears here.
   const showSystemRecords = can('menu.system_records');
   const showReports = can('menu.reports');
-  const showHr = canAny(['menu.staff_reports', 'attendance.manage', 'menu.work_locations', 'menu.staff_targets', 'menu.leave', 'menu.payroll']);
+  const showHr = canAny(['menu.staff_reports', 'menu.attendance', 'menu.work_locations', 'menu.staff_targets', 'menu.leave', 'menu.payroll']);
   // Grouped nav parents (Dec 2026 reorg) — each is purely a visual container;
   // every leaf item below still gates on the exact same permission it always did.
   const showWebServices = canAny(['menu.hosting', 'menu.domains', 'menu.linode']);
@@ -194,7 +194,7 @@ export default function AppLayout() {
     { label: 'Broadcast', path: '/broadcast', group: 'Communications', visible: can('menu.broadcast') },
     { label: 'Announcements', path: '/announcements', group: 'Communications', visible: can('menu.announcements') },
     { label: 'Staff Reports', path: '/staff-reports', group: 'HR', visible: can('menu.staff_reports') },
-    { label: 'Attendance', path: '/attendance', group: 'HR', visible: can('attendance.manage') },
+    { label: 'Attendance', path: '/attendance', group: 'HR', visible: can('menu.attendance') },
     { label: 'Work Locations', path: '/work-locations', group: 'HR', visible: can('menu.work_locations') },
     { label: 'Staff Targets', path: '/staff-targets', group: 'HR', visible: can('menu.staff_targets') },
     { label: 'Leave', path: '/leave', group: 'HR', visible: can('menu.leave') },
@@ -710,7 +710,7 @@ export default function AppLayout() {
                 <NavLink label="Staff Reports" leftSection={<IconClipboardList size={16} />}
                   active={isActive('/staff-reports')} onClick={() => navigateAndClose('/staff-reports')} />
               )}
-              {can('attendance.manage') && (
+              {can('menu.attendance') && (
                 <NavLink label="Attendance" leftSection={<IconClipboardCheck size={16} />}
                   active={isActive('/attendance')} onClick={() => navigateAndClose('/attendance')} />
               )}

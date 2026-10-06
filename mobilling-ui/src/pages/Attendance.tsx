@@ -1,4 +1,5 @@
 import { useState, useEffect, Fragment } from 'react';
+import { usePermissions } from '../hooks/usePermissions';
 import {
   Title, Tabs, Stack, Group, Text, Paper, Table, Badge, Button, ActionIcon,
   Loader, Center, ThemeIcon, NumberInput, Switch, Chip, SimpleGrid, Divider, Alert, Select, Menu,
@@ -23,28 +24,53 @@ import {
 } from '../api/attendance';
 
 export default function Attendance() {
+  const { can } = usePermissions();
+  // Each tab needs its own permission; the page opens on the first tab the user can see.
+  const tabAccess = {
+    dashboard: can('attendance.dashboard'),
+    record: can('attendance.record'),
+    deductions: can('attendance.deductions'),
+    report: can('attendance.report'),
+    requests: can('attendance.requests'),
+    import: can('attendance.import'),
+    device: can('attendance.device'),
+    settings: can('attendance.settings'),
+  };
+  const firstTab = (Object.keys(tabAccess) as (keyof typeof tabAccess)[]).find((k) => tabAccess[k]) ?? null;
+  const [tab, setTab] = useState<string | null>(null);
+  const activeTab = tab && tabAccess[tab as keyof typeof tabAccess] ? tab : firstTab;
+
+  if (!firstTab) {
+    return (
+      <Stack>
+        <Title order={2}>Attendance</Title>
+        <Alert color="gray" variant="light">You don't have access to any Attendance tab. Ask an administrator to grant one.</Alert>
+      </Stack>
+    );
+  }
+
   return (
     <Stack>
       <Title order={2}>Attendance</Title>
-      <Tabs defaultValue="dashboard" keepMounted={false}>
+      <Tabs value={activeTab} onChange={setTab} keepMounted={false}>
         <Tabs.List>
-          <Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>Dashboard</Tabs.Tab>
-          <Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>
-          <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>Deductions</Tabs.Tab>
-          <Tabs.Tab value="report" leftSection={<IconClipboardCheck size={15} />}>Report</Tabs.Tab>
-          <Tabs.Tab value="requests" leftSection={<IconMessageCircle size={15} />}>Requests</Tabs.Tab>
-          <Tabs.Tab value="import" leftSection={<IconFileSpreadsheet size={15} />}>Import (iVMS)</Tabs.Tab>
-          <Tabs.Tab value="device" leftSection={<IconDeviceDesktop size={15} />}>Device</Tabs.Tab>
-          <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>
+          {tabAccess.dashboard && (<Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>Dashboard</Tabs.Tab>)}
+          {tabAccess.record && (<Tabs.Tab value="record" leftSection={<IconClipboardCheck size={15} />}>Record</Tabs.Tab>)}
+          {tabAccess.deductions && (<Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>Deductions</Tabs.Tab>)}
+          {tabAccess.report && (<Tabs.Tab value="report" leftSection={<IconClipboardCheck size={15} />}>Report</Tabs.Tab>)}
+          {tabAccess.requests && (<Tabs.Tab value="requests" leftSection={<IconMessageCircle size={15} />}>Requests</Tabs.Tab>)}
+          {tabAccess.import && (<Tabs.Tab value="import" leftSection={<IconFileSpreadsheet size={15} />}>Import (iVMS)</Tabs.Tab>)}
+          {tabAccess.device && (<Tabs.Tab value="device" leftSection={<IconDeviceDesktop size={15} />}>Device</Tabs.Tab>)}
+          {tabAccess.settings && (<Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>Settings</Tabs.Tab>)}
         </Tabs.List>
-        <Tabs.Panel value="dashboard" pt="md"><DashboardTab /></Tabs.Panel>
-        <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>
-        <Tabs.Panel value="deductions" pt="md"><DeductionsTab /></Tabs.Panel>
-        <Tabs.Panel value="report" pt="md"><ReportTab /></Tabs.Panel>
-        <Tabs.Panel value="requests" pt="md"><RequestsTab /></Tabs.Panel>
-        <Tabs.Panel value="import" pt="md"><ImportTab /></Tabs.Panel>
-        <Tabs.Panel value="device" pt="md"><DeviceTab /></Tabs.Panel>
-        <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>
+        {tabAccess.dashboard && <Tabs.Panel value="dashboard" pt="md"><DashboardTab /></Tabs.Panel>}
+        {tabAccess.record && <Tabs.Panel value="record" pt="md"><RecordTab /></Tabs.Panel>}
+        {tabAccess.deductions && <Tabs.Panel value="deductions" pt="md"><DeductionsTab /></Tabs.Panel>}
+        {tabAccess.report && <Tabs.Panel value="report" pt="md"><ReportTab /></Tabs.Panel>}
+        {tabAccess.requests && <Tabs.Panel value="requests" pt="md"><RequestsTab /></Tabs.Panel>}
+        {tabAccess.import && <Tabs.Panel value="import" pt="md"><ImportTab /></Tabs.Panel>}
+        {tabAccess.device && <Tabs.Panel value="device" pt="md"><DeviceTab /></Tabs.Panel>}
+        {tabAccess.settings && <Tabs.Panel value="settings" pt="md"><SettingsTab /></Tabs.Panel>}
       </Tabs>
     </Stack>
   );

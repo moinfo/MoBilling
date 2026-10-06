@@ -71,7 +71,7 @@ class DeviceAttendanceController extends Controller
     /** Get (or create) this tenant's device + webhook URL. */
     public function config()
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.device');
         $device = AttendanceDevice::first() ?? AttendanceDevice::create([
             'name' => 'HIKVISION device', 'token' => Str::random(40), 'is_active' => true,
         ]);
@@ -87,7 +87,7 @@ class DeviceAttendanceController extends Controller
     /** Recent captured raw events (to inspect the device's format). */
     public function events()
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.device');
         $events = AttendanceDeviceEvent::orderByDesc('created_at')->limit(30)->get()
             ->map(fn ($e) => [
                 'id'           => $e->id,
@@ -104,7 +104,7 @@ class DeviceAttendanceController extends Controller
 
     public function regenerate()
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.device');
         $device = AttendanceDevice::first() ?? AttendanceDevice::create(['name' => 'HIKVISION device', 'token' => Str::random(40)]);
         $device->update(['token' => Str::random(40)]);
         return response()->json(['data' => ['webhook_url' => url('/api/attendance/device/' . $device->token)]]);
@@ -116,7 +116,7 @@ class DeviceAttendanceController extends Controller
      */
     public function mappings()
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.device');
         $tenantId = auth()->user()->tenant_id;
 
         $staff = User::where('tenant_id', $tenantId)->where('is_active', true)
@@ -139,7 +139,7 @@ class DeviceAttendanceController extends Controller
     /** Link (or clear) a staff member's device employee number, then import their pending events. */
     public function saveMapping(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.device');
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
@@ -169,7 +169,7 @@ class DeviceAttendanceController extends Controller
     /** Manually drain captured events into attendance for this tenant. */
     public function importNow()
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.device');
         $res = app(AttendanceDeviceImporter::class)->drainTenant(auth()->user()->tenant_id);
         return response()->json(['data' => $res]);
     }

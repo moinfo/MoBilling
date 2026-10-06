@@ -12,7 +12,7 @@ class StaffSupervisorController extends Controller
 
     public function index()
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.review', 'staff_reports.settings');
 
         $tenantId = auth()->user()->tenant_id;
 
@@ -33,7 +33,7 @@ class StaffSupervisorController extends Controller
 
     public function update(Request $request, string $userId)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.settings');
 
         $tenantId = auth()->user()->tenant_id;
 

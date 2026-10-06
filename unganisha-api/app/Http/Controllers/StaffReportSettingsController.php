@@ -15,13 +15,13 @@ class StaffReportSettingsController extends Controller
     /** Holidays (office-closed days) — staff can view, reviewers manage. */
     public function holidays()
     {
-        $this->authorizePermission('staff_reports.submit');
+        $this->authorizePermission('staff_reports.submit', 'staff_reports.settings');
         return response()->json(['data' => StaffReportHoliday::orderBy('date')->get()]);
     }
 
     public function storeHoliday(Request $request)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.settings');
         $data = $request->validate([
             'date' => 'required|date',
             'name' => 'nullable|string|max:255',
@@ -43,20 +43,20 @@ class StaffReportSettingsController extends Controller
 
     public function destroyHoliday(StaffReportHoliday $holiday)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.settings');
         $holiday->delete();
         return response()->json(null, 204);
     }
 
     public function show()
     {
-        $this->authorizePermission('staff_reports.submit');
+        $this->authorizePermission('staff_reports.submit', 'staff_reports.settings');
         return response()->json(['data' => $this->settings()]);
     }
 
     public function update(Request $request)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.settings');
 
         $data = $request->validate([
             'daily_target'          => 'required|integer|min:1|max:200',

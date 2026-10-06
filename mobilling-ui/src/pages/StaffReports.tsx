@@ -73,73 +73,63 @@ export default function StaffReports() {
 
   // can see team reports if they can review (assigned subordinates) or view_all (everyone)
   const canSeeTeam = can('staff_reports.review') || can('staff_reports.view_all');
-  // settings only for those who can manage reviews
-  const canManage  = can('staff_reports.review');
+  // Each tab needs its own permission; the page opens on the first tab the user can see.
+  const tabAccess = {
+    dashboard: can('staff_reports.dashboard'),
+    mine: can('staff_reports.submit'),
+    team: canSeeTeam,
+    report: can('staff_reports.report'),
+    deductions: can('staff_reports.deductions'),
+    settings: can('staff_reports.settings'),
+  };
+  const firstTab = (Object.keys(tabAccess) as (keyof typeof tabAccess)[]).find((k) => tabAccess[k]) ?? null;
+  const [tab, setTab] = useState<string | null>(null);
+  const activeTab = tab && tabAccess[tab as keyof typeof tabAccess] ? tab : firstTab;
 
   return (
     <Stack>
       <Title order={2}>Staff Reports</Title>
-      <Tabs defaultValue="dashboard" keepMounted={false}>
+      <Tabs value={activeTab} onChange={setTab} keepMounted={false}>
         <Tabs.List>
-          <Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>
+          {tabAccess.dashboard && (<Tabs.Tab value="dashboard" leftSection={<IconChartBar size={15} />}>
             Dashboard
-          </Tabs.Tab>
-          {can('staff_reports.submit') && (
-            <Tabs.Tab value="mine" leftSection={<IconClipboardList size={15} />}>
+          </Tabs.Tab>)}
+          {tabAccess.mine && (<Tabs.Tab value="mine" leftSection={<IconClipboardList size={15} />}>
               My Reports
-            </Tabs.Tab>
-          )}
-          {canSeeTeam && (
-            <Tabs.Tab value="team" leftSection={<IconUsers size={15} />}>
+            </Tabs.Tab>)}
+          {tabAccess.team && (<Tabs.Tab value="team" leftSection={<IconUsers size={15} />}>
               Team Reports
-            </Tabs.Tab>
-          )}
-          {canManage && (
-            <Tabs.Tab value="report" leftSection={<IconChartBar size={15} />}>
+            </Tabs.Tab>)}
+          {tabAccess.report && (<Tabs.Tab value="report" leftSection={<IconChartBar size={15} />}>
               Report
-            </Tabs.Tab>
-          )}
-          {canManage && (
-            <Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>
+            </Tabs.Tab>)}
+          {tabAccess.deductions && (<Tabs.Tab value="deductions" leftSection={<IconReceiptOff size={15} />}>
               Deductions
-            </Tabs.Tab>
-          )}
-          {canManage && (
-            <Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>
+            </Tabs.Tab>)}
+          {tabAccess.settings && (<Tabs.Tab value="settings" leftSection={<IconSettings size={15} />}>
               Settings
-            </Tabs.Tab>
-          )}
+            </Tabs.Tab>)}
         </Tabs.List>
 
-        <Tabs.Panel value="dashboard" pt="md">
+        {tabAccess.dashboard && (<Tabs.Panel value="dashboard" pt="md">
           <DashboardTab can={can} canSeeTeam={canSeeTeam} />
-        </Tabs.Panel>
+        </Tabs.Panel>)}
 
-        {can('staff_reports.submit') && (
-          <Tabs.Panel value="mine" pt="md">
+        {tabAccess.mine && (<Tabs.Panel value="mine" pt="md">
             <MyReportsTab can={can} />
-          </Tabs.Panel>
-        )}
-        {canSeeTeam && (
-          <Tabs.Panel value="team" pt="md">
+          </Tabs.Panel>)}
+        {tabAccess.team && (<Tabs.Panel value="team" pt="md">
             <TeamReportsTab can={can} />
-          </Tabs.Panel>
-        )}
-        {canManage && (
-          <Tabs.Panel value="report" pt="md">
+          </Tabs.Panel>)}
+        {tabAccess.report && (<Tabs.Panel value="report" pt="md">
             <MatrixReportTab />
-          </Tabs.Panel>
-        )}
-        {canManage && (
-          <Tabs.Panel value="deductions" pt="md">
+          </Tabs.Panel>)}
+        {tabAccess.deductions && (<Tabs.Panel value="deductions" pt="md">
             <DeductionsTab />
-          </Tabs.Panel>
-        )}
-        {canManage && (
-          <Tabs.Panel value="settings" pt="md">
+          </Tabs.Panel>)}
+        {tabAccess.settings && (<Tabs.Panel value="settings" pt="md">
             <SettingsTab />
-          </Tabs.Panel>
-        )}
+          </Tabs.Panel>)}
       </Tabs>
     </Stack>
   );

@@ -66,6 +66,7 @@ class EmailSettingsController extends Controller
 
     public function test(Request $request)
     {
+        $this->authorizePermission('settings.email');
         $tenant = $request->user()->tenant;
 
         if (!$tenant->smtp_host || !$tenant->smtp_port) {

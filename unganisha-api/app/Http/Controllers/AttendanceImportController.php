@@ -17,7 +17,7 @@ class AttendanceImportController extends Controller
 
     public function preview(Request $request, AttendanceSheetImporter $importer)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.import');
         $this->validateSheet($request);
 
         $parsed = $importer->parse($request->file('file')->getRealPath());
@@ -34,7 +34,7 @@ class AttendanceImportController extends Controller
 
     public function commit(Request $request, AttendanceSheetImporter $importer)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.import');
         $this->validateSheet($request);
         $data = $request->validate([
             'match_by'     => 'required|in:name,employee_no',

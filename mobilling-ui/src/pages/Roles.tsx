@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Title, Group, Button, Table, Badge, ActionIcon, Modal, TextInput,
   Stack, Text, Alert, Paper, SimpleGrid, Checkbox, Switch, Divider,
@@ -9,7 +9,8 @@ import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconPlus, IconEdit, IconTrash, IconInfoCircle, IconArrowLeft,
-  IconShieldLock, IconMenu2, IconDatabase, IconSettings, IconChartBar,
+  IconShieldLock, IconMenu2, IconSettings, IconChartBar, IconLayoutDashboard,
+  IconSearch, IconX,
 } from '@tabler/icons-react';
 import {
   getRoles, createRole, updateRole, deleteRole, getAvailablePermissions,
@@ -17,56 +18,18 @@ import {
 } from '../api/roles';
 import { usePermissions } from '../hooks/usePermissions';
 import { IconLock } from '@tabler/icons-react';
+import {
+  buildPermissionTree, filterPermissionTree, modulePermissions, PermModule, PermSection,
+} from './roles/permissionTree';
+
+const SECTION_META: Record<PermSection['kind'], { icon: typeof IconMenu2; color: string }> = {
+  menu: { icon: IconMenu2, color: 'blue' },
+  dashboard: { icon: IconLayoutDashboard, color: 'indigo' },
+  reports: { icon: IconChartBar, color: 'violet' },
+  settings: { icon: IconSettings, color: 'orange' },
+};
 
 type View = { mode: 'list' } | { mode: 'create' } | { mode: 'edit'; role: Role };
-
-const categoryMeta: Record<string, { label: string; icon: typeof IconMenu2; color: string }> = {
-  menu: { label: 'Menu Access', icon: IconMenu2, color: 'blue' },
-  crud: { label: 'Data Operations', icon: IconDatabase, color: 'teal' },
-  settings: { label: 'Settings', icon: IconSettings, color: 'orange' },
-  reports: { label: 'Reports', icon: IconChartBar, color: 'violet' },
-};
-
-// Order categories to match logical priority
-const categoryOrder = ['menu', 'crud', 'settings', 'reports'];
-
-// Order groups within the "menu" category to match sidebar top-to-bottom
-const menuGroupOrder = ['Navigation', 'Billing', 'Hosting', 'Domains', 'Support', 'WhatsApp', 'Field Marketing', 'Statutory', 'Expenses', 'Other'];
-
-// Order individual permissions within each menu group to match sidebar item order
-const menuPermOrder: Record<string, string[]> = {
-  Navigation: [
-    'menu.dashboard', 'menu.collection', 'menu.followups',
-    'menu.satisfaction_calls', 'menu.whatsapp', 'menu.field_marketing',
-    'menu.social_media', 'menu.served_customers',
-    'menu.staff_reports', 'menu.staff_targets',
-  ],
-  Billing: ['menu.clients', 'menu.products', 'menu.quotations', 'menu.proformas', 'menu.invoices', 'menu.payments_in', 'menu.client_subscriptions', 'menu.next_bills'],
-  Statutory: ['menu.statutories', 'menu.statutory_bills', 'menu.bill_categories', 'menu.payments_out'],
-  Expenses: ['menu.expense_categories', 'menu.expenses'],
-  Other: ['menu.reports', 'menu.sms', 'menu.broadcast', 'menu.subscription', 'menu.automation', 'menu.users', 'menu.roles', 'menu.settings'],
-};
-
-/** Sort entries by a predefined order array, unknown items go last */
-function sortByOrder<T>(entries: [string, T][], order: string[]): [string, T][] {
-  return [...entries].sort((a, b) => {
-    const ai = order.indexOf(a[0]);
-    const bi = order.indexOf(b[0]);
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-  });
-}
-
-/** Sort permissions within a menu group by sidebar order */
-function sortPerms(perms: Permission[], groupName: string, category: string): Permission[] {
-  if (category !== 'menu') return perms;
-  const order = menuPermOrder[groupName];
-  if (!order) return perms;
-  return [...perms].sort((a, b) => {
-    const ai = order.indexOf(a.name);
-    const bi = order.indexOf(b.name);
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-  });
-}
 
 export default function Roles() {
   const queryClient = useQueryClient();
@@ -244,6 +207,66 @@ export default function Roles() {
   );
 }
 
+/** One sub menu: its sidebar switch, then its tabs, then its actions. */
+function PermissionModule({
+  mod,
+  selected,
+  onToggle,
+}: {
+  mod: PermModule;
+  selected: string[];
+  onToggle: (ids: string[], on: boolean) => void;
+}) {
+  const ids = modulePermissions(mod).map((p) => p.id);
+  const allSelected = ids.length > 0 && ids.every((id) => selected.includes(id));
+  const someSelected = ids.some((id) => selected.includes(id));
+
+  const list = (perms: Permission[]) => perms.map((perm) => (
+    <Checkbox
+      key={perm.id}
+      label={perm.label}
+      size="sm"
+      checked={selected.includes(perm.id)}
+      onChange={(e) => onToggle([perm.id], e.currentTarget.checked)}
+    />
+  ));
+
+  return (
+    <Box>
+      <Checkbox
+        label={<Text fw={600} size="sm">{mod.label}</Text>}
+        checked={allSelected}
+        indeterminate={someSelected && !allSelected}
+        onChange={() => onToggle(ids, !allSelected)}
+        mb="xs"
+      />
+      <Divider mb="xs" />
+      <Stack gap={6} ml="lg">
+        {mod.menu && (
+          <Checkbox
+            label="Show in sidebar menu"
+            size="sm"
+            checked={selected.includes(mod.menu.id)}
+            onChange={(e) => onToggle([mod.menu!.id], e.currentTarget.checked)}
+          />
+        )}
+        {mod.tabs.length > 0 && (
+          <>
+            <Text size="xs" c="dimmed" fw={600} tt="uppercase" mt={4}>Tabs</Text>
+            {list(mod.tabs)}
+          </>
+        )}
+        {mod.actions.length > 0 && (
+          <>
+            <Text size="xs" c="dimmed" fw={600} tt="uppercase" mt={4}>Actions</Text>
+            {list(mod.actions)}
+          </>
+        )}
+      </Stack>
+    </Box>
+  );
+}
+
 // ─── Full-page Role Form ───
 
 function RoleFormPage({
@@ -257,6 +280,10 @@ function RoleFormPage({
 }) {
   const queryClient = useQueryClient();
   const isDark = useComputedColorScheme('light') === 'dark';
+  const [search, setSearch] = useState('');
+  const tree = useMemo(() => buildPermissionTree(groupedPermissions), [groupedPermissions]);
+  const visibleTree = useMemo(() => filterPermissionTree(tree, search), [tree, search]);
+  const visibleCount = visibleTree.reduce((n, s) => n + s.modules.reduce((m, mod) => m + modulePermissions(mod).length, 0), 0);
 
   const form = useForm<RoleFormData>({
     initialValues: {
@@ -312,26 +339,12 @@ function RoleFormPage({
     else createMutation.mutate(values);
   };
 
-  const getGroupPermIds = (perms: Permission[]): string[] => perms.map((p) => p.id);
-
-  const toggleGroup = (perms: Permission[]) => {
-    const ids = getGroupPermIds(perms);
-    const allSelected = ids.every((id) => form.values.permissions.includes(id));
-    if (allSelected) {
-      form.setFieldValue('permissions', form.values.permissions.filter((id) => !ids.includes(id)));
-    } else {
-      form.setFieldValue('permissions', Array.from(new Set([...form.values.permissions, ...ids])));
-    }
-  };
-
-  const toggleCategory = (groups: Record<string, Permission[]>) => {
-    const allIds = Object.values(groups).flat().map((p) => p.id);
-    const allSelected = allIds.every((id) => form.values.permissions.includes(id));
-    if (allSelected) {
-      form.setFieldValue('permissions', form.values.permissions.filter((id) => !allIds.includes(id)));
-    } else {
-      form.setFieldValue('permissions', Array.from(new Set([...form.values.permissions, ...allIds])));
-    }
+  /** Turns a set of permission ids on or off, keeping everything else as it is. */
+  const setPermIds = (ids: string[], on: boolean) => {
+    const current = form.values.permissions;
+    form.setFieldValue('permissions', on
+      ? Array.from(new Set([...current, ...ids]))
+      : current.filter((id) => !ids.includes(id)));
   };
 
   const totalPerms = Object.values(groupedPermissions).flatMap((g) => Object.values(g).flat()).length;
@@ -373,19 +386,39 @@ function RoleFormPage({
         )}
       </Group>
 
-      {/* Permission category cards */}
-      <Stack gap="lg" mb="xl">
-        {sortByOrder(Object.entries(groupedPermissions), categoryOrder).map(([category, groups]) => {
-          const meta = categoryMeta[category] || { label: category, icon: IconShieldLock, color: 'gray' };
-          const Icon = meta.icon;
-          const allCategoryIds = Object.values(groups).flat().map((p: Permission) => p.id);
-          const selectedInCategory = allCategoryIds.filter((id) => form.values.permissions.includes(id)).length;
-          const allCategorySelected = selectedInCategory === allCategoryIds.length;
+      {/* Search across menus, tabs and actions */}
+      <TextInput
+        placeholder="Search menus, tabs and actions"
+        leftSection={<IconSearch size={16} />}
+        rightSection={search ? (
+          <ActionIcon variant="subtle" color="gray" onClick={() => setSearch('')} aria-label="Clear search">
+            <IconX size={14} />
+          </ActionIcon>
+        ) : null}
+        value={search}
+        onChange={(e) => setSearch(e.currentTarget.value)}
+        mb={search.trim() ? 'xs' : 'md'}
+      />
+      {search.trim() && (
+        <Text size="sm" c="dimmed" mb="md">
+          {visibleCount} match{visibleCount === 1 ? '' : 'es'} for “{search.trim()}”
+        </Text>
+      )}
 
+      {/* Menu → sub menu → tabs → actions */}
+      <Stack gap="lg" mb="xl">
+        {visibleTree.length === 0 && (
+          <Text c="dimmed" ta="center" py="xl">No permissions match “{search.trim()}”.</Text>
+        )}
+        {visibleTree.map((section) => {
+          const meta = SECTION_META[section.kind];
+          const Icon = meta.icon;
+          const sectionIds = section.modules.flatMap(modulePermissions).map((p) => p.id);
+          const selectedInSection = sectionIds.filter((id) => form.values.permissions.includes(id)).length;
+          const allSectionSelected = sectionIds.length > 0 && selectedInSection === sectionIds.length;
 
           return (
-            <Card key={category} withBorder radius="md" padding={0}>
-              {/* Category header */}
+            <Card key={section.key} withBorder radius="md" padding={0}>
               <Group
                 justify="space-between"
                 p="md"
@@ -398,59 +431,30 @@ function RoleFormPage({
                   <ThemeIcon variant="light" color={meta.color} size="md" radius="md">
                     <Icon size={16} />
                   </ThemeIcon>
-                  <Text fw={600}>{meta.label}</Text>
+                  <Text fw={600}>{section.label}</Text>
                   <Badge variant="light" color={meta.color} size="sm">
-                    {selectedInCategory}/{allCategoryIds.length}
+                    {selectedInSection}/{sectionIds.length}
                   </Badge>
                 </Group>
                 <Switch
                   label="All"
                   size="xs"
-                  checked={allCategorySelected}
-                  onChange={() => toggleCategory(groups)}
+                  checked={allSectionSelected}
+                  onChange={() => setPermIds(sectionIds, !allSectionSelected)}
                   styles={{ label: { cursor: 'pointer' } }}
                 />
               </Group>
 
-              {/* Permission groups */}
               <Box p="md">
-                <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="lg">
-                  {sortByOrder(Object.entries(groups), category === 'menu' ? menuGroupOrder : []).map(([groupName, perms]: [string, Permission[]]) => {
-                    const sortedPerms = sortPerms(perms, groupName, category);
-                    const groupIds = getGroupPermIds(sortedPerms);
-                    const allSelected = groupIds.every((id) => form.values.permissions.includes(id));
-                    const someSelected = groupIds.some((id) => form.values.permissions.includes(id));
-
-                    return (
-                      <Box key={groupName}>
-                        <Checkbox
-                          label={<Text fw={600} size="sm">{groupName}</Text>}
-                          checked={allSelected}
-                          indeterminate={someSelected && !allSelected}
-                          onChange={() => toggleGroup(sortedPerms)}
-                          mb="xs"
-                        />
-                        <Divider mb="xs" />
-                        <Stack gap={6} ml="lg">
-                          {sortedPerms.map((perm) => (
-                            <Checkbox
-                              key={perm.id}
-                              label={perm.label}
-                              size="sm"
-                              checked={form.values.permissions.includes(perm.id)}
-                              onChange={(e) => {
-                                if (e.currentTarget.checked) {
-                                  form.setFieldValue('permissions', [...form.values.permissions, perm.id]);
-                                } else {
-                                  form.setFieldValue('permissions', form.values.permissions.filter((id) => id !== perm.id));
-                                }
-                              }}
-                            />
-                          ))}
-                        </Stack>
-                      </Box>
-                    );
-                  })}
+                <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
+                  {section.modules.map((mod) => (
+                    <PermissionModule
+                      key={mod.key}
+                      mod={mod}
+                      selected={form.values.permissions}
+                      onToggle={setPermIds}
+                    />
+                  ))}
                 </SimpleGrid>
               </Box>
             </Card>

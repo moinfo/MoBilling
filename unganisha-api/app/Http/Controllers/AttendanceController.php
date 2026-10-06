@@ -66,7 +66,7 @@ class AttendanceController extends Controller
     /** Attendance-clerk view: all active staff + their marks for a date. */
     public function day(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.dashboard', 'attendance.record');
         $date = $request->query('date', now()->toDateString());
         $s = $this->attendanceService->settings();
 
@@ -94,7 +94,7 @@ class AttendanceController extends Controller
     /** Clerk records/updates one staff member's check-in/out for a date. */
     public function record(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.record');
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
@@ -150,7 +150,7 @@ class AttendanceController extends Controller
     /** Attendance overview: today's snapshot + this month's per-staff summary. */
     public function dashboard(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.dashboard');
         $tenantId = auth()->user()->tenant_id;
         $s = $this->attendanceService->settings();
 
@@ -211,7 +211,7 @@ class AttendanceController extends Controller
     /** Monthly check-in/out report for one staff member (attendance clerk). */
     public function report(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.report');
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
@@ -228,7 +228,7 @@ class AttendanceController extends Controller
     /** Export the monthly report as PDF or CSV (Excel-friendly). */
     public function exportReport(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.report');
         $tenantId = auth()->user()->tenant_id;
 
         $data = $request->validate([
@@ -360,7 +360,7 @@ class AttendanceController extends Controller
     /** Deductions overview: every staff member's attendance penalties for a month. */
     public function penalties(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.deductions');
 
         $month = (int) $request->query('month', now()->month);
         $year  = (int) $request->query('year', now()->year);
@@ -395,7 +395,7 @@ class AttendanceController extends Controller
 
     public function waivePenalty(Request $request, AttendancePenalty $attendancePenalty)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.deductions');
         $data = $request->validate(['reason' => 'nullable|string|max:255']);
         $attendancePenalty->update([
             'waived' => true, 'waived_by' => auth()->id(), 'waived_at' => now(), 'waive_reason' => $data['reason'] ?? null,
@@ -405,7 +405,7 @@ class AttendanceController extends Controller
 
     public function unwaivePenalty(AttendancePenalty $attendancePenalty)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.deductions');
         $attendancePenalty->update(['waived' => false, 'waived_by' => null, 'waived_at' => null, 'waive_reason' => null]);
         return response()->json(['message' => 'Deduction reinstated.']);
     }
@@ -413,7 +413,7 @@ class AttendanceController extends Controller
     /** Waive several attendance penalties at once — e.g. every "absent" line for a staff member's month. Already-waived or out-of-tenant ids are skipped, not errored. */
     public function bulkWaivePenalty(Request $request)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.deductions');
 
         $data = $request->validate([
             'ids' => 'required|array|min:1',
@@ -445,13 +445,14 @@ class AttendanceController extends Controller
 
     public function showSettings()
     {
+        $this->authorizePermission('attendance.settings');
         $s = $this->attendanceService->settings();
         return response()->json(['data' => $s]);
     }
 
     public function updateSettings(Request $request)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('attendance.settings');
         $data = $request->validate([
             'check_in_time'       => 'required|date_format:H:i',
             'check_out_time'      => 'required|date_format:H:i',
@@ -487,6 +488,7 @@ class AttendanceController extends Controller
      */
     public function checkIn(Request $request)
     {
+        $this->authorizePermission('attendance.checkin');
         $data = $request->validate([
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
@@ -523,6 +525,7 @@ class AttendanceController extends Controller
     /** The other half of checkIn() — same device/location checks. */
     public function checkOut(Request $request)
     {
+        $this->authorizePermission('attendance.checkin');
         $data = $request->validate([
             'latitude' => 'required|numeric|between:-90,90',
             'longitude' => 'required|numeric|between:-180,180',
@@ -564,7 +567,7 @@ class AttendanceController extends Controller
      */
     public function resetDevice(User $user)
     {
-        $this->authorizePermission('attendance.manage');
+        $this->authorizePermission('attendance.device');
 
         $user->attendance_device_id = null;
         $user->attendance_device_model = null;

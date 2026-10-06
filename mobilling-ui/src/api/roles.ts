@@ -4,7 +4,7 @@ export interface Permission {
   id: string;
   name: string;
   label: string;
-  category: 'menu' | 'crud' | 'settings' | 'reports';
+  category: 'menu' | 'crud' | 'settings' | 'reports' | 'dashboard';
   group_name: string;
 }
 

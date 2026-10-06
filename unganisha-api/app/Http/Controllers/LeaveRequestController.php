@@ -56,6 +56,7 @@ class LeaveRequestController extends Controller
     /** Self-service: request own leave. Any authenticated user may call this. */
     public function store(Request $request)
     {
+        $this->authorizePermission('leave.request');
         $user = auth()->user();
         $tenantId = $user->tenant_id;
 
@@ -91,6 +92,8 @@ class LeaveRequestController extends Controller
     /** Requester can cancel their own still-pending request. */
     public function cancel(LeaveRequest $leaveRequest)
     {
+        $this->authorizePermission('leave.request');
+
         if ($leaveRequest->user_id !== auth()->id()) {
             abort(403);
         }

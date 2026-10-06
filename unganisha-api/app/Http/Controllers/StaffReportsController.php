@@ -16,7 +16,7 @@ class StaffReportsController extends Controller
 
     public function index(Request $request)
     {
-        $this->authorizePermission('staff_reports.submit');
+        $this->authorizePermission('staff_reports.submit', 'staff_reports.review', 'staff_reports.view_all');
 
         $user  = auth()->user();
         $query = StaffReport::with(['user', 'reviewer', 'replies'])
@@ -206,7 +206,7 @@ class StaffReportsController extends Controller
     /** Supervisor/admin view of everyone's deductions for a month. */
     public function penalties(Request $request)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.deductions');
         $user = auth()->user();
 
         $month = (int) $request->query('month', now()->month);
@@ -305,7 +305,7 @@ class StaffReportsController extends Controller
 
     public function waivePenalty(Request $request, \App\Models\StaffReportPenalty $staffReportPenalty)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.deductions');
         $this->assertPenaltyInScope($staffReportPenalty);
 
         $data = $request->validate(['reason' => 'nullable|string|max:255']);
@@ -321,7 +321,7 @@ class StaffReportsController extends Controller
 
     public function unwaivePenalty(\App\Models\StaffReportPenalty $staffReportPenalty)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.deductions');
         $this->assertPenaltyInScope($staffReportPenalty);
 
         $staffReportPenalty->update([
@@ -334,7 +334,7 @@ class StaffReportsController extends Controller
     /** Waive several penalties at once — e.g. every "missing report" line for a staff member's month. Out-of-scope or already-waived ids are skipped, not errored. */
     public function bulkWaivePenalty(Request $request)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.deductions');
 
         $data = $request->validate([
             'ids' => 'required|array|min:1',
@@ -421,7 +421,7 @@ class StaffReportsController extends Controller
     /** Per-staff monthly report matrix: every working day + weekly + monthly status. */
     public function report(Request $request)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.report');
         $data = $this->validateReportParams($request);
         $user = \App\Models\User::where('tenant_id', auth()->user()->tenant_id)->findOrFail($data['user_id']);
 
@@ -431,7 +431,7 @@ class StaffReportsController extends Controller
     /** Export the matrix as PDF or CSV (Excel-friendly). */
     public function exportReport(Request $request)
     {
-        $this->authorizePermission('staff_reports.review');
+        $this->authorizePermission('staff_reports.report');
         $data = $this->validateReportParams($request, withFormat: true);
         $user = \App\Models\User::where('tenant_id', auth()->user()->tenant_id)->findOrFail($data['user_id']);
         $matrix = $this->buildReportMatrix($user, $data);
@@ -570,7 +570,7 @@ class StaffReportsController extends Controller
 
     public function dashboard()
     {
-        $this->authorizePermission('staff_reports.submit');
+        $this->authorizePermission('staff_reports.dashboard');
 
         $user     = auth()->user();
         $settings = $this->getSettings();

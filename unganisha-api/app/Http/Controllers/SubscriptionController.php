@@ -13,6 +13,8 @@ use Illuminate\Support\Facades\Log;
 
 class SubscriptionController extends Controller
 {
+    use \App\Traits\AuthorizesPermissions;
+
     public function plans(): JsonResponse
     {
         return response()->json([
@@ -43,6 +45,8 @@ class SubscriptionController extends Controller
 
     public function checkout(Request $request): JsonResponse
     {
+        $this->authorizePermission('menu.subscription');
+
         $request->validate([
             'plan_id' => 'required|uuid|exists:subscription_plans,id',
             'payment_method' => 'sometimes|in:pesapal,bank_transfer',
@@ -150,6 +154,8 @@ class SubscriptionController extends Controller
 
     public function uploadProof(Request $request, TenantSubscription $tenantSubscription): JsonResponse
     {
+        $this->authorizePermission('menu.subscription');
+
         $request->validate([
             'proof' => 'required|file|mimes:pdf,jpg,jpeg,png|max:5120',
         ]);
