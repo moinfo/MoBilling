@@ -20,6 +20,10 @@ export interface SystemVerification {
   client?: { id: string; name: string; email: string | null };
   login_username: string | null;
   login_password: string | null;
+  // This system's OWN daily check-in window — each assigned person (and
+  // each system) can have a different one, not one rule for the tenant.
+  window_from: string | null;
+  window_to: string | null;
   is_active: boolean;
   assigned_user_id: string | null;
   assigned_user?: { id: string; name: string };
@@ -33,6 +37,8 @@ export interface SystemVerificationPayload {
   client_id?: string | null;
   login_username?: string | null;
   login_password?: string | null;
+  window_from?: string | null;
+  window_to?: string | null;
   assigned_user_id?: string | null;
   is_active?: boolean;
 }
@@ -63,11 +69,6 @@ export interface SubmitReportPayload {
   gain_loss: number;
 }
 
-export interface VerificationWindow {
-  window_from: string | null;
-  window_to: string | null;
-}
-
 // Admin endpoints
 export const getSystemVerifications = (params?: { search?: string; page?: number; per_page?: number }) =>
   api.get('/system-verifications', { params });
@@ -83,13 +84,6 @@ export const deleteSystemVerification = (id: string) =>
 
 export const getSystemVerificationReports = (id: string, params?: { date_from?: string; date_to?: string; page?: number; per_page?: number }) =>
   api.get(`/system-verifications/${id}/reports`, { params });
-
-// The daily check-in window — read by everyone (staff need to know it too), written by admin only.
-export const getVerificationWindow = () =>
-  api.get<{ data: VerificationWindow }>('/system-verifications/window');
-
-export const updateVerificationWindow = (data: VerificationWindow) =>
-  api.put<{ data: VerificationWindow }>('/system-verifications/window', data);
 
 // Staff endpoints
 export const getMyVerifications = () =>

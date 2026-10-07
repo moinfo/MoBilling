@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconCheck, IconAlertTriangle, IconClock, IconShield, IconClipboardCheck, IconWorld, IconCopy, IconEye, IconEyeOff, IconLock, IconUser,
 } from '@tabler/icons-react';
-import { getMyVerifications, getVerificationWindow, submitVerificationReport, SystemVerification } from '../api/systemVerifications';
+import { getMyVerifications, submitVerificationReport, SystemVerification } from '../api/systemVerifications';
 import dayjs from 'dayjs';
 
 export default function MyVerifications() {
@@ -19,12 +19,11 @@ export default function MyVerifications() {
     queryKey: ['my-verifications'],
     queryFn: getMyVerifications,
   });
-  const { data: windowData } = useQuery({ queryKey: ['verification-window'], queryFn: getVerificationWindow });
-  const vWindow = windowData?.data?.data;
   const nowStr = dayjs().format('HH:mm:ss');
-  const withinWindow = vWindow?.window_from && vWindow?.window_to
-    ? nowStr >= vWindow.window_from && nowStr <= vWindow.window_to
-    : null;
+  // Each system can have its own window — not one rule for everyone.
+  const withinWindow = (s: SystemVerification) => (s.window_from && s.window_to
+    ? nowStr >= s.window_from && nowStr <= s.window_to
+    : null);
   const [showPw, setShowPw] = useState<Record<string, boolean>>({});
   const systems: SystemVerification[] = data?.data?.data || [];
   const today = dayjs().format('dddd, DD MMM YYYY');
@@ -107,12 +106,7 @@ export default function MyVerifications() {
         </Alert>
       )}
 
-      {vWindow?.window_from && vWindow?.window_to && (
-        <Alert color={withinWindow ? 'blue' : 'gray'} icon={<IconClock size={16} />} variant="light">
-          Muda wa kufanya ukaguzi: <b>{vWindow.window_from.slice(0, 5)} – {vWindow.window_to.slice(0, 5)}</b>
-          {withinWindow === false && ' — nje ya muda uliopangwa kwa sasa'}
-        </Alert>
-      )}
+
 
       {systems.length === 0 ? (
         <Card withBorder padding="xl">
@@ -145,6 +139,12 @@ export default function MyVerifications() {
                         <IconWorld size={12} color="var(--mantine-color-gray-6)" />
                         <Text size="xs" c="dimmed" ff="monospace">{s.domain_name}</Text>
                       </Group>
+                    )}
+                    {s.window_from && s.window_to && !done && (
+                      <Text size="xs" c={withinWindow(s) === false ? 'orange' : 'dimmed'} mb={2}>
+                        Muda wa ukaguzi: {s.window_from.slice(0, 5)} – {s.window_to.slice(0, 5)}
+                        {withinWindow(s) === false && ' (nje ya muda sasa)'}
+                      </Text>
                     )}
                     {s.client_id && (
                       <Text size="xs" c="dimmed">Client ID: <Text span ff="monospace">{s.client_id}</Text></Text>
@@ -191,6 +191,9 @@ export default function MyVerifications() {
                           <Text size="xs" c="dimmed">
                             Reported at {dayjs(s.todays_report!.submitted_at).format('HH:mm')}
                           </Text>
+                          {s.todays_report!.submitted_on_time === false && (
+                            <Badge color="orange" variant="light" size="xs">Late</Badge>
+                          )}
                         </Group>
                         <SimpleGrid cols={4} spacing="xs" mt={6}>
                           <Box><Text size="xs" c="dimmed">Cash</Text><Text size="sm" fw={600}>{s.todays_report!.cash ?? '—'}</Text></Box>

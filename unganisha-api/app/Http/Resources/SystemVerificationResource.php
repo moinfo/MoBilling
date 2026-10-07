@@ -24,6 +24,9 @@ class SystemVerificationResource extends JsonResource
             // the admin list/detail and the assigned staff's own "mine" list.
             'login_username' => $this->login_username,
             'login_password' => $this->login_password,
+            // This system's own check-in window — not the tenant's.
+            'window_from' => $this->window_from,
+            'window_to' => $this->window_to,
             'is_active' => (bool) $this->is_active,
             'assigned_user_id' => $this->assigned_user_id,
             'assigned_user' => $this->when($this->relationLoaded('assignedUser') && $this->assignedUser, fn () => [

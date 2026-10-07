@@ -50,8 +50,6 @@ class Tenant extends Model
         'late_fee_enabled', 'late_fee_percent', 'late_fee_days',
         // White-label reseller wallet gate
         'is_wallet_gated', 'wallet_balance',
-        // Daily window staff are expected to submit system verification check-ins in
-        'system_verification_window_from', 'system_verification_window_to',
     ];
 
     protected $hidden = [

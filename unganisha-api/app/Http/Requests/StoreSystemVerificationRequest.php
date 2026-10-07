@@ -34,6 +34,11 @@ class StoreSystemVerificationRequest extends FormRequest
             // system. Both optional — not every system needs a stored login.
             'login_username' => 'nullable|string|max:255',
             'login_password' => 'nullable|string|max:255',
+            // This system's own daily check-in window — each assigned person
+            // (and each system) can have a different one. Both nullable
+            // together — either set a real window, or leave it unenforced.
+            'window_from' => 'nullable|date_format:H:i',
+            'window_to' => 'nullable|date_format:H:i|required_with:window_from|after:window_from',
         ];
     }
 }

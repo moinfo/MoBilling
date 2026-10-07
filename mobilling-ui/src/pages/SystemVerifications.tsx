@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, PasswordInput, Stack, Select, Switch, Drawer, Box, ThemeIcon, Paper, SimpleGrid,
+  Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, PasswordInput, Stack, Select, Switch, Drawer, Box, ThemeIcon, SimpleGrid,
 } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -11,7 +11,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { IconPlus, IconEdit, IconTrash, IconSearch, IconCheck, IconAlertTriangle, IconHistory, IconClock, IconHourglass } from '@tabler/icons-react';
 import {
   getSystemVerifications, createSystemVerification, updateSystemVerification, deleteSystemVerification,
-  getSystemVerificationReports, getVerificationWindow, updateVerificationWindow,
+  getSystemVerificationReports,
   SystemVerification, SystemVerificationReport,
 } from '../api/systemVerifications';
 import { getAssignableUsers } from '../api/users';
@@ -36,7 +36,6 @@ export default function SystemVerifications() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<SystemVerification | null>(null);
   const [historyFor, setHistoryFor] = useState<SystemVerification | null>(null);
-  const canUpdateWindow = canUpdate; // window is admin-config, same ceiling as editing systems
 
   const { data } = useQuery({
     queryKey: ['system-verifications', page, debouncedSearch],
@@ -66,14 +65,19 @@ export default function SystemVerifications() {
     client_id: string;
     login_username: string;
     login_password: string;
+    window_from: string;
+    window_to: string;
     assigned_user_id: string;
     is_active: boolean;
   }>({
     initialValues: {
       name: '', domain_name: '', client_id: '', login_username: '', login_password: '',
-      assigned_user_id: '', is_active: true,
+      window_from: '', window_to: '', assigned_user_id: '', is_active: true,
     },
-    validate: { name: (v) => (v.trim() ? null : 'Required') },
+    validate: {
+      name: (v) => (v.trim() ? null : 'Required'),
+      window_to: (v, all) => (all.window_from && !v ? 'Required when "From" is set' : null),
+    },
   });
 
   const closeForm = () => { setFormOpen(false); setEditing(null); form.reset(); };
@@ -81,7 +85,7 @@ export default function SystemVerifications() {
     setEditing(null);
     form.setValues({
       name: '', domain_name: '', client_id: '', login_username: '', login_password: '',
-      assigned_user_id: '', is_active: true,
+      window_from: '', window_to: '', assigned_user_id: '', is_active: true,
     });
     setFormOpen(true);
   };
@@ -93,6 +97,8 @@ export default function SystemVerifications() {
       client_id: s.client_id || '',
       login_username: s.login_username || '',
       login_password: s.login_password || '',
+      window_from: s.window_from ? s.window_from.slice(0, 5) : '',
+      window_to: s.window_to ? s.window_to.slice(0, 5) : '',
       assigned_user_id: s.assigned_user_id || '',
       is_active: s.is_active,
     });
@@ -106,6 +112,8 @@ export default function SystemVerifications() {
     client_id: v.client_id || null,
     login_username: v.login_username || null,
     login_password: v.login_password || null,
+    window_from: v.window_from || null,
+    window_to: v.window_to || null,
     assigned_user_id: v.assigned_user_id || null,
     is_active: v.is_active,
   });
@@ -165,8 +173,6 @@ export default function SystemVerifications() {
           )}
         </Group>
       </Group>
-
-      <VerificationWindowPanel canEdit={canUpdateWindow} />
 
       {items.length === 0 ? (
         <Text c="dimmed" ta="center" py="xl">No systems registered for verification yet.</Text>
@@ -256,6 +262,11 @@ export default function SystemVerifications() {
               <PasswordInput label="Login Password" placeholder="Password to check this system"
                 {...form.getInputProps('login_password')} />
             </Group>
+            <Group grow align="flex-start">
+              <TimeInput label="Check-in window — from" description="Leave both blank for no fixed window"
+                {...form.getInputProps('window_from')} />
+              <TimeInput label="Check-in window — to" {...form.getInputProps('window_to')} />
+            </Group>
             <Switch label="Active (staff must report daily)" {...form.getInputProps('is_active', { type: 'checkbox' })} />
             <Group justify="flex-end">
               <Button variant="default" onClick={closeForm}>Cancel</Button>
@@ -327,49 +338,3 @@ function ReportsHistory({ verification }: { verification: SystemVerification }) 
   );
 }
 
-/** Admin-set daily window staff are expected to check in within. */
-function VerificationWindowPanel({ canEdit }: { canEdit: boolean }) {
-  const queryClient = useQueryClient();
-  const { data } = useQuery({ queryKey: ['verification-window'], queryFn: getVerificationWindow });
-  const window_ = data?.data?.data;
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [dirty, setDirty] = useState(false);
-
-  if (window_ && !dirty && (from !== (window_.window_from ?? '') || to !== (window_.window_to ?? ''))) {
-    setFrom(window_.window_from ?? '');
-    setTo(window_.window_to ?? '');
-  }
-
-  const saveMutation = useMutation({
-    mutationFn: () => updateVerificationWindow({ window_from: from || null, window_to: to || null }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['verification-window'] });
-      setDirty(false);
-      notifications.show({ title: 'Saved', message: 'Verification window updated', color: 'green' });
-    },
-    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to save', color: 'red' }),
-  });
-
-  return (
-    <Paper withBorder p="sm" mb="md">
-      <Group justify="space-between" wrap="wrap">
-        <Box>
-          <Text size="sm" fw={600}>Daily check-in window</Text>
-          <Text size="xs" c="dimmed">The hours staff are expected to submit their verification each day. Leave blank for no fixed window.</Text>
-        </Box>
-        <Group gap="xs">
-          <TimeInput label="From" value={from} disabled={!canEdit}
-            onChange={(e) => { setFrom(e.currentTarget.value); setDirty(true); }} w={110} />
-          <TimeInput label="To" value={to} disabled={!canEdit}
-            onChange={(e) => { setTo(e.currentTarget.value); setDirty(true); }} w={110} />
-          {canEdit && (
-            <Button size="xs" mt={22} loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
-              Save
-            </Button>
-          )}
-        </Group>
-      </Group>
-    </Paper>
-  );
-}

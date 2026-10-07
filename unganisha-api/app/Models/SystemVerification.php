@@ -15,6 +15,9 @@ class SystemVerification extends Model
     protected $fillable = [
         'tenant_id', 'name', 'domain_name', 'client_id',
         'login_username', 'login_password',
+        // Each assigned person (and each system) can have their own daily
+        // check-in window — this is not one rule for the whole tenant.
+        'window_from', 'window_to',
         'assigned_user_id', 'is_active',
     ];
 

@@ -30,13 +30,16 @@ try {
 
     $ctl = app(SystemVerificationController::class);
 
-    // 1. Login credentials round-trip through encryption correctly.
+    // 1. Login credentials round-trip through encryption correctly. Window is
+    // set per-system here too — each assigned person can have their own.
     $sv = SystemVerification::create([
         'tenant_id' => $tenant->id,
         'name' => 'Test POS — figures script',
         'domain_name' => 'test-pos.example.com',
         'login_username' => 'cashier1',
         'login_password' => 'S3cret!42',
+        'window_from' => '08:00',
+        'window_to' => '09:00',
         'assigned_user_id' => $staff->id,
         'is_active' => true,
     ]);
@@ -45,26 +48,30 @@ try {
     ok($fresh->login_password === 'S3cret!42', 'login_password decrypts back to the original value');
     $rawRow = DB::table('system_verifications')->where('id', $sv->id)->value('login_password');
     ok($rawRow !== 'S3cret!42', 'login_password is NOT stored in plaintext in the database');
+    ok($fresh->window_from === '08:00:00', 'this system\'s own window_from saved');
 
-    // 2. Verification window: set it, then submit inside and outside it.
-    req(Request::create('/x', 'PUT', ['window_from' => '08:00', 'window_to' => '09:00']), $owner);
-    $ctl->updateWindow(app('request'));
-    $tenant->refresh();
-    ok($tenant->system_verification_window_from === '08:00:00', 'window_from saved');
-    ok($tenant->system_verification_window_to === '09:00:00', 'window_to saved');
+    // 2. A second system, assigned to the same staff, with a DIFFERENT window —
+    // proving the window really is per-system/per-person, not tenant-wide.
+    $sv2 = SystemVerification::create([
+        'tenant_id' => $tenant->id,
+        'name' => 'Test POS 2 — figures script',
+        'assigned_user_id' => $staff->id,
+        'window_from' => '14:00',
+        'window_to' => '15:00',
+        'is_active' => true,
+    ]);
 
     $withinWindow = (new ReflectionMethod($ctl, 'isWithinVerificationWindow'));
     $withinWindow->setAccessible(true);
 
     \Illuminate\Support\Facades\Date::setTestNow('2026-01-01 08:30:00');
-    ok($withinWindow->invoke($ctl, $tenant) === true, 'a submission at 08:30 is within an 08:00-09:00 window');
-    \Illuminate\Support\Facades\Date::setTestNow('2026-01-01 10:00:00');
-    ok($withinWindow->invoke($ctl, $tenant) === false, 'a submission at 10:00 is flagged late against the same window');
-
-    // No window set: nothing to judge against.
-    $tenant->update(['system_verification_window_from' => null, 'system_verification_window_to' => null]);
-    ok($withinWindow->invoke($ctl, $tenant->fresh()) === null, 'with no window configured, on-time is null (not tracked), not false');
+    ok($withinWindow->invoke($ctl, $sv->fresh()) === true, 'at 08:30, system 1 (08:00-09:00) is within its own window');
+    ok($withinWindow->invoke($ctl, $sv2->fresh()) === false, 'at the SAME moment, system 2 (14:00-15:00) is late against ITS OWN, different window');
     \Illuminate\Support\Facades\Date::setTestNow();
+
+    // No window set on a system: nothing to judge against.
+    $sv3 = SystemVerification::create(['tenant_id' => $tenant->id, 'name' => 'Test POS 3 — no window', 'is_active' => true]);
+    ok($withinWindow->invoke($ctl, $sv3->fresh()) === null, 'a system with no window configured is null (not tracked), not false');
 
     // 3. Submitting today's report requires the four figures and records them.
     req(Request::create('/x', 'POST', [
