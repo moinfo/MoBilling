@@ -15,10 +15,16 @@ class SystemVerificationReport extends Model
     protected $fillable = [
         'tenant_id', 'system_verification_id', 'user_id',
         'report_date', 'status', 'notes',
+        'cash', 'sales', 'credit', 'gain_loss', 'submitted_on_time',
     ];
 
     protected $casts = [
         'report_date' => 'date',
+        'cash' => 'decimal:2',
+        'sales' => 'decimal:2',
+        'credit' => 'decimal:2',
+        'gain_loss' => 'decimal:2',
+        'submitted_on_time' => 'boolean',
     ];
 
     public function systemVerification()

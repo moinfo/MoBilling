@@ -25,6 +25,11 @@ class SystemVerificationReportResource extends JsonResource
             'report_date' => $this->report_date?->format('Y-m-d'),
             'status' => $this->status,
             'notes' => $this->notes,
+            'cash' => $this->cash,
+            'sales' => $this->sales,
+            'credit' => $this->credit,
+            'gain_loss' => $this->gain_loss,
+            'submitted_on_time' => $this->submitted_on_time,
             'created_at' => $this->created_at,
         ];
     }

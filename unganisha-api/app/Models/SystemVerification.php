@@ -14,11 +14,16 @@ class SystemVerification extends Model
 
     protected $fillable = [
         'tenant_id', 'name', 'domain_name', 'client_id',
+        'login_username', 'login_password',
         'assigned_user_id', 'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        // Decryptable, not hashed — the assigned staff and admin need to read
+        // this back to actually log in to the client's system. Not $hidden,
+        // unlike tenants.smtp_password — this one is meant to be shown.
+        'login_password' => 'encrypted',
     ];
 
     public function assignedUser()

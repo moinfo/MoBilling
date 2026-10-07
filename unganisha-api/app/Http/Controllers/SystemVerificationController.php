@@ -8,13 +8,68 @@ use App\Http\Resources\SystemVerificationResource;
 use App\Http\Resources\SystemVerificationReportResource;
 use App\Models\SystemVerification;
 use App\Models\SystemVerificationReport;
+use App\Models\Tenant;
 use App\Models\User;
 use App\Notifications\SystemVerificationIssueNotification;
+use App\Traits\AuthorizesPermissions;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class SystemVerificationController extends Controller
 {
+    use AuthorizesPermissions;
+
+    // ── Admin: the daily window staff are expected to check in within ──────
+
+    public function showWindow(Request $request)
+    {
+        $tenant = $request->user()->tenant;
+
+        return response()->json(['data' => [
+            'window_from' => $tenant->system_verification_window_from,
+            'window_to' => $tenant->system_verification_window_to,
+        ]]);
+    }
+
+    public function updateWindow(Request $request)
+    {
+        $this->authorizePermission('system_verifications.update');
+
+        $data = $request->validate([
+            // Both nullable together — either set a real window, or clear it
+            // (no window enforced, today's behavior).
+            'window_from' => 'nullable|date_format:H:i',
+            'window_to' => 'nullable|date_format:H:i|required_with:window_from|after:window_from',
+        ]);
+
+        $tenant = $request->user()->tenant;
+        $tenant->update([
+            'system_verification_window_from' => $data['window_from'] ?? null,
+            'system_verification_window_to' => $data['window_to'] ?? null,
+        ]);
+
+        return response()->json(['data' => [
+            'window_from' => $tenant->fresh()->system_verification_window_from,
+            'window_to' => $tenant->fresh()->system_verification_window_to,
+        ]]);
+    }
+
+    /**
+     * Null when the tenant hasn't set a window (nothing to judge against) —
+     * distinct from false (a window exists and this submission missed it).
+     * Assumes a same-day window (from <= to); an overnight window isn't a
+     * real case here (check-ins follow same-day closing, not a night shift).
+     */
+    private function isWithinVerificationWindow(Tenant $tenant): ?bool
+    {
+        if (!$tenant->system_verification_window_from || !$tenant->system_verification_window_to) {
+            return null;
+        }
+
+        $now = now()->format('H:i:s');
+        return $now >= $tenant->system_verification_window_from && $now <= $tenant->system_verification_window_to;
+    }
+
     // ── Admin: list / register / update / unregister ───────────────────────
 
     public function index(Request $request)
@@ -130,6 +185,11 @@ class SystemVerificationController extends Controller
             'report_date' => $today,
             'status' => $request->validated('status'),
             'notes' => $request->validated('notes'),
+            'cash' => $request->validated('cash'),
+            'sales' => $request->validated('sales'),
+            'credit' => $request->validated('credit'),
+            'gain_loss' => $request->validated('gain_loss'),
+            'submitted_on_time' => $this->isWithinVerificationWindow(auth()->user()->tenant),
         ]);
 
         // If they reported an issue, notify every admin in the tenant.

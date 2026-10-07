@@ -19,6 +19,11 @@ class SystemVerificationResource extends JsonResource
                 'name' => $this->client->name,
                 'email' => $this->client->email,
             ]),
+            // Shown in cleartext on purpose — the assigned staff needs it to
+            // actually log in and check the system. Never exposed outside
+            // the admin list/detail and the assigned staff's own "mine" list.
+            'login_username' => $this->login_username,
+            'login_password' => $this->login_password,
             'is_active' => (bool) $this->is_active,
             'assigned_user_id' => $this->assigned_user_id,
             'assigned_user' => $this->when($this->relationLoaded('assignedUser') && $this->assignedUser, fn () => [
@@ -30,6 +35,11 @@ class SystemVerificationResource extends JsonResource
                 'id' => $this->todaysReport->id,
                 'status' => $this->todaysReport->status,
                 'notes' => $this->todaysReport->notes,
+                'cash' => $this->todaysReport->cash,
+                'sales' => $this->todaysReport->sales,
+                'credit' => $this->todaysReport->credit,
+                'gain_loss' => $this->todaysReport->gain_loss,
+                'submitted_on_time' => $this->todaysReport->submitted_on_time,
                 'submitted_at' => $this->todaysReport->created_at,
             ]),
             'created_at' => $this->created_at,

@@ -4,6 +4,11 @@ export interface SystemVerificationTodayReport {
   id: string;
   status: 'ok' | 'issue';
   notes: string | null;
+  cash: string | null;
+  sales: string | null;
+  credit: string | null;
+  gain_loss: string | null;
+  submitted_on_time: boolean | null;
   submitted_at: string;
 }
 
@@ -13,6 +18,8 @@ export interface SystemVerification {
   domain_name: string | null;
   client_id: string | null;
   client?: { id: string; name: string; email: string | null };
+  login_username: string | null;
+  login_password: string | null;
   is_active: boolean;
   assigned_user_id: string | null;
   assigned_user?: { id: string; name: string };
@@ -24,6 +31,8 @@ export interface SystemVerificationPayload {
   name: string;
   domain_name?: string | null;
   client_id?: string | null;
+  login_username?: string | null;
+  login_password?: string | null;
   assigned_user_id?: string | null;
   is_active?: boolean;
 }
@@ -37,12 +46,26 @@ export interface SystemVerificationReport {
   report_date: string;
   status: 'ok' | 'issue';
   notes: string | null;
+  cash: string | null;
+  sales: string | null;
+  credit: string | null;
+  gain_loss: string | null;
+  submitted_on_time: boolean | null;
   created_at: string;
 }
 
 export interface SubmitReportPayload {
   status: 'ok' | 'issue';
   notes?: string;
+  cash: number;
+  sales: number;
+  credit: number;
+  gain_loss: number;
+}
+
+export interface VerificationWindow {
+  window_from: string | null;
+  window_to: string | null;
 }
 
 // Admin endpoints
@@ -60,6 +83,13 @@ export const deleteSystemVerification = (id: string) =>
 
 export const getSystemVerificationReports = (id: string, params?: { date_from?: string; date_to?: string; page?: number; per_page?: number }) =>
   api.get(`/system-verifications/${id}/reports`, { params });
+
+// The daily check-in window — read by everyone (staff need to know it too), written by admin only.
+export const getVerificationWindow = () =>
+  api.get<{ data: VerificationWindow }>('/system-verifications/window');
+
+export const updateVerificationWindow = (data: VerificationWindow) =>
+  api.put<{ data: VerificationWindow }>('/system-verifications/window', data);
 
 // Staff endpoints
 export const getMyVerifications = () =>

@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import {
-  Title, Card, Text, Group, Stack, Badge, Button, Modal, Textarea, Box, Alert, ThemeIcon, Radio, Divider, Loader, Center,
+  Title, Card, Text, Group, Stack, Badge, Button, Modal, Textarea, NumberInput, Box, Alert, ThemeIcon, Radio, Divider, Loader, Center, CopyButton, ActionIcon, SimpleGrid,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  IconCheck, IconAlertTriangle, IconClock, IconShield, IconClipboardCheck, IconWorld,
+  IconCheck, IconAlertTriangle, IconClock, IconShield, IconClipboardCheck, IconWorld, IconCopy, IconEye, IconEyeOff, IconLock, IconUser,
 } from '@tabler/icons-react';
-import { getMyVerifications, submitVerificationReport, SystemVerification } from '../api/systemVerifications';
+import { getMyVerifications, getVerificationWindow, submitVerificationReport, SystemVerification } from '../api/systemVerifications';
 import dayjs from 'dayjs';
 
 export default function MyVerifications() {
@@ -19,21 +19,42 @@ export default function MyVerifications() {
     queryKey: ['my-verifications'],
     queryFn: getMyVerifications,
   });
+  const { data: windowData } = useQuery({ queryKey: ['verification-window'], queryFn: getVerificationWindow });
+  const vWindow = windowData?.data?.data;
+  const nowStr = dayjs().format('HH:mm:ss');
+  const withinWindow = vWindow?.window_from && vWindow?.window_to
+    ? nowStr >= vWindow.window_from && nowStr <= vWindow.window_to
+    : null;
+  const [showPw, setShowPw] = useState<Record<string, boolean>>({});
   const systems: SystemVerification[] = data?.data?.data || [];
   const today = dayjs().format('dddd, DD MMM YYYY');
   const pendingCount = systems.filter((s) => !s.todays_report).length;
   const issueCount = systems.filter((s) => s.todays_report?.status === 'issue').length;
 
   const form = useForm({
-    initialValues: { status: 'ok' as 'ok' | 'issue', notes: '' },
+    initialValues: {
+      status: 'ok' as 'ok' | 'issue', notes: '',
+      cash: '' as number | '', sales: '' as number | '', credit: '' as number | '', gain_loss: '' as number | '',
+    },
     validate: {
       notes: (v, all) => (all.status === 'issue' && !v.trim() ? 'Eleza changamoto / Please describe the issue' : null),
+      cash: (v) => (v === '' ? 'Required' : null),
+      sales: (v) => (v === '' ? 'Required' : null),
+      credit: (v) => (v === '' ? 'Required' : null),
+      gain_loss: (v) => (v === '' ? 'Required' : null),
     },
   });
 
   const submitMutation = useMutation({
     mutationFn: ({ id, values }: { id: string; values: typeof form.values }) =>
-      submitVerificationReport(id, { status: values.status, notes: values.notes || undefined }),
+      submitVerificationReport(id, {
+        status: values.status,
+        notes: values.notes || undefined,
+        cash: Number(values.cash),
+        sales: Number(values.sales),
+        credit: Number(values.credit),
+        gain_loss: Number(values.gain_loss),
+      }),
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['my-verifications'] });
       const ok = vars.values.status === 'ok';
@@ -54,7 +75,7 @@ export default function MyVerifications() {
 
   const openSubmit = (s: SystemVerification) => {
     setSubmitting(s);
-    form.setValues({ status: 'ok', notes: '' });
+    form.setValues({ status: 'ok', notes: '', cash: '', sales: '', credit: '', gain_loss: '' });
   };
 
   if (isLoading) return <Center py="xl"><Loader /></Center>;
@@ -83,6 +104,13 @@ export default function MyVerifications() {
       {pendingCount > 0 && (
         <Alert color="yellow" icon={<IconClock size={16} />} title="Daily reports pending">
           Tafadhali kagua mifumo yako leo na uweke ripoti kabla ya saa mbili usiku.
+        </Alert>
+      )}
+
+      {vWindow?.window_from && vWindow?.window_to && (
+        <Alert color={withinWindow ? 'blue' : 'gray'} icon={<IconClock size={16} />} variant="light">
+          Muda wa kufanya ukaguzi: <b>{vWindow.window_from.slice(0, 5)} – {vWindow.window_to.slice(0, 5)}</b>
+          {withinWindow === false && ' — nje ya muda uliopangwa kwa sasa'}
         </Alert>
       )}
 
@@ -121,6 +149,39 @@ export default function MyVerifications() {
                     {s.client_id && (
                       <Text size="xs" c="dimmed">Client ID: <Text span ff="monospace">{s.client_id}</Text></Text>
                     )}
+                    {(s.login_username || s.login_password) && (
+                      <Group gap="md" mt={4}>
+                        {s.login_username && (
+                          <Group gap={4}>
+                            <IconUser size={12} color="var(--mantine-color-gray-6)" />
+                            <Text size="xs" ff="monospace">{s.login_username}</Text>
+                            <CopyButton value={s.login_username}>
+                              {({ copied, copy }) => (
+                                <ActionIcon size="xs" variant="subtle" onClick={copy} title="Copy username">
+                                  {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                                </ActionIcon>
+                              )}
+                            </CopyButton>
+                          </Group>
+                        )}
+                        {s.login_password && (
+                          <Group gap={4}>
+                            <IconLock size={12} color="var(--mantine-color-gray-6)" />
+                            <Text size="xs" ff="monospace">{showPw[s.id] ? s.login_password : '••••••••'}</Text>
+                            <ActionIcon size="xs" variant="subtle" onClick={() => setShowPw((p) => ({ ...p, [s.id]: !p[s.id] }))} title="Show/hide password">
+                              {showPw[s.id] ? <IconEyeOff size={12} /> : <IconEye size={12} />}
+                            </ActionIcon>
+                            <CopyButton value={s.login_password}>
+                              {({ copied, copy }) => (
+                                <ActionIcon size="xs" variant="subtle" onClick={copy} title="Copy password">
+                                  {copied ? <IconCheck size={12} /> : <IconCopy size={12} />}
+                                </ActionIcon>
+                              )}
+                            </CopyButton>
+                          </Group>
+                        )}
+                      </Group>
+                    )}
                     {done && (
                       <Box mt="xs" p="xs" style={{ background: 'var(--mantine-color-gray-0)', borderRadius: 4 }}>
                         <Group gap="xs" mb={4}>
@@ -131,8 +192,18 @@ export default function MyVerifications() {
                             Reported at {dayjs(s.todays_report!.submitted_at).format('HH:mm')}
                           </Text>
                         </Group>
+                        <SimpleGrid cols={4} spacing="xs" mt={6}>
+                          <Box><Text size="xs" c="dimmed">Cash</Text><Text size="sm" fw={600}>{s.todays_report!.cash ?? '—'}</Text></Box>
+                          <Box><Text size="xs" c="dimmed">Sales</Text><Text size="sm" fw={600}>{s.todays_report!.sales ?? '—'}</Text></Box>
+                          <Box><Text size="xs" c="dimmed">Credit</Text><Text size="sm" fw={600}>{s.todays_report!.credit ?? '—'}</Text></Box>
+                          <Box><Text size="xs" c="dimmed">Gain/Loss</Text>
+                            <Text size="sm" fw={600} c={s.todays_report!.gain_loss && Number(s.todays_report!.gain_loss) < 0 ? 'red' : undefined}>
+                              {s.todays_report!.gain_loss ?? '—'}
+                            </Text>
+                          </Box>
+                        </SimpleGrid>
                         {s.todays_report!.notes && (
-                          <Text size="sm" c={isIssue ? 'red.7' : undefined}>{s.todays_report!.notes}</Text>
+                          <Text size="sm" mt={4} c={isIssue ? 'red.7' : undefined}>{s.todays_report!.notes}</Text>
                         )}
                       </Box>
                     )}
@@ -161,6 +232,21 @@ export default function MyVerifications() {
         title={`Daily Verification — ${submitting?.name || ''}`} size="md">
         <form onSubmit={form.onSubmit((v) => { if (submitting) submitMutation.mutate({ id: submitting.id, values: v }); })}>
           <Stack>
+            <Text size="sm" c="dimmed">
+              Weka takwimu za kufungwa kwa mfumo leo (baada ya kukagua).
+            </Text>
+            <SimpleGrid cols={2} spacing="sm">
+              <NumberInput label="Cash" placeholder="0" required min={0} decimalScale={2}
+                {...form.getInputProps('cash')} />
+              <NumberInput label="Sales" placeholder="0" required min={0} decimalScale={2}
+                {...form.getInputProps('sales')} />
+              <NumberInput label="Credit" placeholder="0" required min={0} decimalScale={2}
+                {...form.getInputProps('credit')} />
+              <NumberInput label="Gain / Loss" placeholder="0" required decimalScale={2}
+                description="Negative kama hasara"
+                {...form.getInputProps('gain_loss')} />
+            </SimpleGrid>
+            <Divider />
             <Text size="sm" c="dimmed">
               Umekagua mfumo huu leo. Je, kila kitu kiko sawa?
             </Text>

@@ -30,6 +30,10 @@ class StoreSystemVerificationRequest extends FormRequest
                 Rule::exists('users', 'id')->where('tenant_id', $tenantId),
             ],
             'is_active' => 'sometimes|boolean',
+            // The login the assigned staff uses to actually check the client's
+            // system. Both optional — not every system needs a stored login.
+            'login_username' => 'nullable|string|max:255',
+            'login_password' => 'nullable|string|max:255',
         ];
     }
 }
