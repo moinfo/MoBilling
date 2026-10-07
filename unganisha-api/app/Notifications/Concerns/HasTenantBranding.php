@@ -16,6 +16,9 @@ trait HasTenantBranding
             'name' => $tenant->name,
             'logo_url' => $tenant->logo_url,
             'footer_text' => $tenant->email_footer_text,
+            // The header's "home" link — the tenant's own custom domain when
+            // set, never mobilling.co.tz (see tenantPortalUrl() below).
+            'url' => $this->tenantPortalUrl($tenant),
         ];
 
         // Use tenant's own SMTP if configured, otherwise use platform default

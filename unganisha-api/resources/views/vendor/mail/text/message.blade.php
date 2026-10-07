@@ -1,7 +1,7 @@
-<x-mail::layout>
+<x-mail::layout :tenantBranding="$tenantBranding ?? null">
     {{-- Header --}}
     <x-slot:header>
-        <x-mail::header :url="config('app.url')">
+        <x-mail::header :url="$tenantBranding['url'] ?? config('app.url')">
             {{ $tenantBranding['name'] ?? config('app.name') }}
         </x-mail::header>
     </x-slot:header>

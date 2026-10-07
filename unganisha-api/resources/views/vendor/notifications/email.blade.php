@@ -1,4 +1,4 @@
-<x-mail::message>
+<x-mail::message :tenantBranding="$tenantBranding ?? null">
 {{-- Greeting --}}
 @if (! empty($greeting))
 # {{ $greeting }}
@@ -40,7 +40,7 @@
 {{ $salutation }}
 @else
 @lang('Regards,')<br>
-{{ config('app.name') }}
+{{ $tenantBranding['name'] ?? config('app.name') }}
 @endif
 
 {{-- Subcopy --}}

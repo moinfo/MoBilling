@@ -1,7 +1,7 @@
-<x-mail::layout>
+<x-mail::layout :tenantBranding="$tenantBranding ?? null">
 {{-- Header --}}
 <x-slot:header>
-<x-mail::header :url="config('app.url')">
+<x-mail::header :url="$tenantBranding['url'] ?? config('app.url')">
 @if(!empty($tenantBranding['logo_url']))
 <img src="{{ $tenantBranding['logo_url'] }}" class="logo" alt="{{ $tenantBranding['name'] ?? config('app.name') }}" style="max-height: 48px; max-width: 200px;">
 @endif
