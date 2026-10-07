@@ -6,12 +6,9 @@ use App\Jobs\Wifi\ProvisionWifiVoucherJob;
 use App\Models\Document;
 use App\Models\PaymentIn;
 use App\Models\PesapalInvoicePayment;
-use App\Models\Tenant;
-use App\Models\TenantWalletTopup;
 use App\Models\WifiVoucherPurchase;
 use App\Services\SubscriptionActivationService;
 use App\Services\TenantPesapalService;
-use App\Services\TenantWalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -47,11 +44,9 @@ class TenantPesapalWebhookController extends Controller
                 return $this->handleWifiVoucherIpn($voucherPurchase);
             }
 
-            // ...or a reseller tenant's own wallet top-up.
-            $walletTopup = TenantWalletTopup::withoutGlobalScopes()->where('order_tracking_id', $orderTrackingId)->first();
-            if ($walletTopup) {
-                return $this->handleWalletTopupIpn($walletTopup);
-            }
+            // A reseller tenant's own wallet top-up now pays MoBilling's own
+            // Pesapal account instead (see PesapalWebhookController) — it is
+            // never submitted through this tenant-scoped endpoint any more.
 
             Log::warning('Tenant Pesapal IPN: payment not found', compact('orderTrackingId', 'orderMerchantReference'));
             return response()->json(['status' => 'error', 'message' => 'Payment not found'], 404);
@@ -303,76 +298,4 @@ class TenantPesapalWebhookController extends Controller
         ]);
     }
 
-    /**
-     * IPN handling for a reseller tenant's own wallet top-up — same
-     * verify-then-complete shape as the invoice-payment path above, but
-     * completion credits TenantWalletService instead of booking a PaymentIn.
-     */
-    private function handleWalletTopupIpn(TenantWalletTopup $topup)
-    {
-        if ($topup->status !== 'pending') {
-            return response()->json(['status' => 'ok']);
-        }
-
-        $tenant = Tenant::withoutGlobalScopes()->find($topup->tenant_id);
-        if (!$tenant || !$tenant->pesapal_consumer_key) {
-            Log::error('Tenant Pesapal IPN: tenant credentials missing for wallet top-up', ['topup_id' => $topup->id]);
-            return response()->json(['status' => 'error'], 500);
-        }
-
-        try {
-            $pesapal = new TenantPesapalService($tenant);
-            $status = $pesapal->getTransactionStatus($topup->order_tracking_id);
-        } catch (\Throwable $e) {
-            Log::error('Tenant Pesapal IPN: wallet top-up status check failed', [
-                'topup_id' => $topup->id,
-                'error'    => $e->getMessage(),
-            ]);
-            return response()->json(['status' => 'error'], 500);
-        }
-
-        $statusCode = $status['status_code'] ?? null;
-        $description = $status['payment_status_description'] ?? null;
-
-        $topup->update([
-            'payment_status_description' => $description,
-            'payment_method_used'        => $status['payment_method'] ?? null,
-            'confirmation_code'          => $status['confirmation_code'] ?? null,
-            'gateway_response'           => $status,
-        ]);
-
-        if ($statusCode == 1 && strtolower($description ?? '') === 'completed') {
-            $this->processWalletTopupCompleted($topup, $tenant);
-        } elseif (in_array($statusCode, [2, 3])) {
-            $topup->update(['status' => 'failed']);
-        }
-
-        return response()->json(['status' => 'ok']);
-    }
-
-    private function processWalletTopupCompleted(TenantWalletTopup $topup, Tenant $tenant): void
-    {
-        // Atomic claim — a duplicate/parallel IPN delivery must never credit twice.
-        $claimed = TenantWalletTopup::withoutGlobalScopes()->where('id', $topup->id)
-            ->where('status', '!=', 'completed')->update(['status' => 'completed', 'completed_at' => now()]);
-        if (!$claimed) {
-            return;
-        }
-
-        app(TenantWalletService::class)->topUp(
-            $tenant,
-            (float) $topup->amount,
-            $topup->confirmation_code ?? $topup->order_tracking_id,
-            "Pesapal top-up ({$topup->payment_method_used})",
-            $topup->requested_by,
-            TenantWalletTopup::class,
-            $topup->id,
-        );
-
-        Log::info('Tenant Pesapal: wallet top-up completed', [
-            'topup_id'  => $topup->id,
-            'tenant_id' => $tenant->id,
-            'amount'    => $topup->amount,
-        ]);
-    }
 }

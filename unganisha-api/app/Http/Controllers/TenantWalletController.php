@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\TenantWalletTopup;
 use App\Models\TenantWalletTransaction;
-use App\Services\TenantPesapalService;
+use App\Services\PesapalService;
 use App\Services\TenantWalletService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -32,12 +32,19 @@ class TenantWalletController extends Controller
         return response()->json(['data' => [
             'balance'            => (float) $tenant->wallet_balance,
             'is_wallet_gated'    => (bool) $tenant->is_wallet_gated,
-            'pesapal_configured' => (bool) ($tenant->pesapal_enabled && $tenant->pesapal_consumer_key && $tenant->pesapal_consumer_secret),
+            // Wallet top-up pays MoBilling itself, via the PLATFORM's own Pesapal
+            // account (config/pesapal.php) — never the tenant's own (that one is
+            // for the tenant's OWN clients paying the tenant, a different thing).
+            'pesapal_configured' => (bool) (config('pesapal.consumer_key') && config('pesapal.consumer_secret')),
             'ledger'             => $ledger,
         ]]);
     }
 
-    /** Self-service top-up via the tenant's OWN Pesapal account — never Moinfotech's. */
+    /**
+     * Self-service top-up via MoBilling's OWN Pesapal account — this pays US,
+     * so it must never go through the tenant's own merchant account (that one
+     * collects payments from the tenant's OWN clients, a different payee).
+     */
     public function topupPesapal(Request $request)
     {
         $user = $request->user();
@@ -46,8 +53,8 @@ class TenantWalletController extends Controller
         if (!$tenant->is_wallet_gated) {
             return response()->json(['message' => 'This tenant does not use the reseller wallet.'], 422);
         }
-        if (!($tenant->pesapal_enabled && $tenant->pesapal_consumer_key && $tenant->pesapal_consumer_secret)) {
-            return response()->json(['message' => 'Online top-up is not available — your own Pesapal account is not configured yet. Please contact support to top up.'], 422);
+        if (!(config('pesapal.consumer_key') && config('pesapal.consumer_secret'))) {
+            return response()->json(['message' => 'Online top-up is not available right now. Please contact support to top up.'], 422);
         }
 
         $data = $request->validate(['amount' => 'required|numeric|min:1000']);
@@ -61,7 +68,7 @@ class TenantWalletController extends Controller
         ]);
 
         try {
-            $pesapal = new TenantPesapalService($tenant);
+            $pesapal = new PesapalService();
             $result = $pesapal->submitOrder(
                 $merchantRef,
                 (float) $data['amount'],
@@ -98,7 +105,7 @@ class TenantWalletController extends Controller
 
         if ($topup->status === 'pending' && $topup->order_tracking_id) {
             try {
-                $pesapal = new TenantPesapalService($request->user()->tenant);
+                $pesapal = new PesapalService();
                 $status = $pesapal->getTransactionStatus($topup->order_tracking_id);
                 $topup->update([
                     'payment_status_description' => $status['payment_status_description'] ?? null,

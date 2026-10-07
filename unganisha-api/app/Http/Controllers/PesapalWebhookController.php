@@ -9,10 +9,12 @@ use App\Models\PlatformSetting;
 use App\Models\SmsPurchase;
 use App\Models\Tenant;
 use App\Models\TenantSubscription;
+use App\Models\TenantWalletTopup;
 use App\Models\WifiVoucherPurchase;
 use App\Services\PesapalService;
 use App\Services\ResellerService;
 use App\Services\SubscriptionService;
+use App\Services\TenantWalletService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -63,7 +65,16 @@ class PesapalWebhookController extends Controller
                 ->where('order_tracking_id', $orderTrackingId)->first();
         }
 
+        // A reseller tenant topping up ITS OWN wallet with MoBilling — pays
+        // through this platform account, never the tenant's own (that one is
+        // for the tenant's clients paying the tenant, a different payee).
+        $walletTopup = null;
         if (!$purchase && !$subscription && !$licensePurchase && !$wifiPurchase) {
+            $walletTopup = TenantWalletTopup::withoutGlobalScopes()
+                ->where('order_tracking_id', $orderTrackingId)->first();
+        }
+
+        if (!$purchase && !$subscription && !$licensePurchase && !$wifiPurchase && !$walletTopup) {
             Log::warning('Pesapal IPN: no matching record', ['order_tracking_id' => $orderTrackingId]);
             return response()->json([
                 'orderNotificationType' => $orderNotificationType,
@@ -146,6 +157,24 @@ class PesapalWebhookController extends Controller
             } elseif (in_array($statusCode, [0, 2, 3])) {
                 $wifiPurchase->update(['status' => 'failed']);
             }
+        } elseif ($walletTopup) {
+            $walletTopup->update([
+                'payment_status_description' => $description,
+                'confirmation_code' => $status['confirmation_code'] ?? null,
+                'payment_method_used' => $status['payment_method'] ?? null,
+                'gateway_response' => $status,
+            ]);
+
+            Log::info('Pesapal IPN: reseller wallet top-up status', [
+                'topup_id' => $walletTopup->id,
+                'status_code' => $statusCode,
+            ]);
+
+            if ($statusCode === 1 && $description === 'Completed') {
+                $this->processWalletTopupCompleted($walletTopup);
+            } elseif (in_array($statusCode, [0, 2, 3])) {
+                $walletTopup->update(['status' => 'failed']);
+            }
         } else {
             $subscription->update([
                 'payment_status_description' => $description,
@@ -209,6 +238,14 @@ class PesapalWebhookController extends Controller
                     if ($record) {
                         $type = 'license_purchase';
                         $status = $record->status;
+                    } else {
+                        $record = TenantWalletTopup::withoutGlobalScopes()
+                            ->where('order_tracking_id', $orderTrackingId)->first();
+
+                        if ($record) {
+                            $type = 'wallet_topup';
+                            $status = $record->status;
+                        }
                     }
                 }
             }
@@ -390,4 +427,41 @@ class PesapalWebhookController extends Controller
             'net'         => $net,
         ]);
     }
+    /**
+     * A reseller tenant's own wallet top-up — pays MoBilling's platform
+     * Pesapal account, so completion credits TenantWalletService directly
+     * instead of booking a PaymentIn against any document.
+     */
+    private function processWalletTopupCompleted(TenantWalletTopup $topup): void
+    {
+        // Atomic claim — a duplicate/parallel IPN delivery must never credit twice.
+        $claimed = TenantWalletTopup::withoutGlobalScopes()->where('id', $topup->id)
+            ->where('status', '!=', 'completed')->update(['status' => 'completed', 'completed_at' => now()]);
+        if (!$claimed) {
+            return;
+        }
+
+        $tenant = Tenant::withoutGlobalScopes()->find($topup->tenant_id);
+        if (!$tenant) {
+            Log::error('Pesapal IPN: wallet top-up tenant missing', ['topup_id' => $topup->id]);
+            return;
+        }
+
+        app(TenantWalletService::class)->topUp(
+            $tenant,
+            (float) $topup->amount,
+            $topup->confirmation_code ?? $topup->order_tracking_id,
+            "Pesapal top-up ({$topup->payment_method_used})",
+            $topup->requested_by,
+            TenantWalletTopup::class,
+            $topup->id,
+        );
+
+        Log::info('Pesapal IPN: reseller wallet top-up completed', [
+            'topup_id' => $topup->id,
+            'tenant_id' => $tenant->id,
+            'amount' => $topup->amount,
+        ]);
+    }
+
 }
