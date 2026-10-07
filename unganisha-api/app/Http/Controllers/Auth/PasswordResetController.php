@@ -144,9 +144,15 @@ class PasswordResetController extends Controller
         // explicitly picked WhatsApp instead.
         $emailSent = false;
         if ($email && $channel !== 'whatsapp') {
-            Notification::route('mail', $email)
-                ->notify(new PortalOtpNotification($otp, 'MoBilling'));
-            $emailSent = true;
+            // Same reasoning as the registration OTP: a tenant's broken SMTP
+            // must not block a client from resetting their own password.
+            try {
+                Notification::route('mail', $email)
+                    ->notify(new PortalOtpNotification($otp, $tenant?->name ?? 'MoBilling', $tenant));
+                $emailSent = true;
+            } catch (\Throwable $e) {
+                report($e);
+            }
         }
 
         // Send OTP via SMS if phone available and tenant has SMS enabled —

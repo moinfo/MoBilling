@@ -88,8 +88,14 @@ class PortalAuthController extends Controller
         // Send OTP via email
         $tenant = $client?->tenant ?? \App\Models\Tenant::find($signupTenantId);
         $tenantName = $tenant?->name ?? 'MoBilling';
-        Notification::route('mail', $email)
-            ->notify(new PortalOtpNotification($otp, $tenantName));
+        // A tenant's own SMTP is theirs to get right; a mistake in it (bad
+        // host/port/credentials) must not block the client from registering.
+        try {
+            Notification::route('mail', $email)
+                ->notify(new PortalOtpNotification($otp, $tenantName, $tenant));
+        } catch (\Throwable $e) {
+            report($e);
+        }
 
         // Also send via SMS if phone available and tenant has SMS enabled
         if ($client?->phone && app(SmsService::class)->canSend($tenant)) {

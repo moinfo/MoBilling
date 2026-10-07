@@ -2,6 +2,8 @@
 
 namespace App\Notifications;
 
+use App\Models\Tenant;
+use App\Notifications\Concerns\HasTenantBranding;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
@@ -9,11 +11,12 @@ use Illuminate\Notifications\Notification;
 
 class PortalOtpNotification extends Notification implements ShouldQueue
 {
-    use Queueable;
+    use Queueable, HasTenantBranding;
 
     public function __construct(
         public string $otp,
         public string $tenantName,
+        public ?Tenant $tenant = null,
     ) {}
 
     public function via($notifiable): array
@@ -36,7 +39,7 @@ class PortalOtpNotification extends Notification implements ShouldQueue
 
     public function toMail($notifiable): MailMessage
     {
-        return (new MailMessage)
+        $mail = (new MailMessage)
             ->subject("Your Portal Access Code — {$this->tenantName}")
             ->greeting("Hello,")
             ->line("You requested access to the {$this->tenantName} client portal.")
@@ -45,5 +48,14 @@ class PortalOtpNotification extends Notification implements ShouldQueue
             ->line('This code expires in 10 minutes.')
             ->line('If you did not request this, please ignore this email.')
             ->salutation("Regards, {$this->tenantName}");
+
+        // Without this, every white-label tenant's OTP email went out from the
+        // platform's own mailer/From address — the content said the tenant's
+        // name, but the sender a client actually sees was always MoBilling.
+        if ($this->tenant) {
+            $this->applyBranding($mail, $this->tenant);
+        }
+
+        return $mail;
     }
 }
