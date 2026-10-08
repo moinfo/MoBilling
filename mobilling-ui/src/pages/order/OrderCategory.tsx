@@ -21,6 +21,19 @@ import classes from './Order.module.css';
 
 type DomainMode = 'register' | 'transfer' | 'existing';
 
+/** Display/selection order for a plan's billing-cycle variants. */
+const CYCLE_ORDER: Record<string, number> = { monthly: 0, quarterly: 1, half_yearly: 2, yearly: 3, once: 4 };
+const byCycleOrder = (a: CatalogProduct, b: CatalogProduct) =>
+  (CYCLE_ORDER[a.billing_cycle ?? 'once'] ?? 9) - (CYCLE_ORDER[b.billing_cycle ?? 'once'] ?? 9);
+const CYCLE_NAME: Record<string, string> = {
+  monthly: 'Monthly', quarterly: 'Quarterly', half_yearly: 'Every 6 months', yearly: 'Yearly', once: 'Once',
+};
+/** The yearly row is the "headline" price shown on the plan card and used as
+ * the default when a plan offers more than one billing cycle — falls back to
+ * whichever variant exists first for plans that only have one. */
+const defaultVariant = (variants: CatalogProduct[]) =>
+  variants.find((v) => v.billing_cycle === 'yearly') ?? variants[0];
+
 export default function OrderCategory() {
   const { category: categorySlug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -48,26 +61,42 @@ export default function OrderCategory() {
   });
 
   // The catalog groups by provisioning bucket ("cpanel", "whmcs"), so we ignore
-  // its grouping and match products by name against the storefront map.
+  // its grouping and match products by name against the storefront map. A
+  // plan can have several rows sharing one name — one per billing cycle
+  // (monthly/quarterly/half_yearly/yearly) — kept together as "variants".
   const plansInCategory = useMemo(() => {
     if (!category) return [];
     const all = (catalogRes?.data?.data ?? []).flatMap((g) => g.products);
     return category.plans
-      .map((p) => ({ plan: p, product: all.find((x) => x.name === p.product) }))
-      .filter((row): row is { plan: typeof row.plan; product: CatalogProduct } => !!row.product);
+      .map((p) => ({ plan: p, variants: all.filter((x) => x.name === p.product).sort(byCycleOrder) }))
+      .filter((row): row is { plan: typeof row.plan; variants: CatalogProduct[] } => row.variants.length > 0);
   }, [catalogRes, category]);
 
   // Deep link from moinfo.co.tz: /order/<category>?plan=<slug>. Derived rather
   // than pushed into state, so ?plan= stays the single source of truth — and
-  // "Change plan" just drops the param.
+  // "Change plan" just drops the param. Always lands on the yearly variant;
+  // the cycle switcher below lets the visitor change it once they're here.
   const preselected = useMemo(() => {
     if (!category) return null;
     const wanted = productNameForPlan(category, searchParams.get('plan'));
     if (!wanted) return null;
-    return plansInCategory.find((r) => r.product.name === wanted)?.product ?? null;
+    const row = plansInCategory.find((r) => r.variants[0]?.name === wanted);
+    return row ? defaultVariant(row.variants) : null;
   }, [category, searchParams, plansInCategory]);
 
   const selected = chosen ?? preselected;
+
+  // Every billing-cycle row for whichever plan is currently selected — drives
+  // the cycle switcher. Empty/single-item when that plan only has one cycle.
+  const selectedVariants = useMemo(() => {
+    if (!selected) return [];
+    return plansInCategory.find((r) => r.variants.some((v) => v.id === selected.id))?.variants ?? [];
+  }, [selected, plansInCategory]);
+
+  const switchCycle = (cycle: string) => {
+    const v = selectedVariants.find((x) => x.billing_cycle === cycle);
+    if (v) setChosen(v);
+  };
 
   const clearPlan = () => {
     setChosen(null);
@@ -259,7 +288,9 @@ export default function OrderCategory() {
       {/* ── Step 1: pick a plan ─────────────────────────────────────────── */}
       {!selected && (
         <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
-          {plansInCategory.map(({ plan, product }) => (
+          {plansInCategory.map(({ plan, variants }) => {
+            const product = defaultVariant(variants);
+            return (
             <Paper key={product.id} p="lg" radius="md" className={classes.planCard}>
               <Stack gap="sm" h="100%" justify="space-between">
                 <div>
@@ -290,7 +321,8 @@ export default function OrderCategory() {
                 </Button>
               </Stack>
             </Paper>
-          ))}
+            );
+          })}
         </SimpleGrid>
       )}
 
@@ -307,6 +339,24 @@ export default function OrderCategory() {
               </div>
               <Badge variant="light">Selected</Badge>
             </Group>
+
+            {selectedVariants.length > 1 && (
+              <>
+                <Divider my="md" />
+                <Text size="sm" fw={500} mb="xs">Billing cycle</Text>
+                <Radio.Group value={selected.billing_cycle ?? ''} onChange={switchCycle}>
+                  <Group gap="md">
+                    {selectedVariants.map((v) => (
+                      <Radio
+                        key={v.id}
+                        value={v.billing_cycle ?? ''}
+                        label={`${CYCLE_NAME[v.billing_cycle ?? 'once'] ?? v.billing_cycle} — ${formatTsh(v.price)}${cycleLabel(v.billing_cycle)}`}
+                      />
+                    ))}
+                  </Group>
+                </Radio.Group>
+              </>
+            )}
           </Paper>
 
           {needsDomain && (
