@@ -311,7 +311,8 @@ function OrderModal({ action, prefillName = '', onClose, onDone }: {
   };
 
   const unit = action === 'register' ? checked?.pricing?.register_price : checked?.pricing?.transfer_price;
-  const canSubmit = checked && checked.pricing
+  const transferBlocked = action === 'transfer' && checked?.pricing && checked.pricing.transfer_supported === false;
+  const canSubmit = checked && checked.pricing && !transferBlocked
     && (action === 'register' ? checked.available : authInfo.trim().length > 0);
 
   return (
@@ -330,6 +331,11 @@ function OrderModal({ action, prefillName = '', onClose, onDone }: {
               ? (checked.available ? `${checked.name} is available!` : `${checked.name} is not available.`)
               : (checked.available ? `${checked.name} is not registered — nothing to transfer.` : `${checked.name} can be transferred with its transfer code.`)}
             {checked.pricing === null && <Text size="xs" mt={4}>This extension is not available — please contact us.</Text>}
+            {transferBlocked && (
+              <Text size="xs" mt={4}>
+                Transfers for this extension aren't self-service yet — please contact our team and we'll handle it for you.
+              </Text>
+            )}
           </Alert>
         )}
 
@@ -342,7 +348,7 @@ function OrderModal({ action, prefillName = '', onClose, onDone }: {
           )}
         </Group>
 
-        {checked?.pricing && unit !== undefined && (
+        {checked?.pricing && unit !== undefined && !transferBlocked && (
           <Paper withBorder p="sm">
             <Group justify="space-between">
               <Text size="sm">{years} year(s) × {fmt(unit)}</Text>

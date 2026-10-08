@@ -66,11 +66,12 @@ class PublicDomainController extends Controller
             'offered'   => true,
             'available' => (bool) $result['available'],
             'pricing'   => [
-                'tld'            => $pricing->tld,
-                'register_price' => (float) $pricing->register_price,
-                'transfer_price' => $pricing->registrar === 'namecom' ? 0.0 : (float) $pricing->transfer_price,
-                'years_min'      => $pricing->years_min,
-                'years_max'      => $pricing->years_max,
+                'tld'                => $pricing->tld,
+                'register_price'     => (float) $pricing->register_price,
+                'transfer_price'     => (float) $pricing->transfer_price,
+                'transfer_supported' => $pricing->registrar !== 'namecom',
+                'years_min'          => $pricing->years_min,
+                'years_max'          => $pricing->years_max,
             ],
         ]);
     }
@@ -89,11 +90,12 @@ class PublicDomainController extends Controller
         }
 
         $tlds = DomainTld::onSaleCatalog($tenantId)->map(fn (DomainTld $t) => [
-            'tld'            => $t->tld,
-            'register_price' => (float) $t->register_price,
-            'renew_price'    => (float) $t->renew_price,
-            'transfer_price' => $t->registrar === 'namecom' ? 0.0 : (float) $t->transfer_price,
-            'is_popular'     => (bool) $t->is_popular,
+            'tld'                => $t->tld,
+            'register_price'     => (float) $t->register_price,
+            'renew_price'        => (float) $t->renew_price,
+            'transfer_price'     => (float) $t->transfer_price,
+            'transfer_supported' => $t->registrar !== 'namecom',
+            'is_popular'         => (bool) $t->is_popular,
         ])->values();
 
         return response()->json(['data' => $tlds]);

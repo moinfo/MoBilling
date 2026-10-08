@@ -522,10 +522,11 @@ class PortalDomainController extends Controller
             'name'      => $name,
             'available' => $result['available'],
             'pricing'   => $pricing ? [
-                'register_price' => (float) $pricing->register_price,
-                'transfer_price' => $pricing->registrar === 'namecom' ? 0.0 : (float) $pricing->transfer_price,
-                'years_min'      => $pricing->years_min,
-                'years_max'      => $pricing->years_max,
+                'register_price'     => (float) $pricing->register_price,
+                'transfer_price'     => (float) $pricing->transfer_price,
+                'transfer_supported' => $pricing->registrar !== 'namecom',
+                'years_min'          => $pricing->years_min,
+                'years_max'          => $pricing->years_max,
             ] : null,
         ]);
     }
