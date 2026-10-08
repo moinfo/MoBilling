@@ -75,6 +75,30 @@ class PublicDomainController extends Controller
         ]);
     }
 
+    /**
+     * Every TLD currently on sale, full list (PublicCatalogController's own
+     * `tlds` field is a 5-item teaser for the homepage hero chips — this is
+     * the real catalog for a dedicated domains/pricing page). Local lookup
+     * only (DomainTld's own table), never a live registrar call per name.
+     */
+    public function catalog(Request $request)
+    {
+        $tenantId = $this->storefrontTenantId($request);
+        if (!$tenantId) {
+            return response()->json(['data' => []]);
+        }
+
+        $tlds = DomainTld::onSaleCatalog($tenantId)->map(fn (DomainTld $t) => [
+            'tld'            => $t->tld,
+            'register_price' => (float) $t->register_price,
+            'renew_price'    => (float) $t->renew_price,
+            'transfer_price' => $t->registrar === 'namecom' ? 0.0 : (float) $t->transfer_price,
+            'is_popular'     => (bool) $t->is_popular,
+        ])->values();
+
+        return response()->json(['data' => $tlds]);
+    }
+
     /** Multi-TLD search: typed TLD first, then the popular on-sale TLDs (see DomainSuggestService). */
     public function suggest(Request $request, \App\Services\Registrar\DomainSuggestService $svc)
     {

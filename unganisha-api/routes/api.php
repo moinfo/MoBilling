@@ -107,6 +107,11 @@ Route::get('/public/domains/check', [\App\Http\Controllers\PublicDomainControlle
 Route::get('/public/domains/suggest', [\App\Http\Controllers\PublicDomainController::class, 'suggest'])
     ->middleware('throttle:30,1');
 
+// Full on-sale TLD list for a dedicated domains/pricing page — a local table
+// lookup, no per-request registry call, so a lighter throttle is enough.
+Route::get('/public/domains/catalog', [\App\Http\Controllers\PublicDomainController::class, 'catalog'])
+    ->middleware('throttle:60,1');
+
 // Portal self-registration (public)
 Route::post('/portal/request-otp', [PortalAuthController::class, 'requestOtp']);
 Route::post('/portal/verify-register', [PortalAuthController::class, 'verifyAndRegister']);
