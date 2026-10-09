@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, PasswordInput, Stack, Select, Switch, Drawer, Box, ThemeIcon, SimpleGrid, Checkbox,
 } from '@mantine/core';
@@ -8,11 +8,13 @@ import { useDebouncedValue } from '@mantine/hooks';
 import { modals } from '@mantine/modals';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconPlus, IconEdit, IconTrash, IconSearch, IconCheck, IconAlertTriangle, IconHistory, IconClock, IconHourglass } from '@tabler/icons-react';
+import { IconPlus, IconEdit, IconTrash, IconSearch, IconCheck, IconAlertTriangle, IconHistory, IconClock, IconHourglass, IconSettings } from '@tabler/icons-react';
 import {
   getSystemVerifications, createSystemVerification, updateSystemVerification, deleteSystemVerification,
   getSystemVerificationReports,
-  SystemVerification, SystemVerificationReport, VERIFICATION_FIELD_DEFS,
+  getVerificationFields, createVerificationField, deleteVerificationField,
+  SystemVerification, SystemVerificationReport, VerificationFieldDef, VerificationFieldDefinition,
+  VERIFICATION_FIELD_DEFS, BUILT_IN_FIELD_KEYS,
 } from '../api/systemVerifications';
 import { getAssignableUsers } from '../api/users';
 import { getClients } from '../api/clients';
@@ -36,11 +38,23 @@ export default function SystemVerifications() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<SystemVerification | null>(null);
   const [historyFor, setHistoryFor] = useState<SystemVerification | null>(null);
+  const [fieldsOpen, setFieldsOpen] = useState(false);
 
   const { data } = useQuery({
     queryKey: ['system-verifications', page, debouncedSearch],
     queryFn: () => getSystemVerifications({ page, search: debouncedSearch || undefined }),
   });
+  const { data: fieldsData } = useQuery({
+    queryKey: ['verification-field-defs'],
+    queryFn: getVerificationFields,
+  });
+  const customFields: VerificationFieldDefinition[] = fieldsData?.data?.data || [];
+  // Every place that needs "which fields exist" reads this combined list —
+  // the four built-ins plus whatever this tenant's admin has added.
+  const allFieldDefs: VerificationFieldDef[] = useMemo(
+    () => [...VERIFICATION_FIELD_DEFS, ...customFields.map((f) => ({ key: f.key, label: f.label }))],
+    [customFields]
+  );
   const { data: usersData } = useQuery({
     queryKey: ['assignable-users'],
     queryFn: getAssignableUsers,
@@ -173,6 +187,11 @@ export default function SystemVerifications() {
         <Group>
           <TextInput placeholder="Search..." leftSection={<IconSearch size={16} />}
             value={search} onChange={(e) => { setSearch(e.currentTarget.value); setPage(1); }} maw={250} />
+          {canUpdate && (
+            <Button variant="default" leftSection={<IconSettings size={16} />} onClick={() => setFieldsOpen(true)}>
+              Manage Fields
+            </Button>
+          )}
           {canCreate && (
             <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Register System</Button>
           )}
@@ -278,7 +297,7 @@ export default function SystemVerifications() {
               {...form.getInputProps('required_fields')}
             >
               <Group mt="xs" gap="md">
-                {VERIFICATION_FIELD_DEFS.map((f) => (
+                {allFieldDefs.map((f) => (
                   <Checkbox key={f.key} value={f.key} label={f.label} />
                 ))}
               </Group>
@@ -297,13 +316,89 @@ export default function SystemVerifications() {
       {/* Report history drawer */}
       <Drawer opened={!!historyFor} onClose={() => setHistoryFor(null)}
         title={historyFor ? `Verification History — ${historyFor.name}` : ''} position="right" size="lg">
-        {historyFor && <ReportsHistory verification={historyFor} />}
+        {historyFor && <ReportsHistory verification={historyFor} allFieldDefs={allFieldDefs} />}
       </Drawer>
+
+      <ManageFieldsModal opened={fieldsOpen} onClose={() => setFieldsOpen(false)} customFields={customFields} />
     </>
   );
 }
 
-function ReportsHistory({ verification }: { verification: SystemVerification }) {
+function ManageFieldsModal({ opened, onClose, customFields }: {
+  opened: boolean;
+  onClose: () => void;
+  customFields: VerificationFieldDefinition[];
+}) {
+  const queryClient = useQueryClient();
+  const [label, setLabel] = useState('');
+
+  const invalidate = () => queryClient.invalidateQueries({ queryKey: ['verification-field-defs'] });
+
+  const createMutation = useMutation({
+    mutationFn: (l: string) => createVerificationField(l),
+    onSuccess: () => { invalidate(); setLabel(''); },
+    onError: (err: any) => notifications.show({ title: 'Error', message: err.response?.data?.message || 'Failed to add field', color: 'red' }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => deleteVerificationField(id),
+    onSuccess: () => {
+      invalidate();
+      notifications.show({ title: 'Removed', message: 'Field removed', color: 'green' });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Cannot remove',
+      message: err.response?.data?.errors?.label?.[0] || err.response?.data?.message || 'Failed to remove field',
+      color: 'red',
+    }),
+  });
+
+  const handleAdd = () => {
+    if (label.trim()) createMutation.mutate(label.trim());
+  };
+
+  const handleDelete = (f: VerificationFieldDefinition) => modals.openConfirmModal({
+    title: 'Remove Field',
+    children: `Remove "${f.label}"? Any system still requiring it must be updated first.`,
+    labels: { confirm: 'Remove', cancel: 'Cancel' },
+    confirmProps: { color: 'red' },
+    onConfirm: () => deleteMutation.mutate(f.id),
+  });
+
+  return (
+    <Modal opened={opened} onClose={onClose} title="Manage Custom Fields" size="sm">
+      <Stack>
+        <Text size="sm" c="dimmed">
+          The four built-in figures (Cash, Sales, Credit, Gain/Loss) are always available.
+          Add your own below — they'll show up as a toggle on every system's Edit form.
+        </Text>
+        {customFields.length === 0 ? (
+          <Text size="sm" c="dimmed" ta="center" py="sm">No custom fields yet.</Text>
+        ) : (
+          <Stack gap="xs">
+            {customFields.map((f) => (
+              <Group key={f.id} justify="space-between">
+                <Text size="sm">{f.label}</Text>
+                <ActionIcon variant="light" color="red" onClick={() => handleDelete(f)} title="Remove">
+                  <IconTrash size={14} />
+                </ActionIcon>
+              </Group>
+            ))}
+          </Stack>
+        )}
+        <Group align="flex-end">
+          <TextInput label="New field" placeholder="e.g. Banking" value={label}
+            onChange={(e) => setLabel(e.currentTarget.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAdd(); } }}
+            style={{ flex: 1 }} />
+          <Button onClick={handleAdd} loading={createMutation.isPending}>Add</Button>
+        </Group>
+      </Stack>
+    </Modal>
+  );
+}
+
+function ReportsHistory({ verification, allFieldDefs }: { verification: SystemVerification; allFieldDefs: VerificationFieldDef[] }) {
   const { data, isLoading } = useQuery({
     queryKey: ['verification-reports', verification.id],
     queryFn: () => getSystemVerificationReports(verification.id, { per_page: 60 }),
@@ -336,13 +431,17 @@ function ReportsHistory({ verification }: { verification: SystemVerification }) 
           </Group>
           {(() => {
             const fields = verification.required_fields?.length ? verification.required_fields : VERIFICATION_FIELD_DEFS.map((f) => f.key);
+            const defs = allFieldDefs.filter((f) => fields.includes(f.key));
+            const valueFor = (key: string) => (BUILT_IN_FIELD_KEYS.includes(key)
+              ? (r as unknown as Record<string, string | null>)[key]
+              : r.custom_values?.[key] ?? null);
             return (
-              <SimpleGrid cols={fields.length} spacing="xs" mt={6}>
-                {VERIFICATION_FIELD_DEFS.filter((f) => fields.includes(f.key)).map((f) => (
+              <SimpleGrid cols={defs.length} spacing="xs" mt={6}>
+                {defs.map((f) => (
                   <Box key={f.key}>
                     <Text size="xs" c="dimmed">{f.label}</Text>
-                    <Text size="sm" fw={600} c={f.key === 'gain_loss' && r[f.key] && Number(r[f.key]) < 0 ? 'red' : undefined}>
-                      {r[f.key] ?? '—'}
+                    <Text size="sm" fw={600} c={f.key === 'gain_loss' && valueFor(f.key) && Number(valueFor(f.key)) < 0 ? 'red' : undefined}>
+                      {valueFor(f.key) ?? '—'}
                     </Text>
                   </Box>
                 ))}

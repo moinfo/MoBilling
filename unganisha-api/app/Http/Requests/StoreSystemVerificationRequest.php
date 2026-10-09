@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\SystemVerification;
+use App\Models\SystemVerificationFieldDefinition;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -42,8 +43,12 @@ class StoreSystemVerificationRequest extends FormRequest
             'window_to' => 'nullable|date_format:H:i|required_with:window_from|after:window_from',
             // Which daily closing figures this system's assigned staff must
             // report. Null/omitted = all of them (SystemVerification::requiredFields()).
+            // Allows both the built-in keys and this tenant's own custom ones.
             'required_fields' => 'nullable|array',
-            'required_fields.*' => Rule::in(array_keys(SystemVerification::AVAILABLE_FIELDS)),
+            'required_fields.*' => Rule::in(array_merge(
+                array_keys(SystemVerification::AVAILABLE_FIELDS),
+                SystemVerificationFieldDefinition::where('tenant_id', $tenantId)->pluck('key')->all()
+            )),
         ];
     }
 }

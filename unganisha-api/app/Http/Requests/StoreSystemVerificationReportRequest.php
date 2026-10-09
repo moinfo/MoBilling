@@ -25,7 +25,7 @@ class StoreSystemVerificationReportRequest extends FormRequest
         $figureRule = fn (string $field, string $range) => (in_array($field, $required, true) ? 'required' : 'nullable')
             . "|numeric|{$range}";
 
-        return [
+        $rules = [
             'status' => 'required|in:ok,issue',
             // notes are required when reporting an issue — the whole point of
             // the workflow is that admin needs to know what's wrong.
@@ -40,6 +40,19 @@ class StoreSystemVerificationReportRequest extends FormRequest
             'credit' => $figureRule('credit', 'min:0|max:999999999999.99'),
             // Signed — a loss is just a negative gain, not a separate field.
             'gain_loss' => $figureRule('gain_loss', 'between:-999999999999.99,999999999999.99'),
+            'custom_values' => 'nullable|array',
         ];
+
+        // Any required field that isn't one of the four built-in ones is an
+        // admin-defined custom field (SystemVerificationFieldDefinition) —
+        // its value lives in custom_values, keyed by the same `key`.
+        $builtIn = array_keys(SystemVerification::AVAILABLE_FIELDS);
+        foreach ($required as $key) {
+            if (!in_array($key, $builtIn, true)) {
+                $rules["custom_values.{$key}"] = 'required|numeric|between:-999999999999.99,999999999999.99';
+            }
+        }
+
+        return $rules;
     }
 }

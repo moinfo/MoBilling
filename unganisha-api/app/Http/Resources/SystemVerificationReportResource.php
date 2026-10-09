@@ -29,6 +29,7 @@ class SystemVerificationReportResource extends JsonResource
             'sales' => $this->sales,
             'credit' => $this->credit,
             'gain_loss' => $this->gain_loss,
+            'custom_values' => $this->custom_values ?? [],
             'submitted_on_time' => $this->submitted_on_time,
             'created_at' => $this->created_at,
         ];

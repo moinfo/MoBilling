@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Title, Card, Text, Group, Stack, Badge, Button, Modal, Textarea, NumberInput, Box, Alert, ThemeIcon, Radio, Divider, Loader, Center, CopyButton, ActionIcon, SimpleGrid,
 } from '@mantine/core';
@@ -8,7 +8,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconCheck, IconAlertTriangle, IconClock, IconShield, IconClipboardCheck, IconWorld, IconCopy, IconEye, IconEyeOff, IconLock, IconUser,
 } from '@tabler/icons-react';
-import { getMyVerifications, submitVerificationReport, SystemVerification, SubmitReportPayload, VERIFICATION_FIELD_DEFS } from '../api/systemVerifications';
+import {
+  getMyVerifications, submitVerificationReport, getVerificationFields,
+  SystemVerification, SubmitReportPayload, VerificationFieldDefinition,
+  VERIFICATION_FIELD_DEFS, BUILT_IN_FIELD_KEYS,
+} from '../api/systemVerifications';
 import dayjs from 'dayjs';
 
 export default function MyVerifications() {
@@ -19,6 +23,15 @@ export default function MyVerifications() {
     queryKey: ['my-verifications'],
     queryFn: getMyVerifications,
   });
+  const { data: fieldsData } = useQuery({
+    queryKey: ['verification-field-defs'],
+    queryFn: getVerificationFields,
+  });
+  const customFields: VerificationFieldDefinition[] = fieldsData?.data?.data || [];
+  const allFieldDefs = useMemo(
+    () => [...VERIFICATION_FIELD_DEFS, ...customFields.map((f) => ({ key: f.key, label: f.label }))],
+    [customFields]
+  );
   const nowStr = dayjs().format('HH:mm:ss');
   // Each system can have its own window — not one rule for everyone.
   const withinWindow = (s: SystemVerification) => (s.window_from && s.window_to
@@ -37,6 +50,7 @@ export default function MyVerifications() {
     initialValues: {
       status: 'ok' as 'ok' | 'issue', notes: '',
       cash: '' as number | '', sales: '' as number | '', credit: '' as number | '', gain_loss: '' as number | '',
+      custom_values: {} as Record<string, number | ''>,
     },
     validate: {
       notes: (v, all) => (all.status === 'issue' && !v.trim() ? 'Eleza changamoto / Please describe the issue' : null),
@@ -44,6 +58,12 @@ export default function MyVerifications() {
       sales: (v) => (requiredFields.includes('sales') && v === '' ? 'Required' : null),
       credit: (v) => (requiredFields.includes('credit') && v === '' ? 'Required' : null),
       gain_loss: (v) => (requiredFields.includes('gain_loss') && v === '' ? 'Required' : null),
+      // Every custom field this tenant has ever defined gets a validator —
+      // harmless for the ones the currently open system doesn't require.
+      ...Object.fromEntries(customFields.map((f) => [
+        `custom_values.${f.key}`,
+        (v: number | '') => (requiredFields.includes(f.key) && (v === '' || v === undefined) ? 'Required' : null),
+      ])),
     },
   });
 
@@ -59,6 +79,12 @@ export default function MyVerifications() {
       if (fields.includes('sales')) payload.sales = Number(values.sales);
       if (fields.includes('credit')) payload.credit = Number(values.credit);
       if (fields.includes('gain_loss')) payload.gain_loss = Number(values.gain_loss);
+      const customKeys = fields.filter((k) => !BUILT_IN_FIELD_KEYS.includes(k));
+      if (customKeys.length) {
+        payload.custom_values = Object.fromEntries(
+          customKeys.map((k) => [k, Number(values.custom_values?.[k])])
+        );
+      }
       return submitVerificationReport(id, payload);
     },
     onSuccess: (_, vars) => {
@@ -81,7 +107,10 @@ export default function MyVerifications() {
 
   const openSubmit = (s: SystemVerification) => {
     setSubmitting(s);
-    form.setValues({ status: 'ok', notes: '', cash: '', sales: '', credit: '', gain_loss: '' });
+    form.setValues({
+      status: 'ok', notes: '', cash: '', sales: '', credit: '', gain_loss: '',
+      custom_values: Object.fromEntries(customFields.map((f) => [f.key, '' as number | ''])),
+    });
   };
 
   if (isLoading) return <Center py="xl"><Loader /></Center>;
@@ -204,13 +233,17 @@ export default function MyVerifications() {
                         </Group>
                         {(() => {
                           const fields = s.required_fields?.length ? s.required_fields : VERIFICATION_FIELD_DEFS.map((f) => f.key);
+                          const defs = allFieldDefs.filter((f) => fields.includes(f.key));
+                          const valueFor = (key: string) => (BUILT_IN_FIELD_KEYS.includes(key)
+                            ? (s.todays_report as unknown as Record<string, string | null>)![key]
+                            : s.todays_report!.custom_values?.[key] ?? null);
                           return (
-                            <SimpleGrid cols={fields.length} spacing="xs" mt={6}>
-                              {VERIFICATION_FIELD_DEFS.filter((f) => fields.includes(f.key)).map((f) => (
+                            <SimpleGrid cols={defs.length} spacing="xs" mt={6}>
+                              {defs.map((f) => (
                                 <Box key={f.key}>
                                   <Text size="xs" c="dimmed">{f.label}</Text>
-                                  <Text size="sm" fw={600} c={f.key === 'gain_loss' && s.todays_report![f.key] && Number(s.todays_report![f.key]) < 0 ? 'red' : undefined}>
-                                    {s.todays_report![f.key] ?? '—'}
+                                  <Text size="sm" fw={600} c={f.key === 'gain_loss' && valueFor(f.key) && Number(valueFor(f.key)) < 0 ? 'red' : undefined}>
+                                    {valueFor(f.key) ?? '—'}
                                   </Text>
                                 </Box>
                               ))}
@@ -268,6 +301,10 @@ export default function MyVerifications() {
                   description="Negative kama hasara"
                   {...form.getInputProps('gain_loss')} />
               )}
+              {allFieldDefs.filter((f) => !BUILT_IN_FIELD_KEYS.includes(f.key) && requiredFields.includes(f.key)).map((f) => (
+                <NumberInput key={f.key} label={f.label} placeholder="0" required decimalScale={2}
+                  {...form.getInputProps(`custom_values.${f.key}`)} />
+              ))}
             </SimpleGrid>
             <Divider />
             <Text size="sm" c="dimmed">

@@ -152,6 +152,7 @@ class SystemVerificationController extends Controller
             'sales' => $request->validated('sales'),
             'credit' => $request->validated('credit'),
             'gain_loss' => $request->validated('gain_loss'),
+            'custom_values' => $request->validated('custom_values'),
             'submitted_on_time' => $this->isWithinVerificationWindow($system_verification),
         ]);
 

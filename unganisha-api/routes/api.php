@@ -37,6 +37,7 @@ use App\Http\Controllers\SystemPropertyController;
 use App\Http\Controllers\SystemRecordController;
 use App\Http\Controllers\SystemRecordExpenseController;
 use App\Http\Controllers\SystemVerificationController;
+use App\Http\Controllers\SystemVerificationFieldController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\AutomationController;
 use App\Http\Controllers\CollectionController;
@@ -528,6 +529,14 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
     // Staff: see my assigned systems, and submit today's check-in
     Route::middleware('permission:menu.my_verifications')->get('/my-verifications', [SystemVerificationController::class, 'mine']);
     Route::middleware('permission:system_verification_reports.submit')->post('/system-verifications/{system_verification}/reports', [SystemVerificationController::class, 'submitReport']);
+
+    // Admin-defined custom closing figures, beyond the four built-in ones.
+    // index is readable by admin OR assigned staff — staff need the labels
+    // to render their own submission form, not just admins managing them.
+    Route::middleware('permission:system_verifications.read,menu.my_verifications')->get('/system-verification-fields', [SystemVerificationFieldController::class, 'index']);
+    Route::middleware('permission:system_verifications.update')->post('/system-verification-fields', [SystemVerificationFieldController::class, 'store']);
+    Route::middleware('permission:system_verifications.update')->put('/system-verification-fields/{system_verification_field}', [SystemVerificationFieldController::class, 'update']);
+    Route::middleware('permission:system_verifications.update')->delete('/system-verification-fields/{system_verification_field}', [SystemVerificationFieldController::class, 'destroy']);
 
     // Petty Cash (single pool per tenant)
     Route::middleware('permission:petty_cash.read')->get('/petty-cash', [PettyCashController::class, 'index']);

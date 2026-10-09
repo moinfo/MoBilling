@@ -45,6 +45,7 @@ class SystemVerificationResource extends JsonResource
                 'sales' => $this->todaysReport->sales,
                 'credit' => $this->todaysReport->credit,
                 'gain_loss' => $this->todaysReport->gain_loss,
+                'custom_values' => $this->todaysReport->custom_values ?? [],
                 'submitted_on_time' => $this->todaysReport->submitted_on_time,
                 'submitted_at' => $this->todaysReport->created_at,
             ]),

@@ -1,15 +1,24 @@
 import api from './axios';
 
-// Single source of truth for the daily closing figures a system can require —
-// mirrors SystemVerification::AVAILABLE_FIELDS on the backend. Adding a new
-// figure still needs a backend column + validation case, but every frontend
-// spot that lists "which fields exist" reads from here.
-export const VERIFICATION_FIELD_DEFS: { key: 'cash' | 'sales' | 'credit' | 'gain_loss'; label: string }[] = [
+export interface VerificationFieldDef { key: string; label: string }
+
+// The four built-in daily closing figures — mirrors
+// SystemVerification::AVAILABLE_FIELDS on the backend. Beyond these, a
+// tenant admin can add their own via getVerificationFields() below; combine
+// both lists (built-ins first) wherever "which fields exist" is needed.
+export const VERIFICATION_FIELD_DEFS: VerificationFieldDef[] = [
   { key: 'cash', label: 'Cash' },
   { key: 'sales', label: 'Sales' },
   { key: 'credit', label: 'Credit' },
   { key: 'gain_loss', label: 'Gain / Loss' },
 ];
+export const BUILT_IN_FIELD_KEYS = VERIFICATION_FIELD_DEFS.map((f) => f.key);
+
+export interface VerificationFieldDefinition {
+  id: string;
+  key: string;
+  label: string;
+}
 
 export interface SystemVerificationTodayReport {
   id: string;
@@ -19,6 +28,7 @@ export interface SystemVerificationTodayReport {
   sales: string | null;
   credit: string | null;
   gain_loss: string | null;
+  custom_values: Record<string, string | number | null>;
   submitted_on_time: boolean | null;
   submitted_at: string;
 }
@@ -71,6 +81,7 @@ export interface SystemVerificationReport {
   sales: string | null;
   credit: string | null;
   gain_loss: string | null;
+  custom_values: Record<string, string | number | null>;
   submitted_on_time: boolean | null;
   created_at: string;
 }
@@ -84,6 +95,8 @@ export interface SubmitReportPayload {
   sales?: number;
   credit?: number;
   gain_loss?: number;
+  // Values for admin-defined custom fields, keyed by their `key`.
+  custom_values?: Record<string, number>;
 }
 
 // Admin endpoints
@@ -108,3 +121,16 @@ export const getMyVerifications = () =>
 
 export const submitVerificationReport = (id: string, data: SubmitReportPayload) =>
   api.post(`/system-verifications/${id}/reports`, data);
+
+// Custom field definitions (admin-added, beyond the four built-in figures)
+export const getVerificationFields = () =>
+  api.get('/system-verification-fields');
+
+export const createVerificationField = (label: string) =>
+  api.post('/system-verification-fields', { label });
+
+export const updateVerificationField = (id: string, label: string) =>
+  api.put(`/system-verification-fields/${id}`, { label });
+
+export const deleteVerificationField = (id: string) =>
+  api.delete(`/system-verification-fields/${id}`);
