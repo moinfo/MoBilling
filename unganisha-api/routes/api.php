@@ -1304,6 +1304,9 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'client_portal'])->prefix('po
     Route::get('/profile', [PortalProfileController::class, 'show']);
     Route::put('/profile', [PortalProfileController::class, 'update']);
     Route::post('/profile/change-password', [PortalProfileController::class, 'changePassword']);
+    // Company record (name/email/phone/tax_id/address) — portal admins only,
+    // distinct from /profile above which edits the logged-in portal USER.
+    Route::put('/company', [PortalProfileController::class, 'updateCompany']);
     Route::get('/users', [PortalProfileController::class, 'listUsers']);
     Route::post('/users', [PortalProfileController::class, 'storeUser']);
     Route::put('/users/{portalUser}', [PortalProfileController::class, 'updateUser']);

@@ -3,7 +3,7 @@ import { Stack, Paper, Title, TextInput, Button, Group, PasswordInput, Text, Loa
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getPortalProfile, updatePortalProfile, changePortalPassword } from '../../api/portal';
+import { getPortalProfile, updatePortalProfile, updatePortalCompany, changePortalPassword } from '../../api/portal';
 import { useAuth } from '../../context/AuthContext';
 import TwoFactorSetup from '../../components/TwoFactorSetup';
 
@@ -30,6 +30,40 @@ export default function PortalProfile() {
       profileForm.setValues({ name: u.name, phone: u.phone || '' });
     }
   }
+
+  const isPortalAdmin = profile?.user?.role === 'admin';
+
+  const companyForm = useForm({
+    initialValues: { name: '', email: '', phone: '', tax_id: '', address: '' },
+    validate: {
+      name: (v) => (v.trim() ? null : 'Required'),
+    },
+  });
+
+  // Sync form when data loads — only matters for admins, who get the editable form.
+  if (profile && isPortalAdmin && !companyForm.isDirty()) {
+    const c = profile.client;
+    const next = {
+      name: c?.name || '', email: c?.email || '', phone: c?.phone || '',
+      tax_id: c?.tax_id || '', address: c?.address || '',
+    };
+    if (JSON.stringify(next) !== JSON.stringify(companyForm.values)) {
+      companyForm.setValues(next);
+    }
+  }
+
+  const companyMutation = useMutation({
+    mutationFn: updatePortalCompany,
+    onSuccess: () => {
+      notifications.show({ title: 'Success', message: 'Company information updated', color: 'green' });
+      queryClient.invalidateQueries({ queryKey: ['portal-profile'] });
+    },
+    onError: (err: any) => notifications.show({
+      title: 'Error',
+      message: err.response?.data?.message || 'Failed to update company information',
+      color: 'red',
+    }),
+  });
 
   const passwordForm = useForm({
     initialValues: { current_password: '', password: '', password_confirmation: '' },
@@ -74,29 +108,51 @@ export default function PortalProfile() {
         <>
           <Paper withBorder p="md">
             <Text fw={600} mb="md">Company Information</Text>
-            <Group gap="xl">
-              <div>
-                <Text size="xs" c="dimmed">Company Name</Text>
-                <Text fw={500} tt="uppercase">{profile.client?.name}</Text>
-              </div>
-              <div>
-                <Text size="xs" c="dimmed">Email</Text>
-                <Text fw={500}>{profile.client?.email || '-'}</Text>
-              </div>
-              <div>
-                <Text size="xs" c="dimmed">Phone</Text>
-                <Text fw={500}>{profile.client?.phone || '-'}</Text>
-              </div>
-              <div>
-                <Text size="xs" c="dimmed">Tax ID</Text>
-                <Text fw={500}>{profile.client?.tax_id || '-'}</Text>
-              </div>
-            </Group>
-            {profile.client?.address && (
-              <div style={{ marginTop: 8 }}>
-                <Text size="xs" c="dimmed">Address</Text>
-                <Text fw={500}>{profile.client.address}</Text>
-              </div>
+            {isPortalAdmin ? (
+              <form onSubmit={companyForm.onSubmit((values) => companyMutation.mutate(values))}>
+                <Stack gap="sm">
+                  <Group grow>
+                    <TextInput label="Company Name" required {...companyForm.getInputProps('name')} />
+                    <TextInput label="Email" {...companyForm.getInputProps('email')} />
+                  </Group>
+                  <Group grow>
+                    <TextInput label="Phone" {...companyForm.getInputProps('phone')} />
+                    <TextInput label="Tax ID" {...companyForm.getInputProps('tax_id')} />
+                  </Group>
+                  <TextInput label="Address" {...companyForm.getInputProps('address')} />
+                  <Group>
+                    <Button type="submit" loading={companyMutation.isPending}>Save Company Information</Button>
+                  </Group>
+                </Stack>
+              </form>
+            ) : (
+              <>
+                <Group gap="xl">
+                  <div>
+                    <Text size="xs" c="dimmed">Company Name</Text>
+                    <Text fw={500} tt="uppercase">{profile.client?.name}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed">Email</Text>
+                    <Text fw={500}>{profile.client?.email || '-'}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed">Phone</Text>
+                    <Text fw={500}>{profile.client?.phone || '-'}</Text>
+                  </div>
+                  <div>
+                    <Text size="xs" c="dimmed">Tax ID</Text>
+                    <Text fw={500}>{profile.client?.tax_id || '-'}</Text>
+                  </div>
+                </Group>
+                {profile.client?.address && (
+                  <div style={{ marginTop: 8 }}>
+                    <Text size="xs" c="dimmed">Address</Text>
+                    <Text fw={500}>{profile.client.address}</Text>
+                  </div>
+                )}
+                <Text size="xs" c="dimmed" mt="sm">Only a portal admin on this account can edit company information.</Text>
+              </>
             )}
           </Paper>
 

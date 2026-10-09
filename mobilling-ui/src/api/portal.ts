@@ -153,6 +153,10 @@ export const updatePortalProfile = (data: { name?: string; phone?: string }) =>
 export const changePortalPassword = (data: { current_password: string; password: string; password_confirmation: string }) =>
   api.post('/portal/profile/change-password', data);
 
+// Company record (name/email/phone/tax_id/address) — portal admins only.
+export const updatePortalCompany = (data: { name: string; email?: string; phone?: string; tax_id?: string; address?: string }) =>
+  api.put('/portal/company', data);
+
 // Portal Users
 export interface PortalUser {
   id: string;

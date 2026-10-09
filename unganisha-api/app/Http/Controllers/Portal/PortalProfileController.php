@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ClientUser;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class PortalProfileController extends Controller
@@ -35,6 +36,47 @@ class PortalProfileController extends Controller
         return response()->json([
             'message' => 'Profile updated successfully.',
             'user' => $clientUser->fresh(),
+        ]);
+    }
+
+    /**
+     * The Client (company) record — distinct from update() above, which
+     * edits the logged-in ClientUser. Portal-admin only: this is company-wide
+     * data (billing email, tax id, address), not something any viewer on the
+     * account should be able to change for everyone else.
+     */
+    public function updateCompany(Request $request)
+    {
+        $clientUser = $request->user();
+
+        if (!$clientUser->isPortalAdmin()) {
+            return response()->json(['message' => 'Forbidden'], 403);
+        }
+
+        $client = $clientUser->client;
+
+        $data = $request->validate([
+            'name' => 'required|string|max:255',
+            'email' => [
+                'nullable', 'email', 'max:255',
+                Rule::unique('clients')->where('tenant_id', $clientUser->tenant_id)->ignore($client->id),
+            ],
+            'phone' => [
+                'nullable', 'string', 'max:20',
+                Rule::unique('clients')->where('tenant_id', $clientUser->tenant_id)->ignore($client->id),
+            ],
+            'tax_id' => 'nullable|string|max:50',
+            'address' => 'nullable|string|max:1000',
+        ], [
+            'email.unique' => 'A client with this email already exists.',
+            'phone.unique' => 'A client with this phone number already exists.',
+        ]);
+
+        $client->update($data);
+
+        return response()->json([
+            'message' => 'Company information updated successfully.',
+            'client' => $client->fresh(),
         ]);
     }
 
