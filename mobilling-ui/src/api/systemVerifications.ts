@@ -1,5 +1,16 @@
 import api from './axios';
 
+// Single source of truth for the daily closing figures a system can require —
+// mirrors SystemVerification::AVAILABLE_FIELDS on the backend. Adding a new
+// figure still needs a backend column + validation case, but every frontend
+// spot that lists "which fields exist" reads from here.
+export const VERIFICATION_FIELD_DEFS: { key: 'cash' | 'sales' | 'credit' | 'gain_loss'; label: string }[] = [
+  { key: 'cash', label: 'Cash' },
+  { key: 'sales', label: 'Sales' },
+  { key: 'credit', label: 'Credit' },
+  { key: 'gain_loss', label: 'Gain / Loss' },
+];
+
 export interface SystemVerificationTodayReport {
   id: string;
   status: 'ok' | 'issue';
@@ -24,6 +35,9 @@ export interface SystemVerification {
   // each system) can have a different one, not one rule for the tenant.
   window_from: string | null;
   window_to: string | null;
+  // Resolved by the backend — never null; a system created before this
+  // setting existed reports all four (SystemVerification::requiredFields()).
+  required_fields: string[];
   is_active: boolean;
   assigned_user_id: string | null;
   assigned_user?: { id: string; name: string };
@@ -41,6 +55,7 @@ export interface SystemVerificationPayload {
   window_to?: string | null;
   assigned_user_id?: string | null;
   is_active?: boolean;
+  required_fields?: string[] | null;
 }
 
 export interface SystemVerificationReport {
@@ -63,10 +78,12 @@ export interface SystemVerificationReport {
 export interface SubmitReportPayload {
   status: 'ok' | 'issue';
   notes?: string;
-  cash: number;
-  sales: number;
-  credit: number;
-  gain_loss: number;
+  // Only fields this system's required_fields asks for are expected to be
+  // sent; the others are simply omitted rather than forced to 0.
+  cash?: number;
+  sales?: number;
+  credit?: number;
+  gain_loss?: number;
 }
 
 // Admin endpoints

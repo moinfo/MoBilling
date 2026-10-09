@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\SystemVerification;
 use Illuminate\Foundation\Http\FormRequest;
 
 class StoreSystemVerificationReportRequest extends FormRequest
@@ -13,6 +14,17 @@ class StoreSystemVerificationReportRequest extends FormRequest
 
     public function rules(): array
     {
+        // The route-bound system decides which figures it actually wants —
+        // not every system shows all four. A field this system didn't ask
+        // for is still accepted if sent (nullable|numeric), just not forced.
+        $system = $this->route('system_verification');
+        $required = $system instanceof SystemVerification
+            ? $system->requiredFields()
+            : array_keys(SystemVerification::AVAILABLE_FIELDS);
+
+        $figureRule = fn (string $field, string $range) => (in_array($field, $required, true) ? 'required' : 'nullable')
+            . "|numeric|{$range}";
+
         return [
             'status' => 'required|in:ok,issue',
             // notes are required when reporting an issue — the whole point of
@@ -21,12 +33,13 @@ class StoreSystemVerificationReportRequest extends FormRequest
             // The real purpose of the check-in: the figures read off the
             // client's system after they close out for the day. Required
             // regardless of status — an "issue" report still needs the real
-            // numbers, that's often exactly what reveals the issue.
-            'cash' => 'required|numeric|min:0|max:999999999999.99',
-            'sales' => 'required|numeric|min:0|max:999999999999.99',
-            'credit' => 'required|numeric|min:0|max:999999999999.99',
+            // numbers, that's often exactly what reveals the issue — unless
+            // this system didn't ask for that particular figure at all.
+            'cash' => $figureRule('cash', 'min:0|max:999999999999.99'),
+            'sales' => $figureRule('sales', 'min:0|max:999999999999.99'),
+            'credit' => $figureRule('credit', 'min:0|max:999999999999.99'),
             // Signed — a loss is just a negative gain, not a separate field.
-            'gain_loss' => 'required|numeric|between:-999999999999.99,999999999999.99',
+            'gain_loss' => $figureRule('gain_loss', 'between:-999999999999.99,999999999999.99'),
         ];
     }
 }

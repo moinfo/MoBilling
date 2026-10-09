@@ -27,6 +27,9 @@ class SystemVerificationResource extends JsonResource
             // This system's own check-in window — not the tenant's.
             'window_from' => $this->window_from,
             'window_to' => $this->window_to,
+            // Resolved (never null) — a system created before this setting
+            // existed still reports all four, via requiredFields()'s default.
+            'required_fields' => $this->requiredFields(),
             'is_active' => (bool) $this->is_active,
             'assigned_user_id' => $this->assigned_user_id,
             'assigned_user' => $this->when($this->relationLoaded('assignedUser') && $this->assignedUser, fn () => [

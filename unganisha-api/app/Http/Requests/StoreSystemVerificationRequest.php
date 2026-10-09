@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\SystemVerification;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -39,6 +40,10 @@ class StoreSystemVerificationRequest extends FormRequest
             // together — either set a real window, or leave it unenforced.
             'window_from' => 'nullable|date_format:H:i',
             'window_to' => 'nullable|date_format:H:i|required_with:window_from|after:window_from',
+            // Which daily closing figures this system's assigned staff must
+            // report. Null/omitted = all of them (SystemVerification::requiredFields()).
+            'required_fields' => 'nullable|array',
+            'required_fields.*' => Rule::in(array_keys(SystemVerification::AVAILABLE_FIELDS)),
         ];
     }
 }

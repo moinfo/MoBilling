@@ -12,6 +12,21 @@ class SystemVerification extends Model
 {
     use HasFactory, HasUuids, SoftDeletes, BelongsToTenant;
 
+    /**
+     * The single registry of daily closing figures a system can require.
+     * Adding a genuinely new figure (not just toggling these) still needs a
+     * column on system_verification_reports plus a case in
+     * StoreSystemVerificationReportRequest — this list just keeps every
+     * place that enumerates "which fields exist" (admin toggles, report
+     * validation, the frontend field registry) pointed at one source.
+     */
+    public const AVAILABLE_FIELDS = [
+        'cash' => 'Cash',
+        'sales' => 'Sales',
+        'credit' => 'Credit',
+        'gain_loss' => 'Gain / Loss',
+    ];
+
     protected $fillable = [
         'tenant_id', 'name', 'domain_name', 'client_id',
         'login_username', 'login_password',
@@ -19,6 +34,7 @@ class SystemVerification extends Model
         // check-in window — this is not one rule for the whole tenant.
         'window_from', 'window_to',
         'assigned_user_id', 'is_active',
+        'required_fields',
     ];
 
     protected $casts = [
@@ -27,7 +43,17 @@ class SystemVerification extends Model
         // this back to actually log in to the client's system. Not $hidden,
         // unlike tenants.smtp_password — this one is meant to be shown.
         'login_password' => 'encrypted',
+        'required_fields' => 'array',
     ];
+
+    /**
+     * Null means "all of them" — keeps every system created before this
+     * setting existed behaving exactly as it did (all four required).
+     */
+    public function requiredFields(): array
+    {
+        return $this->required_fields ?? array_keys(self::AVAILABLE_FIELDS);
+    }
 
     public function assignedUser()
     {

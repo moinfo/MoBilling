@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import {
-  Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, PasswordInput, Stack, Select, Switch, Drawer, Box, ThemeIcon, SimpleGrid,
+  Title, Table, Text, Group, Pagination, Badge, ActionIcon, Modal, Button, TextInput, PasswordInput, Stack, Select, Switch, Drawer, Box, ThemeIcon, SimpleGrid, Checkbox,
 } from '@mantine/core';
 import { TimeInput } from '@mantine/dates';
 import { useForm } from '@mantine/form';
@@ -12,7 +12,7 @@ import { IconPlus, IconEdit, IconTrash, IconSearch, IconCheck, IconAlertTriangle
 import {
   getSystemVerifications, createSystemVerification, updateSystemVerification, deleteSystemVerification,
   getSystemVerificationReports,
-  SystemVerification, SystemVerificationReport,
+  SystemVerification, SystemVerificationReport, VERIFICATION_FIELD_DEFS,
 } from '../api/systemVerifications';
 import { getAssignableUsers } from '../api/users';
 import { getClients } from '../api/clients';
@@ -69,10 +69,12 @@ export default function SystemVerifications() {
     window_to: string;
     assigned_user_id: string;
     is_active: boolean;
+    required_fields: string[];
   }>({
     initialValues: {
       name: '', domain_name: '', client_id: '', login_username: '', login_password: '',
       window_from: '', window_to: '', assigned_user_id: '', is_active: true,
+      required_fields: VERIFICATION_FIELD_DEFS.map((f) => f.key),
     },
     validate: {
       name: (v) => (v.trim() ? null : 'Required'),
@@ -86,6 +88,7 @@ export default function SystemVerifications() {
     form.setValues({
       name: '', domain_name: '', client_id: '', login_username: '', login_password: '',
       window_from: '', window_to: '', assigned_user_id: '', is_active: true,
+      required_fields: VERIFICATION_FIELD_DEFS.map((f) => f.key),
     });
     setFormOpen(true);
   };
@@ -101,6 +104,7 @@ export default function SystemVerifications() {
       window_to: s.window_to ? s.window_to.slice(0, 5) : '',
       assigned_user_id: s.assigned_user_id || '',
       is_active: s.is_active,
+      required_fields: s.required_fields?.length ? s.required_fields : VERIFICATION_FIELD_DEFS.map((f) => f.key),
     });
     setFormOpen(true);
   };
@@ -116,6 +120,7 @@ export default function SystemVerifications() {
     window_to: v.window_to || null,
     assigned_user_id: v.assigned_user_id || null,
     is_active: v.is_active,
+    required_fields: v.required_fields,
   });
 
   const createMutation = useMutation({
@@ -267,6 +272,17 @@ export default function SystemVerifications() {
                 {...form.getInputProps('window_from')} />
               <TimeInput label="Check-in window — to" {...form.getInputProps('window_to')} />
             </Group>
+            <Checkbox.Group
+              label="Daily figures required from staff"
+              description="Untick any this system doesn't need — staff won't be asked for them"
+              {...form.getInputProps('required_fields')}
+            >
+              <Group mt="xs" gap="md">
+                {VERIFICATION_FIELD_DEFS.map((f) => (
+                  <Checkbox key={f.key} value={f.key} label={f.label} />
+                ))}
+              </Group>
+            </Checkbox.Group>
             <Switch label="Active (staff must report daily)" {...form.getInputProps('is_active', { type: 'checkbox' })} />
             <Group justify="flex-end">
               <Button variant="default" onClick={closeForm}>Cancel</Button>
@@ -318,14 +334,21 @@ function ReportsHistory({ verification }: { verification: SystemVerification }) 
             </Group>
             <Text size="xs" c="dimmed">{dayjs(r.created_at).format('HH:mm')}</Text>
           </Group>
-          <SimpleGrid cols={4} spacing="xs" mt={6}>
-            <Box><Text size="xs" c="dimmed">Cash</Text><Text size="sm" fw={600}>{r.cash ?? '—'}</Text></Box>
-            <Box><Text size="xs" c="dimmed">Sales</Text><Text size="sm" fw={600}>{r.sales ?? '—'}</Text></Box>
-            <Box><Text size="xs" c="dimmed">Credit</Text><Text size="sm" fw={600}>{r.credit ?? '—'}</Text></Box>
-            <Box><Text size="xs" c="dimmed">Gain/Loss</Text>
-              <Text size="sm" fw={600} c={r.gain_loss && Number(r.gain_loss) < 0 ? 'red' : undefined}>{r.gain_loss ?? '—'}</Text>
-            </Box>
-          </SimpleGrid>
+          {(() => {
+            const fields = verification.required_fields?.length ? verification.required_fields : VERIFICATION_FIELD_DEFS.map((f) => f.key);
+            return (
+              <SimpleGrid cols={fields.length} spacing="xs" mt={6}>
+                {VERIFICATION_FIELD_DEFS.filter((f) => fields.includes(f.key)).map((f) => (
+                  <Box key={f.key}>
+                    <Text size="xs" c="dimmed">{f.label}</Text>
+                    <Text size="sm" fw={600} c={f.key === 'gain_loss' && r[f.key] && Number(r[f.key]) < 0 ? 'red' : undefined}>
+                      {r[f.key] ?? '—'}
+                    </Text>
+                  </Box>
+                ))}
+              </SimpleGrid>
+            );
+          })()}
           {r.submitted_on_time === false && (
             <Badge color="orange" variant="light" size="xs" mt={6} leftSection={<IconHourglass size={10} />}>Late</Badge>
           )}

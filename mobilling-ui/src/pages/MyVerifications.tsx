@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   IconCheck, IconAlertTriangle, IconClock, IconShield, IconClipboardCheck, IconWorld, IconCopy, IconEye, IconEyeOff, IconLock, IconUser,
 } from '@tabler/icons-react';
-import { getMyVerifications, submitVerificationReport, SystemVerification } from '../api/systemVerifications';
+import { getMyVerifications, submitVerificationReport, SystemVerification, SubmitReportPayload, VERIFICATION_FIELD_DEFS } from '../api/systemVerifications';
 import dayjs from 'dayjs';
 
 export default function MyVerifications() {
@@ -25,6 +25,9 @@ export default function MyVerifications() {
     ? nowStr >= s.window_from && nowStr <= s.window_to
     : null);
   const [showPw, setShowPw] = useState<Record<string, boolean>>({});
+  const requiredFields = submitting?.required_fields?.length
+    ? submitting.required_fields
+    : VERIFICATION_FIELD_DEFS.map((f) => f.key);
   const systems: SystemVerification[] = data?.data?.data || [];
   const today = dayjs().format('dddd, DD MMM YYYY');
   const pendingCount = systems.filter((s) => !s.todays_report).length;
@@ -37,23 +40,27 @@ export default function MyVerifications() {
     },
     validate: {
       notes: (v, all) => (all.status === 'issue' && !v.trim() ? 'Eleza changamoto / Please describe the issue' : null),
-      cash: (v) => (v === '' ? 'Required' : null),
-      sales: (v) => (v === '' ? 'Required' : null),
-      credit: (v) => (v === '' ? 'Required' : null),
-      gain_loss: (v) => (v === '' ? 'Required' : null),
+      cash: (v) => (requiredFields.includes('cash') && v === '' ? 'Required' : null),
+      sales: (v) => (requiredFields.includes('sales') && v === '' ? 'Required' : null),
+      credit: (v) => (requiredFields.includes('credit') && v === '' ? 'Required' : null),
+      gain_loss: (v) => (requiredFields.includes('gain_loss') && v === '' ? 'Required' : null),
     },
   });
 
   const submitMutation = useMutation({
-    mutationFn: ({ id, values }: { id: string; values: typeof form.values }) =>
-      submitVerificationReport(id, {
-        status: values.status,
-        notes: values.notes || undefined,
-        cash: Number(values.cash),
-        sales: Number(values.sales),
-        credit: Number(values.credit),
-        gain_loss: Number(values.gain_loss),
-      }),
+    mutationFn: ({ id, values }: { id: string; values: typeof form.values }) => {
+      // Looked up by id (not the `requiredFields` closure above) so this
+      // stays correct even if `submitting` has already changed by the time
+      // the mutation actually runs.
+      const sys = systems.find((s) => s.id === id);
+      const fields = sys?.required_fields?.length ? sys.required_fields : VERIFICATION_FIELD_DEFS.map((f) => f.key);
+      const payload: SubmitReportPayload = { status: values.status, notes: values.notes || undefined };
+      if (fields.includes('cash')) payload.cash = Number(values.cash);
+      if (fields.includes('sales')) payload.sales = Number(values.sales);
+      if (fields.includes('credit')) payload.credit = Number(values.credit);
+      if (fields.includes('gain_loss')) payload.gain_loss = Number(values.gain_loss);
+      return submitVerificationReport(id, payload);
+    },
     onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ['my-verifications'] });
       const ok = vars.values.status === 'ok';
@@ -195,16 +202,21 @@ export default function MyVerifications() {
                             <Badge color="orange" variant="light" size="xs">Late</Badge>
                           )}
                         </Group>
-                        <SimpleGrid cols={4} spacing="xs" mt={6}>
-                          <Box><Text size="xs" c="dimmed">Cash</Text><Text size="sm" fw={600}>{s.todays_report!.cash ?? '—'}</Text></Box>
-                          <Box><Text size="xs" c="dimmed">Sales</Text><Text size="sm" fw={600}>{s.todays_report!.sales ?? '—'}</Text></Box>
-                          <Box><Text size="xs" c="dimmed">Credit</Text><Text size="sm" fw={600}>{s.todays_report!.credit ?? '—'}</Text></Box>
-                          <Box><Text size="xs" c="dimmed">Gain/Loss</Text>
-                            <Text size="sm" fw={600} c={s.todays_report!.gain_loss && Number(s.todays_report!.gain_loss) < 0 ? 'red' : undefined}>
-                              {s.todays_report!.gain_loss ?? '—'}
-                            </Text>
-                          </Box>
-                        </SimpleGrid>
+                        {(() => {
+                          const fields = s.required_fields?.length ? s.required_fields : VERIFICATION_FIELD_DEFS.map((f) => f.key);
+                          return (
+                            <SimpleGrid cols={fields.length} spacing="xs" mt={6}>
+                              {VERIFICATION_FIELD_DEFS.filter((f) => fields.includes(f.key)).map((f) => (
+                                <Box key={f.key}>
+                                  <Text size="xs" c="dimmed">{f.label}</Text>
+                                  <Text size="sm" fw={600} c={f.key === 'gain_loss' && s.todays_report![f.key] && Number(s.todays_report![f.key]) < 0 ? 'red' : undefined}>
+                                    {s.todays_report![f.key] ?? '—'}
+                                  </Text>
+                                </Box>
+                              ))}
+                            </SimpleGrid>
+                          );
+                        })()}
                         {s.todays_report!.notes && (
                           <Text size="sm" mt={4} c={isIssue ? 'red.7' : undefined}>{s.todays_report!.notes}</Text>
                         )}
@@ -239,15 +251,23 @@ export default function MyVerifications() {
               Weka takwimu za kufungwa kwa mfumo leo (baada ya kukagua).
             </Text>
             <SimpleGrid cols={2} spacing="sm">
-              <NumberInput label="Cash" placeholder="0" required min={0} decimalScale={2}
-                {...form.getInputProps('cash')} />
-              <NumberInput label="Sales" placeholder="0" required min={0} decimalScale={2}
-                {...form.getInputProps('sales')} />
-              <NumberInput label="Credit" placeholder="0" required min={0} decimalScale={2}
-                {...form.getInputProps('credit')} />
-              <NumberInput label="Gain / Loss" placeholder="0" required decimalScale={2}
-                description="Negative kama hasara"
-                {...form.getInputProps('gain_loss')} />
+              {requiredFields.includes('cash') && (
+                <NumberInput label="Cash" placeholder="0" required min={0} decimalScale={2}
+                  {...form.getInputProps('cash')} />
+              )}
+              {requiredFields.includes('sales') && (
+                <NumberInput label="Sales" placeholder="0" required min={0} decimalScale={2}
+                  {...form.getInputProps('sales')} />
+              )}
+              {requiredFields.includes('credit') && (
+                <NumberInput label="Credit" placeholder="0" required min={0} decimalScale={2}
+                  {...form.getInputProps('credit')} />
+              )}
+              {requiredFields.includes('gain_loss') && (
+                <NumberInput label="Gain / Loss" placeholder="0" required decimalScale={2}
+                  description="Negative kama hasara"
+                  {...form.getInputProps('gain_loss')} />
+              )}
             </SimpleGrid>
             <Divider />
             <Text size="sm" c="dimmed">
