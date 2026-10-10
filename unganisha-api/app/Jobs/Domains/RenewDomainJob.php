@@ -3,6 +3,7 @@
 namespace App\Jobs\Domains;
 
 use App\Models\Domain;
+use App\Models\DomainLog;
 use App\Notifications\DomainRenewedNotification;
 use Illuminate\Support\Facades\Log;
 
@@ -26,6 +27,15 @@ class RenewDomainJob extends BaseDomainJob
             if ($domain->status === 'expired') {
                 $domain->update(['status' => 'active']);
             }
+
+            DomainLog::create([
+                'tenant_id' => $domain->tenant_id,
+                'domain_id' => $domain->id,
+                'action'    => 'renewed',
+                'request'   => ['years' => $years, 'document_id' => $domain->meta['renewal_document_id'] ?? null],
+                'status'    => 'success',
+            ]);
+
             $this->clearPending($domain);
             $this->syncFromRegistry($domain);
 

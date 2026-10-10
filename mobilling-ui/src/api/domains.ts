@@ -210,6 +210,20 @@ export const getDomainStats = () =>
 export const getDomainLogs = (id: string) =>
   api.get<{ data: DomainLogRow[] }>(`/domains/${id}/logs`);
 
+export interface DomainActivityRow {
+  id: string;
+  domain: string | null;
+  client: string | null;
+  type: 'register' | 'renew';
+  years: number | null;
+  price: number | null;
+  paid_usd: number | null;
+  created_at: string;
+}
+
+export const getDomainActivityLog = (params?: { date_from?: string; date_to?: string; page?: number }) =>
+  api.get<{ data: { data: DomainActivityRow[]; last_page: number; current_page: number } }>('/domains/activity-log', { params });
+
 export const orderDomain = (data: {
   name: string; client_id: string; years: number;
   action: 'register' | 'transfer'; auth_info?: string;

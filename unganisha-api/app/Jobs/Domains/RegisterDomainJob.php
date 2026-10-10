@@ -3,6 +3,7 @@
 namespace App\Jobs\Domains;
 
 use App\Models\Domain;
+use App\Models\DomainLog;
 use App\Notifications\DomainRegisteredNotification;
 use Illuminate\Support\Facades\Log;
 
@@ -25,6 +26,15 @@ class RegisterDomainJob extends BaseDomainJob
             $this->driver($domain)->register($domain->name, $years);
 
             $domain->update(['status' => 'active']);
+
+            DomainLog::create([
+                'tenant_id' => $domain->tenant_id,
+                'domain_id' => $domain->id,
+                'action'    => 'registered',
+                'request'   => ['years' => $years, 'document_id' => $domain->meta['order_document_id'] ?? null],
+                'status'    => 'success',
+            ]);
+
             $this->clearPending($domain);
             $this->syncFromRegistry($domain);
 

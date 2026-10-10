@@ -780,6 +780,7 @@ Route::middleware(['auth:sanctum', 'idle.timeout', 'tenant'])->group(function ()
         Route::get('/domains/suggest',          [\App\Http\Controllers\DomainController::class, 'suggest'])->middleware('throttle:60,1,domain-suggest');
         Route::get('/domains/whois',            [\App\Http\Controllers\DomainController::class, 'whois']);
         Route::get('/domains/stats',            [\App\Http\Controllers\DomainController::class, 'stats']);
+        Route::get('/domains/activity-log',     [\App\Http\Controllers\DomainController::class, 'activityLog']);
         Route::get('/domains/registrar-credit', [\App\Http\Controllers\DomainController::class, 'registrarCredit']);
         Route::get('/domains/ssl-expiry',       [\App\Http\Controllers\DomainController::class, 'sslExpiry']);
         Route::get('/domains/dns-servers',      [\App\Http\Controllers\DomainController::class, 'dnsServers']);

@@ -443,6 +443,57 @@ class DomainController extends Controller
     }
 
     /**
+     * Cross-domain register/renew history — a dated "statement" so staff can
+     * cross-check registry topup spend against when domains actually went
+     * out. DomainLog has no BelongsToTenant scope, so tenant_id is filtered
+     * explicitly here. Price is whatever was actually invoiced for that
+     * event (via meta.order_document_id / renewal_document_id, stashed on
+     * the domain when the order/renewal was created) — not a guessed
+     * wholesale cost, since no such figure is tracked for FRED/.tz domains.
+     */
+    public function activityLog(Request $request)
+    {
+        $tenantId = auth()->user()->tenant_id;
+        $actions = ['registered', 'renewed', 'namecom_registered', 'manual_register_confirmed', 'renewal_paid_manual_action_needed'];
+
+        $query = DomainLog::with(['domain:id,name,client_id', 'domain.client:id,name'])
+            ->where('tenant_id', $tenantId)
+            ->whereIn('action', $actions)
+            ->orderByDesc('created_at');
+
+        if ($request->filled('date_from')) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+        if ($request->filled('date_to')) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        $page = $query->paginate(min((int) $request->get('per_page', 20), 100));
+
+        $docIds = $page->getCollection()
+            ->map(fn ($log) => $log->request['document_id'] ?? null)
+            ->filter()->unique()->values();
+        $totals = Document::withoutGlobalScopes()->whereIn('id', $docIds)->pluck('total', 'id');
+
+        $page->getCollection()->transform(function (DomainLog $log) use ($totals) {
+            $docId = $log->request['document_id'] ?? null;
+
+            return [
+                'id'         => $log->id,
+                'domain'     => $log->domain?->name,
+                'client'     => $log->domain?->client?->name,
+                'type'       => in_array($log->action, ['registered', 'namecom_registered', 'manual_register_confirmed'], true) ? 'register' : 'renew',
+                'years'      => $log->request['years'] ?? null,
+                'price'      => $docId && isset($totals[$docId]) ? (float) $totals[$docId] : null,
+                'paid_usd'   => $log->action === 'namecom_registered' ? ($log->request['total_paid_usd'] ?? null) : null,
+                'created_at' => $log->created_at,
+            ];
+        });
+
+        return response()->json(['data' => $page]);
+    }
+
+    /**
      * On-demand version of the domains:sync command's per-domain logic, for
      * just one domain — e.g. one added via addExisting() that's missing
      * expiry/nameserver data until the nightly sync catches up (see
