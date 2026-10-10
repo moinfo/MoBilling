@@ -100,6 +100,7 @@ import FtpAccounts from './pages/FtpAccounts';
 import SslExpiry from './pages/SslExpiry';
 import ServiceManagement from './pages/ServiceManagement';
 import Domains from './pages/Domains';
+import DomainActivity from './pages/DomainActivity';
 import DomainDetails from './pages/DomainDetails';
 import Tickets from './pages/Tickets';
 import CannedReplies from './pages/CannedReplies';
@@ -342,6 +343,7 @@ export default function App() {
                   <Route path="/domains/ssl-expiry" element={<SslExpiry />} />
                   <Route path="/hosting/services" element={<ServiceManagement />} />
                   <Route path="/domains" element={<Domains />} />
+                  <Route path="/domains/activity" element={<DomainActivity />} />
                   <Route path="/domains/:id" element={<DomainDetails />} />
                   <Route path="/tickets" element={<Tickets />} />
                   <Route path="/canned-replies" element={<CannedReplies />} />

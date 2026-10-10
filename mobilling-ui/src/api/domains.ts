@@ -221,8 +221,15 @@ export interface DomainActivityRow {
   created_at: string;
 }
 
-export const getDomainActivityLog = (params?: { date_from?: string; date_to?: string; page?: number }) =>
-  api.get<{ data: { data: DomainActivityRow[]; last_page: number; current_page: number } }>('/domains/activity-log', { params });
+export interface DomainActivitySummary {
+  count_register: number;
+  count_renew: number;
+  total_price: number;
+  total_paid_usd: number;
+}
+
+export const getDomainActivityLog = (params?: { date_from?: string; date_to?: string; search?: string; type?: 'register' | 'renew'; page?: number }) =>
+  api.get<{ data: { data: DomainActivityRow[]; last_page: number; current_page: number }; summary: DomainActivitySummary }>('/domains/activity-log', { params });
 
 export const orderDomain = (data: {
   name: string; client_id: string; years: number;

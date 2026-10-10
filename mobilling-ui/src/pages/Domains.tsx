@@ -19,7 +19,6 @@ import {
   createCreditTransfer, completeCreditTransfer, cancelCreditTransfer, RegistrarCredit, TransferEmail,
   DomainRecord, DomainCheckResult, DomainLogRow, DOMAIN_STATUS_COLORS,
   whoisDomain, WhoisResult, lookupRegistrarOne, RegistrarView,
-  getDomainActivityLog, DomainActivityRow,
 } from '../api/domains';
 import { getClients } from '../api/clients';
 import DomainSuggestPanel from '../components/DomainSuggestPanel';
@@ -248,6 +247,10 @@ export default function Domains() {
               Register / Transfer
             </Button>
           )}
+          <Button variant="light" color="grape" leftSection={<IconHistory size={16} />}
+            onClick={() => navigate('/domains/activity')}>
+            Activity Log
+          </Button>
         </Group>
       </Group>
 
@@ -375,8 +378,6 @@ export default function Domains() {
       <TransferRequestModal opened={transferOpen} onClose={() => setTransferOpen(false)}
         credit={registrarCredit}
         onDone={() => qc.invalidateQueries({ queryKey: ['registrar-credit'] })} />
-
-      <DomainActivityLog />
 
       <Group gap="xs">
         <TextInput size="xs" placeholder="Search domain…" leftSection={<IconSearch size={13} />}
@@ -985,88 +986,6 @@ function ConfirmManualModal({ domain, onClose }: { domain: DomainRecord | null; 
         </Group>
       </Stack>
     </Modal>
-  );
-}
-
-// ── Activity log (registered/renewed statement, for reconciling registrar topup spend) ────────
-
-function DomainActivityLog() {
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
-  const [page, setPage] = useState(1);
-
-  const params: { date_from?: string; date_to?: string; page: number } = { page };
-  if (dateFrom) params.date_from = dateFrom;
-  if (dateTo) params.date_to = dateTo;
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['domain-activity-log', params],
-    queryFn: () => getDomainActivityLog(params),
-  });
-  const rows: DomainActivityRow[] = data?.data?.data?.data ?? [];
-  const lastPage: number = data?.data?.data?.last_page ?? 1;
-
-  return (
-    <Paper withBorder radius="md" p="md">
-      <Group justify="space-between" mb="sm" wrap="wrap">
-        <Group gap="xs">
-          <IconHistory size={18} />
-          <Text fw={600} size="sm">Domains Registered / Renewed (by date)</Text>
-        </Group>
-        <Group gap="xs">
-          <DateInput label="From" size="xs" maw={140} clearable
-            value={dateFrom ? new Date(dateFrom) : null}
-            onChange={(v) => { setDateFrom(v ? dayjs(v).format('YYYY-MM-DD') : ''); setPage(1); }} />
-          <DateInput label="To" size="xs" maw={140} clearable
-            value={dateTo ? new Date(dateTo) : null}
-            onChange={(v) => { setDateTo(v ? dayjs(v).format('YYYY-MM-DD') : ''); setPage(1); }} />
-        </Group>
-      </Group>
-
-      {isLoading ? (
-        <Center py="md"><Loader size="sm" /></Center>
-      ) : rows.length === 0 ? (
-        <Text c="dimmed" size="sm">No registrations or renewals in this period.</Text>
-      ) : (
-        <>
-          <Table striped highlightOnHover verticalSpacing="xs">
-            <Table.Thead>
-              <Table.Tr>
-                <Table.Th>Date</Table.Th>
-                <Table.Th>Domain</Table.Th>
-                <Table.Th>Client</Table.Th>
-                <Table.Th>Action</Table.Th>
-                <Table.Th>Years</Table.Th>
-                <Table.Th>Price</Table.Th>
-              </Table.Tr>
-            </Table.Thead>
-            <Table.Tbody>
-              {rows.map((r) => (
-                <Table.Tr key={r.id}>
-                  <Table.Td>{dayjs(r.created_at).format('D MMM YYYY HH:mm')}</Table.Td>
-                  <Table.Td>{r.domain ?? '—'}</Table.Td>
-                  <Table.Td>{r.client ?? '—'}</Table.Td>
-                  <Table.Td>
-                    <Badge size="xs" color={r.type === 'register' ? 'blue' : 'teal'} variant="light">
-                      {r.type === 'register' ? 'Registered' : 'Renewed'}
-                    </Badge>
-                  </Table.Td>
-                  <Table.Td>{r.years ?? '—'}</Table.Td>
-                  <Table.Td>
-                    {r.price != null ? formatCurrency(r.price) : r.paid_usd != null ? `$${r.paid_usd}` : '—'}
-                  </Table.Td>
-                </Table.Tr>
-              ))}
-            </Table.Tbody>
-          </Table>
-          {lastPage > 1 && (
-            <Group justify="center" mt="sm">
-              <Pagination value={page} onChange={setPage} total={lastPage} size="sm" />
-            </Group>
-          )}
-        </>
-      )}
-    </Paper>
   );
 }
 

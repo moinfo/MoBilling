@@ -455,34 +455,55 @@ class DomainController extends Controller
     {
         $tenantId = auth()->user()->tenant_id;
         $actions = ['registered', 'renewed', 'namecom_registered', 'manual_register_confirmed', 'renewal_paid_manual_action_needed'];
+        $registerActions = ['registered', 'namecom_registered', 'manual_register_confirmed'];
 
-        $query = DomainLog::with(['domain:id,name,client_id', 'domain.client:id,name'])
+        $base = DomainLog::query()
             ->where('tenant_id', $tenantId)
-            ->whereIn('action', $actions)
-            ->orderByDesc('created_at');
+            ->whereIn('action', $actions);
 
         if ($request->filled('date_from')) {
-            $query->whereDate('created_at', '>=', $request->date_from);
+            $base->whereDate('created_at', '>=', $request->date_from);
         }
         if ($request->filled('date_to')) {
-            $query->whereDate('created_at', '<=', $request->date_to);
+            $base->whereDate('created_at', '<=', $request->date_to);
+        }
+        if ($request->filled('search')) {
+            $search = $request->search;
+            $base->whereHas('domain', fn ($q) => $q->where('name', 'like', "%{$search}%")
+                ->orWhereHas('client', fn ($q2) => $q2->where('name', 'like', "%{$search}%")));
+        }
+        if ($request->get('type') === 'register') {
+            $base->whereIn('action', $registerActions);
+        } elseif ($request->get('type') === 'renew') {
+            $base->whereNotIn('action', $registerActions);
         }
 
-        $page = $query->paginate(min((int) $request->get('per_page', 20), 100));
-
-        $docIds = $page->getCollection()
-            ->map(fn ($log) => $log->request['document_id'] ?? null)
-            ->filter()->unique()->values();
+        // Full filtered set (lightweight columns) drives the period summary —
+        // it must reflect every matching row, not just the current page.
+        $all = (clone $base)->get(['id', 'action', 'request']);
+        $docIds = $all->map(fn ($log) => $log->request['document_id'] ?? null)->filter()->unique()->values();
         $totals = Document::withoutGlobalScopes()->whereIn('id', $docIds)->pluck('total', 'id');
 
-        $page->getCollection()->transform(function (DomainLog $log) use ($totals) {
+        $summary = [
+            'count_register' => $all->whereIn('action', $registerActions)->count(),
+            'count_renew'    => $all->whereNotIn('action', $registerActions)->count(),
+            'total_price'    => round($all->sum(fn ($log) => ($log->request['document_id'] ?? null) ? (float) ($totals[$log->request['document_id']] ?? 0) : 0), 2),
+            'total_paid_usd' => round($all->where('action', 'namecom_registered')->sum(fn ($log) => (float) ($log->request['total_paid_usd'] ?? 0)), 2),
+        ];
+
+        $page = (clone $base)
+            ->with(['domain:id,name,client_id', 'domain.client:id,name'])
+            ->orderByDesc('created_at')
+            ->paginate(min((int) $request->get('per_page', 20), 100));
+
+        $page->getCollection()->transform(function (DomainLog $log) use ($totals, $registerActions) {
             $docId = $log->request['document_id'] ?? null;
 
             return [
                 'id'         => $log->id,
                 'domain'     => $log->domain?->name,
                 'client'     => $log->domain?->client?->name,
-                'type'       => in_array($log->action, ['registered', 'namecom_registered', 'manual_register_confirmed'], true) ? 'register' : 'renew',
+                'type'       => in_array($log->action, $registerActions, true) ? 'register' : 'renew',
                 'years'      => $log->request['years'] ?? null,
                 'price'      => $docId && isset($totals[$docId]) ? (float) $totals[$docId] : null,
                 'paid_usd'   => $log->action === 'namecom_registered' ? ($log->request['total_paid_usd'] ?? null) : null,
@@ -490,7 +511,7 @@ class DomainController extends Controller
             ];
         });
 
-        return response()->json(['data' => $page]);
+        return response()->json(['data' => $page, 'summary' => $summary]);
     }
 
     /**
