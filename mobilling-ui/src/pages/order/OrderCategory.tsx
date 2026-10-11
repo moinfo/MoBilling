@@ -117,7 +117,7 @@ export default function OrderCategory() {
   });
   const { data: tldRes } = useQuery({
     queryKey: ['portal-domain-tlds'],
-    queryFn: getPortalDomainTlds,
+    queryFn: () => getPortalDomainTlds(),
     enabled: !!selected?.needs_domain,
   });
   const { data: domainAddonRes } = useQuery({

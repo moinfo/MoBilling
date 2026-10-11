@@ -96,10 +96,13 @@ class PortalOrderController extends Controller
      * DomainTld::priceFor: a tenant's own Name.com row is authoritative for its TLD, so a
      * platform placeholder row for that TLD is never listed (on sale or not).
      *
-     * - Bundled hosting order / client portal: only TLDs sold with hosting (never Name.com ones,
-     *   which are ordered separately from the Domains page), neutral wording.
-     * - Staff standalone domain order (?scope=domain): every TLD on sale including Name.com ones
-     *   (flagged `via`), plus `off_sale` = Name.com TLDs the tenant has not switched on yet.
+     * - Bundled hosting order (?scope omitted, e.g. OrderCategory.tsx's domain chooser):
+     *   only TLDs sold with hosting (never Name.com ones, which are ordered separately
+     *   from the standalone Domains order page), neutral wording.
+     * - Standalone domain order (?scope=domain — staff or client, e.g. OrderDomain.tsx):
+     *   every TLD on sale including Name.com ones (flagged `via`). `off_sale` (Name.com
+     *   TLDs the tenant has not switched on yet) is a staff-only internal hint, omitted
+     *   for a client caller.
      */
     public function tlds(Request $request)
     {
@@ -107,7 +110,7 @@ class PortalOrderController extends Controller
         $isStaff = !$request->user()->client_id;
         $namecomRows = \App\Models\DomainTld::where('tenant_id', $tenantId)->where('registrar', 'namecom')->get(['tld', 'is_active']);
 
-        if ($isStaff && $request->query('scope') === 'domain') {
+        if ($request->query('scope') === 'domain') {
             $rows = \App\Models\DomainTld::onSaleCatalog($tenantId)->sortBy('tld')->values()
                 ->map(fn ($t) => [
                     'tld'            => $t->tld,
@@ -118,10 +121,12 @@ class PortalOrderController extends Controller
                     'via'            => $t->registrar === 'namecom' ? 'namecom' : null,
                 ]);
 
-            return response()->json([
-                'data'     => $rows,
-                'off_sale' => $namecomRows->where('is_active', false)->pluck('tld')->sort()->values(),
-            ]);
+            $payload = ['data' => $rows];
+            if ($isStaff) {
+                $payload['off_sale'] = $namecomRows->where('is_active', false)->pluck('tld')->sort()->values();
+            }
+
+            return response()->json($payload);
         }
 
         $rows = \App\Models\DomainTld::where('is_active', true)

@@ -155,7 +155,7 @@ function ConfigureOrderModal({ product, onClose, onDone }: {
 
   const { data: tldsData } = useQuery({
     queryKey: ['portal-domain-tlds'],
-    queryFn: getPortalDomainTlds,
+    queryFn: () => getPortalDomainTlds(),
     enabled: !!product?.needs_domain,
   });
   const tlds = tldsData?.data?.data ?? [];

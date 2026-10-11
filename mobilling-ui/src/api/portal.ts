@@ -554,10 +554,18 @@ export const getPortalProductConfigOptions = (productId: string) =>
 export interface PortalTldRow {
   tld: string; register_price: number; transfer_price: number;
   years_min: number; years_max: number;
+  /** Only present with scope=domain — 'namecom' when this TLD is fulfilled via Name.com. */
+  via?: 'namecom' | null;
 }
 
-export const getPortalDomainTlds = () =>
-  api.get<{ data: PortalTldRow[] }>('/portal/domain-tlds');
+/**
+ * Omit `scope` for the bundled-hosting-order domain chooser (never includes
+ * Name.com TLDs — those are ordered separately). Pass `scope: 'domain'` for a
+ * standalone domain register/transfer flow, which needs every TLD actually on
+ * sale, Name.com-fulfilled ones included (see OrderDomain.tsx).
+ */
+export const getPortalDomainTlds = (params?: { scope?: 'domain' }) =>
+  api.get<{ data: PortalTldRow[] }>('/portal/domain-tlds', { params });
 
 export interface DomainAddonRow {
   id: string; name: string; description: string | null; price: number; is_free: boolean;

@@ -29,8 +29,8 @@ export default function OrderDomain() {
   const [checked, setChecked] = useState<{ name: string; available: boolean } | null>(null);
 
   const { data: tldRes, isLoading: tldsLoading } = useQuery({
-    queryKey: ['portal-domain-tlds'],
-    queryFn: getPortalDomainTlds,
+    queryKey: ['portal-domain-tlds', 'domain'],
+    queryFn: () => getPortalDomainTlds({ scope: 'domain' }),
   });
   const tlds = tldRes?.data?.data ?? [];
 
