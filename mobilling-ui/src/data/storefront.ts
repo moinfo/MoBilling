@@ -64,6 +64,20 @@ export const STOREFRONT: StorefrontCategory[] = [
     ],
   },
   {
+    slug: 'cloud-vps',
+    label: 'Cloud VPS',
+    description: 'Resold Linode cloud servers — full root access, SSD storage, billed monthly.',
+    plans: [
+      { slug: 'cloud-1gb', product: 'Cloud 1GB' },
+      { slug: 'cloud-2gb', product: 'Cloud 2GB' },
+      { slug: 'cloud-4gb', product: 'Cloud 4GB' },
+      { slug: 'cloud-8gb', product: 'Cloud 8GB' },
+      { slug: 'cloud-16gb', product: 'Cloud 16GB' },
+      { slug: 'dedicated-4gb', product: 'Dedicated 4GB' },
+      { slug: 'dedicated-8gb', product: 'Dedicated 8GB' },
+    ],
+  },
+  {
     slug: 'dedicated-server',
     label: 'Dedicated Servers',
     description: 'A whole physical server, tuned for demanding workloads.',
