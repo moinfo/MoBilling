@@ -143,6 +143,42 @@ class LinodeController extends Controller
         return response()->json(['data' => $out]);
     }
 
+    /**
+     * Live VPS plan + region catalog, for the "Linode VPS" product-creation
+     * form — staff pick a plan/region from here (never free text) and see
+     * Linode's own USD price as a reference while setting their own retail
+     * price. Uses the tenant's first active Linode account; a tenant with no
+     * connected account (or only an invalid one) cannot create a VPS product
+     * yet, same as every other Linode action here.
+     */
+    public function planCatalog(): JsonResponse
+    {
+        $account = LinodeAccount::where('status', 'active')->orderBy('created_at')->first();
+        if (!$account) {
+            return response()->json(['message' => 'Connect a Linode account first (Linode > Accounts).'], 422);
+        }
+
+        try {
+            $svc = new LinodeService($account);
+            $types = collect($svc->listTypes())
+                ->filter(fn ($t) => ($t['id'] ?? null) !== null && (float) ($t['price']['monthly'] ?? 0) > 0)
+                ->map(fn ($t) => [
+                    'id' => $t['id'], 'label' => $t['label'] ?? $t['id'],
+                    'vcpus' => $t['vcpus'] ?? null, 'memory_mb' => $t['memory'] ?? null,
+                    'disk_mb' => $t['disk'] ?? null, 'transfer_gb' => $t['transfer'] ?? null,
+                    'class' => $t['class'] ?? null,
+                    'monthly_usd' => (float) ($t['price']['monthly'] ?? 0),
+                ])->sortBy('monthly_usd')->values();
+            $regions = collect($svc->listRegions())
+                ->map(fn ($r) => ['id' => $r['id'], 'label' => $r['label'] ?? $r['id'], 'country' => $r['country'] ?? null])
+                ->sortBy('label')->values();
+        } catch (LinodeApiException $e) {
+            return response()->json(['message' => $e->getMessage()], 422);
+        }
+
+        return response()->json(['data' => ['types' => $types, 'regions' => $regions]]);
+    }
+
     /** Invoice line items as a CSV download (Linode's API has no PDF). Read-only. */
     public function downloadInvoice(LinodeAccount $account, string $invoice)
     {

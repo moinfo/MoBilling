@@ -36,7 +36,7 @@ class LinodeService
     ];
 
     public const RECORD_TYPES = ['A', 'AAAA', 'CNAME', 'MX', 'TXT', 'SRV', 'CAA'];
-    private const SECRET_KEYS = ['token', 'authorization', 'password', 'secret', 'api_token'];
+    private const SECRET_KEYS = ['token', 'authorization', 'password', 'secret', 'api_token', 'root_pass'];
 
     /** Tests set this false to skip real sleeping on 429. */
     public static bool $sleepOnRateLimit = true;
@@ -197,6 +197,30 @@ class LinodeService
     public function listInstances(): array
     {
         return $this->paginate('/linode/instances');
+    }
+
+    /** Every VPS plan Linode sells, with its specs and Linode's own USD price — used to build a reseller catalog. */
+    public function listTypes(): array
+    {
+        return $this->paginate('/linode/types');
+    }
+
+    /** Every region Linode operates in — used to let staff pick where a resold VPS is created. */
+    public function listRegions(): array
+    {
+        return $this->paginate('/regions');
+    }
+
+    /**
+     * Create a brand-new VPS (real money is spent at Linode the moment this
+     * succeeds). Only ever called from ProvisionLinodeVpsInstance, itself only
+     * reached once a client's invoice is paid in full — see that job's docblock.
+     */
+    public function createInstance(string $type, string $region, string $image, string $rootPass, string $label): array
+    {
+        $body = ['type' => $type, 'region' => $region, 'image' => $image, 'root_pass' => $rootPass, 'label' => $label, 'booted' => true];
+
+        return $this->request('POST', '/linode/instances', $body, 'instance.create', $label);
     }
 
     /** Read-only billing view (needs token scope account:read_only). */

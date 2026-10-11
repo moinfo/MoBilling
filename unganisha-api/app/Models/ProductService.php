@@ -18,6 +18,7 @@ class ProductService extends Model
         'tenant_id', 'type', 'name', 'code', 'description',
         'price', 'cost_price', 'tax_percent', 'unit', 'category', 'billing_cycle', 'invoice_day_of_month', 'is_active', 'legacy_id',
         'provisioning_type', 'server_id', 'cpanel_package', 'auto_provision', 'portal_visible',
+        'linode_type', 'linode_region', 'linode_image',
     ];
 
     protected $casts = [

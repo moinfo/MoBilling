@@ -13,9 +13,12 @@ export interface ProductService {
   billing_cycle: string | null;
   invoice_day_of_month: number | null;
   is_active: boolean;
-  provisioning_type: 'none' | 'whm_cpanel' | 'linode';
+  provisioning_type: 'none' | 'whm_cpanel' | 'linode' | 'linode_vps';
   server_id: string | null;
   cpanel_package: string | null;
+  linode_type: string | null;
+  linode_region: string | null;
+  linode_image: string | null;
   subscriptions_count?: number;
   active_subscriptions_count?: number;
   clients_count?: number;
@@ -37,9 +40,12 @@ export interface ProductServiceFormData {
   billing_cycle: string;
   invoice_day_of_month?: number | null;
   is_active: boolean;
-  provisioning_type?: 'none' | 'whm_cpanel' | 'linode';
+  provisioning_type?: 'none' | 'whm_cpanel' | 'linode' | 'linode_vps';
   server_id?: string | null;
   cpanel_package?: string;
+  linode_type?: string | null;
+  linode_region?: string | null;
+  linode_image?: string | null;
   auto_provision?: boolean;
   portal_visible?: boolean;
 }

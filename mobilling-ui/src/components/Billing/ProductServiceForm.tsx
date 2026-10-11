@@ -1,8 +1,9 @@
-import { TextInput, NumberInput, Select, Textarea, Button, Group, SegmentedControl, Switch, Stack, Divider, Text, Loader } from '@mantine/core';
+import { TextInput, NumberInput, Select, Textarea, Button, Group, SegmentedControl, Switch, Stack, Divider, Text, Loader, Alert } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useQuery } from '@tanstack/react-query';
 import { ProductServiceFormData } from '../../api/productServices';
 import { getServers, getServerPackagesDetailed, ServerPackageDetails } from '../../api/hosting';
+import { getLinodePlanCatalog } from '../../api/linode';
 import { usePermissions } from '../../hooks/usePermissions';
 import { useAuth } from '../../context/AuthContext';
 
@@ -90,11 +91,16 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
       provisioning_type: 'none',
       server_id: null,
       cpanel_package: '',
+      linode_type: null,
+      linode_region: null,
+      linode_image: '',
       auto_provision: true,
     },
     validate: {
       name: (v) => (v.length > 0 ? null : 'Name is required'),
       price: (v) => (v >= 0 ? null : 'Price must be positive'),
+      linode_type: (v, values) => (values.provisioning_type === 'linode_vps' && !v ? 'Select a VPS plan' : null),
+      linode_region: (v, values) => (values.provisioning_type === 'linode_vps' && !v ? 'Select a region' : null),
     },
   });
 
@@ -120,6 +126,20 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
   const packageOptions = Array.from(new Set([...(form.values.cpanel_package ? [form.values.cpanel_package] : []), ...packages.map((p) => p.name)]))
     .map((p) => ({ value: p, label: p }));
   const selectedPackageDetails = packages.find((p) => p.name === form.values.cpanel_package) ?? null;
+
+  const { data: planCatalogData, isLoading: planCatalogLoading, isError: planCatalogError, error: planCatalogErrorObj } = useQuery({
+    queryKey: ['linode-plan-catalog'],
+    queryFn: getLinodePlanCatalog,
+    enabled: form.values.provisioning_type === 'linode_vps',
+    retry: false,
+  });
+  const planTypes = planCatalogData?.data?.data?.types ?? [];
+  const planRegions = planCatalogData?.data?.data?.regions ?? [];
+  const planTypeOptions = planTypes.map((t) => ({
+    value: t.id, label: `${t.label} — $${t.monthly_usd}/mo (${t.vcpus ?? '?'} vCPU, ${((t.memory_mb ?? 0) / 1024).toFixed(0)}GB RAM)`,
+  }));
+  const planRegionOptions = planRegions.map((r) => ({ value: r.id, label: `${r.label}` }));
+  const selectedPlanType = planTypes.find((t) => t.id === form.values.linode_type) ?? null;
 
   const applyPackageSpecs = (pkg: ServerPackageDetails) => form.setFieldValue('description', packageSpecsText(pkg));
 
@@ -181,6 +201,7 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
                 { value: 'none', label: 'None' },
                 ...(canHosting || form.values.provisioning_type === 'whm_cpanel' ? [{ value: 'whm_cpanel', label: 'WHM / cPanel' }] : []),
                 ...(canLinode || form.values.provisioning_type === 'linode' ? [{ value: 'linode', label: 'Linode Server (manual, billing only)' }] : []),
+                ...(canLinode || form.values.provisioning_type === 'linode_vps' ? [{ value: 'linode_vps', label: 'Linode VPS (auto-provisioned & resold)' }] : []),
               ]}
               {...form.getInputProps('provisioning_type')}
               onChange={(v) => {
@@ -189,10 +210,55 @@ export default function ProductServiceForm({ initialValues, onSubmit, loading }:
                   form.setFieldValue('portal_visible', false);
                   if (!form.values.category) form.setFieldValue('category', 'Linode Servers');
                 }
+                if (v === 'linode_vps' && !form.values.category) {
+                  form.setFieldValue('category', 'VPS Hosting');
+                }
               }}
             />
             {form.values.provisioning_type === 'linode' && (
               <Text size="xs" c="dimmed">Use a yearly/monthly cycle. It is never shown in the portal shopping cart. The price is the default; the per-server amount can be overridden when billing a server.</Text>
+            )}
+            {form.values.provisioning_type === 'linode_vps' && (
+              <>
+                <Text size="xs" c="dimmed">
+                  A real VPS is created automatically at Linode the moment a client's invoice for this product is paid in full — set your own retail Price above with whatever markup you want over Linode's cost shown below.
+                </Text>
+                {planCatalogError && (
+                  <Alert color="orange" variant="light">
+                    {(planCatalogErrorObj as any)?.response?.data?.message || 'Could not load Linode plans — connect a Linode account first (Linode → Accounts).'}
+                  </Alert>
+                )}
+                <Group grow align="flex-start">
+                  <Select
+                    label="VPS Plan"
+                    placeholder={planCatalogLoading ? 'Loading plans…' : 'Select a plan'}
+                    data={planTypeOptions}
+                    searchable
+                    required
+                    rightSection={planCatalogLoading ? <Loader size="xs" /> : undefined}
+                    {...form.getInputProps('linode_type')}
+                  />
+                  <Select
+                    label="Region"
+                    placeholder={planCatalogLoading ? 'Loading regions…' : 'Select a region'}
+                    data={planRegionOptions}
+                    searchable
+                    required
+                    {...form.getInputProps('linode_region')}
+                  />
+                </Group>
+                {selectedPlanType && (
+                  <Text size="xs" c="dimmed" mt={-8}>
+                    Linode charges ${selectedPlanType.monthly_usd}/mo for this plan — your Price above is what the client pays.
+                  </Text>
+                )}
+                <TextInput
+                  label="OS Image"
+                  description="Linode image slug — leave as the default unless you know you need a different OS."
+                  placeholder="linode/ubuntu22.04"
+                  {...form.getInputProps('linode_image')}
+                />
+              </>
             )}
             {form.values.provisioning_type === 'whm_cpanel' && (
               <>

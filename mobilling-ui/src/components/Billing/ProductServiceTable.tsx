@@ -70,6 +70,10 @@ export default function ProductServiceTable({ items, onEdit, onDelete }: Props) 
                 <Tooltip label="Linode server: billing only, no automatic action on the server">
                   <Badge size="xs" variant="light" color="indigo" leftSection={<IconServer size={10} />}>Linode</Badge>
                 </Tooltip>
+              ) : item.provisioning_type === 'linode_vps' ? (
+                <Tooltip label={`Linode VPS: ${item.linode_type ?? '—'} in ${item.linode_region ?? '—'} — auto-provisioned on payment`}>
+                  <Badge size="xs" variant="light" color="grape" leftSection={<IconServer size={10} />}>VPS</Badge>
+                </Tooltip>
               ) : (
                 <Text size="xs" c="dimmed">—</Text>
               )}

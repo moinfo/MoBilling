@@ -247,6 +247,9 @@ class TenantWalletGateService
             if ($product && $product->provisioning_type === 'whm_cpanel' && $product->auto_provision && !$sub->hostingAccount) {
                 \App\Jobs\Hosting\ProvisionHostingAccount::dispatch($sub);
             }
+            if ($product && $product->provisioning_type === 'linode_vps' && !$sub->linodeResource) {
+                \App\Jobs\Linode\ProvisionLinodeVpsInstance::dispatch($sub);
+            }
         }
 
         $domains = Domain::withoutGlobalScopes()

@@ -49,8 +49,12 @@ class PublicCatalogController extends Controller
             ->where('type', 'product')->where('category', 'like', '%mail%')->where('is_active', true)
             ->orderBy('price')->get()->map($plan)->values();
 
+        // Both the manual-billing "linode" servers and the self-order
+        // "linode_vps" plans are marketed in the same storefront bucket —
+        // visitors just see "a Linode server for this price", the ordering
+        // mechanics behind it don't matter at this stage.
         $linode = ProductService::withoutGlobalScopes()->where('tenant_id', $tenantId)
-            ->where('provisioning_type', 'linode')->where('is_active', true)
+            ->whereIn('provisioning_type', ['linode', 'linode_vps'])->where('is_active', true)
             ->orderBy('price')->get()->map($plan)->values();
 
         // A handful of popular TLDs with their real retail price, for the

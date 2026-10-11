@@ -5,6 +5,9 @@ namespace App\Observers;
 use App\Jobs\Hosting\ProvisionHostingAccount;
 use App\Jobs\Hosting\ReactivateHostingAccount;
 use App\Jobs\Hosting\SuspendHostingAccount;
+use App\Jobs\Linode\ProvisionLinodeVpsInstance;
+use App\Jobs\Linode\ReactivateLinodeVpsInstance;
+use App\Jobs\Linode\SuspendLinodeVpsInstance;
 use App\Models\ClientSubscription;
 
 /**
@@ -27,6 +30,23 @@ class ClientSubscriptionObserver
         // delete/API call of any kind); staff are alerted via the Linode audit log + app log.
         if ($product && $product->provisioning_type === 'linode') {
             app(\App\Services\Linode\LinodeBilling::class)->noteStatusChange($sub);
+            return;
+        }
+
+        // Linode VPS products auto-provision a real, billable VPS — same
+        // wallet gate and active/suspended/cancelled mapping as WHM hosting
+        // below, just against a LinodeResource instead of a HostingAccount.
+        if ($product && $product->provisioning_type === 'linode_vps') {
+            $resource = $sub->linodeResource;
+
+            match ($sub->status) {
+                'active'    => $resource
+                                ? ReactivateLinodeVpsInstance::dispatch($resource)
+                                : (app(\App\Services\TenantWalletGateService::class)->allowHostingProvision($sub) ? ProvisionLinodeVpsInstance::dispatch($sub) : null),
+                'suspended' => $resource ? SuspendLinodeVpsInstance::dispatch($resource, 'Unpaid invoice') : null,
+                'cancelled' => $resource ? SuspendLinodeVpsInstance::dispatch($resource, 'Subscription cancelled') : null,
+                default     => null,
+            };
             return;
         }
 

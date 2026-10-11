@@ -171,6 +171,14 @@ export interface LinodeCostsRow {
 }
 export const getLinodeCosts = () => api.get<{ data: LinodeCostsRow[] }>('/linode/costs').then((r) => r.data.data);
 
+export interface LinodePlanType {
+  id: string; label: string; vcpus: number | null; memory_mb: number | null;
+  disk_mb: number | null; transfer_gb: number | null; class: string | null; monthly_usd: number;
+}
+export interface LinodePlanRegion { id: string; label: string; country: string | null; }
+export const getLinodePlanCatalog = () =>
+  api.get<{ data: { types: LinodePlanType[]; regions: LinodePlanRegion[] } }>('/linode/plan-catalog');
+
 export interface LinodeDomainRequestRow {
   id: string; domain: string; status: 'pending' | 'approved' | 'rejected'; note: string | null;
   client_id: string; client_name: string | null; server_id: string; server_label: string | null; server_ip: string | null;
