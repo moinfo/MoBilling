@@ -51,7 +51,13 @@ class SendBroadcastJob implements ShouldQueue
     /** A 1000-recipient WhatsApp broadcast takes ~20 minutes at the throttle above — don't let the worker's own retry_after reclaim it as "stuck" and run it twice. */
     public int $timeout = 3600;
 
-    public function __construct(public string $broadcastId, public array $clientIds) {}
+    /**
+     * @param array<int, array{key: string, client_id: ?string, name: ?string, phone: ?string, email: ?string}> $recipients
+     *   Not necessarily real Client rows — a source like "MoSMS contacts" has no
+     *   Client record at all, so each entry carries its own name/phone/email
+     *   directly rather than just an id to re-fetch.
+     */
+    public function __construct(public string $broadcastId, public array $recipients) {}
 
     public function handle(): void
     {
@@ -65,37 +71,41 @@ class SendBroadcastJob implements ShouldQueue
             return;
         }
 
-        $clients = Client::withoutGlobalScopes()->whereIn('id', $this->clientIds)->get()->keyBy('id');
+        // Real Clients get fetched fresh (their own whatsappOptedOut()/stored data
+        // matters); anything else becomes an unsaved Client just to carry
+        // name/phone/email/tenant through Notifiable/the channel classes, which
+        // only ever read those attributes — never require a persisted row.
+        $clientIds = collect($this->recipients)->pluck('client_id')->filter()->all();
+        $clients = empty($clientIds) ? collect() : Client::withoutGlobalScopes()->whereIn('id', $clientIds)->get()->keyBy('id');
+
         $notification = new BroadcastNotification($broadcast, $tenant);
         $throttle = $broadcast->channel === 'whatsapp';
 
-        $sentIds = $broadcast->sent_client_ids ?? [];
-        $failedIds = $broadcast->failed_client_ids ?? [];
-        $reasons = $broadcast->failure_reasons ?? [];
+        $sent = $broadcast->sent_client_ids ?? [];
+        $failed = $broadcast->failed_client_ids ?? [];
 
-        foreach ($this->clientIds as $clientId) {
-            $client = $clients->get($clientId);
+        foreach ($this->recipients as $recipient) {
+            $notifiable = $recipient['client_id'] ? $clients->get($recipient['client_id']) : null;
+            $notifiable ??= new Client([
+                'tenant_id' => $tenant->id,
+                'name' => $recipient['name'],
+                'phone' => $recipient['phone'],
+                'email' => $recipient['email'],
+            ]);
 
-            if ($client) {
-                try {
-                    $client->notify($notification);
-                    $sentIds[] = $clientId;
-                } catch (\Throwable $e) {
-                    $failedIds[] = $clientId;
-                    $reasons[$clientId] = $e->getMessage();
-                    Log::warning("Broadcast {$broadcast->id}: send failed for client {$clientId}: {$e->getMessage()}");
-                }
-            } else {
-                $failedIds[] = $clientId;
-                $reasons[$clientId] = 'Client no longer exists.';
+            try {
+                $notifiable->notify($notification);
+                $sent[] = $recipient;
+            } catch (\Throwable $e) {
+                $failed[] = $recipient + ['reason' => $e->getMessage()];
+                Log::warning("Broadcast {$broadcast->id}: send failed for {$recipient['key']}: {$e->getMessage()}");
             }
 
             $broadcast->update([
-                'sent_count' => count($sentIds),
-                'failed_count' => count($failedIds),
-                'sent_client_ids' => $sentIds,
-                'failed_client_ids' => $failedIds,
-                'failure_reasons' => $reasons,
+                'sent_count' => count($sent),
+                'failed_count' => count($failed),
+                'sent_client_ids' => $sent,
+                'failed_client_ids' => $failed,
             ]);
 
             if ($throttle) {

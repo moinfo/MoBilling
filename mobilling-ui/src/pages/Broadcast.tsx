@@ -11,7 +11,7 @@ import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat, IconInfoCircle, IconP
 import {
   getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast, previewBroadcast,
   type Broadcast as BroadcastType, type SendBroadcastPayload, type BroadcastRecipient,
-  type BroadcastPreviewResponse,
+  type BroadcastPreviewResponse, type BroadcastSource,
 } from '../api/broadcasts';
 import { getClients } from '../api/clients';
 import { formatDate } from '../utils/formatDate';
@@ -97,7 +97,7 @@ export default function Broadcast() {
 
   const [preview, setPreview] = useState<BroadcastPreviewResponse | null>(null);
   const previewMutation = useMutation({
-    mutationFn: (data: { channel: string; client_ids?: string[] }) => previewBroadcast(data),
+    mutationFn: (data: { channel: string; source?: BroadcastSource; client_ids?: string[] }) => previewBroadcast(data),
     onSuccess: (res) => setPreview(res.data),
     onError: (err: any) => {
       notifications.show({
@@ -127,6 +127,7 @@ export default function Broadcast() {
   const form = useForm<SendBroadcastPayload>({
     initialValues: {
       channel: 'email',
+      source: 'mobilling',
       subject: '',
       body: '',
       sms_body: '',
@@ -151,7 +152,7 @@ export default function Broadcast() {
 
   const mutation = useMutation({
     mutationFn: (data: SendBroadcastPayload) => {
-      const payload: SendBroadcastPayload = { channel: data.channel };
+      const payload: SendBroadcastPayload = { channel: data.channel, source: data.source };
       if (['email', 'both'].includes(data.channel)) {
         payload.subject = data.subject;
         payload.body = data.body;
@@ -163,7 +164,7 @@ export default function Broadcast() {
         payload.whatsapp_body = data.whatsapp_body;
         payload.whatsapp_image = data.whatsapp_image;
       }
-      if (data.client_ids && data.client_ids.length > 0) {
+      if (data.source === 'mobilling' && data.client_ids && data.client_ids.length > 0) {
         payload.client_ids = data.client_ids;
       }
       return sendBroadcast(payload);
@@ -188,9 +189,11 @@ export default function Broadcast() {
   });
 
   const channel = form.values.channel;
+  const source = form.values.source ?? 'mobilling';
   const showEmail = ['email', 'both'].includes(channel);
   const showSms = ['sms', 'both'].includes(channel);
   const showWhatsapp = channel === 'whatsapp';
+  const isMobillingSource = source === 'mobilling';
 
   // What an SMS send will actually produce: one text per selected client
   // (or every client if none selected) who has a phone number on file.
@@ -218,6 +221,22 @@ export default function Broadcast() {
               ]}
               {...form.getInputProps('channel')}
             />
+
+            <Select
+              label="Send to"
+              data={[
+                { value: 'mobilling', label: 'MoBilling clients' },
+                { value: 'mosms_contacts', label: 'MoSMS Contacts (our own MoSMS address book)' },
+              ]}
+              allowDeselect={false}
+              {...form.getInputProps('source')}
+            />
+            {!isMobillingSource && (
+              <Alert variant="light" color="blue" icon={<IconInfoCircle size={18} />}>
+                This will send to everyone in this source matching the channel above — there's no
+                per-recipient picker for this source yet. Use Preview to see exactly who.
+              </Alert>
+            )}
 
             <Select
               label="Template"
@@ -291,16 +310,18 @@ export default function Broadcast() {
               </>
             )}
 
-            <MultiSelect
-              label="Recipients"
-              placeholder="All clients (leave empty to send to everyone)"
-              data={clientOptions}
-              searchable
-              clearable
-              {...form.getInputProps('client_ids')}
-            />
+            {isMobillingSource && (
+              <MultiSelect
+                label="Recipients"
+                placeholder="All clients (leave empty to send to everyone)"
+                data={clientOptions}
+                searchable
+                clearable
+                {...form.getInputProps('client_ids')}
+              />
+            )}
 
-            {showSms && (
+            {isMobillingSource && showSms && (
               <Alert
                 variant="light"
                 color={smsRecipients === 0 ? 'red' : 'blue'}
@@ -329,7 +350,8 @@ export default function Broadcast() {
                 loading={previewMutation.isPending}
                 onClick={() => previewMutation.mutate({
                   channel: form.values.channel,
-                  client_ids: form.values.client_ids?.length ? form.values.client_ids : undefined,
+                  source: form.values.source,
+                  client_ids: isMobillingSource && form.values.client_ids?.length ? form.values.client_ids : undefined,
                 })}
               >
                 Preview recipients

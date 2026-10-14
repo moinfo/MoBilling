@@ -19,8 +19,11 @@ export interface Broadcast {
   created_at: string;
 }
 
+export type BroadcastSource = 'mobilling' | 'mosms_contacts';
+
 export interface SendBroadcastPayload {
   channel: 'email' | 'sms' | 'whatsapp' | 'both';
+  source?: BroadcastSource;
   subject?: string;
   body?: string;
   sms_body?: string;
@@ -60,6 +63,7 @@ export const sendBroadcast = (data: SendBroadcastPayload) => {
 
   const form = new FormData();
   form.append('channel', data.channel);
+  if (data.source) form.append('source', data.source);
   if (data.subject) form.append('subject', data.subject);
   if (data.body) form.append('body', data.body);
   if (data.sms_body) form.append('sms_body', data.sms_body);
@@ -73,7 +77,7 @@ export const sendBroadcast = (data: SendBroadcastPayload) => {
 export const getBroadcastRecipients = (id: string, status: 'sent' | 'failed') =>
   api.get<{ data: BroadcastRecipient[] }>(`/broadcasts/${id}/recipients`, { params: { status } });
 
-export const previewBroadcast = (data: { channel: string; client_ids?: string[] }) =>
+export const previewBroadcast = (data: { channel: string; source?: BroadcastSource; client_ids?: string[] }) =>
   api.post<BroadcastPreviewResponse>('/broadcasts/preview', data);
 
 export const resendFailedBroadcast = (id: string) =>

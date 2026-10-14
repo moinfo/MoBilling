@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Jobs\SendBroadcastJob;
 use App\Models\Broadcast;
 use App\Models\Client;
+use App\Services\MosmsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 
 class BroadcastController extends Controller
 {
@@ -28,20 +30,20 @@ class BroadcastController extends Controller
     {
         $request->validate([
             'channel' => 'required|in:email,sms,whatsapp,both',
+            'source' => 'nullable|in:mobilling,mosms_contacts',
             'client_ids' => 'nullable|array',
             'client_ids.*' => 'uuid|exists:clients,id',
         ]);
 
-        [$clients, $duplicatesRemoved] = $this->resolveRecipients($request, $request->channel);
+        [$recipients, $duplicatesRemoved] = $this->resolveRecipients($request, $request->input('source', 'mobilling'), $request->channel);
 
         return response()->json([
-            'total' => $clients->count(),
+            'total' => $recipients->count(),
             'duplicates_removed' => $duplicatesRemoved,
-            'recipients' => $clients->map(fn (Client $c) => [
-                'id' => $c->id,
-                'name' => $c->name,
-                'email' => $c->email,
-                'phone' => $c->phone,
+            'recipients' => $recipients->map(fn (array $r) => [
+                'name' => $r['name'],
+                'email' => $r['email'],
+                'phone' => $r['phone'],
             ])->values(),
         ]);
     }
@@ -57,13 +59,15 @@ class BroadcastController extends Controller
             // Capped at 2MB — this server's upload_max_filesize is 2M, so anything larger
             // never reaches this validation (PHP drops it before Laravel sees the request).
             'whatsapp_image' => 'nullable|image|mimes:jpeg,png,webp|max:2048',
+            'source' => 'nullable|in:mobilling,mosms_contacts',
             'client_ids' => 'nullable|array',
             'client_ids.*' => 'uuid|exists:clients,id',
         ]);
 
         $channel = $request->channel;
+        $source = $request->input('source', 'mobilling');
 
-        [$clients, $duplicatesRemoved] = $this->resolveRecipients($request, $channel);
+        [$recipients, $duplicatesRemoved] = $this->resolveRecipients($request, $source, $channel);
 
         $imagePath = null;
         if ($request->hasFile('whatsapp_image')) {
@@ -73,8 +77,8 @@ class BroadcastController extends Controller
         // Create broadcast record
         $broadcast = Broadcast::create([
             'sent_by'          => $request->user()->id,
-            'client_ids'       => $request->client_ids,
-            'total_recipients' => $clients->count(),
+            'client_ids'       => $source === 'mobilling' ? $request->client_ids : null,
+            'total_recipients' => $recipients->count(),
             'channel'          => $channel,
             'subject'          => $request->subject,
             'body'             => $request->body,
@@ -88,16 +92,16 @@ class BroadcastController extends Controller
         // Runs on the dedicated 'broadcasts' queue worker — see SendBroadcastJob
         // for why (WhatsApp sends are throttled, so a large list can genuinely
         // take minutes, well past anything safe to run inline on a web worker).
-        SendBroadcastJob::dispatch($broadcast->id, $clients->pluck('id')->all())
+        SendBroadcastJob::dispatch($broadcast->id, $recipients->all())
             ->onConnection('database')
             ->onQueue('broadcasts');
 
         $dupeNote = $duplicatesRemoved > 0 ? " ({$duplicatesRemoved} duplicate contact(s) skipped)" : '';
 
         return response()->json([
-            'message'          => "Broadcast started for {$clients->count()} recipient(s){$dupeNote} — sending in the background. Refresh History for live progress.",
+            'message'          => "Broadcast started for {$recipients->count()} recipient(s){$dupeNote} — sending in the background. Refresh History for live progress.",
             'broadcast_id'     => $broadcast->id,
-            'total_recipients' => $clients->count(),
+            'total_recipients' => $recipients->count(),
             'duplicates_removed' => $duplicatesRemoved,
         ], 202);
     }
@@ -106,25 +110,39 @@ class BroadcastController extends Controller
     public function recipients(Request $request, Broadcast $broadcast)
     {
         $status = $request->input('status', 'failed');
-        $ids = $status === 'sent' ? ($broadcast->sent_client_ids ?? []) : ($broadcast->failed_client_ids ?? []);
+        $rows = $status === 'sent' ? ($broadcast->sent_client_ids ?? []) : ($broadcast->failed_client_ids ?? []);
         $reasons = $broadcast->failure_reasons ?? [];
 
-        $clients = Client::withoutGlobalScopes()
-            ->whereIn('id', $ids)
+        // Old broadcasts (pre-dated recipient snapshots) stored bare Client UUID
+        // strings here — look those up for display. Newer ones store the full
+        // {key, name, phone, email, client_id} snapshot directly, which also
+        // covers non-Client recipients (e.g. MoSMS contacts) that a DB lookup
+        // could never resolve.
+        $legacyIds = collect($rows)->filter(fn ($r) => is_string($r))->values();
+        $legacyClients = $legacyIds->isEmpty() ? collect() : Client::withoutGlobalScopes()
+            ->whereIn('id', $legacyIds)
             ->get(['id', 'name', 'email', 'phone'])
             ->keyBy('id');
 
-        // Every id gets a row even if the client was since deleted — a
-        // failure is still worth showing, not silently dropped.
-        $data = collect($ids)->map(function ($id) use ($clients, $reasons, $status) {
-            $client = $clients->get($id);
+        $data = collect($rows)->map(function ($row) use ($legacyClients, $reasons, $status) {
+            if (is_string($row)) {
+                $client = $legacyClients->get($row);
+
+                return [
+                    'id' => $row,
+                    'name' => $client->name ?? 'Unknown client (removed)',
+                    'email' => $client->email ?? null,
+                    'phone' => $client->phone ?? null,
+                    'reason' => $status === 'failed' ? ($reasons[$row] ?? null) : null,
+                ];
+            }
 
             return [
-                'id' => $id,
-                'name' => $client->name ?? 'Unknown client (removed)',
-                'email' => $client->email ?? null,
-                'phone' => $client->phone ?? null,
-                'reason' => $status === 'failed' ? ($reasons[$id] ?? null) : null,
+                'id' => $row['client_id'] ?? $row['key'] ?? null,
+                'name' => $row['name'] ?? 'Unknown',
+                'email' => $row['email'] ?? null,
+                'phone' => $row['phone'] ?? null,
+                'reason' => $status === 'failed' ? ($row['reason'] ?? ($reasons[$row['key'] ?? ''] ?? null)) : null,
             ];
         })->values();
 
@@ -134,15 +152,28 @@ class BroadcastController extends Controller
     /** Re-send the exact same content to only the recipients who failed last time — never the ones already reached. */
     public function resendFailed(Request $request, Broadcast $broadcast)
     {
-        $failedIds = $broadcast->failed_client_ids ?? [];
-        if (empty($failedIds)) {
+        $failed = $broadcast->failed_client_ids ?? [];
+        if (empty($failed)) {
             return response()->json(['message' => 'No failed recipients to resend to.'], 422);
         }
 
+        // Normalize to the recipient-snapshot shape SendBroadcastJob expects —
+        // old broadcasts stored bare Client UUIDs, so re-derive a snapshot for those.
+        $isLegacy = is_string($failed[0] ?? null);
+        $recipients = $isLegacy
+            ? Client::withoutGlobalScopes()->whereIn('id', $failed)->get()->map(fn (Client $c) => [
+                'key' => 'client:' . $c->id,
+                'client_id' => $c->id,
+                'name' => $c->name,
+                'phone' => $c->phone,
+                'email' => $c->email,
+            ])->all()
+            : $failed;
+
         $retry = Broadcast::create([
             'sent_by'          => $request->user()->id,
-            'client_ids'       => $failedIds,
-            'total_recipients' => count($failedIds),
+            'client_ids'       => $isLegacy ? $failed : null,
+            'total_recipients' => count($recipients),
             'channel'          => $broadcast->channel,
             'subject'          => $broadcast->subject,
             'body'             => $broadcast->body,
@@ -154,34 +185,37 @@ class BroadcastController extends Controller
             'retry_of_broadcast_id' => $broadcast->id,
         ]);
 
-        SendBroadcastJob::dispatch($retry->id, $failedIds)
+        SendBroadcastJob::dispatch($retry->id, $recipients)
             ->onConnection('database')
             ->onQueue('broadcasts');
 
         return response()->json([
-            'message'          => 'Resend started for ' . count($failedIds) . ' recipient(s) — refresh History for live progress.',
+            'message'          => 'Resend started for ' . count($recipients) . ' recipient(s) — refresh History for live progress.',
             'broadcast_id'     => $retry->id,
-            'total_recipients' => count($failedIds),
+            'total_recipients' => count($recipients),
         ], 202);
     }
 
     /**
-     * Eligible clients for a channel, with duplicate contacts collapsed — two
-     * client records sharing the same phone (or email, for an email send)
-     * would otherwise each get notified separately, so the same person gets
-     * the message twice.
+     * Eligible recipients for a channel/source, with duplicate contacts collapsed
+     * — two records sharing the same phone (or email, for an email send) would
+     * otherwise each get notified separately, so the same person gets the
+     * message twice.
      *
-     * @return array{0: \Illuminate\Support\Collection<int, Client>, 1: int} [deduped clients, how many duplicates were dropped]
+     * @return array{0: Collection<int, array{key: string, client_id: ?string, name: ?string, phone: ?string, email: ?string}>, 1: int} [deduped recipients, how many duplicates were dropped]
      */
-    private function resolveRecipients(Request $request, string $channel): array
+    private function resolveRecipients(Request $request, string $source, string $channel): array
     {
-        $raw = $this->recipientQuery($request, $channel)->get();
-        $deduped = $raw->unique(fn (Client $c) => $this->recipientDedupKey($c, $channel))->values();
+        $raw = $source === 'mosms_contacts'
+            ? $this->mosmsContactRecipients($request, $channel)
+            : $this->mobillingClientRecipients($request, $channel);
 
-        return [$deduped, $raw->count() - $deduped->count()];
+        $deduped = collect($raw)->unique(fn (array $r) => $this->recipientDedupKey($r, $channel))->values();
+
+        return [$deduped, count($raw) - $deduped->count()];
     }
 
-    private function recipientQuery(Request $request, string $channel)
+    private function mobillingClientRecipients(Request $request, string $channel): array
     {
         // BelongsToTenant auto-scopes this to the current tenant.
         $query = Client::query();
@@ -205,14 +239,48 @@ class BroadcastController extends Controller
             });
         }
 
-        return $query;
+        return $query->get()->map(fn (Client $c) => [
+            'key' => 'client:' . $c->id,
+            'client_id' => $c->id,
+            'name' => $c->name,
+            'phone' => $c->phone,
+            'email' => $c->email,
+        ])->all();
     }
 
-    /** Two clients are "the same recipient" for this channel if they'd get the exact same message(s). */
-    private function recipientDedupKey(Client $client, string $channel): string
+    /** This tenant's own MoSMS address book — never another tenant's. */
+    private function mosmsContactRecipients(Request $request, string $channel): array
     {
-        $phone = $client->phone ? $this->normalizePhone($client->phone) : null;
-        $email = $client->email ? strtolower(trim($client->email)) : null;
+        $tenant = \App\Models\Tenant::withoutGlobalScopes()->find($request->user()->tenant_id);
+        $contacts = app(MosmsService::class)->contacts($tenant);
+
+        return collect($contacts)
+            ->filter(function (array $c) use ($channel) {
+                $hasEmail = !empty($c['email']);
+                $hasPhone = !empty($c['phone']);
+
+                return match ($channel) {
+                    'email' => $hasEmail,
+                    'sms', 'whatsapp' => $hasPhone,
+                    default => $hasEmail || $hasPhone,
+                };
+            })
+            ->map(fn (array $c) => [
+                'key' => 'mosms_contact:' . ($c['phone'] ? $this->normalizePhone($c['phone']) : strtolower(trim((string) $c['email']))),
+                'client_id' => null,
+                'name' => $c['name'] ?: ($c['phone'] ?? $c['email'] ?? 'Unknown'),
+                'phone' => $c['phone'],
+                'email' => $c['email'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** Two recipients are "the same person" for this channel if they'd get the exact same message(s). */
+    private function recipientDedupKey(array $recipient, string $channel): string
+    {
+        $phone = $recipient['phone'] ? $this->normalizePhone($recipient['phone']) : null;
+        $email = $recipient['email'] ? strtolower(trim($recipient['email'])) : null;
 
         return match ($channel) {
             'email' => 'email:' . $email,

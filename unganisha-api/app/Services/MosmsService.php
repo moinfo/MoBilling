@@ -80,6 +80,35 @@ class MosmsService
         return $res['data'] ?? [];
     }
 
+    /**
+     * This tenant's own MoSMS address book (people who've messaged or been added to
+     * THIS tenant's own MoSMS account — not any other tenant's contacts). Pages
+     * through MoSMS's /contacts endpoint (20/page) until a short page ends it.
+     *
+     * @return array<int, array{name: ?string, phone: ?string, email: ?string}>
+     */
+    public function contacts(Tenant $tenant): array
+    {
+        $token = $this->tokenFor($tenant);
+        $all = [];
+        $page = 1;
+
+        do {
+            $res = $this->request('get', '/contacts', ['page' => $page], $token);
+            $rows = $res['data'] ?? [];
+            foreach ($rows as $row) {
+                $all[] = [
+                    'name'  => $row['name'] ?? null,
+                    'phone' => $row['phone'] ?? null,
+                    'email' => $row['email'] ?? null,
+                ];
+            }
+            $page++;
+        } while (count($rows) === 20);
+
+        return $all;
+    }
+
     /** Active SMS credit packages (name, quantity range, price per SMS). */
     public function packages(Tenant $tenant): array
     {
