@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Title, Group, Paper, Stack, SegmentedControl, TextInput, Textarea,
   MultiSelect, Button, Table, Badge, Text, Pagination, Loader, Select, Alert,
@@ -7,7 +8,7 @@ import {
 import { useForm } from '@mantine/form';
 import { notifications } from '@mantine/notifications';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat, IconInfoCircle, IconPhoto } from '@tabler/icons-react';
+import { IconSend, IconBrandWhatsapp, IconEye, IconRepeat, IconInfoCircle, IconPhoto, IconChartBar } from '@tabler/icons-react';
 import {
   getBroadcasts, sendBroadcast, getBroadcastRecipients, resendFailedBroadcast, previewBroadcast, getMosmsContacts,
   type Broadcast as BroadcastType, type SendBroadcastPayload, type BroadcastRecipient,
@@ -60,6 +61,7 @@ const templateOptions = [
 ];
 
 export default function Broadcast() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
 
@@ -252,7 +254,16 @@ export default function Broadcast() {
 
   return (
     <Stack>
-      <Title order={2}>Broadcast</Title>
+      <Group justify="space-between">
+        <Title order={2}>Broadcast</Title>
+        <Button
+          variant="light"
+          leftSection={<IconChartBar size={16} />}
+          onClick={() => navigate('/reports/communication-log')}
+        >
+          View delivery report
+        </Button>
+      </Group>
 
       {/* Compose */}
       <Paper shadow="xs" p="md" withBorder>
